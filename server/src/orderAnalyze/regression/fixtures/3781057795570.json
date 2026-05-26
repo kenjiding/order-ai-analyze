@@ -1,0 +1,179 @@
+{
+  "id": "3781057795570",
+  "orderNo": "3781057795570",
+  "capturedAt": "2026-05-25T07:22:02.369Z",
+  "expected": {
+    "lossScope": "库外丢失",
+    "exceptionCategoryId": "快递员丢失",
+    "reason": ""
+  },
+  "tracks": [
+    {
+      "content": "【ADL DS】派送任务已分配给派件员(派件员：ADL-SP-049-Nen Patel,电话：***)，待派件员领取包裹。 操作员【cornerstone】",
+      "time": "2026-05-25 17:21:53",
+      "trackStageTx": "派送"
+    },
+    {
+      "content": "【ADL DS】包裹已取消分配给[ADL-SP-049-Nen Patel]。操作员【ADL OP1】",
+      "time": "2026-05-22 21:49:22",
+      "trackStageTx": "派送"
+    },
+    {
+      "content": "【ADL DS】派送任务已分配给派件员(派件员：ADL-SP-049-Nen Patel,电话：***)，待派件员领取包裹。 操作员【cornerstone】",
+      "time": "2026-05-22 20:31:17",
+      "trackStageTx": "派送"
+    },
+    {
+      "content": "【ADL DS】包裹已取消分配给[ADL-RAVI-ASHISHKUMAR PATEL]。操作员【ADL OP1】",
+      "time": "2026-05-20 21:32:07",
+      "trackStageTx": "派送"
+    },
+    {
+      "content": "【ADL DS】派送任务已分配给派件员(派件员：ADL-RAVI-ASHISHKUMAR PATEL,电话：***)，待派件员领取包裹。 操作员【cornerstone】",
+      "time": "2026-05-20 19:36:11",
+      "trackStageTx": "派送"
+    },
+    {
+      "content": "【ADL DS】包裹已取消分配给[ADL-SP-049-Nen Patel]。操作员【ADL OP1】",
+      "time": "2026-05-19 17:58:22",
+      "trackStageTx": "派送"
+    },
+    {
+      "content": "【ADL DS】派送任务已分配给派件员(派件员：ADL-SP-049-Nen Patel,电话：***)，待派件员领取包裹。 操作员【cornerstone】",
+      "time": "2026-05-17 20:12:08",
+      "trackStageTx": "派送"
+    },
+    {
+      "content": "【ADL DS】包裹已取消分配给[ADL-SP-049-Nen Patel]。操作员【ADL OP1】",
+      "time": "2026-05-16 08:39:56",
+      "trackStageTx": "派送"
+    },
+    {
+      "content": "【ADL DS】派送任务已分配给派件员(派件员：ADL-SP-049-Nen Patel,电话：***)，待派件员领取包裹。 操作员【cornerstone】",
+      "time": "2026-05-16 07:02:35",
+      "trackStageTx": "派送"
+    },
+    {
+      "content": "【ADL DS】包裹已取消分配给[ADL-SP-049-Nen Patel]。操作员【ADL OP1】",
+      "time": "2026-05-14 19:43:18",
+      "trackStageTx": "派送"
+    },
+    {
+      "content": "【ADL DS】派送任务已分配给派件员(派件员：ADL-SP-049-Nen Patel,电话：***)，待派件员领取包裹。 操作员【cornerstone】",
+      "time": "2026-05-14 18:37:11",
+      "trackStageTx": "派送"
+    },
+    {
+      "content": "【ADL DS】包裹已取消分配给[ADL-SP-049-Nen Patel]。操作员【ADL OP1】",
+      "time": "2026-05-13 20:37:42",
+      "trackStageTx": "派送"
+    },
+    {
+      "content": "【ADL DS】派送任务已分配给派件员(派件员：ADL-SP-049-Nen Patel,电话：***)，待派件员领取包裹。 操作员【cornerstone】",
+      "time": "2026-05-13 19:32:11",
+      "trackStageTx": "派送"
+    },
+    {
+      "content": "包裹正在处理中。",
+      "time": "2026-05-13 11:29:00",
+      "trackStageTx": "派送"
+    },
+    {
+      "content": "【ADL DS】包裹已取消分配给[ADL-SP-049-Nen Patel]。操作员【ADL OP1】",
+      "time": "2026-05-12 21:37:44",
+      "trackStageTx": "派送"
+    },
+    {
+      "content": "【ADL DS】派送任务已分配给派件员(派件员：ADL-SP-049-Nen Patel,电话：***)，待派件员领取包裹。 操作员【cornerstone】",
+      "time": "2026-05-12 20:03:38",
+      "trackStageTx": "派送"
+    },
+    {
+      "content": "【ADL DS】包裹已取消分配给[ADL-SP-049-Nen Patel]。操作员【ADL OP1】",
+      "time": "2026-05-11 19:10:57",
+      "trackStageTx": "派送"
+    },
+    {
+      "content": "【ADL DS】派送任务已分配给派件员(派件员：ADL-SP-049-Nen Patel,电话：***)，待派件员领取包裹。 操作员【cornerstone】",
+      "time": "2026-05-11 17:37:35",
+      "trackStageTx": "派送"
+    },
+    {
+      "content": "【ADL DS】包裹已取消分配给[ADL-SP-049-Nen Patel]。操作员【ADL OP1】",
+      "time": "2026-05-09 09:07:51",
+      "trackStageTx": "派送"
+    },
+    {
+      "content": "【ADL DS】派送任务已分配给派件员(派件员：ADL-SP-049-Nen Patel,电话：***)，待派件员领取包裹。 操作员【cornerstone】",
+      "time": "2026-05-09 07:35:56",
+      "trackStageTx": "派送"
+    },
+    {
+      "content": "【ADL DS】包裹已取消分配给[ADL-SP-049-Nen Patel]。操作员【ADL OP1】",
+      "time": "2026-05-07 20:36:26",
+      "trackStageTx": "派送"
+    },
+    {
+      "content": "【ADL DS】派送任务已分配给派件员(派件员：ADL-SP-049-Nen Patel,电话：***)，待派件员领取包裹。 操作员【cornerstone】",
+      "time": "2026-05-07 19:22:37",
+      "trackStageTx": "派送"
+    },
+    {
+      "content": "【ADL DS】包裹已取消分配给[ADL-SP-049-Nen Patel]。操作员【ADL OP1】",
+      "time": "2026-05-06 20:12:57",
+      "trackStageTx": "派送"
+    },
+    {
+      "content": "【ADL DS】派送任务已分配给派件员(派件员：ADL-SP-049-Nen Patel,电话：***)，待派件员领取包裹。 操作员【cornerstone】",
+      "time": "2026-05-06 18:50:29",
+      "trackStageTx": "派送"
+    },
+    {
+      "content": "【ADL DS】已到达。操作员【System】 。",
+      "time": "2026-05-06 13:43:12",
+      "trackStageTx": "派送"
+    },
+    {
+      "content": "【Adelaide Center】完成待转发件，目的地【ADL DS】。操作员【System】",
+      "time": "2026-05-06 13:43:11",
+      "trackStageTx": "转运"
+    },
+    {
+      "content": "【Adelaide Center】已到达。操作员【ADL-DC-Shruti】 。",
+      "time": "2026-05-06 13:43:10",
+      "trackStageTx": "转运"
+    },
+    {
+      "content": "【Adelaide Center】已揽收, 操作员【System】。",
+      "time": "2026-05-06 13:42:40",
+      "trackStageTx": "已揽件"
+    },
+    {
+      "content": "包裹交付给iMile区域分拨中心/末派供应商",
+      "time": "2026-05-05 17:47:36",
+      "trackStageTx": "转运",
+      "trackType": "Intl"
+    },
+    {
+      "content": "已通过[OpenApi]成功下单",
+      "time": "2026-05-01 22:03:34",
+      "trackStageTx": "订单提交"
+    }
+  ],
+  "interceptLogs": [
+    {
+      "waybillNo": "3781057795570",
+      "scanUserCode": "D21020956401",
+      "scanUserName": "ADL-SP-062-Kushal Patidar",
+      "gmtIntercept": "2026-05-07 10:44:30",
+      "operatorType": "courier"
+    },
+    {
+      "waybillNo": "3781057795570",
+      "scanUserCode": "D21020956401",
+      "scanUserName": "ADL-SP-062-Kushal Patidar",
+      "gmtIntercept": "2026-05-07 10:44:24",
+      "operatorType": "courier"
+    }
+  ]
+}

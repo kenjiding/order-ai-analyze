@@ -1,0 +1,141 @@
+{
+  "id": "6050626947198",
+  "orderNo": "6050626947198",
+  "capturedAt": "2026-05-23T06:05:20.062Z",
+  "expected": {
+    "lossScope": "暂无异常",
+    "exceptionCategoryId": "",
+    "reason": "包裹已回仓，库内时效未超7天，无异常信号"
+  },
+  "tracks": [
+    {
+      "content": "【ADL DS】已进入NDR，NDR来源[超NDR派件次数/供应商退件到件]",
+      "time": "2026-05-22 19:57:45",
+      "trackStageTx": "派送"
+    },
+    {
+      "content": "【ADL DS】派件员已回到网点。操作员【ADL-前台】",
+      "time": "2026-05-22 19:57:45",
+      "trackStageTx": "派送"
+    },
+    {
+      "content": "【ADL DS】登记问题件[AUS| 无人在家，无安全环境放包裹], 操作员【Ansh Bansal】。【View Proof】",
+      "time": "2026-05-22 11:30:17",
+      "trackStageTx": "派送",
+      "trackType": "Problem"
+    },
+    {
+      "content": "【ADL DS】包裹正在派送中(派件员: Ansh Bansal, ***)。操作员【Ansh Bansal】",
+      "time": "2026-05-21 11:23:42",
+      "trackStageTx": "派送",
+      "trackType": "Delivery"
+    },
+    {
+      "content": "【ADL DS】已盘点，库位编号[01]。操作员【ADL-前台】",
+      "time": "2026-05-20 13:55:23",
+      "trackStageTx": "派送"
+    },
+    {
+      "content": "已预约【2026-05-22】进行派送。操作员【ADL OP1】",
+      "time": "2026-05-20 12:53:41",
+      "trackStageTx": "派送",
+      "trackType": "Schedule"
+    },
+    {
+      "content": "已预约【2026-05-22】进行派送。操作员【ADL OP1】",
+      "time": "2026-05-20 12:52:55",
+      "trackStageTx": "派送",
+      "trackType": "Schedule"
+    },
+    {
+      "content": "【ADL DS】派件员已回到网点。操作员【ADL-前台】",
+      "time": "2026-05-20 09:08:06",
+      "trackStageTx": "派送"
+    },
+    {
+      "content": "【ADL DS】登记问题件[AUS| 无人在家，无安全环境放包裹], 操作员【D PAC-07-HARPREET SINGH】。【View Proof】",
+      "time": "2026-05-19 10:39:50",
+      "trackStageTx": "派送",
+      "trackType": "Problem"
+    },
+    {
+      "content": "【ADL DS】包裹正在派送中(派件员: D PAC-07-HARPREET SINGH, ***)。操作员【D PAC-07-HARPREET SINGH】",
+      "time": "2026-05-18 09:25:34",
+      "trackStageTx": "派送",
+      "trackType": "Delivery"
+    },
+    {
+      "content": "【ADL DS】派送任务已分配给派件员(派件员：D PAC-07-HARPREET SINGH,电话：***)，待派件员领取包裹。 操作员【cornerstone】",
+      "time": "2026-05-18 09:02:33",
+      "trackStageTx": "派送"
+    },
+    {
+      "content": "【ADL DS】已盘点，库位编号[01]。操作员【ADL-前台】",
+      "time": "2026-05-17 13:38:03",
+      "trackStageTx": "派送"
+    },
+    {
+      "content": "【ADL DS】派件员已回到网点。操作员【ADL-前台】",
+      "time": "2026-05-16 09:11:40",
+      "trackStageTx": "派送"
+    },
+    {
+      "content": "【ADL DS】登记问题件[AUS| 无人在家，无安全环境放包裹], 操作员【D PAC-07-HARPREET SINGH】。【View Proof】",
+      "time": "2026-05-14 08:41:39",
+      "trackStageTx": "派送",
+      "trackType": "Problem"
+    },
+    {
+      "content": "【ADL DS】包裹正在派送中(派件员: D PAC-07-HARPREET SINGH, ***)。操作员【D PAC-07-HARPREET SINGH】",
+      "time": "2026-05-13 10:33:06",
+      "trackStageTx": "派送",
+      "trackType": "Delivery"
+    },
+    {
+      "content": "【ADL DS】派送任务已分配给派件员(派件员：D PAC-07-HARPREET SINGH,电话：***)，待派件员领取包裹。 操作员【cornerstone】",
+      "time": "2026-05-13 10:20:16",
+      "trackStageTx": "派送"
+    },
+    {
+      "content": "【ADL DS】已到达。操作员【System】 。",
+      "time": "2026-05-12 15:16:27",
+      "trackStageTx": "派送"
+    },
+    {
+      "content": "【Adelaide Center】完成待转发件，目的地【ADL DS】。操作员【System】",
+      "time": "2026-05-12 15:16:26",
+      "trackStageTx": "转运"
+    },
+    {
+      "content": "【Adelaide Center】已到达。操作员【ADL-DC-Kevin】 。",
+      "time": "2026-05-12 15:16:25",
+      "trackStageTx": "转运"
+    },
+    {
+      "content": "【Adelaide Center】已揽收, 操作员【System】。",
+      "time": "2026-05-12 15:15:55",
+      "trackStageTx": "已揽件"
+    },
+    {
+      "content": "已通过[OpenApi]成功下单",
+      "time": "2026-05-06 13:01:55",
+      "trackStageTx": "订单提交"
+    }
+  ],
+  "interceptLogs": [
+    {
+      "waybillNo": "6050626947198",
+      "scanUserCode": "2103297501",
+      "scanUserName": "ADL OP1",
+      "gmtIntercept": "2026-05-18 09:31:18",
+      "operatorType": "unknown"
+    },
+    {
+      "waybillNo": "6050626947198",
+      "scanUserCode": "2103297501",
+      "scanUserName": "ADL OP1",
+      "gmtIntercept": "2026-05-13 10:50:18",
+      "operatorType": "unknown"
+    }
+  ]
+}

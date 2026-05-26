@@ -1,0 +1,221 @@
+/* 车队供应商推送 Tab：分区布局 + 透视表 Excel 风格表头/行底色 */
+
+.fleet-supplier-push-tab {
+  --fs-pivot-header-top: #e8f2fc;
+  --fs-pivot-header-bot: #d2e3f4;
+  --fs-pivot-border: #b0c7dc;
+  --fs-pivot-row-route: #e4f0fb;
+  --fs-pivot-row-post: #edf4fb;
+  --fs-pivot-row-odd: #fafcfe;
+  --fs-pivot-row-even: #f3f8fd;
+}
+
+.fleet-supplier-push-tab .fs-intro {
+  border-radius: 10px;
+  border: 1px solid var(--admin-line);
+  background: linear-gradient(135deg, var(--admin-sky-soft) 0%, var(--admin-surface-soft) 55%, var(--admin-accent-soft) 160%);
+  padding: 10px 14px;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--admin-muted);
+}
+
+.fleet-supplier-push-tab .fs-card {
+  border-radius: 12px;
+  border: 1px solid var(--admin-line);
+  background: var(--admin-surface);
+  box-shadow: 0 10px 32px rgba(47, 83, 105, 0.07);
+  overflow: hidden;
+}
+
+.fleet-supplier-push-tab .fs-card-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 12px 16px;
+  background: linear-gradient(90deg, var(--admin-sky-soft) 0%, rgba(255, 255, 255, 0.92) 72%);
+  border-bottom: 1px solid var(--admin-line);
+}
+
+.fleet-supplier-push-tab .fs-card-head-title {
+  font-size: 13px;
+  font-weight: 650;
+  color: var(--admin-text);
+  letter-spacing: 0.02em;
+}
+
+.fleet-supplier-push-tab .fs-card-head-sub {
+  font-size: 11px;
+  color: var(--admin-muted);
+  max-width: 28rem;
+  line-height: 1.45;
+}
+
+.fleet-supplier-push-tab .fs-card-body {
+  padding: 16px;
+  background: linear-gradient(180deg, #ffffff 0%, var(--admin-surface-soft) 120%);
+}
+
+.fleet-supplier-push-tab .fs-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+
+.fleet-supplier-push-tab .fs-push-images {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.fleet-supplier-push-tab .fs-push-image-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  width: 108px;
+  padding: 8px;
+  border-radius: 10px;
+  border: 1px solid var(--admin-line);
+  background: var(--admin-surface);
+  box-shadow: 0 2px 8px rgba(47, 83, 105, 0.06);
+}
+
+.fleet-supplier-push-tab .fs-push-image-thumb-wrap {
+  position: relative;
+  width: 96px;
+  height: 96px;
+}
+
+.fleet-supplier-push-tab .fs-push-image-thumb-wrap .ant-image {
+  display: block;
+  width: 96px;
+  height: 96px;
+  border-radius: 8px;
+  overflow: hidden;
+  border: 1px solid #d8e6f0;
+}
+
+.fleet-supplier-push-tab .fs-push-image-thumb-wrap .ant-image-img {
+  width: 96px !important;
+  height: 96px !important;
+  object-fit: cover;
+}
+
+.fleet-supplier-push-tab .fs-push-image-remove {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: none;
+  border-radius: 999px;
+  color: #fff;
+  background: rgba(30, 45, 58, 0.72);
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+.fleet-supplier-push-tab .fs-push-image-remove:hover {
+  background: rgba(180, 45, 45, 0.88);
+}
+
+.fleet-supplier-push-tab .fs-push-image-name {
+  width: 100%;
+  font-size: 10px;
+  line-height: 1.3;
+  color: var(--admin-muted);
+  text-align: center;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.fleet-supplier-push-tab .fs-file-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  max-width: min(100%, 36rem);
+  padding: 6px 12px;
+  border-radius: 999px;
+  font-size: 11px;
+  color: #25526e;
+  background: var(--admin-sky-soft);
+  border: 1px solid #c8deee;
+}
+
+.fleet-supplier-push-tab .fs-badge-count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 1.5rem;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 600;
+  color: #1f6f68;
+  background: var(--admin-accent-soft);
+  border: 1px solid rgba(47, 143, 135, 0.25);
+}
+
+/* 供应商表 */
+.fleet-supplier-push-tab .fs-supplier-table-wrap .ant-table {
+  border-radius: 8px;
+  overflow: hidden;
+  border: 1px solid var(--admin-line);
+}
+
+.fleet-supplier-push-tab .fs-supplier-table-wrap .ant-table-thead > tr > th {
+  background: var(--admin-sky-soft) !important;
+  color: #25526e !important;
+  font-weight: 600 !important;
+  font-size: 12px !important;
+  border-bottom: 1px solid var(--admin-line) !important;
+}
+
+.fleet-supplier-push-tab .fs-supplier-table-wrap .ant-table-tbody > tr > td {
+  background: var(--admin-surface) !important;
+}
+
+.fleet-supplier-push-tab .fs-supplier-table-wrap .ant-table-tbody > tr:nth-child(even) > td {
+  background: var(--admin-surface-soft) !important;
+}
+
+/* 折叠面板 */
+.fleet-supplier-push-tab .fs-collapse.ant-collapse {
+  background: transparent;
+}
+
+.fleet-supplier-push-tab .fs-collapse .ant-collapse-item {
+  margin-bottom: 12px;
+  border: 1px solid var(--admin-line) !important;
+  border-radius: 10px !important;
+  overflow: hidden;
+  background: var(--admin-surface);
+  box-shadow: 0 4px 16px rgba(47, 83, 105, 0.05);
+}
+
+.fleet-supplier-push-tab .fs-collapse .ant-collapse-header {
+  background: linear-gradient(90deg, var(--admin-sky-soft) 0%, #f6fafd 100%) !important;
+  padding: 12px 14px !important;
+  align-items: center !important;
+}
+
+.fleet-supplier-push-tab .fs-collapse .ant-collapse-content {
+  border-top: 1px solid var(--admin-line);
+  background: linear-gradient(180deg, #fbfdff 0%, #f5f9fc 100%);
+}
+
+.fleet-supplier-push-tab .fs-collapse .ant-collapse-content-box {
+  padding: 14px !important;
+}

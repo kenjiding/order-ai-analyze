@@ -1,0 +1,164 @@
+/* 车队透视报表：与飞书截图共用（独立于 Tab 作用域） */
+
+.fleet-pivot-report-view {
+  box-sizing: border-box;
+  width: 760px;
+  padding: 26px 28px 24px;
+  border-radius: 20px;
+  border: 1px solid #1f3f7a;
+  background:
+    radial-gradient(1200px 220px at 10% 0%, #edf4ff 0%, rgba(237, 244, 255, 0) 58%),
+    linear-gradient(180deg, #fdfefe 0%, #eff5ff 48%, #f9fbff 100%);
+  box-shadow:
+    0 18px 36px rgba(19, 40, 79, 0.16),
+    inset 0 1px 0 rgba(255, 255, 255, 0.95);
+  color: #0d1730;
+  font-family:
+    ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, 'Noto Sans SC',
+    'PingFang SC', sans-serif;
+}
+
+.fleet-pivot-report-view .fpr-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 16px;
+  margin-bottom: 14px;
+}
+
+.fleet-pivot-report-view .fpr-title-block {
+  min-width: 0;
+}
+
+.fleet-pivot-report-view .fpr-title {
+  font-size: 30px;
+  line-height: 1.12;
+  font-weight: 800;
+  margin-bottom: 10px;
+  letter-spacing: 0.03em;
+  color: #0b2450;
+  text-shadow: 0 1px 0 rgba(255, 255, 255, 0.8);
+}
+
+.fleet-pivot-report-view .fpr-subtitle {
+  font-size: 15px;
+  font-weight: 600;
+  color: #365d99;
+  margin-bottom: 0;
+  line-height: 1.45;
+}
+
+.fleet-pivot-report-view .fpr-total-panel {
+  flex-shrink: 0;
+  min-width: 150px;
+  padding: 10px 14px;
+  border-radius: 14px;
+  border: 1px solid #8dc2ff;
+  background: linear-gradient(180deg, #f5faff 0%, #e8f2ff 100%);
+  text-align: right;
+}
+
+.fleet-pivot-report-view .fpr-total-label {
+  font-size: 12px;
+  font-weight: 700;
+  color: #3f679b;
+  margin-bottom: 2px;
+}
+
+.fleet-pivot-report-view .fpr-total-value {
+  font-size: 28px;
+  line-height: 1;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  color: #0d57c6;
+}
+
+.fleet-pivot-report-view .fpr-note {
+  font-size: 13px;
+  color: #355988;
+  margin-bottom: 16px;
+  padding: 8px 12px;
+  border-radius: 10px;
+  background: rgba(207, 225, 255, 0.35);
+  border: 1px solid rgba(123, 163, 220, 0.45);
+  line-height: 1.45;
+}
+
+.fleet-pivot-report-view .fpr-empty {
+  font-size: 16px;
+  font-weight: 600;
+  color: #5372a5;
+  padding: 6px 2px;
+}
+
+.fleet-pivot-report-view .fpr-table {
+  width: 100%;
+  table-layout: fixed;
+  border-collapse: collapse;
+  font-size: 14px;
+  border: 1px solid #90b1d8;
+  border-radius: 14px;
+  overflow: hidden;
+}
+
+.fleet-pivot-report-view .fpr-table thead th {
+  text-align: left;
+  padding: 9px 10px;
+  border-bottom: 1px solid #8db0da;
+  background: linear-gradient(180deg, #d6e7ff 0%, #c3daf7 100%);
+  font-weight: 750;
+  color: #1b3f73;
+}
+
+.fleet-pivot-report-view .fpr-table thead th.fpr-th-num {
+  text-align: right;
+}
+
+.fleet-pivot-report-view .fpr-table tbody td {
+  padding: 8px 10px;
+  border-bottom: 1px solid #d5e3f4;
+  text-align: left;
+}
+
+.fleet-pivot-report-view .fpr-table tbody td.fpr-td-num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.fleet-pivot-report-view .fpr-tr--route td {
+  background: linear-gradient(90deg, #dbe9fb 0%, #eff5ff 100%);
+  font-weight: 700;
+  color: #1f4878;
+}
+
+.fleet-pivot-report-view .fpr-tr--post td {
+  background: #eaf3ff;
+  font-weight: 650;
+  color: #28527f;
+}
+
+.fleet-pivot-report-view .fpr-tr--detail td {
+  background: #fcfdff;
+  font-weight: 400;
+  color: #111e37;
+}
+
+.fleet-pivot-report-view .fpr-tr--detailAlt td {
+  background: #f2f7ff;
+  font-weight: 400;
+  color: #111e37;
+}
+
+.fleet-pivot-report-view .fpr-tr--footer td {
+  padding: 11px 10px 9px;
+  font-size: 15px;
+  font-weight: 800;
+  color: #0d2348;
+  border-top: 2px solid #7ea7da;
+  background: linear-gradient(180deg, #d9e9ff 0%, #c8dff9 100%);
+}
+
+.fleet-pivot-report-view .fpr-tr--footer .fpr-td-num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}

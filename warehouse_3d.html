@@ -1,0 +1,1252 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>仓库 3D 示意图</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { background: #1a1a2e; overflow: hidden; font-family: 'Segoe UI', sans-serif; }
+canvas { display: block; }
+#ui {
+  position: fixed; top: 16px; left: 50%; transform: translateX(-50%);
+  background: rgba(20,20,40,0.85); backdrop-filter: blur(10px);
+  border: 1px solid rgba(255,255,255,0.15); border-radius: 12px;
+  padding: 10px 20px; color: #fff; font-size: 13px; text-align: center;
+  pointer-events: none; z-index: 10;
+}
+#ui span { color: #aaa; }
+#controls {
+  position: fixed; bottom: 16px; right: 16px;
+  background: rgba(20,20,40,0.85); backdrop-filter: blur(10px);
+  border: 1px solid rgba(255,255,255,0.15); border-radius: 10px;
+  padding: 12px 16px; color: #aaa; font-size: 12px; z-index: 10;
+  line-height: 2;
+}
+#snapshot {
+  position: fixed; top: 16px; left: 16px; z-index: 11;
+  cursor: pointer; pointer-events: auto;
+  background: rgba(30,90,70,0.92); color: #d8ffee;
+  border: 1px solid rgba(120,255,200,0.4); border-radius: 10px;
+  padding: 8px 14px; font-size: 13px; font-family: inherit;
+}
+#snapshot:hover { background: rgba(45,120,95,0.98); }
+</style>
+</head>
+<body>
+<button type="button" id="snapshot" title="导出当前视角为 PNG 图片">Save PNG</button>
+<div id="ui">Adelaide 仓库 3D 示意图 &nbsp;|&nbsp; <span>左键旋转 · 滚轮缩放 · 右键平移</span></div>
+<div id="controls">🖱 左键拖拽旋转<br>🔍 滚轮缩放<br>✋ 右键平移</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+const renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
+renderer.setSize(innerWidth, innerHeight);
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+document.body.appendChild(renderer.domElement);
+renderer.domElement.style.touchAction = 'none';
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x1a1a2e);
+scene.fog = new THREE.Fog(0x1a1a2e, 55, 120);
+
+const camera = new THREE.PerspectiveCamera(52, innerWidth / innerHeight, 0.1, 200);
+
+// Lights
+scene.add(new THREE.AmbientLight(0xffffff, 0.55));
+const dir = new THREE.DirectionalLight(0xffffff, 0.9);
+dir.position.set(12, 22, 12);
+dir.castShadow = true;
+dir.shadow.mapSize.width = dir.shadow.mapSize.height = 2048;
+Object.assign(dir.shadow.camera, { left:-30,right:30,top:30,bottom:-30,near:0.1,far:100 });
+scene.add(dir);
+const fill = new THREE.DirectionalLight(0x8899ff, 0.3);
+fill.position.set(-10, 6, -5);
+scene.add(fill);
+
+// ─── helpers ──────────────────────────────────────────────
+function box(w,h,d,color,x,y,z,op){
+  op = op === undefined ? 1 : op;
+  const m = new THREE.Mesh(
+    new THREE.BoxGeometry(w,h,d),
+    new THREE.MeshLambertMaterial({color, transparent:op<1, opacity:op})
+  );
+  m.position.set(x,y,z);
+  m.castShadow = m.receiveShadow = true;
+  scene.add(m);
+  return m;
+}
+function boxOn(parent, w,h,d,color,x,y,z, op){
+  op = op === undefined ? 1 : op;
+  const m = new THREE.Mesh(
+    new THREE.BoxGeometry(w,h,d),
+    new THREE.MeshLambertMaterial({color, transparent:op<1, opacity:op})
+  );
+  m.position.set(x,y,z);
+  m.castShadow = m.receiveShadow = true;
+  parent.add(m);
+  return m;
+}
+function cylinder(r,h,color,x,y,z){
+  const m = new THREE.Mesh(
+    new THREE.CylinderGeometry(r,r,h,20),
+    new THREE.MeshLambertMaterial({color})
+  );
+  m.position.set(x,y,z);
+  m.castShadow = m.receiveShadow = true;
+  scene.add(m);
+}
+function warningCone(x,z,sc){
+  sc = sc || 1;
+  const base = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.22*sc,0.28*sc,0.10*sc,18),
+    new THREE.MeshLambertMaterial({color:0x222222})
+  );
+  base.position.set(x,0.05*sc,z);
+  base.castShadow = base.receiveShadow = true;
+  scene.add(base);
+  const body = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.08*sc,0.19*sc,0.90*sc,18),
+    new THREE.MeshLambertMaterial({color:0xff7a1a})
+  );
+  body.position.set(x,0.55*sc,z);
+  body.castShadow = body.receiveShadow = true;
+  scene.add(body);
+  const stripe = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.11*sc,0.15*sc,0.14*sc,18),
+    new THREE.MeshLambertMaterial({color:0xfff2c6})
+  );
+  stripe.position.set(x,0.63*sc,z);
+  stripe.castShadow = stripe.receiveShadow = true;
+  scene.add(stripe);
+}
+var warningTapeStripeTexture = null;
+function getWarningTapeStripeTexture(){
+  if(warningTapeStripeTexture) return warningTapeStripeTexture;
+  var cv = document.createElement('canvas');
+  cv.width = 1024; cv.height = 160;
+  var ctx = cv.getContext('2d');
+  // yellow base
+  ctx.fillStyle = '#f1c40f';
+  ctx.fillRect(0,0,cv.width,cv.height);
+  // wide diagonal black stripes
+  ctx.save();
+  ctx.translate(-260, 0);
+  ctx.rotate(-Math.PI / 6);
+  for(var i=0;i<16;i++){
+    ctx.fillStyle = '#111111';
+    ctx.fillRect(i*180, -240, 92, 640);
+  }
+  ctx.restore();
+  // subtle glossy highlight for tape-like feel
+  var g = ctx.createLinearGradient(0, 0, 0, cv.height);
+  g.addColorStop(0.00, 'rgba(255,255,255,0.28)');
+  g.addColorStop(0.26, 'rgba(255,255,255,0.00)');
+  g.addColorStop(0.74, 'rgba(0,0,0,0.00)');
+  g.addColorStop(1.00, 'rgba(0,0,0,0.26)');
+  ctx.fillStyle = g;
+  ctx.fillRect(0, 0, cv.width, cv.height);
+  var tex = new THREE.CanvasTexture(cv);
+  tex.wrapS = THREE.RepeatWrapping;
+  tex.wrapT = THREE.ClampToEdgeWrapping;
+  tex.anisotropy = 8;
+  warningTapeStripeTexture = tex;
+  return tex;
+}
+function warningTape(x1,z1,x2,z2,y,color){
+  var dx=x2-x1, dz=z2-z1;
+  var len=Math.sqrt(dx*dx+dz*dz);
+  if(len<=0.001)return;
+  var map = getWarningTapeStripeTexture().clone();
+  map.needsUpdate = true;
+  map.repeat.set(Math.max(1, len / 1.45), 1);
+  var tape = new THREE.Mesh(
+    new THREE.PlaneGeometry(len, 0.26),
+    new THREE.MeshLambertMaterial({
+      color:color||0xffffff,
+      map: map,
+      side: THREE.DoubleSide
+    })
+  );
+  tape.position.set((x1+x2)/2,y,(z1+z2)/2);
+  tape.rotation.y = -Math.atan2(dz, dx);
+  tape.castShadow = tape.receiveShadow = true;
+  scene.add(tape);
+}
+var labelFlashMaterials = [];
+function label(text,x,y,z,color,size, flash){
+  color = color || '#ffffff'; size = size || 0.35;
+  var pad = 40, ch = 128, maxCW = 1536;
+  var fontPx = Math.max(11, Math.floor(size * 168));
+  var cv = document.createElement('canvas');
+  var ctx = cv.getContext('2d');
+  function measure(){
+    ctx.font = 'bold ' + fontPx + 'px Segoe UI,Arial';
+    return ctx.measureText(text).width;
+  }
+  var tw = measure();
+  while (tw + pad > maxCW && fontPx > 10) {
+    fontPx--;
+    tw = measure();
+  }
+  cv.width = Math.min(maxCW, Math.max(512, Math.ceil(tw + pad)));
+  cv.height = ch;
+  ctx.fillStyle = color;
+  ctx.font = 'bold ' + fontPx + 'px Segoe UI,Arial';
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.fillText(text, cv.width / 2, ch / 2);
+  var tex = new THREE.CanvasTexture(cv);
+  tex.needsUpdate = true;
+  var mat = new THREE.SpriteMaterial({
+    map: tex, transparent: true, depthTest: false, opacity: 1
+  });
+  if (flash) labelFlashMaterials.push(mat);
+  var sp = new THREE.Sprite(mat);
+  sp.position.set(x, y, z);
+  sp.scale.set(size * 6 * (cv.width / 512), size * 2.2, 1);
+  scene.add(sp);
+}
+function placeSvgLogoLabel(filePath,x,y,z,size,fallbackText){
+  var sprite = new THREE.Sprite(new THREE.SpriteMaterial({
+    transparent: true, depthTest: false
+  }));
+  sprite.position.set(x,y,z);
+  sprite.scale.set(size * 7.2, size * 2.2, 1);
+  scene.add(sprite);
+  var url = String(filePath || '').replace(/\\/g, '/');
+  if (/^[a-zA-Z]+:\/\//.test(url)) {
+    // keep absolute URL as-is
+  } else if (url.charAt(0) === '/') {
+    url = 'file://' + url;
+  }
+  try { url = encodeURI(url); } catch (e) {}
+  new THREE.TextureLoader().load(
+    url,
+    function(tex){
+      var img = tex.image;
+      if (img && img.width && img.height) {
+        // 先高分辨率栅格化 SVG，再贴图，减少失真
+        var upscale = 4;
+        var maxSide = 4096;
+        var tw = Math.min(maxSide, Math.max(1024, Math.round(img.width * upscale)));
+        var th = Math.min(maxSide, Math.max(256, Math.round(img.height * upscale)));
+        var hi = document.createElement('canvas');
+        hi.width = tw; hi.height = th;
+        var hctx = hi.getContext('2d');
+        hctx.imageSmoothingEnabled = true;
+        hctx.imageSmoothingQuality = 'high';
+        hctx.clearRect(0, 0, tw, th);
+        hctx.drawImage(img, 0, 0, tw, th);
+
+        var hiTex = new THREE.CanvasTexture(hi);
+        hiTex.generateMipmaps = true;
+        hiTex.minFilter = THREE.LinearMipmapLinearFilter;
+        hiTex.magFilter = THREE.LinearFilter;
+        hiTex.anisotropy = Math.min(16, renderer.capabilities.getMaxAnisotropy());
+        hiTex.needsUpdate = true;
+        sprite.material.map = hiTex;
+        sprite.material.needsUpdate = true;
+
+        // 按你的要求：logo 展示缩小 3 倍
+        var ratio = tw / th;
+        var h = (size * 2.4) / 3;
+        sprite.scale.set(h * ratio, h, 1);
+        tex.dispose();
+      } else {
+        tex.needsUpdate = true;
+        tex.anisotropy = Math.min(16, renderer.capabilities.getMaxAnisotropy());
+        sprite.material.map = tex;
+        sprite.material.needsUpdate = true;
+        sprite.scale.set((size * 2.4) / 3, (size * 2.4) / 3, 1);
+      }
+    },
+    undefined,
+    function(){
+      scene.remove(sprite);
+      label(fallbackText || 'Imile ADL', x, y, z, '#3e59f1', size);
+    }
+  );
+}
+function doorFrame(w,h,thick,color,x,y,z,rotY){
+  rotY = rotY || 0;
+  const mat = new THREE.MeshLambertMaterial({color});
+  const g = new THREE.Group();
+  const lp = new THREE.Mesh(new THREE.BoxGeometry(thick,h,thick),mat);
+  lp.position.set(-w/2+thick/2, h/2, 0); g.add(lp);
+  const rp = new THREE.Mesh(new THREE.BoxGeometry(thick,h,thick),mat);
+  rp.position.set(w/2-thick/2, h/2, 0); g.add(rp);
+  const tb = new THREE.Mesh(new THREE.BoxGeometry(w,thick,thick),mat);
+  tb.position.set(0, h-thick/2, 0); g.add(tb);
+  g.position.set(x,y,z); g.rotation.y = rotY;
+  scene.add(g);
+}
+function doorPanel(w,h,color,x,y,z,rotY){
+  rotY = rotY || 0;
+  const m = new THREE.Mesh(
+    new THREE.BoxGeometry(w,h,0.07),
+    new THREE.MeshLambertMaterial({color,transparent:true,opacity:0.28,side:THREE.DoubleSide})
+  );
+  m.position.set(x,y,z); m.rotation.y = rotY; scene.add(m);
+}
+function floorZone(w,d,color,x,z,txt,tcol){
+  const m = new THREE.Mesh(
+    new THREE.PlaneGeometry(w,d),
+    new THREE.MeshLambertMaterial({color,transparent:true,opacity:0.3,side:THREE.DoubleSide})
+  );
+  m.rotation.x = -Math.PI/2; m.position.set(x,0.02,z); scene.add(m);
+  const el = new THREE.LineSegments(
+    new THREE.EdgesGeometry(new THREE.PlaneGeometry(w,d)),
+    new THREE.LineBasicMaterial({color,transparent:true,opacity:0.85})
+  );
+  el.rotation.x = -Math.PI/2; el.position.set(x,0.03,z); scene.add(el);
+  if(txt) label(txt, x, 0.5, z, tcol||'#ffffff', 0.28);
+}
+/** Cage Returns：浅红底 + 外框与区内网格均为红色虚线 */
+function floorZoneDashedRed(w,d,x,z,txt,tcol){
+  var hw=w/2, hd=d/2;
+  var tint=new THREE.Mesh(
+    new THREE.PlaneGeometry(w,d),
+    new THREE.MeshLambertMaterial({color:0xff3344,transparent:true,opacity:0.1,side:THREE.DoubleSide})
+  );
+  tint.rotation.x=-Math.PI/2; tint.position.set(x,0.02,z); tint.receiveShadow=true; scene.add(tint);
+  var dashMat=new THREE.LineDashedMaterial({
+    color:0xff2222, dashSize:0.38, gapSize:0.26, transparent:true, opacity:0.92
+  });
+  var borderPts=[
+    new THREE.Vector3(-hw,0,-hd), new THREE.Vector3(hw,0,-hd),
+    new THREE.Vector3(hw,0,hd), new THREE.Vector3(-hw,0,hd), new THREE.Vector3(-hw,0,-hd)
+  ];
+  var border=new THREE.Line(new THREE.BufferGeometry().setFromPoints(borderPts), dashMat);
+  border.position.set(x,0.035,z);
+  border.computeLineDistances();
+  scene.add(border);
+  var inner=new THREE.Group();
+  inner.position.set(x,0.035,z);
+  function innerSeg(x0,z0,x1,z1){
+    var gg=new THREE.BufferGeometry().setFromPoints([
+      new THREE.Vector3(x0,0,z0), new THREE.Vector3(x1,0,z1)
+    ]);
+    var ln=new THREE.Line(gg, dashMat);
+    ln.computeLineDistances();
+    inner.add(ln);
+  }
+  var stepZ=2;
+  for(var zz=-hd+stepZ; zz<hd-0.001; zz+=stepZ){ innerSeg(-hw,zz, hw,zz); }
+  var stepX=w/4;
+  for(var xx=-hw+stepX; xx<hw-0.001; xx+=stepX){ innerSeg(xx,-hd, xx,hd); }
+  scene.add(inner);
+  if(txt) label(txt,x,0.5,z,tcol||'#ffffff',0.28);
+}
+/** 地面动态箭头贴图（Canvas） */
+function createGroundFlowTexture(fill, stroke, glow){
+  var w = 512, h = 512;
+  var cv = document.createElement('canvas');
+  cv.width = w; cv.height = h;
+  var ctx = cv.getContext('2d');
+  ctx.clearRect(0, 0, w, h);
+  function chevron(cx, cy, s){
+    ctx.beginPath();
+    ctx.moveTo(cx, cy - 94 * s);
+    ctx.lineTo(cx - 82 * s, cy + 16 * s);
+    ctx.lineTo(cx - 34 * s, cy + 16 * s);
+    ctx.lineTo(cx, cy - 34 * s);
+    ctx.lineTo(cx + 34 * s, cy + 16 * s);
+    ctx.lineTo(cx + 82 * s, cy + 16 * s);
+    ctx.closePath();
+  }
+  ctx.strokeStyle = stroke;
+  ctx.lineWidth = 11;
+  ctx.fillStyle = fill;
+  ctx.shadowColor = glow;
+  ctx.shadowBlur = 20;
+  // 单贴图只放一个箭头，避免减小间距后箭头相互视觉叠压
+  chevron(w * 0.5, h * 0.54, 1.08); ctx.fill(); ctx.stroke();
+  ctx.shadowBlur = 0;
+  var tex = new THREE.CanvasTexture(cv);
+  tex.needsUpdate = true;
+  tex.anisotropy = 8;
+  return tex;
+}
+
+// ─── cage cart (笼车) ─────────────────────────────────────
+function cageCart(x,y,z,sc,col,optLoaded){
+  sc = sc||1; col = col||0x99aacc;
+  const g = new THREE.Group();
+  const cw=1.0*sc, cd=0.7*sc, ch=1.6*sc, wt=0.05*sc;
+  const mat = new THREE.MeshLambertMaterial({color:col});
+  // corner posts
+  [[cw/2-wt/2,ch/2,cd/2-wt/2],[-(cw/2-wt/2),ch/2,cd/2-wt/2],
+   [cw/2-wt/2,ch/2,-(cd/2-wt/2)],[-(cw/2-wt/2),ch/2,-(cd/2-wt/2)]].forEach(function(p){
+    const pm = new THREE.Mesh(new THREE.BoxGeometry(wt,ch,wt),mat);
+    pm.position.set(p[0],p[1],p[2]); g.add(pm);
+  });
+  // rails
+  [0.08*sc, ch*0.45, ch-wt/2].forEach(function(ry){
+    [cd/2-wt/2, -(cd/2-wt/2)].forEach(function(rz){
+      const r = new THREE.Mesh(new THREE.BoxGeometry(cw,wt,wt),mat);
+      r.position.set(0,ry,rz); g.add(r);
+    });
+    [cw/2-wt/2, -(cw/2-wt/2)].forEach(function(rx){
+      const r = new THREE.Mesh(new THREE.BoxGeometry(wt,wt,cd),mat);
+      r.position.set(rx,ry,0); g.add(r);
+    });
+  });
+  // wire mesh sides
+  const wm = new THREE.MeshLambertMaterial({color:0x8899bb,transparent:true,opacity:0.15,side:THREE.DoubleSide,wireframe:true});
+  [cd/2,-cd/2].forEach(function(rz){
+    const p = new THREE.Mesh(new THREE.PlaneGeometry(cw-wt*2, ch-0.08*sc-wt),wm.clone());
+    p.position.set(0,(ch-0.08*sc-wt)/2+0.08*sc,rz); g.add(p);
+  });
+  [cw/2,-cw/2].forEach(function(rx){
+    const p = new THREE.Mesh(new THREE.PlaneGeometry(cd-wt*2, ch-0.08*sc-wt),wm.clone());
+    p.position.set(rx,(ch-0.08*sc-wt)/2+0.08*sc,0); p.rotation.y=Math.PI/2; g.add(p);
+  });
+  // base
+  const base = new THREE.Mesh(new THREE.BoxGeometry(cw,0.06*sc,cd),
+    new THREE.MeshLambertMaterial({color:0x445566}));
+  base.position.set(0,0.03*sc,0); g.add(base);
+  // wheels
+  [[cw/2-0.1*sc,0,cd/2-0.1*sc],[-(cw/2-0.1*sc),0,cd/2-0.1*sc],
+   [cw/2-0.1*sc,0,-(cd/2-0.1*sc)],[-(cw/2-0.1*sc),0,-(cd/2-0.1*sc)]].forEach(function(w){
+    const wh = new THREE.Mesh(new THREE.CylinderGeometry(0.08*sc,0.08*sc,0.06*sc,8),
+      new THREE.MeshLambertMaterial({color:0x222222}));
+    wh.rotation.x=Math.PI/2; wh.position.set(w[0],0.08*sc,w[2]); g.add(wh);
+  });
+  // parcels
+  var pc=[0xe8c87a,0xd4956b,0xc8d4e8];
+  for(var i=0;i<3;i++){
+    const b = new THREE.Mesh(new THREE.BoxGeometry(0.28*sc,0.22*sc,0.22*sc),
+      new THREE.MeshLambertMaterial({color:pc[i]}));
+    b.position.set((i-1)*0.28*sc, 0.2*sc+0.11*sc, 0); g.add(b);
+  }
+  if(optLoaded){
+    for(var j=0;j<3;j++){
+      const b2 = new THREE.Mesh(new THREE.BoxGeometry(0.26*sc,0.18*sc,0.20*sc),
+        new THREE.MeshLambertMaterial({color:pc[(j+1)%3]}));
+      b2.position.set((j-1)*0.29*sc, 0.2*sc+0.22*sc+0.09*sc, 0.04*sc); g.add(b2);
+    }
+    const b3 = new THREE.Mesh(new THREE.BoxGeometry(0.32*sc,0.14*sc,0.24*sc),
+      new THREE.MeshLambertMaterial({color:0xb8a078}));
+    b3.position.set(0, 0.2*sc+0.22*sc+0.18*sc+0.07*sc, -0.06*sc); g.add(b3);
+  }
+  g.position.set(x,y,z); g.castShadow=true; scene.add(g); return g;
+}
+/** 空笼车（无快递），原点在底座中心、贴地，用于进线动效；不加入 scene */
+function buildEmptyCageCartGroup(sc, col){
+  sc = sc || 1; col = col != null ? col : 0x559988;
+  var g = new THREE.Group();
+  var cw = 1.0 * sc, cd = 0.7 * sc, ch = 1.6 * sc, wt = 0.05 * sc;
+  var mat = new THREE.MeshLambertMaterial({ color: col });
+  [[cw/2-wt/2,ch/2,cd/2-wt/2],[-(cw/2-wt/2),ch/2,cd/2-wt/2],
+   [cw/2-wt/2,ch/2,-(cd/2-wt/2)],[-(cw/2-wt/2),ch/2,-(cd/2-wt/2)]].forEach(function(p){
+    var pm = new THREE.Mesh(new THREE.BoxGeometry(wt,ch,wt), mat);
+    pm.position.set(p[0],p[1],p[2]); pm.castShadow = true; g.add(pm);
+  });
+  [0.08*sc, ch*0.45, ch-wt/2].forEach(function(ry){
+    [cd/2-wt/2, -(cd/2-wt/2)].forEach(function(rz){
+      var r = new THREE.Mesh(new THREE.BoxGeometry(cw,wt,wt), mat);
+      r.position.set(0,ry,rz); r.castShadow = true; g.add(r);
+    });
+    [cw/2-wt/2, -(cw/2-wt/2)].forEach(function(rx){
+      var r = new THREE.Mesh(new THREE.BoxGeometry(wt,wt,cd), mat);
+      r.position.set(rx,ry,0); r.castShadow = true; g.add(r);
+    });
+  });
+  var wm = new THREE.MeshLambertMaterial({color:0x8899bb,transparent:true,opacity:0.15,side:THREE.DoubleSide,wireframe:true});
+  [cd/2,-cd/2].forEach(function(rz){
+    var p = new THREE.Mesh(new THREE.PlaneGeometry(cw-wt*2, ch-0.08*sc-wt), wm.clone());
+    p.position.set(0,(ch-0.08*sc-wt)/2+0.08*sc,rz); p.castShadow = true; g.add(p);
+  });
+  [cw/2,-cw/2].forEach(function(rx){
+    var p = new THREE.Mesh(new THREE.PlaneGeometry(cd-wt*2, ch-0.08*sc-wt), wm.clone());
+    p.position.set(rx,(ch-0.08*sc-wt)/2+0.08*sc,0); p.rotation.y=Math.PI/2; p.castShadow = true; g.add(p);
+  });
+  var base = new THREE.Mesh(new THREE.BoxGeometry(cw,0.06*sc,cd),
+    new THREE.MeshLambertMaterial({color:0x445566}));
+  base.position.set(0,0.03*sc,0); base.castShadow = true; g.add(base);
+  [[cw/2-0.1*sc,0,cd/2-0.1*sc],[-(cw/2-0.1*sc),0,cd/2-0.1*sc],
+   [cw/2-0.1*sc,0,-(cd/2-0.1*sc)],[-(cw/2-0.1*sc),0,-(cd/2-0.1*sc)]].forEach(function(w){
+    var wh = new THREE.Mesh(new THREE.CylinderGeometry(0.08*sc,0.08*sc,0.06*sc,8),
+      new THREE.MeshLambertMaterial({color:0x222222}));
+    wh.rotation.x=Math.PI/2; wh.position.set(w[0],0.08*sc,w[2]); wh.castShadow = true; g.add(wh);
+  });
+  return g;
+}
+
+/** 快递员（简化人形）；pushing=true 时为推车姿势（面朝 +Z）；uniformCol 默认蓝色制服 */
+function buildCourierGroup(sc, pushing, uniformCol){
+  sc = sc || 1;
+  pushing = !!pushing;
+  var g = new THREE.Group();
+  var uniform = new THREE.MeshLambertMaterial({ color: uniformCol != null ? uniformCol : 0x2d6fd4 });
+  var skin = new THREE.MeshLambertMaterial({ color: 0xe8c4a0 });
+  var dark = new THREE.MeshLambertMaterial({ color: 0x1a2233 });
+  var parcel = new THREE.MeshLambertMaterial({ color: 0xd4a04a });
+  function part(geo, mat, x, y, z, rx, ry, rz){
+    var m = new THREE.Mesh(geo, mat);
+    m.position.set(x, y, z);
+    if (rx) m.rotation.x = rx;
+    if (ry) m.rotation.y = ry;
+    if (rz) m.rotation.z = rz;
+    m.castShadow = true;
+    g.add(m);
+    return m;
+  }
+  var legH = 0.48 * sc, torsoH = 0.44 * sc, headR = 0.13 * sc;
+  var shoulderY = legH + torsoH * 0.82;
+  part(new THREE.BoxGeometry(0.11*sc, legH, 0.13*sc), dark, -0.07*sc, legH/2, 0.02*sc);
+  part(new THREE.BoxGeometry(0.11*sc, legH, 0.13*sc), dark, 0.07*sc, legH/2, 0.02*sc);
+  part(new THREE.BoxGeometry(0.26*sc, torsoH, 0.16*sc), uniform, 0, legH + torsoH/2, pushing ? -0.04*sc : 0);
+  part(new THREE.SphereGeometry(headR, 10, 10), skin, 0, legH + torsoH + headR + 0.02*sc, pushing ? -0.05*sc : 0);
+  part(new THREE.BoxGeometry(0.24*sc, 0.05*sc, 0.24*sc), uniform, 0, legH + torsoH + headR*2 + 0.06*sc, 0);
+  if (pushing) {
+    part(new THREE.BoxGeometry(0.08*sc, 0.08*sc, 0.22*sc), dark, -0.13*sc, shoulderY, 0.14*sc);
+    part(new THREE.BoxGeometry(0.08*sc, 0.08*sc, 0.22*sc), dark, 0.13*sc, shoulderY, 0.14*sc);
+    part(new THREE.BoxGeometry(0.07*sc, 0.07*sc, 0.07*sc), dark, -0.13*sc, shoulderY - 0.06*sc, 0.28*sc);
+    part(new THREE.BoxGeometry(0.07*sc, 0.07*sc, 0.07*sc), dark, 0.13*sc, shoulderY - 0.06*sc, 0.28*sc);
+  } else {
+    part(new THREE.BoxGeometry(0.18*sc, 0.14*sc, 0.12*sc), parcel, 0.16*sc, legH + torsoH*0.55, 0.12*sc);
+    part(new THREE.BoxGeometry(0.07*sc, 0.07*sc, 0.07*sc), dark, -0.14*sc, legH + torsoH*0.45, -0.02*sc);
+  }
+  return g;
+}
+/** 快递员推空笼车（笼在前、人在后），原点在组合体中心投影地面 */
+function buildCourierPushingCartGroup(cartSc, cartCol, courierScMul){
+  cartSc = cartSc || 0.44;
+  cartCol = cartCol != null ? cartCol : 0x5aa898;
+  courierScMul = courierScMul || 1.62;
+  var g = new THREE.Group();
+  var cart = buildEmptyCageCartGroup(cartSc, cartCol);
+  var cSc = cartSc * courierScMul;
+  var courier = buildCourierGroup(cSc, true);
+  var cd = 0.7 * cartSc;
+  cart.position.set(0, 0, cd * 0.42);
+  courier.position.set(0, 0, -(cd * 0.62 + 0.14 * cSc));
+  g.add(cart);
+  g.add(courier);
+  return g;
+}
+
+// ─── FLOOR ───────────────────────────────────────────────
+const floor = new THREE.Mesh(new THREE.PlaneGeometry(28,24),
+  new THREE.MeshLambertMaterial({color:0x22222f}));
+floor.rotation.x = -Math.PI/2; floor.receiveShadow=true; scene.add(floor);
+scene.add(new THREE.GridHelper(28,28,0x3a3a50,0x2a2a3e));
+
+// ─── WALLS ───────────────────────────────────────────────
+// back wall
+const bwMat = new THREE.MeshLambertMaterial({color:0x2d2d42,transparent:true,opacity:0.88});
+const bw = new THREE.Mesh(new THREE.BoxGeometry(28,7,0.22),bwMat);
+bw.position.set(0,3.5,-12); bw.castShadow=true; scene.add(bw);
+// left wall — very transparent
+const lwMat = new THREE.MeshLambertMaterial({color:0x88aacc,transparent:true,opacity:0.08,side:THREE.DoubleSide});
+const lw = new THREE.Mesh(new THREE.BoxGeometry(0.22,7,24),lwMat);
+lw.position.set(-14,3.5,0); scene.add(lw);
+// right wall — very transparent
+const rwMat = new THREE.MeshLambertMaterial({color:0x88aacc,transparent:true,opacity:0.08,side:THREE.DoubleSide});
+const rw = new THREE.Mesh(new THREE.BoxGeometry(0.22,7,24),rwMat);
+rw.position.set(14,3.5,0); scene.add(rw);
+// front wall — REMOVED so view from entrance is fully open
+// ceiling
+const ceil = new THREE.Mesh(new THREE.BoxGeometry(28,0.15,24),
+  new THREE.MeshLambertMaterial({color:0x1e1e30,transparent:true,opacity:0.15,side:THREE.DoubleSide}));
+ceil.position.set(0,7,0); scene.add(ceil);
+
+// ─── ENTRANCE ────────────────────────────────────────────
+doorFrame(5.5,4.2,0.22,0xff3333, 5.70,0,12);
+
+// ─── 大门进/出：进线=空笼车，出线=地面箭头 ───────────────
+var entranceGuideArrows;
+(function(){
+  var texInGreen = createGroundFlowTexture('rgba(62,230,118,0.98)', '#0d5a2a', 'rgba(105,255,170,0.85)');
+  var texOut = createGroundFlowTexture('rgba(255,185,40,0.98)', '#442200', 'rgba(255,220,100,0.85)');
+  var geo = new THREE.PlaneGeometry(1.62, 1.9);
+  var matInGreen = new THREE.MeshBasicMaterial({
+    map: texInGreen, transparent: true, opacity: 1, side: THREE.DoubleSide, depthWrite: false
+  });
+  var matOut = new THREE.MeshBasicMaterial({
+    map: texOut, transparent: true, opacity: 1, side: THREE.DoubleSide, depthWrite: false
+  });
+  matInGreen.polygonOffset = true; matInGreen.polygonOffsetFactor = -3; matInGreen.polygonOffsetUnits = -3;
+  matOut.polygonOffset = true; matOut.polygonOffsetFactor = -3; matOut.polygonOffsetUnits = -3;
+
+  function makeFlowLane(curve, mat, targetSpacing){
+    var g = new THREE.Group();
+    curve.arcLengthDivisions = 1200;
+    var len = curve.getLength();
+    var n = Math.max(2, Math.round(len / targetSpacing));
+    var step = len / n;
+    for (var i = 0; i < n; i++) {
+      var m = new THREE.Mesh(geo, mat);
+      m.rotation.x = -Math.PI / 2;
+      m.castShadow = false;
+      m.receiveShadow = false;
+      g.add(m);
+    }
+    scene.add(g);
+    return {
+      group: g,
+      curve: curve,
+      length: len,
+      count: n,
+      step: step,
+      isCarts: false
+    };
+  }
+  function makeFlowLaneCarts(curve, cartSc, cartCol, targetSpacing){
+    var g = new THREE.Group();
+    curve.arcLengthDivisions = 1200;
+    var len = curve.getLength();
+    var n = Math.max(2, Math.round(len / targetSpacing));
+    var step = len / n;
+    var tpl = buildEmptyCageCartGroup(cartSc, cartCol);
+    for (var i = 0; i < n; i++) {
+      g.add(tpl.clone(true));
+    }
+    scene.add(g);
+    return {
+      group: g,
+      curve: curve,
+      length: len,
+      count: n,
+      step: step,
+      isCarts: true
+    };
+  }
+  /**
+   * IN 重合动线：推笼车整体 / 单独快递员整体，共用统一弧长步长、交替等距（推-人-推-人…）
+   */
+  function makeFlowLaneInPaired(curvePush, curveCourier, cartSc, cartCol, courierSc, targetSpacing){
+    var g = new THREE.Group();
+    curvePush.arcLengthDivisions = 1200;
+    curveCourier.arcLengthDivisions = 1200;
+    var lenPush = curvePush.getLength();
+    var lenCourier = curveCourier.getLength();
+    var len = Math.max(lenPush, lenCourier);
+    var n = Math.max(2, Math.round(len / targetSpacing));
+    var step = len / n;
+    var pushTpl = buildCourierPushingCartGroup(cartSc, cartCol, 1.62);
+    var courierTpl = buildCourierGroup(courierSc, false, 0xff8833);
+    for (var i = 0; i < n; i++) {
+      g.add((i % 2 === 0 ? pushTpl : courierTpl).clone(true));
+    }
+    scene.add(g);
+    return {
+      group: g,
+      curvePush: curvePush,
+      curveCourier: curveCourier,
+      lengthPush: lenPush,
+      lengthCourier: lenCourier,
+      length: len,
+      count: n,
+      step: step,
+      isInPaired: true
+    };
+  }
+  var curveInCarts = new THREE.CatmullRomCurve3([
+    new THREE.Vector3(7.37, 0.11, 16.20),
+    new THREE.Vector3(7.32, 0.11, 12.85),
+    new THREE.Vector3(7.24, 0.11, 10.10),
+    new THREE.Vector3(7.14, 0.11, 7.45),
+    new THREE.Vector3(6.98, 0.11, 5.25),
+    new THREE.Vector3(6.72, 0.11, 3.35),
+    new THREE.Vector3(6.28, 0.11, 1.85),
+    new THREE.Vector3(5.55, 0.11, 0.95),
+    new THREE.Vector3(4.45, 0.11, 0.48),
+    new THREE.Vector3(2.85, 0.11, 0.28),
+    new THREE.Vector3(0.75, 0.11, 0.22),
+    new THREE.Vector3(-1.70, 0.11, 0.20)
+  ], false, 'centripetal');
+  // 快递员：IN → 沿右侧通道直行 → 单弧弯向 Front Desk（X 只增不减，避免先左后右）
+  var curveInCourier = new THREE.CatmullRomCurve3([
+    new THREE.Vector3(7.37, 0.11, 16.20),
+    new THREE.Vector3(7.35, 0.11, 14.85),
+    new THREE.Vector3(7.32, 0.11, 13.55),
+    new THREE.Vector3(7.28, 0.11, 12.25),
+    new THREE.Vector3(7.24, 0.11, 11.05),
+    new THREE.Vector3(7.20, 0.11, 10.05),
+    new THREE.Vector3(7.16, 0.11, 9.25),
+    new THREE.Vector3(7.22, 0.11, 8.78),
+    new THREE.Vector3(7.65, 0.11, 8.52),
+    new THREE.Vector3(8.55, 0.11, 8.38),
+    new THREE.Vector3(9.75, 0.11, 8.30),
+    new THREE.Vector3(10.95, 0.11, 8.28),
+    new THREE.Vector3(11.18, 0.11, 8.38)
+  ], false, 'centripetal');
+  // 右侧 IN：推笼车 / 前台快递员，重合段统一步长交替等距
+  var laneIn = makeFlowLaneInPaired(
+    curveInCarts, curveInCourier, 0.44, 0x5aa898, 0.44 * 1.62, 1.95
+  );
+  // 右侧 OUT 动线：绿色箭头，方向与原先黄色 OUT 相反
+  var laneOut = makeFlowLane(
+    new THREE.CatmullRomCurve3([
+      new THREE.Vector3(7.37, 0.11, 16.20),
+      new THREE.Vector3(7.36, 0.11, 12.75),
+      new THREE.Vector3(7.32, 0.11, 10.35),
+      new THREE.Vector3(7.26, 0.11, 7.85),
+      new THREE.Vector3(7.16, 0.11, 5.15),
+      new THREE.Vector3(7.12, 0.11, 2.75),
+      new THREE.Vector3(7.08, 0.11, 0.85),
+      new THREE.Vector3(7.03, 0.11, -0.75),
+      new THREE.Vector3(6.98, 0.11, -1.70),
+      new THREE.Vector3(6.92, 0.11, -2.60),
+      new THREE.Vector3(6.86, 0.11, -3.45),
+      new THREE.Vector3(6.78, 0.11, -4.25),
+      new THREE.Vector3(6.66, 0.11, -5.05),
+      new THREE.Vector3(6.48, 0.11, -5.80),
+      new THREE.Vector3(6.18, 0.11, -6.45),
+      new THREE.Vector3(5.75, 0.11, -6.95),
+      new THREE.Vector3(5.20, 0.11, -7.25),
+      new THREE.Vector3(4.40, 0.11, -7.55),
+      new THREE.Vector3(3.40, 0.11, -7.72),
+      new THREE.Vector3(2.30, 0.11, -7.82),
+      new THREE.Vector3(-0.45, 0.11, -8.05),
+      new THREE.Vector3(-2.95, 0.11, -8.20)
+    ], false, 'centripetal'),
+    matInGreen, 1.18
+  );
+  // 左侧 IN 动线：黄色箭头，方向与原先绿色 IN 相反
+  var laneInGreenLoop = makeFlowLane(
+    new THREE.CatmullRomCurve3([
+      new THREE.Vector3(-2.95, 0.11, -8.20),
+      new THREE.Vector3(-3.75, 0.11, -7.95),
+      new THREE.Vector3(-5.20, 0.11, -7.20),
+      new THREE.Vector3(-6.30, 0.11, -5.95),
+      new THREE.Vector3(-6.95, 0.11, -4.00),
+      new THREE.Vector3(-7.35, 0.11, -1.45),
+      new THREE.Vector3(-7.45, 0.11, 1.30),
+      new THREE.Vector3(-7.15, 0.11, 3.70),
+      new THREE.Vector3(-5.70, 0.11, 5.95),
+      new THREE.Vector3(-3.35, 0.11, 6.90),
+      new THREE.Vector3(-0.80, 0.11, 7.05),
+      new THREE.Vector3(1.65, 0.11, 6.95),
+      new THREE.Vector3(3.25, 0.11, 7.35),
+      new THREE.Vector3(4.05, 0.11, 8.55),
+      new THREE.Vector3(4.16, 0.11, 9.65),
+      new THREE.Vector3(4.07, 0.11, 12.20),
+      new THREE.Vector3(4.03, 0.11, 16.20)
+    ], false, 'centripetal'),
+    matOut, 1.22
+  );
+
+  label('IN', 7.37, 2.15, 14.15, '#ffdd88', 0.52);
+  label('OUT', 4.03, 2.15, 14.15, '#66ffdd', 0.52);
+  entranceGuideArrows = {
+    lanes: [laneIn, laneOut, laneInGreenLoop],
+    matInGreen: matInGreen,
+    matOut: matOut
+  };
+})();
+
+// ─── EXIT back wall (grounded) — slight +X for hydrant strip before F ─────
+doorFrame(2.2,3.4,0.2,0xff3333, 1.2,0,-11.9);
+doorPanel(1.8,3.26,0xff4444, 0.8,1.63,-11.88,-0.3);
+doorPanel(1.8,3.26,0xff4444,  1.6,1.63,-11.88, 0.3);
+label('Exit',1.2,3.7,-12.3,'#ff6666',0.65);
+
+// ─── EXIT left wall (grounded) — nudged toward WC (+X, +Z) ───────────
+doorFrame(2.2,3.4,0.2,0xff3333, -13.62,0,7.45,Math.PI/2);
+doorPanel(1.8,3.26,0xff4444, -13.60,1.63,6.90,Math.PI/2+0.3);
+label('Exit',-14.42,3.7,7.45,'#ff6666',0.62);
+// 电箱：与左墙 Exit 同向平移（朝 WC），仍错开门洞留空
+var eboxScale=2.85;
+var eboxW=0.05*eboxScale, eboxH=0.95*eboxScale, eboxD=0.62*eboxScale;
+var eboxX=-13.24, eboxY=eboxH/2, eboxZ=4.43;
+box(eboxW,eboxH,eboxD,0xf2cf3a,eboxX,eboxY,eboxZ);
+box(eboxW*0.90,eboxH*0.87,eboxD*0.80,0xffe37a,eboxX+0.01,eboxY,eboxZ);
+label('⚡',eboxX+0.08,eboxY,eboxZ,'#1a1a1a',0.48);
+
+// ─── PILLARS ─────────────────────────────────────────────
+[[-1.7,3.5,-2.8],[-1.7,3.5,0.7],[-1.7,3.5,4.2]].forEach(function(p){
+  cylinder(0.3,7,0xbbbbcc,p[0],p[1],p[2]);
+  box(0.65,0.2,0.65,0xaaaaaa,p[0],7,p[2]);
+});
+// Cage returns floor outline — bigger
+floorZoneDashedRed(6.5,10,-1.7,0.2,'','');
+label('Cage Returns',-1.7,4.5,0.2,'#f11c38',0.65,true);
+// Cage Returns：6 个空笼车（与 IN 动线同规格），两列分置中间立柱列（x=-1.7）两侧，沿 z 错开柱位
+(function () {
+  var pillarX = -1.7;
+  var inCartSc = 0.44;
+  var inCartCol = 0x5aa898;
+  var tpl = buildEmptyCageCartGroup(inCartSc, inCartCol);
+  var xOff = 1.08;
+  var xs = [pillarX - xOff, pillarX + xOff];
+  var zs = [-3.22, -1.15, 2.28];
+  xs.forEach(function (xx) {
+    zs.forEach(function (zz) {
+      var c = tpl.clone(true);
+      c.position.set(xx, 0, zz);
+      scene.add(c);
+    });
+  });
+})();
+
+// ─── ZONES: back wall cages G, F, D, A ───────────────────
+// G (purple) 8 carts — 4×2, flush left (near left wall, clear of F)
+cageCart(-13.25,0,-10.7,1.0,0x9977cc);
+cageCart(-11.95,0,-10.7,1.0,0x9977cc);
+cageCart(-10.65,0,-10.7,1.0,0x9977cc);
+cageCart(-9.35,0,-10.7,1.0,0x9977cc);
+cageCart(-13.25,0,-9.3,1.0,0x9977cc);
+cageCart(-11.95,0,-9.3,1.0,0x9977cc);
+cageCart(-10.65,0,-9.3,1.0,0x9977cc);
+cageCart(-9.35,0,-9.3,1.0,0x9977cc);
+label('G',-10.3,4.5,-8.0,'yellow',0.72);
+
+// F (blue) BIGGER — 10 carts 5×2 (nudged −X; still clears hydrant ~−0.68)
+cageCart(-7.2,0,-10.8,1.1,0x4477cc);
+cageCart(-5.9,0,-10.8,1.1,0x4477cc);
+cageCart(-4.6,0,-10.8,1.1,0x4477cc);
+cageCart(-3.3,0,-10.8,1.1,0x4477cc);
+cageCart(-2.0,0,-10.8,1.1,0x4477cc);
+cageCart(-7.2,0,-9.4,1.1,0x4477cc);
+cageCart(-5.9,0,-9.4,1.1,0x4477cc);
+cageCart(-4.6,0,-9.4,1.1,0x4477cc);
+cageCart(-3.3,0,-9.4,1.1,0x4477cc);
+cageCart(-2.0,0,-9.4,1.1,0x4477cc);
+label('F',-4.6,4.5,-8.2,'yellow',0.72);
+
+// Fire hydrant between F and back-wall exit (nudged toward back wall z≈−12)
+var fh2X=-0.68, fh2Z=-11.48;
+cylinder(0.18,0.12,0x992222,fh2X,0.06,fh2Z);
+cylinder(0.14,1.05,0xdd3333,fh2X,0.58,fh2Z);
+cylinder(0.20,0.14,0xbb2222,fh2X,1.12,fh2Z);
+cylinder(0.07,0.34,0xdd3333,fh2X-0.22,0.62,fh2Z);
+cylinder(0.07,0.34,0xdd3333,fh2X+0.22,0.62,fh2Z);
+box(0.52,0.05,0.10,0xff6666,fh2X,0.62,fh2Z);
+label('HF',fh2X,1.55,fh2Z,'#ff7777',0.45);
+
+// D (orange) 6 carts 3×2 — X 3.9..6.5 clears F/hydrant; right edge ~7.0 vs A left ~7.5
+cageCart(3.9,0,-10.7,1.0,0xcc7722);
+cageCart(5.2,0,-10.7,1.0,0xcc7722);
+cageCart(6.5,0,-10.7,1.0,0xcc7722);
+cageCart(3.9,0,-9.3,1.0,0xcc7722);
+cageCart(5.2,0,-9.3,1.0,0xcc7722);
+cageCart(6.5,0,-9.3,1.0,0xcc7722);
+label('D',5.2,4.2,-8.2,'yellow',0.72);
+
+// A (red) BIGGER — 10 carts 5×2, flush right (near right wall / back corner)
+cageCart(8.05,0,-10.8,1.1,0xcc4444);
+cageCart(9.35,0,-10.8,1.1,0xcc4444);
+cageCart(10.65,0,-10.8,1.1,0xcc4444);
+cageCart(11.95,0,-10.8,1.1,0xcc4444);
+cageCart(13.25,0,-10.8,1.1,0xcc4444);
+cageCart(8.05,0,-9.4,1.1,0xcc4444);
+cageCart(9.35,0,-9.4,1.1,0xcc4444);
+cageCart(10.65,0,-9.4,1.1,0xcc4444);
+cageCart(11.95,0,-9.4,1.1,0xcc4444);
+cageCart(13.25,0,-9.4,1.1,0xcc4444);
+label('A',9.65,4.5,-8.2,'yellow',0.72);
+
+// ─── ZONES: right wall cages C, B, E (each 3×2 at wall) ───
+// C (green) — 6 carts: 3 along Z × 2 rows in X (shifted +Z toward E)
+cageCart(12.2,0,-6.1,0.9,0x229966);
+cageCart(12.2,0,-4.9,0.9,0x229966);
+cageCart(12.2,0,-3.7,0.9,0x229966);
+cageCart(11.0,0,-6.1,0.9,0x229966);
+cageCart(11.0,0,-4.9,0.9,0x229966);
+cageCart(11.0,0,-3.7,0.9,0x229966);
+label('C',11.0,4,-4.9,'yellow',0.72);
+
+// B (purple) — same 1.2 Z spacing as C / E
+cageCart(12.2,0,-1.60,0.9,0x7755cc);
+cageCart(12.2,0,-0.40,0.9,0x7755cc);
+cageCart(12.2,0,0.80,0.9,0x7755cc);
+cageCart(11.0,0,-1.60,0.9,0x7755cc);
+cageCart(11.0,0,-0.40,0.9,0x7755cc);
+cageCart(11.0,0,0.80,0.9,0x7755cc);
+label('B',11.0,4,-0.4,'yellow',0.72);
+
+// E (gray) — same 1.2 Z spacing as C
+cageCart(12.2,0,2.30,0.9,0x666666);
+cageCart(12.2,0,3.50,0.9,0x666666);
+cageCart(12.2,0,4.70,0.9,0x666666);
+cageCart(11.0,0,2.30,0.9,0x666666);
+cageCart(11.0,0,3.50,0.9,0x666666);
+cageCart(11.0,0,4.70,0.9,0x666666);
+label('E',11.0,4,3.5,'yellow',0.72);
+
+// ─── C/B/E 前警戒桶 + 警戒线 ───────────────────────────────
+var coneX = 9.4, coneY = 0.95;
+var coneCz = -4.9, coneBz = -0.4, coneEz = 3.5;
+warningCone(coneX, coneCz, 1.0);
+warningCone(coneX, coneBz, 1.0);
+warningCone(coneX, coneEz, 1.0);
+// 桶之间连成一条警戒带（C-B-E）
+warningTape(coneX, coneCz, coneX, coneBz, coneY, 0xffffff);
+warningTape(coneX, coneBz, coneX, coneEz, coneY, 0xffffff);
+
+// ─── SORTING (left wall cartons stack) — nudged toward WC (−X, +Z) ───
+var sortingX=-11.57, sortingZ=-0.98;
+var sortingW=3.2, sortingH=4.2, sortingD=10.0;
+var cartonW=0.72, cartonH=0.68, cartonD=0.94;
+var gapX=0.06, gapY=0.08, gapZ=0.10;
+var nX=Math.floor((sortingW+gapX)/(cartonW+gapX));
+var nY=Math.floor((sortingH+gapY)/(cartonH+gapY));
+var nZ=Math.floor((sortingD+gapZ)/(cartonD+gapZ));
+var stepX=cartonW+gapX, stepY=cartonH+gapY, stepZ=cartonD+gapZ;
+var startX=sortingX-((nX-1)*stepX)/2;
+var startY=cartonH/2+0.02;
+var startZ=sortingZ-((nZ-1)*stepZ)/2;
+var cartonColors=[0xc8935e,0xba834f,0xd2a06e,0xb97b45];
+for(var ix=0;ix<nX;ix++){
+  for(var iy=0;iy<nY;iy++){
+    for(var iz=0;iz<nZ;iz++){
+      var cc=cartonColors[(ix+iy+iz)%cartonColors.length];
+      box(cartonW,cartonH,cartonD,cc,startX+ix*stepX,startY+iy*stepY,startZ+iz*stepZ);
+    }
+  }
+}
+label('Sorting',sortingX+1.3,5.5,sortingZ+0.5,'#55ffaa',0.60);
+
+// ─── WC BUILDING (left front corner, flush toward left wall x≈−14) ─────
+var wcX=-12.3, wcZ=10.8;
+box(3.0,3.0,0.15,0x3a5c5c, wcX,1.5,wcZ+1.3);
+box(3.0,3.0,0.15,0x3a5c5c, wcX,1.5,wcZ-1.3);
+box(0.15,3.0,2.6,0x3a5c5c, wcX-1.5,1.5,wcZ);
+// East wall (+X toward 暂存): doorway 0.75m, no door panel
+box(0.15,3.0,0.925,0x3a5c5c, wcX+1.5,1.5,wcZ-0.8375);
+box(0.15,3.0,0.925,0x3a5c5c, wcX+1.5,1.5,wcZ+0.8375);
+box(3.2,0.15,2.8,0x2a4a4a, wcX,3.1,wcZ);
+box(0.9,0.7,0.1,0x88bbdd, wcX-0.5,2.2,wcZ+1.32); // window (front +Z wall)
+const wcFloor = new THREE.Mesh(new THREE.PlaneGeometry(2.8,2.4),
+  new THREE.MeshLambertMaterial({color:0x2a4040}));
+wcFloor.rotation.x=-Math.PI/2; wcFloor.position.set(wcX,0.03,wcZ); scene.add(wcFloor);
+label('WC',wcX,3.5,wcZ,'#44ffcc',0.65);
+
+// ─── 暂存 + second pickup — raised platform style ────────
+// 暂存: low platform with stripe markings, distinct from buildings
+var zpX=-7.15, zpZ=10.8;
+box(3.5,0.18,2.5,0x443366,zpX,0.09,zpZ); // base platform
+box(3.5,0.06,0.12,0x00ddff,zpX,0.19,zpZ-1.25); // front stripe
+box(3.5,0.06,0.12,0x00ddff,zpX,0.19,zpZ+1.25); // back stripe
+box(0.12,0.06,2.5,0x00ddff,zpX-1.75,0.19,zpZ); // left stripe
+box(0.12,0.06,2.5,0x00ddff,zpX+1.75,0.19,zpZ); // right stripe
+// diagonal hazard stripes
+for(var si=0;si<4;si++){
+  box(0.08,0.06,2.1,0x00ddff,zpX-1.3+si*0.85,0.19,zpZ);
+}
+// label('暂存',zpX,1.0,zpZ,'#bbaaff',0.70);
+
+// second pickup: similar platform, different accent color
+var spX=-2.0, spZ=10.8;
+box(5.2,0.18,2.5,0x334488,spX,0.09,spZ);
+box(5.2,0.06,0.12,0xffcc00,spX,0.19,spZ-1.25);
+box(5.2,0.06,0.12,0xffcc00,spX,0.19,spZ+1.25);
+box(0.12,0.06,2.5,0xffcc00,spX-2.6,0.19,spZ);
+box(0.12,0.06,2.5,0xffcc00,spX+2.6,0.19,spZ);
+for(var si2=0;si2<6;si2++){
+  box(0.08,0.06,2.1,0xffcc00,spX-2.3+si2*0.92,0.19,spZ);
+}
+// 平台上 2×2 四辆载货笼车（y 与平台顶面对齐）
+var spCartY = 0.18;
+var spCartSc = 0.78;
+var spCartCol = 0x229966;
+cageCart(spX - 1.02, spCartY, spZ + 0.50, spCartSc, spCartCol, true);
+cageCart(spX + 1.02, spCartY, spZ + 0.50, spCartSc, spCartCol, true);
+cageCart(spX - 1.02, spCartY, spZ - 0.50, spCartSc, spCartCol, true);
+cageCart(spX + 1.02, spCartY, spZ - 0.50, spCartSc, spCartCol, true);
+label('Second Pickup',spX,4.0,spZ,'#f0e60c',0.62);
+// second pickup 靠仓内边线：左右两个警戒桶 + 一条警戒带
+var spConeZ = spZ - 1.45;
+var spConeLX = spX - 2.45;
+var spConeRX = spX + 2.45;
+var spConeY = 0.95;
+warningCone(spConeLX, spConeZ, 1.0);
+warningCone(spConeRX, spConeZ, 1.0);
+warningTape(spConeLX, spConeZ, spConeRX, spConeZ, spConeY, 0xffffff);
+// second pickup 左边线（−X）：与上条共用左前锥桶，补左后锥 + 纵向警戒带
+var spConeLZ = spZ + 1.45;
+warningCone(spConeLX, spConeLZ, 1.0);
+warningTape(spConeLX, spConeZ, spConeLX, spConeLZ, spConeY, 0xffffff);
+
+// fire hydrant (right of second pickup; +Z toward entrance door frame at z≈12, x≈5.7)
+var fhX=spX+3.5, fhZ=11.58;
+cylinder(0.18,0.12,0x992222,fhX,0.06,fhZ);     // base
+cylinder(0.14,1.05,0xdd3333,fhX,0.58,fhZ);     // body
+cylinder(0.20,0.14,0xbb2222,fhX,1.12,fhZ);     // cap
+cylinder(0.07,0.34,0xdd3333,fhX-0.22,0.62,fhZ); // left nozzle
+cylinder(0.07,0.34,0xdd3333,fhX+0.22,0.62,fhZ); // right nozzle
+box(0.52,0.05,0.10,0xff6666,fhX,0.62,fhZ);     // nozzle connector
+label('HF',fhX,1.55,fhZ,'#ff7777',0.45);
+
+// ─── FRONT DESK + RECEPTION HUT (right wall, front corner) ──
+// Front Desk 靠仓内（−Z）；小平顶屋靠入口侧（+Z），高度为原先一半；门朝 −Z 面对 desk
+var hutW = 3.05, hutD = 2.45, hutH = 2.25 * 0.5;
+var hutRight = 11.5 + 4.5 / 2;
+var hutX = hutRight - hutW / 2;
+var gapZ = 0.12;
+var fdS = 0.35;
+var fdW = 4.5 * fdS, fdH = 1.1 * fdS, fdD = 2.4 * fdS;
+var fdShiftX = -1.65;
+var fdShiftZ = -0.65;
+var fdX = hutRight - fdW / 2 + fdShiftX;
+var hutZ = 10.72;
+var fdZ = hutZ - hutD / 2 - gapZ - fdD / 2 + fdShiftZ;
+var hw = 0.14;
+var doorW = 0.65, doorH = 0.88;
+
+// Front Desk（局部坐标原点＝台面中心 xz）；整组绕 Y 转 180°
+var fdDesk = new THREE.Group();
+fdDesk.position.set(fdX, 0, fdZ);
+fdDesk.rotation.y = Math.PI;
+scene.add(fdDesk);
+boxOn(fdDesk, fdW, fdH, fdD, 0xaa6600, 0, fdH / 2, 0);
+boxOn(fdDesk, fdW, 0.1 * fdS, 0.1 * fdS, 0xddaa22, 0, fdH + 0.02 * fdS, +1.2 * fdS);
+boxOn(fdDesk, 0.5 * fdS, 0.3 * fdS, 0.35 * fdS, 0x335588, -1.0 * fdS, 1.23 * fdS, -0.5 * fdS);
+boxOn(fdDesk, 0.45 * fdS, 0.6 * fdS, 0.06 * fdS, 0x4466aa, -1.0 * fdS, 1.58 * fdS, -0.3 * fdS);
+boxOn(fdDesk, 0.65 * fdS, 0.06 * fdS, 0.45 * fdS, 0x222222, 0.3 * fdS, 1.13 * fdS, -0.6 * fdS);
+label('Front Desk', fdX, Math.max(2.35, 2.4 * fdS + 1.95), fdZ + 0.85 * fdS, '#73f53a', 0.52 * fdS * 3);
+
+// 小平顶屋：+Z 整墙；−Z 墙留门洞正对 desk（灰白色饰面）
+box(hutW - 0.08, 0.06, hutD - 0.08, 0xdce0e4, hutX, 0.03, hutZ);
+box(hutW, hutH, hw, 0xe8eaee, hutX, hutH / 2, hutZ + hutD / 2 - hw / 2);
+box(hw, hutH, hutD - 2 * hw, 0xdfe3e8, hutX - hutW / 2 + hw / 2, hutH / 2, hutZ);
+box(hw, hutH, hutD - 2 * hw, 0xdfe3e8, hutX + hutW / 2 - hw / 2, hutH / 2, hutZ);
+var doorWallZ = hutZ - hutD / 2 + hw / 2;
+var wallSeg = (hutW - doorW) / 2;
+box(wallSeg, hutH, hw, 0xe6e9ed, hutX - hutW / 2 + wallSeg / 2, hutH / 2, doorWallZ);
+box(wallSeg, hutH, hw, 0xe6e9ed, hutX + hutW / 2 - wallSeg / 2, hutH / 2, doorWallZ);
+box(doorW, hutH - doorH, hw, 0xe6e9ed, hutX, (hutH - doorH) / 2 + doorH, doorWallZ);
+box(doorW - 0.08, doorH - 0.06, 0.06, 0x5f656d, hutX, doorH / 2 + 0.02, doorWallZ - 0.04);
+box(0.065, 0.065, 0.07, 0xb0b8c2, hutX + doorW * 0.22, doorH * 0.52, doorWallZ - 0.055);
+box(hutW + 0.12, 0.12, hutD + 0.12, 0xd2d8df, hutX, hutH + 0.06, hutZ);
+var ph = 0.18;
+box(hutW + 0.14, ph, 0.1, 0xc5ccd4, hutX, hutH + 0.06 + ph / 2, hutZ + hutD / 2 + 0.03);
+box(hutW + 0.14, ph, 0.1, 0xc5ccd4, hutX, hutH + 0.06 + ph / 2, hutZ - hutD / 2 - 0.03);
+box(0.1, ph, hutD + 0.14, 0xbdc5ce, hutX - hutW / 2 - 0.025, hutH + 0.06 + ph / 2, hutZ);
+box(0.1, ph, hutD + 0.14, 0xbdc5ce, hutX + hutW / 2 + 0.025, hutH + 0.06 + ph / 2, hutZ);
+
+// ─── OFFICE BUILDING (outside, front, slightly left) ─────
+var ofX=-3.5, ofZ=15.5;
+// walls
+box(4.5,3.5,0.18,0x6b4a2a,ofX,1.75,ofZ+2.0);
+box(4.5,3.5,0.18,0x6b4a2a,ofX,1.75,ofZ-2.0);
+box(0.18,3.5,4.0,0x5e4025,ofX-2.25,1.75,ofZ);
+box(0.18,3.5,4.0,0x5e4025,ofX+2.25,1.75,ofZ);
+// roof flat
+box(4.7,0.22,4.4,0x4a3318,ofX,3.6,ofZ);
+// parapets
+box(4.7,0.42,0.22,0x5a4020,ofX,3.82,ofZ+2.2);
+box(4.7,0.42,0.22,0x5a4020,ofX,3.82,ofZ-2.2);
+box(0.22,0.42,4.4,0x5a4020,ofX-2.36,3.82,ofZ);
+box(0.22,0.42,4.4,0x5a4020,ofX+2.36,3.82,ofZ);
+// windows front
+box(0.85,0.75,0.1,0x88bbdd,ofX-0.95,2.1,ofZ+2.1);
+box(0.85,0.75,0.1,0x88bbdd,ofX+0.95,2.1,ofZ+2.1);
+// window frames
+[ofX-0.95,ofX+0.95].forEach(function(wx){
+  box(0.9,0.1,0.12,0x3a2510,wx,2.5,ofZ+2.07);
+  box(0.9,0.1,0.12,0x3a2510,wx,1.73,ofZ+2.07);
+});
+// door (front +Z)
+box(0.8,1.8,0.1,0x2d1a0a,ofX,0.9,ofZ+2.1);
+box(0.85,0.1,0.12,0x3a2510,ofX,1.82,ofZ+2.07);
+box(0.09,0.09,0.14,0xddaa22,ofX+0.3,0.92,ofZ+2.17); // knob
+// door back (−Z, toward warehouse)
+box(0.8,1.8,0.1,0x2d1a0a,ofX,0.9,ofZ-2.1);
+box(0.85,0.1,0.12,0x3a2510,ofX,1.82,ofZ-2.07);
+box(0.09,0.09,0.14,0xddaa22,ofX-0.3,0.92,ofZ-2.17); // knob
+// office floor
+const ofFloor = new THREE.Mesh(new THREE.PlaneGeometry(4.6,4.2),
+  new THREE.MeshLambertMaterial({color:0x332211}));
+ofFloor.rotation.x=-Math.PI/2; ofFloor.position.set(ofX,0.01,ofZ); scene.add(ofFloor);
+// path
+const path = new THREE.Mesh(new THREE.PlaneGeometry(1.8,3.2),
+  new THREE.MeshLambertMaterial({color:0x2a2020}));
+path.rotation.x=-Math.PI/2; path.position.set(1.5,0.02,13.3); scene.add(path);
+placeSvgLogoLabel('https://imile-minio-cdn.imile.com/images/logo/imileLogo.svg',ofX,5.2,ofZ+2.5,0.95,'Imile ADL');
+
+// ─── ORBIT CONTROLS ──────────────────────────────────────
+var dragging=false, rightBtn=false, prev={x:0,y:0};
+var sph={theta:0.22,phi:0.80,r:32};
+var tgt=new THREE.Vector3(0,1,0);
+var autoRotateOn=true;
+var autoRotateResumeAt=0;
+var AUTO_ROTATE_IDLE_MS=2600;
+var AUTO_ROTATE_SPEED=0.055;
+var lastAnimMs=performance.now();
+var touchInteracting=false;
+function updateCam(){
+  camera.position.x=tgt.x+sph.r*Math.sin(sph.phi)*Math.sin(sph.theta);
+  camera.position.y=tgt.y+sph.r*Math.cos(sph.phi);
+  camera.position.z=tgt.z+sph.r*Math.sin(sph.phi)*Math.cos(sph.theta);
+  camera.lookAt(tgt);
+}
+function pauseAutoRotate(){
+  autoRotateOn=false;
+}
+function scheduleAutoRotateResume(){
+  autoRotateResumeAt=performance.now()+AUTO_ROTATE_IDLE_MS;
+}
+function onUserCameraInteract(){
+  pauseAutoRotate();
+}
+updateCam();
+renderer.domElement.addEventListener('mousedown',function(e){
+  dragging=true;rightBtn=e.button===2;prev={x:e.clientX,y:e.clientY};
+  onUserCameraInteract();
+});
+renderer.domElement.addEventListener('contextmenu',function(e){e.preventDefault();});
+window.addEventListener('mouseup',function(){
+  dragging=false;
+  scheduleAutoRotateResume();
+});
+window.addEventListener('mousemove',function(e){
+  if(!dragging)return;
+  var dx=e.clientX-prev.x,dy=e.clientY-prev.y;
+  if(rightBtn){
+    var r=new THREE.Vector3();
+    r.crossVectors(camera.getWorldDirection(new THREE.Vector3()),camera.up).normalize();
+    tgt.addScaledVector(r,-dx*0.022);tgt.y+=dy*0.022;
+  }else{
+    sph.theta-=dx*0.007;
+    sph.phi=Math.max(0.12,Math.min(1.45,sph.phi+dy*0.007));
+  }
+  prev={x:e.clientX,y:e.clientY};updateCam();
+});
+renderer.domElement.addEventListener('wheel',function(e){
+  onUserCameraInteract();
+  scheduleAutoRotateResume();
+  sph.r=Math.max(8,Math.min(70,sph.r+e.deltaY*0.05));updateCam();
+},{passive:true});
+var lastT=null;
+var pinchStartDist=0, pinchStartR=0;
+function touchDist(t0,t1){
+  var dx=t0.clientX-t1.clientX, dy=t0.clientY-t1.clientY;
+  return Math.sqrt(dx*dx+dy*dy);
+}
+renderer.domElement.addEventListener('touchstart',function(e){
+  touchInteracting=true;
+  onUserCameraInteract();
+  if(e.touches.length===1){
+    lastT={x:e.touches[0].clientX,y:e.touches[0].clientY};
+    pinchStartDist=0;
+  }else if(e.touches.length>=2){
+    lastT=null;
+    pinchStartDist=touchDist(e.touches[0],e.touches[1]);
+    pinchStartR=sph.r;
+  }
+});
+renderer.domElement.addEventListener('touchmove',function(e){
+  e.preventDefault();
+  onUserCameraInteract();
+  if(e.touches.length===1&&lastT){
+    var dx=e.touches[0].clientX-lastT.x,dy=e.touches[0].clientY-lastT.y;
+    sph.theta-=dx*0.009;sph.phi=Math.max(0.12,Math.min(1.45,sph.phi+dy*0.009));
+    lastT={x:e.touches[0].clientX,y:e.touches[0].clientY};updateCam();
+  }else if(e.touches.length>=2){
+    var d=touchDist(e.touches[0],e.touches[1]);
+    if(pinchStartDist>0&&d>0){
+      var ratio=pinchStartDist/d;
+      sph.r=Math.max(8,Math.min(70,pinchStartR*ratio));
+      updateCam();
+    }
+  }
+},{passive:false});
+renderer.domElement.addEventListener('touchend',function(e){
+  if(e.touches.length===1){
+    lastT={x:e.touches[0].clientX,y:e.touches[0].clientY};
+    pinchStartDist=0;
+  }else if(e.touches.length===0){
+    lastT=null;
+    pinchStartDist=0;
+    touchInteracting=false;
+    scheduleAutoRotateResume();
+  }
+});
+renderer.domElement.addEventListener('touchcancel',function(){
+  lastT=null;
+  pinchStartDist=0;
+  touchInteracting=false;
+  scheduleAutoRotateResume();
+});
+window.addEventListener('resize',function(){
+  camera.aspect=innerWidth/innerHeight;camera.updateProjectionMatrix();
+  renderer.setSize(innerWidth,innerHeight);
+});
+var flowYawQ = new THREE.Quaternion();
+var flowFlatQ = new THREE.Quaternion().setFromEuler(new THREE.Euler(-Math.PI / 2, 0, 0));
+var flowYAxis = new THREE.Vector3(0, 1, 0);
+function animate(){
+  requestAnimationFrame(animate);
+  var nowMs=performance.now();
+  var dt=Math.min(0.05,(nowMs-lastAnimMs)/1000);
+  lastAnimMs=nowMs;
+  if(!autoRotateOn&&nowMs>=autoRotateResumeAt)autoRotateOn=true;
+  if(autoRotateOn&&!dragging&&!touchInteracting){
+    sph.theta+=AUTO_ROTATE_SPEED*dt;
+    updateCam();
+  }
+  var g = entranceGuideArrows;
+  if (g) {
+    var t = performance.now() * 0.001;
+    var flowSpeed = 1.05;
+    var inFlowSpeed = 0.82;
+    g.lanes.forEach(function(lane){
+      var i, mesh, dist, u, p, tan, ang, speed;
+      for (i = 0; i < lane.count; i++) {
+        mesh = lane.group.children[i];
+        if (lane.isInPaired) {
+          var isPush = (i % 2 === 0);
+          var curve = isPush ? lane.curvePush : lane.curveCourier;
+          var curveLen = isPush ? lane.lengthPush : lane.lengthCourier;
+          dist = (i * lane.step + t * inFlowSpeed) % lane.length;
+          u = (dist % curveLen) / curveLen;
+          p = curve.getPointAt(u);
+          tan = curve.getTangentAt(u);
+          ang = Math.atan2(tan.x, tan.z);
+          var bob = Math.sin(t * 9.5 + i * 0.7) * 0.022;
+          mesh.position.set(p.x, bob, p.z);
+          mesh.rotation.set(0, ang, 0);
+          continue;
+        }
+        speed = flowSpeed;
+        dist = (i * lane.step + t * speed) % lane.length;
+        u = dist / lane.length;
+        p = lane.curve.getPointAt(u);
+        tan = lane.curve.getTangentAt(u);
+        ang = Math.atan2(tan.x, tan.z);
+        if (lane.isCarts) {
+          mesh.position.set(p.x, 0, p.z);
+          mesh.rotation.set(0, ang, 0);
+        } else {
+          ang += Math.PI;
+          mesh.position.set(p.x, 0.11, p.z);
+          flowYawQ.setFromAxisAngle(flowYAxis, ang);
+          mesh.quaternion.copy(flowYawQ).multiply(flowFlatQ);
+        }
+      }
+    });
+    var op = 0.82 + 0.16 * Math.sin(t * 3.2);
+    var pulse = 1 + 0.035 * Math.sin(t * 4.4);
+    if (g.matInGreen) g.matInGreen.opacity = op;
+    if (g.matOut) g.matOut.opacity = op;
+    g.lanes.forEach(function(lane){
+      lane.group.children.forEach(function(m, idx){
+        if (lane.isInPaired || lane.isCarts) m.scale.set(pulse, pulse, pulse);
+        else m.scale.set(pulse, 1, pulse);
+      });
+    });
+  }
+  if (labelFlashMaterials.length) {
+    var ft = performance.now() * 0.001;
+    var flashOp = 0.28 + 0.72 * Math.abs(Math.sin(ft * 5.8));
+    labelFlashMaterials.forEach(function (m) { m.opacity = flashOp; });
+  }
+  renderer.render(scene, camera);
+}
+document.getElementById('snapshot').addEventListener('click', function(){
+  renderer.render(scene, camera);
+  var a = document.createElement('a');
+  a.href = renderer.domElement.toDataURL('image/png');
+  a.download = 'warehouse_3d_' + new Date().toISOString().slice(0, 19).replace(/:/g, '-') + '.png';
+  a.click();
+});
+animate();
+</script>
+</body>
+</html>

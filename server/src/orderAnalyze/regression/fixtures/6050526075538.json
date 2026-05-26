@@ -1,0 +1,78 @@
+{
+  "id": "6050526075538",
+  "orderNo": "6050526075538",
+  "capturedAt": "2026-05-23T13:39:22.107Z",
+  "expected": {
+    "lossScope": "库内丢失",
+    "exceptionCategoryId": "扫描员丢失",
+    "reason": ""
+  },
+  "tracks": [
+    {
+      "content": "包裹正在处理中。",
+      "time": "2026-05-20 11:23:31",
+      "trackStageTx": "派送"
+    },
+    {
+      "content": "收件地址变更为[BEULAH PARK,1 Oban St Beulah Park 5067]。操作员【Consignee】",
+      "time": "2026-05-14 23:57:49",
+      "trackStageTx": "派送"
+    },
+    {
+      "content": "【ADL DS】包裹已取消分配给[ADL-JC-city-REPALA ADARSH]。操作员【ADL OP1】",
+      "time": "2026-05-14 20:12:55",
+      "trackStageTx": "派送"
+    },
+    {
+      "content": "【ADL DS】派送任务已分配给派件员(派件员：ADL-JC-city-REPALA ADARSH,电话：***)，待派件员领取包裹。 操作员【cornerstone】",
+      "time": "2026-05-14 19:28:15",
+      "trackStageTx": "派送"
+    },
+    {
+      "content": "【ADL DS】包裹已取消分配给[ADL-JC-city-REPALA ADARSH]。操作员【ADL OP1】",
+      "time": "2026-05-14 09:31:42",
+      "trackStageTx": "派送"
+    },
+    {
+      "content": "【ADL DS】派送任务已分配给派件员(派件员：ADL-JC-city-REPALA ADARSH,电话：***)，待派件员领取包裹。 操作员【cornerstone】",
+      "time": "2026-05-14 09:05:41",
+      "trackStageTx": "派送"
+    },
+    {
+      "content": "【ADL DS】包裹已取消分配给[ADL-JC-city-REPALA ADARSH]。操作员【ADL OP1】",
+      "time": "2026-05-13 09:53:27",
+      "trackStageTx": "派送"
+    },
+    {
+      "content": "【ADL DS】派送任务已分配给派件员(派件员：ADL-JC-city-REPALA ADARSH,电话：***)，待派件员领取包裹。 操作员【cornerstone】",
+      "time": "2026-05-13 09:14:11",
+      "trackStageTx": "派送"
+    },
+    {
+      "content": "【ADL DS】已到达。操作员【System】 。",
+      "time": "2026-05-12 12:21:46",
+      "trackStageTx": "派送"
+    },
+    {
+      "content": "【Adelaide Center】完成待转发件，目的地【ADL DS】。操作员【System】",
+      "time": "2026-05-12 12:21:45",
+      "trackStageTx": "转运"
+    },
+    {
+      "content": "【Adelaide Center】已到达。操作员【ADL-DC-Tong】 。",
+      "time": "2026-05-12 12:21:44",
+      "trackStageTx": "转运"
+    },
+    {
+      "content": "【Adelaide Center】已揽收, 操作员【System】。",
+      "time": "2026-05-12 12:21:14",
+      "trackStageTx": "已揽件"
+    },
+    {
+      "content": "已通过[OpenApi]成功下单",
+      "time": "2026-05-05 18:47:00",
+      "trackStageTx": "订单提交"
+    }
+  ],
+  "interceptLogs": []
+}

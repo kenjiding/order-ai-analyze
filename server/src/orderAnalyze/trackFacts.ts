@@ -1,0 +1,1367 @@
+import type { TrackEvent } from '../imile/track'
+import type { ScanInterceptLog } from '../imile/interceptLogs'
+import type { LossResponsibilityOwner, ResponsibilitySegment, TrackFacts, WarehouseProfile } from './types'
+import {
+  DEFAULT_WAREHOUSE_LOSS_TIMEOUT_DAYS,
+  classifyOperatorForWarehouse,
+  findWarehouseProfileByName,
+  getWarehouseLossTimeoutDays,
+} from './warehouseProfiles'
+
+/** 写入模型提示时的轨迹类型中文说明；未列出的保留接口原值 */
+const TRACK_TYPE_ZH_BY_EN = new Map<string, string>([
+  ['schedule', '已预约进行派送'],
+  ['delivery', '派送中'],
+  ['problem', '登记为问题件'],
+])
+
+type InternalSegment = ResponsibilitySegment & {
+  events: TrackEvent[]
+  warehouseProfile: WarehouseProfile | null
+}
+
+type ResponsibilityPoint = {
+  owner: LossResponsibilityOwner
+  time: string
+  basis: string
+  source: 'track' | 'intercept'
+}
+
+function formatTrackTypeForAnalyzePrompt(raw: string): string {
+  const tt = raw.trim()
+  if (!tt) return ''
+  return TRACK_TYPE_ZH_BY_EN.get(tt.toLowerCase()) ?? tt
+}
+
+export function summarizeTracks(tracks: TrackEvent[], maxEvents = 12): string {
+  if (!tracks.length) return '（暂无轨迹节点）'
+  const sorted = [...tracks].sort((a, b) => a.time.localeCompare(b.time))
+  const tail = sorted.slice(-maxEvents)
+  const lastTrack = sorted.at(-1) ?? null
+  return tail
+    .map((t) => {
+      const parts: string[] = [t.time]
+      const typeLabel = formatTrackTypeForAnalyzePrompt(t.trackType ?? '')
+      if (typeLabel) parts.push(typeLabel)
+      const tx = (t.trackStageTx ?? '').trim()
+      if (tx && lastTrack && t.time === lastTrack.time) parts.push(tx)
+      parts.push(t.content)
+      return parts.join(' | ')
+    })
+    .join('\n')
+}
+
+function extractOperatorFromContent(content: string): string {
+  const m = /操作员【([^\]】]+)】/.exec(content)
+  return m ? m[1].trim() : ''
+}
+
+/**
+ * 按时序识别「连续相邻」的 "分配→取消" 配对的最大次数。
+ */
+function countMaxConsecutiveAssignCancelPairs(sorted: TrackEvent[]): number {
+  const isInterruptingEvent = (event: TrackEvent): boolean => {
+    if (isDispatchOutEvent(event) || isProblemEvent(event) || isDeliveryCompletionEvent(event)) return true
+    const content = event.content
+    return (
+      content.includes('已回到网点') ||
+      content.includes('已盘点') ||
+      content.includes('登记为问题件') ||
+      content.includes('订单异常完结')
+    )
+  }
+
+  let maxPairs = 0
+  let currentPairs = 0
+  let pendingAssign = false
+
+  for (const ev of sorted) {
+    const c = ev.content
+    if (c.includes('派送任务已分配给派件员')) {
+      pendingAssign = true
+      continue
+    }
+    if (c.includes('取消分配') || c.includes('撤销分配')) {
+      if (pendingAssign) {
+        currentPairs += 1
+        if (currentPairs > maxPairs) maxPairs = currentPairs
+      } else {
+        currentPairs = 0
+      }
+      pendingAssign = false
+      continue
+    }
+    if (isInterruptingEvent(ev)) {
+      pendingAssign = false
+      currentPairs = 0
+    }
+  }
+  return maxPairs
+}
+
+const STATION_LOSS_RE = /loss_in_the_station|station_loss|站点丢失|站内丢失|站内丢包/i
+const MERCHANT_DESTROY_RE =
+  /(商家已反馈NDR处理意见\[[^\]]*销毁[^\]]*])|(商家反馈意见\[[^\]]*销毁[^\]]*])|(包裹确认派送结束.*销毁)|(按(?:照)?商家反馈意见\[[^\]]*销毁[^\]]*]进行处理)/
+const MERCHANT_STORAGE_RE =
+  /(商家已反馈NDR处理意见\[[^\]]*暂存[^\]]*])|(商家反馈意见\[[^\]]*暂存[^\]]*])|(包裹确认派送结束.*暂存)|(按(?:照)?商家反馈意见\[[^\]]*暂存[^\]]*]进行处理)/
+const MERCHANT_RETURN_RE =
+  /(退件已退返商家)|(已退返商家)|(退回(?:发件方|寄件方|商家|卖家).*(?:签收|已签收|妥投|完成))|((?:退货|退件|退回).*(?:妥投|签收|已签收|完成))|((?:商家|发件方|寄件方|卖家).*(?:签收|已签收))|(退款退货闭环)/
+const TRANSFER_DESTINATION_RE = /(?:已装箱|完成待转发件)[^。]*目的地【([^】]+)】/
+const MERCHANT_RETURN_PACKAGE_RE = /已装箱[^。]*集包号\[[^\]]+\][^。]*目的地【([^】]+)】/
+const SORTER_DEVICE_SCAN_RE = /操作员【\s*sorter\s*】/i
+const DEVICE_CODE_RE = /设备编码\[[^\]]+\]/
+const SYD_WAREHOUSE_OPERATOR_RE = /^SYD Warehouse\d+$/i
+const NSYD_W_OPERATOR_RE = /^NSYD W\d+$/i
+const LEADING_HUB_RE = /^【([^】]+)】/
+const EXTERNAL_CARRIER_RE = /包裹已转交至【([^】]+)】进行承运/
+const DELIVERY_COMPLETION_RE = /(已签收|签收成功|签收完成|妥投|派件完成|投递完成|投递成功|delivery\s*completed|delivered)/i
+const DELIVERY_COMPLETION_NEGATIVE_RE = /(未签收|签收失败|未妥投|妥投失败|投递失败|派件失败|delivery\s*failed|not\s*delivered)/i
+
+function normalizeHubName(raw: string): string {
+  return raw.trim().toLowerCase().replace(/\s+/g, '')
+}
+
+function extractTransferDestination(content: string): string {
+  const hit = content.match(TRANSFER_DESTINATION_RE)
+  return hit?.[1]?.trim() ?? ''
+}
+
+function extractLeadingHubName(content: string): string {
+  const hit = content.match(LEADING_HUB_RE)
+  return hit?.[1]?.trim() ?? ''
+}
+
+function extractExternalCarrierName(content: string): string {
+  const hit = content.match(EXTERNAL_CARRIER_RE)
+  return hit?.[1]?.trim() ?? ''
+}
+
+function isExternalCarrierOperator(operatorName: string, carrierName: string | null): boolean {
+  const operator = normalizeHubName(operatorName)
+  const carrier = normalizeHubName(carrierName ?? '')
+  if (!operator || !carrier) return false
+  return operator.includes(carrier) || carrier.includes(operator)
+}
+
+function extractMerchantDestroyEvidence(content: string): string {
+  const hit = content.match(MERCHANT_DESTROY_RE)
+  if (hit && hit[0]) return hit[0]
+  return content.length > 60 ? `${content.slice(0, 60)}...` : content
+}
+
+function extractMerchantStorageEvidence(content: string): string {
+  const hit = content.match(MERCHANT_STORAGE_RE)
+  if (hit && hit[0]) return hit[0]
+  return content.length > 60 ? `${content.slice(0, 60)}...` : content
+}
+
+function extractMerchantReturnEvidence(content: string): string {
+  const hit = content.match(MERCHANT_RETURN_RE)
+  if (hit && hit[0]) return hit[0]
+  return content.length > 60 ? `${content.slice(0, 60)}...` : content
+}
+
+function extractShortEvidence(content: string): string {
+  return content.length > 60 ? `${content.slice(0, 60)}...` : content
+}
+
+function isMerchantDestroyTerminalEvent(content: string): boolean {
+  if (!content.includes('销毁')) return false
+  return (
+    content.includes('商家已反馈NDR处理意见') ||
+    content.includes('商家反馈意见') ||
+    content.includes('包裹确认派送结束') ||
+    content.includes('按照商家反馈意见') ||
+    content.includes('按商家反馈意见')
+  )
+}
+
+function isMerchantStorageEvent(content: string): boolean {
+  if (!content.includes('暂存')) return false
+  return (
+    content.includes('商家已反馈NDR处理意见') ||
+    content.includes('商家反馈意见') ||
+    content.includes('包裹确认派送结束') ||
+    content.includes('按照商家反馈意见') ||
+    content.includes('按商家反馈意见')
+  )
+}
+
+function isMerchantReturnEvent(content: string): boolean {
+  if (!/(退件|退货|退回|商家|发件方|寄件方|卖家|退款|签收|妥投)/.test(content)) return false
+  return MERCHANT_RETURN_RE.test(content)
+}
+
+function isMerchantReturnRequestEvent(content: string): boolean {
+  if (isMerchantReturnEvent(content) || isMerchantDestroyTerminalEvent(content) || isMerchantStorageEvent(content)) {
+    return false
+  }
+  if (/(商家已反馈NDR处理意见|商家反馈NDR处理意见|包裹确认派送结束|按照商家反馈意见|按商家反馈意见)/.test(content)) {
+    return /(退返商家|退回商家)/.test(content)
+  }
+  return (
+    content.includes('商家已反馈退件处理意见') ||
+    content.includes('商家反馈退件处理意见') ||
+    content.includes('商家要求退回')
+  )
+}
+
+function isMerchantReturnPackageEvent(content: string): boolean {
+  return MERCHANT_RETURN_PACKAGE_RE.test(content)
+}
+
+function isNonCompanyPackageEvent(event: TrackEvent): boolean {
+  if (!isMerchantReturnPackageEvent(event.content)) return false
+  const destination = extractTransferDestination(event.content)
+  return destination !== '' && findWarehouseProfileByName(destination) === null
+}
+
+function isSorterDeviceScanEvent(content: string): boolean {
+  return SORTER_DEVICE_SCAN_RE.test(content) && DEVICE_CODE_RE.test(content)
+}
+
+function isSydneyWarehouseOperator(name: string): boolean {
+  return SYD_WAREHOUSE_OPERATOR_RE.test(name.trim())
+}
+
+function isNorthSydneyWarehouseOperator(name: string): boolean {
+  return NSYD_W_OPERATOR_RE.test(name.trim())
+}
+
+function isSydneyInternalWarehouseResetEvent(event: TrackEvent, profile: WarehouseProfile | null): boolean {
+  if (profile?.cityId !== 'SYD') return false
+  if (isSorterDeviceScanEvent(event.content)) return true
+
+  const operatorName = extractOperatorFromContent(event.content)
+  if (isSydneyWarehouseOperator(operatorName)) {
+    return (
+      event.content.includes('已装箱') ||
+      event.content.includes('完成待转发件') ||
+      event.content.includes('包裹已发往') ||
+      event.content.includes('车辆') ||
+      event.content.includes('已到达')
+    )
+  }
+
+  return isNorthSydneyWarehouseOperator(operatorName) && isWarehouseArrivalEvent(event)
+}
+
+function isDeliveryScheduleEvent(t: TrackEvent): boolean {
+  const content = t.content
+  const stage = t.trackStageTx ?? ''
+  const trackType = (t.trackType ?? '').trim().toLowerCase()
+  return (
+    trackType === 'schedule' ||
+    content.includes('预约派送') ||
+    content.includes('预约进行派送') ||
+    stage.includes('预约派送') ||
+    stage.includes('预约进行派送')
+  )
+}
+
+function isPostStorageBusinessProgressEvent(t: TrackEvent): boolean {
+  const content = t.content
+  return (
+    isMerchantReturnEvent(content) ||
+    content.includes('商家已反馈退件处理意见') ||
+    content.includes('商家反馈退件处理意见') ||
+    content.includes('已装箱')
+  )
+}
+
+function hasTrackType(t: TrackEvent, type: string): boolean {
+  return (t.trackType ?? '').trim().toLowerCase() === type
+}
+
+function isDispatchOutEvent(t: TrackEvent): boolean {
+  return t.content.includes('包裹正在派送中') || hasTrackType(t, 'delivery')
+}
+
+function hasDeliveryCompletionKeyword(text: string): boolean {
+  return DELIVERY_COMPLETION_RE.test(text)
+}
+
+function hasDeliveryCompletionNegativeKeyword(text: string): boolean {
+  return DELIVERY_COMPLETION_NEGATIVE_RE.test(text)
+}
+
+function isDeliveryCompletionEvent(t: TrackEvent): boolean {
+  const stage = (t.trackStageTx ?? '').trim()
+  const content = (t.content ?? '').trim()
+  const candidates = [stage, content].filter((text) => text.length > 0)
+  if (!candidates.length) return false
+  if (candidates.some((text) => hasDeliveryCompletionNegativeKeyword(text))) return false
+  return candidates.some((text) => hasDeliveryCompletionKeyword(text))
+}
+
+function isReturnOrInventoryEvent(t: TrackEvent): boolean {
+  return t.content.includes('已回到网点') || t.content.includes('已盘点') || t.content.includes('已归班')
+}
+
+function isProblemEvent(t: TrackEvent): boolean {
+  return t.content.includes('登记问题件') || hasTrackType(t, 'problem')
+}
+
+function isWarehouseArrivalEvent(t: TrackEvent): boolean {
+  return t.content.includes('已到达') || t.content.includes('已收到退件包裹')
+}
+
+function isWarehousePhysicalResponsibilityEvent(t: TrackEvent): boolean {
+  return (
+    isWarehouseArrivalEvent(t) ||
+    isReturnOrInventoryEvent(t) ||
+    t.content.includes('已下架') ||
+    t.content.includes('已揽收')
+  )
+}
+
+function isWarehouseResponsibilityAnchorEvent(t: TrackEvent): boolean {
+  return (
+    isWarehousePhysicalResponsibilityEvent(t) ||
+    isDispatchOutEvent(t) ||
+    isProblemEvent(t) ||
+    t.content.includes('派送任务已分配给派件员') ||
+    t.content.includes('取消分配') ||
+    t.content.includes('撤销分配')
+  )
+}
+
+function summarizeLatestEvent(t: TrackEvent): string {
+  const c = t.content
+  if (isDeliveryCompletionEvent(t)) return '已签收/妥投（完结）'
+  if (isDispatchOutEvent(t)) return '派送中（在途，包裹已出库）'
+  if (c.includes('包裹已转交至')) return c.slice(0, 40)
+  if (c.includes('已到达')) return c.slice(0, 40)
+  if (c.includes('已回到网点')) return '派件员已回到网点（在库）'
+  if (c.includes('已盘点')) return '已盘点（在库）'
+  if (c.includes('派送任务已分配给派件员'))
+    return '派送任务已分配（在库内待派送员二次扫描出库）'
+  if (c.includes('取消分配') || c.includes('撤销分配')) return '派送任务已取消（仍在库内）'
+  if (isProblemEvent(t)) return '登记为问题件'
+  if (c.includes('订单异常完结') && STATION_LOSS_RE.test(c))
+    return '订单异常完结（承运商已标记站内丢包，仅作辅助证据）'
+  if (c.includes('订单异常完结')) return '订单异常完结（原因需结合上下文判断）'
+  if (c.includes('包裹正在处理中')) return '包裹处理中（状态模糊）'
+  return t.content.slice(0, 40)
+}
+
+function isValidTimeString(timeStr: string): boolean {
+  return !Number.isNaN(new Date(timeStr).getTime())
+}
+
+function latestParseableInterceptLog(interceptLogs: ScanInterceptLog[]): ScanInterceptLog | null {
+  const parseable = interceptLogs.filter((log) => isValidTimeString(log.gmtIntercept))
+  if (!parseable.length) return null
+  return parseable.sort((a, b) => a.gmtIntercept.localeCompare(b.gmtIntercept)).at(-1) ?? null
+}
+
+function interceptOperatorLabel(type: TrackFacts['latestInterceptOperatorType']): string {
+  if (type === 'courier') return '派送员'
+  if (type === 'scanner') return '当前仓库扫描员'
+  if (type === 'unknown') return '未知操作人'
+  return '无'
+}
+
+function isInterceptAfter(interceptTime: string | null, basisTime: string | null): boolean {
+  return Boolean(interceptTime && basisTime && interceptTime > basisTime)
+}
+
+function responsibilityOwnerLabel(owner: LossResponsibilityOwner): string {
+  return owner === 'in_warehouse' ? '库内' : '库外'
+}
+
+function getTrackResponsibilityPoint(
+  event: TrackEvent,
+  profile: WarehouseProfile | null
+): ResponsibilityPoint | null {
+  if (isMerchantReturnEvent(event.content) || isNonCompanyPackageEvent(event)) return null
+
+  if (isDispatchOutEvent(event)) {
+    return {
+      owner: 'out_warehouse',
+      time: event.time,
+      basis: `正常轨迹「包裹正在派送中」二次扫描出库（${event.time}）`,
+      source: 'track',
+    }
+  }
+
+  if (isReturnOrInventoryEvent(event)) {
+    const label = event.content.includes('已回到网点')
+      ? '已回到网点'
+      : event.content.includes('已归班')
+        ? '已归班'
+        : '已盘点'
+    return {
+      owner: 'in_warehouse',
+      time: event.time,
+      basis: `正常轨迹「${label}」回仓/盘点责任点（${event.time}）`,
+      source: 'track',
+    }
+  }
+
+  if (isSydneyInternalWarehouseResetEvent(event, profile)) {
+    return {
+      owner: 'in_warehouse',
+      time: event.time,
+      basis: `正常轨迹悉尼分拣/内部转仓真实扫描责任点（${event.time}）`,
+      source: 'track',
+    }
+  }
+
+  if (isSorterDeviceScanEvent(event.content)) {
+    return {
+      owner: 'in_warehouse',
+      time: event.time,
+      basis: `正常轨迹 sorter 设备真实扫描责任点（${event.time}）`,
+      source: 'track',
+    }
+  }
+
+  if (!isWarehousePhysicalResponsibilityEvent(event)) return null
+
+  const operatorName = extractOperatorFromContent(event.content)
+  if (classifyOperatorForWarehouse(operatorName, profile) !== 'real') return null
+  return {
+    owner: 'in_warehouse',
+    time: event.time,
+    basis: `正常轨迹真实操作员 ${operatorName} 扫描责任点（${event.time}）`,
+    source: 'track',
+  }
+}
+
+function getInterceptResponsibilityPoint(
+  interceptLog: ScanInterceptLog | null,
+  activeSegment: InternalSegment | null
+): ResponsibilityPoint | null {
+  if (!interceptLog || !isValidTimeString(interceptLog.gmtIntercept)) return null
+  if (activeSegment?.owner !== 'company_warehouse') return null
+  if (interceptLog.gmtIntercept < activeSegment.startTime) return null
+
+  if (interceptLog.operatorType === 'courier') {
+    return {
+      owner: 'out_warehouse',
+      time: interceptLog.gmtIntercept,
+      basis: `阻断日志派送员 ${interceptLog.scanUserName || interceptLog.scanUserCode || '-'} 扫描责任点（${interceptLog.gmtIntercept}）`,
+      source: 'intercept',
+    }
+  }
+
+  if (interceptLog.operatorType === 'scanner') {
+    return {
+      owner: 'in_warehouse',
+      time: interceptLog.gmtIntercept,
+      basis: `阻断日志当前仓库扫描员 ${interceptLog.scanUserName || interceptLog.scanUserCode || '-'} 扫描责任点（${interceptLog.gmtIntercept}）`,
+      source: 'intercept',
+    }
+  }
+
+  return null
+}
+
+function findLastResponsibilityPoint(points: ResponsibilityPoint[]): ResponsibilityPoint | null {
+  if (!points.length) return null
+  return [...points].sort((a, b) => a.time.localeCompare(b.time)).at(-1) ?? null
+}
+
+function findLastResponsibilityPointByOwner(
+  points: ResponsibilityPoint[],
+  owner: LossResponsibilityOwner
+): ResponsibilityPoint | null {
+  return findLastResponsibilityPoint(points.filter((point) => point.owner === owner))
+}
+
+function hasSameHub(segment: InternalSegment | null, hubName: string): boolean {
+  if (!segment?.hubName) return false
+  return normalizeHubName(segment.hubName) === normalizeHubName(hubName)
+}
+
+function toPublicSegment(segment: InternalSegment): ResponsibilitySegment {
+  return {
+    owner: segment.owner,
+    status: segment.status,
+    startTime: segment.startTime,
+    endTime: segment.endTime,
+    startReason: segment.startReason,
+    endReason: segment.endReason,
+    hubId: segment.hubId,
+    hubName: segment.hubName,
+    cityId: segment.cityId,
+    warehouseKnown: segment.warehouseKnown,
+    carrierName: segment.carrierName,
+    eventCount: segment.eventCount,
+  }
+}
+
+function makeSegment(input: {
+  owner: InternalSegment['owner']
+  status: InternalSegment['status']
+  startTime: string
+  startReason: string
+  hubName?: string
+  carrierName?: string
+}): InternalSegment {
+  const profile = input.hubName ? findWarehouseProfileByName(input.hubName) : null
+  return {
+    owner: input.owner,
+    status: input.status,
+    startTime: input.startTime,
+    endTime: null,
+    startReason: input.startReason,
+    endReason: null,
+    hubId: profile?.hubId ?? null,
+    hubName: input.hubName || null,
+    cityId: profile?.cityId ?? null,
+    warehouseKnown: Boolean(profile),
+    carrierName: input.carrierName ?? null,
+    eventCount: 0,
+    events: [],
+    warehouseProfile: profile,
+  }
+}
+
+function closeSegment(segment: InternalSegment | null, endTime: string, reason: string): void {
+  if (!segment || segment.endTime) return
+  segment.endTime = endTime
+  segment.endReason = reason
+}
+
+function pushEvent(segment: InternalSegment, event: TrackEvent): void {
+  segment.events.push(event)
+  segment.eventCount = segment.events.length
+}
+
+function buildResponsibilitySegments(sorted: TrackEvent[]): InternalSegment[] {
+  const segments: InternalSegment[] = []
+  let active: InternalSegment | null = null
+  let merchantReturnRequestSeen = false
+
+  const appendSegment = (segment: InternalSegment): InternalSegment => {
+    segments.push(segment)
+    return segment
+  }
+
+  const ensureWarehouseSegment = (event: TrackEvent, hubName: string, reason: string): InternalSegment => {
+    if (active && active.owner === 'company_warehouse' && hasSameHub(active, hubName)) return active
+    closeSegment(active, event.time, reason)
+    active = appendSegment(
+      makeSegment({
+        owner: 'company_warehouse',
+        status: 'in_warehouse',
+        startTime: event.time,
+        startReason: reason,
+        hubName,
+      })
+    )
+    return active
+  }
+
+  for (const event of sorted) {
+    const leadingHub = extractLeadingHubName(event.content)
+    const destination = extractTransferDestination(event.content)
+    const carrierName = extractExternalCarrierName(event.content)
+    const operatorName = extractOperatorFromContent(event.content)
+    const merchantReturnRequest = isMerchantReturnRequestEvent(event.content)
+
+    if (
+      active?.owner === 'external_carrier' &&
+      leadingHub &&
+      isExternalCarrierOperator(operatorName, active.carrierName)
+    ) {
+      pushEvent(active, event)
+      if (merchantReturnRequest) merchantReturnRequestSeen = true
+      continue
+    }
+
+    if (carrierName) {
+      const hubName = leadingHub || (active ? active.hubName ?? '' : '')
+      if (hubName) ensureWarehouseSegment(event, hubName, '仓库转交外部承运前定位责任仓')
+      if (!active) {
+        active = appendSegment(
+          makeSegment({
+            owner: 'unknown',
+            status: 'unknown',
+            startTime: event.time,
+            startReason: '无法识别外部承运交接前责任仓',
+          })
+        )
+      }
+      const closingSegment = active
+      pushEvent(closingSegment, event)
+      closeSegment(closingSegment, event.time, `已转交外部承运商 ${carrierName}`)
+      active = appendSegment(
+        makeSegment({
+          owner: 'external_carrier',
+          status: 'external_carrier',
+          startTime: event.time,
+          startReason: `由 ${hubName || '未知仓库'} 转交外部承运商 ${carrierName}`,
+          carrierName,
+        })
+      )
+      pushEvent(active, event)
+      if (merchantReturnRequest) merchantReturnRequestSeen = true
+      continue
+    }
+
+    if (destination) {
+      if (active?.status === 'transit_to_company_hub' && hasSameHub(active, destination)) {
+        pushEvent(active, event)
+        if (merchantReturnRequest) merchantReturnRequestSeen = true
+        continue
+      }
+      const originHub = leadingHub || (active ? active.hubName ?? '' : '')
+      const destinationIsCompanyHub = findWarehouseProfileByName(destination) !== null
+      const isMerchantReturnPackage =
+        merchantReturnRequestSeen && isMerchantReturnPackageEvent(event.content) && !destinationIsCompanyHub
+      if (originHub) {
+        ensureWarehouseSegment(event, originHub, isMerchantReturnPackage ? '退返集包前定位责任仓' : '装箱转运前定位起始仓')
+      } else if (!active) {
+        active = appendSegment(
+          makeSegment({
+            owner: 'unknown',
+            status: 'unknown',
+            startTime: event.time,
+            startReason: '装箱转运但无法识别起始仓',
+          })
+        )
+      }
+      if (isMerchantReturnPackage) {
+        if (active) pushEvent(active, event)
+        if (merchantReturnRequest) merchantReturnRequestSeen = true
+        continue
+      }
+      if (active) {
+        pushEvent(active, event)
+        closeSegment(active, event.time, `已装箱转运至 ${destination}`)
+      }
+      active = appendSegment(
+        makeSegment({
+          owner: 'unknown',
+          status: 'transit_to_company_hub',
+          startTime: event.time,
+          startReason: `转运至 ${destination}`,
+          hubName: destination,
+        })
+      )
+      pushEvent(active, event)
+      if (merchantReturnRequest) merchantReturnRequestSeen = true
+      continue
+    }
+
+    if (leadingHub) {
+      const canLocateWarehouse =
+        !active ||
+        (active.owner === 'unknown' && active.status !== 'transit_to_company_hub') ||
+        (active.status === 'transit_to_company_hub' && isWarehouseResponsibilityAnchorEvent(event)) ||
+        (active.owner === 'company_warehouse' && isWarehouseArrivalEvent(event)) ||
+        (active.owner === 'company_warehouse' && hasSameHub(active, leadingHub))
+
+      if (canLocateWarehouse) {
+        ensureWarehouseSegment(
+          event,
+          leadingHub,
+          isWarehouseArrivalEvent(event) ? '到达仓库' : '仓库轨迹定位'
+        )
+      }
+    } else if (!active) {
+      active = appendSegment(
+        makeSegment({
+          owner: 'unknown',
+          status: 'unknown',
+          startTime: event.time,
+          startReason: '轨迹未提供仓库信息',
+        })
+      )
+    }
+
+    if (!active) continue
+    pushEvent(active, event)
+    if (merchantReturnRequest) merchantReturnRequestSeen = true
+
+    if (active.owner === 'company_warehouse') {
+      if (isDispatchOutEvent(event)) active.status = 'out_warehouse'
+      if (isReturnOrInventoryEvent(event)) active.status = 'in_warehouse'
+    }
+  }
+
+  return segments
+}
+
+function findLastEvent(events: TrackEvent[], predicate: (event: TrackEvent) => boolean): TrackEvent | null {
+  for (let i = events.length - 1; i >= 0; i -= 1) {
+    if (predicate(events[i])) return events[i]
+  }
+  return null
+}
+
+function isWarehouseRealScanCandidate(event: TrackEvent): boolean {
+  return !isDispatchOutEvent(event)
+}
+
+function findFirstRealScan(events: TrackEvent[], profile: WarehouseProfile | null): TrackEvent | null {
+  for (const event of events) {
+    if (!isWarehouseRealScanCandidate(event)) continue
+    if (isSorterDeviceScanEvent(event.content)) return event
+    const op = extractOperatorFromContent(event.content)
+    if (classifyOperatorForWarehouse(op, profile) === 'real') return event
+  }
+  return null
+}
+
+function findLastRealScan(events: TrackEvent[], profile: WarehouseProfile | null): TrackEvent | null {
+  for (let i = events.length - 1; i >= 0; i -= 1) {
+    const event = events[i]
+    if (!isWarehouseRealScanCandidate(event)) continue
+    if (isSorterDeviceScanEvent(event.content)) return event
+    const op = extractOperatorFromContent(event.content)
+    if (classifyOperatorForWarehouse(op, profile) === 'real') return event
+  }
+  return null
+}
+
+function findInboundSameCityRealScan(
+  segments: InternalSegment[],
+  activeSegment: InternalSegment | null
+): TrackEvent | null {
+  if (
+    !activeSegment ||
+    activeSegment.owner !== 'company_warehouse' ||
+    !activeSegment.cityId ||
+    !activeSegment.warehouseProfile
+  ) {
+    return null
+  }
+
+  let cursor = segments.indexOf(activeSegment) - 1
+  if (cursor < 0) return null
+
+  const previous = segments[cursor]
+  if (
+    previous?.status === 'transit_to_company_hub' &&
+    previous.endTime === activeSegment.startTime &&
+    activeSegment.hubName !== null &&
+    hasSameHub(previous, activeSegment.hubName)
+  ) {
+    cursor -= 1
+  }
+
+  const upstream = segments[cursor]
+  if (
+    !upstream ||
+    upstream.owner !== 'company_warehouse' ||
+    upstream.cityId !== activeSegment.cityId ||
+    !upstream.warehouseProfile
+  ) {
+    return null
+  }
+
+  const directlyAdjacent =
+    upstream.endTime === activeSegment.startTime ||
+    (previous?.status === 'transit_to_company_hub' &&
+      upstream.endTime === previous.startTime &&
+      previous.endTime === activeSegment.startTime)
+  if (!directlyAdjacent) return null
+
+  return findLastRealScan(upstream.events, upstream.warehouseProfile)
+}
+
+function countEvents(events: TrackEvent[], predicate: (event: TrackEvent) => boolean): number {
+  return events.reduce((sum, event) => sum + (predicate(event) ? 1 : 0), 0)
+}
+
+function makeEmptyFacts(input: {
+  todayStr: string
+  latestIntercept: ScanInterceptLog | null
+  interceptLogs: ScanInterceptLog[]
+}): TrackFacts {
+  return {
+    todayStr: input.todayStr,
+    lastEventTime: '',
+    lastEventDaysDiff: -1,
+    responsibilitySegments: [],
+    activeSegment: null,
+    activeResponsibilityOwner: 'unknown',
+    activeSegmentStatus: 'unknown',
+    activeWarehouseHubId: null,
+    activeWarehouseName: null,
+    activeWarehouseCityId: null,
+    activeWarehouseKnown: false,
+    activeWarehouseLossTimeoutDays: DEFAULT_WAREHOUSE_LOSS_TIMEOUT_DAYS,
+    activeExternalCarrierName: null,
+    activeSegmentStartTime: null,
+    activeSegmentDaysDiff: -1,
+    unknownWarehouseInActiveSegment: false,
+    externalCarrierTransferTime: null,
+    externalCarrierDaysDiff: -1,
+    inWarehouseStartTime: null,
+    inWarehouseBasis: null,
+    inWarehouseDaysDiff: -1,
+    inWarehouseStartSupersededByDispatch: false,
+    hasDeliveryCancellations: false,
+    hasRealOperatorScan: false,
+    hasDeliveryCompletion: false,
+    deliveryCompletionTime: null,
+    deliveryCompletionEvidence: null,
+    lastDispatchedOutTime: null,
+    outWarehouseDaysDiff: -1,
+    lastDispatchHasReturn: false,
+    latestAssignmentAfterLastDispatch: false,
+    deliveryAssignmentCount: 0,
+    deliveryCancelCount: 0,
+    problemCount: 0,
+    lastInventoryTime: null,
+    lastInventoryDaysDiff: -1,
+    assignCancelLoopWithoutDispatch: false,
+    stationLossCompletion: false,
+    hasInterceptLogs: input.interceptLogs.length > 0,
+    latestInterceptTime: input.latestIntercept?.gmtIntercept ?? null,
+    latestInterceptUserCode: input.latestIntercept?.scanUserCode ?? null,
+    latestInterceptUserName: input.latestIntercept?.scanUserName ?? null,
+    latestInterceptOperatorType: input.latestIntercept?.operatorType ?? null,
+    latestInterceptAfterInWarehouseStart: false,
+    latestInterceptAfterOutWarehouseStart: false,
+    interceptAdjustedResponsibilityOwner: null,
+    interceptAdjustedResponsibilityStartTime: null,
+    interceptAdjustedResponsibilityDaysDiff: -1,
+    interceptAdjustedResponsibilityBasis: null,
+    finalResponsibilityOwner: null,
+    finalResponsibilityStartTime: null,
+    finalResponsibilitySource: null,
+    finalResponsibilityDaysDiff: -1,
+    finalResponsibilityBasis: null,
+    merchantDestroyConfirmed: false,
+    merchantDestroyConfirmTime: null,
+    merchantDestroyEvidence: null,
+    merchantStorageActive: false,
+    merchantStorageConfirmTime: null,
+    merchantStorageEvidence: null,
+    merchantStorageReleasedBySchedule: false,
+    merchantStorageScheduleTime: null,
+    merchantStorageSupersededByBusinessProgress: false,
+    merchantStorageBusinessProgressTime: null,
+    merchantStorageBusinessProgressEvidence: null,
+    merchantReturnConfirmed: false,
+    merchantReturnConfirmTime: null,
+    merchantReturnEvidence: null,
+    merchantReturnRequested: false,
+    merchantReturnRequestTime: null,
+    merchantReturnRequestEvidence: null,
+    merchantReturnResponsibilityTransferred: false,
+    merchantReturnResponsibilityTransferTime: null,
+    merchantReturnResponsibilityTransferEvidence: null,
+    merchantReturnPackageTime: null,
+    merchantReturnPackageEvidence: null,
+    transferToOtherHubInProgress: false,
+    transferToOtherHubTime: null,
+    transferToOtherHubDestination: null,
+    transferToOtherHubEvidence: null,
+    latestEventKind: '',
+  }
+}
+
+/**
+ * 从轨迹事件中提取结构化事实（纯计算，无 I/O）。
+ * 先解析当前责任段，再只基于当前责任段计算库内/库外时效。
+ */
+export function deriveTrackFacts(tracks: TrackEvent[], interceptLogs: ScanInterceptLog[] = []): TrackFacts {
+  const today = new Date()
+  today.setHours(0, 0, 0, 0)
+  const todayStr = today.toISOString().slice(0, 10)
+
+  function daysDiff(timeStr: string): number {
+    const d = new Date(timeStr)
+    if (isNaN(d.getTime())) return -1
+    d.setHours(0, 0, 0, 0)
+    return Math.max(0, Math.floor((today.getTime() - d.getTime()) / 86400000))
+  }
+
+  const sorted = [...tracks].sort((a, b) => a.time.localeCompare(b.time))
+  const latestIntercept = latestParseableInterceptLog(interceptLogs)
+
+  if (!sorted.length) {
+    return makeEmptyFacts({ todayStr, latestIntercept, interceptLogs })
+  }
+
+  const lastEvent = sorted[sorted.length - 1]
+  const segments = buildResponsibilitySegments(sorted)
+  const activeSegment = segments.at(-1) ?? null
+  const activeEvents = activeSegment?.events ?? []
+  const activeProfile = activeSegment?.warehouseProfile ?? null
+  const isActiveCompanyWarehouse = activeSegment?.owner === 'company_warehouse'
+  const shouldComputeWarehouseFacts = isActiveCompanyWarehouse
+
+  let firstRealScan: TrackEvent | null = null
+  let firstRealScanBasisLabel: string | null = null
+  let lastDispatchedOut: TrackEvent | null = null
+  let lastDispatchedOutIdx = -1
+  let lastDeliveryAssignment: TrackEvent | null = null
+
+  if (shouldComputeWarehouseFacts) {
+    firstRealScan = findFirstRealScan(activeEvents, activeProfile)
+    if (firstRealScan) {
+      firstRealScanBasisLabel = '当前责任段第一次真实操作员扫描'
+    } else {
+      firstRealScan = findInboundSameCityRealScan(segments, activeSegment)
+      if (firstRealScan) {
+        firstRealScanBasisLabel = '当前责任段上游同城仓真实操作员扫描（内部转发入库依据）'
+      }
+    }
+
+    for (let i = activeEvents.length - 1; i >= 0; i -= 1) {
+      const event = activeEvents[i]
+      if (!lastDeliveryAssignment && event.content.includes('派送任务已分配给派件员')) {
+        lastDeliveryAssignment = event
+      }
+      if (!lastDispatchedOut && isDispatchOutEvent(event)) {
+        lastDispatchedOut = event
+        lastDispatchedOutIdx = i
+      }
+      if (lastDeliveryAssignment && lastDispatchedOut) break
+    }
+  }
+
+  let lastDispatchHasReturn = false
+  if (lastDispatchedOutIdx >= 0) {
+    for (let i = lastDispatchedOutIdx + 1; i < activeEvents.length; i += 1) {
+      if (isReturnOrInventoryEvent(activeEvents[i])) {
+        lastDispatchHasReturn = true
+        break
+      }
+    }
+  }
+
+  const deliveryAssignmentCount = shouldComputeWarehouseFacts
+    ? countEvents(activeEvents, (event) => event.content.includes('派送任务已分配给派件员'))
+    : 0
+  const deliveryCancelCount = shouldComputeWarehouseFacts
+    ? countEvents(activeEvents, (event) => event.content.includes('取消分配') || event.content.includes('撤销分配'))
+    : 0
+  const problemCount = shouldComputeWarehouseFacts
+    ? countEvents(activeEvents, isProblemEvent)
+    : 0
+  const hasDeliveryCancellations = deliveryCancelCount > 0
+  const lastInventory = shouldComputeWarehouseFacts
+    ? findLastEvent(activeEvents, (event) => event.content.includes('已盘点'))
+    : null
+  const maxConsecutiveAssignCancelPairs = shouldComputeWarehouseFacts
+    ? countMaxConsecutiveAssignCancelPairs(activeEvents)
+    : 0
+  const hasAssignCancelLoop = maxConsecutiveAssignCancelPairs >= 2
+  const hasRealOperatorScan = firstRealScan !== null
+  const activeTrackResponsibilityPoints = shouldComputeWarehouseFacts
+    ? activeEvents
+        .map((event) => getTrackResponsibilityPoint(event, activeProfile))
+        .filter((point): point is ResponsibilityPoint => point !== null)
+    : []
+  if (shouldComputeWarehouseFacts && firstRealScan && !activeEvents.includes(firstRealScan)) {
+    activeTrackResponsibilityPoints.push({
+      owner: 'in_warehouse',
+      time: firstRealScan.time,
+      basis: `${firstRealScanBasisLabel ?? '当前责任段上游真实操作员扫描'}（${firstRealScan.time}）`,
+      source: 'track',
+    })
+  }
+  const interceptResponsibilityPoints = shouldComputeWarehouseFacts
+    ? interceptLogs
+        .map((log) => getInterceptResponsibilityPoint(log, activeSegment))
+        .filter((point): point is ResponsibilityPoint => point !== null)
+    : []
+  const allResponsibilityPoints = [...activeTrackResponsibilityPoints, ...interceptResponsibilityPoints]
+  const latestTrackResponsibilityPoint = findLastResponsibilityPoint(activeTrackResponsibilityPoints)
+  const latestInterceptResponsibilityPoint = findLastResponsibilityPoint(interceptResponsibilityPoints)
+  const finalResponsibilityPoint = findLastResponsibilityPoint(allResponsibilityPoints)
+  const inWarehouseResponsibilityPoint = findLastResponsibilityPointByOwner(allResponsibilityPoints, 'in_warehouse')
+  const outWarehouseResponsibilityPoint = findLastResponsibilityPointByOwner(allResponsibilityPoints, 'out_warehouse')
+  const inWarehouseStartTime = inWarehouseResponsibilityPoint?.time ?? null
+  const inWarehouseBasis = inWarehouseResponsibilityPoint?.basis ?? null
+  const inWarehouseStartSupersededByDispatch =
+    inWarehouseStartTime !== null &&
+    outWarehouseResponsibilityPoint !== null &&
+    outWarehouseResponsibilityPoint.time > inWarehouseStartTime
+  const assignCancelLoopWithoutDispatch = hasAssignCancelLoop && lastDispatchedOut === null
+  const latestAssignmentAfterLastDispatch =
+    lastDeliveryAssignment !== null &&
+    lastDispatchedOut !== null &&
+    lastDeliveryAssignment.time > lastDispatchedOut.time
+
+  let stationLossCompletion = false
+  let merchantDestroyEvent: TrackEvent | null = null
+  let merchantDestroyEvidence: string | null = null
+  let merchantStorageEvent: TrackEvent | null = null
+  let merchantStorageEvidence: string | null = null
+  let merchantReturnEvent: TrackEvent | null = null
+  let merchantReturnEvidence: string | null = null
+  let merchantReturnRequestEvent: TrackEvent | null = null
+  let merchantReturnRequestEvidence: string | null = null
+  let merchantReturnPackageEvent: TrackEvent | null = null
+  let merchantReturnPackageEvidence: string | null = null
+  let deliveryCompletionEvent: TrackEvent | null = null
+  let deliveryCompletionEvidence: string | null = null
+  let hasDeliveryCompletion = false
+  for (const event of sorted) {
+    if (event.content.includes('订单异常完结') && STATION_LOSS_RE.test(event.content)) stationLossCompletion = true
+    if (isDeliveryCompletionEvent(event)) {
+      hasDeliveryCompletion = true
+      deliveryCompletionEvent = event
+      const stageText = (event.trackStageTx ?? '').trim()
+      deliveryCompletionEvidence = extractShortEvidence(
+        stageText ? `${stageText} | ${event.content}` : event.content
+      )
+    }
+    if (isMerchantDestroyTerminalEvent(event.content)) {
+      merchantDestroyEvent = event
+      merchantDestroyEvidence = extractMerchantDestroyEvidence(event.content)
+    }
+    if (isMerchantStorageEvent(event.content)) {
+      merchantStorageEvent = event
+      merchantStorageEvidence = extractMerchantStorageEvidence(event.content)
+    }
+    if (isMerchantReturnEvent(event.content)) {
+      merchantReturnEvent = event
+      merchantReturnEvidence = extractMerchantReturnEvidence(event.content)
+    }
+    if (isMerchantReturnRequestEvent(event.content)) {
+      merchantReturnRequestEvent = event
+      merchantReturnRequestEvidence = extractShortEvidence(event.content)
+    }
+    if (
+      merchantReturnRequestEvent !== null &&
+      event.time > merchantReturnRequestEvent.time &&
+      isMerchantReturnPackageEvent(event.content)
+    ) {
+      merchantReturnPackageEvent = event
+      merchantReturnPackageEvidence = extractShortEvidence(event.content)
+    }
+  }
+
+  const storageScheduleEvent =
+    merchantStorageEvent === null
+      ? null
+      : (sorted.find((event) => event.time > merchantStorageEvent.time && isDeliveryScheduleEvent(event)) ?? null)
+  const storageBusinessProgressEvent =
+    merchantStorageEvent === null
+      ? null
+      : (sorted.findLast((event) => event.time > merchantStorageEvent.time && isPostStorageBusinessProgressEvent(event)) ??
+        null)
+  const merchantStorageReleasedBySchedule = storageScheduleEvent !== null
+  const merchantStorageSupersededByBusinessProgress = storageBusinessProgressEvent !== null
+  const merchantStorageActive =
+    merchantStorageEvent !== null &&
+    !merchantStorageReleasedBySchedule &&
+    !merchantStorageSupersededByBusinessProgress
+  const merchantReturnResponsibilityTransferred = merchantReturnPackageEvent !== null
+  const latestInterceptTime = latestIntercept?.gmtIntercept ?? null
+
+  const normalResponsibilityOwner: LossResponsibilityOwner | null = latestTrackResponsibilityPoint?.owner ?? null
+  const normalResponsibilityStartTime = latestTrackResponsibilityPoint?.time ?? null
+  const interceptAdjustedResponsibilityOwner: LossResponsibilityOwner | null =
+    latestInterceptResponsibilityPoint &&
+    (!latestTrackResponsibilityPoint || latestInterceptResponsibilityPoint.time > latestTrackResponsibilityPoint.time)
+      ? latestInterceptResponsibilityPoint.owner
+      : null
+  const interceptAdjustedResponsibilityBasis =
+    interceptAdjustedResponsibilityOwner && latestInterceptResponsibilityPoint
+      ? `${latestInterceptResponsibilityPoint.basis}，晚于正常轨迹最新${normalResponsibilityOwner ? responsibilityOwnerLabel(normalResponsibilityOwner) : '库内/库外'}责任点 ${normalResponsibilityStartTime ?? '-'}，最终责任更新为${responsibilityOwnerLabel(interceptAdjustedResponsibilityOwner)}`
+      : null
+  const finalResponsibilityBasis = finalResponsibilityPoint
+    ? `${finalResponsibilityPoint.basis}，当前责任段最终责任为${responsibilityOwnerLabel(finalResponsibilityPoint.owner)}`
+    : null
+  const activeSegmentStartTime = activeSegment?.startTime ?? null
+  const activeWarehouseLossTimeoutDays = getWarehouseLossTimeoutDays(activeProfile)
+  const externalCarrierTransferTime =
+    activeSegment?.owner === 'external_carrier' ? activeSegment.startTime : null
+  const activeIsTransit = activeSegment?.status === 'transit_to_company_hub'
+
+  return {
+    todayStr,
+    lastEventTime: lastEvent.time,
+    lastEventDaysDiff: daysDiff(lastEvent.time),
+    responsibilitySegments: segments.map(toPublicSegment),
+    activeSegment: activeSegment ? toPublicSegment(activeSegment) : null,
+    activeResponsibilityOwner: activeSegment?.owner ?? 'unknown',
+    activeSegmentStatus: activeSegment?.status ?? 'unknown',
+    activeWarehouseHubId: activeSegment?.hubId ?? null,
+    activeWarehouseName: activeSegment?.hubName ?? null,
+    activeWarehouseCityId: activeSegment?.cityId ?? null,
+    activeWarehouseKnown: activeSegment?.warehouseKnown ?? false,
+    activeWarehouseLossTimeoutDays,
+    activeExternalCarrierName: activeSegment?.carrierName ?? null,
+    activeSegmentStartTime,
+    activeSegmentDaysDiff: activeSegmentStartTime ? daysDiff(activeSegmentStartTime) : -1,
+    unknownWarehouseInActiveSegment:
+      activeSegment?.owner === 'company_warehouse' && activeSegment.hubName !== null && !activeSegment.warehouseKnown,
+    externalCarrierTransferTime,
+    externalCarrierDaysDiff: externalCarrierTransferTime ? daysDiff(externalCarrierTransferTime) : -1,
+    inWarehouseStartTime,
+    inWarehouseBasis,
+    inWarehouseDaysDiff: inWarehouseStartTime ? daysDiff(inWarehouseStartTime) : -1,
+    inWarehouseStartSupersededByDispatch,
+    hasDeliveryCancellations,
+    hasRealOperatorScan,
+    hasDeliveryCompletion,
+    deliveryCompletionTime: deliveryCompletionEvent?.time ?? null,
+    deliveryCompletionEvidence,
+    lastDispatchedOutTime: lastDispatchedOut?.time ?? null,
+    outWarehouseDaysDiff: outWarehouseResponsibilityPoint ? daysDiff(outWarehouseResponsibilityPoint.time) : -1,
+    lastDispatchHasReturn,
+    latestAssignmentAfterLastDispatch,
+    deliveryAssignmentCount,
+    deliveryCancelCount,
+    problemCount,
+    lastInventoryTime: lastInventory?.time ?? null,
+    lastInventoryDaysDiff: lastInventory ? daysDiff(lastInventory.time) : -1,
+    assignCancelLoopWithoutDispatch,
+    stationLossCompletion,
+    hasInterceptLogs: interceptLogs.length > 0,
+    latestInterceptTime,
+    latestInterceptUserCode: latestIntercept?.scanUserCode ?? null,
+    latestInterceptUserName: latestIntercept?.scanUserName ?? null,
+    latestInterceptOperatorType: latestIntercept?.operatorType ?? null,
+    latestInterceptAfterInWarehouseStart: isInterceptAfter(latestInterceptTime, inWarehouseStartTime),
+    latestInterceptAfterOutWarehouseStart: isInterceptAfter(latestInterceptTime, outWarehouseResponsibilityPoint?.time ?? null),
+    interceptAdjustedResponsibilityOwner,
+    interceptAdjustedResponsibilityStartTime: interceptAdjustedResponsibilityOwner
+      ? latestInterceptResponsibilityPoint?.time ?? null
+      : null,
+    interceptAdjustedResponsibilityDaysDiff:
+      interceptAdjustedResponsibilityOwner && latestInterceptResponsibilityPoint
+        ? daysDiff(latestInterceptResponsibilityPoint.time)
+        : -1,
+    interceptAdjustedResponsibilityBasis,
+    finalResponsibilityOwner: finalResponsibilityPoint?.owner ?? null,
+    finalResponsibilityStartTime: finalResponsibilityPoint?.time ?? null,
+    finalResponsibilitySource: finalResponsibilityPoint?.source ?? null,
+    finalResponsibilityDaysDiff: finalResponsibilityPoint ? daysDiff(finalResponsibilityPoint.time) : -1,
+    finalResponsibilityBasis,
+    merchantDestroyConfirmed: merchantDestroyEvent !== null,
+    merchantDestroyConfirmTime: merchantDestroyEvent?.time ?? null,
+    merchantDestroyEvidence,
+    merchantStorageActive,
+    merchantStorageConfirmTime: merchantStorageEvent?.time ?? null,
+    merchantStorageEvidence,
+    merchantStorageReleasedBySchedule,
+    merchantStorageScheduleTime: storageScheduleEvent?.time ?? null,
+    merchantStorageSupersededByBusinessProgress,
+    merchantStorageBusinessProgressTime: storageBusinessProgressEvent?.time ?? null,
+    merchantStorageBusinessProgressEvidence: storageBusinessProgressEvent?.content ?? null,
+    merchantReturnConfirmed: merchantReturnEvent !== null,
+    merchantReturnConfirmTime: merchantReturnEvent?.time ?? null,
+    merchantReturnEvidence,
+    merchantReturnRequested: merchantReturnRequestEvent !== null && merchantReturnEvent === null,
+    merchantReturnRequestTime: merchantReturnRequestEvent?.time ?? null,
+    merchantReturnRequestEvidence,
+    merchantReturnResponsibilityTransferred,
+    merchantReturnResponsibilityTransferTime: merchantReturnPackageEvent?.time ?? null,
+    merchantReturnResponsibilityTransferEvidence: merchantReturnPackageEvidence,
+    merchantReturnPackageTime: merchantReturnPackageEvent?.time ?? null,
+    merchantReturnPackageEvidence,
+    transferToOtherHubInProgress: activeIsTransit && !hasDeliveryCompletion,
+    transferToOtherHubTime: activeIsTransit ? activeSegment.startTime : null,
+    transferToOtherHubDestination: activeIsTransit ? activeSegment.hubName : null,
+    transferToOtherHubEvidence: activeIsTransit ? activeSegment.events[0]?.content ?? null : null,
+    latestEventKind: summarizeLatestEvent(lastEvent),
+  }
+}
+
+function formatSegmentSummary(facts: TrackFacts): string {
+  if (!facts.responsibilitySegments.length) return '责任段: 无'
+  return facts.responsibilitySegments
+    .map((segment, index) => {
+      const owner =
+        segment.owner === 'company_warehouse'
+          ? `公司仓库 ${segment.hubName ?? '未知仓库'}${segment.warehouseKnown ? '' : '（未配置）'}`
+          : segment.owner === 'external_carrier'
+            ? `外部承运商 ${segment.carrierName ?? '未知承运商'}`
+            : segment.status === 'transit_to_company_hub'
+              ? `转运至 ${segment.hubName ?? '未知仓库'}${segment.warehouseKnown ? '' : '（未配置）'}`
+              : '未知责任'
+      return `${index + 1}. ${segment.startTime} -> ${segment.endTime ?? '当前'} | ${owner} | ${segment.startReason}${segment.endReason ? `；${segment.endReason}` : ''}`
+    })
+    .join('\n')
+}
+
+/**
+ * 将 `deriveTrackFacts` 的结构化结果渲染成 LLM prompt 中的时序分析文本。
+ * LLM 直接使用这些预计算值，无需自行推算时间差。
+ */
+export function computeTrackTemporalContext(tracks: TrackEvent[], interceptLogs: ScanInterceptLog[] = []): string {
+  const facts = deriveTrackFacts(tracks, interceptLogs)
+
+  if (!tracks.length) {
+    return `[时序分析（服务端预计算，直接使用，禁止自行推算时间差）]\n今天: ${facts.todayStr}\n轨迹为空，无法计算时序特征。`
+  }
+
+  const lines: string[] = [
+    '[时序分析（服务端预计算，直接使用，禁止自行推算时间差）]',
+    `今天: ${facts.todayStr}`,
+    `最后更新: ${facts.lastEventTime}（距今 ${facts.lastEventDaysDiff} 天）`,
+    `当前最新事件: ${facts.latestEventKind}`,
+    '',
+    '--- 当前责任段（服务端确定性解析，必须优先使用） ---',
+    `当前责任主体: ${facts.activeResponsibilityOwner}`,
+    `当前责任状态: ${facts.activeSegmentStatus}`,
+    `当前责任段起算: ${facts.activeSegmentStartTime ?? '无法确定'}（距今 ${facts.activeSegmentDaysDiff} 天）`,
+  ]
+
+  if (facts.activeResponsibilityOwner === 'company_warehouse') {
+    lines.push(
+      `当前仓库: ${facts.activeWarehouseName ?? '未知'}${facts.activeWarehouseKnown ? `（${facts.activeWarehouseCityId}/${facts.activeWarehouseHubId}）` : '（未匹配仓库配置）'}`
+    )
+    lines.push(`当前仓库丢失超时阈值: ${facts.activeWarehouseLossTimeoutDays} 天`)
+    if (!facts.activeWarehouseKnown) {
+      lines.push('仓库配置状态: 未知仓库，禁止默认把操作员视为真实扫描员；若结论依赖真实扫描员，应输出「需人工判断」。')
+    }
+  } else if (facts.activeResponsibilityOwner === 'external_carrier') {
+    lines.push(
+      `外部承运商: ${facts.activeExternalCarrierName ?? '未知'}；转交时间: ${facts.externalCarrierTransferTime ?? '-'}（距今 ${facts.externalCarrierDaysDiff} 天）`
+    )
+    lines.push('当前已转交外部承运且未进入公司仓库责任段，禁止继续沿用历史仓库的库内/库外起算。')
+    lines.push('外部承运超时规则: 最后更新未满 7 天为「暂无异常」；最后更新达到 7 天且无正常完结时判定为「3PL丢件」。')
+  } else if (facts.activeSegmentStatus === 'transit_to_company_hub') {
+    lines.push(
+      `转运目的仓: ${facts.activeWarehouseName ?? '未知'}${facts.activeWarehouseKnown ? `（${facts.activeWarehouseCityId}/${facts.activeWarehouseHubId}）` : '（未匹配仓库配置）'}`
+    )
+    lines.push('当前处于跨仓转运途中，旧仓库责任已结束；未到达目的仓前不得按旧仓库库内/库外丢失判断。')
+  }
+
+  lines.push('责任段摘要:')
+  lines.push(formatSegmentSummary(facts))
+
+  lines.push('')
+  lines.push('--- 当前责任段：库内责任超时 ---')
+  lines.push(
+    `真实操作员扫描记录: ${facts.hasRealOperatorScan ? '是（仓内扫描/盘点，不含「包裹正在派送中」二次出库扫描）' : '否（当前责任段无已配置仓库的真实扫描员）'}`
+  )
+
+  if (facts.inWarehouseStartTime && facts.inWarehouseBasis) {
+    lines.push(
+      `库内起算时间: ${facts.inWarehouseStartTime}（${facts.inWarehouseBasis}）  距今: ${facts.inWarehouseDaysDiff} 天`
+    )
+  } else {
+    lines.push('库内起算时间: 无法确定（当前责任段无真实操作员扫描/回仓/盘点）')
+  }
+  if (!facts.inWarehouseStartTime && facts.lastDispatchedOutTime) {
+    lines.push(
+      `库内起算时间之后已真正出库: 不适用（库内起算无法确定；但当前责任段存在「包裹正在派送中」二次扫描 ${facts.lastDispatchedOutTime}，出库责任按库外字段判断）`
+    )
+  } else {
+    lines.push(
+      `库内起算时间之后已真正出库: ${facts.inWarehouseStartSupersededByDispatch ? '是（当前责任段存在「包裹正在派送中」二次扫描，库内责任已转移）' : '否（当前责任段无「包裹正在派送中」，或出库后已回站/盘点）'}`
+    )
+  }
+  lines.push(
+    `存在分配→取消分配循环: ${facts.assignCancelLoopWithoutDispatch ? '是' : '否'}（仅统计当前责任段；历史责任段不得混入当前判断）`
+  )
+
+  lines.push('')
+  lines.push('--- 当前责任段：库外责任超时 ---')
+  if (facts.finalResponsibilityOwner === 'out_warehouse' && facts.finalResponsibilityStartTime) {
+    lines.push(
+      `库外起算时间: ${facts.finalResponsibilityStartTime}（当前责任段最终库外责任点）  距今: ${facts.finalResponsibilityDaysDiff} 天`
+    )
+    if (facts.lastDispatchedOutTime) {
+      lines.push(
+        `最近一次正常轨迹出库后已有回站/盘点记录: ${facts.lastDispatchHasReturn ? '是（仅说明该回仓时间点责任曾回到库内；最终责任仍以最后责任点为准）' : '否（当前责任段包裹仍在库外派送中）'}`
+      )
+    }
+  } else if (facts.lastDispatchedOutTime) {
+    lines.push(
+      `库外起算时间: ${facts.lastDispatchedOutTime}（当前责任段最近一次「包裹正在派送中」二次扫描出库）  距今: ${facts.outWarehouseDaysDiff} 天`
+    )
+    lines.push(
+      `最近一次出库后已有回站/盘点记录: ${facts.lastDispatchHasReturn ? '是（当前责任段包裹已回仓，责任已重置）' : '否（当前责任段包裹仍在库外派送中）'}`
+    )
+  } else if (facts.deliveryAssignmentCount > 0) {
+    lines.push(
+      '库外起算时间: 无法确定（当前责任段仅有「派送任务已分配」但无「包裹正在派送中」二次扫描，包裹未真正出库）'
+    )
+  } else {
+    lines.push('库外起算时间: 无法确定（当前责任段无派送分配记录）')
+  }
+
+  lines.push('')
+  lines.push('--- 其他参考 ---')
+  lines.push(
+    `当前责任段派送分配次数: ${facts.deliveryAssignmentCount}  取消分配次数: ${facts.deliveryCancelCount}  问题件登记次数: ${facts.problemCount}`
+  )
+  lines.push(
+    `正常完结记录: ${facts.hasDeliveryCompletion ? `是（${facts.deliveryCompletionTime ?? '-'}，${facts.deliveryCompletionEvidence ?? '命中签收/妥投/派件完成关键词'}）` : '否'}`
+  )
+  if (facts.lastInventoryTime) {
+    lines.push(`当前责任段最近盘点: ${facts.lastInventoryTime}（距今 ${facts.lastInventoryDaysDiff} 天）`)
+  }
+
+  if (facts.assignCancelLoopWithoutDispatch) {
+    lines.push(
+      '分配-取消循环（当前责任段无任何成功出库）: 是  → 派件员反复领取后退回、包裹始终在当前仓库未离开，是「库内扫描员丢失」的典型特征'
+    )
+  } else {
+    const noLoopReason = facts.lastDispatchedOutTime
+      ? `当前责任段存在「包裹正在派送中」真实出库（${facts.lastDispatchedOutTime}），不构成"无任何成功出库循环"`
+      : '当前责任段连续分配-取消配对未达到阈值，或当前不在公司仓库责任段'
+    lines.push(`分配-取消循环（当前责任段无任何成功出库）: 否  → ${noLoopReason}`)
+  }
+
+  if (facts.stationLossCompletion) {
+    lines.push(
+      '承运商完结标记: 站内丢包(station_loss)  → 仅作辅助证据，必须先按当前责任段事实判断 lossScope'
+    )
+  }
+  if (facts.hasInterceptLogs) {
+    if (facts.latestInterceptTime && facts.latestInterceptUserCode && facts.latestInterceptOperatorType) {
+      lines.push(
+        `阻断日志责任点: 最新阻断时间 ${facts.latestInterceptTime}，scanUserCode=${facts.latestInterceptUserCode}，scanUserName=${facts.latestInterceptUserName ?? '-'}（${interceptOperatorLabel(facts.latestInterceptOperatorType)}）；晚于库内起算: ${facts.latestInterceptAfterInWarehouseStart ? '是' : '否'}；晚于库外起算: ${facts.latestInterceptAfterOutWarehouseStart ? '是' : '否'}。服务端已将该责任点按时间并入当前公司仓库责任段。`
+      )
+      if (facts.interceptAdjustedResponsibilityOwner && facts.interceptAdjustedResponsibilityStartTime) {
+        lines.push(
+          `阻断日志更新后的最终责任: ${responsibilityOwnerLabel(facts.interceptAdjustedResponsibilityOwner)}；最终起算时间: ${facts.interceptAdjustedResponsibilityStartTime}（距今 ${facts.interceptAdjustedResponsibilityDaysDiff} 天）。必须基于该最终起算时间重新判断是否达到当前仓库 ${facts.activeWarehouseLossTimeoutDays} 天阈值。`
+        )
+      }
+    } else {
+      lines.push('阻断日志辅助判断: 存在阻断日志，但无可解析的 gmtIntercept，不参与库内/库外责任反转。')
+    }
+  }
+  if (facts.finalResponsibilityOwner && facts.finalResponsibilityStartTime) {
+    lines.push(
+      `当前责任段最终责任点: ${responsibilityOwnerLabel(facts.finalResponsibilityOwner)}；时间: ${facts.finalResponsibilityStartTime}（距今 ${facts.finalResponsibilityDaysDiff} 天）；依据: ${facts.finalResponsibilityBasis ?? '-'}。库内/库外丢失必须以该最终责任点为准。`
+    )
+  }
+  if (facts.merchantDestroyConfirmed) {
+    lines.push(
+      `商家销毁终态: 是（${facts.merchantDestroyConfirmTime ?? '-'}，证据: ${facts.merchantDestroyEvidence ?? '命中销毁关键词'}）  → 该订单已进入商家确认销毁闭环，优先判定「暂无异常」`
+    )
+  }
+  if (facts.merchantReturnConfirmed) {
+    lines.push(
+      `退返商家闭环: 是（${facts.merchantReturnConfirmTime ?? '-'}，证据: ${facts.merchantReturnEvidence ?? '命中退返闭环关键词'}）  → 该订单已完成退返/退回商家，优先判定「暂无异常」，子类型建议「退返商家」`
+    )
+  } else if (facts.merchantReturnRequested) {
+    lines.push(
+      `退返商家待处理: 是（${facts.merchantReturnRequestTime ?? '-'}，证据: ${facts.merchantReturnRequestEvidence ?? '命中退返处理方向'}）  → 商家仅给出退返方向，未出现退返闭环，仍按当前责任段库内/库外超时判断`
+    )
+  }
+  if (facts.merchantReturnResponsibilityTransferred) {
+    lines.push(
+      `退返集包责任转移: 是（${facts.merchantReturnResponsibilityTransferTime ?? '-'}，证据: ${facts.merchantReturnResponsibilityTransferEvidence ?? '命中集包号'}）  → 库内责任已转移出去，不再按库内超时归责，子类型建议「退返商家」`
+    )
+  }
+  if (facts.merchantStorageActive) {
+      lines.push(
+      `商家暂存终态: 是（${facts.merchantStorageConfirmTime ?? '-'}，证据: ${facts.merchantStorageEvidence ?? '命中暂存关键词'}）  → 暂存无库内/库外超时逻辑，优先判定「暂无异常」，子类型建议「暂存」`
+    )
+  } else if (facts.merchantStorageReleasedBySchedule) {
+    lines.push(
+      `商家暂存终态: 否（${facts.merchantStorageConfirmTime ?? '-'} 后于 ${facts.merchantStorageScheduleTime ?? '-'} 出现预约派送）  → 暂存状态已释放，恢复当前责任段库内/库外 ${facts.activeWarehouseLossTimeoutDays} 天时效判断`
+    )
+  } else if (facts.merchantStorageSupersededByBusinessProgress) {
+    lines.push(
+      `商家暂存终态: 否（${facts.merchantStorageConfirmTime ?? '-'} 后于 ${facts.merchantStorageBusinessProgressTime ?? '-'} 出现新的业务推进）  → 以最新轨迹为准，不再使用「暂存」子类型；证据: ${facts.merchantStorageBusinessProgressEvidence ?? '命中后续业务轨迹'}`
+    )
+  }
+  if (facts.transferToOtherHubInProgress) {
+    lines.push(
+      `跨仓转运责任转移: 是（${facts.transferToOtherHubTime ?? '-'}，目的地: ${facts.transferToOtherHubDestination ?? '-'}）  → 旧仓库责任已结束；若目的仓已收到退件/到达，则切换到目的仓责任段继续按库内/库外判断`
+    )
+  }
+
+  return lines.join('\n')
+}

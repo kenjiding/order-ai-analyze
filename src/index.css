@@ -1,0 +1,310 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --admin-bg: #f7fbff;
+  --admin-surface: #ffffff;
+  --admin-surface-soft: #f0f7fb;
+  --admin-line: #d8e6ee;
+  --admin-text: #223247;
+  --admin-muted: #65758b;
+  --admin-accent: #2f8f87;
+  --admin-accent-soft: #e1f5f1;
+  --admin-sky-soft: #eaf4ff;
+}
+
+body {
+  font-family:
+    Inter, 'IBM Plex Sans', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei',
+    sans-serif;
+  margin: 0;
+  min-height: 100vh;
+  background: var(--admin-bg);
+  color: var(--admin-text);
+}
+
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  background:
+    linear-gradient(90deg, rgba(47, 143, 135, 0.045) 1px, transparent 1px),
+    linear-gradient(rgba(88, 145, 181, 0.045) 1px, transparent 1px);
+  background-size: 32px 32px;
+  mask-image: linear-gradient(180deg, rgba(0, 0, 0, 0.6), transparent 42%);
+}
+
+.display-font {
+  font-family: Inter, 'IBM Plex Sans', sans-serif;
+}
+
+@layer components {
+  .admin-shell {
+    @apply min-h-screen text-slate-900;
+    background:
+      linear-gradient(180deg, #fbfdff 0%, var(--admin-bg) 44%, #f6faf8 100%);
+  }
+
+  .sidebar-root {
+    @apply overflow-hidden border-r text-slate-800;
+    background:
+      linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(240, 247, 251, 0.96));
+    border-color: var(--admin-line);
+    box-shadow: 18px 0 50px rgba(47, 83, 105, 0.08);
+  }
+
+  /* 侧边栏：Layout/Sidebar 使用 sidebar-root */
+
+  .admin-brand {
+    @apply border-b px-6 py-6;
+    border-color: var(--admin-line);
+  }
+
+  .admin-nav-link {
+    @apply flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium text-slate-600 transition;
+  }
+
+  .admin-nav-link-active {
+    @apply shadow-sm;
+    background: var(--admin-accent-soft);
+    color: #1f6f68;
+  }
+
+  .admin-nav-link-idle {
+    @apply hover:text-slate-950;
+  }
+
+  .admin-nav-link-idle:hover {
+    background: #eef7fb;
+  }
+
+  .admin-content {
+    @apply relative z-10 min-h-screen;
+  }
+
+  .admin-topbar {
+    @apply sticky top-0 z-30 border-b px-4 py-3 backdrop-blur sm:px-6 lg:px-8;
+    background: rgba(255, 255, 255, 0.86);
+    border-color: var(--admin-line);
+  }
+
+  .admin-page {
+    @apply mx-auto w-full max-w-[1680px] px-4 py-5 sm:px-6 lg:px-8;
+  }
+
+  .admin-panel {
+    @apply rounded-lg border bg-white;
+    border-color: var(--admin-line);
+    box-shadow: 0 18px 48px rgba(47, 83, 105, 0.07);
+  }
+
+  .admin-panel-muted {
+    @apply rounded-lg border;
+    background: var(--admin-surface-soft);
+    border-color: var(--admin-line);
+  }
+
+  .admin-section-title {
+    @apply border-b px-5 py-4;
+    border-color: var(--admin-line);
+  }
+
+  .admin-eyebrow {
+    @apply text-[11px] font-semibold uppercase tracking-[0.2em] text-slate-500;
+  }
+
+  .admin-title {
+    @apply mt-1 text-lg font-semibold tracking-tight text-slate-950;
+  }
+
+  .admin-description {
+    @apply mt-1 max-w-4xl text-sm leading-6 text-slate-600;
+  }
+
+  .admin-btn {
+    @apply inline-flex items-center justify-center gap-2 rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 transition hover:border-slate-400 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50;
+  }
+
+  .admin-btn-primary {
+    @apply text-white;
+    background: var(--admin-accent);
+    border-color: var(--admin-accent);
+  }
+
+  .admin-btn-primary:hover {
+    background: #267a73;
+    border-color: #267a73;
+  }
+
+  .admin-btn-dark {
+    color: #25526e;
+    background: var(--admin-sky-soft);
+    border-color: #c8deee;
+  }
+
+  .admin-btn-dark:hover {
+    background: #dcefff;
+    border-color: #b7d4e8;
+  }
+
+  .admin-input {
+    @apply rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:ring-2;
+  }
+
+  .admin-input:focus {
+    border-color: var(--admin-accent);
+    --tw-ring-color: rgba(47, 143, 135, 0.16);
+  }
+
+  .admin-table {
+    @apply min-w-full divide-y divide-slate-200 text-sm;
+  }
+
+  .admin-table thead {
+    @apply text-left;
+    background: var(--admin-sky-soft);
+    color: #25526e;
+  }
+
+  .admin-table th {
+    @apply whitespace-nowrap px-4 py-3 text-xs font-semibold uppercase tracking-[0.08em];
+  }
+
+  .admin-table td {
+    @apply whitespace-nowrap px-4 py-3 align-top text-slate-700;
+  }
+
+  .admin-table tbody {
+    @apply divide-y divide-slate-100;
+  }
+
+  .admin-table tbody tr {
+    @apply bg-white transition hover:bg-slate-100;
+  }
+
+  .admin-table tbody tr:nth-child(even) {
+    @apply bg-slate-50;
+  }
+
+  .admin-table tbody tr:nth-child(even):hover {
+    @apply bg-slate-100;
+  }
+
+  .admin-badge {
+    @apply inline-flex items-center rounded-md border px-2 py-1 text-xs font-medium;
+  }
+}
+
+.wage-page .bg-white,
+.wage-page .bg-gray-50 {
+  background-color: #ffffff;
+}
+
+.wage-page > .bg-white,
+.wage-page .space-y-6 > .bg-white,
+.wage-page [class*='bg-white rounded-lg'] {
+  border: 1px solid var(--admin-line);
+  border-radius: 8px;
+  box-shadow: 0 18px 48px rgba(47, 83, 105, 0.07);
+}
+
+.wage-page .bg-blue-600,
+.wage-page .bg-green-600 {
+  background-color: var(--admin-accent);
+}
+
+.wage-page .hover\:bg-blue-700:hover,
+.wage-page .hover\:bg-green-700:hover {
+  background-color: #267a73;
+}
+
+.wage-page .bg-gray-600 {
+  background-color: var(--admin-sky-soft);
+  color: #25526e;
+}
+
+.wage-page .hover\:bg-gray-700:hover {
+  background-color: #dcefff;
+}
+
+.wage-page .text-blue-600,
+.wage-page .text-green-600,
+.wage-page .text-purple-600 {
+  color: var(--admin-accent);
+}
+
+.wage-page .border-blue-500 {
+  border-color: var(--admin-accent);
+}
+
+.wage-page .bg-blue-50,
+.wage-page .bg-green-50,
+.wage-page .bg-red-50 {
+  background-color: var(--admin-surface-soft);
+}
+
+.wage-page .border-blue-200,
+.wage-page .border-green-200,
+.wage-page .border-red-200 {
+  border-color: #cbd5e1;
+}
+
+.wage-page .text-blue-900,
+.wage-page .text-blue-800,
+.wage-page .text-blue-700,
+.wage-page .text-green-800,
+.wage-page .text-red-800,
+.wage-page .text-red-700 {
+  color: #334155;
+}
+
+.wage-page table thead {
+  background-color: var(--admin-sky-soft);
+  color: #25526e;
+}
+
+.wage-page table thead th {
+  color: #25526e;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+}
+
+.wage-page select,
+.wage-page input[type='text'],
+.wage-page input[type='date'],
+.wage-page input[type='number'] {
+  border-radius: 6px;
+  border-color: #cbd5e1;
+}
+
+.wage-page select:focus,
+.wage-page input:focus {
+  border-color: var(--admin-accent);
+  box-shadow: 0 0 0 3px rgba(47, 143, 135, 0.14);
+}
+
+.data-table::-webkit-scrollbar {
+  height: 10px;
+  width: 10px;
+}
+
+.data-table::-webkit-scrollbar-thumb {
+  background: rgba(71, 85, 105, 0.35);
+  border-radius: 999px;
+}
+
+/* 长表：限制可视高度，内部滚动；表头吸附便于对照列含义 */
+.data-table.data-table--bounded {
+  max-height: min(72vh, 30rem);
+  overflow: auto;
+}
+
+.data-table.data-table--bounded thead th {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: var(--admin-sky-soft);
+  box-shadow: 0 1px 0 0 rgb(226 232 240);
+}

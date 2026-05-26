@@ -1,0 +1,216 @@
+{
+  "id": "6042426089756",
+  "orderNo": "6042426089756",
+  "capturedAt": "2026-05-25T02:36:23.361Z",
+  "expected": {
+    "lossScope": "需人工判断",
+    "exceptionCategoryId": "",
+    "reason": ""
+  },
+  "tracks": [
+    {
+      "content": "【ADL DS】已装箱，集包号[2605085545201]，目的地【Melbourne Center】。操作员【ADL-前台】",
+      "time": "2026-05-08 20:15:37",
+      "trackStageTx": "退件处理"
+    },
+    {
+      "content": "【ADL DS】已盘点，库位编号[01]。操作员【ADL-前台】",
+      "time": "2026-05-06 13:59:43",
+      "trackStageTx": "退件处理"
+    },
+    {
+      "content": "退件中",
+      "time": "2026-05-06 08:02:24",
+      "trackStageTx": "退件处理"
+    },
+    {
+      "content": "开始退回",
+      "time": "2026-05-06 08:01:24",
+      "trackStageTx": "退件处理"
+    },
+    {
+      "content": "【ADL DS】包裹确认派送结束, 将按照商家反馈意见[退返商家]进行处理。",
+      "time": "2026-05-06 08:01:23",
+      "trackStageTx": "退件处理"
+    },
+    {
+      "content": "【ADL DS】已盘点，库位编号[01]。操作员【ADL-前台】",
+      "time": "2026-05-05 14:29:38",
+      "trackStageTx": "派送"
+    },
+    {
+      "content": "【ADL DS】已盘点，库位编号[01]。操作员【ADL-前台】",
+      "time": "2026-05-04 11:07:00",
+      "trackStageTx": "派送"
+    },
+    {
+      "content": "【ADL DS】已进入NDR，NDR来源[问题件触发NDR]",
+      "time": "2026-05-04 10:29:47",
+      "trackStageTx": "派送"
+    },
+    {
+      "content": "【AUS】登记问题件[AUS| 客服确认收件人信息错误]Wrong consignee info, 操作员【Andaya, Kharen Joy】。",
+      "time": "2026-05-04 10:29:47",
+      "trackStageTx": "派送",
+      "trackType": "Problem"
+    },
+    {
+      "content": "【ADL DS】派件员已回到网点。操作员【ADL-前台】",
+      "time": "2026-05-02 15:43:35",
+      "trackStageTx": "派送"
+    },
+    {
+      "content": "【ADL DS】登记问题件[详细地址与行政区不匹配]not me area , 修改人【ADL OP1】。【View Proof】",
+      "time": "2026-05-02 15:43:26",
+      "trackStageTx": "派送",
+      "trackType": "Problem"
+    },
+    {
+      "content": "【ADL DS】登记问题件[AUS| 地址错误]not me area , 操作员【ADL-SP-049-Nen Patel】。【View Proof】",
+      "time": "2026-05-02 15:41:40",
+      "trackStageTx": "派送",
+      "trackType": "Problem"
+    },
+    {
+      "content": "【ADL DS】包裹正在派送中(派件员: ADL-SP-049-Nen Patel, ***)。操作员【ADL-SP-049-Nen Patel】",
+      "time": "2026-05-02 08:52:46",
+      "trackStageTx": "派送",
+      "trackType": "Delivery"
+    },
+    {
+      "content": "【ADL DS】派送任务已分配给派件员(派件员：ADL-SP-049-Nen Patel,电话：***)，待派件员领取包裹。 操作员【cornerstone】",
+      "time": "2026-05-02 08:34:43",
+      "trackStageTx": "派送"
+    },
+    {
+      "content": "【ADL DS】已盘点，库位编号[01]。操作员【ADL-前台】",
+      "time": "2026-05-01 14:18:22",
+      "trackStageTx": "派送"
+    },
+    {
+      "content": "已预约【2026-05-04】进行派送。操作员【ADL OP1】",
+      "time": "2026-05-01 13:18:44",
+      "trackStageTx": "派送",
+      "trackType": "Schedule"
+    },
+    {
+      "content": "未预约成功[NoAnswer]。操作员【Garnodo, Manuel Jhasmyne】",
+      "time": "2026-04-30 14:28:42",
+      "trackStageTx": "派送",
+      "trackType": "Schedule"
+    },
+    {
+      "content": "【ADL DS】已盘点，库位编号[01]。操作员【ADL-前台】",
+      "time": "2026-04-30 13:23:54",
+      "trackStageTx": "派送"
+    },
+    {
+      "content": "【ADL DS】派件员已回到网点。操作员【ADL-前台】",
+      "time": "2026-04-29 18:57:54",
+      "trackStageTx": "派送"
+    },
+    {
+      "content": "【ADL DS】登记问题件[AUS| 地址错误]not my area , 操作员【ADL-SP-049-Nen Patel】。【View Proof】",
+      "time": "2026-04-29 09:41:00",
+      "trackStageTx": "派送",
+      "trackType": "Problem"
+    },
+    {
+      "content": "【ADL DS】包裹正在派送中(派件员: ADL-SP-049-Nen Patel, ***)。操作员【ADL-SP-049-Nen Patel】",
+      "time": "2026-04-28 18:22:00",
+      "trackStageTx": "派送",
+      "trackType": "Delivery"
+    },
+    {
+      "content": "【ADL DS】派送任务已分配给派件员(派件员：ADL-SP-049-Nen Patel,电话：***)，待派件员领取包裹。 操作员【cornerstone】",
+      "time": "2026-04-28 18:18:12",
+      "trackStageTx": "派送"
+    },
+    {
+      "content": "【ADL DS】已到达。操作员【ADL OP1】 。",
+      "time": "2026-04-28 15:33:05",
+      "trackStageTx": "派送"
+    },
+    {
+      "content": "【Adelaide Center】已到达。操作员【ADL-DC-Serene】 。",
+      "time": "2026-04-28 12:24:15",
+      "trackStageTx": "派送"
+    },
+    {
+      "content": "【Adelaide Center】包号[2603191735301]已到达。操作员【ADL-shigong8】 。",
+      "time": "2026-04-28 10:50:08",
+      "trackStageTx": "转运"
+    },
+    {
+      "content": "【Adelaide Center】集包/托盘[2603191735301]完成卸车，车辆任务编号【MELCA202604270010】。操作员【ADL-shigong8】",
+      "time": "2026-04-28 10:50:06",
+      "trackStageTx": "转运"
+    },
+    {
+      "content": "【ADL DS】已到达。操作员【System】 。",
+      "time": "2026-04-28 10:50:05",
+      "trackStageTx": "派送"
+    },
+    {
+      "content": "【Adelaide Center】完成待转发件，目的地【ADL DS】。操作员【System】",
+      "time": "2026-04-28 10:50:04",
+      "trackStageTx": "转运"
+    },
+    {
+      "content": "【Melbourne Center】包裹已发往【ADL DS】 ,包号 [2603191735301], 车辆任务编号【MELCA202604270010】。操作员【MEL_RDC_Scanner_07】",
+      "time": "2026-04-27 14:30:09",
+      "trackStageTx": "转运"
+    },
+    {
+      "content": "【Melbourne Center】完成待转发件，目的地【ADL DS】。操作员【MEL_RDC_Scanner_07】",
+      "time": "2026-04-27 14:30:08",
+      "trackStageTx": "转运"
+    },
+    {
+      "content": "【Melbourne Center】包号[2603191735301]已到达。操作员【MEL_RDC_Scanner_04】 。",
+      "time": "2026-04-26 10:43:02",
+      "trackStageTx": "转运"
+    },
+    {
+      "content": "【Melbourne Center】集包/托盘[2603191735301]完成卸车，车辆任务编号【】。操作员【MEL_RDC_Scanner_04】",
+      "time": "2026-04-26 10:43:00",
+      "trackStageTx": "转运"
+    },
+    {
+      "content": "【Sydney Center】已装箱，集包号[2603191735301]，目的地【Adelaide Center】。操作员【SYD Warehouse13】",
+      "time": "2026-04-24 17:14:04",
+      "trackStageTx": "转运"
+    },
+    {
+      "content": "【Sydney Center】已到达。操作员【System】 。",
+      "time": "2026-04-24 17:13:54",
+      "trackStageTx": "转运"
+    },
+    {
+      "content": "【Sydney Center】提货员已揽收货物(提货员：backlog-004jiuyi pan，电话： ***)。操作员【backlog-004jiuyi pan】",
+      "time": "2026-04-24 15:45:53",
+      "trackStageTx": "已提货"
+    },
+    {
+      "content": "已通过[OpenApi]成功下单",
+      "time": "2026-04-24 11:06:24",
+      "trackStageTx": "订单提交"
+    }
+  ],
+  "interceptLogs": [
+    {
+      "waybillNo": "6042426089756",
+      "scanUserCode": "2103297501",
+      "scanUserName": "ADL OP1",
+      "gmtIntercept": "2026-05-02 10:15:32",
+      "operatorType": "unknown"
+    },
+    {
+      "waybillNo": "6042426089756",
+      "scanUserCode": "2103297501",
+      "scanUserName": "ADL OP1",
+      "gmtIntercept": "2026-04-28 15:34:42",
+      "operatorType": "unknown"
+    }
+  ]
+}

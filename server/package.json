@@ -1,0 +1,34 @@
+{
+  "name": "@warehouse-anagement/server",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "start": "tsx src/index.ts",
+    "typecheck": "tsc -p tsconfig.json",
+    "test:order-analyze": "tsx --test src/orderAnalyze/orderAnalyze.test.ts",
+    "test:order-analyze-regression": "tsx src/orderAnalyze/regression/regressionCli.ts",
+    "deploy": "AWS_PROFILE=aws_872570730 sst deploy --stage production",
+    "deploy:dev": "AWS_PROFILE=aws_872570730 sst deploy --stage dev",
+    "remove": "AWS_PROFILE=aws_872570730 sst remove --stage production",
+    "unlock": "AWS_PROFILE=aws_872570730 sst unlock --stage production"
+  },
+  "dependencies": {
+    "cors": "^2.8.5",
+    "dotenv": "^17.4.2",
+    "express": "^4.21.2",
+    "openai": "^6.37.0",
+    "serverless-http": "^4.0.0",
+    "sst": "4.13.1"
+  },
+  "devDependencies": {
+    "@types/aws-lambda": "8.10.161",
+    "@types/cors": "^2.8.17",
+    "@types/express": "^5.0.0",
+    "@types/node": "^24.12.2",
+    "sst": "^4.13.1",
+    "tsx": "^4.19.2",
+    "typescript": "~6.0.2"
+  }
+}

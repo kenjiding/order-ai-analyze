@@ -1,0 +1,105 @@
+{
+  "id": "6042626269916",
+  "orderNo": "6042626269916",
+  "capturedAt": "2026-05-25T01:37:50.737Z",
+  "expected": {
+    "lossScope": "暂无异常",
+    "exceptionCategoryId": "退返商家",
+    "reason": ""
+  },
+  "tracks": [
+    {
+      "content": "【】包裹确认派送结束, 将按照商家反馈意见[退返商家]进行处理。",
+      "time": "2026-05-24 16:18:05",
+      "trackStageTx": "退件处理"
+    },
+    {
+      "content": "商家已反馈NDR处理意见[退返商家]。 操作人【IKHWAN NASIR BIN MOHAMAT TAHIR】",
+      "time": "2026-05-24 16:18:04",
+      "trackStageTx": "退件处理"
+    },
+    {
+      "content": "【ADL DS】已进入NDR，NDR来源[问题件触发NDR]",
+      "time": "2026-05-24 16:16:32",
+      "trackStageTx": "派送"
+    },
+    {
+      "content": "【Adelaide Center】登记问题件[AUS| 商家要求退回], 操作员【IKHWAN NASIR BIN MOHAMAT TAHIR】。",
+      "time": "2026-05-24 16:16:31",
+      "trackStageTx": "派送",
+      "trackType": "Problem"
+    },
+    {
+      "content": "【ADL DS】已盘点，库位编号[01]。操作员【ADL-前台】",
+      "time": "2026-05-05 13:44:47",
+      "trackStageTx": "派送"
+    },
+    {
+      "content": "已发起拦截，拦截原因[spu]，拦截处理意见[spu]。操作员【ADL OP1】",
+      "time": "2026-05-05 13:16:57",
+      "trackStageTx": "派送"
+    },
+    {
+      "content": "已预约【2026-05-06】进行派送。操作员【Budo, Jona Mae】",
+      "time": "2026-05-05 12:45:21",
+      "trackStageTx": "派送",
+      "trackType": "Schedule"
+    },
+    {
+      "content": "【ADL DS】派件员已回到网点。操作员【ADL-前台】",
+      "time": "2026-05-05 08:45:00",
+      "trackStageTx": "派送"
+    },
+    {
+      "content": "【ADL DS】登记问题件[AUS| 无人在家，无安全环境放包裹], 操作员【ADL-CXH-326-ALIJAFARI】。【View Proof】",
+      "time": "2026-05-02 15:59:57",
+      "trackStageTx": "派送",
+      "trackType": "Problem"
+    },
+    {
+      "content": "【ADL DS】包裹正在派送中(派件员: ADL-CXH-326-ALIJAFARI, ***)。操作员【ADL-CXH-326-ALIJAFARI】",
+      "time": "2026-05-01 21:04:24",
+      "trackStageTx": "派送",
+      "trackType": "Delivery"
+    },
+    {
+      "content": "【ADL DS】派送任务已分配给派件员(派件员：ADL-CXH-326-ALIJAFARI,电话：***)，待派件员领取包裹。 操作员【cornerstone】",
+      "time": "2026-05-01 20:10:10",
+      "trackStageTx": "派送"
+    },
+    {
+      "content": "【ADL DS】已到达。操作员【System】 。",
+      "time": "2026-05-01 18:25:38",
+      "trackStageTx": "派送"
+    },
+    {
+      "content": "【Adelaide Center】完成待转发件，目的地【ADL DS】。操作员【System】",
+      "time": "2026-05-01 18:25:37",
+      "trackStageTx": "转运"
+    },
+    {
+      "content": "【Adelaide Center】已到达。操作员【ADL-DC-Jacky】 。",
+      "time": "2026-05-01 18:25:36",
+      "trackStageTx": "转运"
+    },
+    {
+      "content": "【Adelaide Center】已揽收, 操作员【System】。",
+      "time": "2026-05-01 18:25:06",
+      "trackStageTx": "已揽件"
+    },
+    {
+      "content": "已通过[OpenApi]成功下单",
+      "time": "2026-04-26 14:07:05",
+      "trackStageTx": "订单提交"
+    }
+  ],
+  "interceptLogs": [
+    {
+      "waybillNo": "6042626269916",
+      "scanUserCode": "2103297501",
+      "scanUserName": "ADL OP1",
+      "gmtIntercept": "2026-05-01 21:17:07",
+      "operatorType": "unknown"
+    }
+  ]
+}

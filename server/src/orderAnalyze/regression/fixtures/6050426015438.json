@@ -1,0 +1,153 @@
+{
+  "id": "6050426015438",
+  "orderNo": "6050426015438",
+  "capturedAt": "2026-05-25T03:12:05.872Z",
+  "expected": {
+    "lossScope": "暂无异常",
+    "exceptionCategoryId": "退返商家",
+    "reason": ""
+  },
+  "tracks": [
+    {
+      "content": "【ADL DS】退件已退返商家。操作员【ADL OP1】",
+      "time": "2026-05-19 14:39:30",
+      "trackStageTx": "已退返商家"
+    },
+    {
+      "content": "【ADL DS】已装箱，集包号[2605192882801]，目的地【TEMU-EI_LM_AUS】。操作员【ADL-前台】",
+      "time": "2026-05-19 14:32:31",
+      "trackStageTx": "退件处理"
+    },
+    {
+      "content": "【ADL DS】已盘点，库位编号[01]。操作员【ADL-前台】",
+      "time": "2026-05-19 11:27:35",
+      "trackStageTx": "退件处理"
+    },
+    {
+      "content": "【】包裹确认派送结束, 将按照商家反馈意见[退返商家]进行处理。",
+      "time": "2026-05-18 08:01:04",
+      "trackStageTx": "退件处理"
+    },
+    {
+      "content": "【ADL DS】已盘点，库位编号[01]。操作员【ADL-前台】",
+      "time": "2026-05-17 13:40:01",
+      "trackStageTx": "派送"
+    },
+    {
+      "content": "【ADL DS】已进入NDR，NDR来源[超NDR派件次数/供应商退件到件]",
+      "time": "2026-05-16 09:26:51",
+      "trackStageTx": "派送"
+    },
+    {
+      "content": "【ADL DS】派件员已回到网点。操作员【ADL-前台】",
+      "time": "2026-05-16 09:26:51",
+      "trackStageTx": "派送"
+    },
+    {
+      "content": "【ADL DS】登记问题件[AUS| 店铺关门], 操作员【ADL-JC-027-DAVID BHARATBHAI PATEL】。【View Proof】",
+      "time": "2026-05-15 20:15:36",
+      "trackStageTx": "派送",
+      "trackType": "Problem"
+    },
+    {
+      "content": "【ADL DS】包裹正在派送中(派件员: ADL-JC-027-DAVID BHARATBHAI PATEL, ***)。操作员【ADL-JC-027-DAVID BHARATBHAI PATEL】",
+      "time": "2026-05-14 19:43:13",
+      "trackStageTx": "派送",
+      "trackType": "Delivery"
+    },
+    {
+      "content": "【ADL DS】已盘点，库位编号[01]。操作员【ADL-前台】",
+      "time": "2026-05-14 13:53:04",
+      "trackStageTx": "派送"
+    },
+    {
+      "content": "已预约【2026-05-18】进行派送。操作员【ADL OP1】",
+      "time": "2026-05-14 13:44:08",
+      "trackStageTx": "派送",
+      "trackType": "Schedule"
+    },
+    {
+      "content": "【ADL DS】派件员已回到网点。操作员【ADL-前台】",
+      "time": "2026-05-14 08:52:07",
+      "trackStageTx": "派送"
+    },
+    {
+      "content": "【ADL DS】登记问题件[AUS| 商业、办公室地址，无安全环境放包裹], 操作员【ARYAN VIJAYKUMAR PATEL】。【View Proof】",
+      "time": "2026-05-14 08:49:08",
+      "trackStageTx": "派送",
+      "trackType": "Problem"
+    },
+    {
+      "content": "【ADL DS】包裹正在派送中(派件员: ARYAN VIJAYKUMAR PATEL, ***)。操作员【ARYAN VIJAYKUMAR PATEL】",
+      "time": "2026-05-12 21:32:39",
+      "trackStageTx": "派送",
+      "trackType": "Delivery"
+    },
+    {
+      "content": "【ADL DS】派送任务已分配给派件员(派件员：ARYAN VIJAYKUMAR PATEL,电话：***)，待派件员领取包裹。 操作员【cornerstone】",
+      "time": "2026-05-12 20:47:45",
+      "trackStageTx": "派送"
+    },
+    {
+      "content": "【ADL DS】已盘点，库位编号[01]。操作员【ADL-前台】",
+      "time": "2026-05-12 13:47:54",
+      "trackStageTx": "派送"
+    },
+    {
+      "content": "【ADL DS】派件员已回到网点。操作员【ADL-前台】",
+      "time": "2026-05-12 10:04:34",
+      "trackStageTx": "派送"
+    },
+    {
+      "content": "【ADL DS】登记问题件[AUS| 商业、办公室地址，无安全环境放包裹], 操作员【ADL-JC-012-DESAI KEYUR JAYRAMBAHI AD】。【View Proof】",
+      "time": "2026-05-09 19:44:01",
+      "trackStageTx": "派送",
+      "trackType": "Problem"
+    },
+    {
+      "content": "【ADL DS】包裹正在派送中(派件员: ADL-JC-012-DESAI KEYUR JAYRAMBAHI AD, ***)。操作员【ADL-JC-012-DESAI KEYUR JAYRAMBAHI AD】",
+      "time": "2026-05-09 09:41:44",
+      "trackStageTx": "派送",
+      "trackType": "Delivery"
+    },
+    {
+      "content": "【ADL DS】派送任务已分配给派件员(派件员：ADL-JC-012-DESAI KEYUR JAYRAMBAHI AD,电话：***)，待派件员领取包裹。 操作员【cornerstone】",
+      "time": "2026-05-09 09:02:33",
+      "trackStageTx": "派送"
+    },
+    {
+      "content": "【ADL DS】已到达。操作员【System】 。",
+      "time": "2026-05-08 16:18:58",
+      "trackStageTx": "派送"
+    },
+    {
+      "content": "【Adelaide Center】完成待转发件，目的地【ADL DS】。操作员【System】",
+      "time": "2026-05-08 16:18:57",
+      "trackStageTx": "转运"
+    },
+    {
+      "content": "【Adelaide Center】已到达。操作员【ADL-DC-Miko】 。",
+      "time": "2026-05-08 16:18:56",
+      "trackStageTx": "转运"
+    },
+    {
+      "content": "【Adelaide Center】已揽收, 操作员【System】。",
+      "time": "2026-05-08 16:18:26",
+      "trackStageTx": "已揽件"
+    },
+    {
+      "content": "已通过[OpenApi]成功下单",
+      "time": "2026-05-05 00:05:57",
+      "trackStageTx": "订单提交"
+    }
+  ],
+  "interceptLogs": [
+    {
+      "waybillNo": "6050426015438",
+      "scanUserCode": "2103297501",
+      "scanUserName": "ADL OP1",
+      "gmtIntercept": "2026-05-09 10:15:09",
+      "operatorType": "unknown"
+    }
+  ]
+}

@@ -1,0 +1,121 @@
+{
+  "id": "6021726546262",
+  "orderNo": "6021726546262",
+  "capturedAt": "2026-05-23T13:56:43.125Z",
+  "expected": {
+    "lossScope": "库外丢失",
+    "exceptionCategoryId": "快递员丢失",
+    "reason": ""
+  },
+  "tracks": [
+    {
+      "content": "已预约【2026-03-06】进行派送。收件地址变更为[KILBURN,9 Hopetoun Avenue]。操作员【Lariosa, Chenelyn】",
+      "time": "2026-03-05 10:03:07",
+      "trackStageTx": "派送",
+      "trackType": "Schedule"
+    },
+    {
+      "content": "收件地址变更为[KILBURN,9 hopetoun Avenue Kilburn,5084]。操作员【ADL OP1】",
+      "time": "2026-03-04 12:05:10",
+      "trackStageTx": "派送"
+    },
+    {
+      "content": "【ADL DS】派件员已回到网点。操作员【ADL-前台】",
+      "time": "2026-03-04 11:56:03",
+      "trackStageTx": "派送"
+    },
+    {
+      "content": "【ADL DS】登记问题件[详细地址与行政区不匹配], 操作员【ADL-Dar-021-Hei Yin Martin Cheung】。【View Proof】",
+      "time": "2026-03-04 11:53:25",
+      "trackStageTx": "派送",
+      "trackType": "Problem"
+    },
+    {
+      "content": "【ADL DS】包裹正在派送中(派件员: ADL-Dar-021-Hei Yin Martin Cheung, ***)。操作员【ADL-强扫账户-4】",
+      "time": "2026-03-03 21:59:57",
+      "trackStageTx": "派送",
+      "trackType": "Delivery"
+    },
+    {
+      "content": "【ADL DS】派送任务已分配给派件员(派件员：ADL-Dar-021-Hei Yin Martin Cheung,电话：***)，待派件员领取包裹。 操作员【ADL-强扫账户-4】",
+      "time": "2026-03-03 21:59:56",
+      "trackStageTx": "派送"
+    },
+    {
+      "content": "【ADL DS】已到达。操作员【陈喆铭】 。",
+      "time": "2026-03-03 18:25:16",
+      "trackStageTx": "派送"
+    },
+    {
+      "content": "【Adelaide Center】已到达。操作员【ADL-DC-Kevin】 。",
+      "time": "2026-03-03 12:10:38",
+      "trackStageTx": "派送"
+    },
+    {
+      "content": "【Adelaide Center】包号[2602264375301]已到达。操作员【ADL-DC-Carman】 。",
+      "time": "2026-03-03 10:38:51",
+      "trackStageTx": "转运"
+    },
+    {
+      "content": "【Adelaide Center】集包/托盘[2602264375301]完成卸车，车辆任务编号【MELCA202602270009】。操作员【ADL-DC-Carman】",
+      "time": "2026-03-03 10:38:27",
+      "trackStageTx": "转运"
+    },
+    {
+      "content": "【ADL DS】已到达。操作员【System】 。",
+      "time": "2026-03-03 10:38:25",
+      "trackStageTx": "派送"
+    },
+    {
+      "content": "【Adelaide Center】完成待转发件，目的地【ADL DS】。操作员【System】",
+      "time": "2026-03-03 10:38:24",
+      "trackStageTx": "转运"
+    },
+    {
+      "content": "【Melbourne Center】包裹已发往【ADL DS】 ,包号 [2602264375301], 车辆任务编号【MELCA202602270009】。操作员【MEL_RDC_Scanner_03】",
+      "time": "2026-02-27 14:54:15",
+      "trackStageTx": "转运"
+    },
+    {
+      "content": "【Melbourne Center】完成待转发件，目的地【ADL DS】。操作员【MEL_RDC_Scanner_03】",
+      "time": "2026-02-27 14:54:14",
+      "trackStageTx": "转运"
+    },
+    {
+      "content": "【Melbourne Center】已装箱，集包号[2602264375301]，目的地【Adelaide Center】。操作员【MEL_RDC_Scanner_01】",
+      "time": "2026-02-26 17:26:57",
+      "trackStageTx": "转运"
+    },
+    {
+      "content": "【Melbourne Center】已到达。操作员【MEL_RDC_Scanner_01】 。",
+      "time": "2026-02-26 15:51:11",
+      "trackStageTx": "转运"
+    },
+    {
+      "content": "【Melbourne Center】已揽收, 操作员【System】。",
+      "time": "2026-02-26 15:50:41",
+      "trackStageTx": "已揽件"
+    },
+    {
+      "content": "已通过[OpenApi]成功下单",
+      "time": "2026-02-17 11:04:52",
+      "trackStageTx": "订单提交"
+    }
+  ],
+  "interceptLogs": [
+    {
+      "waybillNo": "6021726546262",
+      "scanUserCode": "D21029181701",
+      "scanUserName": "ADL-DPAC-Sai Kumar",
+      "gmtIntercept": "2026-03-05 18:32:02",
+      "operatorType": "courier"
+    },
+    {
+      "waybillNo": "6021726546262",
+      "scanUserCode": "D21029181701",
+      "scanUserName": "ADL-DPAC-Sai Kumar",
+      "gmtIntercept": "2026-03-05 18:31:58",
+      "operatorType": "courier"
+    }
+  ]
+}
