@@ -23,6 +23,7 @@ function attendanceRowToSheetRecord(row: ParsedAttendanceRowForLabor): Record<st
     工作日: row.workday ?? '',
     日期: row.date,
     总时长: row.hours,
+    工作时长: row.hours,
   }
 }
 
@@ -50,7 +51,11 @@ export function laborCostAndHoursSumByDateFromMappedRows(
     const d = convertDateToStandard(record.date ?? '')
     if (!d || !dateInWindow(d)) continue
 
-    const h = calculateDecimalHours(record.totalHours as string | number)
+    const h = calculateDecimalHours(
+      (record.effectiveHours as string | number) ??
+        (record.workHours as string | number) ??
+        (record.totalHours as string | number),
+    )
     const isPh = record.weekendOption === 'publicHoliday'
     const isSort = record.weekendOption === 'sorting'
     const rate = calculateHourlyRate(

@@ -112,13 +112,16 @@ export function UploadTabContent({
               <thead className="bg-gray-50">
                 <tr>
                   <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase">人员编号</th>
-                  <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase">姓名</th>
-                  <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase">姓氏</th>
                   <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase">昵称</th>
                   <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase">部门</th>
                   <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase">日期</th>
                   <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase">工作日</th>
+                  <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase">实际签到时间</th>
+                  <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase">实际签退时间</th>
                   <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase">总时长</th>
+                  <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase">工作时长</th>
+                  <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase">扣减</th>
+                  <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase">奖励</th>
                   <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase">角色</th>
                   <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase">日配置</th>
                   <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase">操作</th>
@@ -128,13 +131,16 @@ export function UploadTabContent({
                 {uploadedData.map((record, index) => (
                   <tr key={index} className="hover:bg-gray-50">
                     <td className="px-3 py-3 text-sm text-gray-900">{record.employeeId}</td>
-                    <td className="px-3 py-3 text-sm text-gray-900">{record.name || '-'}</td>
-                    <td className="px-3 py-3 text-sm text-gray-900">{record.surname || '-'}</td>
                     <td className="px-3 py-3 text-sm text-gray-600">{record.nickname || '-'}</td>
                     <td className="px-3 py-3 text-sm text-gray-600">{record.department}</td>
                     <td className="px-3 py-3 text-sm text-gray-600">{formatDate(record.date)}</td>
                     <td className="px-3 py-3 text-sm text-gray-600">{formatWorkday(record.workday)}</td>
-                    <td className="px-3 py-3 text-sm text-gray-600">{record.totalHours}</td>
+                    <td className="px-3 py-3 text-sm text-gray-600">{record.firstClockIn || '-'}</td>
+                    <td className="px-3 py-3 text-sm text-gray-600">{record.lastClockOut || '-'}</td>
+                    <td className="px-3 py-3 text-sm text-gray-600">{record.totalHours || '-'}</td>
+                    <td className="px-3 py-3 text-sm text-gray-600">{record.workHours || '-'}</td>
+                    <td className="px-3 py-3 text-sm text-gray-600">{record.deduction || '-'}</td>
+                    <td className="px-3 py-3 text-sm text-gray-600">{record.reward || '-'}</td>
                     <td className="px-3 py-3 text-sm">
                       <select
                         value={record.role}

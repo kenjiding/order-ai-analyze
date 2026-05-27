@@ -66,10 +66,10 @@ export function WageRecordsPanel({
       <div className="mb-4 p-4 bg-gray-50 rounded-lg border border-gray-200">
         <div className="grid grid-cols-1 md:grid-cols-[1fr_1fr_1fr_1fr_auto] gap-3 items-end">
           <div>
-            <label className="block text-xs font-medium text-gray-700 mb-1.5">人员编号/昵称/姓氏</label>
+            <label className="block text-xs font-medium text-gray-700 mb-1.5">人员编号/昵称</label>
             <input
               type="text"
-              placeholder="输入人员编号、昵称或姓氏..."
+              placeholder="输入人员编号或昵称..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
@@ -195,12 +195,15 @@ export function WageRecordsPanel({
               <thead className="bg-gray-50">
                 <tr>
                   <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase">人员编号</th>
-                  <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase">姓名</th>
-                  <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase">姓氏</th>
                   <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase">昵称</th>
                   <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase">日期</th>
                   <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase">工作日</th>
                   <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase">总时长</th>
+                  <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase">工作时长</th>
+                  <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase">实际签到时间</th>
+                  <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase">实际签退时间</th>
+                  <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase">扣减</th>
+                  <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase">奖励</th>
                   <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase">角色</th>
                   <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase">类型</th>
                   <th className="px-3 py-3 text-right text-xs font-medium text-gray-500 uppercase">时薪</th>
@@ -216,8 +219,6 @@ export function WageRecordsPanel({
                   return (
                     <tr key={record._id} className={`hover:bg-gray-50 ${isRowEditing ? 'bg-blue-50' : ''}`}>
                       <td className="px-3 py-3 text-sm text-gray-900">{record.employeeId}</td>
-                      <td className="px-3 py-3 text-sm text-gray-900">{record.name || '-'}</td>
-                      <td className="px-3 py-3 text-sm text-gray-900">{record.surname || '-'}</td>
                       <td className="px-3 py-3 text-sm text-gray-600">{record.nickname || '-'}</td>
                       <td className="px-3 py-3 text-sm text-gray-600">
                         {isRowEditing ? (
@@ -261,6 +262,9 @@ export function WageRecordsPanel({
                         )}
                       </td>
                       <td className="px-3 py-3 text-sm text-gray-600">
+                        <span>{record.totalHours || '-'}</span>
+                      </td>
+                      <td className="px-3 py-3 text-sm text-gray-600">
                         {isRowEditing ? (
                           <input
                             type="text"
@@ -275,14 +279,18 @@ export function WageRecordsPanel({
                               }))
                             }}
                             className="text-sm border border-gray-300 rounded px-2 py-1 w-20 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                            placeholder="总时长"
+                            placeholder="工作时长"
                           />
                         ) : (
                           <span>
-                            {record.totalHours} ({record.totalHoursDecimal.toFixed(2)}h)
+                            {record.workHours ?? '-'} ({record.totalHoursDecimal.toFixed(2)}h)
                           </span>
                         )}
                       </td>
+                      <td className="px-3 py-3 text-sm text-gray-600">{record.firstClockIn || '-'}</td>
+                      <td className="px-3 py-3 text-sm text-gray-600">{record.lastClockOut || '-'}</td>
+                      <td className="px-3 py-3 text-sm text-gray-600">{record.deduction || '-'}</td>
+                      <td className="px-3 py-3 text-sm text-gray-600">{record.reward || '-'}</td>
                       <td className="px-3 py-3 text-sm">
                         {isRowEditing ? (
                           <select
@@ -414,13 +422,14 @@ export function WageRecordsPanel({
               </tbody>
               <tfoot className="bg-gray-50">
                 <tr>
-                  <td colSpan="6" className="px-3 py-3 text-sm font-bold text-right text-gray-900">
+                  <td colSpan="7" className="px-3 py-3 text-sm font-bold text-right text-gray-900">
                     当前页总计:
                   </td>
                   <td className="px-3 py-3 text-sm text-right font-bold text-gray-900">
                     {paginatedRecords.reduce((sum, r) => sum + r.totalHoursDecimal, 0).toFixed(2)}h
                   </td>
-                  <td colSpan="3" className="px-3 py-3" aria-hidden />
+                  <td colSpan="4" className="px-3 py-3" aria-hidden />
+                  <td className="px-3 py-3" aria-hidden />
                   <td className="px-3 py-3 text-sm text-right font-bold text-green-600">
                     ${paginatedRecords.reduce((sum, r) => sum + r.totalWage, 0).toFixed(2)}
                   </td>

@@ -96,13 +96,15 @@ export function calculateDecimalHours(totalHours: string | number): number {
 export function recalcWageAmounts<
   R extends {
     totalHours: string | number
+    workHours?: string | number
     role: string
     workday?: string
     isSorting: boolean
     isPublicHoliday: boolean
   },
 >(record: R, rateSettings: RateSettings): R & { hourlyRate: number; totalHoursDecimal: number; totalWage: number } {
-  const totalHoursDecimal = calculateDecimalHours(record.totalHours)
+  const hoursSource = record.workHours ?? record.totalHours
+  const totalHoursDecimal = calculateDecimalHours(hoursSource)
   const hourlyRate = calculateHourlyRate(
     record.role,
     record.workday,

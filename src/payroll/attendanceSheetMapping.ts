@@ -1,9 +1,17 @@
 import { format } from 'date-fns'
 import { isWeekendWorkday, parseDate } from './attendanceDate'
+import { calculateDecimalHours } from './wageRateCalculation'
 
 export type EmployeeLite = { employeeId: string; role: string }
 
 const POSITION_TITLE_KEYS = ['职位名称', 'Job Title', 'jobTitle', 'Position', 'position'] as const
+const POSITION_CODE_KEYS = ['职位编号', 'Job Code', 'jobCode', 'Position Code', 'positionCode'] as const
+const CLOCK_IN_KEYS = ['实际签到时间', '实际签到', '首次打卡', 'First Clock In', 'firstClockIn'] as const
+const CLOCK_OUT_KEYS = ['实际签退时间', '实际签退', '最后打卡', 'Last Clock Out', 'lastClockOut'] as const
+const TOTAL_HOURS_KEYS = ['总时长', 'Total Hours', 'totalHours'] as const
+const WORK_HOURS_KEYS = ['工作时长', '工作时长(小时)', '工作时长（小时）', 'Work Hours', 'workHours'] as const
+const DEDUCTION_KEYS = ['扣减', '扣款', 'Deduction', 'deduction'] as const
+const REWARD_KEYS = ['奖励', '奖金', 'Reward', 'reward'] as const
 
 function cellString(row: Record<string, unknown>, keys: readonly string[]): string {
   for (const key of keys) {
@@ -19,11 +27,37 @@ function normalizePositionTitle(raw: string): string {
   return raw.replace(/\s+/g, ' ').trim().toLowerCase()
 }
 
+function resolveRoleByPositionTitle(positionTitle: string): string | null {
+  const posNorm = normalizePositionTitle(positionTitle)
+  if (!posNorm) return null
+
+  if (posNorm.includes('level 2-28')) {
+    return 'worker'
+  }
+
+  if (posNorm.includes('level 2-30') || posNorm.includes('level 3-30')) {
+    if (posNorm.includes('前台') || posNorm.includes('reception')) {
+      return 'receptionist'
+    }
+    return 'forklift'
+  }
+
+  return null
+}
+
+function resolveRoleByPositionCode(positionCodeRaw: string): string | null {
+  if (!positionCodeRaw) return null
+  const digits = positionCodeRaw.match(/\d+/)?.[0] ?? ''
+  if (digits === '28') return 'worker'
+  if (digits === '30') return 'forklift'
+  return null
+}
+
 /**
- * 考勤行 → 用于 `calculateHourlyRate` 的角色键，**只看「职位名称」列**（及员工表默认）。
- * - LEVEL 2-28 → 普通小工（worker）
- * - LEVEL 3-30 → 叉车（forklift）；若同格文本含「前台」或 reception → 前台（receptionist），时薪档与叉车一致
- * - 其它或空 → 员工表中该人员编号的角色，无则 worker
+ * 考勤行 → 用于 `calculateHourlyRate` 的角色键。
+ * - 「职位名称」有值时：按职位名称判定（LEVEL 2-28=worker，LEVEL 2-30=forklift/receptionist）
+ * - 「职位名称」为空时：按「职位编号」判定（28=worker，30=forklift）
+ * - 其余回退到员工表默认角色，无则 worker
  */
 export function resolveRoleFromAttendanceRow(
   row: Record<string, unknown>,
@@ -33,18 +67,13 @@ export function resolveRoleFromAttendanceRow(
   const baseRole = employeeRoleMap[employeeId] || 'worker'
 
   const positionTitle = cellString(row, POSITION_TITLE_KEYS)
-  const posNorm = positionTitle ? normalizePositionTitle(positionTitle) : ''
-
-  if (posNorm === 'level 2-28') {
-    return 'worker'
+  if (positionTitle) {
+    return resolveRoleByPositionTitle(positionTitle) || baseRole
   }
 
-  if (posNorm.includes('level 3-30')) {
-    if (posNorm.includes('前台') || posNorm.includes('reception')) {
-      return 'receptionist'
-    }
-    return 'forklift'
-  }
+  const positionCode = cellString(row, POSITION_CODE_KEYS)
+  const codeRole = resolveRoleByPositionCode(positionCode)
+  if (codeRole) return codeRole
 
   return baseRole
 }
@@ -104,6 +133,10 @@ export function transformSheetRowsToUploadedData(
       }
     }
 
+    const totalHours = cellString(row, TOTAL_HOURS_KEYS)
+    const workHours = cellString(row, WORK_HOURS_KEYS)
+    const effectiveHours = workHours || totalHours
+
     return {
       employeeId,
       /** 考勤表「姓名」，仅展示/导出用，不参与校验 */
@@ -113,9 +146,14 @@ export function transformSheetRowsToUploadedData(
       department: row['部门'] ?? row['Department'] ?? row['department'] ?? '',
       date: dateValue,
       workday: workdayValue,
-      firstClockIn: row['首次打卡'] ?? row['First Clock In'] ?? row['firstClockIn'] ?? '',
-      lastClockOut: row['最后打卡'] ?? row['Last Clock Out'] ?? row['lastClockOut'] ?? '',
-      totalHours: row['总时长'] ?? row['Total Hours'] ?? row['totalHours'] ?? '',
+      firstClockIn: cellString(row, CLOCK_IN_KEYS),
+      lastClockOut: cellString(row, CLOCK_OUT_KEYS),
+      totalHours,
+      workHours,
+      deduction: cellString(row, DEDUCTION_KEYS),
+      reward: cellString(row, REWARD_KEYS),
+      /** 工资结算统一口径：直接使用「工作时长」；不存在时回退「总时长」。 */
+      effectiveHours,
       role,
       isPublicHolidayRow,
       isSortingRow,
@@ -123,9 +161,14 @@ export function transformSheetRowsToUploadedData(
     }
   })
 
+  const validHoursData = mappedData.filter((record) => {
+    const h = calculateDecimalHours(record.effectiveHours as string | number)
+    return Number.isFinite(h) && h > 0
+  })
+
   const dateGroupMap = new Map<string, Set<string>>()
 
-  mappedData.forEach((record) => {
+  validHoursData.forEach((record) => {
     const dateObj = parseDate(record.date)
     if (dateObj) {
       const dateKey = format(dateObj, 'yyyy-MM-dd')
@@ -136,7 +179,7 @@ export function transformSheetRowsToUploadedData(
     }
   })
 
-  const processedData = mappedData.map((record) => {
+  const processedData = validHoursData.map((record) => {
     const dateObj = parseDate(record.date)
     if (dateObj && !record.isPublicHolidayRow) {
       const dateKey = format(dateObj, 'yyyy-MM-dd')

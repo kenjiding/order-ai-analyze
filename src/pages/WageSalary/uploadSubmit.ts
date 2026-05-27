@@ -23,7 +23,12 @@ export type NormalizedSubmitRow = {
   workday: string
   firstClockIn: string
   lastClockOut: string
+  /** 原表「总时长」仅展示用，不参与结算计算 */
   totalHours: string | number
+  /** 结算口径：优先使用导入表「工作时长」 */
+  workHours: string | number
+  deduction: string | number
+  reward: string | number
   role: string
   isSorting: boolean
   isPublicHoliday: boolean
@@ -42,10 +47,13 @@ export function normalizeUploadedRowsForSubmit(
       String(record.employeeId ?? '').trim() ||
       '未知'
 
-    if (!record.date || !record.totalHours) {
+    const effectiveHours = record.effectiveHours as string | number
+    const effectiveHoursDecimal = calculateDecimalHours(effectiveHours)
+
+    if (!record.date || effectiveHoursDecimal <= 0) {
       const missingFields: string[] = []
       if (!record.date) missingFields.push('日期')
-      if (!record.totalHours) missingFields.push('总时长')
+      if (effectiveHoursDecimal <= 0) missingFields.push('工作时长')
 
       validationErrors.push({
         index: i + 1,
@@ -93,6 +101,9 @@ export function normalizeUploadedRowsForSubmit(
       firstClockIn: String(record.firstClockIn ?? ''),
       lastClockOut: String(record.lastClockOut ?? ''),
       totalHours: record.totalHours as string | number,
+      workHours: effectiveHours,
+      deduction: String(record.deduction ?? ''),
+      reward: String(record.reward ?? ''),
       role: String(record.role || 'worker'),
       isSorting: recordIsSorting,
       isPublicHoliday: recordIsPublicHoliday,
@@ -115,7 +126,7 @@ export function buildWageRowsFromNormalized(
   const dupMap = new Map<string, Record<string, unknown>>()
 
   for (const rec of recordsToSubmit) {
-    const totalHoursDecimal = calculateDecimalHours(rec.totalHours)
+    const totalHoursDecimal = calculateDecimalHours(rec.workHours)
     const hourlyRate = calculateHourlyRate(
       rec.role,
       rec.workday,
@@ -137,6 +148,9 @@ export function buildWageRowsFromNormalized(
       firstClockIn: rec.firstClockIn || '',
       lastClockOut: rec.lastClockOut || '',
       totalHours: rec.totalHours,
+      workHours: rec.workHours,
+      deduction: rec.deduction,
+      reward: rec.reward,
       role: rec.role || 'worker',
       isSorting: rec.isSorting,
       isPublicHoliday: rec.isPublicHoliday,

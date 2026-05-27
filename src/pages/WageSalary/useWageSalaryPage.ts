@@ -366,7 +366,7 @@ export function useWageSalaryPage() {
       [record._id]: {
         date: convertDateToStandard(record.date),
         workday: record.workday || '',
-        totalHours: record.totalHours || '',
+        totalHours: record.workHours ?? record.totalHours ?? '',
         role: record.role,
         isPublicHoliday: record.isPublicHoliday || false,
         isSorting: record.isSorting || false,
@@ -389,6 +389,7 @@ export function useWageSalaryPage() {
       date: editData.date,
       workday: editData.workday,
       totalHours: editData.totalHours,
+      workHours: editData.totalHours,
       role: editData.role,
       isPublicHoliday: editData.isPublicHoliday,
       isSorting: editData.isSorting,
