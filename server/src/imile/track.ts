@@ -313,53 +313,9 @@ function stripHtmlToPlainText(html: string): string {
     .trim()
 }
 
-/** 与 src/utils/stripHtmlToPlainText.ts maskPhoneNumbersInText 保持同步 */
-function maskPhoneNumbersInText(text: string): string {
-  if (!text) return text
-  let s = text
-
-  const cnMobile =
-    /(?<![0-9])(?:\+?86(?:[-\s]|\u00b7|\u2022)*|0086(?:[-\s]|\u00b7|\u2022)*)?1[3-9](?:[-\s·•]?\d){9}(?![0-9])/g
-  s = s.replace(cnMobile, '***')
-
-  const auIntlMobile =
-    /(?<![0-9])\+?61(?:[-\s·•]*)4(?:[-\s·•]*\d){8}(?![0-9])/g
-  s = s.replace(auIntlMobile, '***')
-
-  const auIDD61Mobile = /(?<![0-9])0061(?:[-\s·•]*)4(?:[-\s·•]*\d){8}(?![0-9])/g
-  s = s.replace(auIDD61Mobile, '***')
-
-  const auDomesticMobile = /(?<![0-9])04(?:[-\s·•]*\d){8}(?![0-9])/g
-  s = s.replace(auDomesticMobile, '***')
-
-  const auIntlLandline =
-    /(?<![0-9])\+?61(?:[-\s·•]*)(?:2|3|7|8)(?:[-\s·•]*\d){8}(?![0-9])/g
-  s = s.replace(auIntlLandline, '***')
-
-  const auNatLandline =
-    /(?<![0-9])0(?:[-\s·•]*)(?:2|3|7|8)(?:[-\s·•]*\d){8}(?![0-9])/g
-  s = s.replace(auNatLandline, '***')
-
-  const cnLandline = /(?<![0-9])0\d{2,3}[-\s·•]?\d{7,8}(?![0-9])/g
-  s = s.replace(cnLandline, '***')
-
-  const cnToll400800 = /(?<![0-9])[48]00[-\s·•]?\d{3}[-\s·•]?\d{4}(?![0-9])/g
-  s = s.replace(cnToll400800, '***')
-
-  return s
-}
-
-/** 与 src/utils/stripHtmlToPlainText.ts stripIdColonLabels 保持同步 */
-function stripIdColonLabels(text: string): string {
-  if (!text) return text
-  const re = /\b[Ii][Dd]\s*[:：]\s*[^\s，。；、）)\]\n\r]+/g
-  return text.replace(re, '').replace(/\s{2,}/g, ' ').trim()
-}
-
+/** 异常订单分析链路保留完整轨迹文本，仅去除 HTML 噪音。 */
 function sanitizeTrackPlainText(html: string): string {
-  const plain = stripHtmlToPlainText(html)
-  const masked = maskPhoneNumbersInText(plain)
-  return stripIdColonLabels(masked)
+  return stripHtmlToPlainText(html)
 }
 
 function normalizeTrackTime(raw: string): string {
@@ -373,7 +329,7 @@ function normalizeTrackTime(raw: string): string {
   return `${date} ${pad(m[4])}:${pad(m[5])}:${pad(m[6] ?? '0')}`
 }
 
-/** 与路由层、入参归一化共用：除 `<important>` 外无 HTML 标签，号码脱敏。 */
+/** 与路由层、入参归一化共用：保留完整业务文本，仅去除 HTML 标签。 */
 export function normalizeTrackEvent(raw: unknown): TrackEvent {
   const row = raw as { content?: string; time?: string; trackStageTx?: string; trackType?: string }
   const txRaw = row?.trackStageTx != null ? String(row.trackStageTx) : ''

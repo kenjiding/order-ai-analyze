@@ -4,7 +4,7 @@ const COMMON_SYSTEM_OPERATORS = ['System', 'cornerstone'] as const
 
 const COMMON_NON_REAL_OPERATORS = ['ADL-DC-Unload', 'ADL-shigong8', 'Kuangyi Gao', 'Leeki'] as const
 
-export const DEFAULT_WAREHOUSE_LOSS_TIMEOUT_DAYS = 7
+export const DEFAULT_WAREHOUSE_LOSS_TIMEOUT_DAYS = 15
 
 function normalizeText(raw: string): string {
   return raw.trim().toLowerCase().replace(/\s+/g, '')

@@ -23,6 +23,7 @@ import { showToast } from '../../utils/toast'
 
 const ANALYZE_AI_PROVIDER_KEY = 'order_exception_analyze_ai_v1'
 const BATCH_ANALYZE_KEY = 'order_exception_batch_analyze_v1'
+const TRACK_DRIVER_ID_RE = /\bID\s*[:：]\s*(D[0-9A-Za-z-]+)/i
 
 function readStoredAnalyzeAiProvider(): OrderAnalyzeAiProvider {
   if (typeof localStorage === 'undefined') return 'deepseek'
@@ -59,6 +60,7 @@ export type AnalysisRow = {
   trackEvents: TrackEvent[]
   interceptLogs: OrderAnalyzeInterceptLog[]
   latestResponsibilityTrackMarker?: ResponsibilityTrackMarker | null
+  detectedDriverId?: string
   needsReview?: boolean
   crossCheckedBy?: string | null
   status?: AnalysisRowStatus
@@ -105,8 +107,46 @@ function createPendingAnalysisRow(orderNo: string): AnalysisRow {
     confidence: '—',
     trackEvents: [],
     interceptLogs: [],
+    detectedDriverId: '',
     status: 'pending',
   }
+}
+
+function extractDriverIdFromTrackContent(content: string): string {
+  const match = TRACK_DRIVER_ID_RE.exec(content)
+  return match?.[1]?.trim() ?? ''
+}
+
+function deriveDetectedDriverId(
+  latestResponsibilityTrackMarker: ResponsibilityTrackMarker | null | undefined,
+  trackEvents: TrackEvent[],
+  interceptLogs: OrderAnalyzeInterceptLog[]
+): string {
+  const marker = latestResponsibilityTrackMarker ?? null
+
+  if (marker?.source === 'track') {
+    const matchedTrack = trackEvents.find((event) => event.time === marker.time)
+    const fromTrack = matchedTrack ? extractDriverIdFromTrackContent(matchedTrack.content) : ''
+    if (fromTrack) return fromTrack
+  }
+
+  if (marker?.source === 'intercept') {
+    const matchedIntercept = interceptLogs.find((log) => log.gmtIntercept === marker.time)
+    const fromIntercept = matchedIntercept?.scanUserCode.trim() ?? ''
+    if (fromIntercept) return fromIntercept
+  }
+
+  const latestTrackDriverId = [...trackEvents]
+    .sort((a, b) => b.time.localeCompare(a.time))
+    .map((event) => extractDriverIdFromTrackContent(event.content))
+    .find(Boolean)
+  if (latestTrackDriverId) return latestTrackDriverId
+
+  const latestInterceptDriverId = [...interceptLogs]
+    .sort((a, b) => b.gmtIntercept.localeCompare(a.gmtIntercept))
+    .map((log) => log.scanUserCode.trim())
+    .find(Boolean)
+  return latestInterceptDriverId ?? ''
 }
 
 function mapAnalyzeHitToRow(
@@ -142,6 +182,7 @@ function mapAnalyzeHitToRow(
     trackEvents,
     interceptLogs,
     latestResponsibilityTrackMarker: hit.latestResponsibilityTrackMarker ?? null,
+    detectedDriverId: deriveDetectedDriverId(hit.latestResponsibilityTrackMarker, trackEvents, interceptLogs),
     needsReview: hit.needsReview ?? false,
     crossCheckedBy: hit.crossCheckedBy ?? null,
     status: 'done',

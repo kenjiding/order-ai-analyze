@@ -55,6 +55,8 @@ const OPERATOR_TYPE_LABEL: Record<string, { color: string; label: string }> = {
   unknown: { color: 'default', label: '未知角色' },
 }
 
+const TRACK_DRIVER_ID_RE = /\bID\s*[:：]\s*(D[0-9A-Za-z-]+)/gi
+
 function sortTrackEventsDesc(events: TrackEvent[]): TrackEvent[] {
   return [...events].sort((a, b) => b.time.localeCompare(a.time))
 }
@@ -96,19 +98,43 @@ function inferClosureExceptionTypeKey(row: Row): ClosureExceptionTypeKey | null 
   return null
 }
 
-function extractDriverIdForOutResponsibility(row: Row): string {
-  if (!isOutResponsibility(row)) return ''
-  const marker = row.latestResponsibilityTrackMarker
-  if (marker?.source === 'intercept' && marker.owner === 'out_warehouse') {
-    const match = row.interceptLogs.find(
-      (log) => log.gmtIntercept === marker.time && log.operatorType === 'courier' && /^D/i.test(log.scanUserCode)
+function renderTrackContentWithDriverIdClickable(
+  content: string,
+  onPickDriverId: (driverId: string) => void
+): ReactNode {
+  const nodes: ReactNode[] = []
+  let lastIndex = 0
+  let matched = false
+
+  for (const match of content.matchAll(TRACK_DRIVER_ID_RE)) {
+    const index = match.index ?? 0
+    const fullText = match[0]
+    const driverId = match[1]?.trim() ?? ''
+    if (!driverId) continue
+    matched = true
+
+    if (index > lastIndex) {
+      nodes.push(content.slice(lastIndex, index))
+    }
+
+    nodes.push(
+      <button
+        key={`${index}-${driverId}`}
+        type="button"
+        onClick={() => onPickDriverId(driverId)}
+        className="mx-0.5 inline-flex items-center rounded px-1 py-0.5 font-mono text-[12px] font-semibold text-[#1f6f68] underline decoration-dotted underline-offset-2 hover:bg-emerald-50 hover:text-[#2f8f87] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#2f8f87]/30"
+        title={`点击回填派送员 ID：${driverId}`}
+      >
+        {fullText}
+      </button>
     )
-    if (match) return match.scanUserCode
+
+    lastIndex = index + fullText.length
   }
 
-  const sortedLogs = sortInterceptLogsDesc(row.interceptLogs)
-  const latestCourier = sortedLogs.find((log) => log.operatorType === 'courier' && /^D/i.test(log.scanUserCode))
-  return latestCourier?.scanUserCode ?? ''
+  if (!matched) return content
+  if (lastIndex < content.length) nodes.push(content.slice(lastIndex))
+  return nodes
 }
 
 function renderReasonCell(r: Row): ReactNode {
@@ -300,6 +326,7 @@ export function AnalysisTabContent({
   const [vendorOptions, setVendorOptions] = useState<ClosureVendorOption[]>([])
   const [selectedVendorKey, setSelectedVendorKey] = useState('')
   const [detectedDriverId, setDetectedDriverId] = useState('')
+  const [pendingAutoResolveDriverId, setPendingAutoResolveDriverId] = useState('')
   const [vendorAutoFillTip, setVendorAutoFillTip] = useState('')
   const [submitPreview, setSubmitPreview] = useState('')
   const [isLoadingVendors, setIsLoadingVendors] = useState(false)
@@ -332,6 +359,7 @@ export function AnalysisTabContent({
       setVendorOptions([])
       setSelectedVendorKey('')
       setDetectedDriverId('')
+      setPendingAutoResolveDriverId('')
       setVendorAutoFillTip('')
       setSubmitPreview('')
       return
@@ -343,7 +371,8 @@ export function AnalysisTabContent({
     setSelectedVendorKey('')
     setSubmitPreview('')
     setVendorAutoFillTip('')
-    setDetectedDriverId(extractDriverIdForOutResponsibility(detailRow))
+    setDetectedDriverId(detailRow.detectedDriverId ?? '')
+    setPendingAutoResolveDriverId(detailRow.detectedDriverId ?? '')
   }, [detailRow])
 
   const loadClosureVendors = useCallback(async () => {
@@ -383,6 +412,7 @@ export function AnalysisTabContent({
           return
         }
 
+        setVendorAutoFillTip('')
         setVendorOptions((prev) => {
           const exists = prev.some((x) => x.key === result.vendorCode)
           if (exists) return prev
@@ -400,14 +430,30 @@ export function AnalysisTabContent({
     [imileToken]
   )
 
+  const handleTrackDriverIdPick = useCallback(
+    (driverId: string) => {
+      setDetectedDriverId(driverId)
+      setSelectedVendorKey('')
+      setVendorAutoFillTip('')
+      const nextStationCode = stationCode.trim()
+      if (nextStationCode) {
+        setPendingAutoResolveDriverId('')
+        void resolveVendorByDriver(driverId, nextStationCode)
+        return
+      }
+      setPendingAutoResolveDriverId(driverId)
+    },
+    [resolveVendorByDriver, stationCode]
+  )
+
   useEffect(() => {
     if (!detailRow) return
     if (!isOutResponsibility(detailRow)) return
-    const driverId = extractDriverIdForOutResponsibility(detailRow)
-    setDetectedDriverId(driverId)
+    const driverId = pendingAutoResolveDriverId.trim()
     if (!driverId || !stationCode.trim()) return
     void resolveVendorByDriver(driverId, stationCode.trim())
-  }, [detailRow, stationCode, resolveVendorByDriver])
+    setPendingAutoResolveDriverId('')
+  }, [detailRow, pendingAutoResolveDriverId, stationCode, resolveVendorByDriver])
 
   const sortedTrackEvents = useMemo(
     () => (detailRow ? sortTrackEventsDesc(detailRow.trackEvents) : []),
@@ -766,7 +812,12 @@ export function AnalysisTabContent({
                   <Form.Item label="派送员 ID" className="mb-3">
                     <Input
                       value={detectedDriverId}
-                      onChange={(e) => setDetectedDriverId(e.target.value.trim())}
+                      onChange={(e) => {
+                        setDetectedDriverId(e.target.value.trim())
+                        setSelectedVendorKey('')
+                        setVendorAutoFillTip('')
+                        setPendingAutoResolveDriverId('')
+                      }}
                       placeholder="可手动输入"
                       className="font-mono"
                     />
@@ -847,7 +898,7 @@ export function AnalysisTabContent({
                                   isLatestResponsibilityTrack ? 'text-red-700' : 'text-slate-800'
                                 }`}
                               >
-                                {evt.content}
+                                {renderTrackContentWithDriverIdClickable(evt.content, handleTrackDriverIdPick)}
                               </p>
                             </div>
                           ),

@@ -33,6 +33,24 @@ function baseResult(patch: Partial<OrderAnalyzeResult> = {}): OrderAnalyzeResult
   }
 }
 
+test('normalizeTrackEvent 保留完整业务文本仅去掉 HTML', () => {
+  const normalized = normalizeTrackEvent({
+    time: '2026.05.01 21:04',
+    trackType: '<span>Delivery</span>',
+    trackStageTx: '<b>派送</b>',
+    content:
+      '【ADL DS】包裹正在派送中(派件员: ADL-JC-city-A,ID: D001,电话: +61 412 345 678)。<script>alert(1)</script>操作员【ADL-JC-city-A】',
+  })
+
+  assert.deepEqual(normalized, {
+    time: '2026-05-01 21:04:00',
+    trackType: 'Delivery',
+    trackStageTx: '派送',
+    content:
+      '【ADL DS】包裹正在派送中(派件员: ADL-JC-city-A,ID: D001,电话: +61 412 345 678)。操作员【ADL-JC-city-A】',
+  })
+})
+
 test('商家销毁终态优先纠正为暂无异常', () => {
   const facts = deriveTrackFacts([
     track('2024-01-01 10:00:00', '操作员【10001】 已盘点'),

@@ -1,6 +1,6 @@
 import type { DBSchema } from 'idb'
 import { createSingletonIdb } from '../../storage/createSingletonIdb'
-import { sanitizeTrackPlainText } from '../../utils/stripHtmlToPlainText'
+import { stripHtmlToPlainText } from '../../utils/stripHtmlToPlainText'
 import type { ExceptionCategoryEntity, ExceptionSampleEntity, TrackEvent } from './types'
 import { normalizeLossScope } from './types'
 import type { OrderExceptionRepository } from './repository.contract'
@@ -56,9 +56,9 @@ function normalizeCategoryRow(raw: ExceptionCategoryEntity): ExceptionCategoryEn
 function stripTrackHtml(tracks: TrackEvent[]): TrackEvent[] {
   return tracks.map((t) => ({
     ...t,
-    content: sanitizeTrackPlainText(t.content),
+    content: stripHtmlToPlainText(t.content),
     ...(t.trackStageTx !== undefined
-      ? { trackStageTx: sanitizeTrackPlainText(String(t.trackStageTx)) || undefined }
+      ? { trackStageTx: stripHtmlToPlainText(String(t.trackStageTx)) || undefined }
       : {}),
   }))
 }
