@@ -43,6 +43,27 @@ function withRuleHit(input: {
   }
 }
 
+function expectedScopeFromFinalResponsibility(facts: TrackFacts): AiLossScope | null {
+  if (!facts.finalResponsibilityOwner || facts.finalResponsibilityDaysDiff < 0) return null
+
+  if (
+    facts.finalResponsibilityOwner === 'in_warehouse' &&
+    (facts.finalResponsibilityDaysDiff >= facts.activeWarehouseLossTimeoutDays ||
+      (facts.assignCancelLoopWithoutDispatch && facts.finalResponsibilityDaysDiff >= 5))
+  ) {
+    return '库内丢失'
+  }
+
+  if (
+    facts.finalResponsibilityOwner === 'out_warehouse' &&
+    facts.finalResponsibilityDaysDiff >= facts.activeWarehouseLossTimeoutDays
+  ) {
+    return '库外丢失'
+  }
+
+  return '暂无异常'
+}
+
 export const DECISION_RULES: readonly DecisionRule[] = [
   {
     id: 'merchant_destroy_terminal',
@@ -127,11 +148,12 @@ export const DECISION_RULES: readonly DecisionRule[] = [
   },
   {
     id: 'merchant_storage_superseded_by_progress',
-    priority: 14,
-    description: '暂存后出现退件意见或装箱转运等明确业务推进时，不再沿用暂存子类型。',
+    priority: 48,
+    description: '暂存后出现退件意见或装箱转运等明确业务推进时，只清理暂存子类型，不覆盖当前责任事实。',
     match: ({ result, facts }) =>
       facts.merchantStorageSupersededByBusinessProgress &&
-      (result.lossScope !== '暂无异常' || result.exceptionCategoryId === '暂存'),
+      result.lossScope === '暂无异常' &&
+      result.exceptionCategoryId === '暂存',
     resolve: ({ result, facts }) => {
       const hit = `暂存后已出现新的业务推进（${facts.merchantStorageBusinessProgressTime ?? '-'}，${facts.merchantStorageBusinessProgressEvidence ?? '命中后续业务轨迹'}），应以最新轨迹为准，不再使用暂存子类型`
       return withRuleHit({
@@ -366,11 +388,11 @@ export const DECISION_RULES: readonly DecisionRule[] = [
       !facts.merchantReturnConfirmed &&
       facts.activeResponsibilityOwner === 'company_warehouse' &&
       facts.activeSegmentStatus === 'in_warehouse' &&
-      facts.inWarehouseDaysDiff >= 0 &&
-      facts.inWarehouseDaysDiff < facts.activeWarehouseLossTimeoutDays &&
+      facts.finalResponsibilityDaysDiff >= 0 &&
+      facts.finalResponsibilityDaysDiff < facts.activeWarehouseLossTimeoutDays &&
       (result.lossScope !== '暂无异常' || result.exceptionCategoryId === '退返商家'),
     resolve: ({ result, facts }) => {
-      const hit = `商家已给出退返处理方向（${facts.merchantReturnRequestTime ?? '-'}），但尚未出现退返集包责任转移/已退返商家/签收等信号；当前仓内起算距今 ${facts.inWarehouseDaysDiff} 天，未达到当前仓库 ${facts.activeWarehouseLossTimeoutDays} 天阈值`
+      const hit = `商家已给出退返处理方向（${facts.merchantReturnRequestTime ?? '-'}），但尚未出现退返集包责任转移/已退返商家/签收等信号；当前最终责任点距今 ${facts.finalResponsibilityDaysDiff} 天，未达到当前仓库 ${facts.activeWarehouseLossTimeoutDays} 天阈值`
       return withRuleHit({
         result,
         ruleId: 'merchant_return_in_progress_not_terminal',
@@ -438,8 +460,16 @@ export const DECISION_RULES: readonly DecisionRule[] = [
       !facts.merchantReturnResponsibilityTransferred &&
       facts.finalResponsibilityOwner !== null &&
       facts.finalResponsibilityStartTime !== null &&
-      (facts.interceptAdjustedResponsibilityOwner !== null ||
-        (facts.finalResponsibilityOwner === 'in_warehouse' && result.lossScope === '库外丢失')),
+      (() => {
+        const expectedScope = expectedScopeFromFinalResponsibility(facts)
+        if (!expectedScope) return false
+        if (expectedScope === '暂无异常') {
+          if (facts.finalResponsibilityOwner === 'in_warehouse') return result.lossScope === '库外丢失'
+          if (facts.finalResponsibilityOwner === 'out_warehouse') return result.lossScope === '库内丢失'
+          return false
+        }
+        return result.lossScope !== expectedScope
+      })(),
     resolve: ({ result, facts }) => {
       const owner = facts.finalResponsibilityOwner
       const days = facts.finalResponsibilityDaysDiff

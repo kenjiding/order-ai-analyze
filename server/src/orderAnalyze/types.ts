@@ -16,7 +16,7 @@ export type AnalyzeTarget = {
   interceptLogs?: ScanInterceptLog[]
 }
 
-export type WarehouseCityId = 'ADL' | 'MEL' | 'PER' | 'SYD' | 'BNE' | 'QLD'
+export type WarehouseCityId = 'ADL' | 'MEL' | 'PER' | 'SYD' | 'BNE' | 'QLD' | 'CBR'
 
 /** 真实操作员匹配规则：正则表达式或精确账号名（大小写不敏感） */
 export type RealOperatorPattern = RegExp | string

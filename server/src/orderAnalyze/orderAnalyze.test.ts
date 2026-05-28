@@ -230,6 +230,74 @@ test('暂存后出现退件意见时释放暂存，但不当作退返闭环', ()
   assert.equal(guarded.appliedDecisionRuleId, 'merchant_storage_superseded_by_progress')
 })
 
+test('暂存释放后库内最终责任已超时，原始库内判断不应被事实校验反转', () => {
+  const interceptTime = daysAgo(19, '07:40:19')
+  const facts = deriveTrackFacts(
+    [
+      track(daysAgo(25, '13:53:57'), '【Canberra Station】已盘点，库位编号[CBR2-1]。操作员【CBR Warehouse3】'),
+      track(daysAgo(22, '08:03:20'), '【Canberra Station】包裹确认派送结束, 将按照商家反馈意见[暂存]进行处理。'),
+      track(daysAgo(21, '16:18:10'), '【Canberra Station】已装箱，集包号[2605064728701]，目的地【Sydney Center】。操作员【CBR Warehouse3】'),
+      track(daysAgo(20, '13:26:41'), '【Sydney Center】已收到退件包裹。操作员【SYD-Force Assign-1】'),
+      track(daysAgo(20, '15:50:55'), '商家已反馈退件处理意见[RTC]，操作员【刘欣】', '', '退件处理'),
+    ],
+    [
+      {
+        waybillNo: '6040726375227',
+        scanUserCode: '2104556001',
+        scanUserName: 'CBR Warehouse3',
+        gmtIntercept: interceptTime,
+        operatorType: 'scanner',
+      },
+    ]
+  )
+  const guarded = applyFactGuardrails(
+    baseResult({ lossScope: '库内丢失', exceptionCategoryId: '扫描员丢失', reason: '模型初判库内超时' }),
+    facts
+  )
+
+  assert.equal(facts.merchantStorageSupersededByBusinessProgress, true)
+  assert.equal(facts.merchantReturnRequested, true)
+  assert.equal(facts.activeWarehouseName, 'Sydney Center')
+  assert.equal(facts.finalResponsibilityOwner, 'in_warehouse')
+  assert.equal(facts.finalResponsibilityDaysDiff >= facts.activeWarehouseLossTimeoutDays, true)
+  assert.equal(guarded.lossScope, '库内丢失')
+  assert.equal(guarded.exceptionCategoryId, '扫描员丢失')
+  assert.equal(guarded.appliedDecisionRuleId, undefined)
+})
+
+test('暂存释放后库内最终责任已超时，AI 暂无异常误判应被强事实纠正', () => {
+  const interceptTime = daysAgo(19, '07:40:19')
+  const facts = deriveTrackFacts(
+    [
+      track(daysAgo(25, '13:53:57'), '【Canberra Station】已盘点，库位编号[CBR2-1]。操作员【CBR Warehouse3】'),
+      track(daysAgo(22, '08:03:20'), '【Canberra Station】包裹确认派送结束, 将按照商家反馈意见[暂存]进行处理。'),
+      track(daysAgo(21, '16:18:10'), '【Canberra Station】已装箱，集包号[2605064728701]，目的地【Sydney Center】。操作员【CBR Warehouse3】'),
+      track(daysAgo(20, '13:26:41'), '【Sydney Center】已收到退件包裹。操作员【SYD-Force Assign-1】'),
+      track(daysAgo(20, '15:50:55'), '商家已反馈退件处理意见[RTC]，操作员【刘欣】', '', '退件处理'),
+    ],
+    [
+      {
+        waybillNo: '6040726375227',
+        scanUserCode: '2104556001',
+        scanUserName: 'CBR Warehouse3',
+        gmtIntercept: interceptTime,
+        operatorType: 'scanner',
+      },
+    ]
+  )
+  const guarded = applyFactGuardrails(
+    baseResult({ lossScope: '暂无异常', exceptionCategoryId: '暂存', reason: '模型误按暂存终态' }),
+    facts
+  )
+
+  assert.equal(facts.merchantStorageSupersededByBusinessProgress, true)
+  assert.equal(facts.finalResponsibilityOwner, 'in_warehouse')
+  assert.equal(facts.finalResponsibilityDaysDiff >= facts.activeWarehouseLossTimeoutDays, true)
+  assert.equal(guarded.lossScope, '库内丢失')
+  assert.equal(guarded.exceptionCategoryId, '扫描员丢失')
+  assert.notEqual(guarded.appliedDecisionRuleId, 'merchant_storage_superseded_by_progress')
+})
+
 test('商家退返方向未闭环且未超时，不使用退返商家子类型', () => {
   const inventoryTime = daysAgo(1, '10:00:00')
   const returnRequestTime = daysAgo(1, '16:18:05')
@@ -891,6 +959,20 @@ test('SYD CSP 7 使用 JCL warehouse 数字账号可识别为真实扫描员', (
 
   assert.equal(profile?.hubId, 'syd_csp_7')
   assert.equal(classification, 'real')
+})
+
+test('Canberra Station 使用 CBR Warehouse 数字账号可识别为真实扫描员', () => {
+  const profile = findWarehouseProfileByName('Canberra Station')
+  const classification = classifyOperatorForWarehouse('CBR Warehouse3', profile)
+  const facts = deriveTrackFacts([
+    track(daysAgo(1), '【Canberra Station】已盘点，库位编号[CBR2-1]。操作员【CBR Warehouse3】'),
+  ])
+
+  assert.equal(profile?.hubId, 'canberra_station')
+  assert.equal(classification, 'real')
+  assert.equal(facts.activeWarehouseCityId, 'CBR')
+  assert.equal(facts.activeWarehouseHubId, 'canberra_station')
+  assert.equal(facts.hasRealOperatorScan, true)
 })
 
 test('SYD Warehouse 数字账号可作为 Sydney Center 内部转仓起算候选', () => {

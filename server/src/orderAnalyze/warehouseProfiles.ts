@@ -63,6 +63,14 @@ export const WAREHOUSE_PROFILES: readonly WarehouseProfile[] = [
     systemOperators: [...COMMON_SYSTEM_OPERATORS, 'Townsville Station'],
   },
   {
+    cityId: 'CBR',
+    hubId: 'canberra_station',
+    displayName: 'Canberra Station',
+    aliases: ['Canberra Station', 'Canberra station'],
+    realOperatorPatterns: [/^CBR Warehouse\d+$/i],
+    systemOperators: COMMON_SYSTEM_OPERATORS,
+  },
+  {
     cityId: 'PER',
     hubId: 'perth_placeholder',
     displayName: 'Perth',
