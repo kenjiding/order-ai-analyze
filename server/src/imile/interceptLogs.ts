@@ -24,6 +24,10 @@ export type InterceptOperatorType = 'courier' | 'scanner' | 'unknown'
 
 export type ScanInterceptLog = {
   waybillNo: string
+  gmtScan?: string
+  scanTypeDesc?: string
+  scanOcName?: string
+  interceptReasonDesc?: string
   scanUserCode: string
   scanUserName: string
   gmtIntercept: string
@@ -80,15 +84,23 @@ function buildInterceptUrl(waybillNo: string): string {
 function normalizeInterceptLog(row: Record<string, unknown>, fallbackWaybillNo: string): ScanInterceptLog | null {
   const scanUserCode = String(row.scanUserCode ?? '').trim()
   const scanUserName = String(row.scanUserName ?? '').trim()
+  const gmtScan = String(row.gmtScan ?? row.gmtIntercept ?? '').trim()
+  const scanTypeDesc = String(row.scanTypeDesc ?? '').trim()
+  const scanOcName = String(row.scanOcName ?? '').trim()
+  const interceptReasonDesc = String(row.interceptReasonDesc ?? '').trim()
   const gmtIntercept = String(row.gmtIntercept ?? '').trim()
-  if (!scanUserCode || !gmtIntercept) return null
+  if (!scanUserCode || !gmtScan) return null
   if (scanUserCode.toLowerCase() === 'cornerstone') return null
 
   return {
     waybillNo: String(row.waybillNo ?? row.orderNo ?? fallbackWaybillNo).trim() || fallbackWaybillNo,
+    gmtScan,
+    scanTypeDesc,
+    scanOcName,
+    interceptReasonDesc,
     scanUserCode,
     scanUserName,
-    gmtIntercept,
+    gmtIntercept: gmtIntercept || gmtScan,
     operatorType: classifyInterceptOperator(scanUserCode, scanUserName),
   }
 }

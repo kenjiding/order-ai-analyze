@@ -9,6 +9,7 @@ import { normalizeSubType } from './exceptionCatalog'
 import { parseOrderAnalyzeResults, prepareAnalyzeCategories } from './prompt'
 import { deriveTrackFacts, summarizeTracks } from './trackFacts'
 import { formatCurrentResponsibilityParty } from './pipeline'
+import { classifyOperatorForWarehouse, findWarehouseProfileByName } from './warehouseProfiles'
 import type { OrderAnalyzeResult, TrackFacts } from './types'
 
 function track(time: string, content: string, trackType = '', trackStageTx = ''): TrackEvent {
@@ -882,6 +883,14 @@ test('历史暂存不应屏蔽后续新责任段的当前责任方', () => {
   assert.equal(facts.merchantStorageActive, true)
   assert.equal(facts.activeWarehouseName, 'Sydney Center')
   assert.equal(formatCurrentResponsibilityParty(facts), 'Sydney Center')
+})
+
+test('SYD CSP 7 使用 JCL warehouse 数字账号可识别为真实扫描员', () => {
+  const profile = findWarehouseProfileByName('SYD CSP 7')
+  const classification = classifyOperatorForWarehouse('JCL warehouse12', profile)
+
+  assert.equal(profile?.hubId, 'syd_csp_7')
+  assert.equal(classification, 'real')
 })
 
 test('SYD Warehouse 数字账号可作为 Sydney Center 内部转仓起算候选', () => {

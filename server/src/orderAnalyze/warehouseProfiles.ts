@@ -2,7 +2,7 @@ import type { OperatorClassification, RealOperatorPattern, WarehouseProfile } fr
 
 const COMMON_SYSTEM_OPERATORS = ['System', 'cornerstone'] as const
 
-const COMMON_NON_REAL_OPERATORS = ['ADL-DC-Unload', 'ADL-shigong8', 'Kuangyi Gao', 'Leeki'] as const
+const COMMON_NON_REAL_OPERATORS = ['ADL-DC-Unload', 'Kuangyi Gao', 'Leeki'] as const
 
 export const DEFAULT_WAREHOUSE_LOSS_TIMEOUT_DAYS = 15
 
@@ -25,7 +25,7 @@ export const WAREHOUSE_PROFILES: readonly WarehouseProfile[] = [
     hubId: 'adelaide_center',
     displayName: 'Adelaide Center',
     aliases: ['Adelaide Center', 'adeliade center', 'Adelaide Centre', 'ADL Center', 'ADL Centre'],
-    realOperatorPatterns: [/^ADL-(?!DC-Unload\b|shigong8\b|OP1\b).+/i, /^ADL-DC-(?!Unload\b).+/i],
+    realOperatorPatterns: [/^ADL-(?!DC-Unload\b|OP1\b).+/i, /^ADL-DC-(?!Unload\b).+/i],
     nonRealOperators: COMMON_NON_REAL_OPERATORS,
     systemOperators: [...COMMON_SYSTEM_OPERATORS, 'ADL OP1'],
   },
@@ -34,7 +34,7 @@ export const WAREHOUSE_PROFILES: readonly WarehouseProfile[] = [
     hubId: 'adelaide_ds',
     displayName: 'Adelaide DS',
     aliases: ['Adelaide DS', 'adelaide DS', 'ADL DS'],
-    realOperatorPatterns: [/^ADL-(?!DC-Unload\b|shigong8\b|OP1\b).+/i, /^ADL-DC-(?!Unload\b).+/i],
+    realOperatorPatterns: [/^ADL-(?!DC-Unload\b|OP1\b).+/i, /^ADL-DC-(?!Unload\b).+/i],
     nonRealOperators: COMMON_NON_REAL_OPERATORS,
     systemOperators: [...COMMON_SYSTEM_OPERATORS, 'ADL OP1'],
   },
@@ -94,6 +94,14 @@ export const WAREHOUSE_PROFILES: readonly WarehouseProfile[] = [
     aliases: ['SYDE', 'Sydney East', 'Sydney East DS', 'SYDE DS'],
     realOperatorPatterns: [/^SYD[_-].+/i, /^SYD Warehouse\d+$/i, /^NSYD W\d+$/i, /SYDE-PUS \d+$/i, /SYDE OPS\d+$/i],
     nonRealOperators: ['SYDE OPS1', 'SYDE OPS2', 'SYDE OPS3', 'SYDE OPS4', 'SYDE OPS5', 'SYDE OPS6', 'SYDE OPS7', 'SYDE OPS8', 'SYDE OPS9', 'SYDE OPS10'],
+    systemOperators: COMMON_SYSTEM_OPERATORS,
+  },
+  {
+    cityId: 'SYD',
+    hubId: 'syd_csp_7',
+    displayName: 'SYD CSP 7',
+    aliases: ['SYD CSP 7'],
+    realOperatorPatterns: [/JCL warehouse\d+$/i],
     systemOperators: COMMON_SYSTEM_OPERATORS,
   },
   {

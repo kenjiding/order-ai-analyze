@@ -49,11 +49,12 @@ const TRACK_TYPE_TAG: Record<string, { color: string; label: string }> = {
   Delivery: { color: 'success', label: '派送中' },
 }
 
-const OPERATOR_TYPE_LABEL: Record<string, { color: string; label: string }> = {
-  courier: { color: 'green', label: '快递员' },
-  scanner: { color: 'blue', label: '扫描员' },
-  unknown: { color: 'default', label: '未知角色' },
+type ClosureVendorMemoryCache = {
+  vendors: ClosureVendorOption[]
+  defaultStationCode: string
 }
+
+let closureVendorMemoryCache: ClosureVendorMemoryCache | null = null
 
 const TRACK_DRIVER_ID_RE = /\bID\s*[:：]\s*(D[0-9A-Za-z-]+)/gi
 
@@ -62,7 +63,7 @@ function sortTrackEventsDesc(events: TrackEvent[]): TrackEvent[] {
 }
 
 function sortInterceptLogsDesc(logs: OrderAnalyzeInterceptLog[]): OrderAnalyzeInterceptLog[] {
-  return [...logs].sort((a, b) => b.gmtIntercept.localeCompare(a.gmtIntercept))
+  return [...logs].sort((a, b) => (b.gmtScan || b.gmtIntercept).localeCompare(a.gmtScan || a.gmtIntercept))
 }
 
 function isOutResponsibility(row: Row): boolean {
@@ -379,9 +380,16 @@ export function AnalysisTabContent({
     const token = imileToken.trim()
     if (!detailRow || !token) return
 
+    if (closureVendorMemoryCache) {
+      setVendorOptions(closureVendorMemoryCache.vendors)
+      if (!stationCode.trim()) setStationCode(closureVendorMemoryCache.defaultStationCode || '')
+      return
+    }
+
     setIsLoadingVendors(true)
     try {
       const { vendors, defaultStationCode } = await getClosureVendors({ imileToken: token })
+      closureVendorMemoryCache = { vendors, defaultStationCode }
       setVendorOptions(vendors)
       if (!stationCode.trim()) setStationCode(defaultStationCode || '')
     } catch (e) {
@@ -416,7 +424,14 @@ export function AnalysisTabContent({
         setVendorOptions((prev) => {
           const exists = prev.some((x) => x.key === result.vendorCode)
           if (exists) return prev
-          return [...prev, { key: result.vendorCode, value: result.vendorName, label: null }]
+          const next = [...prev, { key: result.vendorCode, value: result.vendorName, label: null }]
+          if (closureVendorMemoryCache) {
+            closureVendorMemoryCache = {
+              ...closureVendorMemoryCache,
+              vendors: next,
+            }
+          }
+          return next
         })
         setSelectedVendorKey(result.vendorCode)
         setVendorAutoFillTip(`已自动回填供应商：${result.vendorName}（${result.vendorCode}）`)
@@ -911,77 +926,70 @@ export function AnalysisTabContent({
 
               {hasInterceptLogs && (
                 <section className="flex w-[340px] shrink-0 flex-col">
-                  <h4 className="mb-3 flex shrink-0 items-center gap-2 text-sm font-semibold text-slate-950">
-                    <span className="inline-block h-4 w-1 rounded-full bg-red-500" />
+                  <h4 className="mb-2 flex shrink-0 items-center gap-2 text-sm font-semibold text-slate-900">
+                    <span className="inline-block h-3.5 w-0.5 rounded-full bg-slate-400" />
                     完整阻断日志
-                    <Tag className="ml-1">{sortedInterceptLogs.length} 条</Tag>
+                    <Tag className="ml-1 border-slate-200 bg-slate-100 text-slate-600">{sortedInterceptLogs.length} 条</Tag>
                   </h4>
 
-                  <div className="min-h-0 flex-1 overflow-auto rounded-lg border border-slate-200 bg-slate-50/60 px-5 pt-5 pb-1">
+                  <div className="min-h-0 flex-1 overflow-auto rounded-md border border-slate-200 bg-white px-3 py-3">
                     <Timeline
                       items={sortedInterceptLogs.map((log) => {
                         const isLatestResponsibilityIntercept =
                           latestResponsibilityMarker?.source === 'intercept' &&
                           latestResponsibilityMarker.time === log.gmtIntercept
-                        const opType = OPERATOR_TYPE_LABEL[log.operatorType] ?? {
-                          color: 'default',
-                          label: log.operatorType,
-                        }
+                        const scanUserCode = log.scanUserCode.trim()
                         return {
                           color: isLatestResponsibilityIntercept ? 'red' : 'gray',
                           children: (
-                            <div className={`pb-0.5 ${isLatestResponsibilityIntercept ? 'text-red-700' : ''}`}>
-                              <div className="flex flex-wrap items-center gap-2">
+                            <div
+                              className={`rounded-sm px-2 py-0.5 ${
+                                isLatestResponsibilityIntercept
+                                  ? 'border-red-400 bg-red-50/40 text-red-700'
+                                  : 'border-slate-200 text-slate-700'
+                              }`}
+                            >
+                              <div className="flex flex-wrap items-center gap-1.5">
                                 <span
-                                  className={`font-mono text-xs tabular-nums ${
+                                  className={`font-mono text-[11px] tabular-nums ${
                                     isLatestResponsibilityIntercept ? 'text-red-600' : 'text-slate-500'
                                   }`}
                                 >
-                                  {log.gmtIntercept}
+                                  {log.gmtScan || log.gmtIntercept}
                                 </span>
-                                <Tag
-                                  color={isLatestResponsibilityIntercept ? 'red' : opType.color}
-                                  className="m-0 border-0 text-[11px] leading-tight"
-                                >
-                                  {opType.label}
-                                </Tag>
-                                {isLatestResponsibilityIntercept && (
-                                  <Tag color="red" className="m-0 border-0 text-[11px] leading-tight">
-                                    最新责任方
-                                  </Tag>
-                                )}
+                                <span className="font-semibold text-[12px]">{log.scanTypeDesc || '—'}</span>
                               </div>
                               <div
-                                className={`mt-1 space-y-0.5 text-[13px] ${
+                                className={`mt-1 space-y-0.5 text-[12px] leading-5 ${
                                   isLatestResponsibilityIntercept ? 'text-red-700' : 'text-slate-800'
                                 }`}
                               >
                                 <p>
-                                  <span
-                                    className={
-                                      isLatestResponsibilityIntercept ? 'text-red-500' : 'text-slate-500'
-                                    }
-                                  >
-                                    操作员：
-                                  </span>
-                                  <span className="font-medium">{log.scanUserName}</span>
-                                  <span
-                                    className={`ml-1.5 text-xs ${
-                                      isLatestResponsibilityIntercept ? 'text-red-400' : 'text-slate-400'
-                                    }`}
-                                  >
-                                    ({log.scanUserCode})
-                                  </span>
+                                  <span className="text-slate-500">扫描网点：</span>
+                                  <span>{log.scanOcName || '—'}</span>
                                 </p>
                                 <p>
-                                  <span
-                                    className={
-                                      isLatestResponsibilityIntercept ? 'text-red-500' : 'text-slate-500'
-                                    }
+                                  <span className="text-slate-500">阻断原因：</span>
+                                  <span>{log.interceptReasonDesc || '—'}</span>
+                                </p>
+                                <p>
+                                  <span className="text-slate-500">操作人：</span>
+                                  <span className="font-medium">{log.scanUserName || '-'}</span>
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      if (scanUserCode) handleTrackDriverIdPick(scanUserCode)
+                                    }}
+                                    disabled={!scanUserCode}
+                                    className={`ml-1 inline-flex items-center rounded px-0.5 py-0.5 font-mono text-[11px] underline decoration-dotted underline-offset-2 disabled:cursor-not-allowed disabled:no-underline ${
+                                      isLatestResponsibilityIntercept
+                                        ? 'text-red-500 hover:bg-red-100/70 hover:text-red-600 disabled:text-red-300'
+                                        : 'text-slate-600 hover:bg-slate-100 hover:text-slate-800 disabled:text-slate-400'
+                                    }`}
+                                    title={scanUserCode ? `点击回填派送员 ID：${scanUserCode}` : '无派送员 ID'}
                                   >
-                                    运单号：
-                                  </span>
-                                  <span className="font-mono">{log.waybillNo}</span>
+                                    ({scanUserCode || '-'})
+                                  </button>
                                 </p>
                               </div>
                             </div>

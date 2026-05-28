@@ -37,6 +37,10 @@ export type OrderAnalyzeApiTiming = {
 
 export type OrderAnalyzeInterceptLog = {
   waybillNo: string
+  gmtScan?: string
+  scanTypeDesc?: string
+  scanOcName?: string
+  interceptReasonDesc?: string
   scanUserCode: string
   scanUserName: string
   gmtIntercept: string
