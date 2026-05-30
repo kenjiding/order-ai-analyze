@@ -21,6 +21,7 @@ import {
   applyAttendanceDailyHoursOverrides,
   computeAttendanceDailyMatchAverages,
   dedupeParsedScanRowsByWaybill,
+  type ParsedAllocationRow,
   type ParsedAttendanceRow,
   type ParsedScanRow,
 } from './aggregates'
@@ -28,9 +29,10 @@ import {
   formatInteger,
   formatNumber,
 } from './formatAndParse'
-import { parseScanFiles, parseAttendanceFiles } from './parsers'
+import { parseAllocationFiles, parseScanFiles, parseAttendanceFiles } from './parsers'
 import { flushPaint } from './excelParseClient'
 import { buildExportWorkbook, type SourceInfo } from './exportWorkbook'
+import { buildFrontDeskSaturation } from './frontDeskSaturation'
 import {
   buildSortingEfficiencyLookup,
   buildSortingScanCountLookup,
@@ -101,9 +103,12 @@ export function useScannerEfficiencyPage() {
 
   const [attendanceRows, setAttendanceRows] = useState<ParsedAttendanceRow[]>([])
   const [attendanceSourceInfo, setAttendanceSourceInfo] = useState<SourceInfo>(EMPTY_SOURCE)
+  const [allocationRows, setAllocationRows] = useState<ParsedAllocationRow[]>([])
+  const [allocationSourceInfo, setAllocationSourceInfo] = useState<SourceInfo>(EMPTY_SOURCE)
 
   const [loadingScan, setLoadingScan] = useState(false)
   const [loadingAttendance, setLoadingAttendance] = useState(false)
+  const [loadingAllocation, setLoadingAllocation] = useState(false)
   const [error, setError] = useState('')
   const [manualTab, setManualTab] = useState<TabKey>(TAB_KEYS.WAREHOUSE)
   const [scannerHourlyExpanded, setScannerHourlyExpanded] = useState(false)
@@ -149,6 +154,24 @@ export function useScannerEfficiencyPage() {
     return buildScannerEfficiency(scanRows, settings)
   }, [scanRows, settings])
 
+  const frontDeskResult = useMemo(
+    () =>
+      buildFrontDeskSaturation({
+        attendanceResult,
+        attendanceRows,
+        allocationRows,
+        scannerResult,
+        afternoonStartHour: settings.frontDeskAfternoonStartHour,
+      }),
+    [
+      allocationRows,
+      attendanceResult,
+      attendanceRows,
+      scannerResult,
+      settings.frontDeskAfternoonStartHour,
+    ],
+  )
+
   const activeTab = useMemo((): TabKey => {
     if (manualTab === TAB_KEYS.WEEKLY) return TAB_KEYS.WEEKLY
     const coerced: TabKey | null =
@@ -178,6 +201,10 @@ export function useScannerEfficiencyPage() {
         String(settings.breakCapMinutes),
         String(settings.splitThresholdMinutes),
         String(settings.minSingleScanSessionMinutes),
+        String(settings.frontDeskAfternoonStartHour),
+        allocationSourceInfo.fileNames.join(','),
+        String(allocationSourceInfo.rowCount),
+        String(allocationSourceInfo.droppedRows),
       ].join('|'),
     [
       scanSourceInfo.fileNames,
@@ -191,6 +218,10 @@ export function useScannerEfficiencyPage() {
       settings.breakCapMinutes,
       settings.splitThresholdMinutes,
       settings.minSingleScanSessionMinutes,
+      settings.frontDeskAfternoonStartHour,
+      allocationSourceInfo.fileNames,
+      allocationSourceInfo.rowCount,
+      allocationSourceInfo.droppedRows,
     ],
   )
 
@@ -399,9 +430,50 @@ export function useScannerEfficiencyPage() {
     }
   }
 
+  const handleAllocationFileChange = async (fileList: FileList | null) => {
+    const files = Array.from(fileList || [])
+
+    if (!files.length) {
+      setAllocationRows([])
+      setAllocationSourceInfo(EMPTY_SOURCE)
+      return
+    }
+
+    setLoadingAllocation(true)
+    setError('')
+    await flushPaint()
+
+    try {
+      const parsed = await parseAllocationFiles(files)
+      if (!parsed.rows.length) {
+        throw new Error('前台分配表没有识别到有效“分配时间”。请确认文件包含分配时间列。')
+      }
+
+      setAllocationRows(parsed.rows)
+      setAllocationSourceInfo({
+        fileCount: files.length,
+        rowCount: parsed.rows.length,
+        droppedRows: parsed.droppedRows,
+        duplicateWaybillRows: 0,
+        fileNames: parsed.fileNames,
+      })
+    } catch (currentError: unknown) {
+      setAllocationRows([])
+      setAllocationSourceInfo(EMPTY_SOURCE)
+      setError(currentError instanceof Error ? currentError.message : '读取前台分配表失败。请检查文件格式。')
+    } finally {
+      setLoadingAllocation(false)
+    }
+  }
+
   const clearAttendance = () => {
     setAttendanceRows([])
     setAttendanceSourceInfo(EMPTY_SOURCE)
+  }
+
+  const clearAllocation = () => {
+    setAllocationRows([])
+    setAllocationSourceInfo(EMPTY_SOURCE)
   }
 
   const clearAll = () => {
@@ -409,6 +481,8 @@ export function useScannerEfficiencyPage() {
     setScanSourceInfo(EMPTY_SOURCE)
     setAttendanceRows([])
     setAttendanceSourceInfo(EMPTY_SOURCE)
+    setAllocationRows([])
+    setAllocationSourceInfo(EMPTY_SOURCE)
     setError('')
   }
 
@@ -416,14 +490,17 @@ export function useScannerEfficiencyPage() {
     if (!scanAggregate) return
     if (activeTab === TAB_KEYS.WEEKLY) return
     if (activeTab === TAB_KEYS.SCANNER && !scannerResult) return
+    if (activeTab === TAB_KEYS.FRONT_DESK) return
     const workbook = buildExportWorkbook({
       scanAggregate,
       attendanceResult,
       scannerResult,
       sourceInfo: scanSourceInfo,
       attendanceSourceInfo,
+      allocationSourceInfo,
       exportTab: activeTab === TAB_KEYS.WAREHOUSE ? TAB_KEYS.WAREHOUSE : TAB_KEYS.SCANNER,
       attendanceDailyCostPerTicket: dailyCostPerTicketByDate,
+      frontDeskResult,
     })
     if (!workbook) return
     const exportName =
@@ -432,7 +509,7 @@ export function useScannerEfficiencyPage() {
   }
 
   const hasScanData = Boolean(scanAggregate)
-  const loading = loadingScan || loadingAttendance
+  const loading = loadingScan || loadingAttendance || loadingAllocation
 
   const dailyRowsAsTable = (scanAggregate?.dailyRows ?? []) as unknown as DataTableRow[]
 
@@ -518,6 +595,8 @@ export function useScannerEfficiencyPage() {
   }, [attendanceEfficiencyBase, personSortingScanCountLookup])
 
   const scannerDailyAsTable = (scannerResult?.dailySummaryRows ?? []) as unknown as DataTableRow[]
+  const frontDeskDailyAsTable = (frontDeskResult?.dailyRows ?? []) as unknown as DataTableRow[]
+  const frontDeskDensityAsTable = (frontDeskResult?.densityRows ?? []) as unknown as DataTableRow[]
 
   const scannerHourlyPivotTables = useMemo(
     () => buildScannerHourlyPivotTables(scannerResult?.scannerHourlyRows ?? []),
@@ -537,6 +616,7 @@ export function useScannerEfficiencyPage() {
     settings,
     scanSourceInfo,
     attendanceSourceInfo,
+    allocationSourceInfo,
     loading,
     error,
     scannerHourlyExpanded,
@@ -544,6 +624,7 @@ export function useScannerEfficiencyPage() {
     scanAggregate,
     attendanceResult,
     scannerResult,
+    frontDeskResult,
     activeTab,
     setActiveTab,
     weeklyPanelKey,
@@ -556,7 +637,9 @@ export function useScannerEfficiencyPage() {
     handleSettingChange,
     handleScanFileChange,
     handleAttendanceFileChange,
+    handleAllocationFileChange,
     clearAttendance,
+    clearAllocation,
     clearAll,
     handleExport,
     hasScanData,
@@ -567,6 +650,8 @@ export function useScannerEfficiencyPage() {
     attendanceDailyAsTable,
     attendancePersonAsTable,
     scannerDailyAsTable,
+    frontDeskDailyAsTable,
+    frontDeskDensityAsTable,
     scannerHourlyPivotTables,
     scannerPersonAsTable,
     scannerDailyEfficiencyTrendPoints,

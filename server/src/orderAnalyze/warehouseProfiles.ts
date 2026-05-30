@@ -43,7 +43,7 @@ export const WAREHOUSE_PROFILES: readonly WarehouseProfile[] = [
     hubId: 'melbourne_center',
     displayName: 'Melbourne Center',
     aliases: ['Melbourne Center', 'Melbourne Centre', 'MEL Center', 'MEL Centre'],
-    realOperatorPatterns: [/^MEL[_-].+/i, /^Mel[_-].+/],
+    realOperatorPatterns: [/^MEL[_-].+/i, /^Mel[_-].+/, /^(MEL_RDC_Scanner_)\d+$/i, /Mel_FrontDesk_\d+$/i],
     systemOperators: COMMON_SYSTEM_OPERATORS,
   },
   {

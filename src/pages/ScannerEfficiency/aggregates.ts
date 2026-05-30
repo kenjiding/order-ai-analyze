@@ -83,10 +83,27 @@ export type ParsedAttendanceRow = {
   nameNick: string
   nameFull: string
   hours: number
+  clockInTime?: Date | null
+  clockOutTime?: Date | null
+  positionTitle?: string
+  positionCode?: string
+  isFrontDesk: boolean
+  isSorterWorker: boolean
   /** 与工资考勤表「工作日」列一致，用于时薪档次 */
   workday?: string
   /** 与工资考勤表「姓氏」列一致（如前台卡） */
   surname?: string
+  sourceFileName: string
+  sourceSheetName: string
+  sourceRowNumber: number
+}
+
+export type ParsedAllocationRow = {
+  allocationTime: Date
+  date: string
+  timeSlot: string
+  boxNo: string
+  driver: string
   sourceFileName: string
   sourceSheetName: string
   sourceRowNumber: number

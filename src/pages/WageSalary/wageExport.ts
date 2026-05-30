@@ -1,4 +1,7 @@
+import { endOfWeek, format, startOfWeek } from 'date-fns'
 import type { RateSettings } from '../../payroll/wageRateCalculation'
+import { summarizeBillingVsActualPayout } from './calculations'
+import { parseDate } from './dateUtils'
 
 /** 从当前批次工资记录推导考勤表日期区间（yyyy-MM-dd 或 start_end） */
 export function deriveAttendanceDateRangeLabel(
@@ -35,4 +38,76 @@ export function buildRateSettingsExportRows(
       分拣周末时薪: Number(rateSettings[role].sortingWeekend),
       公共节假日时薪: Number(rateSettings[role].publicHoliday),
     }))
+}
+
+type WageExportRecord = {
+  date?: string | undefined
+  totalWage: number | string
+  totalHoursDecimal: number | string
+  role: string
+  workday?: string | undefined
+  isSorting: boolean
+  isPublicHoliday: boolean
+}
+
+function getWeekLabel(dateValue: unknown): string | null {
+  const date = parseDate(dateValue)
+  if (!date) return null
+  const weekStart = startOfWeek(date, { weekStartsOn: 1 })
+  const weekEnd = endOfWeek(date, { weekStartsOn: 1 })
+  return `${format(weekStart, 'yyyy-MM-dd')} ~ ${format(weekEnd, 'yyyy-MM-dd')}`
+}
+
+export function buildWeeklyBillingSummaryRows(
+  records: WageExportRecord[],
+  actualWorkerRateSettings: RateSettings,
+): Record<string, string | number>[] {
+  const weekMap = new Map<string, WageExportRecord[]>()
+  const invalidDateRecords: WageExportRecord[] = []
+
+  for (const record of records) {
+    const weekLabel = getWeekLabel(record.date)
+    if (!weekLabel) {
+      invalidDateRecords.push(record)
+      continue
+    }
+    const bucket = weekMap.get(weekLabel)
+    if (bucket) {
+      bucket.push(record)
+    } else {
+      weekMap.set(weekLabel, [record])
+    }
+  }
+
+  const rows = Array.from(weekMap.entries())
+    .sort(([leftLabel], [rightLabel]) => leftLabel.localeCompare(rightLabel))
+    .map(([weekLabel, weekRecords]) => {
+      const summary = summarizeBillingVsActualPayout(weekRecords, actualWorkerRateSettings)
+      return {
+        周维度: weekLabel,
+        '对账 / 导出总额': Number(summary.totalBilling.toFixed(2)),
+        '小工实际到手合计': Number(summary.totalActualPayout.toFixed(2)),
+        '供应商赚取差额（对账 − 实际）': Number(summary.supplierMargin.toFixed(2)),
+      }
+    })
+
+  if (invalidDateRecords.length > 0) {
+    const summary = summarizeBillingVsActualPayout(invalidDateRecords, actualWorkerRateSettings)
+    rows.push({
+      周维度: '日期无效/缺失',
+      '对账 / 导出总额': Number(summary.totalBilling.toFixed(2)),
+      '小工实际到手合计': Number(summary.totalActualPayout.toFixed(2)),
+      '供应商赚取差额（对账 − 实际）': Number(summary.supplierMargin.toFixed(2)),
+    })
+  }
+
+  const grandSummary = summarizeBillingVsActualPayout(records, actualWorkerRateSettings)
+  rows.push({
+    周维度: '合计',
+    '对账 / 导出总额': Number(grandSummary.totalBilling.toFixed(2)),
+    '小工实际到手合计': Number(grandSummary.totalActualPayout.toFixed(2)),
+    '供应商赚取差额（对账 − 实际）': Number(grandSummary.supplierMargin.toFixed(2)),
+  })
+
+  return rows
 }

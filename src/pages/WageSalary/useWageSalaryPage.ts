@@ -19,6 +19,7 @@ import {
   buildRateSettingsExportRows,
   buildWageExportFileName,
   deriveAttendanceDateRangeLabel,
+  buildWeeklyBillingSummaryRows,
 } from './wageExport'
 import { showToast } from '../../utils/toast'
 import {
@@ -584,6 +585,18 @@ export function useWageSalaryPage() {
     XLSX.utils.book_append_sheet(workbook, worksheet, '工资数据')
 
     const rateSheetRows = buildRateSettingsExportRows(rateSettings, ROLE_MAP, ROLES)
+
+    const weeklySummaryRows = buildWeeklyBillingSummaryRows(
+      filteredWageRecords,
+      actualWorkerRateSettings,
+    )
+
+    XLSX.utils.book_append_sheet(
+      workbook,
+      XLSX.utils.json_to_sheet(weeklySummaryRows),
+      '周对账汇总',
+    )
+
     XLSX.utils.book_append_sheet(
       workbook,
       XLSX.utils.json_to_sheet(rateSheetRows),

@@ -1,6 +1,6 @@
-import type { ParsedAttendanceRow, ParsedScanRow } from './aggregates'
+import type { ParsedAllocationRow, ParsedAttendanceRow, ParsedScanRow } from './aggregates'
 import type { ExcelParseWorkerRequest, ExcelParseWorkerResponse } from './workers/excelParse.worker'
-import { parseAttendanceFileBuffer, parseScanFileBuffer } from './bufferParsers'
+import { parseAllocationFileBuffer, parseAttendanceFileBuffer, parseScanFileBuffer } from './bufferParsers'
 
 /** 让浏览器先完成一帧绘制（例如显示 loading），再开始重 CPU 任务 */
 export function flushPaint(): Promise<void> {
@@ -87,5 +87,24 @@ export async function parseAttendanceBufferInWorker(
     return { rows: res.rows, droppedRows: res.droppedRows }
   } catch {
     return parseAttendanceFileBuffer(buffer, fileName)
+  }
+}
+
+export async function parseAllocationBufferInWorker(
+  buffer: ArrayBuffer,
+  fileName: string,
+): Promise<{ rows: ParsedAllocationRow[]; droppedRows: number }> {
+  if (typeof Worker === 'undefined') {
+    return parseAllocationFileBuffer(buffer, fileName)
+  }
+  const id = ++seq
+  try {
+    const res = await postToWorker({ id, kind: 'allocation', buffer, fileName })
+    if (res.ok !== true || res.kind !== 'allocation') {
+      throw new Error('Unexpected worker response')
+    }
+    return { rows: res.rows, droppedRows: res.droppedRows }
+  } catch {
+    return parseAllocationFileBuffer(buffer, fileName)
   }
 }

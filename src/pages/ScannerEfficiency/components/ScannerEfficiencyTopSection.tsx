@@ -157,6 +157,7 @@ export default function ScannerEfficiencyTopSection({ vm, level1Push }: Props) {
                         disabled={
                           !scanAggregate ||
                           activeTab === TAB_KEYS.WEEKLY ||
+                          activeTab === TAB_KEYS.FRONT_DESK ||
                           (activeTab === TAB_KEYS.SCANNER && !scannerResult)
                         }
                       />

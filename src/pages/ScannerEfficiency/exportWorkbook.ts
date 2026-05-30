@@ -15,6 +15,7 @@ import {
   sortingEfficiencyForPerson,
   sortingScanCountForPerson,
 } from './sortingLookup'
+import type { FrontDeskSaturationResult } from './frontDeskSaturation'
 
 export type SourceInfo = {
   fileCount: number
@@ -35,17 +36,21 @@ export function buildExportWorkbook({
   scannerResult,
   sourceInfo,
   attendanceSourceInfo,
+  allocationSourceInfo,
   exportTab,
   attendanceDailyCostPerTicket,
+  frontDeskResult,
 }: {
   scanAggregate: ScanAggregate | null
   attendanceResult: AttendanceEfficiencyResult | null
   scannerResult: ScannerEfficiencyResult | null
   sourceInfo: SourceInfo
   attendanceSourceInfo: SourceInfo
+  allocationSourceInfo: SourceInfo
   exportTab: ExportTabKey
   /** 与页面「效率明细/天」每票成本一致；键为 yyyy-MM-dd */
   attendanceDailyCostPerTicket?: Record<string, number | null>
+  frontDeskResult?: FrontDeskSaturationResult | null
 }) {
   if (!scanAggregate) return null
 
@@ -75,6 +80,9 @@ export function buildExportWorkbook({
         考勤文件数: attendanceSourceInfo.fileCount,
         考勤有效行数: attendanceSourceInfo.rowCount,
         考勤无效行数: attendanceSourceInfo.droppedRows,
+        前台分配文件数: allocationSourceInfo.fileCount,
+        前台分配有效行数: allocationSourceInfo.rowCount,
+        前台分配无效行数: allocationSourceInfo.droppedRows,
       })
     } else {
       summaryRows.push({
@@ -184,6 +192,64 @@ export function buildExportWorkbook({
         ),
         '人员工时汇总',
       )
+
+      if (frontDeskResult) {
+        XLSX.utils.book_append_sheet(
+          workbook,
+          XLSX.utils.json_to_sheet(
+            frontDeskResult.dailyRows.map((row) => ({
+              日期: row.date,
+              总货量: row.volume,
+              总工时_小时: Number(row.totalHours.toFixed(4)),
+              前台人数: row.frontDeskCount,
+              前台工时_小时: Number(row.frontDeskHours.toFixed(4)),
+              前台上班时间: row.frontDeskClockInLabel,
+              前台最后打卡账号: row.frontDeskLastClockOutPerson,
+              前台最后打卡时间: row.frontDeskLastClockOutLabel,
+              前台最后打卡时间段: row.frontDeskLastClockOutSlot,
+              最后箱号分配时间: row.lastAllocationLabel,
+              最后分配到下班空档_分钟:
+                row.offDutyIdleMinutes == null ? '' : Number(row.offDutyIdleMinutes.toFixed(2)),
+              箱号分配数: row.allocationCount,
+              '13点前箱号分配数': row.morningAllocationCount,
+              '13点后箱号分配数': row.afternoonAllocationCount,
+              分拣下班基准: row.sorterClockOutLabel,
+              细分完成基准_下班前50分钟: row.sortingReadyLabel,
+              '13点后集中起始分配时间(半小时段>2笔)': row.firstAfternoonAllocationLabel,
+              集中起始提前滞后_分钟:
+                row.firstAfternoonGapMinutes == null ? '' : Number(row.firstAfternoonGapMinutes.toFixed(2)),
+              箱号每前台小时:
+                row.boxesPerFrontDeskHour == null ? '' : Number(row.boxesPerFrontDeskHour.toFixed(4)),
+              参考前台工时_小时:
+                row.expectedFrontDeskHours == null ? '' : Number(row.expectedFrontDeskHours.toFixed(4)),
+              参考冗余工时_小时:
+                row.surplusFrontDeskHours == null ? '' : Number(row.surplusFrontDeskHours.toFixed(4)),
+              前台分拣有效工时_小时: Number(row.frontDeskSortingEffectiveHours.toFixed(4)),
+              前台分拣参与率:
+                row.frontDeskSortingParticipationRate == null
+                  ? ''
+                  : Number((row.frontDeskSortingParticipationRate * 100).toFixed(2)),
+              饱和指数:
+                row.saturationIndex == null ? '' : Number(row.saturationIndex.toFixed(2)),
+              状态: row.statusLabel,
+            })),
+          ),
+          '前台饱和度',
+        )
+
+        XLSX.utils.book_append_sheet(
+          workbook,
+          XLSX.utils.json_to_sheet(
+            frontDeskResult.densityRows.map((row) => ({
+              日期: row.date,
+              时间段: row.timeSlot,
+              取货窗口: row.window === 'afternoon' ? '13点后' : '13点前',
+              箱号分配数: row.allocationCount,
+            })),
+          ),
+          '箱号分配密度',
+        )
+      }
     }
   } else {
     if (scannerResult) {

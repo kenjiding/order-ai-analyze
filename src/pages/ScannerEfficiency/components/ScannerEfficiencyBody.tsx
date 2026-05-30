@@ -7,6 +7,7 @@ import DailyEfficiencyComboChart from '../DailyEfficiencyBubbleChart'
 import { EfficiencyDailyDetailByDaySection } from '../EfficiencyDailyDetailByDaySection'
 import { formatInteger } from '../formatAndParse'
 import WeeklyReportPanel from '../WeeklyReportPanel'
+import { FrontDeskSaturationSection } from './FrontDeskSaturationSection'
 import { ScannerPersonSortingHourlySection } from './ScannerPersonSortingHourlySection'
 import { ScannerPersonSortingSummarySection } from './ScannerPersonSortingSummarySection'
 import type { ScannerEfficiencyViewModel } from '../useScannerEfficiencyPage'
@@ -33,6 +34,7 @@ export default function ScannerEfficiencyBody({ vm, level1Push }: Props) {
     scanAggregate,
     attendanceResult,
     scannerResult,
+    frontDeskResult,
     activeTab,
     setActiveTab,
     weeklyPanelKey,
@@ -51,6 +53,8 @@ export default function ScannerEfficiencyBody({ vm, level1Push }: Props) {
     attendanceDayEfficiencyBubbleData,
     attendanceDailyAsTable,
     attendancePersonAsTable,
+    frontDeskDailyAsTable,
+    frontDeskDensityAsTable,
     scannerDailyAsTable,
     scannerHourlyPivotTables,
     scannerDailyEfficiencyTrendPoints,
@@ -111,6 +115,7 @@ export default function ScannerEfficiencyBody({ vm, level1Push }: Props) {
             >
               <Tab label="开仓效率 / 总体效率" value={TAB_KEYS.WAREHOUSE} />
               <Tab label="一级分拣个人效率" value={TAB_KEYS.SCANNER} />
+              <Tab label="前台饱和度分析" value={TAB_KEYS.FRONT_DESK} />
               <Tab label="周报生成器" value={TAB_KEYS.WEEKLY} />
             </Tabs>
           </section>
@@ -141,26 +146,28 @@ export default function ScannerEfficiencyBody({ vm, level1Push }: Props) {
 
           {activeTab !== TAB_KEYS.WEEKLY && (
             <>
-              <section className="space-y-4">
-                <SectionTitle
-                  eyebrow="Inbound Volume"
-                  title="到件货量按日"
-                  description="左侧为按日汇总表。右侧折线仅反映各日总货量（票）趋势，与表中「总货量」列一致。文件合并后先按运单号全局去重，再按日统计。"
-                />
-                <div className="grid gap-4 xl:grid-cols-[minmax(0,1.05fr)_minmax(320px,0.95fr)] xl:items-start">
-                  <div className="min-w-0 px-4">
-                    <DataTable
-                      boundedScroll
-                      columns={dailyVolumeColumns}
-                      rows={dailyRowsAsTable}
-                      emptyText="暂无到件数据。"
-                    />
+              {activeTab === TAB_KEYS.WAREHOUSE && (
+                <section className="space-y-4">
+                  <SectionTitle
+                    eyebrow="Inbound Volume"
+                    title="到件货量按日"
+                    description="左侧为按日汇总表。右侧折线仅反映各日总货量（票）趋势，与表中「总货量」列一致。文件合并后先按运单号全局去重，再按日统计。"
+                  />
+                  <div className="grid gap-4 xl:grid-cols-[minmax(0,1.05fr)_minmax(320px,0.95fr)] xl:items-start">
+                    <div className="min-w-0 px-4">
+                      <DataTable
+                        boundedScroll
+                        columns={dailyVolumeColumns}
+                        rows={dailyRowsAsTable}
+                        emptyText="暂无到件数据。"
+                      />
+                    </div>
+                    <div className="admin-panel min-w-0 overflow-hidden p-4 sm:p-5">
+                      <DailyTrendLineChart variant="volume" points={dailyVolumeTrendPoints} />
+                    </div>
                   </div>
-                  <div className="admin-panel min-w-0 overflow-hidden p-4 sm:p-5">
-                    <DailyTrendLineChart variant="volume" points={dailyVolumeTrendPoints} />
-                  </div>
-                </div>
-              </section>
+                </section>
+              )}
 
               {activeTab === TAB_KEYS.WAREHOUSE && attendanceResult && (
                 <>
@@ -232,6 +239,18 @@ export default function ScannerEfficiencyBody({ vm, level1Push }: Props) {
                   </div>
                 </>
               )}
+
+              {activeTab === TAB_KEYS.FRONT_DESK && (
+                <FrontDeskSaturationSection
+                  result={frontDeskResult}
+                  dailyRows={frontDeskDailyAsTable}
+                  densityRows={frontDeskDensityAsTable}
+                  afternoonStartHour={settings.frontDeskAfternoonStartHour}
+                  allocationSourceInfo={vm.allocationSourceInfo}
+                  onAllocationFileChange={vm.handleAllocationFileChange}
+                  onClearAllocation={vm.clearAllocation}
+                />
+              )}
             </>
           )}
 
@@ -259,6 +278,22 @@ export default function ScannerEfficiencyBody({ vm, level1Push }: Props) {
               />
               <div className="px-5 py-4 text-sm leading-7">
                 请上传“考勤记录报表.csv”或同结构文件（至少包含日期、总时长、人员），即可启用该标签页。
+                <br />
+                当前考勤识别：有效 {formatInteger(attendanceSourceInfo.rowCount)} 行，未识别{' '}
+                {formatInteger(attendanceSourceInfo.droppedRows)} 行。
+              </div>
+            </section>
+          )}
+
+          {activeTab === TAB_KEYS.FRONT_DESK && !attendanceResult && (
+            <section className="rounded-lg border border-amber-200 bg-amber-50 text-amber-900 shadow-[0_18px_50px_rgba(15,23,42,0.07)]">
+              <SectionTitle
+                eyebrow="Front Desk Mode"
+                title="前台饱和度模块未启用"
+                description="当前尚未上传可识别的考勤数据，无法识别前台/分拣下班基准。"
+              />
+              <div className="px-5 py-4 text-sm leading-7">
+                请先上传“考勤记录报表.csv”或同结构文件（至少包含日期、总时长、人员），再在本标签页上传前台分配包裹表。
                 <br />
                 当前考勤识别：有效 {formatInteger(attendanceSourceInfo.rowCount)} 行，未识别{' '}
                 {formatInteger(attendanceSourceInfo.droppedRows)} 行。
