@@ -76,9 +76,6 @@ export function formatCurrentResponsibilityParty(facts: TrackFacts | undefined):
   if (facts.activeResponsibilityOwner === 'external_carrier') {
     return facts.activeExternalCarrierName ?? '未知承运商'
   }
-  if (facts.activeSegmentStatus === 'transit_to_company_hub') {
-    return facts.activeWarehouseName ? `转运至${facts.activeWarehouseName}` : '转运中'
-  }
   if (facts.activeResponsibilityOwner === 'merchant') {
     return '商家'
   }

@@ -41,7 +41,6 @@ export type ResponsibilityOwner = 'company_warehouse' | 'external_carrier' | 'me
 export type ResponsibilitySegmentStatus =
   | 'in_warehouse'
   | 'out_warehouse'
-  | 'transit_to_company_hub'
   | 'external_carrier'
   | 'merchant_terminal'
   | 'unknown'
@@ -111,8 +110,6 @@ export type TrackFacts = {
   activeWarehouseLossTimeoutDays: number
   /** 外部承运（3PL）交接后判「3PL丢件」的超时天数，默认与仓库丢失阈值一致 */
   externalCarrierLossTimeoutDays: number
-  /** 跨仓转运（干线）在途复核窗口天数 */
-  crossHubTransitReviewTimeoutDays: number
   activeExternalCarrierName: string | null
   activeSegmentStartTime: string | null
   activeSegmentDaysDiff: number
@@ -212,18 +209,6 @@ export type TrackFacts = {
   merchantReturnRequested: boolean
   merchantReturnRequestTime: string | null
   merchantReturnRequestEvidence: string | null
-  /** 退返商家方向后的集包节点，表示库内责任已转移出去 */
-  merchantReturnResponsibilityTransferred: boolean
-  merchantReturnResponsibilityTransferTime: string | null
-  merchantReturnResponsibilityTransferEvidence: string | null
-  /** 退返商家方向后的集包节点，兼容既有字段读取 */
-  merchantReturnPackageTime: string | null
-  merchantReturnPackageEvidence: string | null
-  /** 已装箱且目的地为非 Adelaide Center，最新状态为该装箱事件本身或仍处于转运处理中 */
-  transferToOtherHubInProgress: boolean
-  transferToOtherHubTime: string | null
-  transferToOtherHubDestination: string | null
-  transferToOtherHubEvidence: string | null
   latestEventKind: string
 }
 

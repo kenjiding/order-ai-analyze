@@ -7,7 +7,6 @@ import {
   findWarehouseProfileByName,
   getWarehouseLossTimeoutDays,
   EXTERNAL_CARRIER_LOSS_TIMEOUT_DAYS,
-  CROSS_HUB_TRANSIT_REVIEW_TIMEOUT_DAYS,
 } from './warehouseProfiles'
 
 /** 写入模型提示时的轨迹类型中文说明；未列出的保留接口原值 */
@@ -109,7 +108,7 @@ const MERCHANT_STORAGE_RE =
 const MERCHANT_RETURN_RE =
   /(退件已退返商家)|(已退返商家)|(退回(?:发件方|寄件方|商家|卖家).*(?:签收|已签收|妥投|完成))|((?:退货|退件|退回).*(?:妥投|签收|已签收|完成))|((?:商家|发件方|寄件方|卖家).*(?:签收|已签收))|(退款退货闭环)/
 const TRANSFER_DESTINATION_RE = /(?:已装箱|完成待转发件)[^。]*目的地【([^】]+)】/
-const MERCHANT_RETURN_PACKAGE_RE = /已装箱[^。]*集包号\[[^\]]+\][^。]*目的地【([^】]+)】/
+const BOXED_TRANSFER_RE = /(?:已装箱|完成待转发件)[^。]*目的地【[^】]+】/
 const SORTER_DEVICE_SCAN_RE = /操作员【\s*sorter\s*】/i
 const DEVICE_CODE_RE = /设备编码\[[^\]]+\]/
 const SYD_WAREHOUSE_OPERATOR_RE = /^SYD Warehouse\d+$/i
@@ -208,14 +207,12 @@ function isMerchantReturnRequestEvent(content: string): boolean {
   )
 }
 
-function isMerchantReturnPackageEvent(content: string): boolean {
-  return MERCHANT_RETURN_PACKAGE_RE.test(content)
-}
-
-function isNonCompanyPackageEvent(event: TrackEvent): boolean {
-  if (!isMerchantReturnPackageEvent(event.content)) return false
-  const destination = extractTransferDestination(event.content)
-  return destination !== '' && findWarehouseProfileByName(destination) === null
+/**
+ * 「【AAAA】已装箱（集包），目的地【BBBB】」属于起始仓 AAAA 的最后一次库内真实操作。
+ * 它不代表责任已离开 AAAA：在目的仓 BBBB 出现真实操作（轨迹到达 / 阻断扫描）之前，责任仍归 AAAA。
+ */
+function isBoxedTransferEvent(content: string): boolean {
+  return BOXED_TRANSFER_RE.test(content)
 }
 
 function isSorterDeviceScanEvent(content: string): boolean {
@@ -317,22 +314,12 @@ function isWarehousePhysicalResponsibilityEvent(t: TrackEvent): boolean {
   )
 }
 
-function isWarehouseResponsibilityAnchorEvent(t: TrackEvent): boolean {
-  return (
-    isWarehousePhysicalResponsibilityEvent(t) ||
-    isDispatchOutEvent(t) ||
-    isProblemEvent(t) ||
-    t.content.includes('派送任务已分配给派件员') ||
-    t.content.includes('取消分配') ||
-    t.content.includes('撤销分配')
-  )
-}
-
 function summarizeLatestEvent(t: TrackEvent): string {
   const c = t.content
   if (isDeliveryCompletionEvent(t)) return '已签收/妥投（完结）'
   if (isDispatchOutEvent(t)) return '派送中（在途，包裹已出库）'
   if (c.includes('包裹已转交至')) return c.slice(0, 40)
+  if (isBoxedTransferEvent(c)) return `${c.slice(0, 40)}（起始仓装箱集包，责任暂留起始仓待目的仓接收）`
   if (c.includes('已到达')) return c.slice(0, 40)
   if (c.includes('已回到网点')) return '派件员已回到网点（在库）'
   if (c.includes('已盘点')) return '已盘点（在库）'
@@ -376,7 +363,18 @@ function getTrackResponsibilityPoint(
   event: TrackEvent,
   profile: WarehouseProfile | null
 ): ResponsibilityPoint | null {
-  if (isMerchantReturnEvent(event.content) || isNonCompanyPackageEvent(event)) return null
+  if (isMerchantReturnEvent(event.content)) return null
+
+  if (isBoxedTransferEvent(event.content)) {
+    const operatorName = extractOperatorFromContent(event.content)
+    if (classifyOperatorForWarehouse(operatorName, profile) !== 'real') return null
+    return {
+      owner: 'in_warehouse',
+      time: event.time,
+      basis: `正常轨迹真实操作员 ${operatorName} 装箱集包责任点（${event.time}）`,
+      source: 'track',
+    }
+  }
 
   if (isDispatchOutEvent(event)) {
     return {
@@ -431,6 +429,21 @@ function getTrackResponsibilityPoint(
   }
 }
 
+/**
+ * 判断阻断日志是否归属当前责任仓：
+ * - 无法从 scanOcName 解析仓库（含历史无网点字段的日志）→ 视为归当前责任仓（向后兼容）；
+ * - 能解析且与当前责任仓同仓 → 归当前责任仓；
+ * - 能解析但属于其他仓 → 不归当前段（应由 reconcileSegmentsWithInterceptArrivals 切换为该仓责任段后再计入）。
+ */
+function interceptBelongsToActiveHub(
+  interceptLog: ScanInterceptLog,
+  activeSegment: InternalSegment
+): boolean {
+  const hubProfile = findWarehouseProfileByName(interceptLog.scanOcName ?? '')
+  if (!hubProfile || !activeSegment.hubId) return true
+  return hubProfile.hubId === activeSegment.hubId
+}
+
 function getInterceptResponsibilityPoint(
   interceptLog: ScanInterceptLog | null,
   activeSegment: InternalSegment | null
@@ -438,6 +451,7 @@ function getInterceptResponsibilityPoint(
   if (!interceptLog || !isValidTimeString(interceptLog.gmtIntercept)) return null
   if (activeSegment?.owner !== 'company_warehouse') return null
   if (interceptLog.gmtIntercept < activeSegment.startTime) return null
+  if (!interceptBelongsToActiveHub(interceptLog, activeSegment)) return null
 
   if (interceptLog.operatorType === 'courier') {
     return {
@@ -535,7 +549,6 @@ function pushEvent(segment: InternalSegment, event: TrackEvent): void {
 function buildResponsibilitySegments(sorted: TrackEvent[]): InternalSegment[] {
   const segments: InternalSegment[] = []
   let active: InternalSegment | null = null
-  let merchantReturnRequestSeen = false
 
   const appendSegment = (segment: InternalSegment): InternalSegment => {
     segments.push(segment)
@@ -562,7 +575,6 @@ function buildResponsibilitySegments(sorted: TrackEvent[]): InternalSegment[] {
     const destination = extractTransferDestination(event.content)
     const carrierName = extractExternalCarrierName(event.content)
     const operatorName = extractOperatorFromContent(event.content)
-    const merchantReturnRequest = isMerchantReturnRequestEvent(event.content)
 
     if (
       active?.owner === 'external_carrier' &&
@@ -570,7 +582,6 @@ function buildResponsibilitySegments(sorted: TrackEvent[]): InternalSegment[] {
       isExternalCarrierOperator(operatorName, active.carrierName)
     ) {
       pushEvent(active, event)
-      if (merchantReturnRequest) merchantReturnRequestSeen = true
       continue
     }
 
@@ -600,22 +611,15 @@ function buildResponsibilitySegments(sorted: TrackEvent[]): InternalSegment[] {
         })
       )
       pushEvent(active, event)
-      if (merchantReturnRequest) merchantReturnRequestSeen = true
       continue
     }
 
     if (destination) {
-      if (active?.status === 'transit_to_company_hub' && hasSameHub(active, destination)) {
-        pushEvent(active, event)
-        if (merchantReturnRequest) merchantReturnRequestSeen = true
-        continue
-      }
+      // 「【AAAA】已装箱集包，目的地【BBBB】」是起始仓 AAAA 的最后一次库内操作；
+      // 在目的仓 BBBB 出现真实操作（轨迹到达 / 阻断扫描）之前，责任仍留在 AAAA，不另开转运责任真空段。
       const originHub = leadingHub || (active ? active.hubName ?? '' : '')
-      const destinationIsCompanyHub = findWarehouseProfileByName(destination) !== null
-      const isMerchantReturnPackage =
-        merchantReturnRequestSeen && isMerchantReturnPackageEvent(event.content) && !destinationIsCompanyHub
       if (originHub) {
-        ensureWarehouseSegment(event, originHub, isMerchantReturnPackage ? '退返集包前定位责任仓' : '装箱转运前定位起始仓')
+        ensureWarehouseSegment(event, originHub, '装箱集包转运，责任留在起始仓直至目的仓产生真实操作')
       } else if (!active) {
         active = appendSegment(
           makeSegment({
@@ -626,35 +630,16 @@ function buildResponsibilitySegments(sorted: TrackEvent[]): InternalSegment[] {
           })
         )
       }
-      if (isMerchantReturnPackage) {
-        if (active) pushEvent(active, event)
-        if (merchantReturnRequest) merchantReturnRequestSeen = true
-        continue
-      }
-      if (active) {
-        pushEvent(active, event)
-        closeSegment(active, event.time, `已装箱转运至 ${destination}`)
-      }
-      active = appendSegment(
-        makeSegment({
-          owner: 'unknown',
-          status: 'transit_to_company_hub',
-          startTime: event.time,
-          startReason: `转运至 ${destination}`,
-          hubName: destination,
-        })
-      )
-      pushEvent(active, event)
-      if (merchantReturnRequest) merchantReturnRequestSeen = true
+      if (active) pushEvent(active, event)
       continue
     }
 
     if (leadingHub) {
+      // 装箱集包转运后，目的仓出现真实库内物理操作（到达/收退件/盘点/归班/回网点/下架/揽收）即视为已到达该仓，切换责任段。
       const canLocateWarehouse =
         !active ||
-        (active.owner === 'unknown' && active.status !== 'transit_to_company_hub') ||
-        (active.status === 'transit_to_company_hub' && isWarehouseResponsibilityAnchorEvent(event)) ||
-        (active.owner === 'company_warehouse' && isWarehouseArrivalEvent(event)) ||
+        active.owner === 'unknown' ||
+        (active.owner === 'company_warehouse' && isWarehousePhysicalResponsibilityEvent(event)) ||
         (active.owner === 'company_warehouse' && hasSameHub(active, leadingHub))
 
       if (canLocateWarehouse) {
@@ -677,7 +662,6 @@ function buildResponsibilitySegments(sorted: TrackEvent[]): InternalSegment[] {
 
     if (!active) continue
     pushEvent(active, event)
-    if (merchantReturnRequest) merchantReturnRequestSeen = true
 
     if (active.owner === 'company_warehouse') {
       if (isDispatchOutEvent(event)) active.status = 'out_warehouse'
@@ -733,20 +717,7 @@ function findInboundSameCityRealScan(
     return null
   }
 
-  let cursor = segments.indexOf(activeSegment) - 1
-  if (cursor < 0) return null
-
-  const previous = segments[cursor]
-  if (
-    previous?.status === 'transit_to_company_hub' &&
-    previous.endTime === activeSegment.startTime &&
-    activeSegment.hubName !== null &&
-    hasSameHub(previous, activeSegment.hubName)
-  ) {
-    cursor -= 1
-  }
-
-  const upstream = segments[cursor]
+  const upstream = segments[segments.indexOf(activeSegment) - 1]
   if (
     !upstream ||
     upstream.owner !== 'company_warehouse' ||
@@ -756,14 +727,58 @@ function findInboundSameCityRealScan(
     return null
   }
 
-  const directlyAdjacent =
-    upstream.endTime === activeSegment.startTime ||
-    (previous?.status === 'transit_to_company_hub' &&
-      upstream.endTime === previous.startTime &&
-      previous.endTime === activeSegment.startTime)
-  if (!directlyAdjacent) return null
+  if (upstream.endTime !== activeSegment.startTime) return null
 
   return findLastRealScan(upstream.events, upstream.warehouseProfile)
+}
+
+/** 阻断日志按其扫描网点画像判定库内/库外操作归属：派送员→库外、该仓真实扫描员→库内、其余→无效。 */
+function interceptHubOpOwner(
+  interceptLog: ScanInterceptLog,
+  hubProfile: WarehouseProfile
+): LossResponsibilityOwner | null {
+  if (interceptLog.scanUserCode.startsWith('D')) return 'out_warehouse'
+  if (classifyOperatorForWarehouse(interceptLog.scanUserName, hubProfile) === 'real') return 'in_warehouse'
+  return null
+}
+
+/**
+ * 用阻断日志补全"责任仓切换"：当目的仓/其他仓出现真实操作（扫描网点 + 真实扫描员/派送员），
+ * 即便轨迹没有「已到达」事件，也据此把责任段切换到该仓，对应"轨迹停更但阻断日志有操作"的定责场景。
+ */
+function reconcileSegmentsWithInterceptArrivals(
+  segments: InternalSegment[],
+  interceptLogs: ScanInterceptLog[]
+): InternalSegment[] {
+  if (!segments.length) return segments
+  const sortedLogs = interceptLogs
+    .filter((log) => isValidTimeString(log.gmtIntercept))
+    .sort((a, b) => a.gmtIntercept.localeCompare(b.gmtIntercept))
+
+  for (const log of sortedLogs) {
+    const active = segments[segments.length - 1]
+    if (!active) break
+    // 外部承运交接是显式语义，不被阻断日志覆盖
+    if (active.owner === 'external_carrier') continue
+    const hubProfile = findWarehouseProfileByName(log.scanOcName ?? '')
+    if (!hubProfile) continue
+    if (log.gmtIntercept <= active.startTime) continue
+    // 已经是同一个公司仓责任段，无需切换（库内/库外责任点由 getInterceptResponsibilityPoint 计入）
+    if (active.owner === 'company_warehouse' && active.hubId === hubProfile.hubId) continue
+    const op = interceptHubOpOwner(log, hubProfile)
+    if (!op) continue
+    closeSegment(active, log.gmtIntercept, `阻断日志显示已在 ${hubProfile.displayName} 操作`)
+    segments.push(
+      makeSegment({
+        owner: 'company_warehouse',
+        status: op === 'out_warehouse' ? 'out_warehouse' : 'in_warehouse',
+        startTime: log.gmtIntercept,
+        startReason: `阻断日志 ${log.scanUserName || log.scanUserCode} 在 ${hubProfile.displayName} 的真实操作，责任转入该仓`,
+        hubName: hubProfile.displayName,
+      })
+    )
+  }
+  return segments
 }
 
 function countEvents(events: TrackEvent[], predicate: (event: TrackEvent) => boolean): number {
@@ -789,7 +804,6 @@ function makeEmptyFacts(input: {
     activeWarehouseKnown: false,
     activeWarehouseLossTimeoutDays: DEFAULT_WAREHOUSE_LOSS_TIMEOUT_DAYS,
     externalCarrierLossTimeoutDays: EXTERNAL_CARRIER_LOSS_TIMEOUT_DAYS,
-    crossHubTransitReviewTimeoutDays: CROSS_HUB_TRANSIT_REVIEW_TIMEOUT_DAYS,
     activeExternalCarrierName: null,
     activeSegmentStartTime: null,
     activeSegmentDaysDiff: -1,
@@ -849,15 +863,6 @@ function makeEmptyFacts(input: {
     merchantReturnRequested: false,
     merchantReturnRequestTime: null,
     merchantReturnRequestEvidence: null,
-    merchantReturnResponsibilityTransferred: false,
-    merchantReturnResponsibilityTransferTime: null,
-    merchantReturnResponsibilityTransferEvidence: null,
-    merchantReturnPackageTime: null,
-    merchantReturnPackageEvidence: null,
-    transferToOtherHubInProgress: false,
-    transferToOtherHubTime: null,
-    transferToOtherHubDestination: null,
-    transferToOtherHubEvidence: null,
     latestEventKind: '',
   }
 }
@@ -886,7 +891,7 @@ export function deriveTrackFacts(tracks: TrackEvent[], interceptLogs: ScanInterc
   }
 
   const lastEvent = sorted[sorted.length - 1]
-  const segments = buildResponsibilitySegments(sorted)
+  const segments = reconcileSegmentsWithInterceptArrivals(buildResponsibilitySegments(sorted), interceptLogs)
   const activeSegment = segments.at(-1) ?? null
   const activeEvents = activeSegment?.events ?? []
   const activeProfile = activeSegment?.warehouseProfile ?? null
@@ -950,7 +955,6 @@ export function deriveTrackFacts(tracks: TrackEvent[], interceptLogs: ScanInterc
     ? countMaxConsecutiveAssignCancelPairs(activeEvents)
     : 0
   const hasAssignCancelLoop = maxConsecutiveAssignCancelPairs >= 2
-  const hasRealOperatorScan = firstRealScan !== null
   const activeTrackResponsibilityPoints = shouldComputeWarehouseFacts
     ? activeEvents
         .map((event) => getTrackResponsibilityPoint(event, activeProfile))
@@ -970,6 +974,9 @@ export function deriveTrackFacts(tracks: TrackEvent[], interceptLogs: ScanInterc
         .filter((point): point is ResponsibilityPoint => point !== null)
     : []
   const allResponsibilityPoints = [...activeTrackResponsibilityPoints, ...interceptResponsibilityPoints]
+  // 阻断日志当前仓库扫描员是合法的库内真实操作；据此让 hasRealOperatorScan 与责任点时间线保持一致。
+  const hasInterceptInWarehouseScan = interceptResponsibilityPoints.some((point) => point.owner === 'in_warehouse')
+  const hasRealOperatorScan = firstRealScan !== null || hasInterceptInWarehouseScan
   const latestTrackResponsibilityPoint = findLastResponsibilityPoint(activeTrackResponsibilityPoints)
   const latestInterceptResponsibilityPoint = findLastResponsibilityPoint(interceptResponsibilityPoints)
   const finalResponsibilityPoint = findLastResponsibilityPoint(allResponsibilityPoints)
@@ -996,8 +1003,6 @@ export function deriveTrackFacts(tracks: TrackEvent[], interceptLogs: ScanInterc
   let merchantReturnEvidence: string | null = null
   let merchantReturnRequestEvent: TrackEvent | null = null
   let merchantReturnRequestEvidence: string | null = null
-  let merchantReturnPackageEvent: TrackEvent | null = null
-  let merchantReturnPackageEvidence: string | null = null
   let deliveryCompletionEvent: TrackEvent | null = null
   let deliveryCompletionEvidence: string | null = null
   let hasDeliveryCompletion = false
@@ -1027,14 +1032,6 @@ export function deriveTrackFacts(tracks: TrackEvent[], interceptLogs: ScanInterc
       merchantReturnRequestEvent = event
       merchantReturnRequestEvidence = extractShortEvidence(event.content)
     }
-    if (
-      merchantReturnRequestEvent !== null &&
-      event.time > merchantReturnRequestEvent.time &&
-      isMerchantReturnPackageEvent(event.content)
-    ) {
-      merchantReturnPackageEvent = event
-      merchantReturnPackageEvidence = extractShortEvidence(event.content)
-    }
   }
 
   const storageScheduleEvent =
@@ -1052,7 +1049,6 @@ export function deriveTrackFacts(tracks: TrackEvent[], interceptLogs: ScanInterc
     merchantStorageEvent !== null &&
     !merchantStorageReleasedBySchedule &&
     !merchantStorageSupersededByBusinessProgress
-  const merchantReturnResponsibilityTransferred = merchantReturnPackageEvent !== null
   const latestInterceptTime = latestIntercept?.gmtIntercept ?? null
 
   const normalResponsibilityOwner: LossResponsibilityOwner | null = latestTrackResponsibilityPoint?.owner ?? null
@@ -1073,7 +1069,6 @@ export function deriveTrackFacts(tracks: TrackEvent[], interceptLogs: ScanInterc
   const activeWarehouseLossTimeoutDays = getWarehouseLossTimeoutDays(activeProfile)
   const externalCarrierTransferTime =
     activeSegment?.owner === 'external_carrier' ? activeSegment.startTime : null
-  const activeIsTransit = activeSegment?.status === 'transit_to_company_hub'
 
   return {
     todayStr,
@@ -1089,7 +1084,6 @@ export function deriveTrackFacts(tracks: TrackEvent[], interceptLogs: ScanInterc
     activeWarehouseKnown: activeSegment?.warehouseKnown ?? false,
     activeWarehouseLossTimeoutDays,
     externalCarrierLossTimeoutDays: EXTERNAL_CARRIER_LOSS_TIMEOUT_DAYS,
-    crossHubTransitReviewTimeoutDays: CROSS_HUB_TRANSIT_REVIEW_TIMEOUT_DAYS,
     activeExternalCarrierName: activeSegment?.carrierName ?? null,
     activeSegmentStartTime,
     activeSegmentDaysDiff: activeSegmentStartTime ? daysDiff(activeSegmentStartTime) : -1,
@@ -1155,15 +1149,6 @@ export function deriveTrackFacts(tracks: TrackEvent[], interceptLogs: ScanInterc
     merchantReturnRequested: merchantReturnRequestEvent !== null && merchantReturnEvent === null,
     merchantReturnRequestTime: merchantReturnRequestEvent?.time ?? null,
     merchantReturnRequestEvidence,
-    merchantReturnResponsibilityTransferred,
-    merchantReturnResponsibilityTransferTime: merchantReturnPackageEvent?.time ?? null,
-    merchantReturnResponsibilityTransferEvidence: merchantReturnPackageEvidence,
-    merchantReturnPackageTime: merchantReturnPackageEvent?.time ?? null,
-    merchantReturnPackageEvidence,
-    transferToOtherHubInProgress: activeIsTransit && !hasDeliveryCompletion,
-    transferToOtherHubTime: activeIsTransit ? activeSegment.startTime : null,
-    transferToOtherHubDestination: activeIsTransit ? activeSegment.hubName : null,
-    transferToOtherHubEvidence: activeIsTransit ? activeSegment.events[0]?.content ?? null : null,
     latestEventKind: summarizeLatestEvent(lastEvent),
   }
 }
@@ -1177,9 +1162,7 @@ function formatSegmentSummary(facts: TrackFacts): string {
           ? `公司仓库 ${segment.hubName ?? '未知仓库'}${segment.warehouseKnown ? '' : '（未配置）'}`
           : segment.owner === 'external_carrier'
             ? `外部承运商 ${segment.carrierName ?? '未知承运商'}`
-            : segment.status === 'transit_to_company_hub'
-              ? `转运至 ${segment.hubName ?? '未知仓库'}${segment.warehouseKnown ? '' : '（未配置）'}`
-              : '未知责任'
+            : '未知责任'
       return `${index + 1}. ${segment.startTime} -> ${segment.endTime ?? '当前'} | ${owner} | ${segment.startReason}${segment.endReason ? `；${segment.endReason}` : ''}`
     })
     .join('\n')
@@ -1224,11 +1207,6 @@ export function computeTrackTemporalContext(tracks: TrackEvent[], interceptLogs:
     lines.push(
       `外部承运超时规则: 最后更新未满 ${facts.externalCarrierLossTimeoutDays} 天为「暂无异常」；最后更新达到 ${facts.externalCarrierLossTimeoutDays} 天且无正常完结时判定为「3PL丢件」。`
     )
-  } else if (facts.activeSegmentStatus === 'transit_to_company_hub') {
-    lines.push(
-      `转运目的仓: ${facts.activeWarehouseName ?? '未知'}${facts.activeWarehouseKnown ? `（${facts.activeWarehouseCityId}/${facts.activeWarehouseHubId}）` : '（未匹配仓库配置）'}`
-    )
-    lines.push('当前处于跨仓转运途中，旧仓库责任已结束；未到达目的仓前不得按旧仓库库内/库外丢失判断。')
   }
 
   lines.push('责任段摘要:')
@@ -1353,11 +1331,6 @@ export function computeTrackTemporalContext(tracks: TrackEvent[], interceptLogs:
       `退返商家待处理: 是（${facts.merchantReturnRequestTime ?? '-'}，证据: ${facts.merchantReturnRequestEvidence ?? '命中退返处理方向'}）  → 商家仅给出退返方向，未出现退返闭环，仍按当前责任段库内/库外超时判断`
     )
   }
-  if (facts.merchantReturnResponsibilityTransferred) {
-    lines.push(
-      `退返集包责任转移: 是（${facts.merchantReturnResponsibilityTransferTime ?? '-'}，证据: ${facts.merchantReturnResponsibilityTransferEvidence ?? '命中集包号'}）  → 库内责任已转移出去，不再按库内超时归责，子类型建议「退返商家」`
-    )
-  }
   if (facts.merchantStorageActive) {
       lines.push(
       `商家暂存终态: 是（${facts.merchantStorageConfirmTime ?? '-'}，证据: ${facts.merchantStorageEvidence ?? '命中暂存关键词'}）  → 暂存无库内/库外超时逻辑，优先判定「暂无异常」，子类型建议「暂存」`
@@ -1369,11 +1342,6 @@ export function computeTrackTemporalContext(tracks: TrackEvent[], interceptLogs:
   } else if (facts.merchantStorageSupersededByBusinessProgress) {
     lines.push(
       `商家暂存终态: 否（${facts.merchantStorageConfirmTime ?? '-'} 后于 ${facts.merchantStorageBusinessProgressTime ?? '-'} 出现新的业务推进）  → 以最新轨迹为准，不再使用「暂存」子类型；证据: ${facts.merchantStorageBusinessProgressEvidence ?? '命中后续业务轨迹'}`
-    )
-  }
-  if (facts.transferToOtherHubInProgress) {
-    lines.push(
-      `跨仓转运责任转移: 是（${facts.transferToOtherHubTime ?? '-'}，目的地: ${facts.transferToOtherHubDestination ?? '-'}）  → 旧仓库责任已结束；若目的仓已收到退件/到达，则切换到目的仓责任段继续按库内/库外判断`
     )
   }
 

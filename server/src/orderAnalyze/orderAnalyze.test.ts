@@ -358,7 +358,7 @@ test('商家退返方向后最新盘点重置仓内起算', () => {
   assert.equal(guarded.appliedDecisionRuleId, 'merchant_return_in_progress_not_terminal')
 })
 
-test('商家退返方向后集包号表示库内责任已转移，未闭环也归入退返商家', () => {
+test('退返方向后装箱集包转运是起始仓库内操作，责任仍留在起始仓未超时不判丢失', () => {
   const packageTime = daysAgo(8, '14:32:31')
   const facts = deriveTrackFacts([
     track(daysAgo(20), '【ADL DS】已盘点，库位编号[01]。操作员【ADL-前台】', '', '派送'),
@@ -372,16 +372,16 @@ test('商家退返方向后集包号表示库内责任已转移，未闭环也�
 
   assert.equal(facts.merchantReturnRequested, true)
   assert.equal(facts.merchantReturnConfirmed, false)
-  assert.equal(facts.merchantReturnPackageTime, packageTime)
-  assert.equal(facts.merchantReturnResponsibilityTransferred, true)
-  assert.equal(facts.merchantReturnResponsibilityTransferTime, packageTime)
+  // 装箱集包不切换责任段，责任仍在起始仓 ADL DS，且装箱本身作为最新库内真实操作点
   assert.equal(facts.activeResponsibilityOwner, 'company_warehouse')
+  assert.equal(facts.activeWarehouseHubId, 'adelaide_ds')
   assert.equal(facts.activeSegmentStatus, 'in_warehouse')
-  assert.notEqual(facts.inWarehouseStartTime, packageTime)
+  assert.equal(facts.inWarehouseStartTime, packageTime)
+  assert.equal(facts.finalResponsibilityOwner, 'in_warehouse')
   assert.equal(guarded.lossScope, '暂无异常')
-  assert.equal(guarded.exceptionCategoryId, '退返商家')
-  assert.equal(guarded.appliedDecisionRuleId, 'merchant_return_package_transferred')
-  assert.equal(normalizeSubType({ lossScope: '暂无异常', facts }), '退返商家')
+  assert.equal(guarded.exceptionCategoryId, '')
+  assert.equal(guarded.appliedDecisionRuleId, 'merchant_return_in_progress_not_terminal')
+  assert.equal(normalizeSubType({ lossScope: '暂无异常', facts }), '')
 })
 
 test('退件处理意见 Transfer 后目的仓收到退件，应切回目的仓并按库内超时纠正', () => {
@@ -407,17 +407,23 @@ test('退件处理意见 Transfer 后目的仓收到退件，应切回目的仓�
   assert.equal(guarded.appliedDecisionRuleId, 'active_in_warehouse_overdue_is_in_warehouse_loss')
 })
 
-test('跨仓转运未超 10 天时责任转移出旧仓库', () => {
+test('装箱集包转运目的仓未到仓时责任仍留在起始仓且未超时不判丢失', () => {
+  const boxedTime = daysAgo(1)
   const facts = deriveTrackFacts([
     track(daysAgo(2), '【ADL DS】操作员【ADL-DC-Tong】 已盘点'),
-    track(daysAgo(1), '【ADL DS】已装箱，目的地【Melbourne Center】。操作员【ADL-FrontDesk】'),
+    track(boxedTime, '【ADL DS】已装箱，目的地【Melbourne Center】。操作员【ADL-FrontDesk】'),
     track(daysAgo(0), '包裹正在处理中'),
   ])
   const guarded = applyFactGuardrails(baseResult(), facts)
 
-  assert.equal(facts.transferToOtherHubInProgress, true)
+  // 目的仓 Melbourne Center 尚无任何真实操作，责任仍归起始仓 ADL DS
+  assert.equal(facts.activeResponsibilityOwner, 'company_warehouse')
+  assert.equal(facts.activeWarehouseHubId, 'adelaide_ds')
+  assert.equal(facts.activeSegmentStatus, 'in_warehouse')
+  assert.equal(facts.inWarehouseStartTime, boxedTime)
+  assert.equal(facts.finalResponsibilityOwner, 'in_warehouse')
   assert.equal(guarded.lossScope, '暂无异常')
-  assert.equal(guarded.appliedDecisionRuleId, 'transfer_to_company_hub_not_overdue')
+  assert.equal(guarded.appliedDecisionRuleId, 'in_warehouse_loss_threshold_not_met')
 })
 
 test('Melbourne 已转交 Australia Post 未超时时不沿用 ADL 库内起算', () => {
@@ -447,18 +453,57 @@ test('标准转仓按装箱目的地和目的仓到达切换责任段', () => {
     track('2026-05-05 14:36:29', '【Melbourne Center】包裹已转交至【Australia Post】进行承运。操作员【Mel_FrontDesk_1】', '', '派送'),
   ])
 
+  // 装箱集包不再生成 transit 责任真空段；起始仓 ADL DS 一直保持责任，直到目的仓 Melbourne Center 出现「已到达」真实操作才切换
   assert.deepEqual(
     facts.responsibilitySegments.map((segment) => [segment.owner, segment.status, segment.hubName, segment.carrierName]),
     [
       ['company_warehouse', 'in_warehouse', 'ADL DS', null],
-      ['unknown', 'transit_to_company_hub', 'Melbourne Center', null],
       ['company_warehouse', 'in_warehouse', 'Melbourne Center', null],
       ['external_carrier', 'external_carrier', null, 'Australia Post'],
     ]
   )
   assert.equal(facts.activeResponsibilityOwner, 'external_carrier')
   assert.equal(facts.activeExternalCarrierName, 'Australia Post')
-  assert.equal(facts.merchantReturnResponsibilityTransferred, false)
+})
+
+test('装箱集包后仅阻断日志在目的仓出现真实扫描时，责任切换到目的仓并按其库内时效判断', () => {
+  // 回归订单 6042426089756：轨迹停在【ADL DS】已装箱集包目的地【Melbourne Center】，无后续到达轨迹；
+  // 但阻断日志显示 Melbourne Center 真实扫描员 MEL_RDC_Scanner_10 已扫描，证明已到目的仓。
+  const boxedTime = daysAgo(40, '20:15:37')
+  const interceptTime = daysAgo(20, '16:59:11')
+  const interceptLogs: ScanInterceptLog[] = [
+    {
+      waybillNo: '6042426089756',
+      scanUserCode: '2104765201',
+      scanUserName: 'MEL_RDC_Scanner_10',
+      scanOcName: 'Melbourne Center',
+      gmtIntercept: interceptTime,
+      operatorType: 'scanner',
+    },
+  ]
+  const facts = deriveTrackFacts(
+    [
+      track(daysAgo(45), '【ADL DS】已盘点，库位编号[01]。操作员【ADL-前台】', '', '派送'),
+      track(daysAgo(43, '08:01:23'), '【ADL DS】包裹确认派送结束, 将按照商家反馈意见[退返商家]进行处理。', '', '退件处理'),
+      track(boxedTime, '【ADL DS】已装箱，集包号[2605085545201]，目的地【Melbourne Center】。操作员【ADL-前台】', '', '退件处理'),
+    ],
+    interceptLogs
+  )
+  const guarded = applyFactGuardrails(
+    baseResult({ lossScope: '暂无异常', exceptionCategoryId: '退返商家', reason: '退返集包责任转移' }),
+    facts
+  )
+
+  assert.equal(facts.activeResponsibilityOwner, 'company_warehouse')
+  assert.equal(facts.activeWarehouseHubId, 'melbourne_center')
+  assert.equal(facts.activeSegmentStatus, 'in_warehouse')
+  assert.equal(facts.hasRealOperatorScan, true)
+  assert.equal(facts.inWarehouseStartTime, interceptTime)
+  assert.equal(facts.finalResponsibilityOwner, 'in_warehouse')
+  assert.equal(facts.finalResponsibilitySource, 'intercept')
+  assert.equal(facts.finalResponsibilityDaysDiff >= facts.activeWarehouseLossTimeoutDays, true)
+  assert.equal(guarded.lossScope, '库内丢失')
+  assert.equal(guarded.exceptionCategoryId, '扫描员丢失')
 })
 
 test('跨仓转运后目的仓出现回仓/盘点/归班等责任锚点时必须切回仓库责任段', () => {
@@ -471,7 +516,6 @@ test('跨仓转运后目的仓出现回仓/盘点/归班等责任锚点时必须
   assert.equal(facts.activeResponsibilityOwner, 'company_warehouse')
   assert.equal(facts.activeSegmentStatus, 'in_warehouse')
   assert.equal(facts.activeWarehouseHubId, 'melbourne_center')
-  assert.equal(facts.transferToOtherHubInProgress, false)
   assert.equal(facts.finalResponsibilityOwner, 'in_warehouse')
   assert.equal(facts.finalResponsibilityStartTime, '2026-05-03 09:00:00')
 })
@@ -484,11 +528,11 @@ test('同目的地重复转运事件不应反复切回起始仓', () => {
     track('2026-05-04 19:30:01', '【SYDE】包号[2604211588701]已到达。操作员【SYDE OPS1】 。', '', '转运'),
   ])
 
+  // 装箱/完成待转发件都只是起始仓操作，责任留在 Sydney Center；直到【SYDE】已到达才切换到 SYDE
   assert.deepEqual(
     facts.responsibilitySegments.map((segment) => [segment.owner, segment.status, segment.hubName]),
     [
       ['company_warehouse', 'in_warehouse', 'Sydney Center'],
-      ['unknown', 'transit_to_company_hub', 'SYDE'],
       ['company_warehouse', 'in_warehouse', 'SYDE'],
     ]
   )
@@ -923,7 +967,8 @@ test('当前责任方根据责任段事实派生', () => {
   assert.equal(formatCurrentResponsibilityParty(inWarehouseFacts), 'ADL DS')
   assert.equal(formatCurrentResponsibilityParty(outWarehouseFacts), 'ADL DS')
   assert.equal(formatCurrentResponsibilityParty(externalFacts), 'Australia Post')
-  assert.equal(formatCurrentResponsibilityParty(transitFacts), '转运至Melbourne Center')
+  // 装箱集包转运目的仓未到仓，责任仍在起始仓 ADL DS
+  assert.equal(formatCurrentResponsibilityParty(transitFacts), 'ADL DS')
   assert.equal(formatCurrentResponsibilityParty(returnFacts), 'ADL DS')
 })
 
@@ -936,7 +981,7 @@ test('历史退返转移不应屏蔽后续新责任段的当前责任方', () =>
     track('2026-05-18 14:58:46', '【Melbourne Center】已盘点，库位编号[MEL_RDC_012]。操作员【MEL_RDC_Scanner_08】', '', '派送'),
   ])
 
-  assert.equal(facts.merchantReturnResponsibilityTransferred, true)
+  // 退返方向后装箱到 Sydney Center 不是终态，后续目的仓陆续到达，责任最终落在 Melbourne Center
   assert.equal(facts.activeWarehouseName, 'Melbourne Center')
   assert.equal(formatCurrentResponsibilityParty(facts), 'Melbourne Center')
 })

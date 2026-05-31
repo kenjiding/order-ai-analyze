@@ -195,6 +195,24 @@ body::before {
   .admin-badge {
     @apply inline-flex items-center rounded-md border px-2 py-1 text-xs font-medium;
   }
+
+  .order-analysis-drawer .ant-drawer-content {
+    background: transparent;
+    box-shadow: -24px 0 80px rgba(26, 92, 86, 0.18);
+  }
+
+  .order-analysis-drawer .ant-drawer-body {
+    display: flex;
+    flex-direction: column;
+  }
+
+  .order-analysis-timeline .ant-timeline-item-tail {
+    border-inline-start-color: #d8e6ee;
+  }
+
+  .order-analysis-timeline .ant-timeline-item-head {
+    box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.95);
+  }
 }
 
 .wage-page .bg-white,

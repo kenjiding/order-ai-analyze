@@ -1,8 +1,5 @@
 import type { AiLossScope, OrderAnalyzeResult, TrackFacts } from './types'
-import {
-  EXTERNAL_CARRIER_LOSS_TIMEOUT_DAYS,
-  CROSS_HUB_TRANSIT_REVIEW_TIMEOUT_DAYS,
-} from './warehouseProfiles'
+import { EXTERNAL_CARRIER_LOSS_TIMEOUT_DAYS } from './warehouseProfiles'
 
 type DecisionRule = {
   id: string
@@ -17,7 +14,6 @@ const TERMINAL_RULE_IDS = new Set([
   'merchant_destroy_terminal',
   'merchant_storage_terminal',
   'merchant_return_terminal',
-  'merchant_return_package_transferred',
   'delivery_completion_terminal',
 ])
 
@@ -130,27 +126,6 @@ export const DECISION_RULES: readonly DecisionRule[] = [
     },
   },
   {
-    id: 'merchant_return_package_transferred',
-    priority: 13,
-    description: '退返方向后出现集包号时，库内责任已转移出去，归入退返商家暂无异常。',
-    match: ({ result, facts }) =>
-      facts.merchantReturnResponsibilityTransferred &&
-      (result.lossScope !== '暂无异常' || result.exceptionCategoryId !== '退返商家'),
-    resolve: ({ result, facts }) => {
-      const hit = `退返方向后已出现集包号（${facts.merchantReturnResponsibilityTransferTime ?? '-'}，${facts.merchantReturnResponsibilityTransferEvidence ?? '命中退返集包号'}），库内责任已转移出去，不再按库内超时归责`
-      return withRuleHit({
-        result,
-        ruleId: 'merchant_return_package_transferred',
-        lossScope: '暂无异常',
-        exceptionCategoryId: '退返商家',
-        confidence: Math.max(0.88, result.confidence),
-        needsReview: false,
-        hit,
-        reason: `[事实校验纠正] ${hit}。原始判断: ${result.reason}`,
-      })
-    },
-  },
-  {
     id: 'merchant_storage_superseded_by_progress',
     priority: 48,
     description: '暂存后出现退件意见或装箱转运等明确业务推进时，只清理暂存子类型，不覆盖当前责任事实。',
@@ -234,49 +209,6 @@ export const DECISION_RULES: readonly DecisionRule[] = [
         lossScope: '暂无异常',
         confidence: Math.max(0.8, Math.min(result.confidence, 0.92)),
         needsReview: false,
-        hit,
-        reason: `[事实校验纠正] ${hit}。原始判断: ${result.reason}`,
-      })
-    },
-  },
-  {
-    id: 'transfer_to_company_hub_not_overdue',
-    priority: 23,
-    description: `跨仓转运途中未达到 ${CROSS_HUB_TRANSIT_REVIEW_TIMEOUT_DAYS} 天干线超时阈值时，旧仓库库内/库外责任已结束。`,
-    match: ({ result, facts }) =>
-      facts.activeSegmentStatus === 'transit_to_company_hub' &&
-      facts.lastEventDaysDiff >= 0 &&
-      facts.lastEventDaysDiff < facts.crossHubTransitReviewTimeoutDays &&
-      result.lossScope !== '暂无异常',
-    resolve: ({ result, facts }) => {
-      const hit = `当前处于跨仓转运至 ${facts.transferToOtherHubDestination ?? facts.activeWarehouseName ?? '-'}，最后更新距今 ${facts.lastEventDaysDiff} 天，未达到 ${facts.crossHubTransitReviewTimeoutDays} 天转运复核阈值；旧仓库责任已结束`
-      return withRuleHit({
-        result,
-        ruleId: 'transfer_to_company_hub_not_overdue',
-        lossScope: '暂无异常',
-        confidence: Math.max(0.75, Math.min(result.confidence, 0.9)),
-        needsReview: false,
-        hit,
-        reason: `[事实校验纠正] 责任已转移（转运中）：${hit}。原始判断: ${result.reason}`,
-      })
-    },
-  },
-  {
-    id: 'transfer_to_company_hub_stale_needs_review',
-    priority: 24,
-    description: `跨仓转运断更达到 ${CROSS_HUB_TRANSIT_REVIEW_TIMEOUT_DAYS} 天时，进入人工判断等待目的仓或转运责任确认。`,
-    match: ({ result, facts }) =>
-      facts.activeSegmentStatus === 'transit_to_company_hub' &&
-      facts.lastEventDaysDiff >= facts.crossHubTransitReviewTimeoutDays &&
-      result.lossScope !== '需人工判断',
-    resolve: ({ result, facts }) => {
-      const hit = `当前仍处于跨仓转运至 ${facts.transferToOtherHubDestination ?? facts.activeWarehouseName ?? '-'}，最后更新距今 ${facts.lastEventDaysDiff} 天，目的仓尚未到仓，不能按旧仓库库内/库外定责`
-      return withRuleHit({
-        result,
-        ruleId: 'transfer_to_company_hub_stale_needs_review',
-        lossScope: '需人工判断',
-        confidence: Math.min(result.confidence, 0.65),
-        needsReview: true,
         hit,
         reason: `[事实校验纠正] ${hit}。原始判断: ${result.reason}`,
       })
@@ -461,7 +393,6 @@ export const DECISION_RULES: readonly DecisionRule[] = [
       !facts.merchantDestroyConfirmed &&
       !facts.merchantReturnConfirmed &&
       !facts.merchantStorageActive &&
-      !facts.merchantReturnResponsibilityTransferred &&
       facts.finalResponsibilityOwner !== null &&
       facts.finalResponsibilityStartTime !== null &&
       (() => {
@@ -521,13 +452,11 @@ export const DECISION_RULES: readonly DecisionRule[] = [
     appliesTo: ['需人工判断'],
     match: ({ facts }) =>
       facts.activeResponsibilityOwner === 'company_warehouse' &&
-      facts.activeSegmentStatus !== 'transit_to_company_hub' &&
       facts.activeWarehouseKnown &&
       !facts.unknownWarehouseInActiveSegment &&
       !facts.merchantDestroyConfirmed &&
       !facts.merchantReturnConfirmed &&
       !facts.merchantStorageActive &&
-      !facts.merchantReturnResponsibilityTransferred &&
       facts.finalResponsibilityOwner !== null &&
       facts.finalResponsibilityStartTime !== null &&
       facts.finalResponsibilityDaysDiff >= 0 &&
@@ -664,7 +593,6 @@ export function applyFactGuardrails(result: OrderAnalyzeResult, facts: TrackFact
     facts.merchantDestroyConfirmed ||
     facts.merchantStorageActive ||
     facts.merchantReturnConfirmed ||
-    facts.merchantReturnResponsibilityTransferred ||
     facts.hasDeliveryCompletion
 
   if (terminalScopeLocked) {

@@ -75,9 +75,9 @@ export const EXCEPTION_CATALOG: readonly ExceptionScopeDefinition[] = [
     subTypes: [
       {
         id: '退返商家',
-        promptDescription: 'lossScope 为「暂无异常」但当前无丢失责任，原因是轨迹已完成退返/退回商家闭环，或退返方向后已出现集包号并完成库内责任转移。',
+        promptDescription: 'lossScope 为「暂无异常」但当前无丢失责任，原因是轨迹已完成退返/退回商家闭环（已退返商家/商家签收）。仅退返方向或集包转运未闭环时不属于此类。',
         aliases: ['退回商家'],
-        inferFromFacts: (facts) => facts.merchantReturnConfirmed || facts.merchantReturnResponsibilityTransferred,
+        inferFromFacts: (facts) => facts.merchantReturnConfirmed,
       },
       {
         id: '暂存',

@@ -9,9 +9,6 @@ export const DEFAULT_WAREHOUSE_LOSS_TIMEOUT_DAYS = 15
 /** 外部承运（3PL）交接后多久仍未完结即判「3PL丢件」；默认与公司仓库库内/库外丢失超时阈值一致 */
 export const EXTERNAL_CARRIER_LOSS_TIMEOUT_DAYS = DEFAULT_WAREHOUSE_LOSS_TIMEOUT_DAYS
 
-/** 跨仓转运（干线）在途复核窗口天数；与「仓库丢失」语义不同，单独配置 */
-export const CROSS_HUB_TRANSIT_REVIEW_TIMEOUT_DAYS = 10
-
 function normalizeText(raw: string): string {
   return raw.trim().toLowerCase().replace(/\s+/g, '')
 }
