@@ -529,17 +529,17 @@ test('已配置仓库最终责任未超时应纠正需人工判断', () => {
   assert.equal(guarded.appliedDecisionRuleId, 'known_warehouse_not_overdue_clears_manual_review')
 })
 
-test('Australia Post 后续操作不切回公司仓且断更达到 7 天判定 3PL 丢件', () => {
+test('Australia Post 后续操作不切回公司仓且断更达到配置阈值判定 3PL 丢件', () => {
   const facts = deriveTrackFacts([
-    track(daysAgo(30), '已通过[OpenApi]成功下单'),
-    track(daysAgo(27), '【Adelaide Center】已揽收, 操作员【System】。'),
-    track(daysAgo(27, '11:47:46'), '【Adelaide Center】已到达。操作员【ADL-DC-PanPan】 。'),
-    track(daysAgo(26), '【ADL DS】已装箱，集包号[2604271169201]，目的地【Melbourne Center】。操作员【ADL-前台】'),
-    track(daysAgo(19), '【Melbourne Center】已到达。操作员【MEL_RDC_Scanner_15】 。'),
-    track(daysAgo(19, '14:36:29'), '【Melbourne Center】包裹已转交至【Australia Post】进行承运。操作员【Mel_FrontDesk_1】'),
-    track(daysAgo(14), '【Melbourne Center】已到达。操作员【AU POST Australia Post】 。'),
-    track(daysAgo(12), '【Melbourne Center】登记问题件[自提]AWAITING COLLECTION AT AUSTRALIA POST, 操作员【Australia Post】。', 'problem'),
-    track(daysAgo(7), '包裹正在处理中。'),
+    track(daysAgo(40), '已通过[OpenApi]成功下单'),
+    track(daysAgo(37), '【Adelaide Center】已揽收, 操作员【System】。'),
+    track(daysAgo(37, '11:47:46'), '【Adelaide Center】已到达。操作员【ADL-DC-PanPan】 。'),
+    track(daysAgo(36), '【ADL DS】已装箱，集包号[2604271169201]，目的地【Melbourne Center】。操作员【ADL-前台】'),
+    track(daysAgo(29), '【Melbourne Center】已到达。操作员【MEL_RDC_Scanner_15】 。'),
+    track(daysAgo(29, '14:36:29'), '【Melbourne Center】包裹已转交至【Australia Post】进行承运。操作员【Mel_FrontDesk_1】'),
+    track(daysAgo(24), '【Melbourne Center】已到达。操作员【AU POST Australia Post】 。'),
+    track(daysAgo(20), '【Melbourne Center】登记问题件[自提]AWAITING COLLECTION AT AUSTRALIA POST, 操作员【Australia Post】。', 'problem'),
+    track(daysAgo(16), '包裹正在处理中。'),
   ])
   const guarded = applyFactGuardrails(baseResult({ lossScope: '暂无异常', confidence: 0.8 }), facts)
 
@@ -552,9 +552,9 @@ test('Australia Post 后续操作不切回公司仓且断更达到 7 天判定 3
   assert.equal(guarded.appliedDecisionRuleId, 'external_carrier_stale_is_3pl_loss')
 })
 
-test('JD 3PL 转交后外部承运派送中断更超过 7 天判定 3PL 丢件', () => {
+test('JD 3PL 转交后外部承运派送中断更达到配置阈值判定 3PL 丢件', () => {
   const handoffTime = daysAgo(43, '16:01:44')
-  const latestTime = daysAgo(12, '09:38:15')
+  const latestTime = daysAgo(16, '09:38:15')
   const facts = deriveTrackFacts([
     normalizeTrackEvent({
       time: handoffTime.replaceAll('-', '.'),

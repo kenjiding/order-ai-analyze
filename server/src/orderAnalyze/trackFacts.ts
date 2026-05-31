@@ -6,6 +6,8 @@ import {
   classifyOperatorForWarehouse,
   findWarehouseProfileByName,
   getWarehouseLossTimeoutDays,
+  EXTERNAL_CARRIER_LOSS_TIMEOUT_DAYS,
+  CROSS_HUB_TRANSIT_REVIEW_TIMEOUT_DAYS,
 } from './warehouseProfiles'
 
 /** 写入模型提示时的轨迹类型中文说明；未列出的保留接口原值 */
@@ -786,6 +788,8 @@ function makeEmptyFacts(input: {
     activeWarehouseCityId: null,
     activeWarehouseKnown: false,
     activeWarehouseLossTimeoutDays: DEFAULT_WAREHOUSE_LOSS_TIMEOUT_DAYS,
+    externalCarrierLossTimeoutDays: EXTERNAL_CARRIER_LOSS_TIMEOUT_DAYS,
+    crossHubTransitReviewTimeoutDays: CROSS_HUB_TRANSIT_REVIEW_TIMEOUT_DAYS,
     activeExternalCarrierName: null,
     activeSegmentStartTime: null,
     activeSegmentDaysDiff: -1,
@@ -1084,6 +1088,8 @@ export function deriveTrackFacts(tracks: TrackEvent[], interceptLogs: ScanInterc
     activeWarehouseCityId: activeSegment?.cityId ?? null,
     activeWarehouseKnown: activeSegment?.warehouseKnown ?? false,
     activeWarehouseLossTimeoutDays,
+    externalCarrierLossTimeoutDays: EXTERNAL_CARRIER_LOSS_TIMEOUT_DAYS,
+    crossHubTransitReviewTimeoutDays: CROSS_HUB_TRANSIT_REVIEW_TIMEOUT_DAYS,
     activeExternalCarrierName: activeSegment?.carrierName ?? null,
     activeSegmentStartTime,
     activeSegmentDaysDiff: activeSegmentStartTime ? daysDiff(activeSegmentStartTime) : -1,
@@ -1215,7 +1221,9 @@ export function computeTrackTemporalContext(tracks: TrackEvent[], interceptLogs:
       `外部承运商: ${facts.activeExternalCarrierName ?? '未知'}；转交时间: ${facts.externalCarrierTransferTime ?? '-'}（距今 ${facts.externalCarrierDaysDiff} 天）`
     )
     lines.push('当前已转交外部承运且未进入公司仓库责任段，禁止继续沿用历史仓库的库内/库外起算。')
-    lines.push('外部承运超时规则: 最后更新未满 7 天为「暂无异常」；最后更新达到 7 天且无正常完结时判定为「3PL丢件」。')
+    lines.push(
+      `外部承运超时规则: 最后更新未满 ${facts.externalCarrierLossTimeoutDays} 天为「暂无异常」；最后更新达到 ${facts.externalCarrierLossTimeoutDays} 天且无正常完结时判定为「3PL丢件」。`
+    )
   } else if (facts.activeSegmentStatus === 'transit_to_company_hub') {
     lines.push(
       `转运目的仓: ${facts.activeWarehouseName ?? '未知'}${facts.activeWarehouseKnown ? `（${facts.activeWarehouseCityId}/${facts.activeWarehouseHubId}）` : '（未匹配仓库配置）'}`
@@ -1291,9 +1299,15 @@ export function computeTrackTemporalContext(tracks: TrackEvent[], interceptLogs:
   }
 
   if (facts.assignCancelLoopWithoutDispatch) {
-    lines.push(
-      '分配-取消循环（当前责任段无任何成功出库）: 是  → 派件员反复领取后退回、包裹始终在当前仓库未离开，是「库内扫描员丢失」的典型特征'
-    )
+    if (facts.hasRealOperatorScan) {
+      lines.push(
+        '分配-取消循环（当前责任段无任何成功出库）: 是，且当前责任段存在真实操作员扫描入库  → 派件员反复领取后退回、包裹始终在当前仓库未离开，是「库内扫描员丢失」的典型特征'
+      )
+    } else {
+      lines.push(
+        '分配-取消循环（当前责任段无任何成功出库）: 是，但当前责任段无真实操作员扫描入库（真实操作员扫描记录: 否）  → 责任尚未真正进入库内、包裹也未真正出库，是「虚假转运」的典型特征，禁止据此判库内丢失'
+      )
+    }
   } else {
     const noLoopReason = facts.lastDispatchedOutTime
       ? `当前责任段存在「包裹正在派送中」真实出库（${facts.lastDispatchedOutTime}），不构成"无任何成功出库循环"`

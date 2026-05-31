@@ -1,4 +1,8 @@
 import type { AiLossScope, OrderAnalyzeResult, TrackFacts } from './types'
+import {
+  EXTERNAL_CARRIER_LOSS_TIMEOUT_DAYS,
+  CROSS_HUB_TRANSIT_REVIEW_TIMEOUT_DAYS,
+} from './warehouseProfiles'
 
 type DecisionRule = {
   id: string
@@ -191,16 +195,16 @@ export const DECISION_RULES: readonly DecisionRule[] = [
   {
     id: 'external_carrier_stale_is_3pl_loss',
     priority: 21,
-    description: '当前已转交外部承运且最后更新达到 7 天时，归入 3PL 丢件。',
+    description: `当前已转交外部承运且最后更新达到 ${EXTERNAL_CARRIER_LOSS_TIMEOUT_DAYS} 天时，归入 3PL 丢件。`,
     match: ({ result, facts }) =>
       facts.activeResponsibilityOwner === 'external_carrier' &&
-      facts.lastEventDaysDiff >= 7 &&
+      facts.lastEventDaysDiff >= facts.externalCarrierLossTimeoutDays &&
       (result.lossScope !== '3PL丢件' ||
         result.exceptionCategoryId !== '' ||
         result.needsReview === true ||
         !result.factGuardrailHit),
     resolve: ({ result, facts }) => {
-      const hit = `当前责任主体为外部承运商 ${facts.activeExternalCarrierName ?? '-'}，转交时间 ${facts.externalCarrierTransferTime ?? '-'}，最后更新距今 ${facts.lastEventDaysDiff} 天；公司仓库责任已完成转交，外部承运超 7 天未正常完结`
+      const hit = `当前责任主体为外部承运商 ${facts.activeExternalCarrierName ?? '-'}，转交时间 ${facts.externalCarrierTransferTime ?? '-'}，最后更新距今 ${facts.lastEventDaysDiff} 天；公司仓库责任已完成转交，外部承运超 ${facts.externalCarrierLossTimeoutDays} 天未正常完结`
       return withRuleHit({
         result,
         ruleId: 'external_carrier_stale_is_3pl_loss',
@@ -216,14 +220,14 @@ export const DECISION_RULES: readonly DecisionRule[] = [
   {
     id: 'external_carrier_handoff_not_overdue',
     priority: 22,
-    description: '当前已转交外部承运且最后更新未达到 7 天复核阈值时，不应判库内/库外丢失。',
+    description: `当前已转交外部承运且最后更新未达到 ${EXTERNAL_CARRIER_LOSS_TIMEOUT_DAYS} 天复核阈值时，不应判库内/库外丢失。`,
     match: ({ result, facts }) =>
       facts.activeResponsibilityOwner === 'external_carrier' &&
       facts.lastEventDaysDiff >= 0 &&
-      facts.lastEventDaysDiff < 7 &&
+      facts.lastEventDaysDiff < facts.externalCarrierLossTimeoutDays &&
       result.lossScope !== '暂无异常',
     resolve: ({ result, facts }) => {
-      const hit = `当前责任主体为外部承运商 ${facts.activeExternalCarrierName ?? '-'}，转交时间 ${facts.externalCarrierTransferTime ?? '-'}，最后更新距今 ${facts.lastEventDaysDiff} 天，未达到 7 天复核阈值；公司仓库责任已完成转交`
+      const hit = `当前责任主体为外部承运商 ${facts.activeExternalCarrierName ?? '-'}，转交时间 ${facts.externalCarrierTransferTime ?? '-'}，最后更新距今 ${facts.lastEventDaysDiff} 天，未达到 ${facts.externalCarrierLossTimeoutDays} 天复核阈值；公司仓库责任已完成转交`
       return withRuleHit({
         result,
         ruleId: 'external_carrier_handoff_not_overdue',
@@ -238,14 +242,14 @@ export const DECISION_RULES: readonly DecisionRule[] = [
   {
     id: 'transfer_to_company_hub_not_overdue',
     priority: 23,
-    description: '跨仓转运途中未达到 10 天干线超时阈值时，旧仓库库内/库外责任已结束。',
+    description: `跨仓转运途中未达到 ${CROSS_HUB_TRANSIT_REVIEW_TIMEOUT_DAYS} 天干线超时阈值时，旧仓库库内/库外责任已结束。`,
     match: ({ result, facts }) =>
       facts.activeSegmentStatus === 'transit_to_company_hub' &&
       facts.lastEventDaysDiff >= 0 &&
-      facts.lastEventDaysDiff < 10 &&
+      facts.lastEventDaysDiff < facts.crossHubTransitReviewTimeoutDays &&
       result.lossScope !== '暂无异常',
     resolve: ({ result, facts }) => {
-      const hit = `当前处于跨仓转运至 ${facts.transferToOtherHubDestination ?? facts.activeWarehouseName ?? '-'}，最后更新距今 ${facts.lastEventDaysDiff} 天，未达到 10 天转运复核阈值；旧仓库责任已结束`
+      const hit = `当前处于跨仓转运至 ${facts.transferToOtherHubDestination ?? facts.activeWarehouseName ?? '-'}，最后更新距今 ${facts.lastEventDaysDiff} 天，未达到 ${facts.crossHubTransitReviewTimeoutDays} 天转运复核阈值；旧仓库责任已结束`
       return withRuleHit({
         result,
         ruleId: 'transfer_to_company_hub_not_overdue',
@@ -260,10 +264,10 @@ export const DECISION_RULES: readonly DecisionRule[] = [
   {
     id: 'transfer_to_company_hub_stale_needs_review',
     priority: 24,
-    description: '跨仓转运断更达到 10 天时，进入人工判断等待目的仓或转运责任确认。',
+    description: `跨仓转运断更达到 ${CROSS_HUB_TRANSIT_REVIEW_TIMEOUT_DAYS} 天时，进入人工判断等待目的仓或转运责任确认。`,
     match: ({ result, facts }) =>
       facts.activeSegmentStatus === 'transit_to_company_hub' &&
-      facts.lastEventDaysDiff >= 10 &&
+      facts.lastEventDaysDiff >= facts.crossHubTransitReviewTimeoutDays &&
       result.lossScope !== '需人工判断',
     resolve: ({ result, facts }) => {
       const hit = `当前仍处于跨仓转运至 ${facts.transferToOtherHubDestination ?? facts.activeWarehouseName ?? '-'}，最后更新距今 ${facts.lastEventDaysDiff} 天，目的仓尚未到仓，不能按旧仓库库内/库外定责`
@@ -407,12 +411,12 @@ export const DECISION_RULES: readonly DecisionRule[] = [
   {
     id: 'no_real_operator_cannot_be_in_warehouse_loss',
     priority: 30,
-    description: '无真实操作员扫描时，禁止判定库内丢失；若存在无出库分配-取消循环则归为虚假转运。',
+    description: '无真实操作员扫描入库且全程无真正出库时，禁止判定库内丢失；若存在无出库分配-取消循环则归为虚假转运。',
     appliesTo: ['库内丢失'],
     match: ({ facts }) => !facts.hasRealOperatorScan && facts.lastDispatchedOutTime === null,
     resolve: ({ result, facts }) => {
       const correctedScope: AiLossScope = facts.assignCancelLoopWithoutDispatch ? '虚假转运' : '暂无异常'
-      const hit = '轨迹全程无真实操作员扫描记录，仅出现非真实扫描员或无操作员信息，不满足库内丢失必要条件①'
+      const hit = '当前责任段无真实操作员扫描入库记录，且全程无「包裹正在派送中」真正出库，责任尚未真正进入库内，不满足库内丢失必要条件①'
       return withRuleHit({
         result,
         ruleId: 'no_real_operator_cannot_be_in_warehouse_loss',

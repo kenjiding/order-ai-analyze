@@ -1,4 +1,5 @@
 import type { AiLossScope, TrackFacts } from './types'
+import { EXTERNAL_CARRIER_LOSS_TIMEOUT_DAYS } from './warehouseProfiles'
 
 export const AI_LOSS_SCOPE_VALUES = [
   '库内丢失',
@@ -58,14 +59,13 @@ export const EXCEPTION_CATALOG: readonly ExceptionScopeDefinition[] = [
   },
   {
     lossScope: '3PL丢件',
-    promptDescription:
-      '公司仓库已明确转交外部承运商，当前责任主体仍为 external_carrier，且最后更新达到 7 天仍无正常完结或回到公司仓责任段。',
+    promptDescription: `公司仓库已明确转交外部承运商，当前责任主体仍为 external_carrier，且最后更新达到 ${EXTERNAL_CARRIER_LOSS_TIMEOUT_DAYS} 天仍无正常完结或回到公司仓责任段。`,
     subTypes: [],
   },
   {
     lossScope: '虚假转运',
     promptDescription:
-      '轨迹仅有分配与取消分配循环，按非真实扫描员名单排除后全程无真实操作员扫描或盘点记录。',
+      '存在无任何成功出库的分配-取消循环，且当前责任段全程无任何真实库内/库外责任点（无真实扫描/回仓/盘点/出库/派送员/阻断扫描员），责任尚未真正进入库内。',
     subTypes: [],
   },
   {

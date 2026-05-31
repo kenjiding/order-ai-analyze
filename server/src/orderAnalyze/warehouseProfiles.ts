@@ -6,6 +6,12 @@ const COMMON_NON_REAL_OPERATORS = ['ADL-DC-Unload', 'Kuangyi Gao', 'Leeki'] as c
 
 export const DEFAULT_WAREHOUSE_LOSS_TIMEOUT_DAYS = 15
 
+/** 外部承运（3PL）交接后多久仍未完结即判「3PL丢件」；默认与公司仓库库内/库外丢失超时阈值一致 */
+export const EXTERNAL_CARRIER_LOSS_TIMEOUT_DAYS = DEFAULT_WAREHOUSE_LOSS_TIMEOUT_DAYS
+
+/** 跨仓转运（干线）在途复核窗口天数；与「仓库丢失」语义不同，单独配置 */
+export const CROSS_HUB_TRANSIT_REVIEW_TIMEOUT_DAYS = 10
+
 function normalizeText(raw: string): string {
   return raw.trim().toLowerCase().replace(/\s+/g, '')
 }
@@ -75,7 +81,8 @@ export const WAREHOUSE_PROFILES: readonly WarehouseProfile[] = [
     hubId: 'perth_placeholder',
     displayName: 'Perth',
     aliases: ['Perth Center', 'Perth Centre', 'Perth DS', 'PER Center', 'PER DS'],
-    realOperatorPatterns: [/^PER[_-].+/i],
+    realOperatorPatterns: [/^PER[_-].+/i, /PER Warehouse\d+$/i],
+    nonRealOperators: ['PER OPS1', 'PER OPS2', 'PER OPS3', 'PER OPS4', 'PER OPS5', 'PER OPS6', 'PER OPS7', 'PER OPS8', 'PER OPS9', 'PER OPS10'],
     systemOperators: COMMON_SYSTEM_OPERATORS,
   },
   {

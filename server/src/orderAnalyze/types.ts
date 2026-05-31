@@ -107,8 +107,12 @@ export type TrackFacts = {
   activeWarehouseName: string | null
   activeWarehouseCityId: WarehouseCityId | null
   activeWarehouseKnown: boolean
-  /** 当前仓库库内/库外丢失判定超时天数，默认 7 天 */
+  /** 当前仓库库内/库外丢失判定超时天数，默认 DEFAULT_WAREHOUSE_LOSS_TIMEOUT_DAYS（15 天） */
   activeWarehouseLossTimeoutDays: number
+  /** 外部承运（3PL）交接后判「3PL丢件」的超时天数，默认与仓库丢失阈值一致 */
+  externalCarrierLossTimeoutDays: number
+  /** 跨仓转运（干线）在途复核窗口天数 */
+  crossHubTransitReviewTimeoutDays: number
   activeExternalCarrierName: string | null
   activeSegmentStartTime: string | null
   activeSegmentDaysDiff: number
