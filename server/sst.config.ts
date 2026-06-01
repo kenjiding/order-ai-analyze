@@ -48,7 +48,7 @@ export default $config({
       handler: 'src/handler.handler',
       runtime: 'nodejs22.x',
       memory: '512 MB',
-      timeout: '30 seconds',
+      timeout: '300 seconds',
       url: { cors: false },
       environment: envVars,
     })

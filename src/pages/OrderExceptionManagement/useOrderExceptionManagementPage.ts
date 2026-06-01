@@ -288,7 +288,7 @@ export function useOrderExceptionManagementPage() {
     }
     if (orderNos.length > ORDER_EXCEPTION_ANALYZE_MAX_BATCH) {
       showToast(
-        `去重后一次最多分析 ${ORDER_EXCEPTION_ANALYZE_MAX_BATCH} 个订单，请删减或分批`,
+        `去重后一次最多分析 ${ORDER_EXCEPTION_ANALYZE_MAX_BATCH} 个订单，请删减后重试`,
         'error'
       )
       return
@@ -464,7 +464,7 @@ export function useOrderExceptionManagementPage() {
 
       if (result.orderNos.length > ORDER_EXCEPTION_ANALYZE_MAX_BATCH) {
         showToast(
-          `已从 ${file.name} 提取 ${result.orderNos.length} 个订单号，超出单次上限 ${ORDER_EXCEPTION_ANALYZE_MAX_BATCH}，请分批后分析`,
+          `已从 ${file.name} 提取 ${result.orderNos.length} 个订单号，超出单次上限 ${ORDER_EXCEPTION_ANALYZE_MAX_BATCH}，请删减后分析`,
           'error'
         )
         return

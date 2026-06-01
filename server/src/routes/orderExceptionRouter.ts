@@ -122,8 +122,8 @@ orderExceptionRouter.post('/track', async (req: Request, res: Response) => {
       res.status(400).json({ error: '请提供 orderNos' })
       return
     }
-    if (orderNos.length > 50) {
-      res.status(400).json({ error: '单次最多查询 50 个订单号' })
+    if (orderNos.length > 500) {
+      res.status(400).json({ error: '单次最多查询 500 个订单号' })
       return
     }
 
@@ -162,8 +162,8 @@ orderExceptionRouter.post('/prefetch', async (req: Request, res: Response) => {
       res.status(400).json({ error: '请提供 orderNos' })
       return
     }
-    if (orderNos.length > 50) {
-      res.status(400).json({ error: '单次最多预取 50 个订单号' })
+    if (orderNos.length > 500) {
+      res.status(400).json({ error: '单次最多预取 500 个订单号' })
       return
     }
 
@@ -206,8 +206,8 @@ orderExceptionRouter.post('/analyze', async (req: Request, res: Response) => {
       res.status(400).json({ error: '请提供 orderNos' })
       return
     }
-    if (orderNos.length > 20) {
-      res.status(400).json({ error: '单次最多分析 20 个订单' })
+    if (orderNos.length > 500) {
+      res.status(400).json({ error: '单次最多分析 500 个订单，请拆分后分批提交' })
       return
     }
 

@@ -19,7 +19,7 @@ async function readHttpError(res: Response, text: string): Promise<string> {
 export type OrderAnalyzeAiProvider = 'openai' | 'deepseek'
 
 /** 单次「开始分析」请求中，去重后的订单号上限（须与 `server` 的 `/analyze` 一致）。 */
-export const ORDER_EXCEPTION_ANALYZE_MAX_BATCH = 20
+export const ORDER_EXCEPTION_ANALYZE_MAX_BATCH = 500
 
 /** 单次「开始分析」累计的大模型 token 消耗（含主分析、精排、交叉验证/重试）。 */
 export type OrderAnalyzeTokenUsage = {
