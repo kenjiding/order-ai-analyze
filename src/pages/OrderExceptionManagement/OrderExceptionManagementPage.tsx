@@ -22,6 +22,9 @@ export default function OrderExceptionManagementPage() {
           batchAnalyze={v.batchAnalyze}
           onBatchAnalyzeChange={v.setBatchAnalyze}
           onAnalyze={v.onAnalyze}
+          onAnalyzeOrderFileUpload={v.onAnalyzeOrderFileUpload}
+          onClearImportedAnalyzeOrders={v.onClearImportedAnalyzeOrders}
+          importedAnalyzeOrders={v.importedAnalyzeOrders}
           isAnalyzing={v.isAnalyzing}
           rows={v.analysisRows}
           analyzeProgress={v.analyzeProgress}

@@ -18,6 +18,7 @@ import {
 } from './orderExceptionApi'
 import type { TrackEvent } from './types'
 import { useAppSettings } from '../../context/AppSettingsContext'
+import { parseOrderNumbersFromFile } from './parseOrderNumbersFromFile'
 import { parseOrderNumbersUnique } from '../../utils/orderNoInput'
 import { showToast } from '../../utils/toast'
 
@@ -71,6 +72,11 @@ export type AnalyzeProgress = {
   completed: number
   succeeded: number
   failed: number
+}
+
+export type ImportedAnalyzeOrders = {
+  fileName: string
+  orderNos: string[]
 }
 
 function mergeAnalyzeTokenUsage(
@@ -194,6 +200,9 @@ export function useOrderExceptionManagementPage() {
   const [activeTab, setActiveTab] = useState<TabId>('analyze')
 
   const [analyzeOrderText, setAnalyzeOrderText] = useState('')
+  const [importedAnalyzeOrders, setImportedAnalyzeOrders] = useState<ImportedAnalyzeOrders | null>(
+    null
+  )
   const [analyzeAiProvider, setAnalyzeAiProvider] =
     useState<OrderAnalyzeAiProvider>(readStoredAnalyzeAiProvider)
   const [batchAnalyze, setBatchAnalyze] = useState(readStoredBatchAnalyze)
@@ -270,9 +279,11 @@ export function useOrderExceptionManagementPage() {
   const onAnalyze = useCallback(async () => {
     const token = ensureToken()
     if (!token) return
-    const orderNos = parseOrderNumbersUnique(analyzeOrderText)
+    const orderNos = parseOrderNumbersUnique(
+      [analyzeOrderText, importedAnalyzeOrders?.orderNos.join('\n') ?? ''].filter(Boolean).join('\n')
+    )
     if (!orderNos.length) {
-      showToast('请填写待分析订单号', 'error')
+      showToast('请填写待分析订单号或导入文件', 'error')
       return
     }
     if (orderNos.length > ORDER_EXCEPTION_ANALYZE_MAX_BATCH) {
@@ -437,7 +448,36 @@ export function useOrderExceptionManagementPage() {
     } else {
       showToast(`分析结束：${succeeded} 单成功，${failed} 单失败`, 'error')
     }
-  }, [analyzeAiProvider, analyzeOrderText, batchAnalyze, ensureToken])
+  }, [analyzeAiProvider, analyzeOrderText, batchAnalyze, ensureToken, importedAnalyzeOrders])
+
+  const onAnalyzeOrderFileUpload = useCallback(
+    async (file: File) => {
+      if (isAnalyzing) return
+
+      const result = await parseOrderNumbersFromFile(file)
+      if (!result.ok) {
+        showToast(result.error, 'error')
+        return
+      }
+
+      setImportedAnalyzeOrders({ fileName: file.name, orderNos: result.orderNos })
+
+      if (result.orderNos.length > ORDER_EXCEPTION_ANALYZE_MAX_BATCH) {
+        showToast(
+          `已从 ${file.name} 提取 ${result.orderNos.length} 个订单号，超出单次上限 ${ORDER_EXCEPTION_ANALYZE_MAX_BATCH}，请分批后分析`,
+          'error'
+        )
+        return
+      }
+
+      showToast(`已从 ${file.name} 提取 ${result.orderNos.length} 个订单号，点击「开始分析」继续`, 'success')
+    },
+    [isAnalyzing]
+  )
+
+  const onClearImportedAnalyzeOrders = useCallback(() => {
+    setImportedAnalyzeOrders(null)
+  }, [])
 
   const onCaptureRegression = useCallback(async () => {
     const token = ensureToken()
@@ -528,6 +568,9 @@ export function useOrderExceptionManagementPage() {
     batchAnalyze,
     setBatchAnalyze,
     onAnalyze,
+    onAnalyzeOrderFileUpload,
+    onClearImportedAnalyzeOrders,
+    importedAnalyzeOrders,
     isAnalyzing,
     analysisRows,
     analyzeProgress,

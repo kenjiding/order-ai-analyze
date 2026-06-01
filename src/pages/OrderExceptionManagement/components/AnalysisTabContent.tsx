@@ -1,7 +1,7 @@
 import { Select, Tag } from 'antd'
 import { saveAs } from 'file-saver'
-import { Loader2 } from 'lucide-react'
-import { useCallback, useMemo, useState, type ReactNode } from 'react'
+import { Loader2, Upload } from 'lucide-react'
+import { useCallback, useMemo, useState, type ChangeEvent, type ReactNode } from 'react'
 import * as XLSX from 'xlsx-js-style'
 import { applySheetCenterAlignment } from '../../../utils/xlsxCenteredSheet'
 import { DataTable, ExportButton, type DataTableColumn } from '../../ScannerEfficiency/components/ui'
@@ -10,7 +10,7 @@ import {
   type OrderAnalyzeApiTiming,
   type OrderAnalyzeTokenUsage,
 } from '../orderExceptionApi'
-import type { AnalysisRow, AnalyzeProgress } from '../useOrderExceptionManagementPage'
+import type { AnalysisRow, AnalyzeProgress, ImportedAnalyzeOrders } from '../useOrderExceptionManagementPage'
 import { AnalyzeProgressStrip } from './AnalyzeProgressStrip'
 import { OrderAnalysisDetailDrawer } from './OrderAnalysisDetailDrawer'
 
@@ -162,6 +162,9 @@ type Props = {
   batchAnalyze: boolean
   onBatchAnalyzeChange: (value: boolean) => void
   onAnalyze: () => void
+  onAnalyzeOrderFileUpload: (file: File) => Promise<void>
+  onClearImportedAnalyzeOrders: () => void
+  importedAnalyzeOrders: ImportedAnalyzeOrders | null
   isAnalyzing: boolean
   rows: Row[]
   analyzeProgress: AnalyzeProgress | null
@@ -187,6 +190,9 @@ export function AnalysisTabContent({
   batchAnalyze,
   onBatchAnalyzeChange,
   onAnalyze,
+  onAnalyzeOrderFileUpload,
+  onClearImportedAnalyzeOrders,
+  importedAnalyzeOrders,
   isAnalyzing,
   rows,
   analyzeProgress,
@@ -197,6 +203,16 @@ export function AnalysisTabContent({
 }: Props) {
   const [detailRow, setDetailRow] = useState<Row | null>(null)
   const [visitedOrders, setVisitedOrders] = useState<Set<string>>(() => new Set())
+
+  const onOrderFileChange = useCallback(
+    (event: ChangeEvent<HTMLInputElement>) => {
+      const file = event.target.files?.[0]
+      event.target.value = ''
+      if (!file) return
+      void onAnalyzeOrderFileUpload(file)
+    },
+    [onAnalyzeOrderFileUpload]
+  )
 
   const handleOpenOrderDetail = useCallback((row: Row) => {
     setVisitedOrders((prev) => {
@@ -273,6 +289,20 @@ export function AnalysisTabContent({
               />
             </label>
             <label
+              title="支持 xlsx / xls / csv / txt；表格需含「订单号」列，或首列为订单号。"
+              className="inline-flex cursor-pointer items-center gap-2 rounded-md border border-slate-200 bg-slate-50/80 px-3 py-2 text-xs font-medium text-slate-700 transition hover:border-[#2f8f87]/40 hover:bg-[#2f8f87]/5 hover:text-[#1f6f68] has-[:disabled]:cursor-not-allowed has-[:disabled]:opacity-50"
+            >
+              <Upload className="h-3.5 w-3.5 shrink-0" aria-hidden />
+              导入文件
+              <input
+                type="file"
+                accept=".xlsx,.xls,.csv,.txt,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel,text/csv,text/plain"
+                disabled={isAnalyzing}
+                onChange={onOrderFileChange}
+                className="hidden"
+              />
+            </label>
+            <label
               htmlFor="order-exception-batch-analyze"
               className="flex cursor-pointer items-center gap-2 rounded-md border border-slate-200 bg-slate-50/80 px-3 py-2 text-left"
             >
@@ -297,7 +327,26 @@ export function AnalysisTabContent({
             </button>
           </div>
         </div>
-        <label className="mt-4 block text-xs font-medium text-slate-600">
+        {importedAnalyzeOrders ? (
+          <div className="mt-3 flex items-center justify-end gap-2 text-xs text-slate-600" aria-live="polite">
+            <span>
+              已导入{' '}
+              <span className="font-semibold text-slate-900">
+                {importedAnalyzeOrders.orderNos.length.toLocaleString('zh-CN')}
+              </span>{' '}
+              个订单
+            </span>
+            <button
+              type="button"
+              disabled={isAnalyzing}
+              onClick={onClearImportedAnalyzeOrders}
+              className="text-[#1f6f68] underline decoration-dashed underline-offset-2 hover:text-[#2f8f87] disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              清除
+            </button>
+          </div>
+        ) : null}
+        <label className={`block text-xs font-medium text-slate-600 ${importedAnalyzeOrders ? 'mt-3' : 'mt-4'}`}>
           <textarea
             value={analyzeOrderText}
             onChange={(e) => onAnalyzeOrderTextChange(e.target.value)}

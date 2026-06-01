@@ -173,20 +173,6 @@ function DrawerSectionHeader({
   )
 }
 
-function InsightMetric({ label, value, accent }: { label: string; value: string; accent?: boolean }) {
-  return (
-    <div className="min-w-0 rounded-lg border border-[var(--admin-line)] bg-white/90 px-4 py-3 shadow-[0_8px_24px_rgba(47,83,105,0.05)] backdrop-blur-sm">
-      <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">{label}</p>
-      <p
-        className={`mt-1 truncate text-sm font-semibold ${accent ? 'text-[#1f6f68]' : 'text-slate-900'}`}
-        title={value}
-      >
-        {value || '—'}
-      </p>
-    </div>
-  )
-}
-
 type Props = {
   row: Row | null
   onClose: () => void
@@ -461,6 +447,16 @@ export function OrderAnalysisDetailDrawer({ row, onClose }: Props) {
                       {row.categoryName}
                     </p>
                   </div>
+                  <div className="hidden h-8 w-px bg-white/20 sm:block" aria-hidden />
+                  <div className="min-w-0">
+                    <p className="text-[11px] font-medium uppercase tracking-[0.12em] text-white/70">当前责任方</p>
+                    <p className="truncate text-sm font-semibold text-white/95">{row.currentResponsibilityParty || '—'}</p>
+                  </div>
+                  <div className="hidden h-8 w-px bg-white/20 sm:block" aria-hidden />
+                  <div className="min-w-0">
+                    <p className="text-[11px] font-medium uppercase tracking-[0.12em] text-white/70">置信度</p>
+                    <p className="truncate text-sm font-medium text-white/95">{String(row.confidence ?? '—')}</p>
+                  </div>
                 </div>
               </div>
 
@@ -476,14 +472,6 @@ export function OrderAnalysisDetailDrawer({ row, onClose }: Props) {
           </header>
 
           <div className="flex-1 space-y-5 overflow-y-auto px-5 py-5 sm:px-6">
-            {/* Insight strip */}
-            <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-              <InsightMetric label="异常类型" value={row.lossScope} accent />
-              <InsightMetric label="子类型" value={row.categoryName} />
-              <InsightMetric label="当前责任方" value={row.currentResponsibilityParty} accent />
-              <InsightMetric label="置信度" value={String(row.confidence ?? '—')} />
-            </div>
-
             {/* Closure + vendor */}
             <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_280px]">
               <section className="admin-panel overflow-hidden">
