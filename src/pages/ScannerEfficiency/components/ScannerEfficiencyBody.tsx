@@ -8,6 +8,7 @@ import { EfficiencyDailyDetailByDaySection } from '../EfficiencyDailyDetailByDay
 import { formatInteger } from '../formatAndParse'
 import WeeklyReportPanel from '../WeeklyReportPanel'
 import { FrontDeskSaturationSection } from './FrontDeskSaturationSection'
+import ScannerEfficiencyPushSection from './ScannerEfficiencyPushSection'
 import { ScannerPersonSortingHourlySection } from './ScannerPersonSortingHourlySection'
 import { ScannerPersonSortingSummarySection } from './ScannerPersonSortingSummarySection'
 import type { ScannerEfficiencyViewModel } from '../useScannerEfficiencyPage'
@@ -33,6 +34,7 @@ export default function ScannerEfficiencyBody({ vm, level1Push }: Props) {
     setScannerHourlyExpanded,
     scanAggregate,
     attendanceResult,
+    attendanceRows,
     scannerResult,
     frontDeskResult,
     activeTab,
@@ -59,6 +61,8 @@ export default function ScannerEfficiencyBody({ vm, level1Push }: Props) {
     scannerHourlyPivotTables,
     scannerDailyEfficiencyTrendPoints,
     dailyCostPerTicketByDate,
+    dailyTotalLaborCostByDate,
+    dailyLaborCostByDate,
   } = vm
 
   return (
@@ -117,10 +121,13 @@ export default function ScannerEfficiencyBody({ vm, level1Push }: Props) {
               <Tab label="一级分拣个人效率" value={TAB_KEYS.SCANNER} />
               <Tab label="前台饱和度分析" value={TAB_KEYS.FRONT_DESK} />
               <Tab label="周报生成器" value={TAB_KEYS.WEEKLY} />
+              <Tab label="推送" value={TAB_KEYS.PUSH} />
             </Tabs>
           </section>
 
-          {summaryMetrics.length > 0 && activeTab !== TAB_KEYS.WEEKLY && (
+          {summaryMetrics.length > 0 &&
+            activeTab !== TAB_KEYS.WEEKLY &&
+            activeTab !== TAB_KEYS.PUSH && (
             <>
               <section
                 className={`grid gap-4 ${
@@ -144,14 +151,14 @@ export default function ScannerEfficiencyBody({ vm, level1Push }: Props) {
             </>
           )}
 
-          {activeTab !== TAB_KEYS.WEEKLY && (
+          {activeTab !== TAB_KEYS.WEEKLY && activeTab !== TAB_KEYS.PUSH && (
             <>
               {activeTab === TAB_KEYS.WAREHOUSE && (
                 <section className="space-y-4">
                   <SectionTitle
                     eyebrow="Inbound Volume"
                     title="到件货量按日"
-                    description="左侧为按日汇总表。右侧折线仅反映各日总货量（票）趋势，与表中「总货量」列一致。文件合并后先按运单号全局去重，再按日统计。"
+                    description="左侧为按日汇总表（含菜鸟票与菜鸟占比：运单号以 3 开头）。右侧折线仅反映各日总货量（票）趋势。文件合并后先按运单号全局去重，再按日统计；开仓/总体效率口径不变。"
                   />
                   <div className="grid gap-4 xl:grid-cols-[minmax(0,1.05fr)_minmax(320px,0.95fr)] xl:items-start">
                     <div className="min-w-0 px-4">
@@ -277,7 +284,7 @@ export default function ScannerEfficiencyBody({ vm, level1Push }: Props) {
                 description="当前尚未上传可识别的考勤数据，无法计算工时口径效率。"
               />
               <div className="px-5 py-4 text-sm leading-7">
-                请上传“考勤记录报表.csv”或同结构文件（至少包含日期、总时长、人员），即可启用该标签页。
+                请上传“考勤记录报表.csv”或同结构文件（至少包含日期、人员；有「工作时长」则优先使用，否则使用「总时长」），即可启用该标签页。
                 <br />
                 当前考勤识别：有效 {formatInteger(attendanceSourceInfo.rowCount)} 行，未识别{' '}
                 {formatInteger(attendanceSourceInfo.droppedRows)} 行。
@@ -293,7 +300,7 @@ export default function ScannerEfficiencyBody({ vm, level1Push }: Props) {
                 description="当前尚未上传可识别的考勤数据，无法识别前台/分拣下班基准。"
               />
               <div className="px-5 py-4 text-sm leading-7">
-                请先上传“考勤记录报表.csv”或同结构文件（至少包含日期、总时长、人员），再在本标签页上传前台分配包裹表。
+                请先上传“考勤记录报表.csv”或同结构文件（至少包含日期、人员；有「工作时长」则优先使用，否则使用「总时长」），再在本标签页上传前台分配包裹表。
                 <br />
                 当前考勤识别：有效 {formatInteger(attendanceSourceInfo.rowCount)} 行，未识别{' '}
                 {formatInteger(attendanceSourceInfo.droppedRows)} 行。
@@ -311,6 +318,18 @@ export default function ScannerEfficiencyBody({ vm, level1Push }: Props) {
               attendanceSourceInfo={attendanceSourceInfo}
               settings={settings}
               dailyCostPerTicketByDate={dailyCostPerTicketByDate}
+              dailyTotalLaborCostByDate={dailyTotalLaborCostByDate}
+            />
+          )}
+
+          {activeTab === TAB_KEYS.PUSH && (
+            <ScannerEfficiencyPushSection
+              vm={{
+                attendanceResult,
+                attendanceRows,
+                scannerResult,
+                dailyLaborCostByDate,
+              }}
             />
           )}
 
@@ -403,6 +422,8 @@ export default function ScannerEfficiencyBody({ vm, level1Push }: Props) {
               </div>
               <div className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-4 text-sm leading-7 text-slate-600">
                 日表在到件行之外，追加「统计窗口」内无到件、不开仓的日期（总货量 0，仍显示分拣人数与工时）。分母在窗口内按日汇总。人员表为考勤汇总，不含按票分摊。
+                <br />
+                菜鸟件：运单号以 3 开头，仅作结构观测（占比），不参与开仓/总体效率计算。
               </div>
             </div>
           </section>

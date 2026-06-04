@@ -1,9 +1,10 @@
 import * as XLSX from 'xlsx'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
-  laborCostAndHoursSumByDateFromMappedRows,
-  mapParsedAttendanceRowsForLabor,
-} from '../../payroll/laborCostFromAttendance'
+  buildDailyLaborCostFromPayrollByDate,
+  computeAttendancePayrollFromFiles,
+  type AttendancePayrollResult,
+} from '../../payroll/attendancePayrollFromUpload'
 import type { RateSettings } from '../../payroll/wageRateCalculation'
 import { DEFAULT_RATE_SETTINGS } from '../WageSalary/constants'
 import { loadEmployeesFromStorage, loadRateSettingsFromStorage } from '../WageSalary/storage'
@@ -25,12 +26,14 @@ import {
   type ParsedAttendanceRow,
   type ParsedScanRow,
 } from './aggregates'
+import { formatCainiaoSharePercent } from './cainiaoWaybill'
 import {
   formatInteger,
   formatNumber,
 } from './formatAndParse'
 import { parseAllocationFiles, parseScanFiles, parseAttendanceFiles } from './parsers'
 import { flushPaint } from './excelParseClient'
+import { exportAttendanceSchedulingPlanExcel } from './exportAttendanceSchedulingPlanExcel'
 import { buildExportWorkbook, type SourceInfo } from './exportWorkbook'
 import { buildFrontDeskSaturation } from './frontDeskSaturation'
 import {
@@ -87,6 +90,25 @@ export function useScannerEfficiencyPage() {
     })()
   }, [])
 
+  const refreshAttendancePayroll = useCallback(async (files: File[]) => {
+    if (!files.length) {
+      setAttendancePayroll(null)
+      return
+    }
+    const payroll = await computeAttendancePayrollFromFiles(
+      files,
+      wageEmployees,
+      rateSettingsForLabor,
+      WAGE_LABOR_UPLOAD_SORTING,
+      WAGE_LABOR_UPLOAD_PUBLIC_HOLIDAY,
+    )
+    setAttendancePayroll(payroll)
+  }, [wageEmployees, rateSettingsForLabor])
+
+  useEffect(() => {
+    void refreshAttendancePayroll(lastAttendanceFilesRef.current)
+  }, [refreshAttendancePayroll])
+
   const [scanRows, setScanRows] = useState<ParsedScanRow[]>([])
   const [scanSourceInfo, setScanSourceInfo] = useState<SourceInfo>(EMPTY_SOURCE)
 
@@ -102,6 +124,9 @@ export function useScannerEfficiencyPage() {
   }, [scanSourceInfo])
 
   const [attendanceRows, setAttendanceRows] = useState<ParsedAttendanceRow[]>([])
+  /** 与工资结算「计算薪资」同款结果；总成本只看此对象 */
+  const [attendancePayroll, setAttendancePayroll] = useState<AttendancePayrollResult | null>(null)
+  const lastAttendanceFilesRef = useRef<File[]>([])
   const [attendanceSourceInfo, setAttendanceSourceInfo] = useState<SourceInfo>(EMPTY_SOURCE)
   const [allocationRows, setAllocationRows] = useState<ParsedAllocationRow[]>([])
   const [allocationSourceInfo, setAllocationSourceInfo] = useState<SourceInfo>(EMPTY_SOURCE)
@@ -174,6 +199,7 @@ export function useScannerEfficiencyPage() {
 
   const activeTab = useMemo((): TabKey => {
     if (manualTab === TAB_KEYS.WEEKLY) return TAB_KEYS.WEEKLY
+    if (manualTab === TAB_KEYS.PUSH) return TAB_KEYS.PUSH
     const coerced: TabKey | null =
       attendanceEfficiencyBase && !scannerResult
         ? TAB_KEYS.WAREHOUSE
@@ -225,39 +251,34 @@ export function useScannerEfficiencyPage() {
     ],
   )
 
-  const laborMappedRows = useMemo(
-    () =>
-      mapParsedAttendanceRowsForLabor(
-        attendanceRows,
-        wageEmployees,
-        WAGE_LABOR_UPLOAD_SORTING,
-        WAGE_LABOR_UPLOAD_PUBLIC_HOLIDAY,
-      ),
-    [attendanceRows, wageEmployees],
-  )
-
-  const laborByDateAndHours = useMemo(() => {
-    if (!attendanceResult || !attendanceRows.length) return null
-    const rs = attendanceResult.summary.efficiencyRangeStart
-    const re = attendanceResult.summary.efficiencyRangeEnd
-    const inWin = (d: string) => d >= rs && d <= re
-    return laborCostAndHoursSumByDateFromMappedRows(laborMappedRows, rateSettingsForLabor, inWin)
-  }, [attendanceResult, attendanceRows.length, laborMappedRows, rateSettingsForLabor])
+  const dailyLaborCostByDate = useMemo(() => {
+    if (!attendanceResult?.dailyRows.length || !attendancePayroll) return undefined
+    return buildDailyLaborCostFromPayrollByDate(
+      attendanceResult.dailyRows,
+      attendancePayroll.wagesByDate,
+    )
+  }, [attendanceResult, attendancePayroll])
 
   const dailyCostPerTicketByDate = useMemo(() => {
-    if (!attendanceResult?.dailyRows.length || !laborByDateAndHours) return undefined
-    const { costByDate: laborByDate, hoursSumByDate } = laborByDateAndHours
+    if (!dailyLaborCostByDate) return undefined
     const rec: Record<string, number | null> = {}
-    for (const r of attendanceResult.dailyRows) {
-      const laborRaw = laborByDate.get(r.date) ?? 0
-      const sumHMapped = hoursSumByDate.get(r.date) ?? 0
-      const displayH = r.totalHours
-      const laborAdj =
-        sumHMapped > 0 && Number.isFinite(displayH) ? laborRaw * (displayH / sumHMapped) : laborRaw
-      rec[r.date] = r.hasAttendance && r.volume > 0 ? laborAdj / r.volume : null
+    for (const [date, metrics] of Object.entries(dailyLaborCostByDate)) {
+      rec[date] = metrics.costPerTicket
     }
     return rec
-  }, [attendanceResult, laborByDateAndHours])
+  }, [dailyLaborCostByDate])
+
+  const dailyTotalLaborCostByDate = useMemo(() => {
+    if (!dailyLaborCostByDate) return undefined
+    const rec: Record<string, number | null> = {}
+    for (const [date, metrics] of Object.entries(dailyLaborCostByDate)) {
+      rec[date] = metrics.totalLaborCost
+    }
+    return rec
+  }, [dailyLaborCostByDate])
+
+  /** 与工资页「总工资」相同 */
+  const attendancePayrollTotal = attendancePayroll?.totalWages ?? null
 
   const warehouseMetrics = useMemo(() => {
     if (!scanAggregate || !attendanceResult) return null
@@ -268,7 +289,7 @@ export function useScannerEfficiencyPage() {
         hint: `上传总货量 ${formatInteger(attendanceResult.summary.uploadedVolume)} / 窗口内开仓日工时 ${formatNumber(
           attendanceResult.summary.openHours,
           2,
-        )} 小时`,
+        )} 小时；菜鸟占比 ${formatCainiaoSharePercent(attendanceResult.summary.cainiaoShareOpenDays)}（开仓日）`,
         tone: 'dark' as const,
       },
       {
@@ -277,7 +298,7 @@ export function useScannerEfficiencyPage() {
         hint: `上传总货量 ${formatInteger(attendanceResult.summary.uploadedVolume)} / 窗口内全部考勤工时 ${formatNumber(
           attendanceResult.summary.allHours,
           2,
-        )} 小时`,
+        )} 小时；菜鸟占比 ${formatCainiaoSharePercent(attendanceResult.summary.cainiaoShareWindow)}（全窗口）`,
       },
     ]
   }, [scanAggregate, attendanceResult])
@@ -400,6 +421,8 @@ export function useScannerEfficiencyPage() {
     if (!files.length) {
       setAttendanceRows([])
       setAttendanceSourceInfo(EMPTY_SOURCE)
+      setAttendancePayroll(null)
+      lastAttendanceFilesRef.current = []
       return
     }
 
@@ -410,7 +433,7 @@ export function useScannerEfficiencyPage() {
     try {
       const parsed = await parseAttendanceFiles(files)
       if (!parsed.rows.length) {
-        throw new Error('考勤文件没有识别到有效工时。请确认包含“日期/总时长/人员”列。')
+        throw new Error('考勤文件没有识别到有效工时。请确认包含“日期、人员”，以及“工作时长”或“总时长”列。')
       }
 
       setAttendanceRows(parsed.rows)
@@ -421,9 +444,26 @@ export function useScannerEfficiencyPage() {
         duplicateWaybillRows: 0,
         fileNames: parsed.fileNames,
       })
+
+      lastAttendanceFilesRef.current = files
+      const payroll = await computeAttendancePayrollFromFiles(
+        files,
+        wageEmployees,
+        rateSettingsForLabor,
+        WAGE_LABOR_UPLOAD_SORTING,
+        WAGE_LABOR_UPLOAD_PUBLIC_HOLIDAY,
+      )
+      setAttendancePayroll(payroll)
+      if (payroll.validationErrors.length > 0) {
+        setError(
+          `考勤工资：${payroll.wageRows.length} 条有效记录已计入总成本；${payroll.validationErrors.length} 条未通过工资页同款校验（与工资结算上传提示一致）。`,
+        )
+      }
     } catch (currentError: unknown) {
       setAttendanceRows([])
       setAttendanceSourceInfo(EMPTY_SOURCE)
+      setAttendancePayroll(null)
+      lastAttendanceFilesRef.current = []
       setError(currentError instanceof Error ? currentError.message : '读取考勤文件失败。请检查文件格式。')
     } finally {
       setLoadingAttendance(false)
@@ -469,6 +509,8 @@ export function useScannerEfficiencyPage() {
   const clearAttendance = () => {
     setAttendanceRows([])
     setAttendanceSourceInfo(EMPTY_SOURCE)
+    setAttendancePayroll(null)
+    lastAttendanceFilesRef.current = []
   }
 
   const clearAllocation = () => {
@@ -481,16 +523,31 @@ export function useScannerEfficiencyPage() {
     setScanSourceInfo(EMPTY_SOURCE)
     setAttendanceRows([])
     setAttendanceSourceInfo(EMPTY_SOURCE)
+    setAttendancePayroll(null)
+    lastAttendanceFilesRef.current = []
     setAllocationRows([])
     setAllocationSourceInfo(EMPTY_SOURCE)
     setError('')
   }
 
-  const handleExport = () => {
+  const handleExport = async () => {
     if (!scanAggregate) return
     if (activeTab === TAB_KEYS.WEEKLY) return
+    if (activeTab === TAB_KEYS.PUSH) return
     if (activeTab === TAB_KEYS.SCANNER && !scannerResult) return
     if (activeTab === TAB_KEYS.FRONT_DESK) return
+    if (activeTab === TAB_KEYS.WAREHOUSE && attendanceResult) {
+      const { exportedCount } = await exportAttendanceSchedulingPlanExcel({
+        attendanceResult,
+        attendanceRows,
+        scannerResult,
+        dailyLaborCostByDate,
+      })
+      if (exportedCount === 0) {
+        setError('统计窗口内无开仓日，未生成出勤及排班计划。')
+      }
+      return
+    }
     const workbook = buildExportWorkbook({
       scanAggregate,
       attendanceResult,
@@ -500,6 +557,8 @@ export function useScannerEfficiencyPage() {
       allocationSourceInfo,
       exportTab: activeTab === TAB_KEYS.WAREHOUSE ? TAB_KEYS.WAREHOUSE : TAB_KEYS.SCANNER,
       attendanceDailyCostPerTicket: dailyCostPerTicketByDate,
+      attendanceDailyTotalLaborCost: dailyTotalLaborCostByDate,
+      attendancePayrollTotal,
       frontDeskResult,
     })
     if (!workbook) return
@@ -533,6 +592,8 @@ export function useScannerEfficiencyPage() {
         date: r.date,
         sorterCount: r.sorterCount,
         volume: r.volume,
+        cainiaoVolume: r.cainiaoVolume,
+        cainiaoShare: r.volume > 0 ? r.cainiaoShare : null,
         efficiency: r.dayEfficiency as number,
         totalHours: r.totalHours,
         costPerTicket: dailyCostPerTicketByDate?.[r.date] ?? null,
@@ -545,17 +606,28 @@ export function useScannerEfficiencyPage() {
     const avgs = computeAttendanceDailyMatchAverages(rows)
     const bodyRows = rows.map((r) => {
       const c = dailyCostPerTicketByDate?.[r.date] ?? null
+      const labor = dailyTotalLaborCostByDate?.[r.date] ?? null
       return {
         ...(r as unknown as DataTableRow),
         attendanceCostPerTicket: c,
+        attendanceTotalLaborCost: labor,
       }
     })
-    const costSamples = bodyRows
-      .map((r) => r.attendanceCostPerTicket)
-      .filter((v): v is number => v != null && Number.isFinite(v))
-    const avgCostPerTicket =
-      costSamples.length > 0
-        ? costSamples.reduce((a, b) => a + b, 0) / costSamples.length
+    const totalLaborCostSum = attendancePayrollTotal
+    const payrollDaysWithCost = attendancePayroll
+      ? Object.values(attendancePayroll.wagesByDate).filter((v) => v > 0).length
+      : 0
+    const avgTotalLaborCost =
+      totalLaborCostSum != null && payrollDaysWithCost > 0
+        ? totalLaborCostSum / payrollDaysWithCost
+        : null
+    const totalVolumeForUnitCost = bodyRows.reduce(
+      (sum, r) => sum + (Number(r.volume) > 0 ? Number(r.volume) : 0),
+      0,
+    )
+    const costPerTicketFromTotals =
+      totalLaborCostSum != null && totalVolumeForUnitCost > 0
+        ? totalLaborCostSum / totalVolumeForUnitCost
         : null
     return [
       ...bodyRows,
@@ -566,10 +638,22 @@ export function useScannerEfficiencyPage() {
         sorterCount: 0,
         isOpenDay: false,
         hasAttendance: true,
-        matchFooterStats: { ...avgs, avgCostPerTicket },
+        matchFooterStats: {
+          ...avgs,
+          avgCostPerTicket: costPerTicketFromTotals,
+          costPerTicketFromTotals,
+          totalLaborCostSum,
+          avgTotalLaborCost,
+        },
       } as DataTableRow,
     ]
-  }, [attendanceResult?.dailyRows, dailyCostPerTicketByDate])
+  }, [
+    attendanceResult?.dailyRows,
+    dailyCostPerTicketByDate,
+    dailyTotalLaborCostByDate,
+    attendancePayrollTotal,
+    attendancePayroll,
+  ])
 
   const attendancePersonAsTable = useMemo((): DataTableRow[] => {
     const persons = attendanceEfficiencyBase?.personRows
@@ -623,6 +707,7 @@ export function useScannerEfficiencyPage() {
     setScannerHourlyExpanded,
     scanAggregate,
     attendanceResult,
+    attendanceRows,
     scannerResult,
     frontDeskResult,
     activeTab,
@@ -644,6 +729,8 @@ export function useScannerEfficiencyPage() {
     handleExport,
     hasScanData,
     dailyCostPerTicketByDate,
+    dailyTotalLaborCostByDate,
+    dailyLaborCostByDate,
     dailyRowsAsTable,
     dailyVolumeTrendPoints,
     attendanceDayEfficiencyBubbleData,

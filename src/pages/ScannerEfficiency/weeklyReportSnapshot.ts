@@ -154,6 +154,7 @@ export function buildWeeklyReportSnapshot({
   attendanceSourceInfo,
   settings,
   dailyCostPerTicketByDate,
+  dailyTotalLaborCostByDate,
   generatedAt = new Date(),
 }: {
   scanAggregate: ScanAggregate
@@ -163,6 +164,7 @@ export function buildWeeklyReportSnapshot({
   attendanceSourceInfo: SourceInfo
   settings: ScanSettings
   dailyCostPerTicketByDate?: Record<string, number | null>
+  dailyTotalLaborCostByDate?: Record<string, number | null>
   generatedAt?: Date
 }): WeeklyReportSnapshot {
   const scanPeriodStart = scanAggregate.dailyRows[0].date
@@ -178,15 +180,18 @@ export function buildWeeklyReportSnapshot({
     matchedScanDayCount == null || !scanAggregate.dailyRows.length
       ? null
       : (matchedScanDayCount / scanAggregate.dailyRows.length) * 100
-  const validCostRows = (attendanceResult?.dailyRows ?? []).filter((row) => {
-    if (!row.hasAttendance || !(row.volume > 0)) return false
-    const c = dailyCostPerTicketByDate?.[row.date]
-    return c != null && Number.isFinite(c) && c >= 0
+  const laborRows = (attendanceResult?.dailyRows ?? []).filter((row) => {
+    if (!row.hasAttendance) return false
+    const labor = dailyTotalLaborCostByDate?.[row.date]
+    return labor != null && Number.isFinite(labor) && labor >= 0
   })
-  const totalLaborCost = validCostRows.length
-    ? validCostRows.reduce((sum, row) => sum + (dailyCostPerTicketByDate![row.date] as number) * row.volume, 0)
+  const totalLaborCost = laborRows.length
+    ? laborRows.reduce((sum, row) => sum + (dailyTotalLaborCostByDate![row.date] as number), 0)
     : null
-  const totalVolumeForCost = validCostRows.reduce((sum, row) => sum + row.volume, 0)
+  const totalVolumeForCost = (attendanceResult?.dailyRows ?? []).reduce(
+    (sum, row) => sum + (row.hasAttendance && row.volume > 0 ? row.volume : 0),
+    0,
+  )
   const averageCostPerTicket =
     totalLaborCost != null && totalVolumeForCost > 0 ? totalLaborCost / totalVolumeForCost : null
 

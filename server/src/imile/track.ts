@@ -51,9 +51,19 @@ export type TrackEvent = {
   trackType?: string
 }
 
+/** 与 iMile track/query 的 resultObject.baseInfo、skuInfo 对齐，供异常订单 Drawer 展示。 */
+export type OrderQueryInfo = {
+  merchantName: string
+  merchantCode: string
+  totalWeight: string
+  customerDeclaredValueAud: string
+  declaredValueUsd: string
+}
+
 export type TrackQuerySuccess = {
   ok: true
   trackInfo: Record<string, TrackEvent[]>
+  orderInfo: Record<string, OrderQueryInfo | null>
   raw: unknown
 }
 
@@ -207,13 +217,16 @@ export async function queryImileTracks(
       }
     }
     const trackInfo = extractTrackInfo(res.json)
-    return { ok: true, trackInfo, raw: res.json }
+    const orderInfo = mapOrderInfoForTrackKeys(trackInfo, extractOrderInfo(res.json))
+    return { ok: true, trackInfo, orderInfo, raw: res.json }
   }
 
   const concurrency = readTrackConcurrency()
 
   /** 查询单个运单轨迹，失败时抛出 SingleTrackError 而非返回 ok:false，以便并发中传播错误。 */
-  async function fetchOneOrderTrack(searchValue: string): Promise<{ trackInfo: Record<string, TrackEvent[]>; raw: unknown }> {
+  async function fetchOneOrderTrack(
+    searchValue: string
+  ): Promise<{ trackInfo: Record<string, TrackEvent[]>; orderInfo: Record<string, OrderQueryInfo | null>; raw: unknown }> {
     let resolved = false
     let lastBusinessFailure: { message: string; rawText: string; status: number } | null = null
     const candidates = buildSearchCandidates(searchValue)
@@ -249,7 +262,13 @@ export async function queryImileTracks(
         throw new SingleTrackError({ ok: false, status: res.status, message: lastBusinessFailure.message, rawText: lastBusinessFailure.rawText })
       }
       resolved = true
-      return { trackInfo: extractTrackInfo(res.json), raw: { candidate: candidate.label, body: candidate.body, response: res.json } }
+      const trackInfo = extractTrackInfo(res.json)
+      const orderInfo = mapOrderInfoForTrackKeys(trackInfo, extractOrderInfo(res.json), searchValue)
+      return {
+        trackInfo,
+        orderInfo,
+        raw: { candidate: candidate.label, body: candidate.body, response: res.json },
+      }
     }
 
     if (!resolved) {
@@ -268,16 +287,65 @@ export async function queryImileTracks(
       fetchOneOrderTrack(searchValue)
     )
     const merged: Record<string, TrackEvent[]> = {}
+    const mergedOrderInfo: Record<string, OrderQueryInfo | null> = {}
     const raws: unknown[] = []
-    for (const { trackInfo, raw } of perOrderResults) {
+    for (const { trackInfo, orderInfo, raw } of perOrderResults) {
       Object.assign(merged, trackInfo)
+      Object.assign(mergedOrderInfo, orderInfo)
       raws.push(raw)
     }
-    return { ok: true, trackInfo: merged, raw: mergeBatchRaw(raws) }
+    return { ok: true, trackInfo: merged, orderInfo: mergedOrderInfo, raw: mergeBatchRaw(raws) }
   } catch (e) {
     if (e instanceof SingleTrackError) return e.detail
     throw e
   }
+}
+
+function readPlainField(raw: unknown): string {
+  if (raw == null) return ''
+  const s = String(raw).trim()
+  return s
+}
+
+export function extractOrderInfo(payload: unknown): OrderQueryInfo | null {
+  const root = payload as {
+    resultObject?: { baseInfo?: Record<string, unknown>; skuInfo?: Record<string, unknown> }
+    baseInfo?: Record<string, unknown>
+    skuInfo?: Record<string, unknown>
+  }
+  const bag = root?.resultObject ?? root
+  const base = bag?.baseInfo
+  const sku = bag?.skuInfo
+  if (!base && !sku) return null
+
+  const clientName = readPlainField(base?.clientName)
+  const createUserName = readPlainField(base?.createUserName)
+  const merchantName = clientName || createUserName
+
+  return {
+    merchantName,
+    merchantCode: readPlainField(base?.clientCode),
+    totalWeight: readPlainField(sku?.totalWeight),
+    customerDeclaredValueAud: readPlainField(sku?.customerDeclaredValue),
+    declaredValueUsd: readPlainField(sku?.declaredValue),
+  }
+}
+
+function mapOrderInfoForTrackKeys(
+  trackInfo: Record<string, TrackEvent[]>,
+  info: OrderQueryInfo | null,
+  ...extraKeys: string[]
+): Record<string, OrderQueryInfo | null> {
+  const out: Record<string, OrderQueryInfo | null> = {}
+  const keys = new Set([...Object.keys(trackInfo), ...extraKeys.filter(Boolean)])
+  if (!keys.size) {
+    for (const key of extraKeys) {
+      if (key) out[key] = info
+    }
+    return out
+  }
+  for (const key of keys) out[key] = info
+  return out
 }
 
 function extractTrackInfo(payload: unknown): Record<string, TrackEvent[]> {

@@ -1,0 +1,242 @@
+/* 排班推送预览：突出 KPI 与分区层级，截图友好 */
+
+.attendance-plan-preview {
+  --ap-accent: #2f8f87;
+  --ap-accent-deep: #1f6f68;
+  --ap-sky: #eaf4ff;
+  --ap-sky-deep: #d2e8f8;
+  --ap-border: #c5d8e6;
+  --ap-border-strong: #8fafc4;
+  --ap-text: #223247;
+  --ap-muted: #5a7088;
+  --ap-metric-red: #c62828;
+  --ap-metric-red-bg: #fff1f1;
+  --ap-metric-green: #1b7a3a;
+  --ap-metric-green-bg: #ecf8f0;
+  --ap-section-bg: linear-gradient(90deg, #e8f4fc 0%, #f4f9fd 100%);
+  --ap-title-bg: linear-gradient(135deg, #1f6f68 0%, #2f8f87 48%, #3a9e96 100%);
+
+  background: transparent;
+  color: var(--ap-text);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.attendance-plan-preview__block {
+  border-radius: 12px;
+  border: 1px solid var(--ap-border);
+  background: #fff;
+  box-shadow: 0 8px 28px rgba(34, 50, 71, 0.06);
+  overflow: hidden;
+  margin-bottom: 16px;
+}
+
+.attendance-plan-preview__block:last-child {
+  margin-bottom: 0;
+}
+
+.attendance-plan-preview__block-label {
+  padding: 8px 14px;
+  font-size: 11px;
+  font-weight: 650;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--ap-accent-deep);
+  background: linear-gradient(90deg, var(--ap-sky) 0%, rgba(255, 255, 255, 0.95) 100%);
+  border-bottom: 1px solid var(--ap-border);
+}
+
+.attendance-plan-preview__block-body {
+  padding: 12px 14px 14px;
+  background: linear-gradient(180deg, #ffffff 0%, #f8fbfe 120%);
+}
+
+.attendance-plan-preview__attendance-table {
+  margin-top: 16px;
+}
+
+.attendance-plan-preview__table {
+  width: 100%;
+  border-collapse: collapse;
+  table-layout: fixed;
+}
+
+.attendance-plan-preview__table--7 {
+  min-width: 720px;
+}
+
+.attendance-plan-preview__table--10 {
+  min-width: 960px;
+}
+
+.attendance-plan-preview__cell {
+  border: 1px solid var(--ap-border);
+  padding: 8px 10px;
+  vertical-align: middle;
+  word-break: break-word;
+  white-space: pre-wrap;
+  transition: background-color 0.12s ease;
+}
+
+.attendance-plan-preview__cell--title {
+  padding: 14px 16px;
+  font-size: 17px;
+  font-weight: 750;
+  letter-spacing: 0.03em;
+  text-align: center;
+  color: #fff;
+  background: var(--ap-title-bg);
+  border-color: var(--ap-accent-deep);
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.12);
+}
+
+.attendance-plan-preview__cell--section {
+  padding: 10px 12px;
+  font-size: 14px;
+  font-weight: 800;
+  text-align: center;
+  color: var(--ap-accent-deep);
+  background: var(--ap-section-bg);
+  border-color: var(--ap-border);
+  box-shadow: inset 3px 0 0 var(--ap-accent);
+}
+
+.attendance-plan-preview__cell--header {
+  padding: 10px 8px;
+  font-size: 13px;
+  font-weight: 800;
+  text-align: center;
+  color: #1e4560;
+  background: linear-gradient(180deg, var(--ap-sky) 0%, var(--ap-sky-deep) 100%);
+  border-color: var(--ap-border-strong);
+}
+
+.attendance-plan-preview__cell--body {
+  background: #fff;
+  text-align: center;
+  color: var(--ap-text);
+}
+
+.attendance-plan-preview__cell--center {
+  text-align: center;
+}
+
+.attendance-plan-preview__cell--label {
+  background: #f4f8fb;
+  color: var(--ap-muted);
+  font-weight: 600;
+  font-size: 11px;
+}
+
+.attendance-plan-preview__cell--feedback {
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 1.45;
+}
+
+.attendance-plan-preview__cell--feedback.attendance-plan-preview__cell--red {
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.attendance-plan-preview__cell--metric {
+  background: #fff;
+  font-size: 16px;
+  font-weight: 750;
+  letter-spacing: 0.02em;
+  color: var(--ap-text);
+}
+
+.attendance-plan-preview__cell--metric.attendance-plan-preview__cell--red {
+  color: var(--ap-metric-red);
+  background: var(--ap-metric-red-bg);
+}
+
+.attendance-plan-preview__cell--ratio {
+  background: #fff;
+  font-size: 18px;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+}
+
+.attendance-plan-preview__cell--ratio.attendance-plan-preview__cell--red {
+  color: var(--ap-metric-red);
+  background: var(--ap-metric-red-bg);
+}
+
+.attendance-plan-preview__cell--ratio.attendance-plan-preview__cell--green {
+  color: var(--ap-metric-green);
+  background: var(--ap-metric-green-bg);
+}
+
+.attendance-plan-preview__ratio-pill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 4rem;
+  padding: 4px 12px;
+  border-radius: 999px;
+  font-size: 17px;
+  font-weight: 800;
+  line-height: 1.2;
+}
+
+.attendance-plan-preview__cell--ratio.attendance-plan-preview__cell--red .attendance-plan-preview__ratio-pill {
+  color: var(--ap-metric-red);
+  background: rgba(198, 40, 40, 0.12);
+  border: 1px solid rgba(198, 40, 40, 0.28);
+}
+
+.attendance-plan-preview__cell--ratio.attendance-plan-preview__cell--green .attendance-plan-preview__ratio-pill {
+  color: var(--ap-metric-green);
+  background: rgba(27, 122, 58, 0.12);
+  border: 1px solid rgba(27, 122, 58, 0.28);
+}
+
+.attendance-plan-preview__cell--left {
+  text-align: left;
+}
+
+.attendance-plan-preview__cell--red:not(.attendance-plan-preview__cell--metric):not(.attendance-plan-preview__cell--ratio):not(.attendance-plan-preview__cell--feedback) {
+  color: var(--ap-metric-red);
+  background: #fff8f8;
+  font-weight: 600;
+}
+
+.attendance-plan-preview__cell--green {
+  color: var(--ap-metric-green);
+  background: var(--ap-metric-green-bg);
+  font-weight: 700;
+}
+
+.attendance-plan-preview__cell--editable {
+  min-height: 28px;
+  outline: none;
+  cursor: text;
+}
+
+.attendance-plan-preview__cell--editable:focus {
+  box-shadow: inset 0 0 0 2px rgba(47, 143, 135, 0.45);
+  background: #fafffe !important;
+  z-index: 1;
+  position: relative;
+}
+
+.attendance-plan-preview__table--10 tbody tr:nth-child(n + 3):nth-child(even) .attendance-plan-preview__cell--body {
+  background: #f8fbfe;
+}
+
+.attendance-plan-preview__table--10 tbody tr:nth-child(n + 3):nth-child(even) .attendance-plan-preview__cell--label {
+  background: #eef4f9;
+}
+
+.attendance-plan-preview__table--10 tbody tr:nth-child(n + 3):nth-child(even) .attendance-plan-preview__cell--metric {
+  background: #f3f9fc;
+}
+
+.attendance-plan-preview__spacer {
+  height: 10px;
+  border: none !important;
+  background: transparent !important;
+  padding: 0 !important;
+}

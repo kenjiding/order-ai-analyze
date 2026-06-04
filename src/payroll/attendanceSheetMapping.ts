@@ -1,4 +1,5 @@
 import { format } from 'date-fns'
+import { adjustAttendanceClockTimeText } from './attendanceClockTime'
 import { isWeekendWorkday, parseDate } from './attendanceDate'
 import { calculateDecimalHours } from './wageRateCalculation'
 
@@ -146,8 +147,8 @@ export function transformSheetRowsToUploadedData(
       department: row['部门'] ?? row['Department'] ?? row['department'] ?? '',
       date: dateValue,
       workday: workdayValue,
-      firstClockIn: cellString(row, CLOCK_IN_KEYS),
-      lastClockOut: cellString(row, CLOCK_OUT_KEYS),
+      firstClockIn: adjustAttendanceClockTimeText(cellString(row, CLOCK_IN_KEYS), dateValue),
+      lastClockOut: adjustAttendanceClockTimeText(cellString(row, CLOCK_OUT_KEYS), dateValue),
       totalHours,
       workHours,
       deduction: cellString(row, DEDUCTION_KEYS),

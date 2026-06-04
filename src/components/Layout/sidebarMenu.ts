@@ -1,4 +1,4 @@
-import { Calculator, DollarSign, Megaphone, PackageSearch, type LucideIcon } from 'lucide-react'
+import { Calculator, ClipboardCheck, DollarSign, Megaphone, PackageSearch, type LucideIcon } from 'lucide-react'
 
 export type SidebarMenuItem = {
   id: string
@@ -36,6 +36,13 @@ const items: SidebarMenuItem[] = [
     label: '推送功能',
     icon: Megaphone,
     description: '飞书群机器人推送配置',
+  },
+  {
+    id: 'warehouse-safety',
+    path: '/warehouse-safety',
+    label: '仓库安全日常检查',
+    icon: ClipboardCheck,
+    description: '安全自查表填写与导出',
   },
 ]
 

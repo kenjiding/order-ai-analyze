@@ -22,6 +22,7 @@ import {
   type OrderAnalyzeInterceptLog,
 } from '../orderExceptionApi'
 import type { TrackEvent } from '../types'
+import type { OrderQueryInfo } from '../orderExceptionApi'
 import type { AnalysisRow } from '../useOrderExceptionManagementPage'
 
 type Row = AnalysisRow
@@ -132,6 +133,50 @@ function renderTrackContentWithDriverIdClickable(
   if (!matched) return content
   if (lastIndex < content.length) nodes.push(content.slice(lastIndex))
   return nodes
+}
+
+function formatOrderInfoField(value: string | undefined | null): string {
+  const s = String(value ?? '').trim()
+  return s || '—'
+}
+
+function hasOrderInfoContent(orderInfo: OrderQueryInfo | null | undefined): boolean {
+  if (!orderInfo) return false
+  return [
+    orderInfo.merchantName,
+    orderInfo.merchantCode,
+    orderInfo.totalWeight,
+    orderInfo.customerDeclaredValueAud,
+    orderInfo.declaredValueUsd,
+  ].some((v) => String(v ?? '').trim() !== '')
+}
+
+function OrderInfoMetaLine({ orderInfo }: { orderInfo: OrderQueryInfo | null | undefined }) {
+  if (!hasOrderInfoContent(orderInfo)) return null
+
+  const items: { label: string; value: string }[] = [
+    { label: '商家', value: formatOrderInfoField(orderInfo?.merchantName) },
+    { label: '编码', value: formatOrderInfoField(orderInfo?.merchantCode) },
+    { label: '重量kg', value: formatOrderInfoField(orderInfo?.totalWeight) },
+    { label: '上传申报AUD', value: formatOrderInfoField(orderInfo?.customerDeclaredValueAud) },
+    { label: '系统申报USD', value: formatOrderInfoField(orderInfo?.declaredValueUsd) },
+  ].filter((item) => item.value !== '—')
+
+  if (!items.length) return null
+
+  return (
+    <p className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-0.5 border-t border-white/10 pt-2 text-[11px] leading-snug text-white/80">
+      {items.map((item, index) => (
+        <span key={item.label} className="inline-flex min-w-0 items-center gap-x-2">
+          {index > 0 ? <span className="text-white/25" aria-hidden>·</span> : null}
+          <span className="min-w-0 truncate">
+            <span className="text-white/45">{item.label}</span>{': '}
+            <span className="font-medium text-white/90">{item.value}</span>
+          </span>
+        </span>
+      ))}
+    </p>
+  )
 }
 
 function DrawerSectionHeader({
@@ -281,7 +326,6 @@ export function OrderAnalysisDetailDrawer({ row, onClose }: Props) {
           return next
         })
         setSelectedVendorKey(result.vendorCode)
-        setVendorAutoFillTip(`已自动回填供应商：${result.vendorName}（${result.vendorCode}）`)
       } catch (e) {
         setVendorAutoFillTip('供应商自动识别失败，请手动选择。')
         showToast((e as Error).message || '司机供应商识别失败', 'error')
@@ -458,6 +502,8 @@ export function OrderAnalysisDetailDrawer({ row, onClose }: Props) {
                     <p className="truncate text-sm font-medium text-white/95">{String(row.confidence ?? '—')}</p>
                   </div>
                 </div>
+
+                <OrderInfoMetaLine orderInfo={row.orderInfo} />
               </div>
 
               <button
@@ -608,9 +654,9 @@ export function OrderAnalysisDetailDrawer({ row, onClose }: Props) {
                     暂无轨迹数据
                   </div>
                 ) : (
-                  <div className="min-h-0 flex-1 overflow-auto bg-[linear-gradient(180deg,rgba(240,247,251,0.55),rgba(255,255,255,0.9))] px-5 py-5">
+                  <div className="min-h-0 flex-1 overflow-auto bg-[linear-gradient(180deg,rgba(240,247,251,0.55),rgba(255,255,255,0.9))] px-4 py-3">
                     <Timeline
-                      className="order-analysis-timeline"
+                      className="order-analysis-timeline order-analysis-timeline--compact"
                       items={sortedTrackEvents.map((evt) => {
                         const isLatestResponsibilityTrack =
                           latestResponsibilityMarker?.source === 'track' &&
@@ -622,13 +668,13 @@ export function OrderAnalysisDetailDrawer({ row, onClose }: Props) {
                           color: dotColor,
                           children: (
                             <div
-                              className={`rounded-lg border px-3 py-2.5 transition ${
+                              className={`rounded-lg border px-2.5 py-1.5 transition ${
                                 isLatestResponsibilityTrack
                                   ? 'border-red-200 bg-red-50/70 shadow-[0_4px_16px_rgba(239,68,68,0.08)]'
                                   : 'border-transparent bg-white/70 hover:border-[var(--admin-line)] hover:bg-white'
                               }`}
                             >
-                              <div className="flex flex-wrap items-center gap-2">
+                              <div className="flex flex-wrap items-center gap-1.5">
                                 <span
                                   className={`font-mono text-xs tabular-nums ${
                                     isLatestResponsibilityTrack ? 'text-red-600' : 'text-slate-500'
@@ -659,7 +705,7 @@ export function OrderAnalysisDetailDrawer({ row, onClose }: Props) {
                                 ) : null}
                               </div>
                               <p
-                                className={`mt-1.5 text-[13px] leading-relaxed ${
+                                className={`mt-1 text-[13px] leading-snug ${
                                   isLatestResponsibilityTrack ? 'text-red-800' : 'text-slate-800'
                                 }`}
                               >

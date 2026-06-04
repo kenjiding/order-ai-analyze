@@ -1,4 +1,5 @@
 import * as XLSX from 'xlsx'
+import { ATTENDANCE_TOTAL_HOURS_COLUMNS, ATTENDANCE_WORK_HOURS_COLUMNS } from './constants'
 import { dayjs } from './dayjsSetup'
 
 export const DATE_PARSE_FORMATS = [
@@ -160,4 +161,14 @@ export const getValueByCandidates = (row: Record<string, unknown>, candidates: r
     }
   }
   return null
+}
+
+/** 考勤工时：优先「工作时长」，否则「总时长」及其它总工时列名。 */
+export const parseAttendanceHoursFromRow = (row: Record<string, unknown>): number | null => {
+  const workRaw = getValueByCandidates(row, ATTENDANCE_WORK_HOURS_COLUMNS)
+  if (workRaw != null) {
+    const workHours = parseDurationToHours(workRaw)
+    if (workHours != null && Number.isFinite(workHours)) return workHours
+  }
+  return parseDurationToHours(getValueByCandidates(row, ATTENDANCE_TOTAL_HOURS_COLUMNS))
 }

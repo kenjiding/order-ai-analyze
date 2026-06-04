@@ -1,4 +1,11 @@
-import type { FrontDeskSaturationResult, FrontDeskSaturationStatus } from '../frontDeskSaturation'
+import { useState } from 'react'
+import Tooltip from '@mui/material/Tooltip'
+import {
+  formatDensityAllocationLabel,
+  type FrontDeskDensityAllocation,
+  type FrontDeskSaturationResult,
+  type FrontDeskSaturationStatus,
+} from '../frontDeskSaturation'
 import { formatInteger, formatNumber } from '../formatAndParse'
 import type { SourceInfo } from '../exportWorkbook'
 import { DataTable, Metric, SectionTitle, type DataTableColumn, type DataTableRow } from './ui'
@@ -63,12 +70,76 @@ function idleMinutesLabel(value: unknown): string {
   return `${formatNumber(value, 0)} 分钟`
 }
 
+function adjustOffDutyIdleMinutes(raw: number | null, offsetMinutes: number): number | null {
+  if (raw == null || !Number.isFinite(raw)) return null
+  const offset = Number.isFinite(offsetMinutes) ? Math.max(0, offsetMinutes) : 0
+  return Math.max(0, raw - offset)
+}
+
+function parseDensityAllocations(value: unknown): FrontDeskDensityAllocation[] {
+  if (!Array.isArray(value)) return []
+  return value
+    .map((item) => {
+      if (!item || typeof item !== 'object') return null
+      const raw = item as FrontDeskDensityAllocation & { driver?: string }
+      const driverCompany = String(raw.driverCompany ?? '').trim()
+      const driverCode = String(raw.driverCode ?? (raw as { driverNo?: string }).driverNo ?? '').trim()
+      const allocationTimeLabel = String(raw.allocationTimeLabel ?? '').trim()
+      if (!driverCompany && !driverCode && !allocationTimeLabel && !raw.driver) return null
+      return {
+        driverCompany: driverCompany || '—',
+        driverCode: driverCode || '—',
+        allocationTimeLabel: allocationTimeLabel || '—',
+      }
+    })
+    .filter((item): item is FrontDeskDensityAllocation => item != null)
+}
+
+function densityCellTooltipContent({
+  date,
+  slot,
+  count,
+  allocations,
+  frontDeskOffDuty,
+}: {
+  date: string
+  slot: string
+  count: number
+  allocations: FrontDeskDensityAllocation[]
+  frontDeskOffDuty?: { label: string; person: string; idleMinutes: number | null }
+}) {
+  return (
+    <div className="max-w-xs space-y-1 py-0.5 text-xs leading-relaxed">
+      <div className="font-semibold">
+        {date} {slot}：{formatInteger(count)} 个箱号
+      </div>
+      {allocations.length > 0 && (
+        <ul className="max-h-48 list-none space-y-0.5 overflow-y-auto pl-0">
+          {allocations.map((item, index) => (
+            <li key={`${item.driverCompany}-${item.driverCode}-${item.allocationTimeLabel}-${index}`}>
+              {formatDensityAllocationLabel(item)}
+            </li>
+          ))}
+        </ul>
+      )}
+      {frontDeskOffDuty && (
+        <div className="border-t border-white/20 pt-1 text-[11px] opacity-90">
+          前台下班 {frontDeskOffDuty.person ? `${frontDeskOffDuty.person} ` : ''}
+          {frontDeskOffDuty.label}；分配后空档 {idleMinutesLabel(frontDeskOffDuty.idleMinutes)}
+        </div>
+      )}
+    </div>
+  )
+}
+
 function FrontDeskDensityHeatmap({
   rows,
   dailyRows,
+  offDutyIdleOffsetMinutes,
 }: {
   rows: DataTableRow[]
   dailyRows: DataTableRow[]
+  offDutyIdleOffsetMinutes: number
 }) {
   if (!rows.length) {
     return (
@@ -79,6 +150,7 @@ function FrontDeskDensityHeatmap({
   }
 
   const countMap = new Map<string, number>()
+  const allocationsMap = new Map<string, FrontDeskDensityAllocation[]>()
   const frontDeskOffDutyMap = new Map<string, { label: string; person: string; idleMinutes: number | null }>()
   const dateSet = new Set<string>()
   const slotSet = new Set<string>()
@@ -89,9 +161,11 @@ function FrontDeskDensityHeatmap({
     const timeSlot = String(row.timeSlot ?? '')
     if (!date || !timeSlot) return
     const count = Number(row.allocationCount ?? 0)
+    const cellKey = `${date}\0${timeSlot}`
     dateSet.add(date)
     slotSet.add(timeSlot)
-    countMap.set(`${date}\0${timeSlot}`, count)
+    countMap.set(cellKey, count)
+    allocationsMap.set(cellKey, parseDensityAllocations(row.allocations))
     maxCount = Math.max(maxCount, count)
   })
 
@@ -100,10 +174,12 @@ function FrontDeskDensityHeatmap({
     const slot = String(row.frontDeskLastClockOutSlot ?? '')
     const label = String(row.frontDeskLastClockOutLabel ?? '')
     const person = String(row.frontDeskLastClockOutPerson ?? '')
-    const idleMinutes =
+    const idleMinutes = adjustOffDutyIdleMinutes(
       typeof row.offDutyIdleMinutes === 'number' && Number.isFinite(row.offDutyIdleMinutes)
         ? row.offDutyIdleMinutes
-        : null
+        : null,
+      offDutyIdleOffsetMinutes,
+    )
     if (!date || !slot) return
     dateSet.add(date)
     slotSet.add(slot)
@@ -117,6 +193,7 @@ function FrontDeskDensityHeatmap({
     <div className="admin-panel overflow-hidden">
       <div className="flex flex-wrap items-center gap-3 border-b border-slate-100 px-4 py-3 text-xs text-slate-500">
         <span>颜色越深，箱号分配越集中</span>
+        <span>悬停格子可查看司机所属公司、司机编码与分配时间</span>
         <span>红色“前台下班”越深，表示最后分配到下班的空档越长</span>
         <span className="inline-flex items-center gap-1">
           <span className="h-3 w-5 rounded bg-[#d9f2ef]" />低
@@ -149,24 +226,34 @@ function FrontDeskDensityHeatmap({
                   {date}
                 </th>
                 {slots.map((slot) => {
-                  const count = countMap.get(`${date}\0${slot}`) ?? 0
-                  const frontDeskOffDuty = frontDeskOffDutyMap.get(`${date}\0${slot}`)
+                  const cellKey = `${date}\0${slot}`
+                  const count = countMap.get(cellKey) ?? 0
+                  const allocations = allocationsMap.get(cellKey) ?? []
+                  const frontDeskOffDuty = frontDeskOffDutyMap.get(cellKey)
+                  const tooltip = densityCellTooltipContent({
+                    date,
+                    slot,
+                    count,
+                    allocations,
+                    frontDeskOffDuty,
+                  })
                   return (
                     <td
                       key={`${date}-${slot}`}
                       className={`rounded px-2 py-2 text-center font-semibold tabular-nums ${heatCellClass(count, maxCount)}`}
-                      title={`${date} ${slot}：${formatInteger(count)} 个箱号${
-                        frontDeskOffDuty
-                          ? `；前台下班 ${frontDeskOffDuty.person ? `${frontDeskOffDuty.person} ` : ''}${frontDeskOffDuty.label}；分配后空档 ${idleMinutesLabel(frontDeskOffDuty.idleMinutes)}`
-                          : ''
-                      }`}
                     >
-                      <span className="block">{count > 0 ? formatInteger(count) : '·'}</span>
-                      {frontDeskOffDuty && (
-                        <span className={`mt-1 inline-flex rounded-full px-1.5 py-0.5 text-[10px] font-semibold leading-none ring-1 ${offDutyIdleClass(frontDeskOffDuty.idleMinutes)}`}>
-                          前台下班 {idleMinutesLabel(frontDeskOffDuty.idleMinutes)}
+                      <Tooltip title={tooltip} arrow placement="top" enterDelay={200}>
+                        <span className="block cursor-default">
+                          <span className="block">{count > 0 ? formatInteger(count) : '·'}</span>
+                          {frontDeskOffDuty && (
+                            <span
+                              className={`mt-1 inline-flex rounded-full px-1.5 py-0.5 text-[10px] font-semibold leading-none ring-1 ${offDutyIdleClass(frontDeskOffDuty.idleMinutes)}`}
+                            >
+                              前台下班 {idleMinutesLabel(frontDeskOffDuty.idleMinutes)}
+                            </span>
+                          )}
                         </span>
-                      )}
+                      </Tooltip>
                     </td>
                   )
                 })}
@@ -188,6 +275,8 @@ export function FrontDeskSaturationSection({
   onAllocationFileChange,
   onClearAllocation,
 }: Props) {
+  const [offDutyIdleOffsetMinutes, setOffDutyIdleOffsetMinutes] = useState(30)
+
   const dailyColumns: DataTableColumn[] = [
     { key: 'date', title: '日期' },
     { key: 'allocationCount', title: '箱号分配', render: (row) => formatInteger(Number(row.allocationCount)) },
@@ -351,9 +440,30 @@ export function FrontDeskSaturationSection({
             <SectionTitle
               eyebrow="Allocation Density"
               title="包裹分配密度热力图"
-              description={``}
+              description=""
+              right={
+                <label className="inline-flex items-center gap-2 text-sm text-slate-600">
+                  <input
+                    type="number"
+                    min={0}
+                    step={1}
+                    value={offDutyIdleOffsetMinutes}
+                    onChange={(event) => {
+                      const next = Number(event.target.value)
+                      if (Number.isFinite(next) && next >= 0) setOffDutyIdleOffsetMinutes(next)
+                    }}
+                    className="w-20 rounded-md border border-slate-300 bg-white px-2 py-1 text-center text-sm font-semibold tabular-nums text-slate-900 outline-none focus:ring-2 focus:ring-[#2f8f87] focus:ring-offset-0"
+                    aria-label="前台下班空档扣减分钟"
+                  />
+                  <span className="text-xs text-slate-500">分钟</span>
+                </label>
+              }
             />
-            <FrontDeskDensityHeatmap rows={densityRows} dailyRows={dailyRows} />
+            <FrontDeskDensityHeatmap
+              rows={densityRows}
+              dailyRows={dailyRows}
+              offDutyIdleOffsetMinutes={offDutyIdleOffsetMinutes}
+            />
           </div>
         </>
       )}

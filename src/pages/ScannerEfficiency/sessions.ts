@@ -74,3 +74,40 @@ export const computeSessions = <T extends ScanRecord>(records: T[], settings: Sc
   if (last) sessions.push(last)
   return sessions
 }
+
+const segmentSpanMinutes = (firstScan: Date, lastScan: Date): number =>
+  Math.max(0, toMinutes(lastScan.getTime() - firstScan.getTime()))
+
+/**
+ * 作业跨度分钟：同人按扫描时间排序，间隔超过 splitThresholdMinutes 则切段，
+ * 各段用「段内末扫 − 段内首扫」累加（段间长间隔不计入，用于粗分环节工时等）。
+ */
+export const computeSpanMinutes = <T extends ScanRecord>(
+  records: T[],
+  splitThresholdMinutes: number,
+): number => {
+  const sorted = [...records].sort((a, b) => a.scanTime.getTime() - b.scanTime.getTime())
+  if (!sorted.length) return 0
+
+  let total = 0
+  let segmentFirst = sorted[0].scanTime
+  let segmentLast = sorted[0].scanTime
+
+  for (let i = 1; i < sorted.length; i += 1) {
+    const previous = sorted[i - 1]
+    const current = sorted[i]
+    const gapMinutes = toMinutes(current.scanTime.getTime() - previous.scanTime.getTime())
+
+    if (gapMinutes > splitThresholdMinutes) {
+      total += segmentSpanMinutes(segmentFirst, segmentLast)
+      segmentFirst = current.scanTime
+      segmentLast = current.scanTime
+      continue
+    }
+
+    segmentLast = current.scanTime
+  }
+
+  total += segmentSpanMinutes(segmentFirst, segmentLast)
+  return total
+}

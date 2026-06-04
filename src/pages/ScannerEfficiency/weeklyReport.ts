@@ -50,12 +50,14 @@ export const buildWeeklySummaryText = ({
   scannerResult,
   reportMode,
   attendanceDailyCostPerTicket,
+  attendanceDailyTotalLaborCost,
 }: {
   scanAggregate: ScanAggregate
   attendanceResult: AttendanceEfficiencyResult | null
   scannerResult: ScannerEfficiencyResult | null
   reportMode: string
   attendanceDailyCostPerTicket?: Record<string, number | null>
+  attendanceDailyTotalLaborCost?: Record<string, number | null>
 }): string => {
   const effectiveMode = resolveReportMode({ reportMode, attendanceResult, scannerResult })
 
@@ -64,6 +66,7 @@ export const buildWeeklySummaryText = ({
     const weeklyCostSummary = summarizeWeeklyCost({
       attendanceResult,
       attendanceDailyCostPerTicket,
+      attendanceDailyTotalLaborCost,
     })
     const unmatchedText = summary.unmatchedDayCount
       ? `未匹配 ${summary.unmatchedDayCount} 天（${summary.unmatchedDates.join('、')}）。`
@@ -73,7 +76,7 @@ export const buildWeeklySummaryText = ({
       `开仓效率 ${formatNumber(summary.openEfficiency, 2)} 票/小时（统计窗口内开仓日工时 ${formatNumber(summary.openHours, 2)} 小时）。`,
       `总体效率 ${formatNumber(summary.overallEfficiency, 2)} 票/小时（统计窗口内全部考勤工时 ${formatNumber(summary.allHours, 2)} 小时，窗口 ${summary.efficiencyRangeStart}～${summary.efficiencyRangeEnd}）。`,
       weeklyCostSummary
-        ? `周人工总成本 $${formatNumber(weeklyCostSummary.totalLaborCost, 2)}，平均每票成本 $${formatNumber(weeklyCostSummary.averageCostPerTicket, 2)}。`
+        ? `周人工总成本 $${formatNumber(weeklyCostSummary.totalLaborCost, 2)}，单位成本 $${formatNumber(weeklyCostSummary.averageCostPerTicket, 2)}/票。`
         : '',
       `开仓日 ${formatInteger(summary.openDayCount)} 天，${unmatchedText}`,
     ].join(' ')
@@ -145,26 +148,33 @@ type WeeklyCostSummary = {
 function summarizeWeeklyCost({
   attendanceResult,
   attendanceDailyCostPerTicket,
+  attendanceDailyTotalLaborCost,
 }: {
   attendanceResult: AttendanceEfficiencyResult | null
   attendanceDailyCostPerTicket?: Record<string, number | null>
+  attendanceDailyTotalLaborCost?: Record<string, number | null>
 }): WeeklyCostSummary | null {
-  if (!attendanceResult || !attendanceDailyCostPerTicket) return null
+  if (!attendanceResult || !attendanceDailyTotalLaborCost) return null
 
   let totalLaborCost = 0
   let totalVolume = 0
   const dailySamples: Array<{ date: string; costPerTicket: number }> = []
 
   for (const row of attendanceResult.dailyRows) {
-    if (!row.hasAttendance || !(row.volume > 0)) continue
-    const c = attendanceDailyCostPerTicket[row.date]
-    if (c == null || !Number.isFinite(c) || c < 0) continue
-    totalLaborCost += c * row.volume
-    totalVolume += row.volume
-    dailySamples.push({ date: row.date, costPerTicket: c })
+    if (!row.hasAttendance) continue
+    const labor = attendanceDailyTotalLaborCost[row.date]
+    if (labor == null || !Number.isFinite(labor) || labor < 0) continue
+    totalLaborCost += labor
+    if (row.volume > 0) {
+      totalVolume += row.volume
+      const c = attendanceDailyCostPerTicket?.[row.date]
+      if (c != null && Number.isFinite(c) && c >= 0) {
+        dailySamples.push({ date: row.date, costPerTicket: c })
+      }
+    }
   }
 
-  if (!(totalVolume > 0) || !dailySamples.length) return null
+  if (!(totalVolume > 0) || totalLaborCost <= 0) return null
   const highestDay = getExtremeRow(dailySamples, (row) => row.costPerTicket, 'max')
   const lowestDay = getExtremeRow(dailySamples, (row) => row.costPerTicket, 'min')
 
@@ -194,6 +204,7 @@ export const buildWeeklyReportAnalysis = ({
   currentSnapshot,
   previousSnapshot,
   attendanceDailyCostPerTicket,
+  attendanceDailyTotalLaborCost,
 }: {
   scanAggregate: ScanAggregate | null
   attendanceResult: AttendanceEfficiencyResult | null
@@ -203,6 +214,7 @@ export const buildWeeklyReportAnalysis = ({
   currentSnapshot?: WeeklyReportSnapshot | null
   previousSnapshot?: WeeklyReportSnapshot | null
   attendanceDailyCostPerTicket?: Record<string, number | null>
+  attendanceDailyTotalLaborCost?: Record<string, number | null>
 }): ReportAnalysis => {
   const conclusions: string[] = []
   const diagnostics: { label: string; value: string; text: string }[] = []
@@ -265,10 +277,11 @@ export const buildWeeklyReportAnalysis = ({
     const weeklyCostSummary = summarizeWeeklyCost({
       attendanceResult,
       attendanceDailyCostPerTicket,
+      attendanceDailyTotalLaborCost,
     })
     if (weeklyCostSummary) {
       conclusions.push(
-        `人工总成本 $${formatNumber(weeklyCostSummary.totalLaborCost, 2)}，平均每票成本 $${formatNumber(weeklyCostSummary.averageCostPerTicket, 2)}（样本 ${formatInteger(weeklyCostSummary.sampleDays)} 天）。`,
+        `人工总成本 $${formatNumber(weeklyCostSummary.totalLaborCost, 2)}，单位成本 $${formatNumber(weeklyCostSummary.averageCostPerTicket, 2)}/票（总成本÷总货量）。`,
       )
       const spread =
         weeklyCostSummary.highestDay && weeklyCostSummary.lowestDay
@@ -389,6 +402,7 @@ export function buildWeeklyReportEmailHtml({
   previousSnapshot,
   aiAnalysis,
   attendanceDailyCostPerTicket,
+  attendanceDailyTotalLaborCost,
 }: {
   scanAggregate: ScanAggregate | null
   attendanceResult: AttendanceEfficiencyResult | null
@@ -399,6 +413,7 @@ export function buildWeeklyReportEmailHtml({
   previousSnapshot?: WeeklyReportSnapshot | null
   aiAnalysis?: WeeklyAiAnalysis | null
   attendanceDailyCostPerTicket?: Record<string, number | null>
+  attendanceDailyTotalLaborCost?: Record<string, number | null>
 }): string {
   if (!scanAggregate || !scanAggregate.dailyRows.length) return ''
 
@@ -415,6 +430,7 @@ export function buildWeeklyReportEmailHtml({
         scannerResult,
         reportMode: TAB_KEYS.WAREHOUSE,
         attendanceDailyCostPerTicket,
+        attendanceDailyTotalLaborCost,
       }),
     )
   }
@@ -426,6 +442,7 @@ export function buildWeeklyReportEmailHtml({
         scannerResult,
         reportMode: TAB_KEYS.SCANNER,
         attendanceDailyCostPerTicket,
+        attendanceDailyTotalLaborCost,
       }),
     )
   }
@@ -437,6 +454,7 @@ export function buildWeeklyReportEmailHtml({
         scannerResult,
         reportMode: TAB_KEYS.WAREHOUSE,
         attendanceDailyCostPerTicket,
+        attendanceDailyTotalLaborCost,
       }),
     )
   }
@@ -451,6 +469,7 @@ export function buildWeeklyReportEmailHtml({
     currentSnapshot,
     previousSnapshot,
     attendanceDailyCostPerTicket,
+    attendanceDailyTotalLaborCost,
   })
   const conclusionHtml = reportAnalysis.conclusions
     .map(
@@ -695,6 +714,7 @@ export function buildWeeklyReportEmailHtml({
   const weeklyCostSummary = summarizeWeeklyCost({
     attendanceResult,
     attendanceDailyCostPerTicket,
+    attendanceDailyTotalLaborCost,
   })
   if (weeklyCostSummary) {
     metricRows.push(
@@ -706,7 +726,7 @@ export function buildWeeklyReportEmailHtml({
         '#3f5f80',
         '#0068d6',
       )}${gap}${metricCard(
-        '每票成本',
+        '单位成本',
         `$${formatNumber(weeklyCostSummary.averageCostPerTicket, 2)}/票`,
         '#b6ecd8',
         '#e9fbf3',

@@ -53,11 +53,25 @@ export type FrontDeskDailySaturationRow = {
   statusLabel: string
 }
 
+export type FrontDeskDensityAllocation = {
+  driverCompany: string
+  driverCode: string
+  allocationTimeLabel: string
+}
+
+export function formatDensityAllocationLabel(item: FrontDeskDensityAllocation): string {
+  const company = item.driverCompany.trim() || '—'
+  const driverCode = item.driverCode.trim() || '—'
+  const allocationTime = item.allocationTimeLabel.trim() || '—'
+  return `${company}（${driverCode}） - ${allocationTime}`
+}
+
 export type FrontDeskDensityRow = {
   date: string
   timeSlot: string
   allocationCount: number
   window: 'morning' | 'afternoon'
+  allocations: FrontDeskDensityAllocation[]
 }
 
 export type FrontDeskSaturationResult = {
@@ -379,26 +393,37 @@ export function buildFrontDeskSaturation({
   })
 
   const densityRows: FrontDeskDensityRow[] = []
-  const densityMap = new Map<string, { date: string; slot: number; count: number }>()
+  const densityMap = new Map<
+    string,
+    { date: string; slot: number; count: number; allocations: FrontDeskDensityAllocation[] }
+  >()
   for (const row of allocationRows) {
     if (!inWindow(row.date)) continue
     const slot = slotIndex(row.allocationTime)
     const key = `${row.date}\0${slot}`
+    const allocation: FrontDeskDensityAllocation = {
+      driverCompany: row.driverCompany.trim() || '—',
+      driverCode: row.driverCode.trim() || '—',
+      allocationTimeLabel: formatDateTime(row.allocationTime),
+    }
     const existed = densityMap.get(key)
     if (existed) {
       existed.count += 1
+      existed.allocations.push(allocation)
     } else {
-      densityMap.set(key, { date: row.date, slot, count: 1 })
+      densityMap.set(key, { date: row.date, slot, count: 1, allocations: [allocation] })
     }
   }
   Array.from(densityMap.values())
     .sort((a, b) => (a.date === b.date ? a.slot - b.slot : a.date.localeCompare(b.date)))
     .forEach((row) => {
+      row.allocations.sort((a, b) => a.allocationTimeLabel.localeCompare(b.allocationTimeLabel))
       densityRows.push({
         date: row.date,
         timeSlot: slotLabel(row.slot),
         allocationCount: row.count,
         window: row.slot * DENSITY_SLOT_MINUTES < afternoonStartMinutes ? 'morning' : 'afternoon',
+        allocations: row.allocations,
       })
     })
 

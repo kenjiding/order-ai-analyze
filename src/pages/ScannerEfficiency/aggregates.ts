@@ -1,7 +1,9 @@
 import type { ScanSettings } from './constants'
+import { isCainiaoWaybill } from './cainiaoWaybill'
 import { dayjs } from './dayjsSetup'
 import { formatDateKey } from './formatAndParse'
-import { computeSessions } from './sessions'
+import { COARSE_STAGE_SPAN_SPLIT_THRESHOLD_MINUTES } from './coarseStageHours'
+import { computeSessions, computeSpanMinutes } from './sessions'
 
 const padHour = (n: number) => String(n).padStart(2, '0')
 /**
@@ -104,6 +106,8 @@ export type ParsedAllocationRow = {
   timeSlot: string
   boxNo: string
   driver: string
+  driverCompany: string
+  driverCode: string
   sourceFileName: string
   sourceSheetName: string
   sourceRowNumber: number
@@ -112,7 +116,7 @@ export type ParsedAllocationRow = {
 export const buildScanAggregate = (rows: ParsedScanRow[]) => {
   const dailyMap = new Map<
     string,
-    { date: string; uniqueSet: Set<string>; scannerSet: Set<string> }
+    { date: string; uniqueSet: Set<string>; cainiaoSet: Set<string>; scannerSet: Set<string> }
   >()
 
   rows.forEach((row, index) => {
@@ -123,32 +127,46 @@ export const buildScanAggregate = (rows: ParsedScanRow[]) => {
       dailyMap.set(dateKey, {
         date: dateKey,
         uniqueSet: new Set(),
+        cainiaoSet: new Set(),
         scannerSet: new Set(),
       })
     }
 
     const bucket = dailyMap.get(dateKey)!
-    bucket.uniqueSet.add(row.trackingNumber || `__row_${index}`)
+    const volumeKey = row.trackingNumber || `__row_${index}`
+    bucket.uniqueSet.add(volumeKey)
+    if (isCainiaoWaybill(volumeKey)) {
+      bucket.cainiaoSet.add(volumeKey)
+    }
     if (row.scanner) {
       bucket.scannerSet.add(row.scanner)
     }
   })
 
   const dailyRows = Array.from(dailyMap.values())
-    .map((row) => ({
-      date: row.date,
-      volume: row.uniqueSet.size,
-      scannerCount: row.scannerSet.size,
-    }))
+    .map((row) => {
+      const volume = row.uniqueSet.size
+      const cainiaoVolume = row.cainiaoSet.size
+      return {
+        date: row.date,
+        volume,
+        cainiaoVolume,
+        cainiaoShare: volume > 0 ? cainiaoVolume / volume : 0,
+        scannerCount: row.scannerSet.size,
+      }
+    })
     .sort((a, b) => a.date.localeCompare(b.date))
 
   const totalVolume = dailyRows.reduce((sum, row) => sum + row.volume, 0)
+  const totalCainiaoVolume = dailyRows.reduce((sum, row) => sum + row.cainiaoVolume, 0)
 
   return {
     dailyRows,
     dailyMap,
     summary: {
       totalVolume,
+      totalCainiaoVolume,
+      cainiaoShareWindow: totalVolume > 0 ? totalCainiaoVolume / totalVolume : 0,
       totalDays: dailyRows.length,
       hasScanner: rows.some((row) => Boolean(row.scanner)),
     },
@@ -231,6 +249,8 @@ export function buildAttendanceEfficiency(
     return {
       date: scanDay.date,
       volume: scanDay.volume,
+      cainiaoVolume: scanDay.cainiaoVolume,
+      cainiaoShare: scanDay.cainiaoShare,
       sorterCount,
       totalHours,
       isOpenDay,
@@ -247,6 +267,8 @@ export function buildAttendanceEfficiency(
     attendanceOnlyInWindow.push({
       date: row.date,
       volume: 0,
+      cainiaoVolume: 0,
+      cainiaoShare: 0,
       sorterCount: row.sorterCount,
       totalHours: row.totalHours,
       isOpenDay: row.isOpenDay,
@@ -280,6 +302,17 @@ export function buildAttendanceEfficiency(
 
   const openDayCount = openDayCountInWindow
   const uploadedVolume = scanAggregate.summary.totalVolume
+  const totalCainiaoVolume = scanAggregate.summary.totalCainiaoVolume
+  const cainiaoShareWindow = scanAggregate.summary.cainiaoShareWindow
+  let openDayCainiaoVolume = 0
+  let openDayVolumeForCainiao = 0
+  for (const row of matchedRows) {
+    if (!row.isOpenDay) continue
+    openDayCainiaoVolume += row.cainiaoVolume
+    openDayVolumeForCainiao += row.volume
+  }
+  const cainiaoShareOpenDays =
+    openDayVolumeForCainiao > 0 ? openDayCainiaoVolume / openDayVolumeForCainiao : 0
 
   const personMap = new Map<
     string,
@@ -369,6 +402,9 @@ export function buildAttendanceEfficiency(
       openEfficiency: openHours > 0 ? uploadedVolume / openHours : 0,
       overallEfficiency: allHours > 0 ? uploadedVolume / allHours : 0,
       openDayVolumeEfficiency: openHours > 0 ? openDayVolume / openHours : 0,
+      totalCainiaoVolume,
+      cainiaoShareWindow,
+      cainiaoShareOpenDays,
     },
   }
 }
@@ -385,20 +421,32 @@ export function computeAttendanceDailyMatchAverages(dailyRows: AttendanceDailyMa
       avgDayEfficiency: null as number | null,
       dayEfficiencySampleCount: 0,
       totalVolume: 0,
+      totalCainiaoVolume: 0,
+      avgCainiaoVolume: 0,
+      cainiaoShareFromTotals: null as number | null,
+      avgCainiaoShare: null as number | null,
       totalHoursSum: 0,
       efficiencyFromTotals: null as number | null,
     }
   }
   let sumVolume = 0
+  let sumCainiao = 0
   let sumHours = 0
   let effSum = 0
   let effCount = 0
+  let shareSum = 0
+  let shareCount = 0
   for (const row of dailyRows) {
     sumVolume += row.volume
+    sumCainiao += row.cainiaoVolume
     sumHours += row.totalHours
     if (row.dayEfficiency != null) {
       effSum += row.dayEfficiency
       effCount += 1
+    }
+    if (row.volume > 0) {
+      shareSum += row.cainiaoShare
+      shareCount += 1
     }
   }
   return {
@@ -407,6 +455,10 @@ export function computeAttendanceDailyMatchAverages(dailyRows: AttendanceDailyMa
     avgDayEfficiency: effCount > 0 ? effSum / effCount : null,
     dayEfficiencySampleCount: effCount,
     totalVolume: sumVolume,
+    totalCainiaoVolume: sumCainiao,
+    avgCainiaoVolume: sumCainiao / n,
+    cainiaoShareFromTotals: sumVolume > 0 ? sumCainiao / sumVolume : null,
+    avgCainiaoShare: shareCount > 0 ? shareSum / shareCount : null,
     totalHoursSum: sumHours,
     efficiencyFromTotals: sumHours > 0 ? sumVolume / sumHours : null,
   }
@@ -549,6 +601,7 @@ export function buildScannerEfficiency(rows: ParsedScanRow[], settings: ScanSett
     sessionCount: number
     effectiveMinutes: number
     effectiveHours: number
+    spanMinutes: number
     efficiency: number
     firstScan: Date
     lastScan: Date
@@ -571,6 +624,7 @@ export function buildScannerEfficiency(rows: ParsedScanRow[], settings: ScanSett
     const sessions = computeSessions(group.records, settings)
     const scanCount = group.records.length
     const effectiveMinutes = sessions.reduce((sum, session) => sum + session.effectiveMinutes, 0)
+    const spanMinutes = computeSpanMinutes(group.records, COARSE_STAGE_SPAN_SPLIT_THRESHOLD_MINUTES)
     const cappedGapCount = sessions.reduce((sum, session) => sum + session.cappedGapCount, 0)
     const firstScan = group.records.reduce(
       (min, record) => (record.scanTime < min ? record.scanTime : min),
@@ -589,6 +643,7 @@ export function buildScannerEfficiency(rows: ParsedScanRow[], settings: ScanSett
       sessionCount: sessions.length,
       effectiveMinutes,
       effectiveHours: effectiveMinutes / 60,
+      spanMinutes,
       efficiency,
       firstScan,
       lastScan,

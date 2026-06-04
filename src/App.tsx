@@ -7,6 +7,7 @@ import OrderExceptionManagementPage from './pages/OrderExceptionManagement/Order
 import ScannerEfficiencyPage from './pages/ScannerEfficiency/ScannerEfficiencyPage'
 import PushNotificationsPage from './pages/PushNotifications/PushNotificationsPage'
 import WageSalaryPage from './pages/WageSalary/WageSalaryPage'
+import WarehouseSafetyInspectionPage from './pages/WarehouseSafetyInspection/WarehouseSafetyInspectionPage'
 
 const muiTheme = createTheme({
   palette: {
@@ -58,6 +59,14 @@ function KeptPushNotificationsPage() {
   )
 }
 
+function KeptWarehouseSafetyInspectionPage() {
+  return (
+    <KeepAlive cacheKey="page-warehouse-safety" name="warehouse-safety" autoFreeze={false}>
+      <WarehouseSafetyInspectionPage />
+    </KeepAlive>
+  )
+}
+
 export default function App() {
   return (
     <ThemeProvider theme={muiTheme}>
@@ -71,6 +80,7 @@ export default function App() {
                 <Route path="/wage-salary" element={<KeptWageSalaryPage />} />
                 <Route path="/order-exception" element={<KeptOrderExceptionPage />} />
                 <Route path="/push-notifications" element={<KeptPushNotificationsPage />} />
+                <Route path="/warehouse-safety" element={<KeptWarehouseSafetyInspectionPage />} />
               </Route>
               <Route path="*" element={<Navigate to="/efficiency" replace />} />
             </Routes>

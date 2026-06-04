@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { sortingEfficiencyForPerson } from './sortingLookup'
 import type { DataTableColumn, DataTableRow } from './components/ui'
+import { formatCainiaoSharePercent } from './cainiaoWaybill'
 import { formatInteger, formatNumber } from './formatAndParse'
 import { isScannerAdjustedEfficiencyLow } from './scannerEfficiencyThresholds'
 
@@ -98,12 +99,19 @@ function DailyTotalHoursCell({
 type MatchFooterStats = {
   totalVolume: number
   avgVolume: number
+  totalCainiaoVolume: number
+  avgCainiaoVolume: number
+  cainiaoShareFromTotals: number | null
+  avgCainiaoShare: number | null
   totalHoursSum: number
   avgTotalHours: number
   efficiencyFromTotals: number | null
   avgDayEfficiency: number | null
-  /** 有「每票成本」的日期之算术平均 */
+  /** 窗口内：总成本合计 ÷ 总货量合计 */
   avgCostPerTicket?: number | null
+  costPerTicketFromTotals?: number | null
+  totalLaborCostSum: number | null
+  avgTotalLaborCost: number | null
 }
 
 /** 「当天效率(h)」≤ 该阈值时用红色突出（与页内口径一致：票/小时） */
@@ -113,7 +121,7 @@ function isDayEfficiencyAtOrBelowAlert(value: number | null | undefined): boolea
   return typeof value === 'number' && Number.isFinite(value) && value <= DAY_EFFICIENCY_ALERT_MAX
 }
 
-/** 「每票成本」≥ 该阈值（美元/票）时用琥珀色突出 */
+/** 「单位成本」≥ 该阈值（美元/票）时用琥珀色突出 */
 const COST_PER_TICKET_AMBER_MIN = 0.25
 
 function isCostPerTicketAmberHighlight(value: number | null | undefined): boolean {
@@ -140,6 +148,17 @@ export function buildDailyVolumeColumns(): DataTableColumn[] {
     { key: 'date', title: '日期' },
     { key: 'volume', title: '总货量', render: (row: DataTableRow) => formatInteger(Number(row.volume)) },
     {
+      key: 'cainiaoVolume',
+      title: '菜鸟票',
+      render: (row: DataTableRow) => formatInteger(Number(row.cainiaoVolume)),
+    },
+    {
+      key: 'cainiaoShare',
+      title: '菜鸟占比',
+      render: (row: DataTableRow) =>
+        formatCainiaoSharePercent(Number(row.volume) > 0 ? Number(row.cainiaoShare) : null),
+    },
+    {
       key: 'scannerCount',
       title: '扫描员人数',
       render: (row: DataTableRow) => formatInteger(Number(row.scannerCount)),
@@ -165,6 +184,52 @@ export function buildAttendanceMatchColumns(options?: {
           )
         }
         return formatInteger(Number(row.volume))
+      },
+    },
+    {
+      key: 'attendanceTotalLaborCost',
+      title: '总成本',
+      render: (row: DataTableRow) => {
+        if (row.isAttendanceMatchFooter && row.matchFooterStats) {
+          const s = row.matchFooterStats as MatchFooterStats
+          const total =
+            s.totalLaborCostSum == null || !Number.isFinite(s.totalLaborCostSum)
+              ? '—'
+              : `$${formatNumber(s.totalLaborCostSum, 2)}`
+          const avg =
+            s.avgTotalLaborCost == null || !Number.isFinite(s.avgTotalLaborCost)
+              ? '—'
+              : `$${formatNumber(s.avgTotalLaborCost, 2)}`
+          return attendanceMatchFooterCell(total, avg)
+        }
+        const cost = row.attendanceTotalLaborCost
+        if (cost == null || !Number.isFinite(Number(cost))) {
+          return <span className="tabular-nums text-slate-400">-</span>
+        }
+        return (
+          <span className="tabular-nums text-slate-900">${formatNumber(Number(cost), 2)}</span>
+        )
+      },
+    },
+    {
+      key: 'cainiaoShare',
+      title: '菜鸟占比',
+      render: (row: DataTableRow) => {
+        if (row.isAttendanceMatchFooter && row.matchFooterStats) {
+          const s = row.matchFooterStats as MatchFooterStats
+          return attendanceMatchFooterCell(
+            formatCainiaoSharePercent(s.cainiaoShareFromTotals),
+            formatCainiaoSharePercent(s.avgCainiaoShare),
+          )
+        }
+        if (row.isAttendanceOnly || !(Number(row.volume) > 0)) {
+          return <span className="tabular-nums text-slate-400">-</span>
+        }
+        return (
+          <span className="tabular-nums text-slate-700">
+            {formatCainiaoSharePercent(Number(row.cainiaoShare))}
+          </span>
+        )
       },
     },
     {
@@ -234,19 +299,20 @@ export function buildAttendanceMatchColumns(options?: {
     },
     {
       key: 'attendanceCostPerTicket',
-      title: '每票成本',
+      title: '单位成本',
       render: (row: DataTableRow) => {
         if (row.isAttendanceMatchFooter && row.matchFooterStats) {
           const s = row.matchFooterStats as MatchFooterStats
-          const avg =
-            s.avgCostPerTicket == null || !Number.isFinite(s.avgCostPerTicket)
+          const unit =
+            (s.costPerTicketFromTotals ?? s.avgCostPerTicket) == null ||
+            !Number.isFinite(s.costPerTicketFromTotals ?? s.avgCostPerTicket)
               ? '—'
-              : `$${formatNumber(s.avgCostPerTicket, 2)}`
-          return attendanceMatchFooterCell('—', avg, {
-            topClass: 'font-medium tabular-nums text-slate-900',
-            bottomClass: isCostPerTicketAmberHighlight(s.avgCostPerTicket)
-              ? 'font-semibold tabular-nums text-amber-500'
-              : 'text-slate-600',
+              : `$${formatNumber(s.costPerTicketFromTotals ?? s.avgCostPerTicket!, 2)}`
+          return attendanceMatchFooterCell(unit, '—', {
+            topClass: isCostPerTicketAmberHighlight(s.costPerTicketFromTotals ?? s.avgCostPerTicket)
+              ? 'font-semibold tabular-nums text-amber-600'
+              : 'font-medium tabular-nums text-slate-900',
+            bottomClass: 'text-slate-500',
           })
         }
         const c = row.attendanceCostPerTicket

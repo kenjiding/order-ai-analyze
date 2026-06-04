@@ -70,7 +70,7 @@ export function sanitizeEntries(raw: unknown): FeishuPushEntry[] {
 export type FeishuPushStore = Record<FeishuPushKind, FeishuPushEntry[]>
 
 export function emptyFeishuPushStore(): FeishuPushStore {
-  return { sort_efficiency: [] }
+  return { sort_efficiency: [], attendance_scheduling: [] }
 }
 
 export function toFeishuPushStoredPayload(store: FeishuPushStore): FeishuPushStoredShapeV1 {
@@ -78,6 +78,7 @@ export function toFeishuPushStoredPayload(store: FeishuPushStore): FeishuPushSto
     v: 1,
     byKind: {
       sort_efficiency: store.sort_efficiency,
+      attendance_scheduling: store.attendance_scheduling,
     },
   }
 }
@@ -98,11 +99,12 @@ export function normalizeFeishuPushFromParsed(parsed: unknown): {
   }
   const { byKind } = v
   const sort = sanitizeEntries(byKind.sort_efficiency)
+  const attendanceScheduling = sanitizeEntries(byKind.attendance_scheduling)
   const legacyA = sanitizeEntries(byKind.level1_sort_efficiency)
   const legacyB = sanitizeEntries(byKind.overall_efficiency)
   const merged = dedupeMergeEntryLists([sort, legacyA, legacyB])
   return {
-    store: { sort_efficiency: merged },
+    store: { sort_efficiency: merged, attendance_scheduling: attendanceScheduling },
     needsCanonicalResave: legacyBucketsPresent(byKind),
   }
 }

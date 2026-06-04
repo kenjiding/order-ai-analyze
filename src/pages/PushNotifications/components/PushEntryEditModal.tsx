@@ -21,6 +21,8 @@ type Props = Omit<ModalProps, 'onOk' | 'onCancel'> & {
   editing: FeishuPushEntryWithKind | null
   /** 新建推送时，Select 默认值 */
   defaultKindForNew?: FeishuPushKind
+  /** 为 false 时不展示「推送类型」，kind 固定为 defaultKindForNew / 编辑项原 kind */
+  showKindField?: boolean
   open: boolean
   onCancel: () => void
   onCommitted: (entry: PushEntryDraft) => void
@@ -29,6 +31,7 @@ type Props = Omit<ModalProps, 'onOk' | 'onCancel'> & {
 export function PushEntryEditModal({
   editing,
   defaultKindForNew = FEISHU_PUSH_DEFAULT_KIND,
+  showKindField = true,
   open,
   onCancel,
   onCommitted,
@@ -77,21 +80,14 @@ export function PushEntryEditModal({
           <Input />
         </Form.Item>
 
+        {!showKindField ? (
+          <Form.Item name="kind" hidden>
+            <Input />
+          </Form.Item>
+        ) : null}
+
         <Row gutter={[16, 8]} align="bottom">
-          <Col xs={24} sm={12}>
-            <Form.Item
-              label={
-                <span>
-                  推送类型 <Typography.Text type="danger">*</Typography.Text>
-                </span>
-              }
-              name="kind"
-              rules={[{ required: true, message: '请选择推送类型' }]}
-            >
-              <Select options={kindOptions} placeholder="请选择推送类型" />
-            </Form.Item>
-          </Col>
-          <Col xs={24} sm={12}>
+          <Col xs={24} sm={showKindField ? 12 : 24}>
             <Form.Item
               label={
                 <span>
@@ -104,6 +100,21 @@ export function PushEntryEditModal({
               <Input placeholder="如：早班分拣日报" maxLength={64} showCount />
             </Form.Item>
           </Col>
+          {showKindField ? (
+            <Col xs={24} sm={12}>
+              <Form.Item
+                label={
+                  <span>
+                    推送类型 <Typography.Text type="danger">*</Typography.Text>
+                  </span>
+                }
+                name="kind"
+                rules={[{ required: true, message: '请选择推送类型' }]}
+              >
+                <Select options={kindOptions} placeholder="请选择推送类型" />
+              </Form.Item>
+            </Col>
+          ) : null}
           <Col xs={24} sm={12}>
             <Form.Item
               label={

@@ -13,7 +13,7 @@ import type { ScannerEfficiencyViewModel } from './useScannerEfficiencyPage'
 import { showToast } from '../../utils/toast'
 
 const LEVEL1_PUSH_ERROR_HINT =
-  '可到「推送通知 → 一级分拣效率推送」维护 webhook；若上载失败请在后端 .env 核对 FEISHU_APP_ID 与 FEISHU_APP_SECRET。'
+  '可到「推送通知 → 仓库效率推送」维护 webhook；若上载失败请在后端 .env 核对 FEISHU_APP_ID 与 FEISHU_APP_SECRET。'
 
 function pushErrorToast(text: string) {
   showToast(`${text} ${LEVEL1_PUSH_ERROR_HINT}`, 'error', 8)

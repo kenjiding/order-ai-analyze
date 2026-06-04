@@ -1,5 +1,5 @@
 import { queryImileScanInterceptLogs, type ScanInterceptLog } from '../imile/interceptLogs'
-import { queryImileTracks, type TrackEvent } from '../imile/track'
+import { queryImileTracks, type OrderQueryInfo, type TrackEvent } from '../imile/track'
 
 type CacheRow<T> = {
   value: T
@@ -7,7 +7,21 @@ type CacheRow<T> = {
   updatedAt: number
 }
 
-const trackCache = new Map<string, CacheRow<TrackEvent[]>>()
+type TrackCacheValue = {
+  tracks: TrackEvent[]
+  orderInfo: OrderQueryInfo | null
+}
+
+function normalizeTrackCacheValue(value: unknown): TrackCacheValue {
+  if (Array.isArray(value)) return { tracks: value as TrackEvent[], orderInfo: null }
+  const row = value as TrackCacheValue
+  if (row && Array.isArray(row.tracks)) {
+    return { tracks: row.tracks, orderInfo: row.orderInfo ?? null }
+  }
+  return { tracks: [], orderInfo: null }
+}
+
+const trackCache = new Map<string, CacheRow<TrackCacheValue>>()
 const interceptCache = new Map<string, CacheRow<ScanInterceptLog[]>>()
 
 function normalizeToken(raw: string): string {
@@ -92,6 +106,41 @@ type FetchCacheOptions = {
   freshForAi?: boolean
 }
 
+function readTrackCacheHits(
+  token: string,
+  orderNos: string[]
+): {
+  hitTracks: Record<string, TrackEvent[]>
+  hitOrderInfo: Record<string, OrderQueryInfo | null>
+  missingOrderNos: string[]
+} {
+  const { hits, missingOrderNos } = readFromCache(trackCache, token, orderNos)
+  const hitTracks: Record<string, TrackEvent[]> = {}
+  const hitOrderInfo: Record<string, OrderQueryInfo | null> = {}
+  for (const [orderNo, row] of Object.entries(hits)) {
+    const normalized = normalizeTrackCacheValue(row)
+    hitTracks[orderNo] = normalized.tracks
+    hitOrderInfo[orderNo] = normalized.orderInfo
+  }
+  return { hitTracks, hitOrderInfo, missingOrderNos }
+}
+
+function writeTrackCache(
+  token: string,
+  trackInfo: Record<string, TrackEvent[]>,
+  orderInfo: Record<string, OrderQueryInfo | null>
+): void {
+  const values: Record<string, TrackCacheValue> = {}
+  const keys = new Set([...Object.keys(trackInfo), ...Object.keys(orderInfo)])
+  for (const orderNo of keys) {
+    values[orderNo] = {
+      tracks: trackInfo[orderNo] ?? [],
+      orderInfo: orderInfo[orderNo] ?? null,
+    }
+  }
+  writeToCache(trackCache, token, values)
+}
+
 export async function queryTracksWithCache(
   token: string,
   orderNos: string[],
@@ -99,29 +148,43 @@ export async function queryTracksWithCache(
 ) {
   const dedupedOrderNos = Array.from(new Set(orderNos))
   const hitTrackInfo: Record<string, TrackEvent[]> = {}
+  const hitOrderInfo: Record<string, OrderQueryInfo | null> = {}
   const missingOrderNos = options?.freshForAi
     ? [...dedupedOrderNos]
     : (() => {
-        const { hits, missingOrderNos: missing } = readFromCache(trackCache, token, dedupedOrderNos)
-        Object.assign(hitTrackInfo, hits)
+        const { hitTracks, hitOrderInfo: cachedInfo, missingOrderNos: missing } = readTrackCacheHits(
+          token,
+          dedupedOrderNos
+        )
+        Object.assign(hitTrackInfo, hitTracks)
+        Object.assign(hitOrderInfo, cachedInfo)
         return missing
       })()
 
   if (!missingOrderNos.length) {
-    return { ok: true as const, trackInfo: hitTrackInfo, raw: { cacheOnly: true } }
+    return {
+      ok: true as const,
+      trackInfo: hitTrackInfo,
+      orderInfo: hitOrderInfo,
+      raw: { cacheOnly: true },
+    }
   }
 
   const fetched = await queryImileTracks(token, missingOrderNos)
   if (!fetched.ok) return fetched
 
-  writeToCache(trackCache, token, fetched.trackInfo)
-  const merged: Record<string, TrackEvent[]> = {}
+  writeTrackCache(token, fetched.trackInfo, fetched.orderInfo)
+  const mergedTracks: Record<string, TrackEvent[]> = {}
+  const mergedOrderInfo: Record<string, OrderQueryInfo | null> = {}
   for (const orderNo of dedupedOrderNos) {
-    merged[orderNo] = hitTrackInfo[orderNo] ?? fetched.trackInfo[orderNo] ?? []
+    mergedTracks[orderNo] = hitTrackInfo[orderNo] ?? fetched.trackInfo[orderNo] ?? []
+    mergedOrderInfo[orderNo] =
+      hitOrderInfo[orderNo] ?? fetched.orderInfo[orderNo] ?? null
   }
   return {
     ok: true as const,
-    trackInfo: merged,
+    trackInfo: mergedTracks,
+    orderInfo: mergedOrderInfo,
     raw: {
       cacheHitCount: Object.keys(hitTrackInfo).length,
       fetchedCount: missingOrderNos.length,
@@ -198,6 +261,7 @@ export async function prefetchOrderExceptionData(
   | {
       ok: true
       trackInfo: Record<string, TrackEvent[]>
+      orderInfo: Record<string, OrderQueryInfo | null>
       interceptLogs: Record<string, ScanInterceptLog[]>
       meta: OrderExceptionPrefetchMeta
     }
@@ -236,7 +300,13 @@ export async function prefetchOrderExceptionData(
     console.warn('阻断日志预取失败，轨迹已缓存:', interceptResult.message)
     const interceptLogs: Record<string, ScanInterceptLog[]> = {}
     for (const orderNo of dedupedOrderNos) interceptLogs[orderNo] = []
-    return { ok: true, trackInfo: trackResult.trackInfo, interceptLogs, meta }
+    return {
+      ok: true,
+      trackInfo: trackResult.trackInfo,
+      orderInfo: trackResult.orderInfo,
+      interceptLogs,
+      meta,
+    }
   }
 
   if (interceptResult.errors.length) {
@@ -246,6 +316,7 @@ export async function prefetchOrderExceptionData(
   return {
     ok: true,
     trackInfo: trackResult.trackInfo,
+    orderInfo: trackResult.orderInfo,
     interceptLogs: interceptResult.interceptLogs,
     meta,
   }
@@ -262,6 +333,7 @@ export async function fetchOrderExceptionSourcesForAnalyze(
   | {
       ok: true
       trackInfo: Record<string, TrackEvent[]>
+      orderInfo: Record<string, OrderQueryInfo | null>
       interceptLogs: Record<string, ScanInterceptLog[]>
       interceptErrors: { orderNo: string; message: string }[]
     }
@@ -291,6 +363,7 @@ export async function fetchOrderExceptionSourcesForAnalyze(
     return {
       ok: true,
       trackInfo: trackResult.trackInfo,
+      orderInfo: trackResult.orderInfo,
       interceptLogs,
       interceptErrors: [],
     }
@@ -303,6 +376,7 @@ export async function fetchOrderExceptionSourcesForAnalyze(
   return {
     ok: true,
     trackInfo: trackResult.trackInfo,
+    orderInfo: trackResult.orderInfo,
     interceptLogs: interceptResult.interceptLogs,
     interceptErrors: interceptResult.errors,
   }

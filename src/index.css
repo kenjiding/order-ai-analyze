@@ -206,12 +206,22 @@ body::before {
     flex-direction: column;
   }
 
-  .order-analysis-timeline .ant-timeline-item-tail {
+  .order-analysis-timeline .ant-timeline-item-rail {
     border-inline-start-color: #d8e6ee;
   }
 
-  .order-analysis-timeline .ant-timeline-item-head {
+  .order-analysis-timeline .ant-timeline-item-icon {
     box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.95);
+  }
+
+  /* Query 完整轨迹：条目间距更紧凑 */
+  .order-analysis-timeline--compact.ant-timeline-vertical > .ant-timeline-item {
+    min-height: auto;
+    padding-bottom: 6px;
+  }
+
+  .order-analysis-timeline--compact.ant-timeline-vertical > .ant-timeline-item:last-child {
+    padding-bottom: 0;
   }
 }
 

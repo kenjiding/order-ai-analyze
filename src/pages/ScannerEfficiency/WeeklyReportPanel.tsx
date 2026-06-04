@@ -33,6 +33,7 @@ export type WeeklyReportPanelProps = {
   settings: ScanSettings
   /** 与效率明细/天一致；无考勤或未算出时为 undefined */
   dailyCostPerTicketByDate?: Record<string, number | null>
+  dailyTotalLaborCostByDate?: Record<string, number | null>
 }
 
 export default function WeeklyReportPanel({
@@ -43,6 +44,7 @@ export default function WeeklyReportPanel({
   attendanceSourceInfo,
   settings,
   dailyCostPerTicketByDate,
+  dailyTotalLaborCostByDate,
 }: WeeklyReportPanelProps) {
   const [weeklyReportHtml, setWeeklyReportHtml] = useState('')
   const [weeklyReportGeneratedAt, setWeeklyReportGeneratedAt] = useState('')
@@ -118,6 +120,7 @@ export default function WeeklyReportPanel({
         attendanceSourceInfo,
         settings,
         dailyCostPerTicketByDate,
+        dailyTotalLaborCostByDate,
       })
       const { previousSnapshot, storageMessage } = await loadPreviousSnapshot(currentSnapshot)
       const reportAnalysis = buildWeeklyReportAnalysis({
@@ -129,6 +132,7 @@ export default function WeeklyReportPanel({
         currentSnapshot,
         previousSnapshot,
         attendanceDailyCostPerTicket: dailyCostPerTicketByDate,
+        attendanceDailyTotalLaborCost: dailyTotalLaborCostByDate,
       })
       const summaryText = [
         reportAnalysis.conclusions.join(' '),
@@ -166,6 +170,7 @@ export default function WeeklyReportPanel({
         previousSnapshot,
         aiAnalysis,
         attendanceDailyCostPerTicket: dailyCostPerTicketByDate,
+        attendanceDailyTotalLaborCost: dailyTotalLaborCostByDate,
       })
       const saveMessage = await saveCurrentSnapshot(currentSnapshot)
       const baseMessage = previousSnapshot

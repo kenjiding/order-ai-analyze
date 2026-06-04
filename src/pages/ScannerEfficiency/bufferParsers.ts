@@ -3,14 +3,16 @@
  * 避免在 React 主线程直接调用 XLSX.read 大文件导致长时间阻塞。
  */
 import * as XLSX from 'xlsx'
+import { adjustAttendanceClockTime } from '../../payroll/attendanceClockTime'
 import {
   ALLOCATION_BOX_COLUMNS,
   ALLOCATION_DRIVER_COLUMNS,
+  ALLOCATION_DRIVER_COMPANY_COLUMNS,
+  ALLOCATION_DRIVER_NO_COLUMNS,
   ALLOCATION_TIME_COLUMNS,
   ATTENDANCE_CLOCK_IN_COLUMNS,
   ATTENDANCE_CLOCK_OUT_COLUMNS,
   ATTENDANCE_DATE_COLUMNS,
-  ATTENDANCE_DURATION_COLUMNS,
   ATTENDANCE_ID_COLUMNS,
   ATTENDANCE_NAME_COLUMNS,
   ATTENDANCE_POSITION_CODE_COLUMNS,
@@ -25,8 +27,8 @@ import {
   formatDateKey,
   getValueByCandidates,
   normalizeRow,
+  parseAttendanceHoursFromRow,
   parseDateValue,
-  parseDurationToHours,
   sanitizeText,
 } from './formatAndParse'
 
@@ -189,7 +191,7 @@ export function parseAttendanceFileBuffer(buffer: ArrayBuffer, fileName: string)
     jsonRows.forEach((rawRow, index) => {
       const row = normalizeRow(rawRow)
       const date = parseDateValue(getValueByCandidates(row, ATTENDANCE_DATE_COLUMNS))
-      const hours = parseDurationToHours(getValueByCandidates(row, ATTENDANCE_DURATION_COLUMNS))
+      const hours = parseAttendanceHoursFromRow(row)
 
       if (!date || hours == null || !Number.isFinite(hours) || hours <= 0) {
         droppedRows += 1
@@ -204,13 +206,11 @@ export function parseAttendanceFileBuffer(buffer: ArrayBuffer, fileName: string)
       const surnameText = sanitizeText(getValueByCandidates(row, ['姓氏', 'Surname', 'surname']))
       const positionTitle = sanitizeText(getValueByCandidates(row, ATTENDANCE_POSITION_TITLE_COLUMNS))
       const positionCode = sanitizeText(getValueByCandidates(row, ATTENDANCE_POSITION_CODE_COLUMNS))
-      const clockInTime = combineDateAndClockTime(
-        date,
-        getValueByCandidates(row, ATTENDANCE_CLOCK_IN_COLUMNS),
+      const clockInTime = adjustAttendanceClockTime(
+        combineDateAndClockTime(date, getValueByCandidates(row, ATTENDANCE_CLOCK_IN_COLUMNS)),
       )
-      const clockOutTime = combineDateAndClockTime(
-        date,
-        getValueByCandidates(row, ATTENDANCE_CLOCK_OUT_COLUMNS),
+      const clockOutTime = adjustAttendanceClockTime(
+        combineDateAndClockTime(date, getValueByCandidates(row, ATTENDANCE_CLOCK_OUT_COLUMNS)),
       )
       const sorterKey = idText || nameText
       const isFrontDesk = isFrontDeskPosition(positionTitle, positionCode)
@@ -297,6 +297,8 @@ export function parseAllocationFileBuffer(buffer: ArrayBuffer, fileName: string)
         timeSlot: allocationTimeSlot(allocationTime),
         boxNo: sanitizeText(getValueByCandidates(row, ALLOCATION_BOX_COLUMNS)),
         driver: sanitizeText(getValueByCandidates(row, ALLOCATION_DRIVER_COLUMNS)),
+        driverCompany: sanitizeText(getValueByCandidates(row, ALLOCATION_DRIVER_COMPANY_COLUMNS)),
+        driverCode: sanitizeText(getValueByCandidates(row, ALLOCATION_DRIVER_NO_COLUMNS)),
         sourceFileName: fileName,
         sourceSheetName: sheetName,
         sourceRowNumber: index + 2,

@@ -35,6 +35,15 @@ export type OrderAnalyzeApiTiming = {
   aiMs: number
 }
 
+/** iMile track/query 订单主数据（resultObject.baseInfo + skuInfo）。 */
+export type OrderQueryInfo = {
+  merchantName: string
+  merchantCode: string
+  totalWeight: string
+  customerDeclaredValueAud: string
+  declaredValueUsd: string
+}
+
 export type OrderAnalyzeInterceptLog = {
   waybillNo: string
   gmtScan?: string
@@ -219,6 +228,7 @@ export async function postOrderExceptionAnalyze(payload: {
 }): Promise<{
   results: OrderAnalyzeResultItem[]
   trackInfo: Record<string, TrackEvent[]>
+  orderInfo: Record<string, OrderQueryInfo | null>
   interceptLogs: Record<string, OrderAnalyzeInterceptLog[]>
   tokenUsage: OrderAnalyzeTokenUsage
   timing?: OrderAnalyzeApiTiming
@@ -238,6 +248,7 @@ export async function postOrderExceptionAnalyze(payload: {
   return JSON.parse(text) as {
     results: OrderAnalyzeResultItem[]
     trackInfo: Record<string, TrackEvent[]>
+    orderInfo: Record<string, OrderQueryInfo | null>
     interceptLogs: Record<string, OrderAnalyzeInterceptLog[]>
     tokenUsage: OrderAnalyzeTokenUsage
     timing?: OrderAnalyzeApiTiming

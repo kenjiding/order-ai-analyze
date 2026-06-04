@@ -13,6 +13,7 @@ import {
   type OrderAnalyzeResponsibilityOwner,
   type ResponsibilityTrackMarker,
   type OrderAnalyzeTokenUsage,
+  type OrderQueryInfo,
   type RegressionCaseListItem,
   type RegressionCaseResult,
 } from './orderExceptionApi'
@@ -65,6 +66,7 @@ export type AnalysisRow = {
   needsReview?: boolean
   crossCheckedBy?: string | null
   status?: AnalysisRowStatus
+  orderInfo?: OrderQueryInfo | null
 }
 
 export type AnalyzeProgress = {
@@ -159,10 +161,12 @@ function mapAnalyzeHitToRow(
   orderNo: string,
   hit: OrderAnalyzeResultItem | undefined,
   trackInfo: Record<string, TrackEvent[]>,
-  interceptLogsByOrder: Record<string, OrderAnalyzeInterceptLog[]>
+  interceptLogsByOrder: Record<string, OrderAnalyzeInterceptLog[]>,
+  orderInfoByOrder: Record<string, OrderQueryInfo | null>
 ): AnalysisRow {
   const trackEvents = trackInfo[orderNo] ?? []
   const interceptLogs = interceptLogsByOrder[orderNo] ?? []
+  const orderInfo = orderInfoByOrder[orderNo] ?? null
   if (!hit) {
     const hasTrack = trackEvents.length > 0
     return {
@@ -174,6 +178,7 @@ function mapAnalyzeHitToRow(
       confidence: '—',
       trackEvents,
       interceptLogs,
+      orderInfo,
       status: 'done',
     }
   }
@@ -187,6 +192,7 @@ function mapAnalyzeHitToRow(
     confidence: Number.isFinite(hit.confidence) ? hit.confidence.toFixed(2) : String(hit.confidence),
     trackEvents,
     interceptLogs,
+    orderInfo,
     latestResponsibilityTrackMarker: hit.latestResponsibilityTrackMarker ?? null,
     detectedDriverId: deriveDetectedDriverId(hit.latestResponsibilityTrackMarker, trackEvents, interceptLogs),
     needsReview: hit.needsReview ?? false,
@@ -320,7 +326,8 @@ export function useOrderExceptionManagementPage() {
       )
 
       try {
-        const { results, trackInfo, interceptLogs, tokenUsage, timing } = await postOrderExceptionAnalyze({
+        const { results, trackInfo, orderInfo, interceptLogs, tokenUsage, timing } =
+          await postOrderExceptionAnalyze({
           imileToken: token,
           orderNos,
           aiProvider: analyzeAiProvider,
@@ -333,7 +340,8 @@ export function useOrderExceptionManagementPage() {
               orderNo,
               results.find((r) => r.orderNo === orderNo),
               trackInfo,
-              interceptLogs
+              interceptLogs,
+              orderInfo ?? {}
             )
           )
         )
@@ -384,7 +392,8 @@ export function useOrderExceptionManagementPage() {
         )
 
         try {
-          const { results, trackInfo, interceptLogs, tokenUsage, timing } = await postOrderExceptionAnalyze({
+          const { results, trackInfo, orderInfo, interceptLogs, tokenUsage, timing } =
+            await postOrderExceptionAnalyze({
             imileToken: token,
             orderNos: [orderNo],
             aiProvider: analyzeAiProvider,
@@ -395,7 +404,8 @@ export function useOrderExceptionManagementPage() {
             orderNo,
             results.find((r) => r.orderNo === orderNo),
             trackInfo,
-            interceptLogs
+            interceptLogs,
+            orderInfo ?? {}
           )
           setAnalysisRows((prev) => prev.map((r) => (r.orderNo === orderNo ? row : r)))
           accumulatedTokenUsage = mergeAnalyzeTokenUsage(accumulatedTokenUsage, tokenUsage)

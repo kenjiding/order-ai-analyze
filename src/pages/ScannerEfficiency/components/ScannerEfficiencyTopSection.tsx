@@ -1,6 +1,6 @@
 import Tooltip from '@mui/material/Tooltip'
 import { Select } from 'antd'
-import { Download, Gauge, Send } from 'lucide-react'
+import { Gauge, Send } from 'lucide-react'
 import { TAB_KEYS } from '../constants'
 import { formatInteger } from '../formatAndParse'
 import type { ScannerEfficiencyViewModel } from '../useScannerEfficiencyPage'
@@ -85,7 +85,7 @@ export default function ScannerEfficiencyTopSection({ vm, level1Push }: Props) {
               <h3 className="text-lg font-semibold text-gray-900">核算配置</h3>
             </div>
 
-            <div className="grid grid-cols-1 gap-4 md:grid-cols-3 md:items-stretch">
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2 md:items-stretch">
               <div className="flex min-w-0 flex-col gap-3 rounded-lg border border-blue-200 bg-blue-50 p-3">
                 <Tooltip title={openDayRuleTooltipText} arrow enterDelay={200}>
                   <div
@@ -143,27 +143,6 @@ export default function ScannerEfficiencyTopSection({ vm, level1Push }: Props) {
 
               {hasScanData && scanAggregate && (
                 <>
-                  <div className="flex min-w-0 flex-col gap-3 rounded-lg border border-emerald-200 bg-emerald-50 p-3">
-                    <div className="flex gap-3">
-                      <Download className="mt-0.5 h-5 w-5 shrink-0 text-emerald-600" aria-hidden />
-                      <div className="min-w-0 flex-1">
-                        <span className="text-sm font-medium text-emerald-950">导出 Excel</span>
-                      </div>
-                    </div>
-                    <div className="border-t border-emerald-200/80 pt-3">
-                      <ExportButton
-                        className="w-full"
-                        onClick={handleExport}
-                        disabled={
-                          !scanAggregate ||
-                          activeTab === TAB_KEYS.WEEKLY ||
-                          activeTab === TAB_KEYS.FRONT_DESK ||
-                          (activeTab === TAB_KEYS.SCANNER && !scannerResult)
-                        }
-                      />
-                    </div>
-                  </div>
-
                   <div className="flex min-w-0 flex-col gap-3 rounded-lg border border-violet-200 bg-violet-50 p-3">
                     <Tooltip
                       title={
@@ -259,7 +238,7 @@ export default function ScannerEfficiencyTopSection({ vm, level1Push }: Props) {
             </div>
           )}
 
-          <div className="flex flex-wrap gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <button
               type="button"
               onClick={clearAttendance}
@@ -274,6 +253,19 @@ export default function ScannerEfficiencyTopSection({ vm, level1Push }: Props) {
             >
               清空全部
             </button>
+            {hasScanData && scanAggregate && (
+              <ExportButton
+                onClick={handleExport}
+                disabled={
+                  !scanAggregate ||
+                  activeTab === TAB_KEYS.WEEKLY ||
+                  activeTab === TAB_KEYS.PUSH ||
+                  activeTab === TAB_KEYS.FRONT_DESK ||
+                  (activeTab === TAB_KEYS.SCANNER && !scannerResult) ||
+                  (activeTab === TAB_KEYS.WAREHOUSE && !attendanceResult)
+                }
+              />
+            )}
           </div>
         </div>
       </div>

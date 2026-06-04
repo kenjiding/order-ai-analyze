@@ -139,6 +139,7 @@ orderExceptionRouter.post('/track', async (req: Request, res: Response) => {
 
     res.json({
       trackInfo: result.trackInfo,
+      orderInfo: result.orderInfo,
       raw: result.raw,
     })
   } catch (e) {
@@ -179,6 +180,7 @@ orderExceptionRouter.post('/prefetch', async (req: Request, res: Response) => {
 
     res.json({
       trackInfo: result.trackInfo,
+      orderInfo: result.orderInfo,
       interceptLogs: result.interceptLogs,
       meta: result.meta,
     })
@@ -239,6 +241,7 @@ orderExceptionRouter.post('/analyze', async (req: Request, res: Response) => {
     res.json({
       results,
       trackInfo: sourceResult.trackInfo,
+      orderInfo: sourceResult.orderInfo,
       interceptLogs: sourceResult.interceptLogs,
       tokenUsage,
       timing: { imileMs, aiMs },

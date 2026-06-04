@@ -39,6 +39,8 @@ export function buildExportWorkbook({
   allocationSourceInfo,
   exportTab,
   attendanceDailyCostPerTicket,
+  attendanceDailyTotalLaborCost,
+  attendancePayrollTotal,
   frontDeskResult,
 }: {
   scanAggregate: ScanAggregate | null
@@ -50,6 +52,10 @@ export function buildExportWorkbook({
   exportTab: ExportTabKey
   /** 与页面「效率明细/天」每票成本一致；键为 yyyy-MM-dd */
   attendanceDailyCostPerTicket?: Record<string, number | null>
+  /** 与页面「效率明细/天」总成本一致；键为 yyyy-MM-dd */
+  attendanceDailyTotalLaborCost?: Record<string, number | null>
+  /** 出勤表全量工资合计，与工资页「总工资」一致 */
+  attendancePayrollTotal?: number | null
   frontDeskResult?: FrontDeskSaturationResult | null
 }) {
   if (!scanAggregate) return null
@@ -70,6 +76,9 @@ export function buildExportWorkbook({
         到件有考勤_交集工时_小时: Number(attendanceResult.summary.intersectionMatchHours.toFixed(4)),
         开仓效率_票每小时: Number(attendanceResult.summary.openEfficiency.toFixed(2)),
         总体效率_票每小时: Number(attendanceResult.summary.overallEfficiency.toFixed(2)),
+        菜鸟票_全窗口: attendanceResult.summary.totalCainiaoVolume,
+        菜鸟占比_全窗口: Number((attendanceResult.summary.cainiaoShareWindow * 100).toFixed(2)),
+        菜鸟占比_开仓日: Number((attendanceResult.summary.cainiaoShareOpenDays * 100).toFixed(2)),
         一级分拣平均效率: sortingAverageEfficiencyValue(scannerResult) as number | string,
         匹配天数: attendanceResult.summary.matchedDayCount,
         未匹配天数: attendanceResult.summary.unmatchedDayCount,
@@ -89,6 +98,8 @@ export function buildExportWorkbook({
         导出范围: '开仓效率 / 总体效率',
         统计模式: '仅到件货量（未上传考勤）',
         总货量: scanAggregate.summary.totalVolume,
+        菜鸟票: scanAggregate.summary.totalCainiaoVolume,
+        菜鸟占比_百分比: Number((scanAggregate.summary.cainiaoShareWindow * 100).toFixed(2)),
         统计天数: scanAggregate.summary.totalDays,
         一级分拣平均效率: sortingAverageEfficiencyValue(scannerResult) as number | string,
         到件文件数: sourceInfo.fileCount,
@@ -106,6 +117,8 @@ export function buildExportWorkbook({
         scanAggregate.dailyRows.map((row) => ({
           日期: row.date,
           总货量: row.volume,
+          菜鸟票: row.cainiaoVolume,
+          菜鸟占比_百分比: Number((row.cainiaoShare * 100).toFixed(2)),
           扫描员人数_到件文件内: row.scannerCount,
         })),
       ),
@@ -117,28 +130,43 @@ export function buildExportWorkbook({
       const scanCountLookup = buildSortingScanCountLookup(scannerResult)
 
       const costByDate = attendanceDailyCostPerTicket
+      const laborByDate = attendanceDailyTotalLaborCost
       type AttendanceMatchExcelRow = {
         日期: string
         到件数据: string
         总货量: number | string
+        总成本: number | string
+        菜鸟占比_百分比: number | string
         分拣人数: number | string
         总工时_小时: number | string
         当天效率_票每小时: number | string
-        每票成本: number | string
+        单位成本: number | string
         是否有考勤: string
       }
       const attendanceMatchExcelRows: AttendanceMatchExcelRow[] = attendanceResult.dailyRows.map((row) => {
         const c = costByDate?.[row.date]
+        const labor = laborByDate?.[row.date]
         return {
           日期: row.date,
           到件数据: row.isAttendanceOnly ? '无（不开仓）' : '有',
           总货量: row.volume,
+          总成本: (() => {
+            if (!row.hasAttendance) return '—'
+            if (labor != null && Number.isFinite(labor)) return Number(labor.toFixed(2))
+            return '—'
+          })(),
+          菜鸟占比_百分比:
+            row.isAttendanceOnly || !(row.volume > 0)
+              ? ''
+              : Number((row.cainiaoShare * 100).toFixed(2)),
           分拣人数: row.sorterCount,
           总工时_小时: Number(row.totalHours.toFixed(4)),
           当天效率_票每小时: row.dayEfficiency == null ? '' : Number(row.dayEfficiency.toFixed(2)),
-          每票成本: (() => {
-            if (!row.hasAttendance) return '—'
-            if (!(row.volume > 0)) return '—'
+          单位成本: (() => {
+            if (!row.hasAttendance || !(row.volume > 0)) return '—'
+            if (labor != null && Number.isFinite(labor) && row.volume > 0) {
+              return Number((labor / row.volume).toFixed(4))
+            }
             if (c != null && Number.isFinite(c)) return Number(c.toFixed(4))
             return '—'
           })(),
@@ -150,21 +178,50 @@ export function buildExportWorkbook({
         matchAvgs.efficiencyFromTotals == null ? '—' : matchAvgs.efficiencyFromTotals.toFixed(2)
       const footerEffAvg =
         matchAvgs.avgDayEfficiency == null ? '—' : matchAvgs.avgDayEfficiency.toFixed(2)
-      const costSamples = attendanceResult.dailyRows
-        .map((row) => costByDate?.[row.date])
+      const laborSamples = attendanceResult.dailyRows
+        .filter((row) => row.hasAttendance)
+        .map((row) => laborByDate?.[row.date])
         .filter((v): v is number => v != null && Number.isFinite(v))
-      const footerCostAvg =
-        costSamples.length > 0
-          ? (costSamples.reduce((a, b) => a + b, 0) / costSamples.length).toFixed(4)
+      const footerVolumeSum = attendanceResult.dailyRows.reduce(
+        (sum, row) => sum + (row.volume > 0 ? row.volume : 0),
+        0,
+      )
+      const footerLaborTotalNum =
+        attendancePayrollTotal != null && Number.isFinite(attendancePayrollTotal)
+          ? attendancePayrollTotal
+          : laborSamples.length
+            ? laborSamples.reduce((a, b) => a + b, 0)
+            : null
+      const footerUnitCost =
+        footerLaborTotalNum != null && footerVolumeSum > 0
+          ? (footerLaborTotalNum / footerVolumeSum).toFixed(4)
+          : '—'
+      const footerCainiaoTotalPct =
+        matchAvgs.cainiaoShareFromTotals == null
+          ? '—'
+          : `${(matchAvgs.cainiaoShareFromTotals * 100).toFixed(2)}%`
+      const footerCainiaoAvgPct =
+        matchAvgs.avgCainiaoShare == null ? '—' : `${(matchAvgs.avgCainiaoShare * 100).toFixed(2)}%`
+      const footerLaborTotal =
+        attendancePayrollTotal != null && Number.isFinite(attendancePayrollTotal)
+          ? attendancePayrollTotal.toFixed(2)
+          : laborSamples.length > 0
+            ? laborSamples.reduce((a, b) => a + b, 0).toFixed(2)
+            : '—'
+      const footerLaborAvg =
+        laborSamples.length > 0
+          ? (laborSamples.reduce((a, b) => a + b, 0) / laborSamples.length).toFixed(2)
           : '—'
       attendanceMatchExcelRows.push({
         日期: '平均 / 总计',
         到件数据: '—',
         总货量: `总计 ${matchAvgs.totalVolume}；平均 ${matchAvgs.avgVolume.toFixed(2)}`,
+        总成本: `总计 ${footerLaborTotal}；平均 ${footerLaborAvg}`,
+        菜鸟占比_百分比: `总计 ${footerCainiaoTotalPct}；平均 ${footerCainiaoAvgPct}`,
         分拣人数: '—',
         总工时_小时: `总计 ${matchAvgs.totalHoursSum.toFixed(4)}；平均 ${matchAvgs.avgTotalHours.toFixed(4)}`,
         当天效率_票每小时: `总计 ${footerEffTotal}；平均 ${footerEffAvg}`,
-        每票成本: `总计 —；平均 ${footerCostAvg}`,
+        单位成本: `总计 ${footerUnitCost}；平均 —`,
         是否有考勤: '—',
       })
 
@@ -287,6 +344,8 @@ export function buildExportWorkbook({
         scanAggregate.dailyRows.map((row) => ({
           日期: row.date,
           总货量: row.volume,
+          菜鸟票: row.cainiaoVolume,
+          菜鸟占比_百分比: Number((row.cainiaoShare * 100).toFixed(2)),
           扫描员人数_到件文件内: row.scannerCount,
         })),
       ),

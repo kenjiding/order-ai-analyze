@@ -134,3 +134,13 @@ export const sortingAverageEfficiencyValue = (scannerResult: ScannerEfficiencyRe
   if (typeof v !== 'number' || !Number.isFinite(v)) return ''
   return Number(v.toFixed(2))
 }
+
+/** 指定统计日的一级分拣效率（票/小时） */
+export const sortingEfficiencyForDate = (
+  scannerResult: ScannerEfficiencyResult | null,
+  planDate: string,
+): number | '' => {
+  const row = scannerResult?.dailySummaryRows.find((item) => item.date === planDate)
+  if (!row || row.effectiveHours <= 0 || !Number.isFinite(row.efficiency)) return ''
+  return Number(row.efficiency.toFixed(2))
+}
