@@ -11,7 +11,9 @@ type DecisionRule = {
 }
 
 const TERMINAL_RULE_IDS = new Set([
+  'latest_order_exception_closed_terminal',
   'merchant_destroy_terminal',
+  'merchant_abandon_terminal',
   'merchant_storage_terminal',
   'merchant_return_terminal',
   'delivery_completion_terminal',
@@ -66,18 +68,66 @@ function expectedScopeFromFinalResponsibility(facts: TrackFacts): AiLossScope | 
 
 export const DECISION_RULES: readonly DecisionRule[] = [
   {
+    id: 'latest_order_exception_closed_terminal',
+    priority: 9,
+    description: '最新轨迹为订单异常完结时，订单已闭环，不再归责为库内/库外/3PL/虚假转运。',
+    match: ({ result, facts }) =>
+      facts.latestOrderExceptionClosed &&
+      (result.lossScope !== '暂无异常' || result.exceptionCategoryId !== '订单已完结'),
+    resolve: ({ result, facts }) => {
+      const hit = `最新轨迹命中订单异常完结终态（${facts.latestOrderExceptionClosedTime ?? '-'}，${facts.latestOrderExceptionClosedEvidence ?? '命中订单异常完结'}），订单已闭环，不再适用库内/库外/干线异常归责`
+      return withRuleHit({
+        result,
+        ruleId: 'latest_order_exception_closed_terminal',
+        lossScope: '暂无异常',
+        exceptionCategoryId: '订单已完结',
+        confidence: Math.max(0.9, result.confidence),
+        needsReview: false,
+        hit,
+        reason: `[事实校验纠正] ${hit}。原始判断: ${result.reason}`,
+      })
+    },
+  },
+  {
     id: 'merchant_destroy_terminal',
     priority: 10,
     description: '商家已确认销毁时，终态闭环优先于所有丢失归责。',
-    match: ({ result, facts }) => facts.merchantDestroyConfirmed && result.lossScope !== '暂无异常',
+    match: ({ result, facts }) =>
+      facts.merchantDestroyConfirmed &&
+      (result.lossScope !== '暂无异常' || result.exceptionCategoryId !== 'Abandon销毁'),
     resolve: ({ result, facts }) => {
       const hit = `轨迹命中商家销毁终态（${facts.merchantDestroyConfirmTime ?? '-'}，${facts.merchantDestroyEvidence ?? '命中销毁关键词'}），该单已进入商家确认销毁闭环，不应归责为库内/库外/干线异常`
       return withRuleHit({
         result,
         ruleId: 'merchant_destroy_terminal',
         lossScope: '暂无异常',
+        exceptionCategoryId: 'Abandon销毁',
         confidence: Math.min(result.confidence, 0.35),
         needsReview: true,
+        hit,
+        reason: `[事实校验纠正] ${hit}。原始判断: ${result.reason}`,
+      })
+    },
+  },
+  {
+    id: 'merchant_abandon_terminal',
+    priority: 10.5,
+    description: '商家已给出 Abandon 处理指令（退件处理意见[Abandon]）或退件已销毁，且为当前最新商家反馈时，判定为暂无异常并设置 Abandon销毁 子类型。',
+    match: ({ result, facts }) =>
+      facts.merchantAbandonActive &&
+      (result.lossScope !== '暂无异常' || result.exceptionCategoryId !== 'Abandon销毁'),
+    resolve: ({ result, facts }) => {
+      const closedNote = facts.merchantAbandonClosed
+        ? `；已闭环「退件已销毁」（${facts.merchantAbandonClosedTime ?? '-'}，${facts.merchantAbandonClosedEvidence ?? '命中退件已销毁'}）`
+        : ''
+      const hit = `轨迹命中商家Abandon销毁终态（${facts.merchantAbandonConfirmTime ?? '-'}，${facts.merchantAbandonEvidence ?? '命中Abandon关键词'}${closedNote}），该单已进入Abandon销毁处理方向且为当前最新商家反馈，不应归责为库内/库外/干线异常`
+      return withRuleHit({
+        result,
+        ruleId: 'merchant_abandon_terminal',
+        lossScope: '暂无异常',
+        exceptionCategoryId: 'Abandon销毁',
+        confidence: Math.max(0.9, result.confidence),
+        needsReview: false,
         hit,
         reason: `[事实校验纠正] ${hit}。原始判断: ${result.reason}`,
       })
@@ -107,9 +157,10 @@ export const DECISION_RULES: readonly DecisionRule[] = [
   {
     id: 'merchant_return_terminal',
     priority: 12,
-    description: '退返/退回商家已闭环时，不归入库内/库外丢失。',
+    description: '退返/退回商家已闭环时，不归入库内/库外丢失。若存在更新的 Abandon 指令，则 Abandon 优先。',
     match: ({ result, facts }) =>
       facts.merchantReturnConfirmed &&
+      !facts.merchantAbandonActive &&
       (result.lossScope !== '暂无异常' || result.exceptionCategoryId !== '退返商家'),
     resolve: ({ result, facts }) => {
       const hit = `轨迹命中退返商家闭环（${facts.merchantReturnConfirmTime ?? '-'}，${facts.merchantReturnEvidence ?? '命中退返闭环关键词'}），该单已完成退返/退回商家，不应归责为库内/库外异常`
@@ -262,6 +313,7 @@ export const DECISION_RULES: readonly DecisionRule[] = [
       facts.activeSegmentStatus === 'in_warehouse' &&
       facts.activeWarehouseKnown &&
       !facts.merchantDestroyConfirmed &&
+      !facts.merchantAbandonActive &&
       !facts.merchantReturnConfirmed &&
       !facts.merchantStorageActive &&
       !facts.hasRealOperatorScan &&
@@ -291,6 +343,7 @@ export const DECISION_RULES: readonly DecisionRule[] = [
       facts.activeSegmentStatus === 'in_warehouse' &&
       facts.activeWarehouseKnown &&
       !facts.merchantDestroyConfirmed &&
+      !facts.merchantAbandonActive &&
       !facts.merchantReturnConfirmed &&
       !facts.merchantStorageActive &&
       facts.hasRealOperatorScan &&
@@ -391,6 +444,7 @@ export const DECISION_RULES: readonly DecisionRule[] = [
       facts.activeResponsibilityOwner === 'company_warehouse' &&
       !facts.hasDeliveryCompletion &&
       !facts.merchantDestroyConfirmed &&
+      !facts.merchantAbandonActive &&
       !facts.merchantReturnConfirmed &&
       !facts.merchantStorageActive &&
       facts.finalResponsibilityOwner !== null &&
@@ -455,6 +509,7 @@ export const DECISION_RULES: readonly DecisionRule[] = [
       facts.activeWarehouseKnown &&
       !facts.unknownWarehouseInActiveSegment &&
       !facts.merchantDestroyConfirmed &&
+      !facts.merchantAbandonActive &&
       !facts.merchantReturnConfirmed &&
       !facts.merchantStorageActive &&
       facts.finalResponsibilityOwner !== null &&
@@ -590,6 +645,7 @@ export const DECISION_RULES: readonly DecisionRule[] = [
 export function applyFactGuardrails(result: OrderAnalyzeResult, facts: TrackFacts): OrderAnalyzeResult {
   const normalizedRules = [...DECISION_RULES].sort((a, b) => a.priority - b.priority)
   const terminalScopeLocked =
+    facts.latestOrderExceptionClosed ||
     facts.merchantDestroyConfirmed ||
     facts.merchantStorageActive ||
     facts.merchantReturnConfirmed ||

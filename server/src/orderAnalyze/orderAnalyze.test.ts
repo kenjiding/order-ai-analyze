@@ -100,6 +100,44 @@ test('退返商家闭环纠正为暂无异常且子类型为退返商家', () =>
   assert.equal(guarded.appliedDecisionRuleId, 'merchant_return_terminal')
 })
 
+test('最新轨迹为订单异常完结时纠正为暂无异常且子类型为订单已完结', () => {
+  const facts = deriveTrackFacts([
+    track('2024-01-01 10:00:00', '【ADL DS】操作员【ADL-DC-Tong】 已盘点'),
+    track('2024-01-03 10:00:00', '订单异常完结，原因【客户取消】。操作员【ADL OP1】'),
+  ])
+  const guarded = applyFactGuardrails(baseResult({ lossScope: '库外丢失', exceptionCategoryId: '快递员丢失' }), facts)
+
+  assert.equal(facts.latestOrderExceptionClosed, true)
+  assert.equal(guarded.lossScope, '暂无异常')
+  assert.equal(guarded.exceptionCategoryId, '订单已完结')
+  assert.equal(guarded.needsReview, false)
+  assert.equal(guarded.appliedDecisionRuleId, 'latest_order_exception_closed_terminal')
+  assert.equal(
+    normalizeSubType({
+      lossScope: guarded.lossScope,
+      subType: guarded.exceptionCategoryId,
+      facts,
+    }),
+    '订单已完结'
+  )
+})
+
+test('历史轨迹出现订单异常完结但最新轨迹继续推进时不使用订单已完结子类型', () => {
+  const facts = deriveTrackFacts([
+    track('2024-01-01 10:00:00', '订单异常完结，原因【客户取消】。操作员【ADL OP1】'),
+    track('2024-01-03 10:00:00', '【ADL DS】已盘点，库位编号[01]。操作员【ADL-DC-Tong】'),
+  ])
+
+  assert.equal(facts.latestOrderExceptionClosed, false)
+  assert.equal(
+    normalizeSubType({
+      lossScope: '暂无异常',
+      facts,
+    }),
+    ''
+  )
+})
+
 test('NDR 退返商家终态优先于当前责任段缺证据兜底', () => {
   const inventoryTime = '2026-05-05 13:44:47'
   const facts = deriveTrackFacts(

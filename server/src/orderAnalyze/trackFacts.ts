@@ -107,6 +107,14 @@ const MERCHANT_STORAGE_RE =
   /(商家已反馈NDR处理意见\[[^\]]*暂存[^\]]*])|(商家反馈意见\[[^\]]*暂存[^\]]*])|(包裹确认派送结束.*暂存)|(按(?:照)?商家反馈意见\[[^\]]*暂存[^\]]*]进行处理)/
 const MERCHANT_RETURN_RE =
   /(退件已退返商家)|(已退返商家)|(退回(?:发件方|寄件方|商家|卖家).*(?:签收|已签收|妥投|完成))|((?:退货|退件|退回).*(?:妥投|签收|已签收|完成))|((?:商家|发件方|寄件方|卖家).*(?:签收|已签收))|(退款退货闭环)/
+/**
+ * 商家 Abandon 方向信号：退件处理意见[Abandon] 或 NDR处理意见[Abandon]。
+ * 注意：大小写不敏感，Abandon 是英文关键字，与中文"销毁"语义等同。
+ */
+const MERCHANT_ABANDON_FEEDBACK_RE =
+  /(商家已反馈退件处理意见\[Abandon\])|(商家已反馈NDR处理意见\[Abandon\])|(商家反馈(?:退件|NDR)处理意见\[Abandon\])|(按(?:照)?商家反馈意见\[Abandon\]进行处理)|(包裹确认派送结束.*\[Abandon\])/i
+/** 物理销毁闭环信号：包裹实际已被销毁 */
+const MERCHANT_ABANDON_CLOSED_RE = /退件已销毁/
 const TRANSFER_DESTINATION_RE = /(?:已装箱|完成待转发件)[^。]*目的地【([^】]+)】/
 const BOXED_TRANSFER_RE = /(?:已装箱|完成待转发件)[^。]*目的地【[^】]+】/
 const SORTER_DEVICE_SCAN_RE = /操作员【\s*sorter\s*】/i
@@ -117,6 +125,7 @@ const LEADING_HUB_RE = /^【([^】]+)】/
 const EXTERNAL_CARRIER_RE = /包裹已转交至【([^】]+)】进行承运/
 const DELIVERY_COMPLETION_RE = /(已签收|签收成功|签收完成|妥投|派件完成|投递完成|投递成功|delivery\s*completed|delivered)/i
 const DELIVERY_COMPLETION_NEGATIVE_RE = /(未签收|签收失败|未妥投|妥投失败|投递失败|派件失败|delivery\s*failed|not\s*delivered)/i
+const ORDER_EXCEPTION_CLOSED_RE = /订单异常完结[，,]\s*原因【[^】]+】[。.]?\s*操作员【[^】]+】/
 
 function normalizeHubName(raw: string): string {
   return raw.trim().toLowerCase().replace(/\s+/g, '')
@@ -177,6 +186,16 @@ function isMerchantDestroyTerminalEvent(content: string): boolean {
   )
 }
 
+/** 商家 Abandon 方向事件：退件/NDR处理意见[Abandon] */
+function isMerchantAbandonFeedbackEvent(content: string): boolean {
+  return MERCHANT_ABANDON_FEEDBACK_RE.test(content)
+}
+
+/** 物理销毁闭环事件：退件已销毁 */
+function isMerchantAbandonClosedEvent(content: string): boolean {
+  return MERCHANT_ABANDON_CLOSED_RE.test(content)
+}
+
 function isMerchantStorageEvent(content: string): boolean {
   if (!content.includes('暂存')) return false
   return (
@@ -195,6 +214,10 @@ function isMerchantReturnEvent(content: string): boolean {
 
 function isMerchantReturnRequestEvent(content: string): boolean {
   if (isMerchantReturnEvent(content) || isMerchantDestroyTerminalEvent(content) || isMerchantStorageEvent(content)) {
+    return false
+  }
+  // Abandon 是独立的商家反馈类型，不归入退返方向
+  if (isMerchantAbandonFeedbackEvent(content) || isMerchantAbandonClosedEvent(content)) {
     return false
   }
   if (/(商家已反馈NDR处理意见|商家反馈NDR处理意见|包裹确认派送结束|按照商家反馈意见|按商家反馈意见)/.test(content)) {
@@ -262,6 +285,8 @@ function isPostStorageBusinessProgressEvent(t: TrackEvent): boolean {
   const content = t.content
   return (
     isMerchantReturnEvent(content) ||
+    isMerchantAbandonFeedbackEvent(content) ||  // Abandon 方向使暂存失效
+    isMerchantAbandonClosedEvent(content) ||     // 退件已销毁使暂存失效
     content.includes('商家已反馈退件处理意见') ||
     content.includes('商家反馈退件处理意见') ||
     content.includes('已装箱')
@@ -293,6 +318,10 @@ function isDeliveryCompletionEvent(t: TrackEvent): boolean {
   return candidates.some((text) => hasDeliveryCompletionKeyword(text))
 }
 
+function isOrderExceptionClosedEvent(t: TrackEvent): boolean {
+  return ORDER_EXCEPTION_CLOSED_RE.test((t.content ?? '').trim())
+}
+
 function isReturnOrInventoryEvent(t: TrackEvent): boolean {
   return t.content.includes('已回到网点') || t.content.includes('已盘点') || t.content.includes('已归班')
 }
@@ -316,6 +345,7 @@ function isWarehousePhysicalResponsibilityEvent(t: TrackEvent): boolean {
 
 function summarizeLatestEvent(t: TrackEvent): string {
   const c = t.content
+  if (isOrderExceptionClosedEvent(t)) return '订单异常完结（最新轨迹终态）'
   if (isDeliveryCompletionEvent(t)) return '已签收/妥投（完结）'
   if (isDispatchOutEvent(t)) return '派送中（在途，包裹已出库）'
   if (c.includes('包裹已转交至')) return c.slice(0, 40)
@@ -819,6 +849,9 @@ function makeEmptyFacts(input: {
     hasDeliveryCompletion: false,
     deliveryCompletionTime: null,
     deliveryCompletionEvidence: null,
+    latestOrderExceptionClosed: false,
+    latestOrderExceptionClosedTime: null,
+    latestOrderExceptionClosedEvidence: null,
     lastDispatchedOutTime: null,
     outWarehouseDaysDiff: -1,
     lastDispatchHasReturn: false,
@@ -849,6 +882,12 @@ function makeEmptyFacts(input: {
     merchantDestroyConfirmed: false,
     merchantDestroyConfirmTime: null,
     merchantDestroyEvidence: null,
+    merchantAbandonActive: false,
+    merchantAbandonConfirmTime: null,
+    merchantAbandonEvidence: null,
+    merchantAbandonClosed: false,
+    merchantAbandonClosedTime: null,
+    merchantAbandonClosedEvidence: null,
     merchantStorageActive: false,
     merchantStorageConfirmTime: null,
     merchantStorageEvidence: null,
@@ -891,6 +930,8 @@ export function deriveTrackFacts(tracks: TrackEvent[], interceptLogs: ScanInterc
   }
 
   const lastEvent = sorted[sorted.length - 1]
+  const latestOrderExceptionClosed = isOrderExceptionClosedEvent(lastEvent)
+  const latestOrderExceptionClosedEvidence = latestOrderExceptionClosed ? extractShortEvidence(lastEvent.content) : null
   const segments = reconcileSegmentsWithInterceptArrivals(buildResponsibilitySegments(sorted), interceptLogs)
   const activeSegment = segments.at(-1) ?? null
   const activeEvents = activeSegment?.events ?? []
@@ -1003,6 +1044,10 @@ export function deriveTrackFacts(tracks: TrackEvent[], interceptLogs: ScanInterc
   let merchantReturnEvidence: string | null = null
   let merchantReturnRequestEvent: TrackEvent | null = null
   let merchantReturnRequestEvidence: string | null = null
+  let merchantAbandonFeedbackEvent: TrackEvent | null = null
+  let merchantAbandonFeedbackEvidence: string | null = null
+  let merchantAbandonClosedEvent: TrackEvent | null = null
+  let merchantAbandonClosedEvidence: string | null = null
   let deliveryCompletionEvent: TrackEvent | null = null
   let deliveryCompletionEvidence: string | null = null
   let hasDeliveryCompletion = false
@@ -1032,7 +1077,24 @@ export function deriveTrackFacts(tracks: TrackEvent[], interceptLogs: ScanInterc
       merchantReturnRequestEvent = event
       merchantReturnRequestEvidence = extractShortEvidence(event.content)
     }
+    if (isMerchantAbandonFeedbackEvent(event.content)) {
+      merchantAbandonFeedbackEvent = event
+      merchantAbandonFeedbackEvidence = extractShortEvidence(event.content)
+    }
+    if (isMerchantAbandonClosedEvent(event.content)) {
+      merchantAbandonClosedEvent = event
+      merchantAbandonClosedEvidence = extractShortEvidence(event.content)
+    }
   }
+
+  // "最新商家反馈优先"：Abandon 只有在时间上晚于所有暂存和退返事件时才视为有效
+  // 闭环事件（退件已销毁）比方向事件（退件处理意见[Abandon]）更优先作为 Abandon 时间基准
+  const latestAbandonEventTime = merchantAbandonClosedEvent?.time ?? merchantAbandonFeedbackEvent?.time ?? null
+  const merchantAbandonActive =
+    latestAbandonEventTime !== null &&
+    (merchantStorageEvent === null || latestAbandonEventTime > merchantStorageEvent.time) &&
+    (merchantReturnEvent === null || latestAbandonEventTime > merchantReturnEvent.time) &&
+    (merchantReturnRequestEvent === null || latestAbandonEventTime > merchantReturnRequestEvent.time)
 
   const storageScheduleEvent =
     merchantStorageEvent === null
@@ -1100,6 +1162,9 @@ export function deriveTrackFacts(tracks: TrackEvent[], interceptLogs: ScanInterc
     hasDeliveryCompletion,
     deliveryCompletionTime: deliveryCompletionEvent?.time ?? null,
     deliveryCompletionEvidence,
+    latestOrderExceptionClosed,
+    latestOrderExceptionClosedTime: latestOrderExceptionClosed ? lastEvent.time : null,
+    latestOrderExceptionClosedEvidence,
     lastDispatchedOutTime: lastDispatchedOut?.time ?? null,
     outWarehouseDaysDiff: outWarehouseResponsibilityPoint ? daysDiff(outWarehouseResponsibilityPoint.time) : -1,
     lastDispatchHasReturn,
@@ -1135,6 +1200,12 @@ export function deriveTrackFacts(tracks: TrackEvent[], interceptLogs: ScanInterc
     merchantDestroyConfirmed: merchantDestroyEvent !== null,
     merchantDestroyConfirmTime: merchantDestroyEvent?.time ?? null,
     merchantDestroyEvidence,
+    merchantAbandonActive,
+    merchantAbandonConfirmTime: merchantAbandonFeedbackEvent?.time ?? merchantAbandonClosedEvent?.time ?? null,
+    merchantAbandonEvidence: merchantAbandonFeedbackEvidence ?? merchantAbandonClosedEvidence,
+    merchantAbandonClosed: merchantAbandonClosedEvent !== null,
+    merchantAbandonClosedTime: merchantAbandonClosedEvent?.time ?? null,
+    merchantAbandonClosedEvidence,
     merchantStorageActive,
     merchantStorageConfirmTime: merchantStorageEvent?.time ?? null,
     merchantStorageEvidence,
@@ -1272,6 +1343,11 @@ export function computeTrackTemporalContext(tracks: TrackEvent[], interceptLogs:
   lines.push(
     `正常完结记录: ${facts.hasDeliveryCompletion ? `是（${facts.deliveryCompletionTime ?? '-'}，${facts.deliveryCompletionEvidence ?? '命中签收/妥投/派件完成关键词'}）` : '否'}`
   )
+  if (facts.latestOrderExceptionClosed) {
+    lines.push(
+      `订单异常完结终态: 是（${facts.latestOrderExceptionClosedTime ?? '-'}，证据: ${facts.latestOrderExceptionClosedEvidence ?? '命中订单异常完结'}）  → 最新轨迹已显示订单异常闭环，优先判定「暂无异常」，子类型建议「订单已完结」`
+    )
+  }
   if (facts.lastInventoryTime) {
     lines.push(`当前责任段最近盘点: ${facts.lastInventoryTime}（距今 ${facts.lastInventoryDaysDiff} 天）`)
   }
@@ -1317,9 +1393,17 @@ export function computeTrackTemporalContext(tracks: TrackEvent[], interceptLogs:
       `当前责任段最终责任点: ${responsibilityOwnerLabel(facts.finalResponsibilityOwner)}；时间: ${facts.finalResponsibilityStartTime}（距今 ${facts.finalResponsibilityDaysDiff} 天）；依据: ${facts.finalResponsibilityBasis ?? '-'}。库内/库外丢失必须以该最终责任点为准。`
     )
   }
+  if (facts.merchantAbandonActive) {
+    const closedNote = facts.merchantAbandonClosed
+      ? `；已闭环「退件已销毁」: ${facts.merchantAbandonClosedTime ?? '-'}，${facts.merchantAbandonClosedEvidence ?? '命中退件已销毁'}`
+      : ''
+    lines.push(
+      `商家Abandon销毁: 是（${facts.merchantAbandonConfirmTime ?? '-'}，证据: ${facts.merchantAbandonEvidence ?? '命中Abandon关键词'}${closedNote}）  → 商家已确认Abandon销毁且为当前最新反馈，优先判定「暂无异常」，子类型建议「Abandon销毁」`
+    )
+  }
   if (facts.merchantDestroyConfirmed) {
     lines.push(
-      `商家销毁终态: 是（${facts.merchantDestroyConfirmTime ?? '-'}，证据: ${facts.merchantDestroyEvidence ?? '命中销毁关键词'}）  → 该订单已进入商家确认销毁闭环，优先判定「暂无异常」`
+      `商家销毁终态: 是（${facts.merchantDestroyConfirmTime ?? '-'}，证据: ${facts.merchantDestroyEvidence ?? '命中销毁关键词'}）  → 该订单已进入商家确认销毁闭环，优先判定「暂无异常」，子类型建议「Abandon销毁」`
     )
   }
   if (facts.merchantReturnConfirmed) {

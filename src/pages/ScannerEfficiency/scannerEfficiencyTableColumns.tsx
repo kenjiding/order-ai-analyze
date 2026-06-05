@@ -121,11 +121,18 @@ function isDayEfficiencyAtOrBelowAlert(value: number | null | undefined): boolea
   return typeof value === 'number' && Number.isFinite(value) && value <= DAY_EFFICIENCY_ALERT_MAX
 }
 
-/** 「单位成本」≥ 该阈值（美元/票）时用琥珀色突出 */
+/** 「每票成本」≥ 该阈值（美元/票）时用琥珀色突出 */
 const COST_PER_TICKET_AMBER_MIN = 0.25
 
 function isCostPerTicketAmberHighlight(value: number | null | undefined): boolean {
   return typeof value === 'number' && Number.isFinite(value) && value >= COST_PER_TICKET_AMBER_MIN
+}
+
+function costPerTicketHighlightClass(cost: number): string {
+  const base = 'inline-block rounded px-1.5 py-0.5 font-semibold tabular-nums'
+  return isCostPerTicketAmberHighlight(cost)
+    ? `${base} bg-amber-100 text-amber-700`
+    : `${base} bg-red-50 text-red-600`
 }
 
 function attendanceMatchFooterCell(
@@ -299,36 +306,34 @@ export function buildAttendanceMatchColumns(options?: {
     },
     {
       key: 'attendanceCostPerTicket',
-      title: '单位成本',
+      title: '每票成本',
       render: (row: DataTableRow) => {
         if (row.isAttendanceMatchFooter && row.matchFooterStats) {
           const s = row.matchFooterStats as MatchFooterStats
+          const footerCost = s.costPerTicketFromTotals ?? s.avgCostPerTicket
           const unit =
-            (s.costPerTicketFromTotals ?? s.avgCostPerTicket) == null ||
-            !Number.isFinite(s.costPerTicketFromTotals ?? s.avgCostPerTicket)
+            footerCost == null || !Number.isFinite(footerCost)
               ? '—'
-              : `$${formatNumber(s.costPerTicketFromTotals ?? s.avgCostPerTicket!, 2)}`
-          return attendanceMatchFooterCell(unit, '—', {
-            topClass: isCostPerTicketAmberHighlight(s.costPerTicketFromTotals ?? s.avgCostPerTicket)
-              ? 'font-semibold tabular-nums text-amber-600'
-              : 'font-medium tabular-nums text-slate-900',
-            bottomClass: 'text-slate-500',
-          })
+              : `$${formatNumber(footerCost, 2)}`
+          if (footerCost == null || !Number.isFinite(footerCost)) {
+            return attendanceMatchFooterCell(unit, '—')
+          }
+          return (
+            <div className="flex flex-col gap-0.5 text-xs leading-snug">
+              <span className="font-medium text-slate-900">
+                总计 <span className={costPerTicketHighlightClass(footerCost)}>{unit}</span>
+              </span>
+              <span className="text-slate-500">平均 —</span>
+            </div>
+          )
         }
         const c = row.attendanceCostPerTicket
         if (c == null || !Number.isFinite(Number(c))) {
           return <span className="tabular-nums text-slate-400">-</span>
         }
         const cost = Number(c)
-        const amber = isCostPerTicketAmberHighlight(cost)
         return (
-          <span
-            className={
-              amber
-                ? 'font-semibold tabular-nums text-amber-600'
-                : 'tabular-nums text-slate-900'
-            }
-          >
+          <span className={costPerTicketHighlightClass(cost)}>
             ${formatNumber(cost, 2)}
           </span>
         )

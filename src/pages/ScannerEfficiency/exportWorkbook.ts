@@ -140,7 +140,7 @@ export function buildExportWorkbook({
         分拣人数: number | string
         总工时_小时: number | string
         当天效率_票每小时: number | string
-        单位成本: number | string
+        每票成本: number | string
         是否有考勤: string
       }
       const attendanceMatchExcelRows: AttendanceMatchExcelRow[] = attendanceResult.dailyRows.map((row) => {
@@ -162,7 +162,7 @@ export function buildExportWorkbook({
           分拣人数: row.sorterCount,
           总工时_小时: Number(row.totalHours.toFixed(4)),
           当天效率_票每小时: row.dayEfficiency == null ? '' : Number(row.dayEfficiency.toFixed(2)),
-          单位成本: (() => {
+          每票成本: (() => {
             if (!row.hasAttendance || !(row.volume > 0)) return '—'
             if (labor != null && Number.isFinite(labor) && row.volume > 0) {
               return Number((labor / row.volume).toFixed(4))
@@ -221,7 +221,7 @@ export function buildExportWorkbook({
         分拣人数: '—',
         总工时_小时: `总计 ${matchAvgs.totalHoursSum.toFixed(4)}；平均 ${matchAvgs.avgTotalHours.toFixed(4)}`,
         当天效率_票每小时: `总计 ${footerEffTotal}；平均 ${footerEffAvg}`,
-        单位成本: `总计 ${footerUnitCost}；平均 —`,
+        每票成本: `总计 ${footerUnitCost}；平均 —`,
         是否有考勤: '—',
       })
 

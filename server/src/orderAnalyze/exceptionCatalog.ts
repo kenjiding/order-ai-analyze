@@ -74,6 +74,13 @@ export const EXCEPTION_CATALOG: readonly ExceptionScopeDefinition[] = [
       '规则已明确命中正常、闭环、未超阈值或非我司责任的状态；证据不足不得归入此类，应输出「需人工判断」。',
     subTypes: [
       {
+        id: 'Abandon销毁',
+        promptDescription:
+          'lossScope 为「暂无异常」且轨迹命中商家 Abandon 处理指令（退件处理意见[Abandon] / NDR处理意见[Abandon]）或退件已销毁物理闭环，且 Abandon 是当前最新商家反馈。与中文「NDR销毁」语义等同，统一使用此子类型。',
+        aliases: ['abandon', 'abandon销毁', '销毁'],
+        inferFromFacts: (facts) => facts.merchantAbandonActive || facts.merchantDestroyConfirmed,
+      },
+      {
         id: '退返商家',
         promptDescription: 'lossScope 为「暂无异常」但当前无丢失责任，原因是轨迹已完成退返/退回商家闭环（已退返商家/商家签收）。仅退返方向或集包转运未闭环时不属于此类。',
         aliases: ['退回商家'],
@@ -83,6 +90,11 @@ export const EXCEPTION_CATALOG: readonly ExceptionScopeDefinition[] = [
         id: '暂存',
         promptDescription: 'lossScope 为「暂无异常」且轨迹命中商家暂存闭环，后续未出现预约派送或新的业务推进。',
         inferFromFacts: (facts) => facts.merchantStorageActive,
+      },
+      {
+        id: '订单已完结',
+        promptDescription: 'lossScope 为「暂无异常」且最新轨迹为「订单异常完结，原因【...】。操作员【...】」终态闭环。',
+        inferFromFacts: (facts) => facts.latestOrderExceptionClosed,
       },
     ],
   },

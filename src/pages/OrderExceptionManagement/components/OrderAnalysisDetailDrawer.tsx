@@ -165,13 +165,13 @@ function OrderInfoMetaLine({ orderInfo }: { orderInfo: OrderQueryInfo | null | u
   if (!items.length) return null
 
   return (
-    <p className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-0.5 border-t border-white/10 pt-2 text-[11px] leading-snug text-white/80">
+    <p className="mt-2 flex flex-wrap items-center gap-x-2.5 gap-y-1 border-t border-white/10 pt-2.5 text-sm leading-snug text-white/85">
       {items.map((item, index) => (
         <span key={item.label} className="inline-flex min-w-0 items-center gap-x-2">
           {index > 0 ? <span className="text-white/25" aria-hidden>·</span> : null}
           <span className="min-w-0 truncate">
-            <span className="text-white/45">{item.label}</span>{': '}
-            <span className="font-medium text-white/90">{item.value}</span>
+            <span className="text-white/50">{item.label}</span>{': '}
+            <span className="font-semibold text-white/95">{item.value}</span>
           </span>
         </span>
       ))}

@@ -89,16 +89,16 @@ export function resolveOperatorAttendancePlanRows({
   const level28TotalHours = sortingRows.reduce((sum, row) => sum + row.hours, 0)
 
   return [
-    rowFromAttendance('叉车', 1, forklift, forklift?.hours ?? null, REMARK_FORKLIFT),
+    rowFromAttendance('叉车', 1, forklift, forklift?.hours ?? null, REMARK_FORKLIFT, NOTE_SORTING),
     rowFromAttendance(
       '粗分 + 细分+仓内整理',
       level1SorterCount,
       medianLevel28,
       level28TotalHours > 0 ? level28TotalHours : null,
       REMARK_SORTING,
-      NOTE_SORTING,
+      null,
     ),
-    rowFromAttendance('前台', 1, frontDesk, frontDesk?.hours ?? null, REMARK_FRONT_DESK),
+    rowFromAttendance('前台', 1, frontDesk, frontDesk?.hours ?? null, REMARK_FRONT_DESK, "前台完成上午工作后会加入细分环节"),
     rowFromAttendance('清洁仓库', 2, null, 0.5, '清洁仓库', NOTE_CLEANING),
   ]
 }

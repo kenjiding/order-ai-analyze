@@ -133,6 +133,12 @@ export type TrackFacts = {
   deliveryCompletionTime: string | null
   /** 最新正常完结事件证据（stage/content 摘要） */
   deliveryCompletionEvidence: string | null
+  /** 最新轨迹是否为「订单异常完结，原因【...】。操作员【...】」 */
+  latestOrderExceptionClosed: boolean
+  /** 最新订单异常完结时间，null 表示未命中 */
+  latestOrderExceptionClosedTime: string | null
+  /** 最新订单异常完结证据 */
+  latestOrderExceptionClosedEvidence: string | null
   /** 最近一次「包裹正在派送中」出库时间（ISO 字符串），null 表示从未出库 */
   lastDispatchedOutTime: string | null
   /** 库外起算距今天数，-1 表示无法确定 */
@@ -190,6 +196,20 @@ export type TrackFacts = {
   merchantDestroyConfirmed: boolean
   merchantDestroyConfirmTime: string | null
   merchantDestroyEvidence: string | null
+  /**
+   * 商家 Abandon 指令已给出（退件处理意见[Abandon]）或退件已销毁物理闭环，
+   * 且是当前最新的商家反馈（晚于暂存和退返所有事件）。
+   * 与 merchantDestroyConfirmed（中文 NDR销毁）独立追踪。
+   */
+  merchantAbandonActive: boolean
+  /** Abandon 反馈事件时间（首个方向事件或最新闭环事件，以最新为准） */
+  merchantAbandonConfirmTime: string | null
+  /** Abandon 反馈证据摘要 */
+  merchantAbandonEvidence: string | null
+  /** 退件已销毁物理销毁闭环是否出现 */
+  merchantAbandonClosed: boolean
+  merchantAbandonClosedTime: string | null
+  merchantAbandonClosedEvidence: string | null
   /** 商家已明确反馈暂存，且后续未出现预约派送（暂存闭环信号） */
   merchantStorageActive: boolean
   merchantStorageConfirmTime: string | null

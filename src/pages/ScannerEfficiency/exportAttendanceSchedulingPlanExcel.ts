@@ -14,6 +14,13 @@ export const COARSE_SORT_TARGET_EFFICIENCY = 470
 /** 总体人效目标效率（件/小时） */
 export const OVERALL_TARGET_EFFICIENCY = 140
 
+/** 总体情况「预计总工时/h」说明列文案 */
+export const OVERALL_TOTAL_HOURS_NOTE =
+  '总工时： 「叉车 + 前台 + 粗分 + 细分 + 割纸皮 + 清洁仓库」 各个岗位工时的总和'
+
+/** 总体情况「每票成本」说明列文案 */
+export const OVERALL_COST_PER_TICKET_NOTE = '每票成本最能看出成本和效率的直接关系'
+
 /** 主表区域列宽（标题、总体情况、效率达成等），第 3 列略宽以容纳「实际计划效率（件/小时）」 */
 export const BASE_SHEET_COLUMN_WIDTHS = [14, 16, 19, 16, 14, 16, 14] as const
 
@@ -49,6 +56,12 @@ const WHITE_FILL: ExcelJS.Fill = {
   type: 'pattern',
   pattern: 'solid',
   fgColor: { argb: 'FFFFFFFF' },
+}
+
+const NOTE_HIGHLIGHT_FILL: ExcelJS.Fill = {
+  type: 'pattern',
+  pattern: 'solid',
+  fgColor: { argb: 'FFFFF8D6' },
 }
 
 function applyWhiteFill(cell: ExcelJS.Cell) {
@@ -110,10 +123,18 @@ function styleAttendanceTextCell(cell: ExcelJS.Cell, value: string, redValue = f
   applyBorder(cell)
 }
 
+function styleOverallNoteCell(cell: ExcelJS.Cell, value: string) {
+  cell.value = value
+  cell.alignment = { horizontal: 'left', vertical: 'middle', wrapText: true }
+  cell.font = { size: 10, color: { argb: 'FF7A5C00' } }
+  cell.fill = NOTE_HIGHLIGHT_FILL
+  applyBorder(cell)
+}
+
 function formatPlanDateLabel(isoDate: string): string {
   const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(isoDate.trim())
   if (!m) return isoDate
-  return `${Number(m[2])}-${Number(m[3])}`
+  return `${Number(m[1])}年${Number(m[2])}月${Number(m[3])}日`
 }
 
 function formatPercent(ratio: number | null): string {
@@ -286,28 +307,34 @@ function appendAttendanceSchedulingPlanSheet(
   styleSectionTitle(sheet.getCell(row, 1), '总体情况')
   row += 1
 
-  const overallPairs: [string, string | number, string, string | number][] = [
-    ['预计入站件量', snap.totalVolume, '预计总工时/h', formatPlanHoursValue(snap.totalHours)],
+  const overallPairs: [string, string | number, string, string | number, string][] = [
+    ['预计入站件量', snap.totalVolume, '预计总工时/h', formatPlanHoursValue(snap.totalHours), OVERALL_TOTAL_HOURS_NOTE],
     [
       '粗分件量',
       snap.totalVolume,
       '粗分环节工时/h',
       formatPlanHoursValue(snap.coarseStageHours),
+      '',
     ],
-    ['细分件量', snap.totalVolume, '细分环节工时/h', ''],
+    ['细分件量', snap.totalVolume, '细分环节工时/h', '', ''],
     [
       '总成本',
       formatTotalLaborCostDisplay(snap.totalLaborCost),
       '每票成本',
       formatCostPerTicketDisplay(snap.costPerTicket),
+      OVERALL_COST_PER_TICKET_NOTE,
     ],
   ]
-  for (const [l1, v1, l2, v2] of overallPairs) {
+  for (const [l1, v1, l2, v2, note] of overallPairs) {
     styleLabelCell(sheet.getCell(row, 1), l1)
     styleValueCell(sheet.getCell(row, 2), v1, v1 !== '')
-    sheet.mergeCells(row, 2, row, 3)
-    styleLabelCell(sheet.getCell(row, 4), l2)
-    styleValueCell(sheet.getCell(row, 5), v2, Boolean(v2))
+    styleLabelCell(sheet.getCell(row, 3), l2)
+    styleValueCell(sheet.getCell(row, 4), v2, Boolean(v2))
+    if (note) {
+      styleOverallNoteCell(sheet.getCell(row, 5), note)
+    } else {
+      styleAttendanceTextCell(sheet.getCell(row, 5), '')
+    }
     sheet.mergeCells(row, 5, row, 7)
     row += 1
   }
@@ -316,7 +343,7 @@ function appendAttendanceSchedulingPlanSheet(
   styleSectionTitle(sheet.getCell(row, 1), '效率达成情况')
   row += 1
 
-  const effHeaders = ['目标类型', '目标效率（件/小时）', '实际计划效率（件/小时）', '达成比例', '问题反馈']
+  const effHeaders = ['目标类型', '目标效率（件/小时）', '实际计划效率（件/小时）', '达成比例', '问题反馈(菜鸟件占比越高, 效率越好)']
   effHeaders.forEach((h, i) => {
     const col = i + 1
     styleHeaderCell(sheet.getCell(row, col), h)

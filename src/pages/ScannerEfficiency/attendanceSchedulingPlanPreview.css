@@ -1,4 +1,4 @@
-/* 排班推送预览：突出 KPI 与分区层级，截图友好 */
+/* 排班推送预览：按业务区块分卡片，截图友好 */
 
 .attendance-plan-preview {
   --ap-accent: #2f8f87;
@@ -13,46 +13,66 @@
   --ap-metric-red-bg: #fff1f1;
   --ap-metric-green: #1b7a3a;
   --ap-metric-green-bg: #ecf8f0;
-  --ap-section-bg: linear-gradient(90deg, #e8f4fc 0%, #f4f9fd 100%);
   --ap-title-bg: linear-gradient(135deg, #1f6f68 0%, #2f8f87 48%, #3a9e96 100%);
 
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
   background: transparent;
   color: var(--ap-text);
   font-size: 12px;
   line-height: 1.4;
 }
 
-.attendance-plan-preview__block {
+.attendance-plan-preview__title-wrap {
   border-radius: 12px;
-  border: 1px solid var(--ap-border);
-  background: #fff;
-  box-shadow: 0 8px 28px rgba(34, 50, 71, 0.06);
   overflow: hidden;
-  margin-bottom: 16px;
+  box-shadow: 0 6px 20px rgba(31, 111, 104, 0.18);
 }
 
-.attendance-plan-preview__block:last-child {
-  margin-bottom: 0;
+.attendance-plan-preview__title-wrap .attendance-plan-preview__table {
+  margin: 0;
+}
+
+.attendance-plan-preview__title-wrap .attendance-plan-preview__cell {
+  border: none;
+}
+
+.attendance-plan-preview__block {
+  --ap-block-accent: #2b6cb8;
+  --ap-block-accent-deep: #1e4f8a;
+  --ap-block-tint: #f2f7fd;
+  --ap-block-header: linear-gradient(90deg, #dce9f8 0%, #f5f9fe 100%);
+  --ap-block-border: #b8cfe8;
+
+  border-radius: 12px;
+  border: 1px solid var(--ap-block-border);
+  border-left: 4px solid var(--ap-block-accent);
+  background: #fff;
+  box-shadow: 0 6px 22px rgba(34, 50, 71, 0.07);
+  overflow: hidden;
 }
 
 .attendance-plan-preview__block-label {
-  padding: 8px 14px;
-  font-size: 11px;
-  font-weight: 650;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  color: var(--ap-accent-deep);
-  background: linear-gradient(90deg, var(--ap-sky) 0%, rgba(255, 255, 255, 0.95) 100%);
-  border-bottom: 1px solid var(--ap-border);
+  padding: 9px 14px;
+  font-size: 13px;
+  font-weight: 750;
+  letter-spacing: 0.02em;
+  text-align: center;
+  color: var(--ap-block-accent-deep);
+  background: var(--ap-block-header);
+  border-bottom: 1px solid var(--ap-block-border);
 }
 
 .attendance-plan-preview__block-body {
-  padding: 12px 14px 14px;
-  background: linear-gradient(180deg, #ffffff 0%, #f8fbfe 120%);
+  padding: 10px 12px 12px;
+  background: var(--ap-block-tint);
 }
 
-.attendance-plan-preview__attendance-table {
-  margin-top: 16px;
+.attendance-plan-preview__block-body .attendance-plan-preview__table {
+  border-radius: 8px;
+  overflow: hidden;
+  box-shadow: 0 0 0 1px var(--ap-block-border);
 }
 
 .attendance-plan-preview__table {
@@ -96,9 +116,8 @@
   font-weight: 800;
   text-align: center;
   color: var(--ap-accent-deep);
-  background: var(--ap-section-bg);
+  background: linear-gradient(90deg, #e8f4fc 0%, #f4f9fd 100%);
   border-color: var(--ap-border);
-  box-shadow: inset 3px 0 0 var(--ap-accent);
 }
 
 .attendance-plan-preview__cell--header {
@@ -106,9 +125,9 @@
   font-size: 13px;
   font-weight: 800;
   text-align: center;
-  color: #1e4560;
-  background: linear-gradient(180deg, var(--ap-sky) 0%, var(--ap-sky-deep) 100%);
-  border-color: var(--ap-border-strong);
+  color: #1e4f8a;
+  background: linear-gradient(180deg, #e8f1fb 0%, #d4e4f6 100%);
+  border-color: #a8c4e0;
 }
 
 .attendance-plan-preview__cell--body {
@@ -122,10 +141,19 @@
 }
 
 .attendance-plan-preview__cell--label {
-  background: #f4f8fb;
+  background: #edf3fb;
   color: var(--ap-muted);
   font-weight: 600;
   font-size: 11px;
+}
+
+.attendance-plan-preview__cell--note {
+  background: #fff8d6;
+  color: #7a5c00;
+  font-size: 12px;
+  font-weight: 650;
+  line-height: 1.5;
+  box-shadow: inset 3px 0 0 #f5c842;
 }
 
 .attendance-plan-preview__cell--feedback {
@@ -216,22 +244,22 @@
 }
 
 .attendance-plan-preview__cell--editable:focus {
-  box-shadow: inset 0 0 0 2px rgba(47, 143, 135, 0.45);
-  background: #fafffe !important;
+  box-shadow: inset 0 0 0 2px rgba(43, 108, 184, 0.45);
+  background: #f8fbff !important;
   z-index: 1;
   position: relative;
 }
 
-.attendance-plan-preview__table--10 tbody tr:nth-child(n + 3):nth-child(even) .attendance-plan-preview__cell--body {
+.attendance-plan-preview__table--10 tbody tr:nth-child(n + 2):nth-child(even) .attendance-plan-preview__cell--body {
   background: #f8fbfe;
 }
 
-.attendance-plan-preview__table--10 tbody tr:nth-child(n + 3):nth-child(even) .attendance-plan-preview__cell--label {
-  background: #eef4f9;
+.attendance-plan-preview__table--10 tbody tr:nth-child(n + 2):nth-child(even) .attendance-plan-preview__cell--label {
+  background: #e5eef8;
 }
 
-.attendance-plan-preview__table--10 tbody tr:nth-child(n + 3):nth-child(even) .attendance-plan-preview__cell--metric {
-  background: #f3f9fc;
+.attendance-plan-preview__table--10 tbody tr:nth-child(n + 2):nth-child(even) .attendance-plan-preview__cell--metric {
+  background: #f3f8fc;
 }
 
 .attendance-plan-preview__spacer {

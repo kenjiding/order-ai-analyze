@@ -9,13 +9,15 @@ import {
   formatCostPerTicketDisplay,
   formatTotalLaborCostDisplay,
   OVERALL_TARGET_EFFICIENCY,
+  OVERALL_COST_PER_TICKET_NOTE,
+  OVERALL_TOTAL_HOURS_NOTE,
   resolveOpenPlanDates,
   type AttendanceSchedulingPlanSnapshot,
 } from './exportAttendanceSchedulingPlanExcel'
 
 export type PlanPreviewCellTone = 'default' | 'red' | 'green'
 
-export type PlanPreviewCellEmphasis = 'label' | 'metric' | 'ratio' | 'feedback'
+export type PlanPreviewCellEmphasis = 'label' | 'metric' | 'ratio' | 'feedback' | 'note'
 
 export type PlanPreviewCell = {
   key: string
@@ -78,6 +80,10 @@ function ratioValue(key: string, text: string, tone: PlanPreviewCellTone): PlanP
   return cell(key, text, { editable: true, tone, variant: 'body', align: 'center', emphasis: 'ratio' })
 }
 
+function noteCell(key: string, text: string): PlanPreviewCell {
+  return cell(key, text, { variant: 'body', align: 'left', emphasis: 'note' })
+}
+
 function buildTablesFromSnapshot(
   planDate: string,
   snap: AttendanceSchedulingPlanSnapshot,
@@ -91,25 +97,28 @@ function buildTablesFromSnapshot(
     [cell(p('sec-overall'), '总体情况', { colSpan: 7, variant: 'section' })],
     [
       labelCell(p('ov-l1'), '预计入站件量'),
-      bodyValue(p('ov-v1'), String(snap.totalVolume), 'red'),
+      bodyValue(p('ov-v1'), String(snap.totalVolume)),
       labelCell(p('ov-l2'), '预计总工时/h'),
-      bodyValue(p('ov-v2'), Number(snap.totalHours.toFixed(1)).toString(), 'red'),
+      bodyValue(p('ov-v2'), Number(snap.totalHours.toFixed(1)).toString()),
+      noteCell(p('ov-note'), OVERALL_TOTAL_HOURS_NOTE),
     ],
     [
       labelCell(p('cs-l1'), '粗分件量'),
-      bodyValue(p('cs-v1'), String(snap.totalVolume), 'red'),
+      bodyValue(p('cs-v1'), String(snap.totalVolume)),
       labelCell(p('cs-l2'), '粗分环节工时/h'),
       bodyValue(
         p('cs-v2'),
         snap.coarseStageHours != null ? Number(snap.coarseStageHours.toFixed(1)).toString() : '',
-        snap.coarseStageHours != null ? 'red' : 'default',
+        snap.coarseStageHours != null ? null : 'default',
       ),
+      noteCell(p('cs-note'), ''),
     ],
     [
       labelCell(p('fs-l1'), '细分件量'),
-      bodyValue(p('fs-v1'), String(snap.totalVolume), 'red'),
+      bodyValue(p('fs-v1'), String(snap.totalVolume)),
       labelCell(p('fs-l2'), '细分环节工时/h'),
       bodyValue(p('fs-v2'), ''),
+      noteCell(p('fs-note'), ''),
     ],
     [
       labelCell(p('cost-l1'), '总成本'),
@@ -118,12 +127,13 @@ function buildTablesFromSnapshot(
         formatTotalLaborCostDisplay(snap.totalLaborCost),
         snap.totalLaborCost != null ? 'red' : 'default',
       ),
-      labelCell(p('cost-l2'), '每票成本'),
+      labelCell(p('cost-l2'), '每票成本/$'),
       bodyValue(
         p('cost-v2'),
         formatCostPerTicketDisplay(snap.costPerTicket),
         snap.costPerTicket != null ? 'red' : 'default',
       ),
+      noteCell(p('cost-note'), OVERALL_COST_PER_TICKET_NOTE),
     ],
     [],
     [cell(p('sec-eff'), '效率达成情况', { colSpan: 7, variant: 'section' })],
@@ -132,7 +142,7 @@ function buildTablesFromSnapshot(
       cell(p('eh-2'), '目标效率（件/小时）', { variant: 'header' }),
       cell(p('eh-3'), '实际计划效率（件/小时）', { variant: 'header' }),
       cell(p('eh-4'), '达成比例', { variant: 'header' }),
-      cell(p('eh-5'), '问题反馈', { colSpan: 3, variant: 'header' }),
+      cell(p('eh-5'), '问题反馈(菜鸟件占比越高, 效率越好)', { colSpan: 3, variant: 'header' }),
     ],
   ]
 
@@ -248,10 +258,17 @@ function buildTablesFromSnapshot(
   ]
 }
 
+function expandOverallPairRow(row: PlanPreviewCell[]): PlanPreviewCell[] {
+  return [row[0]!, row[1]!, row[2]!, row[3]!, { ...row[4]!, colSpan: 3 }]
+}
+
 function expandMainRows(rows: PlanPreviewCell[][]): PlanPreviewCell[][] {
   return rows.map((row) => {
+    if (row.length === 5 && row[0]?.variant !== 'header') {
+      return expandOverallPairRow(row)
+    }
     if (row.length === 4 && row[0]?.variant !== 'header') {
-      return expandPairRows(row)
+      return expandPairRow(row)
     }
     if (row.length === 2 && row[0]?.colSpan === 3) {
       return [row[0]!, { ...row[1]!, colSpan: 4 }]
@@ -264,16 +281,14 @@ function expandMainRows(rows: PlanPreviewCell[][]): PlanPreviewCell[][] {
 }
 
 /** 将 4 格「左标签|左值|右标签|右值」行展开为 7 列（值区 colSpan 2 / 3） */
-function expandPairRows(rows: PlanPreviewCell[][]): PlanPreviewCell[][] {
-  return rows.map((row) => {
-    if (row.length !== 4) return row
-    return [
-      row[0]!,
-      { ...row[1]!, colSpan: 2 },
-      row[2]!,
-      { ...row[3]!, colSpan: 3 },
-    ]
-  })
+function expandPairRow(row: PlanPreviewCell[]): PlanPreviewCell[] {
+  if (row.length !== 4) return row
+  return [
+    row[0]!,
+    { ...row[1]!, colSpan: 2 },
+    row[2]!,
+    { ...row[3]!, colSpan: 3 },
+  ]
 }
 
 export function buildAttendanceSchedulingPlanPreview({
