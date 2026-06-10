@@ -1121,6 +1121,17 @@ test('Canberra Station 使用 CBR Warehouse 数字账号可识别为真实扫描
   assert.equal(facts.hasRealOperatorScan, true)
 })
 
+test('已知仓库使用排除法识别真实操作员', () => {
+  const profile = findWarehouseProfileByName('ADL DS')
+
+  assert.equal(classifyOperatorForWarehouse('System', profile), 'system')
+  assert.equal(classifyOperatorForWarehouse('cornerstone', profile), 'system')
+  assert.equal(classifyOperatorForWarehouse('ADL OP1', profile), 'system')
+  assert.equal(classifyOperatorForWarehouse('ADL-DC-Unload', profile), 'non_real')
+  assert.equal(classifyOperatorForWarehouse('ADL-new-scanner-without-profile-rule', profile), 'real')
+  assert.equal(classifyOperatorForWarehouse('DRW-new-scanner', null), 'unknown')
+})
+
 test('SYD Warehouse 数字账号可作为 Sydney Center 内部转仓起算候选', () => {
   const transferTime = daysAgo(8, '19:35:53')
   const facts = deriveTrackFacts([
@@ -1359,6 +1370,6 @@ test('分析提示不向模型暴露仓库正则画像，操作员判断只读�
 
   assert.equal(fullPrompt.includes('真实扫描员规则='), false)
   assert.equal(fullPrompt.includes('/^ADL-'), false)
-  assert.match(fullPrompt, /模型禁止自行解析正则/)
+  assert.match(fullPrompt, /模型禁止自行解析账号名前缀/)
   assert.match(fullPrompt, /真实操作员扫描记录: 否/)
 })

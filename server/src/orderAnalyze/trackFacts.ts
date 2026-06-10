@@ -1349,7 +1349,7 @@ export function computeTrackTemporalContext(
     )
     lines.push(`当前仓库丢失超时阈值: ${facts.activeWarehouseLossTimeoutDays} 天`)
     if (!facts.activeWarehouseKnown) {
-      lines.push('仓库配置状态: 未知仓库，禁止默认把操作员视为真实扫描员；若结论依赖真实扫描员，应输出「需人工判断」。')
+      lines.push('仓库配置状态: 未知仓库，禁止默认把操作员视为真实操作员；若结论依赖真实操作员，应输出「需人工判断」。')
     }
   } else if (facts.activeResponsibilityOwner === 'external_carrier') {
     lines.push(
@@ -1367,7 +1367,7 @@ export function computeTrackTemporalContext(
   lines.push('')
   lines.push('--- 当前责任段：库内责任超时 ---')
   lines.push(
-    `真实操作员扫描记录: ${facts.hasRealOperatorScan ? '是（仓内扫描/盘点，不含「包裹正在派送中」二次出库扫描）' : '否（当前责任段无已配置仓库的真实扫描员）'}`
+    `真实操作员扫描记录: ${facts.hasRealOperatorScan ? '是（仓内扫描/盘点，不含「包裹正在派送中」二次出库扫描）' : '否（当前责任段无可确认为真实操作员的仓内扫描/盘点）'}`
   )
 
   if (facts.inWarehouseStartTime && facts.inWarehouseBasis) {

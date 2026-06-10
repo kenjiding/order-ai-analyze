@@ -316,7 +316,7 @@ function buildDeterministicBaseResult(input: {
       confidence: 0.5,
       needsReview: true,
       reason: appendEvidence(
-        `当前仓库 ${facts.activeWarehouseName ?? '-'} 未匹配配置，无法可靠区分真实/非真实/系统账号，需人工判断`,
+        `当前仓库 ${facts.activeWarehouseName ?? '-'} 未匹配配置，无法可靠区分真实操作员、非真实账号和系统账号，需人工判断`,
         facts,
         'context'
       ),
@@ -622,7 +622,7 @@ export const DECISION_RULES: readonly DecisionRule[] = [
     appliesTo: ['库内丢失', '库外丢失', '虚假转运'],
     match: ({ facts }) => facts.unknownWarehouseInActiveSegment,
     resolve: ({ result, facts }) => {
-      const hit = `当前仓库 ${facts.activeWarehouseName ?? '-'} 未匹配仓库配置，无法可靠区分真实扫描员、非真实扫描员和系统账号`
+      const hit = `当前仓库 ${facts.activeWarehouseName ?? '-'} 未匹配仓库配置，无法可靠区分真实操作员、非真实账号和系统账号`
       return withRuleHit({
         result,
         ruleId: 'unknown_active_warehouse_needs_review',

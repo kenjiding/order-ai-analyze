@@ -20,15 +20,11 @@ export type AnalyzeTarget = {
 
 export type WarehouseCityId = 'ADL' | 'MEL' | 'PER' | 'SYD' | 'BNE' | 'QLD' | 'CBR'
 
-/** 真实操作员匹配规则：正则表达式或精确账号名（大小写不敏感） */
-export type RealOperatorPattern = RegExp | string
-
 export type WarehouseProfile = {
   cityId: WarehouseCityId
   hubId: string
   displayName: string
   aliases: readonly string[]
-  realOperatorPatterns: readonly RealOperatorPattern[]
   /** 当前仓库库内/库外丢失判定超时天数；未配置时使用系统默认值 */
   lossTimeoutDays?: number
   nonRealOperators?: readonly string[]
