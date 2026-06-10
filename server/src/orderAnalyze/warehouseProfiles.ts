@@ -122,6 +122,7 @@ export const WAREHOUSE_PROFILES: readonly WarehouseProfile[] = [
     realOperatorPatterns: [/^SYD[_-].+/i, /^SYD Warehouse\d+$/i, /^NSYD W\d+$/i],
     nonRealOperators: ['SYDN OPS1', 'SYDN OPS2', 'SYDN OPS3', 'SYDN OPS4', 'SYDN OPS5', 'SYDN OPS6', 'SYDN OPS7', 'SYDN OPS8', 'SYDN OPS9', 'SYDN OPS10'],
     systemOperators: COMMON_SYSTEM_OPERATORS,
+    lossTimeoutDays: 7,
   },
   {
     cityId: 'SYD',
@@ -131,6 +132,7 @@ export const WAREHOUSE_PROFILES: readonly WarehouseProfile[] = [
     realOperatorPatterns: [/^SYD[_-].+/i, /^SYD Warehouse\d+$/i, /^NSYD W\d+$/i, /SYDE-PUS \d+$/i, /SYDE OPS\d+$/i],
     nonRealOperators: ['SYDE OPS1', 'SYDE OPS2', 'SYDE OPS3', 'SYDE OPS4', 'SYDE OPS5', 'SYDE OPS6', 'SYDE OPS7', 'SYDE OPS8', 'SYDE OPS9', 'SYDE OPS10'],
     systemOperators: COMMON_SYSTEM_OPERATORS,
+    lossTimeoutDays: 30,
   },
   {
     cityId: 'SYD',

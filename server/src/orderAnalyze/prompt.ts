@@ -81,7 +81,9 @@ export function prepareAnalyzeCategories(input: { targets: AnalyzeTarget[] }) {
 
   const targetText = input.targets
     .map((t) => {
-      const temporalContext = computeTrackTemporalContext(t.tracks, t.interceptLogs ?? [])
+      const temporalContext = computeTrackTemporalContext(t.tracks, t.interceptLogs ?? [], {
+        analysisDate: t.analysisDate,
+      })
       return `订单 ${t.orderNo}:\n${temporalContext}\n\n[轨迹事件]\n${summarizeTracks(t.tracks, 14)}`
     })
     .join('\n\n---\n\n')
@@ -90,7 +92,7 @@ export function prepareAnalyzeCategories(input: { targets: AnalyzeTarget[] }) {
     '## 角色: 你是跨境/仓配异常研判助手，只依据物流轨迹文本做判断。',
     '## 必须先判断丢失责任类型，输出必须是以下六者之一（禁止用其它文案）：',
     buildLossScopePromptText(),
-    '## 核心原则：责任方 = 轨迹与阻断日志合并到同一条时间线后，最后一条真实操作所在的仓；库内操作归库内、库外操作归库外，并基于「时序分析」中该仓的丢失超时阈值从该操作时间起算重新判断；最后用「承运商完结标记」做一致性校验或置信度微调。事实优先，责任点不得越过终态（销毁/暂存/退返商家闭环/正常完结）等更高优先级规则。',
+    '## 核心原则：责任方 = 轨迹与阻断日志合并到同一条时间线后，最后一条真实操作所在的仓；库内操作归库内、库外操作归库外，并基于「时序分析」中该仓的丢失超时阈值从该操作时间起算重新判断；最后用「承运商完结标记」做一致性校验或置信度微调。事实优先，责任点不得越过终态（销毁/暂存/退返商家/正常完结）等更高优先级规则。',
     '真实操作员、非真实账号和系统账号已由服务端按「当前责任仓库配置」完成确定性识别；模型只允许使用「时序分析」中的预计算字段，不得自行解析账号名、前缀或正则规则重判。',
     '## 服务端硬规则目录（模型需与服务端确定性校验保持一致）：',
     buildFactGuardrailPromptText(),
@@ -127,11 +129,11 @@ export function prepareAnalyzeCategories(input: { targets: AnalyzeTarget[] }) {
     '  · 「【AAAA】已装箱（集包），目的地【BBBB】」= 起始仓 AAAA 的最后一次库内真实操作；在 BBBB 出现真实操作（轨迹「已到达/已收到退件」或阻断日志扫描网点=BBBB 的真实扫描）之前，责任仍留在 AAAA，按 AAAA 库内阈值判断；不要据此判「暂无异常」或「需人工判断」',
     '  · 「【X】已收到退件包裹」或阻断日志扫描网点=X 的真实扫描 = 责任已切换到 X 仓，后续必须按 X 仓库内/库外流程继续判断',
     '  · Sydney Center 分拣后发往 SYDN 等悉尼内部仓仍属于公司库内责任流转；到达下游仓后继续按当前仓库库内/库外规则判断，相关 sorter / SYD Warehouse数字 / NSYD W数字 节点可重置库内起算时间',
-    '  · 「商家已反馈NDR处理意见[退返商家]」或「包裹确认派送结束, 将按照商家反馈意见[退返商家]进行处理」= 商家给出退返方向，不是仓库真实操作、不是库内责任点、不是退返闭环；不得重置库内/库外起算',
+    '  · 「商家已反馈NDR处理意见[退返商家]」或「包裹确认派送结束, 将按照商家反馈意见[退返商家]进行处理」= 商家给出退返方向，不是仓库真实操作、不是库内责任点、不是退返闭环；不得重置库内/库外起算；若它仍是当前最新有效商家处理方向，lossScope 为「暂无异常」时子类型使用「退返商家」',
     '  · 「商家已反馈退件处理意见[Abandon]」或「商家已反馈NDR处理意见[Abandon]」= 商家给出 Abandon 销毁指令，属于「商家反馈」方向，不是退返闭环、不是库内操作；若该事件是最新商家反馈，直接判「暂无异常」，子类型「Abandon销毁」；不得归入退返方向或退返商家子类型',
     '  · 「退件已销毁」= Abandon 销毁物理闭环信号，表示包裹已实际销毁，该订单完全闭环；子类型仍为「Abandon销毁」',
     '  · 商家反馈（Abandon销毁 / 退返商家 / 暂存）存在叠加时，以最新反馈为准：若 Abandon 晚于暂存和退返事件，以 Abandon 为准；若暂存晚于 Abandon，以暂存为准；以此类推',
-    '  · 装箱集包转运到任意目的地（公司仓 / 3PL / 商家退返地址）都只是"责任转移到目的地"，本身不是终态；只有真正「退件已退返商家/商家签收」闭环才用「退返商家」子类型',
+    '  · 装箱集包转运到任意目的地（公司仓 / 3PL / 商家退返地址）都只是"责任转移到目的地"，本身不是终态；但若当前最新有效商家处理方向仍为退返/退回商家，lossScope 为「暂无异常」时子类型仍使用「退返商家」',
     '  · 仓库名前缀只表示该轨迹显示的业务地点，不等于物理转仓；「登记问题件」「已进入NDR」「商家反馈」「包裹确认派送结束」不得单独触发仓库责任段切换',
     `  · 「【X】包裹已转交至【承运商】进行承运」= X 仓库责任结束，当前责任转为外部承运商；外部承运不是我司库内/库外责任，最后更新未达到 ${EXTERNAL_CARRIER_LOSS_TIMEOUT_DAYS} 天复核阈值时判「暂无异常」，达到 ${EXTERNAL_CARRIER_LOSS_TIMEOUT_DAYS} 天时判「3PL丢件」`,
     '  · 「商家反馈意见[暂存]」= 暂存闭环；除非后续出现「预约派送」或明确业务推进（如「商家已反馈退件处理意见」「已装箱，目的地【X】」），否则没有库内/库外超时逻辑，后续普通盘点/收退件轨迹不改变暂存结论',
@@ -150,13 +152,13 @@ export function prepareAnalyzeCategories(input: { targets: AnalyzeTarget[] }) {
     '· 「包裹确认派送结束, 将按照商家反馈意见[销毁]进行处理」',
     '· 「商家已反馈退件处理意见[Abandon]」或「商家已反馈NDR处理意见[Abandon]」（Abandon 为英文关键字，与销毁语义等同），且该事件是当前最新商家反馈',
     '· 「退件已销毁」（物理销毁闭环，表示包裹已实际销毁，与 Abandon 指令配合使用）',
-    '· 「退返商家闭环: 是」或轨迹明确显示「退件已退返商家」、退回发件方/商家签收、退货妥投、退款退货闭环',
+    '· 「退返商家闭环: 是」、轨迹明确显示「退件已退返商家」、退回发件方/商家签收、退货妥投、退款退货闭环，或当前最新有效商家处理方向为「退返商家/退回商家」',
     '· 「商家已反馈NDR处理意见[暂存]」或「包裹确认派送结束, 将按照商家反馈意见[暂存]进行处理」，且后续没有「预约派送」或明确业务推进（如「商家已反馈退件处理意见」「已装箱，目的地【X】」）轨迹',
     '则直接判定 lossScope = 「暂无异常」；reason 使用对应终态短词。',
     '其中「订单异常完结」命中时，reason 建议包含短词「订单已完结」，子类型必须使用「订单已完结」。仅历史轨迹出现但后续已有新轨迹时，不使用该规则。',
     '其中「Abandon销毁」命中时（无论是 Abandon 指令还是退件已销毁），reason 建议包含短词「Abandon销毁」，子类型必须使用「Abandon销毁」；中文「销毁」指令也统一使用「Abandon销毁」子类型。',
     '其中「退返商家」命中时，reason 建议包含短词「退返商家」，子类型必须使用「退返商家」。',
-    '注意：「商家已反馈NDR处理意见[退返商家]」「包裹确认派送结束, 将按照商家反馈意见[退返商家]进行处理」「商家已反馈退件处理意见[Transfer]」「商家已反馈退件处理意见[退回商家]」只表示商家给出退件处理方向，不是退返闭环；在未出现退返商家完成或签收闭环前，仍按当前责任段继续判断库内/库外责任。',
+    '注意：「商家已反馈NDR处理意见[退返商家]」「包裹确认派送结束, 将按照商家反馈意见[退返商家]进行处理」「商家已反馈退件处理意见[退回商家]」表示商家给出退返/退回商家方向，不是库内/库外责任点；若该方向仍为当前最新有效商家处理方向，lossScope 为「暂无异常」时子类型必须使用「退返商家」。若后续最新处理方向改为 Abandon/销毁/暂存/Transfer/RTC 等，以最新方向为准覆盖旧方向。',
     '注意：「商家已反馈退件处理意见[Abandon]」不属于退返方向，不得归入退返商家；只要出现此指令且为最新商家反馈，直接使用「Abandon销毁」子类型。',
     '其中「暂存」命中时，reason 建议使用短词「暂存」，子类型建议使用「暂存」；暂存不适用库内/库外超时。',
     '若「暂存」之后又出现「预约派送」，则暂存状态释放，必须从最近一次「已盘点」重新起算，并按当前仓库丢失超时阈值回到正常的库内丢失/库外丢失判断。',
@@ -221,8 +223,8 @@ export function prepareAnalyzeCategories(input: { targets: AnalyzeTarget[] }) {
     '· 若轨迹出现「商家已反馈退件处理意见[Abandon]」「商家已反馈NDR处理意见[Abandon]」「退件已销毁」等 Abandon 信号，且该信号是最新商家反馈：优先判定为「暂无异常」，子类型「Abandon销毁」；禁止将 Abandon 归为退返方向或退返商家',
     '· 若轨迹明确显示「退件已退返商家」、退回发件方/商家签收、退货妥投、退款退货闭环等退返完成信号：判定为「暂无异常」，exceptionCategoryId 输出「退返商家」',
     '· 若轨迹出现「商家反馈意见[暂存]」或「包裹确认派送结束并按商家暂存意见处理」，且后续没有「预约派送」或明确业务推进：优先判定为「暂无异常」；reason 建议包含短词「暂存」；后续普通盘点/收退件/超过当前仓库阈值不改变结论',
-    '· 「商家已反馈NDR处理意见[退返商家]」「包裹确认派送结束并按退返商家意见处理」「商家已反馈退件处理意见[Transfer]」或类似退件意见仅是处理方向，不得单独判定为「暂无异常/退返商家」；未超当前仓库阈值时可判「暂无异常」但子类型必须为空',
-    '· 退返方向后出现「已装箱，集包号[...]，目的地【X】」仅是责任转移到 X，不是退返闭环；责任仍按起始仓（X 未产生真实操作时）或 X 仓（已产生真实操作时）库内阈值判断，子类型不得用「退返商家」',
+    '· 「商家已反馈NDR处理意见[退返商家]」「包裹确认派送结束并按退返商家意见处理」「商家已反馈退件处理意见[退回商家]」若仍是当前最新有效商家处理方向，未超当前仓库阈值时可判「暂无异常」且子类型使用「退返商家」；若最新方向变为 Transfer/RTC/Abandon/销毁/暂存等，则不得沿用旧的「退返商家」子类型',
+    '· 退返方向后出现「已装箱，集包号[...]，目的地【X】」仅是责任转移到 X，不是退返闭环；责任仍按起始仓（X 未产生真实操作时）或 X 仓（已产生真实操作时）库内阈值判断；lossScope 为「暂无异常」且最新有效方向仍为退返/退回商家时，子类型使用「退返商家」',
     '· 若「暂存」之后又出现「预约派送」：不得继续按暂存判「暂无异常」，需从最近一次「已盘点」开始恢复当前仓库阈值判断',
     '· 若「暂存」之后出现「商家已反馈退件处理意见」「已装箱，目的地【X】」等明确业务推进：不得继续使用「暂存」子类型，必须回到当前责任段最终责任点与当前仓库阈值判断；若最终责任点已超阈值，仍应判库内/库外丢失',
     `· 若当前责任主体为外部承运商且最后更新未达到 ${EXTERNAL_CARRIER_LOSS_TIMEOUT_DAYS} 天复核阈值：判定为「暂无异常」；reason 建议包含短词「已转交外部承运」`,
@@ -277,6 +279,73 @@ export function prepareAnalyzeCategories(input: { targets: AnalyzeTarget[] }) {
   return { systemPromptBase, userPrompt }
 }
 
+export type ExplainPromptItem = {
+  orderNo: string
+  deterministicLossScope: AiLossScope
+  deterministicSubType: string
+  deterministicReason: string
+  temporalContext: string
+  trackSummary: string
+}
+
+export function prepareExplainPrompt(input: { items: ExplainPromptItem[] }): {
+  systemPrompt: string
+  userPrompt: string
+} {
+  const systemPrompt = [
+    '你是物流异常订单解释助手。',
+    '你不能修改既定结论，只能补充更清晰、可审计的解释原因。',
+    '输出必须为 JSON 对象，顶层字段 results 是数组。',
+    '每项包含 orderNo（字符串）与 reason（字符串）。',
+    'reason 需简洁、基于给定时序事实，禁止编造未提供信息。',
+  ].join('\n')
+
+  const userPrompt = [
+    '请基于以下已确定判定结果，补充更易读的解释：',
+    ...input.items.map((item) =>
+      [
+        `订单 ${item.orderNo}`,
+        `既定判定: ${item.deterministicLossScope}`,
+        `既定子类型: ${item.deterministicSubType || '无'}`,
+        `既定原因: ${item.deterministicReason}`,
+        '[时序分析]',
+        item.temporalContext,
+        '[轨迹摘要]',
+        item.trackSummary,
+      ].join('\n')
+    ),
+  ].join('\n\n---\n\n')
+
+  return { systemPrompt, userPrompt }
+}
+
+export function parseOrderExplainResults(
+  rawContent: string,
+  orderNos: string[]
+): Array<{ orderNo: string; reason: string }> {
+  let parsed: { results?: unknown[] }
+  try {
+    parsed = JSON.parse(rawContent) as { results?: unknown[] }
+  } catch {
+    return []
+  }
+
+  const allowSet = new Set(orderNos)
+  const mapped = new Map<string, string>()
+  const rows = Array.isArray(parsed.results) ? parsed.results : []
+  for (const row of rows) {
+    if (!row || typeof row !== 'object') continue
+    const value = row as Record<string, unknown>
+    const orderNo = String(value.orderNo ?? '').trim()
+    if (!orderNo || !allowSet.has(orderNo)) continue
+    const reason = String(value.reason ?? '').trim()
+    if (!reason) continue
+    mapped.set(orderNo, reason)
+  }
+
+  return orderNos.map((orderNo) => ({ orderNo, reason: mapped.get(orderNo) ?? '' }))
+}
+
 /** DeepSeek 不支持 json_schema，仅用 json_object；系统提示须包含 “json” 并描述结构（官方 JSON mode 要求）。 */
 export const DEEPSEEK_JSON_INSTRUCTION = [
   '',
@@ -284,4 +353,13 @@ export const DEEPSEEK_JSON_INSTRUCTION = [
   `顶层字段 results 为数组；数组每一项包含 orderNo（字符串）、lossScope（只能是 ${AI_LOSS_SCOPE_VALUES.map((scope) => `「${scope}」`).join('、')} 之一）、exceptionCategoryId（字符串）、reason（字符串）、confidence（0~1 的数字）。`,
   'exceptionCategoryId 表示子类型：必须从系统内置目录中选择；若对应 lossScope 当前无子类型可用，返回空字符串 ""。',
   'results 必须覆盖上文「待分析订单轨迹」中出现的每一个订单号，且每个订单号恰好一条。',
+].join('\n')
+
+/** DeepSeek 解释链路只允许补充 reason，不能复用分析链路的 lossScope schema。 */
+export const DEEPSEEK_EXPLAIN_JSON_INSTRUCTION = [
+  '',
+  '你必须只输出一个 JSON 对象（不要使用 markdown 代码块包裹）。',
+  '顶层字段 results 为数组；数组每一项只包含 orderNo（字符串）与 reason（字符串）。',
+  'reason 必须基于给定时序事实解释既定判定，禁止修改、暗示修改或新增判定结果。',
+  'results 必须覆盖上文订单号，且每个订单号恰好一条。',
 ].join('\n')

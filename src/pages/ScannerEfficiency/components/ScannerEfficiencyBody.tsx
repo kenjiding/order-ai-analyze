@@ -54,6 +54,7 @@ export default function ScannerEfficiencyBody({ vm, level1Push }: Props) {
     dailyVolumeTrendPoints,
     attendanceDayEfficiencyBubbleData,
     attendanceDailyAsTable,
+    attendanceWeeklyAsTable,
     attendancePersonAsTable,
     frontDeskDailyAsTable,
     frontDeskDensityAsTable,
@@ -63,6 +64,10 @@ export default function ScannerEfficiencyBody({ vm, level1Push }: Props) {
     dailyCostPerTicketByDate,
     dailyTotalLaborCostByDate,
     dailyLaborCostByDate,
+    efficiencyDetailDimension,
+    handleEfficiencyDetailDimensionChange,
+    efficiencyDetailExpandedWeekKeys,
+    handleEfficiencyDetailWeekRowClick,
   } = vm
 
   return (
@@ -180,9 +185,15 @@ export default function ScannerEfficiencyBody({ vm, level1Push }: Props) {
                 <>
                   <EfficiencyDailyDetailByDaySection
                     variant="full"
+                    dimension={efficiencyDetailDimension}
+                    onDimensionChange={handleEfficiencyDetailDimensionChange}
+                    expandedWeekKeys={efficiencyDetailExpandedWeekKeys}
+                    onWeekRowClick={handleEfficiencyDetailWeekRowClick}
                     attendanceMatchColumns={attendanceMatchColumns}
                     attendanceDailyAsTable={attendanceDailyAsTable}
+                    attendanceWeeklyAsTable={attendanceWeeklyAsTable}
                     attendanceDayEfficiencyBubbleData={attendanceDayEfficiencyBubbleData}
+                    attendanceDailyRows={attendanceResult.dailyRows}
                   />
 
                   <section className="space-y-4">
@@ -330,10 +341,10 @@ export default function ScannerEfficiencyBody({ vm, level1Push }: Props) {
                 scannerResult,
                 dailyLaborCostByDate,
               }}
+              level1Push={level1Push}
             />
           )}
 
-          {/* ── 独立隐藏捕获区域：效率明细/天（表） ── */}
           {attendanceResult && (
             <div
               ref={attendanceTableCaptureRef}
@@ -342,14 +353,19 @@ export default function ScannerEfficiencyBody({ vm, level1Push }: Props) {
             >
               <EfficiencyDailyDetailByDaySection
                 variant="tableOnly"
+                dimension={efficiencyDetailDimension}
+                onDimensionChange={handleEfficiencyDetailDimensionChange}
+                expandedWeekKeys={efficiencyDetailExpandedWeekKeys}
+                onWeekRowClick={handleEfficiencyDetailWeekRowClick}
                 attendanceMatchColumns={attendanceMatchColumns}
                 attendanceDailyAsTable={attendanceDailyAsTable}
+                attendanceWeeklyAsTable={attendanceWeeklyAsTable}
                 attendanceDayEfficiencyBubbleData={attendanceDayEfficiencyBubbleData}
+                attendanceDailyRows={attendanceResult.dailyRows}
               />
             </div>
           )}
 
-          {/* ── 独立隐藏捕获区域：效率明细/天（图） ── */}
           {attendanceResult && (
             <div
               ref={attendanceChartCaptureRef}
@@ -359,17 +375,20 @@ export default function ScannerEfficiencyBody({ vm, level1Push }: Props) {
               <section className="space-y-3">
                 <SectionTitle
                   eyebrow="Attendance Matching"
-                  title="效率明细/天（组合图）"
+                  title={`效率明细/天（组合图·${efficiencyDetailDimension === 'week' ? '周维度' : '日维度'}）`}
                   description="蓝色柱为总货量（左轴），绿色面积折线为总工时（独立比例尺），橙线为当天效率（右轴）。"
                 />
                 <div className="admin-panel overflow-hidden p-4 sm:p-5">
-                  <DailyEfficiencyComboChart data={attendanceDayEfficiencyBubbleData} />
+                  <DailyEfficiencyComboChart
+                    data={attendanceDayEfficiencyBubbleData}
+                    dimension={efficiencyDetailDimension}
+                    attendanceDailyRows={attendanceResult.dailyRows}
+                  />
                 </div>
               </section>
             </div>
           )}
 
-          {/* ── 独立隐藏捕获区域：扫描员汇总 ── */}
           {scannerResult && (
             <div
               ref={scannerSummaryCaptureRef}
@@ -383,7 +402,6 @@ export default function ScannerEfficiencyBody({ vm, level1Push }: Props) {
             </div>
           )}
 
-          {/* ── 独立隐藏捕获区域：按小时段 ── */}
           {scannerResult && (
             <div
               ref={scannerHourlyCaptureRef}

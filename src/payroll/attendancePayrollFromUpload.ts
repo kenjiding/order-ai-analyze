@@ -49,6 +49,34 @@ async function readSheetRowsFromFile(file: File): Promise<Record<string, unknown
   return XLSX.utils.sheet_to_json(worksheet, { raw: false }) as Record<string, unknown>[]
 }
 
+function attendanceUploadRowKey(row: Record<string, unknown>): string {
+  const dateRaw = row['日期'] ?? row['Date'] ?? row['date'] ?? ''
+  const date = convertDateToStandard(String(dateRaw)) || String(dateRaw).trim()
+  const id = String(row['人员编号'] ?? row['Employee ID'] ?? row['employeeId'] ?? '').trim()
+  const nick = String(row['昵称'] ?? row['Nickname'] ?? row['nickname'] ?? '').trim()
+  const name = String(row['姓名'] ?? row['Name'] ?? row['name'] ?? '').trim()
+  const person = id || nick || name
+  if (!date || !person) return ''
+  return `${date}|${person}`
+}
+
+/** 叠加上传时同人同日保留首条，与仓库效率考勤解析去重口径一致 */
+function dedupeAttendanceUploadRows(rows: Record<string, unknown>[]): Record<string, unknown>[] {
+  const seen = new Set<string>()
+  const out: Record<string, unknown>[] = []
+  for (const row of rows) {
+    const key = attendanceUploadRowKey(row)
+    if (!key) {
+      out.push(row)
+      continue
+    }
+    if (seen.has(key)) continue
+    seen.add(key)
+    out.push(row)
+  }
+  return out
+}
+
 /**
  * 按工资结算系统同一流程计算考勤工资。
  * @param isSorting / @param isPublicHoliday 与工资页上传区两个勾选项一致（仓库效率默认均为 false）
@@ -70,7 +98,7 @@ export async function computeAttendancePayrollFromFiles(
   }
 
   const uploadedData = transformSheetRowsToUploadedData(
-    jsonData,
+    dedupeAttendanceUploadRows(jsonData),
     employees,
     isSorting,
     isPublicHoliday,

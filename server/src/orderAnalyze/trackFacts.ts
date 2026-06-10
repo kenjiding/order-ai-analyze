@@ -230,6 +230,19 @@ function isMerchantReturnRequestEvent(content: string): boolean {
   )
 }
 
+function isMerchantReturnDirectionRequestEvent(content: string): boolean {
+  return isMerchantReturnRequestEvent(content) && /(退返商家|退回商家)/.test(content)
+}
+
+function isMerchantReturnProgressEvent(content: string): boolean {
+  return (
+    isMerchantReturnRequestEvent(content) ||
+    isBoxedTransferEvent(content) ||
+    content.includes('开始退回') ||
+    content.includes('退件中')
+  )
+}
+
 /**
  * 「【AAAA】已装箱（集包），目的地【BBBB】」属于起始仓 AAAA 的最后一次库内真实操作。
  * 它不代表责任已离开 AAAA：在目的仓 BBBB 出现真实操作（轨迹到达 / 阻断扫描）之前，责任仍归 AAAA。
@@ -899,9 +912,15 @@ function makeEmptyFacts(input: {
     merchantReturnConfirmed: false,
     merchantReturnConfirmTime: null,
     merchantReturnEvidence: null,
+    merchantReturnDirectionActive: false,
     merchantReturnRequested: false,
     merchantReturnRequestTime: null,
+    merchantReturnRequestDaysDiff: -1,
     merchantReturnRequestEvidence: null,
+    merchantReturnLatestProgressTime: null,
+    merchantReturnLatestProgressDaysDiff: -1,
+    merchantReturnLatestProgressEvidence: null,
+    merchantReturnTransferInProgress: false,
     latestEventKind: '',
   }
 }
@@ -910,8 +929,15 @@ function makeEmptyFacts(input: {
  * 从轨迹事件中提取结构化事实（纯计算，无 I/O）。
  * 先解析当前责任段，再只基于当前责任段计算库内/库外时效。
  */
-export function deriveTrackFacts(tracks: TrackEvent[], interceptLogs: ScanInterceptLog[] = []): TrackFacts {
-  const today = new Date()
+export function deriveTrackFacts(
+  tracks: TrackEvent[],
+  interceptLogs: ScanInterceptLog[] = [],
+  options: { analysisDate?: string | Date } = {}
+): TrackFacts {
+  const today = options.analysisDate ? new Date(options.analysisDate) : new Date()
+  if (isNaN(today.getTime())) {
+    today.setTime(Date.now())
+  }
   today.setHours(0, 0, 0, 0)
   const todayStr = today.toISOString().slice(0, 10)
 
@@ -1044,6 +1070,10 @@ export function deriveTrackFacts(tracks: TrackEvent[], interceptLogs: ScanInterc
   let merchantReturnEvidence: string | null = null
   let merchantReturnRequestEvent: TrackEvent | null = null
   let merchantReturnRequestEvidence: string | null = null
+  let merchantReturnDirectionRequestEvent: TrackEvent | null = null
+  let merchantOtherReturnRequestEvent: TrackEvent | null = null
+  let merchantReturnLatestProgressEvent: TrackEvent | null = null
+  let merchantReturnLatestProgressEvidence: string | null = null
   let merchantAbandonFeedbackEvent: TrackEvent | null = null
   let merchantAbandonFeedbackEvidence: string | null = null
   let merchantAbandonClosedEvent: TrackEvent | null = null
@@ -1076,6 +1106,19 @@ export function deriveTrackFacts(tracks: TrackEvent[], interceptLogs: ScanInterc
     if (isMerchantReturnRequestEvent(event.content)) {
       merchantReturnRequestEvent = event
       merchantReturnRequestEvidence = extractShortEvidence(event.content)
+      if (isMerchantReturnDirectionRequestEvent(event.content)) {
+        merchantReturnDirectionRequestEvent = event
+      } else {
+        merchantOtherReturnRequestEvent = event
+      }
+    }
+    if (
+      merchantReturnRequestEvent &&
+      event.time >= merchantReturnRequestEvent.time &&
+      isMerchantReturnProgressEvent(event.content)
+    ) {
+      merchantReturnLatestProgressEvent = event
+      merchantReturnLatestProgressEvidence = extractShortEvidence(event.content)
     }
     if (isMerchantAbandonFeedbackEvent(event.content)) {
       merchantAbandonFeedbackEvent = event
@@ -1086,15 +1129,6 @@ export function deriveTrackFacts(tracks: TrackEvent[], interceptLogs: ScanInterc
       merchantAbandonClosedEvidence = extractShortEvidence(event.content)
     }
   }
-
-  // "最新商家反馈优先"：Abandon 只有在时间上晚于所有暂存和退返事件时才视为有效
-  // 闭环事件（退件已销毁）比方向事件（退件处理意见[Abandon]）更优先作为 Abandon 时间基准
-  const latestAbandonEventTime = merchantAbandonClosedEvent?.time ?? merchantAbandonFeedbackEvent?.time ?? null
-  const merchantAbandonActive =
-    latestAbandonEventTime !== null &&
-    (merchantStorageEvent === null || latestAbandonEventTime > merchantStorageEvent.time) &&
-    (merchantReturnEvent === null || latestAbandonEventTime > merchantReturnEvent.time) &&
-    (merchantReturnRequestEvent === null || latestAbandonEventTime > merchantReturnRequestEvent.time)
 
   const storageScheduleEvent =
     merchantStorageEvent === null
@@ -1107,10 +1141,27 @@ export function deriveTrackFacts(tracks: TrackEvent[], interceptLogs: ScanInterc
         null)
   const merchantStorageReleasedBySchedule = storageScheduleEvent !== null
   const merchantStorageSupersededByBusinessProgress = storageBusinessProgressEvent !== null
+  const latestAbandonEvent = merchantAbandonClosedEvent ?? merchantAbandonFeedbackEvent
+  const latestMerchantDirection = [
+    merchantDestroyEvent ? { type: 'destroy' as const, event: merchantDestroyEvent } : null,
+    latestAbandonEvent ? { type: 'abandon' as const, event: latestAbandonEvent } : null,
+    merchantStorageEvent ? { type: 'storage' as const, event: merchantStorageEvent } : null,
+    merchantReturnEvent ? { type: 'return' as const, event: merchantReturnEvent } : null,
+    merchantReturnDirectionRequestEvent ? { type: 'return' as const, event: merchantReturnDirectionRequestEvent } : null,
+    merchantOtherReturnRequestEvent ? { type: 'other_return' as const, event: merchantOtherReturnRequestEvent } : null,
+  ]
+    .filter((item): item is NonNullable<typeof item> => item !== null)
+    .sort((a, b) => a.event.time.localeCompare(b.event.time))
+    .at(-1)
+
+  const merchantDestroyActive = latestMerchantDirection?.type === 'destroy'
+  const merchantAbandonActive = latestMerchantDirection?.type === 'abandon'
   const merchantStorageActive =
-    merchantStorageEvent !== null &&
+    latestMerchantDirection?.type === 'storage' &&
     !merchantStorageReleasedBySchedule &&
     !merchantStorageSupersededByBusinessProgress
+  const merchantReturnDirectionActive = latestMerchantDirection?.type === 'return'
+  const merchantReturnActive = merchantReturnDirectionActive || latestMerchantDirection?.type === 'other_return'
   const latestInterceptTime = latestIntercept?.gmtIntercept ?? null
 
   const normalResponsibilityOwner: LossResponsibilityOwner | null = latestTrackResponsibilityPoint?.owner ?? null
@@ -1131,6 +1182,17 @@ export function deriveTrackFacts(tracks: TrackEvent[], interceptLogs: ScanInterc
   const activeWarehouseLossTimeoutDays = getWarehouseLossTimeoutDays(activeProfile)
   const externalCarrierTransferTime =
     activeSegment?.owner === 'external_carrier' ? activeSegment.startTime : null
+  const merchantReturnLatestProgressDestination = merchantReturnLatestProgressEvent
+    ? extractTransferDestination(merchantReturnLatestProgressEvent.content)
+    : ''
+  const merchantReturnDestinationReached =
+    merchantReturnLatestProgressEvent !== null &&
+    merchantReturnRequestEvent !== null &&
+    merchantReturnLatestProgressDestination !== '' &&
+    activeSegment?.owner === 'company_warehouse' &&
+    hasSameHub(activeSegment, merchantReturnLatestProgressDestination) &&
+    finalResponsibilityPoint !== null &&
+    finalResponsibilityPoint.time > merchantReturnRequestEvent.time
 
   return {
     todayStr,
@@ -1197,12 +1259,13 @@ export function deriveTrackFacts(tracks: TrackEvent[], interceptLogs: ScanInterc
     finalResponsibilitySource: finalResponsibilityPoint?.source ?? null,
     finalResponsibilityDaysDiff: finalResponsibilityPoint ? daysDiff(finalResponsibilityPoint.time) : -1,
     finalResponsibilityBasis,
-    merchantDestroyConfirmed: merchantDestroyEvent !== null,
+    merchantDestroyConfirmed: merchantDestroyActive,
     merchantDestroyConfirmTime: merchantDestroyEvent?.time ?? null,
     merchantDestroyEvidence,
     merchantAbandonActive,
-    merchantAbandonConfirmTime: merchantAbandonFeedbackEvent?.time ?? merchantAbandonClosedEvent?.time ?? null,
-    merchantAbandonEvidence: merchantAbandonFeedbackEvidence ?? merchantAbandonClosedEvidence,
+    merchantAbandonConfirmTime: latestAbandonEvent?.time ?? null,
+    merchantAbandonEvidence:
+      latestAbandonEvent === merchantAbandonClosedEvent ? merchantAbandonClosedEvidence : merchantAbandonFeedbackEvidence,
     merchantAbandonClosed: merchantAbandonClosedEvent !== null,
     merchantAbandonClosedTime: merchantAbandonClosedEvent?.time ?? null,
     merchantAbandonClosedEvidence,
@@ -1214,12 +1277,26 @@ export function deriveTrackFacts(tracks: TrackEvent[], interceptLogs: ScanInterc
     merchantStorageSupersededByBusinessProgress,
     merchantStorageBusinessProgressTime: storageBusinessProgressEvent?.time ?? null,
     merchantStorageBusinessProgressEvidence: storageBusinessProgressEvent?.content ?? null,
-    merchantReturnConfirmed: merchantReturnEvent !== null,
+    merchantReturnConfirmed: merchantReturnEvent !== null && merchantReturnDirectionActive,
     merchantReturnConfirmTime: merchantReturnEvent?.time ?? null,
     merchantReturnEvidence,
-    merchantReturnRequested: merchantReturnRequestEvent !== null && merchantReturnEvent === null,
+    merchantReturnDirectionActive,
+    merchantReturnRequested: merchantReturnRequestEvent !== null && merchantReturnEvent === null && merchantReturnActive,
     merchantReturnRequestTime: merchantReturnRequestEvent?.time ?? null,
+    merchantReturnRequestDaysDiff: merchantReturnRequestEvent ? daysDiff(merchantReturnRequestEvent.time) : -1,
     merchantReturnRequestEvidence,
+    merchantReturnLatestProgressTime: merchantReturnLatestProgressEvent?.time ?? null,
+    merchantReturnLatestProgressDaysDiff: merchantReturnLatestProgressEvent
+      ? daysDiff(merchantReturnLatestProgressEvent.time)
+      : -1,
+    merchantReturnLatestProgressEvidence,
+    merchantReturnTransferInProgress:
+      merchantReturnRequestEvent !== null &&
+      merchantReturnEvent === null &&
+      merchantReturnLatestProgressEvent !== null &&
+      isBoxedTransferEvent(merchantReturnLatestProgressEvent.content) &&
+      !merchantReturnDestinationReached &&
+      (!finalResponsibilityPoint || finalResponsibilityPoint.time <= merchantReturnLatestProgressEvent.time),
     latestEventKind: summarizeLatestEvent(lastEvent),
   }
 }
@@ -1243,8 +1320,12 @@ function formatSegmentSummary(facts: TrackFacts): string {
  * 将 `deriveTrackFacts` 的结构化结果渲染成 LLM prompt 中的时序分析文本。
  * LLM 直接使用这些预计算值，无需自行推算时间差。
  */
-export function computeTrackTemporalContext(tracks: TrackEvent[], interceptLogs: ScanInterceptLog[] = []): string {
-  const facts = deriveTrackFacts(tracks, interceptLogs)
+export function computeTrackTemporalContext(
+  tracks: TrackEvent[],
+  interceptLogs: ScanInterceptLog[] = [],
+  options: { analysisDate?: string | Date } = {}
+): string {
+  const facts = deriveTrackFacts(tracks, interceptLogs, options)
 
   if (!tracks.length) {
     return `[时序分析（服务端预计算，直接使用，禁止自行推算时间差）]\n今天: ${facts.todayStr}\n轨迹为空，无法计算时序特征。`
@@ -1412,7 +1493,7 @@ export function computeTrackTemporalContext(tracks: TrackEvent[], interceptLogs:
     )
   } else if (facts.merchantReturnRequested) {
     lines.push(
-      `退返商家待处理: 是（${facts.merchantReturnRequestTime ?? '-'}，证据: ${facts.merchantReturnRequestEvidence ?? '命中退返处理方向'}）  → 商家仅给出退返方向，未出现退返闭环，仍按当前责任段库内/库外超时判断`
+      `退返商家待处理: 是（${facts.merchantReturnRequestTime ?? '-'}，证据: ${facts.merchantReturnRequestEvidence ?? '命中退返处理方向'}；最新推进: ${facts.merchantReturnLatestProgressTime ?? '-'}，${facts.merchantReturnLatestProgressEvidence ?? '无'}）  → 商家已给出退返方向但未出现退返闭环；若该方向仍为当前最新有效商家处理方向，未超当前仓库阈值时可判「暂无异常」并使用子类型「退返商家」，超阈值或转运长时间无闭环时进入人工复核`
     )
   }
   if (facts.merchantStorageActive) {

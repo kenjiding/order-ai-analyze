@@ -82,9 +82,15 @@ export const EXCEPTION_CATALOG: readonly ExceptionScopeDefinition[] = [
       },
       {
         id: '退返商家',
-        promptDescription: 'lossScope 为「暂无异常」但当前无丢失责任，原因是轨迹已完成退返/退回商家闭环（已退返商家/商家签收）。仅退返方向或集包转运未闭环时不属于此类。',
+        promptDescription: 'lossScope 为「暂无异常」，且当前最新有效商家处理方向为退返/退回商家；包含已退返商家/商家签收等闭环，也包含商家反馈意见[退返商家]但尚未闭环的处理方向。若后续最新反馈改为 Abandon/销毁/暂存/其他退件方向，则以最新方向为准。',
         aliases: ['退回商家'],
-        inferFromFacts: (facts) => facts.merchantReturnConfirmed,
+        inferFromFacts: (facts) =>
+          (facts.merchantReturnConfirmed || facts.merchantReturnDirectionActive) &&
+          !facts.latestOrderExceptionClosed &&
+          !facts.hasDeliveryCompletion &&
+          !facts.merchantAbandonActive &&
+          !facts.merchantDestroyConfirmed &&
+          !facts.merchantStorageActive,
       },
       {
         id: '暂存',

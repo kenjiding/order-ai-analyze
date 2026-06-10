@@ -14,6 +14,8 @@ export type AnalyzeTarget = {
   orderNo: string
   tracks: TrackEvent[]
   interceptLogs?: ScanInterceptLog[]
+  /** 分析基准时间；生产默认当前时间，回归用 fixture capturedAt 固定结果，避免日期漂移 */
+  analysisDate?: string
 }
 
 export type WarehouseCityId = 'ADL' | 'MEL' | 'PER' | 'SYD' | 'BNE' | 'QLD' | 'CBR'
@@ -225,10 +227,19 @@ export type TrackFacts = {
   merchantReturnConfirmed: boolean
   merchantReturnConfirmTime: string | null
   merchantReturnEvidence: string | null
+  /** 当前最新有效商家处理方向为退返/退回商家；包含已闭环和未闭环方向 */
+  merchantReturnDirectionActive: boolean
   /** 商家已给出退返/退回处理方向，但尚未出现退返闭环 */
   merchantReturnRequested: boolean
   merchantReturnRequestTime: string | null
+  merchantReturnRequestDaysDiff: number
   merchantReturnRequestEvidence: string | null
+  /** 退返处理方向后的最新业务推进（含退件中、开始退回、装箱转运等） */
+  merchantReturnLatestProgressTime: string | null
+  merchantReturnLatestProgressDaysDiff: number
+  merchantReturnLatestProgressEvidence: string | null
+  /** 退返处理已进入转运但尚未闭环，超阈值时应复核，不直接判仓内丢失 */
+  merchantReturnTransferInProgress: boolean
   latestEventKind: string
 }
 

@@ -9,6 +9,7 @@ import { captureScannerPushRegion, mergeImagesVertically } from './feishuLevel1S
 import { buildFeishuSortEfficiencyDataSnapshot } from './feishuSortEfficiencySnapshot'
 import { dayjs } from './dayjsSetup'
 import { upsertSortEfficiencyPushDaySnapshot } from './sortEfficiencyPushSnapshotRepository.idb'
+import type { EfficiencyDetailDimension } from './DailyEfficiencyBubbleChart'
 import type { ScannerEfficiencyViewModel } from './useScannerEfficiencyPage'
 import { showToast } from '../../utils/toast'
 
@@ -38,6 +39,10 @@ export const PUSH_CHART_LABELS: Record<PushChartKey, string> = {
 
 /** 需要 attendanceResult 才能捕获的图表 key */
 const ATTENDANCE_KEYS = new Set<PushChartKey>(['attendance_table', 'attendance_chart'])
+
+function efficiencyDetailDimensionLabel(dimension: EfficiencyDetailDimension): string {
+  return dimension === 'week' ? '周维度' : '日维度'
+}
 /** 需要 scannerResult 才能捕获的图表 key */
 const SCANNER_KEYS = new Set<PushChartKey>(['scanner_summary', 'scanner_hourly'])
 
@@ -83,9 +88,16 @@ export function useScannerLevel1FeishuPush(
     | 'scannerHourlyExpanded'
     | 'setScannerHourlyExpanded'
     | 'attendanceResult'
+    | 'efficiencyDetailDimension'
   >,
 ) {
-  const { scannerResult, scannerHourlyExpanded, setScannerHourlyExpanded, attendanceResult } = vm
+  const {
+    scannerResult,
+    scannerHourlyExpanded,
+    setScannerHourlyExpanded,
+    attendanceResult,
+    efficiencyDetailDimension,
+  } = vm
 
   // 四个独立捕获区域的 ref
   const attendanceTableCaptureRef = useRef<HTMLDivElement>(null)
@@ -144,6 +156,8 @@ export function useScannerLevel1FeishuPush(
       })
 
       // 定义推送顺序及各图表的 headline 和是否携带 AI dataSnapshot
+      const attendanceDimensionLabel = efficiencyDetailDimensionLabel(efficiencyDetailDimension)
+
       const allTargets: Array<{
         key: PushChartKey
         ref: React.RefObject<HTMLDivElement | null>
@@ -153,13 +167,13 @@ export function useScannerLevel1FeishuPush(
         {
           key: 'attendance_table',
           ref: attendanceTableCaptureRef,
-          headlineSuffix: '效率明细/天（表格）',
+          headlineSuffix: `效率明细/天（表格·${attendanceDimensionLabel}）`,
           withDataSnapshot: false,
         },
         {
           key: 'attendance_chart',
           ref: attendanceChartCaptureRef,
-          headlineSuffix: '效率明细/天（组合图）',
+          headlineSuffix: `效率明细/天（组合图·${attendanceDimensionLabel}）`,
           withDataSnapshot: false,
         },
         {
@@ -298,6 +312,7 @@ export function useScannerLevel1FeishuPush(
     setScannerHourlyExpanded,
     scannerResult,
     selectedChartKeys,
+    efficiencyDetailDimension,
   ])
 
   return {

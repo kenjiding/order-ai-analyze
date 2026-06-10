@@ -195,6 +195,7 @@ orderExceptionRouter.post('/analyze', async (req: Request, res: Response) => {
       imileToken?: string
       orderNos?: string[]
       aiProvider?: string
+      enableAiExplain?: boolean
     }>(req)
     const token = readImileToken(req, body.imileToken)
     const orderNos = Array.isArray(body.orderNos)
@@ -233,9 +234,10 @@ orderExceptionRouter.post('/analyze', async (req: Request, res: Response) => {
 
     const aiProviderRaw = String(body.aiProvider ?? 'deepseek').trim().toLowerCase()
     const aiProvider = aiProviderRaw === 'openai' ? 'openai' : 'deepseek'
+    const enableAiExplain = body.enableAiExplain === true
 
     const aiStartedAt = performance.now()
-    const { results, tokenUsage } = await runOrderAnalyzePipeline({ targets, aiProvider })
+    const { results, tokenUsage } = await runOrderAnalyzePipeline({ targets, aiProvider, enableAiExplain })
     const aiMs = Math.round(performance.now() - aiStartedAt)
 
     res.json({

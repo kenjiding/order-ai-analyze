@@ -1,24 +1,15 @@
 import Tooltip from '@mui/material/Tooltip'
-import { Select } from 'antd'
-import { Gauge, Send } from 'lucide-react'
+import { Gauge } from 'lucide-react'
 import { TAB_KEYS } from '../constants'
 import { formatInteger } from '../formatAndParse'
 import type { ScannerEfficiencyViewModel } from '../useScannerEfficiencyPage'
-import {
-  PUSH_CHART_ALL_KEYS,
-  PUSH_CHART_LABELS,
-  getAvailableChartKeys,
-  type PushChartKey,
-  type ScannerLevel1FeishuPush,
-} from '../useScannerLevel1FeishuPush'
 import { ExportButton } from './ui'
 
 type Props = {
   vm: ScannerEfficiencyViewModel
-  level1Push: ScannerLevel1FeishuPush
 }
 
-export default function ScannerEfficiencyTopSection({ vm, level1Push }: Props) {
+export default function ScannerEfficiencyTopSection({ vm }: Props) {
   const {
     settings,
     hasScanData,
@@ -31,26 +22,12 @@ export default function ScannerEfficiencyTopSection({ vm, level1Push }: Props) {
     handleScanFileChange,
     handleAttendanceFileChange,
     scanSourceInfo,
+    attendanceSourceInfo,
     clearAttendance,
     clearAll,
     openDayRuleTooltipText,
   } = vm
 
-  const {
-    level1PushWorking,
-    selectedChartKeys,
-    setSelectedChartKeys,
-    pushLevel1EfficiencyScreenshots,
-  } = level1Push
-
-  const availableChartKeys = getAvailableChartKeys(Boolean(attendanceResult), Boolean(scannerResult))
-  const pushToFeishuDisabled = !scannerResult || level1PushWorking || !selectedChartKeys.length
-
-  const chartSelectOptions = PUSH_CHART_ALL_KEYS.map((key) => ({
-    value: key,
-    label: PUSH_CHART_LABELS[key],
-    disabled: !availableChartKeys.includes(key),
-  }))
   return (
     <section className="overflow-hidden rounded-lg border border-[#cfe3ec] bg-[linear-gradient(135deg,#ffffff_0%,#eef8fb_48%,#e8f7f3_100%)] text-slate-900 shadow-[0_18px_48px_rgba(47,83,105,0.08)]">
       <div className="border-b border-[#d8e6ee] px-5 py-4 sm:px-6">
@@ -85,7 +62,7 @@ export default function ScannerEfficiencyTopSection({ vm, level1Push }: Props) {
               <h3 className="text-lg font-semibold text-gray-900">核算配置</h3>
             </div>
 
-            <div className="grid grid-cols-1 gap-4 md:grid-cols-2 md:items-stretch">
+            <div className="grid grid-cols-1 gap-4">
               <div className="flex min-w-0 flex-col gap-3 rounded-lg border border-blue-200 bg-blue-50 p-3">
                 <Tooltip title={openDayRuleTooltipText} arrow enterDelay={200}>
                   <div
@@ -140,53 +117,6 @@ export default function ScannerEfficiencyTopSection({ vm, level1Push }: Props) {
                   </div>
                 </div>
               </div>
-
-              {hasScanData && scanAggregate && (
-                <>
-                  <div className="flex min-w-0 flex-col gap-3 rounded-lg border border-violet-200 bg-violet-50 p-3">
-                    <Tooltip
-                      title={
-                        !scannerResult
-                          ? '请先保证到件文件包含一级分拣所需列（扫描时间、运单号、扫描员），解析出个人汇总后再推送。'
-                          : ''
-                      }
-                      disableHoverListener={Boolean(scannerResult)}
-                      arrow
-                      enterDelay={200}
-                    >
-                      <div className="flex gap-3">
-                        <Send className="mt-0.5 h-5 w-5 shrink-0 text-violet-600" aria-hidden />
-                        <div className="min-w-0 flex-1">
-                          <span className="text-sm font-medium text-violet-950">飞书推送图表</span>
-                        </div>
-                      </div>
-                    </Tooltip>
-                    <div className="space-y-2 border-t border-violet-200/80 pt-3">
-                      <div className="text-[11px] font-medium text-violet-700">选择推送内容</div>
-                      <Select
-                        mode="multiple"
-                        size="small"
-                        placeholder="选择推送图表"
-                        value={selectedChartKeys}
-                        onChange={(keys) => setSelectedChartKeys(keys as PushChartKey[])}
-                        options={chartSelectOptions}
-                        disabled={!scannerResult || level1PushWorking}
-                        maxTagCount="responsive"
-                        className="w-full text-xs"
-                        popupMatchSelectWidth={false}
-                      />
-                      <ExportButton
-                        className="w-full"
-                        onClick={() => {
-                          void pushLevel1EfficiencyScreenshots()
-                        }}
-                        disabled={pushToFeishuDisabled}
-                        label={level1PushWorking ? '正在推送截图…' : '推送图表'}
-                      />
-                    </div>
-                  </div>
-                </>
-              )}
             </div>
 
           </div>
@@ -220,7 +150,10 @@ export default function ScannerEfficiencyTopSection({ vm, level1Push }: Props) {
               accept=".csv,.xlsx,.xls"
               multiple
               className="hidden"
-              onChange={(event) => void handleAttendanceFileChange(event.target.files)}
+              onChange={(event) => {
+                void handleAttendanceFileChange(event.target.files)
+                event.target.value = ''
+              }}
             />
           </label>
 
@@ -233,6 +166,20 @@ export default function ScannerEfficiencyTopSection({ vm, level1Push }: Props) {
               )}
               {scanSourceInfo.duplicateWaybillRows > 0 && (
                 <>，运单号重复剔除 {formatInteger(scanSourceInfo.duplicateWaybillRows)} 条</>
+              )}
+              。
+            </div>
+          )}
+
+          {attendanceResult && attendanceSourceInfo.fileNames.length > 0 && (
+            <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs leading-relaxed text-slate-700">
+              考勤已载入 {attendanceSourceInfo.fileNames.join('、')}：计入统计{' '}
+              {formatInteger(attendanceSourceInfo.rowCount)} 条
+              {attendanceSourceInfo.droppedRows > 0 && (
+                <>，解析跳过 {formatInteger(attendanceSourceInfo.droppedRows)} 行</>
+              )}
+              {attendanceSourceInfo.duplicateWaybillRows > 0 && (
+                <>，同人同日重复剔除 {formatInteger(attendanceSourceInfo.duplicateWaybillRows)} 条</>
               )}
               。
             </div>

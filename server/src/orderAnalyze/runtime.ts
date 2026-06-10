@@ -1,5 +1,3 @@
-import type { AnalyzeTarget } from './types'
-
 export async function mapWithConcurrency<T, R>(
   items: T[],
   concurrency: number,
@@ -21,10 +19,10 @@ export async function mapWithConcurrency<T, R>(
   return out
 }
 
-export function chunkTargets(targets: AnalyzeTarget[], chunkSize: number): AnalyzeTarget[][] {
+export function chunkTargets<T>(targets: T[], chunkSize: number): T[][] {
   if (!targets.length) return []
   const size = Math.max(1, chunkSize)
-  const out: AnalyzeTarget[][] = []
+  const out: T[][] = []
   for (let i = 0; i < targets.length; i += size) {
     out.push(targets.slice(i, i + size))
   }

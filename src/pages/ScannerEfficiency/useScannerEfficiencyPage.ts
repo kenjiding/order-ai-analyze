@@ -22,6 +22,7 @@ import {
   applyAttendanceDailyHoursOverrides,
   computeAttendanceDailyMatchAverages,
   dedupeParsedScanRowsByWaybill,
+  dedupeParsedAttendanceRowsByPersonDay,
   type ParsedAllocationRow,
   type ParsedAttendanceRow,
   type ParsedScanRow,
@@ -50,6 +51,8 @@ import {
   buildScannerPersonColumns,
 } from './scannerEfficiencyTableColumns'
 import { buildScannerHourlyPivotTables } from './scannerHourlyPivotTable'
+import { buildAttendanceWeeklySummaryTableRows } from './attendanceEfficiencyWeek'
+import type { EfficiencyDetailDimension } from './DailyEfficiencyBubbleChart'
 
 const EMPTY_SOURCE: SourceInfo = {
   fileCount: 0,
@@ -66,6 +69,17 @@ function mergeOrderedUniqueFileNames(prev: string[], next: string[]): string[] {
     if (seen.has(name)) continue
     seen.add(name)
     out.push(name)
+  }
+  return out
+}
+
+function mergeOrderedUniqueFiles(prev: File[], next: File[]): File[] {
+  const seen = new Set(prev.map((file) => file.name))
+  const out = [...prev]
+  for (const file of next) {
+    if (seen.has(file.name)) continue
+    seen.add(file.name)
+    out.push(file)
   }
   return out
 }
@@ -128,6 +142,17 @@ export function useScannerEfficiencyPage() {
   const [attendancePayroll, setAttendancePayroll] = useState<AttendancePayrollResult | null>(null)
   const lastAttendanceFilesRef = useRef<File[]>([])
   const [attendanceSourceInfo, setAttendanceSourceInfo] = useState<SourceInfo>(EMPTY_SOURCE)
+
+  const attendanceRowsRef = useRef(attendanceRows)
+  const attendanceSourceInfoRef = useRef(attendanceSourceInfo)
+
+  useEffect(() => {
+    attendanceRowsRef.current = attendanceRows
+  }, [attendanceRows])
+
+  useEffect(() => {
+    attendanceSourceInfoRef.current = attendanceSourceInfo
+  }, [attendanceSourceInfo])
   const [allocationRows, setAllocationRows] = useState<ParsedAllocationRow[]>([])
   const [allocationSourceInfo, setAllocationSourceInfo] = useState<SourceInfo>(EMPTY_SOURCE)
 
@@ -137,6 +162,27 @@ export function useScannerEfficiencyPage() {
   const [error, setError] = useState('')
   const [manualTab, setManualTab] = useState<TabKey>(TAB_KEYS.WAREHOUSE)
   const [scannerHourlyExpanded, setScannerHourlyExpanded] = useState(false)
+  const [efficiencyDetailDimension, setEfficiencyDetailDimension] =
+    useState<EfficiencyDetailDimension>('day')
+  const [efficiencyDetailExpandedWeekKeys, setEfficiencyDetailExpandedWeekKeys] = useState<
+    Set<string>
+  >(() => new Set())
+
+  const handleEfficiencyDetailDimensionChange = useCallback((next: EfficiencyDetailDimension) => {
+    setEfficiencyDetailDimension(next)
+    if (next === 'day') setEfficiencyDetailExpandedWeekKeys(new Set())
+  }, [])
+
+  const handleEfficiencyDetailWeekRowClick = useCallback((row: DataTableRow) => {
+    const weekKey = String(row.weekKey ?? '')
+    if (!weekKey || !row.isWeekSummaryRow) return
+    setEfficiencyDetailExpandedWeekKeys((prev) => {
+      const next = new Set(prev)
+      if (next.has(weekKey)) next.delete(weekKey)
+      else next.add(weekKey)
+      return next
+    })
+  }, [])
 
   const scanAggregate = useMemo(() => {
     if (!scanRows.length) return null
@@ -407,8 +453,6 @@ export function useScannerEfficiencyPage() {
         fileNames: mergedNames,
       })
     } catch (currentError: unknown) {
-      setScanRows([])
-      setScanSourceInfo(EMPTY_SOURCE)
       setError(currentError instanceof Error ? currentError.message : '读取到件扫描文件失败。请检查文件格式。')
     } finally {
       setLoadingScan(false)
@@ -417,14 +461,7 @@ export function useScannerEfficiencyPage() {
 
   const handleAttendanceFileChange = async (fileList: FileList | null) => {
     const files = Array.from(fileList || [])
-
-    if (!files.length) {
-      setAttendanceRows([])
-      setAttendanceSourceInfo(EMPTY_SOURCE)
-      setAttendancePayroll(null)
-      lastAttendanceFilesRef.current = []
-      return
-    }
+    if (!files.length) return
 
     setLoadingAttendance(true)
     setError('')
@@ -432,22 +469,43 @@ export function useScannerEfficiencyPage() {
 
     try {
       const parsed = await parseAttendanceFiles(files)
+      const prevRows = attendanceRowsRef.current
+      const prevSource = attendanceSourceInfoRef.current
+      const prevFiles = lastAttendanceFilesRef.current
+
       if (!parsed.rows.length) {
-        throw new Error('考勤文件没有识别到有效工时。请确认包含“日期、人员”，以及“工作时长”或“总时长”列。')
+        throw new Error(
+          prevRows.length
+            ? '本次追加的考勤文件没有识别到有效工时。请确认包含“日期、人员”，以及“工作时长”或“总时长”列；已有数据未改动。'
+            : '考勤文件没有识别到有效工时。请确认包含“日期、人员”，以及“工作时长”或“总时长”列。',
+        )
       }
 
-      setAttendanceRows(parsed.rows)
+      const combinedRawRows = prevRows.length ? [...prevRows, ...parsed.rows] : parsed.rows
+      const { rows: deduped, duplicateDropped } = dedupeParsedAttendanceRowsByPersonDay(combinedRawRows)
+      if (!deduped.length) {
+        throw new Error('考勤经同人同日去重后没有可统计记录。')
+      }
+
+      const mergedFiles = prevFiles.length ? mergeOrderedUniqueFiles(prevFiles, files) : files
+      const mergedNames = prevFiles.length
+        ? mergeOrderedUniqueFileNames(prevSource.fileNames, parsed.fileNames)
+        : parsed.fileNames
+
+      setAttendanceRows(deduped)
       setAttendanceSourceInfo({
-        fileCount: files.length,
-        rowCount: parsed.rows.length,
-        droppedRows: parsed.droppedRows,
-        duplicateWaybillRows: 0,
-        fileNames: parsed.fileNames,
+        fileCount: mergedNames.length,
+        rowCount: deduped.length,
+        droppedRows: prevRows.length
+          ? prevSource.droppedRows + parsed.droppedRows
+          : parsed.droppedRows,
+        duplicateWaybillRows: duplicateDropped,
+        fileNames: mergedNames,
       })
 
-      lastAttendanceFilesRef.current = files
+      lastAttendanceFilesRef.current = mergedFiles
       const payroll = await computeAttendancePayrollFromFiles(
-        files,
+        mergedFiles,
         wageEmployees,
         rateSettingsForLabor,
         WAGE_LABOR_UPLOAD_SORTING,
@@ -460,10 +518,6 @@ export function useScannerEfficiencyPage() {
         )
       }
     } catch (currentError: unknown) {
-      setAttendanceRows([])
-      setAttendanceSourceInfo(EMPTY_SOURCE)
-      setAttendancePayroll(null)
-      lastAttendanceFilesRef.current = []
       setError(currentError instanceof Error ? currentError.message : '读取考勤文件失败。请检查文件格式。')
     } finally {
       setLoadingAttendance(false)
@@ -597,8 +651,9 @@ export function useScannerEfficiencyPage() {
         efficiency: r.dayEfficiency as number,
         totalHours: r.totalHours,
         costPerTicket: dailyCostPerTicketByDate?.[r.date] ?? null,
+        totalLaborCost: dailyTotalLaborCostByDate?.[r.date] ?? null,
       }))
-  }, [attendanceResult, dailyCostPerTicketByDate])
+  }, [attendanceResult, dailyCostPerTicketByDate, dailyTotalLaborCostByDate])
 
   const attendanceDailyAsTable = useMemo((): DataTableRow[] => {
     const rows = attendanceResult?.dailyRows ?? []
@@ -632,7 +687,7 @@ export function useScannerEfficiencyPage() {
     return [
       ...bodyRows,
       {
-        date: '平均 / 总计',
+        date: '总计',
         isAttendanceMatchFooter: true,
         isAttendanceOnly: false,
         sorterCount: 0,
@@ -647,6 +702,24 @@ export function useScannerEfficiencyPage() {
         },
       } as DataTableRow,
     ]
+  }, [
+    attendanceResult?.dailyRows,
+    dailyCostPerTicketByDate,
+    dailyTotalLaborCostByDate,
+    attendancePayrollTotal,
+    attendancePayroll,
+  ])
+
+  const attendanceWeeklyAsTable = useMemo((): DataTableRow[] => {
+    const rows = attendanceResult?.dailyRows ?? []
+    if (!rows.length) return []
+    return buildAttendanceWeeklySummaryTableRows({
+      dailyRows: rows,
+      dailyCostPerTicketByDate,
+      dailyTotalLaborCostByDate,
+      attendancePayrollTotal,
+      attendancePayroll,
+    })
   }, [
     attendanceResult?.dailyRows,
     dailyCostPerTicketByDate,
@@ -705,6 +778,10 @@ export function useScannerEfficiencyPage() {
     error,
     scannerHourlyExpanded,
     setScannerHourlyExpanded,
+    efficiencyDetailDimension,
+    handleEfficiencyDetailDimensionChange,
+    efficiencyDetailExpandedWeekKeys,
+    handleEfficiencyDetailWeekRowClick,
     scanAggregate,
     attendanceResult,
     attendanceRows,
@@ -735,6 +812,7 @@ export function useScannerEfficiencyPage() {
     dailyVolumeTrendPoints,
     attendanceDayEfficiencyBubbleData,
     attendanceDailyAsTable,
+    attendanceWeeklyAsTable,
     attendancePersonAsTable,
     scannerDailyAsTable,
     frontDeskDailyAsTable,

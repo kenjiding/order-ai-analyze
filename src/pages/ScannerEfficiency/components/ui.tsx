@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react'
+import { Fragment, type ReactNode } from 'react'
 
 type ExportButtonProps = {
   onClick: () => void
@@ -99,9 +99,62 @@ type DataTableProps = {
   emptyText: string
   /** 限制表格区域高度并在内部滚动（适合按月等长列表）；表头 sticky */
   boundedScroll?: boolean
+  /** 行是否可展开（如周汇总行） */
+  isRowExpandable?: (row: DataTableRow) => boolean
+  isRowExpanded?: (row: DataTableRow) => boolean
+  getExpandedChildRows?: (row: DataTableRow) => DataTableRow[] | undefined
+  onRowClick?: (row: DataTableRow) => void
 }
 
-export function DataTable({ columns, rows, emptyText, boundedScroll }: DataTableProps) {
+function resolveRowClassName(row: DataTableRow, options?: { clickable?: boolean; child?: boolean }): string {
+  const classes: string[] = []
+  if (row.isWeekGroupHeader) classes.push('bg-slate-100/90')
+  else if (row.isWeekGroupFooter) classes.push('bg-slate-50/95')
+  else if (row.isAttendanceMatchFooter) classes.push('bg-slate-100/80')
+  else if (options?.child) classes.push('bg-white')
+  if (options?.clickable) classes.push('cursor-pointer hover:bg-slate-100/70')
+  return classes.join(' ')
+}
+
+function renderTableCell(
+  column: DataTableColumn,
+  row: DataTableRow,
+  columnIndex: number,
+  options?: { expandable?: boolean; expanded?: boolean; child?: boolean },
+) {
+  const content = column.render ? column.render(row) : String(row[column.key] ?? '')
+  if (columnIndex === 0 && options?.expandable) {
+    return (
+      <div className="flex items-center gap-2">
+        <span
+          className={[
+            'inline-flex h-4 w-4 shrink-0 items-center justify-center text-[10px] text-slate-400 transition-transform',
+            options.expanded ? 'rotate-90' : '',
+          ].join(' ')}
+          aria-hidden
+        >
+          ▶
+        </span>
+        <div className="min-w-0 flex-1">{content}</div>
+      </div>
+    )
+  }
+  if (columnIndex === 0 && options?.child) {
+    return <div className="pl-6">{content}</div>
+  }
+  return content
+}
+
+export function DataTable({
+  columns,
+  rows,
+  emptyText,
+  boundedScroll,
+  isRowExpandable,
+  isRowExpanded,
+  getExpandedChildRows,
+  onRowClick,
+}: DataTableProps) {
   if (!rows.length) {
     return (
       <div className="rounded-lg border border-dashed border-slate-300 bg-white px-6 py-12 text-center text-sm text-slate-500">
@@ -130,14 +183,55 @@ export function DataTable({ columns, rows, emptyText, boundedScroll }: DataTable
         <tbody>
           {rows.map((row, index) => {
             const rowKey = row.id != null ? String(row.id) : `${index}`
+            const expandable = Boolean(isRowExpandable?.(row))
+            const expanded = expandable && Boolean(isRowExpanded?.(row))
+            const childRows = expanded ? (getExpandedChildRows?.(row) ?? []) : []
+            const clickable = expandable && Boolean(onRowClick)
+
             return (
-              <tr key={rowKey}>
-                {columns.map((column) => (
-                  <td key={column.key}>
-                    {column.render ? column.render(row) : String(row[column.key] ?? '')}
-                  </td>
-                ))}
-              </tr>
+              <Fragment key={rowKey}>
+                <tr
+                  className={resolveRowClassName(row, { clickable })}
+                  onClick={clickable ? () => onRowClick?.(row) : undefined}
+                  role={clickable ? 'button' : undefined}
+                  tabIndex={clickable ? 0 : undefined}
+                  onKeyDown={
+                    clickable
+                      ? (event) => {
+                          if (event.key === 'Enter' || event.key === ' ') {
+                            event.preventDefault()
+                            onRowClick?.(row)
+                          }
+                        }
+                      : undefined
+                  }
+                  aria-expanded={expandable ? expanded : undefined}
+                >
+                  {columns.map((column, columnIndex) => (
+                    <td key={column.key}>
+                      {renderTableCell(column, row, columnIndex, {
+                        expandable,
+                        expanded,
+                      })}
+                    </td>
+                  ))}
+                </tr>
+                {childRows.map((childRow, childIndex) => {
+                  const childKey =
+                    childRow.id != null
+                      ? `child-${String(childRow.id)}`
+                      : `child-${rowKey}-${childIndex}`
+                  return (
+                    <tr key={childKey} className={resolveRowClassName(childRow, { child: true })}>
+                      {columns.map((column, columnIndex) => (
+                        <td key={column.key}>
+                          {renderTableCell(column, childRow, columnIndex, { child: true })}
+                        </td>
+                      ))}
+                    </tr>
+                  )
+                })}
+              </Fragment>
             )
           })}
         </tbody>

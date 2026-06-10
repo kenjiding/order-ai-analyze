@@ -10,7 +10,7 @@ export default function ScannerEfficiencyPage() {
   return (
     <div className="admin-page">
       <main className="space-y-5">
-        <ScannerEfficiencyTopSection vm={vm} level1Push={level1Push} />
+        <ScannerEfficiencyTopSection vm={vm} />
         <ScannerEfficiencyBody vm={vm} level1Push={level1Push} />
       </main>
     </div>

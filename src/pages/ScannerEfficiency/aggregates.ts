@@ -78,6 +78,54 @@ export function dedupeParsedScanRowsByWaybill(rows: ParsedScanRow[]): {
   return { rows: out, duplicateDropped: rows.length - out.length }
 }
 
+export function attendancePersonDayDedupeKey(row: ParsedAttendanceRow): string {
+  return `${row.date}|${row.sorterKey}`
+}
+
+/** 同人同日重复记录保留最早一条，避免叠加上传时工时与工资重复计入 */
+export function dedupeParsedAttendanceRowsByPersonDay(rows: ParsedAttendanceRow[]): {
+  rows: ParsedAttendanceRow[]
+  duplicateDropped: number
+} {
+  type Keyed = { row: ParsedAttendanceRow; ix: number; file: string; sheet: string; line: number }
+  const keyed: Keyed[] = rows.map((row, ix) => ({
+    row,
+    ix,
+    file: row.sourceFileName,
+    sheet: row.sourceSheetName,
+    line: row.sourceRowNumber,
+  }))
+
+  keyed.sort((a, b) => {
+    const dateCmp = a.row.date.localeCompare(b.row.date)
+    if (dateCmp !== 0) return dateCmp
+    const keyCmp = a.row.sorterKey.localeCompare(b.row.sorterKey, 'zh')
+    if (keyCmp !== 0) return keyCmp
+    const c = String(a.file).localeCompare(String(b.file), 'zh')
+    if (c !== 0) return c
+    const cs = String(a.sheet).localeCompare(String(b.sheet), 'zh')
+    if (cs !== 0) return cs
+    if (a.line !== b.line) return a.line - b.line
+    return a.ix - b.ix
+  })
+
+  const seen = new Set<string>()
+  const out: ParsedAttendanceRow[] = []
+
+  for (const { row } of keyed) {
+    const k = attendancePersonDayDedupeKey(row)
+    if (!k || k.endsWith('|')) {
+      out.push(row)
+      continue
+    }
+    if (seen.has(k)) continue
+    seen.add(k)
+    out.push(row)
+  }
+
+  return { rows: out, duplicateDropped: rows.length - out.length }
+}
+
 export type ParsedAttendanceRow = {
   date: string
   sorterKey: string

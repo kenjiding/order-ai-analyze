@@ -59,4 +59,13 @@ export type RegressionRunReport = {
     totalTokens: number
     apiCalls: number
   }
+  dualRun?: {
+    enabled: boolean
+    compared: number
+    lossScopeMismatches: number
+    exceptionCategoryMismatches: number
+    mismatchRate: number
+    gateMismatchRateThreshold: number
+    gatePass: boolean
+  }
 }
