@@ -219,11 +219,11 @@ export type TrackFacts = {
   merchantStorageSupersededByBusinessProgress: boolean
   merchantStorageBusinessProgressTime: string | null
   merchantStorageBusinessProgressEvidence: string | null
-  /** 轨迹已进入退返/退回商家闭环或明确退件处理链路 */
-  merchantReturnConfirmed: boolean
-  merchantReturnConfirmTime: string | null
-  merchantReturnEvidence: string | null
-  /** 当前最新有效商家处理方向为退返/退回商家；包含已闭环和未闭环方向 */
+  /** 当前最新有效商家状态为退返/退回商家闭环 */
+  merchantReturnClosed: boolean
+  merchantReturnClosedTime: string | null
+  merchantReturnClosedEvidence: string | null
+  /** 当前最新有效商家处理方向为退返/退回商家；只用于暂无异常子类型，不作为终态闭环 */
   merchantReturnDirectionActive: boolean
   /** 商家已给出退返/退回处理方向，但尚未出现退返闭环 */
   merchantReturnRequested: boolean
@@ -234,7 +234,7 @@ export type TrackFacts = {
   merchantReturnLatestProgressTime: string | null
   merchantReturnLatestProgressDaysDiff: number
   merchantReturnLatestProgressEvidence: string | null
-  /** 退返处理已进入转运但尚未闭环，超阈值时应复核，不直接判仓内丢失 */
+  /** 退返处理已进入转运但尚未闭环；最终结论仍以当前责任段最终责任点为准 */
   merchantReturnTransferInProgress: boolean
   latestEventKind: string
 }

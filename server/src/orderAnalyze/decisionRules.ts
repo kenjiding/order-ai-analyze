@@ -66,23 +66,6 @@ function expectedScopeFromFinalResponsibility(facts: TrackFacts): AiLossScope | 
   return '暂无异常'
 }
 
-function hasFinalResponsibilityAfterMerchantReturnRequest(facts: TrackFacts): boolean {
-  return Boolean(
-    facts.merchantReturnRequestTime &&
-      facts.finalResponsibilityStartTime &&
-      facts.finalResponsibilityStartTime > facts.merchantReturnRequestTime
-  )
-}
-
-function shouldDeferMerchantReturnInProgress(facts: TrackFacts): boolean {
-  return (
-    facts.merchantReturnRequested &&
-    !facts.merchantReturnConfirmed &&
-    facts.activeResponsibilityOwner === 'company_warehouse' &&
-    (facts.merchantReturnTransferInProgress || !hasFinalResponsibilityAfterMerchantReturnRequest(facts))
-  )
-}
-
 function formatActiveOwner(owner: TrackFacts['activeResponsibilityOwner']): string {
   if (owner === 'company_warehouse') return '公司仓库'
   if (owner === 'external_carrier') return '外部承运商'
@@ -151,7 +134,7 @@ function noExceptionSubTypeFromFacts(facts: TrackFacts): string {
   if (facts.latestOrderExceptionClosed) return '订单已完结'
   if (facts.merchantDestroyConfirmed || facts.merchantAbandonActive) return 'Abandon销毁'
   if (facts.merchantStorageActive) return '暂存'
-  if (facts.merchantReturnConfirmed || facts.merchantReturnDirectionActive) return '退返商家'
+  if (facts.merchantReturnClosed || facts.merchantReturnDirectionActive) return '退返商家'
   return ''
 }
 
@@ -216,7 +199,7 @@ function buildDeterministicBaseResult(input: {
       ),
     }
   }
-  if (facts.merchantReturnConfirmed) {
+  if (facts.merchantReturnClosed) {
     return {
       orderNo,
       lossScope: '暂无异常',
@@ -224,7 +207,7 @@ function buildDeterministicBaseResult(input: {
       confidence: 0.9,
       needsReview: false,
       reason: appendEvidence(
-        `轨迹命中退返商家闭环（${facts.merchantReturnConfirmTime ?? '-'}，${facts.merchantReturnEvidence ?? '命中退返闭环信号'}）`,
+        `轨迹命中退返商家闭环（${facts.merchantReturnClosedTime ?? '-'}，${facts.merchantReturnClosedEvidence ?? '命中退返闭环信号'}）`,
         facts,
         'none'
       ),
@@ -259,51 +242,6 @@ function buildDeterministicBaseResult(input: {
           : `当前责任主体为外部承运商（${facts.activeExternalCarrierName ?? '-'}），最后更新距今 ${facts.lastEventDaysDiff} 天，未达到外部承运阈值 ${facts.externalCarrierLossTimeoutDays} 天`,
         facts,
         'none'
-      ),
-    }
-  }
-
-  if (
-    facts.merchantReturnRequested &&
-    !facts.merchantReturnConfirmed &&
-    facts.activeResponsibilityOwner === 'company_warehouse' &&
-    shouldDeferMerchantReturnInProgress(facts)
-  ) {
-    const progressDays =
-      facts.merchantReturnLatestProgressDaysDiff >= 0
-        ? facts.merchantReturnLatestProgressDaysDiff
-        : facts.merchantReturnRequestDaysDiff
-    const progressTime = facts.merchantReturnLatestProgressTime ?? facts.merchantReturnRequestTime ?? '-'
-    const progressEvidence =
-      facts.merchantReturnLatestProgressEvidence ??
-      facts.merchantReturnRequestEvidence ??
-      '命中退返处理方向'
-
-    if (progressDays >= facts.activeWarehouseLossTimeoutDays) {
-      return {
-        orderNo,
-        lossScope: '需人工判断',
-        exceptionCategoryId: '',
-        confidence: 0.58,
-        needsReview: true,
-        reason: appendEvidence(
-          `商家已给出退返处理方向但未闭环，最新退返推进为 ${progressTime}（${progressEvidence}），距今 ${progressDays} 天，已达到当前仓库 ${facts.activeWarehouseLossTimeoutDays} 天阈值，需人工确认退返链路状态`,
-          facts,
-          'context'
-        ),
-      }
-    }
-
-    return {
-      orderNo,
-      lossScope: '暂无异常',
-      exceptionCategoryId: noExceptionSubTypeFromFacts(facts),
-      confidence: 0.78,
-      needsReview: false,
-      reason: appendEvidence(
-        `商家已给出退返处理方向但未闭环，最新退返推进为 ${progressTime}（${progressEvidence}），距今 ${progressDays} 天，未达到当前仓库 ${facts.activeWarehouseLossTimeoutDays} 天阈值`,
-        facts,
-        'context'
       ),
     }
   }
@@ -432,8 +370,8 @@ export const DECISION_RULES: readonly DecisionRule[] = [
         ruleId: 'merchant_destroy_terminal',
         lossScope: '暂无异常',
         exceptionCategoryId: 'Abandon销毁',
-        confidence: Math.min(result.confidence, 0.35),
-        needsReview: true,
+        confidence: Math.max(0.9, result.confidence),
+        needsReview: false,
         hit,
         reason: `[事实校验纠正] ${hit}。原始判断: ${result.reason}`,
       })
@@ -489,11 +427,11 @@ export const DECISION_RULES: readonly DecisionRule[] = [
     priority: 12,
     description: '退返/退回商家已闭环时，不归入库内/库外丢失。若存在更新的 Abandon 指令，则 Abandon 优先。',
     match: ({ result, facts }) =>
-      facts.merchantReturnConfirmed &&
+      facts.merchantReturnClosed &&
       !facts.merchantAbandonActive &&
       (result.lossScope !== '暂无异常' || result.exceptionCategoryId !== '退返商家'),
     resolve: ({ result, facts }) => {
-      const hit = `轨迹命中退返商家闭环（${facts.merchantReturnConfirmTime ?? '-'}，${facts.merchantReturnEvidence ?? '命中退返闭环关键词'}），该单已完成退返/退回商家，不应归责为库内/库外异常`
+      const hit = `轨迹命中退返商家闭环（${facts.merchantReturnClosedTime ?? '-'}，${facts.merchantReturnClosedEvidence ?? '命中退返闭环关键词'}），该单已完成退返/退回商家，不应归责为库内/库外异常`
       return withRuleHit({
         result,
         ruleId: 'merchant_return_terminal',
@@ -644,7 +582,7 @@ export const DECISION_RULES: readonly DecisionRule[] = [
       facts.activeWarehouseKnown &&
       !facts.merchantDestroyConfirmed &&
       !facts.merchantAbandonActive &&
-      !facts.merchantReturnConfirmed &&
+      !facts.merchantReturnClosed &&
       !facts.merchantStorageActive &&
       !facts.hasRealOperatorScan &&
       !facts.inWarehouseStartTime &&
@@ -674,8 +612,7 @@ export const DECISION_RULES: readonly DecisionRule[] = [
       facts.activeWarehouseKnown &&
       !facts.merchantDestroyConfirmed &&
       !facts.merchantAbandonActive &&
-      !facts.merchantReturnConfirmed &&
-      !shouldDeferMerchantReturnInProgress(facts) &&
+      !facts.merchantReturnClosed &&
       !facts.merchantStorageActive &&
       facts.hasRealOperatorScan &&
       facts.finalResponsibilityOwner === 'in_warehouse' &&
@@ -706,22 +643,44 @@ export const DECISION_RULES: readonly DecisionRule[] = [
     match: ({ result, facts }) =>
       !facts.merchantReturnDirectionActive &&
       facts.merchantReturnRequested &&
-      !facts.merchantReturnConfirmed &&
+      !facts.merchantReturnClosed &&
       facts.activeResponsibilityOwner === 'company_warehouse' &&
       facts.activeSegmentStatus === 'in_warehouse' &&
       result.exceptionCategoryId === '退返商家',
     resolve: ({ result, facts }) => {
-      const progressDays =
-        facts.merchantReturnLatestProgressDaysDiff >= 0
-          ? facts.merchantReturnLatestProgressDaysDiff
-          : facts.merchantReturnRequestDaysDiff
-      const hit = `商家最新有效处理方向不是退返/退回商家；最新退件推进距今 ${progressDays} 天，不能沿用「退返商家」子类型`
+      const expectedScope = expectedScopeFromFinalResponsibility(facts)
+      const hit = `商家最新有效处理方向不是退返/退回商家，不能沿用「退返商家」子类型；应回到当前责任段最终责任点判断`
+      if (expectedScope === '库内丢失') {
+        return withRuleHit({
+          result,
+          ruleId: 'merchant_return_in_progress_not_terminal',
+          lossScope: '库内丢失',
+          exceptionCategoryId: '扫描员丢失',
+          confidence: Math.max(0.85, result.confidence),
+          needsReview: false,
+          hit,
+          reason: `[事实校验纠正] ${hit}，最终库内责任点距今 ${facts.finalResponsibilityDaysDiff} 天，已达到当前仓库 ${facts.activeWarehouseLossTimeoutDays} 天阈值。原始判断: ${result.reason}`,
+        })
+      }
+      if (expectedScope === '库外丢失') {
+        return withRuleHit({
+          result,
+          ruleId: 'merchant_return_in_progress_not_terminal',
+          lossScope: '库外丢失',
+          exceptionCategoryId: '快递员丢失',
+          confidence: Math.max(0.85, result.confidence),
+          needsReview: false,
+          hit,
+          reason: `[事实校验纠正] ${hit}，最终库外责任点距今 ${facts.finalResponsibilityDaysDiff} 天，已达到当前仓库 ${facts.activeWarehouseLossTimeoutDays} 天阈值。原始判断: ${result.reason}`,
+        })
+      }
       return withRuleHit({
         result,
         ruleId: 'merchant_return_in_progress_not_terminal',
-        lossScope: progressDays >= facts.activeWarehouseLossTimeoutDays ? '需人工判断' : '暂无异常',
-        confidence: Math.min(result.confidence, 0.78),
-        needsReview: progressDays >= facts.activeWarehouseLossTimeoutDays,
+        lossScope: expectedScope ?? '需人工判断',
+        exceptionCategoryId: expectedScope === '暂无异常' ? noExceptionSubTypeFromFacts(facts) : '',
+        confidence: expectedScope === '暂无异常' ? Math.min(result.confidence, 0.78) : Math.min(result.confidence, 0.6),
+        needsReview: expectedScope !== '暂无异常',
         hit,
         reason: `[事实校验纠正] ${hit}。原始判断: ${result.reason}`,
       })
@@ -734,7 +693,7 @@ export const DECISION_RULES: readonly DecisionRule[] = [
     appliesTo: ['库内丢失'],
     match: ({ facts }) => !facts.hasRealOperatorScan && facts.lastDispatchedOutTime === null,
     resolve: ({ result, facts }) => {
-      const correctedScope: AiLossScope = facts.assignCancelLoopWithoutDispatch ? '虚假转运' : '暂无异常'
+      const correctedScope: AiLossScope = facts.assignCancelLoopWithoutDispatch ? '虚假转运' : '需人工判断'
       const hit = '当前责任段无真实操作员扫描入库记录，且全程无「包裹正在派送中」真正出库，责任尚未真正进入库内，不满足库内丢失必要条件①'
       return withRuleHit({
         result,
@@ -764,8 +723,8 @@ export const DECISION_RULES: readonly DecisionRule[] = [
         ruleId: 'in_warehouse_loss_threshold_not_met',
         lossScope: '暂无异常',
         exceptionCategoryId: noExceptionSubTypeFromFacts(facts),
-        confidence: Math.min(result.confidence, 0.4),
-        needsReview: true,
+        confidence: Math.max(0.78, Math.min(result.confidence, 0.92)),
+        needsReview: false,
         hit,
         reason: `[事实校验纠正] ${hit}。原始判断: ${result.reason}`,
       })
@@ -780,8 +739,7 @@ export const DECISION_RULES: readonly DecisionRule[] = [
       !facts.hasDeliveryCompletion &&
       !facts.merchantDestroyConfirmed &&
       !facts.merchantAbandonActive &&
-      !facts.merchantReturnConfirmed &&
-      !shouldDeferMerchantReturnInProgress(facts) &&
+      !facts.merchantReturnClosed &&
       !facts.merchantStorageActive &&
       facts.finalResponsibilityOwner !== null &&
       facts.finalResponsibilityStartTime !== null &&
@@ -847,7 +805,7 @@ export const DECISION_RULES: readonly DecisionRule[] = [
       !facts.unknownWarehouseInActiveSegment &&
       !facts.merchantDestroyConfirmed &&
       !facts.merchantAbandonActive &&
-      !facts.merchantReturnConfirmed &&
+      !facts.merchantReturnClosed &&
       !facts.merchantStorageActive &&
       facts.finalResponsibilityOwner !== null &&
       facts.finalResponsibilityStartTime !== null &&
@@ -925,14 +883,28 @@ export const DECISION_RULES: readonly DecisionRule[] = [
     description: '最近一次出库后已有回站/盘点记录时，库外丢失必要条件不成立。',
     appliesTo: ['库外丢失'],
     match: ({ facts }) => facts.lastDispatchHasReturn && facts.finalResponsibilityOwner !== 'out_warehouse',
-    resolve: ({ result }) => {
+    resolve: ({ result, facts }) => {
       const hit = '「最近一次出库后已有回站/盘点记录」= 是，包裹已回仓，库外丢失必要条件③不满足'
+      const expectedScope = expectedScopeFromFinalResponsibility(facts)
+      if (expectedScope === '库内丢失') {
+        return withRuleHit({
+          result,
+          ruleId: 'out_warehouse_loss_after_return',
+          lossScope: '库内丢失',
+          exceptionCategoryId: '扫描员丢失',
+          confidence: Math.max(0.85, result.confidence),
+          needsReview: false,
+          hit,
+          reason: `[事实校验纠正] ${hit}；最终责任点已回到库内且距今 ${facts.finalResponsibilityDaysDiff} 天，达到当前仓库 ${facts.activeWarehouseLossTimeoutDays} 天阈值，判定为库内丢失。原始判断: ${result.reason}`,
+        })
+      }
       return withRuleHit({
         result,
         ruleId: 'out_warehouse_loss_after_return',
-        lossScope: '暂无异常',
-        confidence: Math.min(result.confidence, 0.4),
-        needsReview: true,
+        lossScope: expectedScope ?? '需人工判断',
+        exceptionCategoryId: expectedScope === '暂无异常' ? noExceptionSubTypeFromFacts(facts) : '',
+        confidence: expectedScope === '暂无异常' ? Math.max(0.78, Math.min(result.confidence, 0.92)) : Math.min(result.confidence, 0.55),
+        needsReview: expectedScope !== '暂无异常',
         hit,
         reason: `[事实校验纠正] ${hit}。原始判断: ${result.reason}`,
       })
@@ -966,14 +938,40 @@ export const DECISION_RULES: readonly DecisionRule[] = [
     description: '只要存在真实操作员扫描或盘点，就排除虚假转运。',
     appliesTo: ['虚假转运'],
     match: ({ facts }) => facts.hasRealOperatorScan,
-    resolve: ({ result }) => {
+    resolve: ({ result, facts }) => {
       const hit = '轨迹存在真实操作员扫描记录，包裹已真正入库，不满足虚假转运必要条件②'
+      const expectedScope = expectedScopeFromFinalResponsibility(facts)
+      if (expectedScope === '库内丢失') {
+        return withRuleHit({
+          result,
+          ruleId: 'fake_transfer_has_real_operator',
+          lossScope: '库内丢失',
+          exceptionCategoryId: '扫描员丢失',
+          confidence: Math.max(0.85, result.confidence),
+          needsReview: false,
+          hit,
+          reason: `[事实校验纠正] ${hit}；最终库内责任点距今 ${facts.finalResponsibilityDaysDiff} 天，已达到当前仓库 ${facts.activeWarehouseLossTimeoutDays} 天阈值。原始判断: ${result.reason}`,
+        })
+      }
+      if (expectedScope === '库外丢失') {
+        return withRuleHit({
+          result,
+          ruleId: 'fake_transfer_has_real_operator',
+          lossScope: '库外丢失',
+          exceptionCategoryId: '快递员丢失',
+          confidence: Math.max(0.85, result.confidence),
+          needsReview: false,
+          hit,
+          reason: `[事实校验纠正] ${hit}；最终库外责任点距今 ${facts.finalResponsibilityDaysDiff} 天，已达到当前仓库 ${facts.activeWarehouseLossTimeoutDays} 天阈值。原始判断: ${result.reason}`,
+        })
+      }
       return withRuleHit({
         result,
         ruleId: 'fake_transfer_has_real_operator',
-        lossScope: '暂无异常',
-        confidence: Math.min(result.confidence, 0.4),
-        needsReview: true,
+        lossScope: expectedScope ?? '需人工判断',
+        exceptionCategoryId: expectedScope === '暂无异常' ? noExceptionSubTypeFromFacts(facts) : '',
+        confidence: expectedScope === '暂无异常' ? Math.max(0.78, Math.min(result.confidence, 0.92)) : Math.min(result.confidence, 0.55),
+        needsReview: expectedScope !== '暂无异常',
         hit,
         reason: `[事实校验纠正] ${hit}。原始判断: ${result.reason}`,
       })
@@ -988,7 +986,7 @@ export function applyFactGuardrails(result: OrderAnalyzeResult, facts: TrackFact
     facts.merchantDestroyConfirmed ||
     facts.merchantAbandonActive ||
     facts.merchantStorageActive ||
-    facts.merchantReturnConfirmed ||
+    facts.merchantReturnClosed ||
     facts.hasDeliveryCompletion
 
   if (terminalScopeLocked) {

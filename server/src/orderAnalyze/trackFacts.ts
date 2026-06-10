@@ -722,16 +722,18 @@ function findLastEvent(events: TrackEvent[], predicate: (event: TrackEvent) => b
   return null
 }
 
-function isWarehouseRealScanCandidate(event: TrackEvent): boolean {
-  return !isDispatchOutEvent(event)
-}
-
 function findFirstRealScan(events: TrackEvent[], profile: WarehouseProfile | null): TrackEvent | null {
   for (const event of events) {
-    if (!isWarehouseRealScanCandidate(event)) continue
     if (isSorterDeviceScanEvent(event.content)) return event
     const op = extractOperatorFromContent(event.content)
-    if (classifyOperatorForWarehouse(op, profile) === 'real') return event
+    if (classifyOperatorForWarehouse(op, profile) !== 'real') continue
+    if (
+      isBoxedTransferEvent(event.content) ||
+      isWarehousePhysicalResponsibilityEvent(event) ||
+      isSydneyInternalWarehouseResetEvent(event, profile)
+    ) {
+      return event
+    }
   }
   return null
 }
@@ -739,10 +741,16 @@ function findFirstRealScan(events: TrackEvent[], profile: WarehouseProfile | nul
 function findLastRealScan(events: TrackEvent[], profile: WarehouseProfile | null): TrackEvent | null {
   for (let i = events.length - 1; i >= 0; i -= 1) {
     const event = events[i]
-    if (!isWarehouseRealScanCandidate(event)) continue
     if (isSorterDeviceScanEvent(event.content)) return event
     const op = extractOperatorFromContent(event.content)
-    if (classifyOperatorForWarehouse(op, profile) === 'real') return event
+    if (classifyOperatorForWarehouse(op, profile) !== 'real') continue
+    if (
+      isBoxedTransferEvent(event.content) ||
+      isWarehousePhysicalResponsibilityEvent(event) ||
+      isSydneyInternalWarehouseResetEvent(event, profile)
+    ) {
+      return event
+    }
   }
   return null
 }
@@ -909,9 +917,9 @@ function makeEmptyFacts(input: {
     merchantStorageSupersededByBusinessProgress: false,
     merchantStorageBusinessProgressTime: null,
     merchantStorageBusinessProgressEvidence: null,
-    merchantReturnConfirmed: false,
-    merchantReturnConfirmTime: null,
-    merchantReturnEvidence: null,
+    merchantReturnClosed: false,
+    merchantReturnClosedTime: null,
+    merchantReturnClosedEvidence: null,
     merchantReturnDirectionActive: false,
     merchantReturnRequested: false,
     merchantReturnRequestTime: null,
@@ -1067,7 +1075,7 @@ export function deriveTrackFacts(
   let merchantStorageEvent: TrackEvent | null = null
   let merchantStorageEvidence: string | null = null
   let merchantReturnEvent: TrackEvent | null = null
-  let merchantReturnEvidence: string | null = null
+  let merchantReturnClosedEvidence: string | null = null
   let merchantReturnRequestEvent: TrackEvent | null = null
   let merchantReturnRequestEvidence: string | null = null
   let merchantReturnDirectionRequestEvent: TrackEvent | null = null
@@ -1101,7 +1109,7 @@ export function deriveTrackFacts(
     }
     if (isMerchantReturnEvent(event.content)) {
       merchantReturnEvent = event
-      merchantReturnEvidence = extractMerchantReturnEvidence(event.content)
+      merchantReturnClosedEvidence = extractMerchantReturnEvidence(event.content)
     }
     if (isMerchantReturnRequestEvent(event.content)) {
       merchantReturnRequestEvent = event
@@ -1146,8 +1154,8 @@ export function deriveTrackFacts(
     merchantDestroyEvent ? { type: 'destroy' as const, event: merchantDestroyEvent } : null,
     latestAbandonEvent ? { type: 'abandon' as const, event: latestAbandonEvent } : null,
     merchantStorageEvent ? { type: 'storage' as const, event: merchantStorageEvent } : null,
-    merchantReturnEvent ? { type: 'return' as const, event: merchantReturnEvent } : null,
-    merchantReturnDirectionRequestEvent ? { type: 'return' as const, event: merchantReturnDirectionRequestEvent } : null,
+    merchantReturnEvent ? { type: 'return_closed' as const, event: merchantReturnEvent } : null,
+    merchantReturnDirectionRequestEvent ? { type: 'return_direction' as const, event: merchantReturnDirectionRequestEvent } : null,
     merchantOtherReturnRequestEvent ? { type: 'other_return' as const, event: merchantOtherReturnRequestEvent } : null,
   ]
     .filter((item): item is NonNullable<typeof item> => item !== null)
@@ -1160,7 +1168,8 @@ export function deriveTrackFacts(
     latestMerchantDirection?.type === 'storage' &&
     !merchantStorageReleasedBySchedule &&
     !merchantStorageSupersededByBusinessProgress
-  const merchantReturnDirectionActive = latestMerchantDirection?.type === 'return'
+  const merchantReturnClosed = latestMerchantDirection?.type === 'return_closed'
+  const merchantReturnDirectionActive = merchantReturnClosed || latestMerchantDirection?.type === 'return_direction'
   const merchantReturnActive = merchantReturnDirectionActive || latestMerchantDirection?.type === 'other_return'
   const latestInterceptTime = latestIntercept?.gmtIntercept ?? null
 
@@ -1277,11 +1286,11 @@ export function deriveTrackFacts(
     merchantStorageSupersededByBusinessProgress,
     merchantStorageBusinessProgressTime: storageBusinessProgressEvent?.time ?? null,
     merchantStorageBusinessProgressEvidence: storageBusinessProgressEvent?.content ?? null,
-    merchantReturnConfirmed: merchantReturnEvent !== null && merchantReturnDirectionActive,
-    merchantReturnConfirmTime: merchantReturnEvent?.time ?? null,
-    merchantReturnEvidence,
+    merchantReturnClosed,
+    merchantReturnClosedTime: merchantReturnClosed ? merchantReturnEvent?.time ?? null : null,
+    merchantReturnClosedEvidence: merchantReturnClosed ? merchantReturnClosedEvidence : null,
     merchantReturnDirectionActive,
-    merchantReturnRequested: merchantReturnRequestEvent !== null && merchantReturnEvent === null && merchantReturnActive,
+    merchantReturnRequested: merchantReturnRequestEvent !== null && !merchantReturnClosed && merchantReturnActive,
     merchantReturnRequestTime: merchantReturnRequestEvent?.time ?? null,
     merchantReturnRequestDaysDiff: merchantReturnRequestEvent ? daysDiff(merchantReturnRequestEvent.time) : -1,
     merchantReturnRequestEvidence,
@@ -1292,7 +1301,7 @@ export function deriveTrackFacts(
     merchantReturnLatestProgressEvidence,
     merchantReturnTransferInProgress:
       merchantReturnRequestEvent !== null &&
-      merchantReturnEvent === null &&
+      !merchantReturnClosed &&
       merchantReturnLatestProgressEvent !== null &&
       isBoxedTransferEvent(merchantReturnLatestProgressEvent.content) &&
       !merchantReturnDestinationReached &&
@@ -1487,13 +1496,13 @@ export function computeTrackTemporalContext(
       `商家销毁终态: 是（${facts.merchantDestroyConfirmTime ?? '-'}，证据: ${facts.merchantDestroyEvidence ?? '命中销毁关键词'}）  → 该订单已进入商家确认销毁闭环，优先判定「暂无异常」，子类型建议「Abandon销毁」`
     )
   }
-  if (facts.merchantReturnConfirmed) {
+  if (facts.merchantReturnClosed) {
     lines.push(
-      `退返商家闭环: 是（${facts.merchantReturnConfirmTime ?? '-'}，证据: ${facts.merchantReturnEvidence ?? '命中退返闭环关键词'}）  → 该订单已完成退返/退回商家，优先判定「暂无异常」，子类型建议「退返商家」`
+      `退返商家闭环: 是（${facts.merchantReturnClosedTime ?? '-'}，证据: ${facts.merchantReturnClosedEvidence ?? '命中退返闭环关键词'}）  → 该订单已完成退返/退回商家，优先判定「暂无异常」，子类型建议「退返商家」`
     )
   } else if (facts.merchantReturnRequested) {
     lines.push(
-      `退返商家待处理: 是（${facts.merchantReturnRequestTime ?? '-'}，证据: ${facts.merchantReturnRequestEvidence ?? '命中退返处理方向'}；最新推进: ${facts.merchantReturnLatestProgressTime ?? '-'}，${facts.merchantReturnLatestProgressEvidence ?? '无'}）  → 商家已给出退返方向但未出现退返闭环；若该方向仍为当前最新有效商家处理方向，未超当前仓库阈值时可判「暂无异常」并使用子类型「退返商家」，超阈值或转运长时间无闭环时进入人工复核`
+      `退返商家待处理: 是（${facts.merchantReturnRequestTime ?? '-'}，证据: ${facts.merchantReturnRequestEvidence ?? '命中退返处理方向'}；最新推进: ${facts.merchantReturnLatestProgressTime ?? '-'}，${facts.merchantReturnLatestProgressEvidence ?? '无'}）  → 商家已给出退返方向但未出现退返闭环；该方向不改变责任点，最终结论仍以当前责任段最终责任点和当前仓库阈值为准；仅在 lossScope 为「暂无异常」时使用子类型「退返商家」`
     )
   }
   if (facts.merchantStorageActive) {

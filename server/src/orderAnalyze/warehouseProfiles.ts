@@ -3,6 +3,7 @@ import type { OperatorClassification, WarehouseProfile } from './types'
 const COMMON_SYSTEM_OPERATORS = ['System', 'cornerstone'] as const
 
 const COMMON_NON_REAL_OPERATORS = ['ADL-DC-Unload', 'Kuangyi Gao', 'Leeki', 'sorter', 'ADL OP1'] as const
+const COMMON_NON_REAL_OPERATOR_PATTERNS = [/^[A-Z]{2,5}\s+OPS\d+$/i] as const
 
 export const DEFAULT_WAREHOUSE_LOSS_TIMEOUT_DAYS = 15
 
@@ -146,7 +147,8 @@ export function classifyOperatorForWarehouse(
   const nonRealOperators = [...COMMON_NON_REAL_OPERATORS, ...(profile?.nonRealOperators ?? [])]
   if (nonRealOperators.some((operator) => operatorNameEquals(operator, name))) return 'non_real'
 
-  if (profile?.nonRealOperatorPatterns?.some((pattern) => pattern.test(name))) return 'non_real'
+  const nonRealOperatorPatterns = [...COMMON_NON_REAL_OPERATOR_PATTERNS, ...(profile?.nonRealOperatorPatterns ?? [])]
+  if (nonRealOperatorPatterns.some((pattern) => pattern.test(name))) return 'non_real'
 
   return profile ? 'real' : 'unknown'
 }
@@ -176,7 +178,11 @@ export function getConfiguredNonRealOperatorNames(): string[] {
 export function isConfiguredNonRealOrSystemOperator(name: string): boolean {
   const normalized = name.trim().toLowerCase()
   if (!normalized) return false
-  return [...getConfiguredSystemOperatorNames(), ...getConfiguredNonRealOperatorNames()].some(
+  const matchesConfiguredName = [...getConfiguredSystemOperatorNames(), ...getConfiguredNonRealOperatorNames()].some(
     (operator) => operator.trim().toLowerCase() === normalized
+  )
+  if (matchesConfiguredName) return true
+  return WAREHOUSE_PROFILES.some((profile) =>
+    [...COMMON_NON_REAL_OPERATOR_PATTERNS, ...(profile.nonRealOperatorPatterns ?? [])].some((pattern) => pattern.test(name))
   )
 }
