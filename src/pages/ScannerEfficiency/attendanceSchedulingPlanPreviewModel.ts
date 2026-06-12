@@ -109,7 +109,7 @@ function buildTablesFromSnapshot(
       bodyValue(
         p('cs-v2'),
         snap.coarseStageHours != null ? Number(snap.coarseStageHours.toFixed(1)).toString() : '',
-        snap.coarseStageHours != null ? null : 'default',
+        'default',
       ),
       noteCell(p('cs-note'), ''),
     ],

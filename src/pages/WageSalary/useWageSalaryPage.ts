@@ -21,6 +21,7 @@ import {
   deriveAttendanceDateRangeLabel,
   buildWeeklyBillingSummaryRows,
 } from './wageExport'
+import { generateId } from '../../utils/generateId'
 import { showToast } from '../../utils/toast'
 import {
   formatDateDisplay,
@@ -325,7 +326,7 @@ export function useWageSalaryPage() {
           }
           if (idx === -1) {
             next.push({
-              _id: crypto.randomUUID(),
+              _id: generateId(),
               ...payload,
               createdAt: new Date().toISOString(),
             })

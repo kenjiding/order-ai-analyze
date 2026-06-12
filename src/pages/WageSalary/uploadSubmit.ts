@@ -1,3 +1,4 @@
+import { generateId } from '../../utils/generateId'
 import {
   calculateDecimalHours,
   calculateHourlyRate,
@@ -139,7 +140,7 @@ export function buildWageRowsFromNormalized(
     const { totalHoursDecimal, totalWage } = calculatePayrollWage(rec.workHours, hourlyRate)
 
     const row = {
-      _id: crypto.randomUUID(),
+      _id: generateId(),
       employeeId: rec.employeeId,
       name: rec.name || '',
       surname: rec.surname || '',

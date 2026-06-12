@@ -3,12 +3,10 @@ import {
   AlertTriangle,
   Building2,
   ClipboardCheck,
-  FileSearch,
   MapPin,
   Package,
   Route,
   ShieldAlert,
-  Sparkles,
   X,
 } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
@@ -425,9 +423,6 @@ export function OrderAnalysisDetailDrawer({ row, onClose }: Props) {
     vendorOptions,
   ])
 
-  const reasonText = row?.reason ?? ''
-  const factCorrected = reasonText.startsWith('[事实校验纠正]')
-
   return (
     <Drawer
       open={row !== null}
@@ -654,7 +649,7 @@ export function OrderAnalysisDetailDrawer({ row, onClose }: Props) {
                     暂无轨迹数据
                   </div>
                 ) : (
-                  <div className="min-h-0 flex-1 overflow-auto bg-[linear-gradient(180deg,rgba(240,247,251,0.55),rgba(255,255,255,0.9))] px-4 py-3">
+                  <div className="min-h-0 flex-1 overflow-auto bg-[linear-gradient(180deg,rgba(240,247,251,0.55),rgba(255,255,255,0.9))] px-4 py-2">
                     <Timeline
                       className="order-analysis-timeline order-analysis-timeline--compact"
                       items={sortedTrackEvents.map((evt) => {
@@ -668,10 +663,10 @@ export function OrderAnalysisDetailDrawer({ row, onClose }: Props) {
                           color: dotColor,
                           children: (
                             <div
-                              className={`rounded-lg border px-2.5 py-1.5 transition ${
+                              className={`rounded-md px-2 py-1 transition ${
                                 isLatestResponsibilityTrack
-                                  ? 'border-red-200 bg-red-50/70 shadow-[0_4px_16px_rgba(239,68,68,0.08)]'
-                                  : 'border-transparent bg-white/70 hover:border-[var(--admin-line)] hover:bg-white'
+                                  ? 'bg-red-50/70'
+                                  : 'hover:bg-white/80'
                               }`}
                             >
                               <div className="flex flex-wrap items-center gap-1.5">
@@ -705,7 +700,7 @@ export function OrderAnalysisDetailDrawer({ row, onClose }: Props) {
                                 ) : null}
                               </div>
                               <p
-                                className={`mt-1 text-[13px] leading-snug ${
+                                className={`mt-0.5 text-[13px] leading-snug ${
                                   isLatestResponsibilityTrack ? 'text-red-800' : 'text-slate-800'
                                 }`}
                               >
@@ -742,10 +737,8 @@ export function OrderAnalysisDetailDrawer({ row, onClose }: Props) {
                           color: isLatestResponsibilityIntercept ? 'red' : 'gray',
                           children: (
                             <div
-                              className={`rounded-lg border px-3 py-2.5 ${
-                                isLatestResponsibilityIntercept
-                                  ? 'border-red-300 bg-red-50/80 shadow-[0_4px_16px_rgba(239,68,68,0.08)]'
-                                  : 'border-[var(--admin-line)] bg-white'
+                              className={`px-1 py-1.5 ${
+                                isLatestResponsibilityIntercept ? 'rounded-md bg-red-50/80' : ''
                               }`}
                             >
                               <div className="flex flex-wrap items-center gap-1.5">

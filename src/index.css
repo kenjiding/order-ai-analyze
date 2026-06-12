@@ -217,7 +217,12 @@ body::before {
   /* Query 完整轨迹：条目间距更紧凑 */
   .order-analysis-timeline--compact.ant-timeline-vertical > .ant-timeline-item {
     min-height: auto;
-    padding-bottom: 6px;
+    padding-bottom: 2px;
+  }
+
+  .order-analysis-timeline--compact .ant-timeline-item-content {
+    margin-block: 0;
+    inset-block-start: -2px;
   }
 
   .order-analysis-timeline--compact.ant-timeline-vertical > .ant-timeline-item:last-child {

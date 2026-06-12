@@ -1,3 +1,4 @@
+import { generateId } from '../../utils/generateId'
 import type { FleetSupplierConfig } from './fleetSupplierPushTypes'
 
 /**
@@ -25,9 +26,5 @@ export function sanitizeFleetSupplier(
 }
 
 export function createFleetSupplierId(): string {
-  try {
-    return crypto.randomUUID()
-  } catch {
-    return `fleet-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`
-  }
+  return generateId()
 }

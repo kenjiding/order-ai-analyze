@@ -22,6 +22,13 @@ import { useAppSettings } from '../../context/AppSettingsContext'
 import { parseOrderNumbersFromFile } from './parseOrderNumbersFromFile'
 import { parseOrderNumbersUnique } from '../../utils/orderNoInput'
 import { showToast } from '../../utils/toast'
+import { cloneDefaultWarehouseConfig } from './warehouseConfig/defaults'
+import {
+  loadWarehouseConfigFromIdb,
+  saveWarehouseConfigToIdb,
+} from './warehouseConfig/warehouseConfigRepository.idb'
+import type { WarehouseConfigDto } from './warehouseConfig/types'
+import { validateWarehouseConfig } from './warehouseConfig/validateWarehouseConfig'
 
 const ANALYZE_AI_PROVIDER_KEY = 'order_exception_analyze_ai_v1'
 const BATCH_ANALYZE_KEY = 'order_exception_batch_analyze_v1'
@@ -47,7 +54,7 @@ function readStoredBatchAnalyze(): boolean {
   }
 }
 
-export type TabId = 'analyze' | 'regression'
+export type TabId = 'analyze' | 'regression' | 'warehouse-config'
 
 export type AnalysisRowStatus = 'pending' | 'analyzing' | 'done' | 'error'
 
@@ -242,6 +249,18 @@ export function useOrderExceptionManagementPage() {
     null
   )
 
+  const [warehouseDraftConfig, setWarehouseDraftConfig] = useState<WarehouseConfigDto>(() =>
+    cloneDefaultWarehouseConfig()
+  )
+  const [warehouseSavedConfig, setWarehouseSavedConfig] = useState<WarehouseConfigDto>(() =>
+    cloneDefaultWarehouseConfig()
+  )
+  const [selectedWarehouseHubId, setSelectedWarehouseHubId] = useState<string | null>(
+    () => cloneDefaultWarehouseConfig().profiles[0]?.hubId ?? null
+  )
+  const [isSavingWarehouseConfig, setIsSavingWarehouseConfig] = useState(false)
+  const [isWarehouseConfigLoaded, setIsWarehouseConfigLoaded] = useState(false)
+
   useEffect(() => {
     try {
       localStorage.setItem(ANALYZE_AI_PROVIDER_KEY, analyzeAiProvider)
@@ -257,6 +276,41 @@ export function useOrderExceptionManagementPage() {
       /* ignore */
     }
   }, [batchAnalyze])
+
+  useEffect(() => {
+    void (async () => {
+      const stored = await loadWarehouseConfigFromIdb()
+      setWarehouseDraftConfig(stored)
+      setWarehouseSavedConfig(stored)
+      setSelectedWarehouseHubId(stored.profiles[0]?.hubId ?? null)
+      setIsWarehouseConfigLoaded(true)
+    })()
+  }, [])
+
+  const persistWarehouseConfig = useCallback(async () => {
+    const issues = validateWarehouseConfig(warehouseDraftConfig)
+    if (issues.length) {
+      showToast(issues[0].message, 'error')
+      return
+    }
+    setIsSavingWarehouseConfig(true)
+    try {
+      await saveWarehouseConfigToIdb(warehouseDraftConfig)
+      setWarehouseSavedConfig(warehouseDraftConfig)
+      showToast('仓库配置已保存', 'success')
+    } catch (e) {
+      showToast((e as Error).message || '保存失败', 'error')
+    } finally {
+      setIsSavingWarehouseConfig(false)
+    }
+  }, [warehouseDraftConfig])
+
+  const resetWarehouseConfig = useCallback(() => {
+    const defaults = cloneDefaultWarehouseConfig()
+    setWarehouseDraftConfig(defaults)
+    setSelectedWarehouseHubId(defaults.profiles[0]?.hubId ?? null)
+    showToast('已恢复默认配置（尚未保存）', 'success')
+  }, [])
 
   const ensureToken = useCallback((): string | null => {
     const t = imileToken.trim()
@@ -300,6 +354,15 @@ export function useOrderExceptionManagementPage() {
       return
     }
 
+    if (
+      isWarehouseConfigLoaded &&
+      JSON.stringify(warehouseDraftConfig) !== JSON.stringify(warehouseSavedConfig)
+    ) {
+      showToast('仓库配置有未保存修改，本次分析将使用上次保存的版本', 'error')
+    }
+
+    const warehouseConfig = warehouseSavedConfig
+
     const runId = analyzeRunIdRef.current + 1
     analyzeRunIdRef.current = runId
     const isStaleRun = () => analyzeRunIdRef.current !== runId
@@ -331,6 +394,7 @@ export function useOrderExceptionManagementPage() {
           imileToken: token,
           orderNos,
           aiProvider: analyzeAiProvider,
+          warehouseConfig,
         })
         if (isStaleRun()) return
 
@@ -397,6 +461,7 @@ export function useOrderExceptionManagementPage() {
             imileToken: token,
             orderNos: [orderNo],
             aiProvider: analyzeAiProvider,
+            warehouseConfig,
           })
           if (isStaleRun()) return
 
@@ -458,7 +523,16 @@ export function useOrderExceptionManagementPage() {
     } else {
       showToast(`分析结束：${succeeded} 单成功，${failed} 单失败`, 'error')
     }
-  }, [analyzeAiProvider, analyzeOrderText, batchAnalyze, ensureToken, importedAnalyzeOrders])
+  }, [
+    analyzeAiProvider,
+    analyzeOrderText,
+    batchAnalyze,
+    ensureToken,
+    importedAnalyzeOrders,
+    isWarehouseConfigLoaded,
+    warehouseDraftConfig,
+    warehouseSavedConfig,
+  ])
 
   const onAnalyzeOrderFileUpload = useCallback(
     async (file: File) => {
@@ -607,5 +681,13 @@ export function useOrderExceptionManagementPage() {
     regressionResults,
     regressionSummary,
     regressionTokenUsage,
+    warehouseDraftConfig,
+    setWarehouseDraftConfig,
+    warehouseSavedConfig,
+    selectedWarehouseHubId,
+    setSelectedWarehouseHubId,
+    persistWarehouseConfig,
+    resetWarehouseConfig,
+    isSavingWarehouseConfig,
   }
 }

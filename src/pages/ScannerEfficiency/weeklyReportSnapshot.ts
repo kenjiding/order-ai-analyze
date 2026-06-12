@@ -153,7 +153,7 @@ export function buildWeeklyReportSnapshot({
   scanSourceInfo,
   attendanceSourceInfo,
   settings,
-  dailyCostPerTicketByDate,
+  dailyCostPerTicketByDate: _dailyCostPerTicketByDate,
   dailyTotalLaborCostByDate,
   generatedAt = new Date(),
 }: {

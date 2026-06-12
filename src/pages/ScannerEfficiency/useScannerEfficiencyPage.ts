@@ -663,7 +663,7 @@ export function useScannerEfficiencyPage() {
       totalLaborCostSum != null && payrollDaysWithCost > 0
         ? totalLaborCostSum / payrollDaysWithCost
         : null
-    const totalVolumeForUnitCost = bodyRows.reduce(
+    const totalVolumeForUnitCost = rows.reduce(
       (sum, r) => sum + (Number(r.volume) > 0 ? Number(r.volume) : 0),
       0,
     )

@@ -1,5 +1,6 @@
 import { AnalysisTabContent } from './components/AnalysisTabContent'
 import { RegressionTestTabContent } from './components/RegressionTestTabContent'
+import { WarehouseConfigTabContent } from './components/WarehouseConfigTabContent'
 import { OrderExceptionManagementHeader } from './components/OrderExceptionManagementHeader'
 import { useOrderExceptionManagementPage } from './useOrderExceptionManagementPage'
 
@@ -32,6 +33,20 @@ export default function OrderExceptionManagementPage() {
           analyzedOrderCount={v.lastAnalyzeOrderCount}
           durationMs={v.analyzeDurationMs}
           apiTiming={v.analyzeApiTiming}
+          onOpenWarehouseConfig={() => v.setActiveTab('warehouse-config')}
+        />
+      )}
+
+      {v.activeTab === 'warehouse-config' && (
+        <WarehouseConfigTabContent
+          draftConfig={v.warehouseDraftConfig}
+          savedConfig={v.warehouseSavedConfig}
+          selectedHubId={v.selectedWarehouseHubId}
+          onDraftConfigChange={v.setWarehouseDraftConfig}
+          onSelectedHubIdChange={v.setSelectedWarehouseHubId}
+          onSave={v.persistWarehouseConfig}
+          onResetDefaults={v.resetWarehouseConfig}
+          isSaving={v.isSavingWarehouseConfig}
         />
       )}
 

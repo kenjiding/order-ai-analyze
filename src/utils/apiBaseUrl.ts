@@ -6,5 +6,6 @@ export function getApiBaseUrl(): string {
   const raw = import.meta.env.VITE_API_BASE as string | undefined
   const trimmed = typeof raw === 'string' ? raw.trim() : ''
   if (trimmed) return trimmed.replace(/\/$/, '')
-  return import.meta.env.MODE === 'production' ? 'https://blil5642k3zzfvythnykvbpbna0iahzu.lambda-url.us-east-1.on.aws' : 'http://127.0.0.1:8787'
+  // 生产默认同源（Nginx 反代 /api）；前后端分域时在构建时设置 VITE_API_BASE
+  return import.meta.env.MODE === 'production' ? '' : 'http://127.0.0.1:8787'
 }

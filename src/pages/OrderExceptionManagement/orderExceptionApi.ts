@@ -221,10 +221,31 @@ export async function postOrderExceptionPrefetch(payload: {
   }
 }
 
+export type OrderAnalyzeWarehouseConfig = {
+  global: {
+    defaultLossTimeoutDays: number
+    externalCarrierLossTimeoutDays: number
+    commonSystemOperators: string[]
+    commonNonRealOperators: string[]
+    commonNonRealOperatorPatterns: string[]
+  }
+  profiles: Array<{
+    cityId: string
+    hubId: string
+    displayName: string
+    aliases: string[]
+    lossTimeoutDays?: number
+    nonRealOperators?: string[]
+    nonRealOperatorPatterns?: string[]
+    systemOperators?: string[]
+  }>
+}
+
 export async function postOrderExceptionAnalyze(payload: {
   imileToken: string
   orderNos: string[]
   aiProvider?: OrderAnalyzeAiProvider
+  warehouseConfig?: OrderAnalyzeWarehouseConfig
 }): Promise<{
   results: OrderAnalyzeResultItem[]
   trackInfo: Record<string, TrackEvent[]>
@@ -239,6 +260,7 @@ export async function postOrderExceptionAnalyze(payload: {
     body: JSON.stringify({
       ...payload,
       aiProvider: payload.aiProvider ?? 'deepseek',
+      warehouseConfig: payload.warehouseConfig,
     }),
   })
   const text = await res.text()

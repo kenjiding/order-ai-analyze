@@ -1,4 +1,4 @@
-import { ClipboardList, PackageSearch } from 'lucide-react'
+import { ClipboardList, PackageSearch, Settings2 } from 'lucide-react'
 import { PageSectionTabs } from '../../../components/PageSectionTabs'
 import type { PageSectionTabItem } from '../../../components/PageSectionTabs'
 import type { TabId } from '../useOrderExceptionManagementPage'
@@ -10,6 +10,7 @@ type Props = {
 
 const tabItems: PageSectionTabItem[] = [
   { id: 'analyze', label: '异常订单分析', icon: PackageSearch },
+  { id: 'warehouse-config', label: '分析配置', icon: Settings2 },
   { id: 'regression', label: '测试用例', icon: ClipboardList },
 ]
 

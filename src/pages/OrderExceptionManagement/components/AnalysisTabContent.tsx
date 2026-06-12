@@ -1,6 +1,6 @@
 import { Select, Tag } from 'antd'
 import { saveAs } from 'file-saver'
-import { Loader2, Upload } from 'lucide-react'
+import { Loader2, Settings2, Upload } from 'lucide-react'
 import { useCallback, useMemo, useState, type ChangeEvent, type ReactNode } from 'react'
 import * as XLSX from 'xlsx-js-style'
 import { applySheetCenterAlignment } from '../../../utils/xlsxCenteredSheet'
@@ -172,6 +172,7 @@ type Props = {
   analyzedOrderCount: number
   durationMs: number | null
   apiTiming: OrderAnalyzeApiTiming | null
+  onOpenWarehouseConfig: () => void
 }
 
 const CROSS_CHECKED_LABEL: Record<string, string> = {
@@ -200,6 +201,7 @@ export function AnalysisTabContent({
   analyzedOrderCount,
   durationMs,
   apiTiming,
+  onOpenWarehouseConfig,
 }: Props) {
   const [detailRow, setDetailRow] = useState<Row | null>(null)
   const [visitedOrders, setVisitedOrders] = useState<Set<string>>(() => new Set())
@@ -316,6 +318,15 @@ export function AnalysisTabContent({
               />
               <span className="text-xs font-medium leading-none text-slate-800">批量分析</span>
             </label>
+            <button
+              type="button"
+              disabled={isAnalyzing}
+              onClick={onOpenWarehouseConfig}
+              className="admin-btn border border-slate-300 bg-white text-slate-800 shadow-sm hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              <Settings2 className="h-4 w-4" />
+              分析配置
+            </button>
             <button
               type="button"
               disabled={isAnalyzing}

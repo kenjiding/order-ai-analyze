@@ -96,7 +96,6 @@ export function resolveOperatorAttendancePlanRows({
       medianLevel28,
       level28TotalHours > 0 ? level28TotalHours : null,
       REMARK_SORTING,
-      null,
     ),
     rowFromAttendance('前台', 1, frontDesk, frontDesk?.hours ?? null, REMARK_FRONT_DESK, "前台完成上午工作后会加入细分环节"),
     rowFromAttendance('清洁仓库', 2, null, 0.5, '清洁仓库', NOTE_CLEANING),

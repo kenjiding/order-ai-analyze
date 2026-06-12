@@ -1,3 +1,4 @@
+import { generateId } from '../../utils/generateId'
 import type { FeishuPushEntry, FeishuPushKind } from './feishuPushTypes'
 
 /** 历史 localStorage 键：`feishuPushRepository.idb` 首次读取时会迁移并删除。 */
@@ -30,11 +31,7 @@ function legacyBucketsPresent(byKind: object): boolean {
 }
 
 export function createPushEntryId(): string {
-  try {
-    return crypto.randomUUID()
-  } catch {
-    return `push-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`
-  }
+  return generateId()
 }
 
 export function sanitizeEntries(raw: unknown): FeishuPushEntry[] {

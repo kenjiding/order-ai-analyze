@@ -124,7 +124,8 @@ export function transformSheetRowsToUploadedData(
       cellString(row, WORKDAY_KEYS) ||
       (row['工作日'] ?? row['Workday'] ?? row['workday'] ?? '')
     const dateValue =
-      cellString(row, DATE_KEYS) || (row['日期'] ?? row['Date'] ?? row['date'] ?? '')
+      cellString(row, DATE_KEYS) ||
+      String(row['日期'] ?? row['Date'] ?? row['date'] ?? '')
 
     const totalHours = cellString(row, TOTAL_HOURS_KEYS)
     const workHours = cellString(row, WORK_HOURS_KEYS)
