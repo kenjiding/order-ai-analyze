@@ -32,6 +32,11 @@ import {
   normalizeUploadedRowsForSubmit,
   buildWageRowsFromNormalized,
 } from './uploadSubmit'
+import { parseFinanceLedgerRows } from '../../payroll/financeLedgerMapping'
+import {
+  reconcileFinanceWithWageRecords,
+  buildReconciliationExportRows,
+} from '../../payroll/financeWageReconciliation'
 
 /** 与上传解析一致的 read 选项；导出合并原始表时复用 */
 const WAGE_XLSX_READ_OPTS = {
@@ -119,8 +124,9 @@ export function useWageSalaryPage() {
   /** 最近一次「计算薪资」成功时对应的上传原文件，供导出时作为后续 Sheet 合并 */
   const [committedImportRaw, setCommittedImportRaw] = useState<ImportRawSnapshot | null>(null)
 
-  const [isSorting, setIsSorting] = useState(false)
-  const [isPublicHoliday, setIsPublicHoliday] = useState(false)
+  const [financeLedgerRows, setFinanceLedgerRows] = useState([])
+  const [financeSourceFileName, setFinanceSourceFileName] = useState('')
+
   const [isUploading, setIsUploading] = useState(false)
 
   const [editingEmployeeId, setEditingEmployeeId] = useState(null)
@@ -246,12 +252,7 @@ export function useWageSalaryPage() {
         employeeRoleMap[emp.employeeId] = emp.role
       })
 
-      const sortedData = transformSheetRowsToUploadedData(
-        jsonData,
-        employees,
-        isSorting,
-        isPublicHoliday,
-      )
+      const sortedData = transformSheetRowsToUploadedData(jsonData, employees)
 
       setUploadedData(sortedData)
       setUploadedSourceFileName(file.name)
@@ -451,8 +452,6 @@ export function useWageSalaryPage() {
         return {
           ...item,
           weekendOption: option,
-          isPublicHolidayRow: option === 'publicHoliday',
-          isSortingRow: option === 'sorting',
         }
       }),
     )
@@ -505,6 +504,11 @@ export function useWageSalaryPage() {
     if (!filteredWageRecords.length) return null
     return summarizeBillingVsActualPayout(filteredWageRecords, actualWorkerRateSettings)
   }, [filteredWageRecords, actualWorkerRateSettings])
+
+  const reconciliationResult = useMemo(() => {
+    if (!financeLedgerRows.length || !wageRecords.length) return null
+    return reconcileFinanceWithWageRecords(financeLedgerRows, wageRecords)
+  }, [financeLedgerRows, wageRecords])
 
   const paginatedRecords = useMemo(() => {
     const startIdx = (currentPage - 1) * pageSize
@@ -630,6 +634,79 @@ export function useWageSalaryPage() {
     setPendingImportRaw(null)
   }
 
+  const handleFinanceFileUpload = async (event) => {
+    const file = event.target.files[0]
+    if (!file) return
+
+    try {
+      const fileExtension = file.name.split('.').pop().toLowerCase()
+      let jsonData = []
+
+      if (fileExtension === 'csv') {
+        const text = await file.text()
+        const workbook = XLSX.read(text, { type: 'string', ...WAGE_XLSX_READ_OPTS })
+        const worksheet = workbook.Sheets[workbook.SheetNames[0]]
+        jsonData = XLSX.utils.sheet_to_json(worksheet, { raw: false })
+      } else {
+        const data = await file.arrayBuffer()
+        const workbook = XLSX.read(data, { type: 'array', ...WAGE_XLSX_READ_OPTS })
+        const worksheet = workbook.Sheets[workbook.SheetNames[0]]
+        jsonData = XLSX.utils.sheet_to_json(worksheet, { raw: false })
+      }
+
+      const { rows, parseErrors } = parseFinanceLedgerRows(jsonData)
+      setFinanceLedgerRows(rows)
+      setFinanceSourceFileName(file.name)
+
+      if (parseErrors.length > 0) {
+        const errorMsg =
+          `财务流水解析：有效 ${rows.length} 条，跳过 ${parseErrors.length} 条无效记录：\n\n` +
+          parseErrors
+            .slice(0, 8)
+            .map((err) => `第 ${err.rowIndex} 行 - ${err.personName}: ${err.error}`)
+            .join('\n') +
+          (parseErrors.length > 8 ? `\n...还有 ${parseErrors.length - 8} 条错误` : '')
+        showToast(errorMsg, rows.length > 0 ? 'success' : 'error')
+      } else {
+        showToast(`成功读取 ${rows.length} 条财务流水记录`, 'success')
+      }
+    } catch (error) {
+      console.error('读取财务流水失败:', error)
+      setFinanceLedgerRows([])
+      setFinanceSourceFileName('')
+      showToast('读取财务流水失败，请确保文件格式正确', 'error')
+    }
+
+    event.target.value = ''
+  }
+
+  const handleClearFinanceData = () => {
+    setFinanceLedgerRows([])
+    setFinanceSourceFileName('')
+  }
+
+  const handleExportReconciliation = () => {
+    if (!reconciliationResult || reconciliationResult.rows.length === 0) {
+      showToast('没有可导出的差异对比数据', 'error')
+      return
+    }
+
+    const exportRows = buildReconciliationExportRows(reconciliationResult)
+    const worksheet = XLSX.utils.json_to_sheet(exportRows)
+    const workbook = XLSX.utils.book_new()
+    XLSX.utils.book_append_sheet(workbook, worksheet, '差异对比')
+
+    const excelBuffer = XLSX.write(workbook, { bookType: 'xlsx', type: 'array' })
+    const blob = new Blob([excelBuffer], {
+      type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    })
+
+    const dateRangeLabel = deriveAttendanceDateRangeLabel(wageRecords)
+    const baseName = dateRangeLabel ? `差异对比_${dateRangeLabel}` : '差异对比'
+    saveAs(blob, `${baseName}.xlsx`)
+    showToast('差异对比导出成功', 'success')
+  }
+
   return {
     activeTab,
     setActiveTab,
@@ -637,10 +714,6 @@ export function useWageSalaryPage() {
     wageRecords,
     uploadedData,
     uploadedSourceFileName,
-    isSorting,
-    setIsSorting,
-    isPublicHoliday,
-    setIsPublicHoliday,
     isUploading,
     editingEmployeeId,
     setEditingEmployeeId,
@@ -692,6 +765,12 @@ export function useWageSalaryPage() {
     totalPages,
     handleExport,
     handleClearUploadedData,
+    handleFinanceFileUpload,
+    financeLedgerRows,
+    financeSourceFileName,
+    handleClearFinanceData,
+    reconciliationResult,
+    handleExportReconciliation,
     formatDate: formatDateDisplay,
     formatWorkday: formatWorkdayDisplay,
   }

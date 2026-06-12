@@ -37,11 +37,7 @@ import { flushPaint } from './excelParseClient'
 import { exportAttendanceSchedulingPlanExcel } from './exportAttendanceSchedulingPlanExcel'
 import { buildExportWorkbook, type SourceInfo } from './exportWorkbook'
 import { buildFrontDeskSaturation } from './frontDeskSaturation'
-import {
-  buildSortingEfficiencyLookup,
-  buildSortingScanCountLookup,
-  sortingScanCountForPerson,
-} from './sortingLookup'
+import { buildScannerTotalEfficiencyRows, sortingScanCountForPerson } from './sortingLookup'
 import type { DataTableRow } from './components/ui'
 import {
   buildAttendanceMatchColumns,
@@ -49,6 +45,7 @@ import {
   buildDailyVolumeColumns,
   buildScannerDailyColumns,
   buildScannerPersonColumns,
+  buildScannerTotalEfficiencyColumns,
 } from './scannerEfficiencyTableColumns'
 import { buildScannerHourlyPivotTables } from './scannerHourlyPivotTable'
 import { buildAttendanceWeeklySummaryTableRows } from './attendanceEfficiencyWeek'
@@ -85,8 +82,6 @@ function mergeOrderedUniqueFiles(prev: File[], next: File[]): File[] {
 }
 
 /** 与工资页上传表默认一致：未勾选「分拣班次 / 公众假期」时的映射口径 */
-const WAGE_LABOR_UPLOAD_SORTING = false
-const WAGE_LABOR_UPLOAD_PUBLIC_HOLIDAY = false
 
 export function useScannerEfficiencyPage() {
   const [settings, setSettings] = useState<ScanSettings>(() => ({ ...DEFAULT_SETTINGS }))
@@ -109,13 +104,7 @@ export function useScannerEfficiencyPage() {
       setAttendancePayroll(null)
       return
     }
-    const payroll = await computeAttendancePayrollFromFiles(
-      files,
-      wageEmployees,
-      rateSettingsForLabor,
-      WAGE_LABOR_UPLOAD_SORTING,
-      WAGE_LABOR_UPLOAD_PUBLIC_HOLIDAY,
-    )
+    const payroll = await computeAttendancePayrollFromFiles(files, wageEmployees, rateSettingsForLabor)
     setAttendancePayroll(payroll)
   }, [wageEmployees, rateSettingsForLabor])
 
@@ -164,9 +153,14 @@ export function useScannerEfficiencyPage() {
   const [scannerHourlyExpanded, setScannerHourlyExpanded] = useState(false)
   const [efficiencyDetailDimension, setEfficiencyDetailDimension] =
     useState<EfficiencyDetailDimension>('day')
+  const [efficiencyChartOpenDaysOnly, setEfficiencyChartOpenDaysOnly] = useState(true)
   const [efficiencyDetailExpandedWeekKeys, setEfficiencyDetailExpandedWeekKeys] = useState<
     Set<string>
   >(() => new Set())
+
+  const handleEfficiencyChartOpenDaysOnlyChange = useCallback((next: boolean) => {
+    setEfficiencyChartOpenDaysOnly(next)
+  }, [])
 
   const handleEfficiencyDetailDimensionChange = useCallback((next: EfficiencyDetailDimension) => {
     setEfficiencyDetailDimension(next)
@@ -385,23 +379,18 @@ export function useScannerEfficiencyPage() {
     return []
   }, [activeTab, warehouseMetrics, scannerMetrics])
 
-  const personSortingLookup = useMemo(() => buildSortingEfficiencyLookup(scannerResult), [scannerResult])
-  const personSortingScanCountLookup = useMemo(
-    () => buildSortingScanCountLookup(scannerResult),
-    [scannerResult],
-  )
-
   const dailyVolumeColumns = useMemo(() => buildDailyVolumeColumns(), [])
   const attendanceMatchColumns = useMemo(
     () => buildAttendanceMatchColumns({ onDailyTotalHoursCommit: handleDailyTotalHoursCommit }),
     [handleDailyTotalHoursCommit],
   )
   const attendancePersonColumns = useMemo(
-    () => buildAttendancePersonColumns(personSortingLookup),
-    [personSortingLookup],
+    () => buildAttendancePersonColumns(scannerResult),
+    [scannerResult],
   )
   const scannerDailyColumns = useMemo(() => buildScannerDailyColumns(), [])
   const scannerPersonColumns = useMemo(() => buildScannerPersonColumns(), [])
+  const scannerTotalEfficiencyColumns = useMemo(() => buildScannerTotalEfficiencyColumns(), [])
 
   const handleSettingChange = (key: keyof ScanSettings, value: string) => {
     const numeric = Number(value)
@@ -508,8 +497,6 @@ export function useScannerEfficiencyPage() {
         mergedFiles,
         wageEmployees,
         rateSettingsForLabor,
-        WAGE_LABOR_UPLOAD_SORTING,
-        WAGE_LABOR_UPLOAD_PUBLIC_HOLIDAY,
       )
       setAttendancePayroll(payroll)
       if (payroll.validationErrors.length > 0) {
@@ -731,14 +718,13 @@ export function useScannerEfficiencyPage() {
   const attendancePersonAsTable = useMemo((): DataTableRow[] => {
     const persons = attendanceEfficiencyBase?.personRows
     if (!persons?.length) return []
-    const lookupScan = personSortingScanCountLookup
     return persons.map((r) => {
       const args = {
         sorterName: r.sorterName,
         sorterKey: r.sorterKey,
         efficiencyMatchNames: r.efficiencyMatchNames,
       }
-      const scan = sortingScanCountForPerson(args, lookupScan)
+      const scan = sortingScanCountForPerson(args, scannerResult)
       const hrs = r.totalHours
       const matchedScan = scan === '' ? null : scan
       const onDuty =
@@ -749,7 +735,7 @@ export function useScannerEfficiencyPage() {
         personOnDutyEfficiencyPerHour: onDuty,
       }
     })
-  }, [attendanceEfficiencyBase, personSortingScanCountLookup])
+  }, [attendanceEfficiencyBase, scannerResult])
 
   const scannerDailyAsTable = (scannerResult?.dailySummaryRows ?? []) as unknown as DataTableRow[]
   const frontDeskDailyAsTable = (frontDeskResult?.dailyRows ?? []) as unknown as DataTableRow[]
@@ -761,6 +747,13 @@ export function useScannerEfficiencyPage() {
   )
 
   const scannerPersonAsTable = (scannerResult?.scannerTotalRows ?? []) as unknown as DataTableRow[]
+
+  const scannerTotalEfficiencyRows = useMemo(
+    () => buildScannerTotalEfficiencyRows(scannerResult, attendanceEfficiencyBase?.personRows),
+    [scannerResult, attendanceEfficiencyBase?.personRows],
+  )
+
+  const scannerTotalEfficiencyAsTable = scannerTotalEfficiencyRows as unknown as DataTableRow[]
 
   const scannerDailyEfficiencyTrendPoints = useMemo(() => {
     const rows = scannerResult?.dailySummaryRows ?? []
@@ -780,6 +773,8 @@ export function useScannerEfficiencyPage() {
     setScannerHourlyExpanded,
     efficiencyDetailDimension,
     handleEfficiencyDetailDimensionChange,
+    efficiencyChartOpenDaysOnly,
+    handleEfficiencyChartOpenDaysOnlyChange,
     efficiencyDetailExpandedWeekKeys,
     handleEfficiencyDetailWeekRowClick,
     scanAggregate,
@@ -796,6 +791,7 @@ export function useScannerEfficiencyPage() {
     attendancePersonColumns,
     scannerDailyColumns,
     scannerPersonColumns,
+    scannerTotalEfficiencyColumns,
     handleSettingChange,
     handleScanFileChange,
     handleAttendanceFileChange,
@@ -819,6 +815,8 @@ export function useScannerEfficiencyPage() {
     frontDeskDensityAsTable,
     scannerHourlyPivotTables,
     scannerPersonAsTable,
+    scannerTotalEfficiencyRows,
+    scannerTotalEfficiencyAsTable,
     scannerDailyEfficiencyTrendPoints,
     openDayRuleTooltipText,
   }

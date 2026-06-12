@@ -127,15 +127,15 @@ body::before {
     @apply inline-flex items-center justify-center gap-2 rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 transition hover:border-slate-400 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50;
   }
 
-  .admin-btn-primary {
-    @apply text-white;
-    background: var(--admin-accent);
-    border-color: var(--admin-accent);
+  /* 与 admin-btn 组合时须用 @apply 覆盖其 bg-white / text-slate-700 */
+  .admin-btn-primary,
+  .admin-btn.admin-btn-primary {
+    @apply border-[#2f8f87] bg-[#2f8f87] text-white;
   }
 
-  .admin-btn-primary:hover {
-    background: #267a73;
-    border-color: #267a73;
+  .admin-btn-primary:hover:not(:disabled),
+  .admin-btn.admin-btn-primary:hover:not(:disabled) {
+    @apply border-[#267a73] bg-[#267a73];
   }
 
   .admin-btn-dark {
@@ -335,4 +335,83 @@ body::before {
   z-index: 2;
   background: var(--admin-sky-soft);
   box-shadow: 0 1px 0 0 rgb(226 232 240);
+}
+
+.scanner-efficiency-antd-table .ant-table {
+  font-size: 0.875rem;
+  line-height: 1.25rem;
+}
+
+.scanner-efficiency-antd-table .ant-table-thead > tr > th {
+  background: var(--admin-sky-soft) !important;
+  color: #25526e;
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.scanner-efficiency-antd-table .ant-table-tbody > tr > td {
+  color: rgb(51 65 85);
+  white-space: nowrap;
+}
+
+.scanner-efficiency-antd-table .ant-table-tbody > tr:nth-child(even) > td {
+  background: rgb(248 250 252);
+}
+
+.scanner-efficiency-antd-table .ant-table-tbody > tr:hover > td {
+  background: rgb(241 245 249) !important;
+}
+
+.scanner-efficiency-antd-table__average > td {
+  background: rgb(241 245 249 / 0.95) !important;
+  font-weight: 500;
+}
+
+.scanner-efficiency-antd-table .ant-table-summary > tr > td {
+  border-top: 1px solid rgb(226 232 240);
+}
+
+.wage-antd-table .ant-table {
+  font-size: 0.875rem;
+  line-height: 1.25rem;
+}
+
+.wage-antd-table .ant-table-thead > tr > th {
+  background: var(--admin-sky-soft) !important;
+  color: #25526e;
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  white-space: nowrap;
+}
+
+.wage-antd-table .ant-table-tbody > tr > td {
+  color: rgb(51 65 85);
+  white-space: nowrap;
+}
+
+.wage-antd-table .ant-table-tbody > tr:nth-child(even) > td {
+  background: rgb(248 250 252);
+}
+
+.wage-antd-table .ant-table-tbody > tr:hover > td {
+  background: rgb(241 245 249) !important;
+}
+
+.wage-antd-table .ant-table-summary > tr > td {
+  border-top: 1px solid rgb(226 232 240);
+  background: rgb(248 250 252) !important;
+  font-weight: 600;
+}
+
+.wage-antd-table .ant-table-cell-fix-right,
+.wage-antd-table .ant-table-summary .ant-table-cell-fix-right {
+  background: rgb(248 250 252) !important;
+}
+
+.wage-antd-table .ant-table-tbody > tr:hover > td.ant-table-cell-fix-right {
+  background: rgb(241 245 249) !important;
 }

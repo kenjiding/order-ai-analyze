@@ -3,6 +3,7 @@ import { convertDateToStandard } from './attendanceDate'
 import {
   calculateDecimalHours,
   calculateHourlyRate,
+  calculatePayrollWage,
   type RateSettings,
 } from './wageRateCalculation'
 
@@ -36,12 +37,10 @@ export function payrollWageForMappedRecord(
   record: Record<string, unknown>,
   rateSettings: RateSettings,
 ): number {
-  const h = calculateDecimalHours(
+  const hoursSource =
     (record.effectiveHours as string | number) ??
-      (record.workHours as string | number) ??
-      (record.totalHours as string | number),
-  )
-  if (!(h > 0)) return 0
+    (record.workHours as string | number) ??
+    (record.totalHours as string | number)
   const isPh = record.weekendOption === 'publicHoliday'
   const isSort = record.weekendOption === 'sorting'
   const rate = calculateHourlyRate(
@@ -51,7 +50,7 @@ export function payrollWageForMappedRecord(
     isPh,
     rateSettings,
   )
-  return h * rate
+  return calculatePayrollWage(hoursSource, rate).totalWage
 }
 
 /** 与仓库效率工作台解析后的考勤行兼容 */
@@ -93,12 +92,10 @@ function attendanceRowToSheetRecord(row: ParsedAttendanceRowForLabor): Record<st
 export function mapParsedAttendanceRowsForLabor(
   rows: ParsedAttendanceRowForLabor[],
   employees: EmployeeLite[],
-  isSorting: boolean,
-  isPublicHoliday: boolean,
 ): Record<string, unknown>[] {
   if (!rows.length) return []
   const sheet = rows.map(attendanceRowToSheetRecord)
-  return transformSheetRowsToUploadedData(sheet, employees, isSorting, isPublicHoliday)
+  return transformSheetRowsToUploadedData(sheet, employees)
 }
 
 /** 统计窗口内：每日人工总成本 + 每日映射行工时合计（与成本共用同一套工时解析，用于修正 UI 覆盖总工时）。 */

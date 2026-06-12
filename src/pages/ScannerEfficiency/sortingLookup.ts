@@ -1,66 +1,43 @@
-import type { ScannerEfficiencyResult } from './aggregates'
+import type { AttendanceEfficiencyResult, ScannerEfficiencyResult } from './aggregates'
+
+export const MIN_SCANNER_NICKNAME_FUZZY_LEN = 2
 
 export const normalizeScannerKey = (value: unknown): string =>
   String(value ?? '')
     .trim()
     .toLowerCase()
 
+/** 扫描员编码末段，如 ADL-DC-Serene → Serene */
+export function extractScannerTail(label: string): string {
+  const s = String(label ?? '').trim()
+  if (!s) return ''
+  const segs = s.split('-').map((p) => p.trim()).filter(Boolean)
+  return segs.length >= 2 ? segs[segs.length - 1]! : s
+}
+
 /**
- * 为扫描员列注册查找别名：整段、按空白/逗号等切分后的片段，以及「-」分层 ID 的末段
- *（如 ADL-DC-Abc 与考勤「昵称」Abc 对应；键比较时仍经 {@link normalizeScannerKey} 归一化）。
+ * 考勤「昵称」↔ 扫描件「扫描员」匹配得分；越高越优先，-1 表示不匹配。
+ * 规则：忽略大小写；全段或末段精确相等；或互为前缀（如 pan ↔ PanPan）。
  */
-const putAliases = (scannerLabel: string, put: (key: string) => void) => {
-  const s = String(scannerLabel ?? '').trim()
-  if (!s) return
+export function scoreScannerNicknameMatch(scannerLabel: string, nickname: string): number {
+  const nick = normalizeScannerKey(nickname)
+  if (!nick || nick.length < MIN_SCANNER_NICKNAME_FUZZY_LEN) return -1
 
-  const registerFragment = (fragment: string) => {
-    const t = fragment.trim()
-    if (!t) return
-    put(t)
-    const segs = t.split('-').map((p) => p.trim()).filter(Boolean)
-    if (segs.length >= 2) {
-      const last = segs[segs.length - 1]!
-      if (last.length >= 2 && last.toLowerCase() !== t.toLowerCase()) {
-        put(last)
-      }
-    }
+  const full = normalizeScannerKey(scannerLabel)
+  if (full && full === nick) return 1000 + nick.length
+
+  const tail = normalizeScannerKey(extractScannerTail(scannerLabel))
+  if (!tail) return -1
+  if (tail === nick) return 900 + nick.length
+  if (tail.startsWith(nick)) return 500 + nick.length
+  if (nick.startsWith(tail) && tail.length >= MIN_SCANNER_NICKNAME_FUZZY_LEN) {
+    return 400 + tail.length
   }
-
-  registerFragment(s)
-  s.split(/[\s,，/\\|、]+/)
-    .map((p) => p.trim())
-    .filter((p) => p.length >= 2 && p !== s)
-    .forEach(registerFragment)
+  return -1
 }
 
-export const buildSortingEfficiencyLookup = (scannerResult: ScannerEfficiencyResult | null): Map<string, number> => {
-  const map = new Map<string, number>()
-  if (!scannerResult?.scannerTotalRows?.length) return map
-  const putEff = (key: string, eff: number) => {
-    const k = normalizeScannerKey(key)
-    if (k && !map.has(k)) map.set(k, eff)
-  }
-  scannerResult.scannerTotalRows.forEach((row) => {
-    // 与「扫描员一级分拣效率汇总」口径一致，人员侧优先展示修正效率。
-    const eff = row.adjustedEfficiency
-    putAliases(row.scanner, (key) => putEff(key, eff))
-  })
-  return map
-}
-
-/** 一级分拣同源个人总扫描量；键规则与 {@link buildSortingEfficiencyLookup} 一致 */
-export const buildSortingScanCountLookup = (scannerResult: ScannerEfficiencyResult | null): Map<string, number> => {
-  const map = new Map<string, number>()
-  if (!scannerResult?.scannerTotalRows?.length) return map
-  const putCount = (key: string, n: number) => {
-    const k = normalizeScannerKey(key)
-    if (k && !map.has(k)) map.set(k, n)
-  }
-  scannerResult.scannerTotalRows.forEach((row) => {
-    const n = row.scanCount
-    putAliases(row.scanner, (key) => putCount(key, n))
-  })
-  return map
+export function scannerNicknameMatches(scannerLabel: string, nickname: string): boolean {
+  return scoreScannerNicknameMatch(scannerLabel, nickname) >= 0
 }
 
 export type PersonRowForSorting = {
@@ -69,70 +46,116 @@ export type PersonRowForSorting = {
   efficiencyMatchNames?: string[]
 }
 
-export const sortingEfficiencyForPerson = (
-  personRow: PersonRowForSorting,
-  lookup: Map<string, number>,
-): number | '' => {
-  if (!lookup.size) return ''
-  const tryKey = (raw: string): number | null => {
-    const n = normalizeScannerKey(raw)
-    if (n && lookup.has(n)) return Number(lookup.get(n)!.toFixed(2))
-    return null
-  }
-  const nameSet = new Set<string>()
-  ;[personRow.sorterName, personRow.sorterKey, ...(personRow.efficiencyMatchNames || [])].forEach((x) => {
-    if (x) nameSet.add(String(x).trim())
+function collectPersonMatchLabels(person: PersonRowForSorting): string[] {
+  const out = new Set<string>()
+  ;[person.sorterName, person.sorterKey, ...(person.efficiencyMatchNames ?? [])].forEach((x) => {
+    const t = String(x ?? '').trim()
+    if (t) out.add(t)
   })
-  for (const c of nameSet) {
-    if (!c) continue
-    const fromFull = tryKey(c)
-    if (fromFull != null) return fromFull
-    const parts = c
-      .split(/[\s,，/\\|、]+/)
-      .map((p) => p.trim())
-      .filter((p) => p.length >= 2)
-    for (const p of parts) {
-      const fromPart = tryKey(p)
-      if (fromPart != null) return fromPart
+  return Array.from(out)
+}
+
+function findBestScannerRowForPerson(
+  personRow: PersonRowForSorting,
+  scannerRows: ScannerEfficiencyResult['scannerTotalRows'],
+) {
+  const labels = collectPersonMatchLabels(personRow)
+  let best: (typeof scannerRows)[number] | null = null
+  let bestScore = -1
+  for (const row of scannerRows) {
+    for (const label of labels) {
+      const score = scoreScannerNicknameMatch(row.scanner, label)
+      if (score > bestScore) {
+        bestScore = score
+        best = row
+      }
     }
   }
-  return ''
+  return best
+}
+
+function findBestPersonRowForScanner(
+  scanner: string,
+  personRows: AttendanceEfficiencyResult['personRows'] | undefined,
+) {
+  if (!personRows?.length) return null
+  let best: (typeof personRows)[number] | null = null
+  let bestScore = -1
+  for (const person of personRows) {
+    for (const label of collectPersonMatchLabels({
+      sorterName: person.sorterName,
+      sorterKey: person.sorterKey,
+      efficiencyMatchNames: person.efficiencyMatchNames,
+    })) {
+      const score = scoreScannerNicknameMatch(scanner, label)
+      if (score > bestScore) {
+        bestScore = score
+        best = person
+      }
+    }
+  }
+  return best
+}
+
+export const sortingEfficiencyForPerson = (
+  personRow: PersonRowForSorting,
+  scannerResult: ScannerEfficiencyResult | null,
+): number | '' => {
+  const rows = scannerResult?.scannerTotalRows
+  if (!rows?.length) return ''
+  const match = findBestScannerRowForPerson(personRow, rows)
+  if (!match) return ''
+  return Number(match.adjustedEfficiency.toFixed(2))
 }
 
 export const sortingScanCountForPerson = (
   personRow: PersonRowForSorting,
-  lookup: Map<string, number>,
+  scannerResult: ScannerEfficiencyResult | null,
 ): number | '' => {
-  if (!lookup.size) return ''
-  const tryKey = (raw: string): number | null => {
-    const n = normalizeScannerKey(raw)
-    if (n && lookup.has(n)) return lookup.get(n)!
-    return null
-  }
-  const nameSet = new Set<string>()
-  ;[personRow.sorterName, personRow.sorterKey, ...(personRow.efficiencyMatchNames || [])].forEach((x) => {
-    if (x) nameSet.add(String(x).trim())
-  })
-  for (const c of nameSet) {
-    if (!c) continue
-    const fromFull = tryKey(c)
-    if (fromFull != null) return fromFull
-    const parts = c
-      .split(/[\s,，/\\|、]+/)
-      .map((p) => p.trim())
-      .filter((p) => p.length >= 2)
-    for (const p of parts) {
-      const fromPart = tryKey(p)
-      if (fromPart != null) return fromPart
-    }
-  }
-  return ''
+  const rows = scannerResult?.scannerTotalRows
+  if (!rows?.length) return ''
+  const match = findBestScannerRowForPerson(personRow, rows)
+  return match ? match.scanCount : ''
 }
 
 export const sortingAverageEfficiencyValue = (scannerResult: ScannerEfficiencyResult | null): number | '' => {
   const v = scannerResult?.summary?.totalEfficiency
   if (typeof v !== 'number' || !Number.isFinite(v)) return ''
   return Number(v.toFixed(2))
+}
+
+export type ScannerTotalEfficiencyRow = {
+  scanner: string
+  scanCount: number
+  totalHours: number | null
+  totalEfficiency: number | null
+}
+
+/** 分拣员总效率：个人扫描量 ÷ 考勤总工时（统计窗口内汇总） */
+export function buildScannerTotalEfficiencyRows(
+  scannerResult: ScannerEfficiencyResult | null,
+  personRows: AttendanceEfficiencyResult['personRows'] | undefined,
+): ScannerTotalEfficiencyRow[] {
+  if (!scannerResult?.scannerTotalRows?.length) return []
+  return scannerResult.scannerTotalRows
+    .map((row) => {
+      const person = findBestPersonRowForScanner(row.scanner, personRows)
+      const totalHours = person?.totalHours ?? null
+      const totalEfficiency =
+        totalHours != null && totalHours > 0 ? row.scanCount / totalHours : null
+      return {
+        scanner: row.scanner,
+        scanCount: row.scanCount,
+        totalHours,
+        totalEfficiency,
+      }
+    })
+    .sort((a, b) => {
+      const ae = a.totalEfficiency ?? -1
+      const be = b.totalEfficiency ?? -1
+      if (be !== ae) return be - ae
+      return b.scanCount - a.scanCount
+    })
 }
 
 /** 指定统计日的一级分拣效率（票/小时） */

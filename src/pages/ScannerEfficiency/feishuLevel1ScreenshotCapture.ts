@@ -6,9 +6,9 @@ export const SKIP_FEISHU_CAPTURE_ATTR = 'data-feishu-capture-ignore'
 
 type StyleSnapshot = { el: HTMLElement; maxHeight: string; overflow: string; overflowX: string; overflowY: string }
 
-/** 抓拍前临时展开 `.data-table--bounded`，完成后还原，避免纵向滚动裁剪。 */
+/** 抓拍前临时展开 bounded 表格滚动区，完成后还原，避免纵向滚动裁剪。 */
 function relaxBoundedTablesInSubtree(root: HTMLElement): () => void {
-  const nodes = root.querySelectorAll('.data-table--bounded')
+  const nodes = root.querySelectorAll('.data-table--bounded, .scanner-efficiency-antd-table--bounded .ant-table-body')
   const snaps: StyleSnapshot[] = []
   nodes.forEach((node) => {
     const el = node as HTMLElement

@@ -77,16 +77,11 @@ function dedupeAttendanceUploadRows(rows: Record<string, unknown>[]): Record<str
   return out
 }
 
-/**
- * 按工资结算系统同一流程计算考勤工资。
- * @param isSorting / @param isPublicHoliday 与工资页上传区两个勾选项一致（仓库效率默认均为 false）
- */
+/** 按工资结算系统同一流程计算考勤工资（日配置由导入后自动推断，工资页可在预览中逐行调整）。 */
 export async function computeAttendancePayrollFromFiles(
   files: File[],
   employees: EmployeeLite[],
   rateSettings: RateSettings,
-  isSorting: boolean,
-  isPublicHoliday: boolean,
 ): Promise<AttendancePayrollResult> {
   if (!files.length) {
     return { wageRows: [], totalWages: 0, wagesByDate: {}, validationErrors: [] }
@@ -100,8 +95,6 @@ export async function computeAttendancePayrollFromFiles(
   const uploadedData = transformSheetRowsToUploadedData(
     dedupeAttendanceUploadRows(jsonData),
     employees,
-    isSorting,
-    isPublicHoliday,
   )
   const { validationErrors, recordsToSubmit } = normalizeUploadedRowsForSubmit(uploadedData)
   const computed = buildWageRowsFromNormalized(recordsToSubmit, rateSettings)

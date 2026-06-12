@@ -5,6 +5,7 @@ import { RateSettingsModal } from './components/RateSettingsModal'
 import { ActualWorkerRatesModal } from './components/ActualWorkerRatesModal'
 import { UploadTabContent } from './components/UploadTabContent'
 import { WageRecordsPanel } from './components/WageRecordsPanel'
+import { ReconciliationTabContent } from './components/ReconciliationTabContent'
 import { EmployeesTabContent } from './components/EmployeesTabContent'
 
 export default function WageSalaryPage() {
@@ -15,8 +16,7 @@ export default function WageSalaryPage() {
       <WageSalaryPageHeader
         statistics={v.statistics}
         activeTab={v.activeTab}
-        onTabUpload={() => v.setActiveTab('upload')}
-        onTabEmployees={() => v.setActiveTab('employees')}
+        onTabChange={v.setActiveTab}
         onOpenRateSettings={() => v.setShowRateSettings(true)}
         onOpenActualWorkerRates={() => v.setShowActualWorkerRates(true)}
       />
@@ -42,19 +42,14 @@ export default function WageSalaryPage() {
       />
 
       {v.activeTab === 'upload' && (
-        <div className="space-y-6">
+        <div className="space-y-5">
           <UploadTabContent
-            isSorting={v.isSorting}
-            setIsSorting={v.setIsSorting}
-            isPublicHoliday={v.isPublicHoliday}
-            setIsPublicHoliday={v.setIsPublicHoliday}
             handleFileUpload={v.handleFileUpload}
             uploadedData={v.uploadedData}
             uploadedSourceFileName={v.uploadedSourceFileName}
             handleSubmitUpload={v.handleSubmitUpload}
             isUploading={v.isUploading}
             handleClearUploadedData={v.handleClearUploadedData}
-            rateSettings={v.rateSettings}
             roleMap={v.roleMap}
             roles={v.roles}
             handleUpdateUploadedRole={v.handleUpdateUploadedRole}
@@ -79,12 +74,10 @@ export default function WageSalaryPage() {
             handleExport={v.handleExport}
             billingVsActualSummary={v.billingVsActualSummary}
             onOpenActualWorkerRates={() => v.setShowActualWorkerRates(true)}
-            paginatedRecords={v.paginatedRecords}
             currentPage={v.currentPage}
             setCurrentPage={v.setCurrentPage}
             pageSize={v.pageSize}
             setPageSize={v.setPageSize}
-            totalPages={v.totalPages}
             rowEditingData={v.rowEditingData}
             setRowEditingData={v.setRowEditingData}
             formatDate={v.formatDate}
@@ -95,6 +88,18 @@ export default function WageSalaryPage() {
             handleDeleteRecord={v.handleDeleteRecord}
           />
         </div>
+      )}
+
+      {v.activeTab === 'reconciliation' && (
+        <ReconciliationTabContent
+          handleFinanceFileUpload={v.handleFinanceFileUpload}
+          financeLedgerRows={v.financeLedgerRows}
+          financeSourceFileName={v.financeSourceFileName}
+          handleClearFinanceData={v.handleClearFinanceData}
+          reconciliationResult={v.reconciliationResult}
+          wageRecordsCount={v.wageRecords.length}
+          onExportReconciliation={v.handleExportReconciliation}
+        />
       )}
 
       {v.activeTab === 'employees' && (

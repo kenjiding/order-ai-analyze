@@ -1,6 +1,8 @@
 import type { ReactNode } from 'react'
 import ScannerSummaryBarChart, { type ScannerSummaryChartRow } from '../ScannerSummaryBarChart'
-import { DataTable, SectionTitle } from './ui'
+import { buildScannerPersonSummaryAverageRow } from '../scannerSummaryTableFooter'
+import { ScannerEfficiencyAntdTable } from './ScannerEfficiencyAntdTable'
+import { SectionTitle } from './ui'
 import type { DataTableColumn, DataTableRow } from './ui'
 
 export type ScannerPersonSortingSummarySectionProps = {
@@ -18,7 +20,7 @@ export type ScannerPersonSortingSummarySectionProps = {
 }
 
 /**
- * 「一级分拣个人效率」-tab 内的「扫描员一级分拣效率汇总」：表格 + 修正效率柱状图。
+ * 「分拣员个人效率」-tab 内的「扫描员一级分拣效率汇总」：表格 + 修正效率柱状图。
  */
 export function ScannerPersonSortingSummarySection({
   columns,
@@ -30,7 +32,8 @@ export function ScannerPersonSortingSummarySection({
   sectionDescription = '按扫描员汇总总扫描量、推算有效工时、原始总效率与按样本可靠度回归后的修正效率（团队基准=一级分拣整体效率）。',
   sectionTitleRight,
 }: ScannerPersonSortingSummarySectionProps) {
-  const rows = scannerTotalRows as unknown as DataTableRow[]
+  const bodyRows = scannerTotalRows as unknown as DataTableRow[]
+  const averageRow = buildScannerPersonSummaryAverageRow(scannerTotalRows)
   return (
     <section className="space-y-4">
       <SectionTitle
@@ -41,7 +44,13 @@ export function ScannerPersonSortingSummarySection({
       />
       <div className="grid gap-4 xl:grid-cols-[minmax(0,1.05fr)_minmax(320px,0.95fr)] xl:items-start">
         <div className="min-w-0 px-4">
-          <DataTable boundedScroll={boundedScroll} columns={columns} rows={rows} emptyText={emptyTableText} />
+          <ScannerEfficiencyAntdTable
+            boundedScroll={boundedScroll}
+            columns={columns}
+            rows={bodyRows}
+            averageRow={averageRow}
+            emptyText={emptyTableText}
+          />
         </div>
         <div className="admin-panel min-w-0 overflow-hidden p-4 sm:p-5">
           <ScannerSummaryBarChart rows={scannerTotalRows} />

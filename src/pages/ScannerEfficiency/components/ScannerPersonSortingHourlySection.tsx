@@ -17,7 +17,7 @@ export type ScannerPersonSortingHourlySectionProps = {
 }
 
 /**
- * 「一级分拣个人效率」-tab 内的「扫描员按小时段」：可折叠的按日小时透视表。
+ * 「分拣员个人效率」-tab 内的「扫描员按小时段」：可折叠的按日小时透视表。
  */
 export function ScannerPersonSortingHourlySection({
   expanded,

@@ -9,8 +9,6 @@ import {
   type ScannerEfficiencyResult,
 } from './aggregates'
 import {
-  buildSortingEfficiencyLookup,
-  buildSortingScanCountLookup,
   sortingAverageEfficiencyValue,
   sortingEfficiencyForPerson,
   sortingScanCountForPerson,
@@ -126,9 +124,6 @@ export function buildExportWorkbook({
     )
 
     if (attendanceResult) {
-      const sortingLookup = buildSortingEfficiencyLookup(scannerResult)
-      const scanCountLookup = buildSortingScanCountLookup(scannerResult)
-
       const costByDate = attendanceDailyCostPerTicket
       const laborByDate = attendanceDailyTotalLaborCost
       type AttendanceMatchExcelRow = {
@@ -231,7 +226,7 @@ export function buildExportWorkbook({
         workbook,
         XLSX.utils.json_to_sheet(
           attendanceResult.personRows.map((row) => {
-            const sortingScan = sortingScanCountForPerson(row, scanCountLookup)
+            const sortingScan = sortingScanCountForPerson(row, scannerResult)
             const hrs = row.totalHours
             const onsiteSorting =
               sortingScan !== '' && Number.isFinite(hrs) && hrs > 0
@@ -243,7 +238,7 @@ export function buildExportWorkbook({
               扫描量: sortingScan === '' ? '' : sortingScan,
               在岗效率_票每小时: onsiteSorting === '' ? '' : onsiteSorting,
               活跃天数: row.activeDays,
-              一级分拣效率: sortingEfficiencyForPerson(row, sortingLookup),
+              一级分拣效率: sortingEfficiencyForPerson(row, scannerResult),
             }
           }),
         ),
@@ -311,7 +306,7 @@ export function buildExportWorkbook({
   } else {
     if (scannerResult) {
       summaryRows.push({
-        导出范围: '一级分拣个人效率',
+        导出范围: '分拣员个人效率',
         统计模式: '到件(含扫描员)分拣效率',
         总扫描量: scannerResult.summary.totalScanCount,
         一级分拣有效工时_小时: Number(scannerResult.summary.totalEffectiveHours.toFixed(4)),
@@ -325,7 +320,7 @@ export function buildExportWorkbook({
       })
     } else {
       summaryRows.push({
-        导出范围: '一级分拣个人效率',
+        导出范围: '分拣员个人效率',
         说明: '当前无一级分拣计算结果。请到件文件包含可识别的「扫描时间 / 运单号 / 扫描员」列后重试。',
         总货量_到件: scanAggregate.summary.totalVolume,
         统计天数_到件: scanAggregate.summary.totalDays,

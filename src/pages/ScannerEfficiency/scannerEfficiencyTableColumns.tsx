@@ -1,9 +1,15 @@
 import { useEffect, useRef, useState } from 'react'
 import { sortingEfficiencyForPerson } from './sortingLookup'
+import type { ScannerEfficiencyResult } from './aggregates'
 import type { DataTableColumn, DataTableRow } from './components/ui'
 import { formatCainiaoSharePercent } from './cainiaoWaybill'
 import { formatInteger, formatNumber } from './formatAndParse'
-import { isScannerAdjustedEfficiencyLow } from './scannerEfficiencyThresholds'
+import {
+  isScannerAdjustedEfficiencyLow,
+  isScannerTotalEfficiencyLow,
+  SCANNER_EFFICIENCY_TABLE_LOW_CLASS,
+  SCANNER_EFFICIENCY_TABLE_NORMAL_CLASS,
+} from './scannerEfficiencyThresholds'
 
 function DailyTotalHoursCell({
   dateKey,
@@ -368,7 +374,9 @@ export function buildAttendanceMatchColumns(options?: {
   ]
 }
 
-export function buildAttendancePersonColumns(personSortingLookup: Map<string, number>): DataTableColumn[] {
+export function buildAttendancePersonColumns(
+  scannerResult: ScannerEfficiencyResult | null,
+): DataTableColumn[] {
   return [
     { key: 'sorterName', title: '人员' },
     { key: 'totalHours', title: '总工时(小时)', render: (row: DataTableRow) => formatNumber(Number(row.totalHours), 2) },
@@ -397,7 +405,7 @@ export function buildAttendancePersonColumns(personSortingLookup: Map<string, nu
             sorterKey: String(row.sorterKey ?? ''),
             efficiencyMatchNames: row.efficiencyMatchNames as string[] | undefined,
           },
-          personSortingLookup,
+          scannerResult,
         )
         return v === '' ? '—' : formatNumber(v, 2)
       },
@@ -423,18 +431,60 @@ export function buildScannerDailyColumns(): DataTableColumn[] {
   ]
 }
 
+export function buildScannerTotalEfficiencyColumns(): DataTableColumn[] {
+  return [
+    { key: 'scanner', title: '分拣员' },
+    {
+      key: 'scanCount',
+      title: '扫描量',
+      render: (row: DataTableRow) =>
+        row.isTableAverageRow
+          ? formatNumber(Number(row.scanCount), 2)
+          : formatInteger(Number(row.scanCount)),
+    },
+    {
+      key: 'totalHours',
+      title: '总工时(小时)',
+      render: (row: DataTableRow) => {
+        if (row.totalHours == null) return '—'
+        return formatNumber(Number(row.totalHours), 2)
+      },
+    },
+    {
+      key: 'totalEfficiency',
+      title: '总效率(票/小时)',
+      render: (row: DataTableRow) => {
+        if (row.totalEfficiency == null) return '—'
+        const v = Number(row.totalEfficiency)
+        const low = !row.isTableAverageRow && isScannerTotalEfficiencyLow(v)
+        return (
+          <span className={low ? SCANNER_EFFICIENCY_TABLE_LOW_CLASS : SCANNER_EFFICIENCY_TABLE_NORMAL_CLASS}>
+            {formatNumber(v, 2)}
+          </span>
+        )
+      },
+    },
+  ]
+}
+
 export function buildScannerPersonColumns(): DataTableColumn[] {
   return [
     { key: 'scanner', title: '扫描员' },
     {
       key: 'scanCount',
       title: '总扫描量',
-      render: (row: DataTableRow) => formatInteger(Number(row.scanCount)),
+      render: (row: DataTableRow) =>
+        row.isTableAverageRow
+          ? formatNumber(Number(row.scanCount), 2)
+          : formatInteger(Number(row.scanCount)),
     },
     {
       key: 'activeDays',
       title: '活跃天数',
-      render: (row: DataTableRow) => formatInteger(Number(row.activeDays)),
+      render: (row: DataTableRow) =>
+        row.isTableAverageRow
+          ? formatNumber(Number(row.activeDays), 2)
+          : formatInteger(Number(row.activeDays)),
     },
     {
       key: 'effectiveHours',
@@ -450,14 +500,11 @@ export function buildScannerPersonColumns(): DataTableColumn[] {
       key: 'adjustedEfficiency',
       title: '修正效率(票/小时)',
       render: (row: DataTableRow) => {
+        if (row.adjustedEfficiency == null && row.isTableAverageRow) return '—'
         const v = Number(row.adjustedEfficiency)
-        const low = isScannerAdjustedEfficiencyLow(v)
+        const low = !row.isTableAverageRow && isScannerAdjustedEfficiencyLow(v)
         return (
-          <span
-            className={
-              low ? 'font-semibold tabular-nums text-red-600' : 'tabular-nums text-slate-900'
-            }
-          >
+          <span className={low ? SCANNER_EFFICIENCY_TABLE_LOW_CLASS : SCANNER_EFFICIENCY_TABLE_NORMAL_CLASS}>
             {formatNumber(v, 2)}
           </span>
         )

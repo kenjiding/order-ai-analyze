@@ -66,6 +66,10 @@ export const ALLOCATION_DRIVER_CODE_COLUMNS = [
 /** @deprecated 使用 ALLOCATION_DRIVER_CODE_COLUMNS */
 export const ALLOCATION_DRIVER_NO_COLUMNS = ALLOCATION_DRIVER_CODE_COLUMNS
 
+/** 效率明细图表「不开仓」判定：分拣人数或货量不超过下列上限（满足任一即不开仓） */
+export const EFFICIENCY_CHART_NON_OPEN_MAX_SORTERS = 2
+export const EFFICIENCY_CHART_NON_OPEN_MAX_VOLUME = 500
+
 export const DEFAULT_SETTINGS = {
   openDayThreshold: 2,
   breakCapMinutes: 10,

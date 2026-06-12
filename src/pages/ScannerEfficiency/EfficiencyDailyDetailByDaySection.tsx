@@ -1,7 +1,9 @@
 import { useMemo } from 'react'
 import DailyEfficiencyComboChart, {
   type DailyEfficiencyBubbleDatum,
+  EFFICIENCY_CHART_OPEN_DAY_FILTER_TOOLTIP,
   type EfficiencyDetailDimension,
+  isEfficiencyChartNonOpenDay,
 } from './DailyEfficiencyBubbleChart'
 import type { AttendanceDailyMatchRow } from './aggregates'
 import { DataTable, SectionTitle } from './components/ui'
@@ -18,6 +20,8 @@ export type EfficiencyDailyDetailByDaySectionProps = {
   attendanceWeeklyAsTable: DataTableRow[]
   attendanceDayEfficiencyBubbleData: DailyEfficiencyBubbleDatum[]
   attendanceDailyRows: AttendanceDailyMatchRow[]
+  chartOpenDaysOnly: boolean
+  onChartOpenDaysOnlyChange: (next: boolean) => void
 }
 
 const DIMENSION_OPTIONS: { key: EfficiencyDetailDimension; label: string }[] = [
@@ -62,6 +66,41 @@ function DimensionToggle({
   )
 }
 
+function OpenDayChartToggle({
+  checked,
+  onChange,
+}: {
+  checked: boolean
+  onChange: (next: boolean) => void
+}) {
+  return (
+    <div
+      className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs font-semibold text-slate-700"
+      title={EFFICIENCY_CHART_OPEN_DAY_FILTER_TOOLTIP}
+    >
+      <span>开仓</span>
+      <button
+        type="button"
+        role="switch"
+        aria-checked={checked}
+        aria-label={EFFICIENCY_CHART_OPEN_DAY_FILTER_TOOLTIP}
+        className={[
+          'relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition',
+          checked ? 'bg-blue-600' : 'bg-slate-300',
+        ].join(' ')}
+        onClick={() => onChange(!checked)}
+      >
+        <span
+          className={[
+            'inline-block h-4 w-4 rounded-full bg-white shadow transition',
+            checked ? 'translate-x-[18px]' : 'translate-x-0.5',
+          ].join(' ')}
+        />
+      </button>
+    </div>
+  )
+}
+
 function EfficiencyDetailDataTable({
   dimension,
   expandedWeekKeys,
@@ -101,11 +140,18 @@ export function EfficiencyDailyDetailByDaySection({
   attendanceWeeklyAsTable,
   attendanceDayEfficiencyBubbleData,
   attendanceDailyRows,
+  chartOpenDaysOnly,
+  onChartOpenDaysOnlyChange,
 }: EfficiencyDailyDetailByDaySectionProps) {
   const tableRows = useMemo(
     () => (dimension === 'week' ? attendanceWeeklyAsTable : attendanceDailyAsTable),
     [dimension, attendanceWeeklyAsTable, attendanceDailyAsTable],
   )
+
+  const chartBubbleData = useMemo(() => {
+    if (!chartOpenDaysOnly) return attendanceDayEfficiencyBubbleData
+    return attendanceDayEfficiencyBubbleData.filter((row) => !isEfficiencyChartNonOpenDay(row))
+  }, [attendanceDayEfficiencyBubbleData, chartOpenDaysOnly])
 
   const useStackedLayout = dimension === 'week' || attendanceDailyRows.length > 7
 
@@ -147,12 +193,15 @@ export function EfficiencyDailyDetailByDaySection({
           title="效率明细/天"
           description={description}
         />
-        <DimensionToggle value={dimension} onChange={onDimensionChange} />
+        <div className="flex flex-wrap items-center gap-2">
+          <OpenDayChartToggle checked={chartOpenDaysOnly} onChange={onChartOpenDaysOnlyChange} />
+          <DimensionToggle value={dimension} onChange={onDimensionChange} />
+        </div>
       </div>
       <div className={useStackedLayout ? 'grid gap-4' : 'grid gap-4 xl:grid-cols-[minmax(0,1.05fr)_minmax(320px,0.95fr)] xl:items-start'}>
         <div className={`admin-panel min-w-0 overflow-hidden p-4 sm:p-5 ${useStackedLayout ? '' : 'xl:order-2'}`}>
           <DailyEfficiencyComboChart
-            data={attendanceDayEfficiencyBubbleData}
+            data={chartBubbleData}
             dimension={dimension}
             attendanceDailyRows={attendanceDailyRows}
           />

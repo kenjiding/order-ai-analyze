@@ -1,9 +1,10 @@
 import Tab from '@mui/material/Tab'
 import Tabs from '@mui/material/Tabs'
+import { useMemo } from 'react'
 import type { ScannerLevel1FeishuPush } from '../useScannerLevel1FeishuPush'
 import { TAB_KEYS, type TabKey } from '../constants'
 import DailyTrendLineChart from '../DailyTrendLineChart'
-import DailyEfficiencyComboChart from '../DailyEfficiencyBubbleChart'
+import DailyEfficiencyComboChart, { isEfficiencyChartNonOpenDay } from '../DailyEfficiencyBubbleChart'
 import { EfficiencyDailyDetailByDaySection } from '../EfficiencyDailyDetailByDaySection'
 import { formatInteger } from '../formatAndParse'
 import WeeklyReportPanel from '../WeeklyReportPanel'
@@ -11,6 +12,7 @@ import { FrontDeskSaturationSection } from './FrontDeskSaturationSection'
 import ScannerEfficiencyPushSection from './ScannerEfficiencyPushSection'
 import { ScannerPersonSortingHourlySection } from './ScannerPersonSortingHourlySection'
 import { ScannerPersonSortingSummarySection } from './ScannerPersonSortingSummarySection'
+import { ScannerPersonTotalEfficiencySection } from './ScannerPersonTotalEfficiencySection'
 import type { ScannerEfficiencyViewModel } from '../useScannerEfficiencyPage'
 import { DataTable, Metric, SectionTitle } from './ui'
 
@@ -49,6 +51,8 @@ export default function ScannerEfficiencyBody({ vm, level1Push }: Props) {
     attendancePersonColumns,
     scannerDailyColumns,
     scannerPersonColumns,
+    scannerTotalEfficiencyColumns,
+    scannerTotalEfficiencyRows,
     hasScanData,
     dailyRowsAsTable,
     dailyVolumeTrendPoints,
@@ -66,9 +70,16 @@ export default function ScannerEfficiencyBody({ vm, level1Push }: Props) {
     dailyLaborCostByDate,
     efficiencyDetailDimension,
     handleEfficiencyDetailDimensionChange,
+    efficiencyChartOpenDaysOnly,
+    handleEfficiencyChartOpenDaysOnlyChange,
     efficiencyDetailExpandedWeekKeys,
     handleEfficiencyDetailWeekRowClick,
   } = vm
+
+  const chartBubbleData = useMemo(() => {
+    if (!efficiencyChartOpenDaysOnly) return attendanceDayEfficiencyBubbleData
+    return attendanceDayEfficiencyBubbleData.filter((row) => !isEfficiencyChartNonOpenDay(row))
+  }, [attendanceDayEfficiencyBubbleData, efficiencyChartOpenDaysOnly])
 
   return (
     <>
@@ -123,7 +134,7 @@ export default function ScannerEfficiencyBody({ vm, level1Push }: Props) {
               }}
             >
               <Tab label="开仓效率 / 总体效率" value={TAB_KEYS.WAREHOUSE} />
-              <Tab label="一级分拣个人效率" value={TAB_KEYS.SCANNER} />
+              <Tab label="分拣员个人效率" value={TAB_KEYS.SCANNER} />
               <Tab label="前台饱和度分析" value={TAB_KEYS.FRONT_DESK} />
               <Tab label="周报生成器" value={TAB_KEYS.WEEKLY} />
               <Tab label="推送" value={TAB_KEYS.PUSH} />
@@ -194,13 +205,15 @@ export default function ScannerEfficiencyBody({ vm, level1Push }: Props) {
                     attendanceWeeklyAsTable={attendanceWeeklyAsTable}
                     attendanceDayEfficiencyBubbleData={attendanceDayEfficiencyBubbleData}
                     attendanceDailyRows={attendanceResult.dailyRows}
+                    chartOpenDaysOnly={efficiencyChartOpenDaysOnly}
+                    onChartOpenDaysOnlyChange={handleEfficiencyChartOpenDaysOnlyChange}
                   />
 
                   <section className="space-y-4">
                     <SectionTitle
                       eyebrow="Person Hours"
                       title="人员工时汇总"
-                      description="按人员汇总统计窗口内（含无到件补录日）的考勤总工时、活跃与开仓参与天数。扫描量为一级分拣同源个人总票数（与「扫描员一级分拣效率汇总」一致）；在岗效率为扫描量÷总工时(小时)。扫描量与一级分拣效率均按「扫描员」与人员/昵称等名称匹配（忽略大小写）；扫描员为多级编码（如 ADL-DC-Abc）时，末段与考勤「昵称」（如 Abc）对应。无匹配时显示为 —。"
+                      description="按人员汇总统计窗口内（含无到件补录日）的考勤总工时、活跃与开仓参与天数。扫描量为一级分拣同源个人总票数（与「扫描员一级分拣效率汇总」一致）；在岗效率为扫描量÷总工时(小时)。扫描员与考勤「昵称」匹配：忽略大小写；多级编码（如 ADL-DC-Serene）取末段与昵称精确或前缀对应（如 Serene、pan↔PanPan）。无匹配时显示为 —。"
                     />
                     <div className="overflow-x-auto px-4">
                       <DataTable
@@ -246,6 +259,23 @@ export default function ScannerEfficiencyBody({ vm, level1Push }: Props) {
                         scannerTotalRows={scannerResult.scannerTotalRows}
                       />
                     </div>
+
+                    {attendanceResult ? (
+                      <div className="overflow-visible rounded-lg pb-2">
+                        <ScannerPersonTotalEfficiencySection
+                          columns={scannerTotalEfficiencyColumns}
+                          rows={scannerTotalEfficiencyRows}
+                        />
+                      </div>
+                    ) : (
+                      <section className="rounded-lg border border-amber-200 bg-amber-50 text-amber-900 shadow-[0_18px_50px_rgba(15,23,42,0.07)]">
+                        <SectionTitle
+                          eyebrow="Sorter Total Efficiency"
+                          title="分拣员总效率未启用"
+                          description="需同时上传考勤文件，才能计算扫描量 ÷ 总工时的分拣员总效率。"
+                        />
+                      </section>
+                    )}
 
                     <div className="overflow-visible rounded-lg pb-2">
                       <ScannerPersonSortingHourlySection
@@ -362,6 +392,8 @@ export default function ScannerEfficiencyBody({ vm, level1Push }: Props) {
                 attendanceWeeklyAsTable={attendanceWeeklyAsTable}
                 attendanceDayEfficiencyBubbleData={attendanceDayEfficiencyBubbleData}
                 attendanceDailyRows={attendanceResult.dailyRows}
+                chartOpenDaysOnly={efficiencyChartOpenDaysOnly}
+                onChartOpenDaysOnlyChange={handleEfficiencyChartOpenDaysOnlyChange}
               />
             </div>
           )}
@@ -380,7 +412,7 @@ export default function ScannerEfficiencyBody({ vm, level1Push }: Props) {
                 />
                 <div className="admin-panel overflow-hidden p-4 sm:p-5">
                   <DailyEfficiencyComboChart
-                    data={attendanceDayEfficiencyBubbleData}
+                    data={chartBubbleData}
                     dimension={efficiencyDetailDimension}
                     attendanceDailyRows={attendanceResult.dailyRows}
                   />

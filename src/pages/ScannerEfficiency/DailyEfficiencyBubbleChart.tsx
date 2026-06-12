@@ -9,8 +9,25 @@ import {
 import { formatCainiaoSharePercent } from './cainiaoWaybill'
 import { formatInteger } from './formatAndParse'
 import type { AttendanceDailyMatchRow } from './aggregates'
+import {
+  EFFICIENCY_CHART_NON_OPEN_MAX_SORTERS,
+  EFFICIENCY_CHART_NON_OPEN_MAX_VOLUME,
+} from './constants'
 
 export type EfficiencyDetailDimension = 'day' | 'week'
+
+/** 效率明细组合图：不开仓 = 分拣人数 ≤ 阈值 或 货量 ≤ 阈值 */
+export function isEfficiencyChartNonOpenDay(row: {
+  sorterCount: number
+  volume: number
+}): boolean {
+  return (
+    row.sorterCount <= EFFICIENCY_CHART_NON_OPEN_MAX_SORTERS ||
+    row.volume <= EFFICIENCY_CHART_NON_OPEN_MAX_VOLUME
+  )
+}
+
+export const EFFICIENCY_CHART_OPEN_DAY_FILTER_TOOLTIP = `开启后图表仅展示开仓日（隐藏分拣人数 ≤ ${EFFICIENCY_CHART_NON_OPEN_MAX_SORTERS} 或货量 ≤ ${EFFICIENCY_CHART_NON_OPEN_MAX_VOLUME} 的柱子）；总货量、总体效率仍按全量日期计算。`
 
 export type DailyEfficiencyBubbleDatum = {
   date: string

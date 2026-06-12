@@ -1,6 +1,11 @@
 import { Chart } from '@antv/g2'
 import { useEffect, useMemo, useRef } from 'react'
-import { isScannerAdjustedEfficiencyLow } from './scannerEfficiencyThresholds'
+import {
+  isScannerAdjustedEfficiencyLow,
+  SCANNER_ADJUSTED_EFFICIENCY_RED_LT,
+  SCANNER_EFFICIENCY_CHART_FILL_LOW,
+  SCANNER_EFFICIENCY_CHART_FILL_NORMAL,
+} from './scannerEfficiencyThresholds'
 
 export type ScannerSummaryChartRow = {
   scanner: string
@@ -17,8 +22,8 @@ type Props = {
   className?: string
 }
 
-const FILL_OK = '#2f8f87'
-const FILL_LOW = '#dc2626'
+const FILL_NORMAL = SCANNER_EFFICIENCY_CHART_FILL_NORMAL
+const FILL_LOW = SCANNER_EFFICIENCY_CHART_FILL_LOW
 
 export default function ScannerSummaryBarChart({ rows, className }: Props) {
   const containerRef = useRef<HTMLDivElement>(null)
@@ -63,11 +68,6 @@ export default function ScannerSummaryBarChart({ rows, className }: Props) {
       gridStroke: '#e2e8f0',
     })
 
-    chart.scale('color', {
-      domain: ['ok', 'low'],
-      range: [FILL_OK, FILL_LOW],
-    })
-
     chart.interaction('tooltip', true)
 
     chart
@@ -76,8 +76,8 @@ export default function ScannerSummaryBarChart({ rows, className }: Props) {
       .data(data)
       .encode('x', 'scanner')
       .encode('y', 'adjustedEfficiency')
-      .encode('color', (d: (typeof data)[number]) =>
-        isScannerAdjustedEfficiencyLow(d.adjustedEfficiency) ? 'low' : 'ok',
+      .style('fill', (d: (typeof data)[number]) =>
+        isScannerAdjustedEfficiencyLow(d.adjustedEfficiency) ? FILL_LOW : FILL_NORMAL,
       )
       .style('fillOpacity', 0.88)
 
@@ -106,12 +106,12 @@ export default function ScannerSummaryBarChart({ rows, className }: Props) {
       <div className="mb-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs font-medium text-slate-600">
         <span className="font-medium text-slate-700">各扫描员修正效率（票/小时）</span>
         <span className="inline-flex items-center gap-2">
-          <span className="h-2.5 w-6 rounded-full" style={{ backgroundColor: FILL_OK }} />
-          ≥460
+          <span className="h-2.5 w-6 rounded-full" style={{ backgroundColor: FILL_NORMAL }} />
+          ≥{SCANNER_ADJUSTED_EFFICIENCY_RED_LT}
         </span>
         <span className="inline-flex items-center gap-2">
           <span className="h-2.5 w-6 rounded-full" style={{ backgroundColor: FILL_LOW }} />
-          &lt;460
+          &lt;{SCANNER_ADJUSTED_EFFICIENCY_RED_LT}
         </span>
       </div>
       <div

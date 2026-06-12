@@ -111,6 +111,7 @@ function resolveRowClassName(row: DataTableRow, options?: { clickable?: boolean;
   if (row.isWeekGroupHeader) classes.push('bg-slate-100/90')
   else if (row.isWeekGroupFooter) classes.push('bg-slate-50/95')
   else if (row.isAttendanceMatchFooter) classes.push('bg-slate-100/80')
+  else if (row.isTableAverageRow) classes.push('bg-slate-100/80 font-medium')
   else if (options?.child) classes.push('bg-white')
   if (options?.clickable) classes.push('cursor-pointer hover:bg-slate-100/70')
   return classes.join(' ')
