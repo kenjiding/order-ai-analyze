@@ -13,6 +13,7 @@ import {
 } from '../openaiOrderAnalyze'
 import type { TrackFacts } from './types'
 import { classifyOrderFromFacts } from './decisionRules'
+import { runWithWarehouseProfileContextAsync, type WarehouseConfigDto } from './warehouseProfiles'
 
 export type OrderAnalyzeAiProvider = 'openai' | 'deepseek'
 
@@ -161,7 +162,9 @@ function finalizeResultWithFacts(result: OrderAnalyzeResult, facts: TrackFacts |
 export async function runOrderAnalyzePipelineLegacy(input: {
   targets: AnalyzeTarget[]
   aiProvider: OrderAnalyzeAiProvider
+  warehouseConfig?: WarehouseConfigDto | null
 }): Promise<{ results: OrderAnalyzeResult[]; tokenUsage: TokenUsage }> {
+  return runWithWarehouseProfileContextAsync(input.warehouseConfig, async () => {
   const { targets } = input
   const useDeepSeek = input.aiProvider === 'deepseek'
 
@@ -274,13 +277,16 @@ export async function runOrderAnalyzePipelineLegacy(input: {
   }))
 
   return { results: normalizedResults, tokenUsage }
+  })
 }
 
 export async function runOrderAnalyzePipeline(input: {
   targets: AnalyzeTarget[]
   aiProvider: OrderAnalyzeAiProvider
   enableAiExplain?: boolean
+  warehouseConfig?: WarehouseConfigDto | null
 }): Promise<{ results: OrderAnalyzeResult[]; tokenUsage: TokenUsage }> {
+  return runWithWarehouseProfileContextAsync(input.warehouseConfig, async () => {
   const { targets } = input
   const useDeepSeek = input.aiProvider === 'deepseek'
   const targetFactsMap = new Map(
@@ -356,4 +362,5 @@ export async function runOrderAnalyzePipeline(input: {
     finalizeResultWithFacts(result, targetFactsMap.get(result.orderNo))
   )
   return { results: normalizedResults, tokenUsage }
+  })
 }

@@ -1,5 +1,6 @@
 import { Router, type Request, type Response } from 'express'
 import { runOrderAnalyzePipeline } from '../orderAnalyze/pipeline'
+import { parseWarehouseConfigInput } from '../orderAnalyze/warehouseProfiles'
 import type { AnalyzeTarget } from '../openaiOrderAnalyze'
 import {
   queryClosureVendorOptions,
@@ -196,6 +197,7 @@ orderExceptionRouter.post('/analyze', async (req: Request, res: Response) => {
       orderNos?: string[]
       aiProvider?: string
       enableAiExplain?: boolean
+      warehouseConfig?: unknown
     }>(req)
     const token = readImileToken(req, body.imileToken)
     const orderNos = Array.isArray(body.orderNos)
@@ -237,7 +239,13 @@ orderExceptionRouter.post('/analyze', async (req: Request, res: Response) => {
     const enableAiExplain = body.enableAiExplain === true
 
     const aiStartedAt = performance.now()
-    const { results, tokenUsage } = await runOrderAnalyzePipeline({ targets, aiProvider, enableAiExplain })
+    const warehouseConfig = parseWarehouseConfigInput(body.warehouseConfig)
+    const { results, tokenUsage } = await runOrderAnalyzePipeline({
+      targets,
+      aiProvider,
+      enableAiExplain,
+      warehouseConfig,
+    })
     const aiMs = Math.round(performance.now() - aiStartedAt)
 
     res.json({
