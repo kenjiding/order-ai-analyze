@@ -20,9 +20,20 @@ export const scannerHourSlotLabel = (hour: number): string => {
 }
 
 export type ParsedScanRow = {
+  /** 扫描时间（Excel）/ scanDate（API） */
   scanTime: Date
+  /** 运单号 / waybillNo */
   trackingNumber: string
+  /** 扫描员 / operator；System 等账号置空，仍计入货量 */
   scanner: string
+  routeCode: string
+  consigneeZipCode: string
+  deliveryStation: string
+  scanStation: string
+  clientCode: string
+  clientName: string
+  /** 收件人城市 / city */
+  consigneeCity: string
   sortingScanTime: Date | null
   sortingTrackingNumber: string
   sortingScanner: string

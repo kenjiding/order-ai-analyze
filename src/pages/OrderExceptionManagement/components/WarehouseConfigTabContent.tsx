@@ -1,9 +1,6 @@
 import type { DataNode } from 'antd/es/tree'
 import {
-  Alert,
   Button,
-  Card,
-  Collapse,
   Empty,
   Flex,
   Form,
@@ -11,22 +8,55 @@ import {
   InputNumber,
   Popconfirm,
   Select,
-  Space,
   Tree,
-  Typography,
   Upload,
 } from 'antd'
 import type { UploadProps } from 'antd'
-import { Download, Plus, RotateCcw, Save, Trash2, Upload as UploadIcon } from 'lucide-react'
+import {
+  AlertCircle,
+  CheckCircle2,
+  ChevronDown,
+  Download,
+  Globe2,
+  MapPin,
+  Plus,
+  RotateCcw,
+  Save,
+  Search,
+  Settings2,
+  Trash2,
+  Upload as UploadIcon,
+  Warehouse,
+} from 'lucide-react'
 import { useCallback, useEffect, useMemo, useState, type Key } from 'react'
 import { showToast } from '../../../utils/toast'
+import { PERMISSION_KEYS, usePermission } from '../../../hooks/usePermission'
 import type { WarehouseCityId, WarehouseConfigDto, WarehouseProfileDto } from '../warehouseConfig/types'
 import { WAREHOUSE_CITY_OPTIONS } from '../warehouseConfig/types'
-import {
-  validateWarehouseConfig,
-} from '../warehouseConfig/validateWarehouseConfig'
+import { validateWarehouseConfig } from '../warehouseConfig/validateWarehouseConfig'
 
-const { Text } = Typography
+function ConfigStat({
+  label,
+  value,
+  tone = 'default',
+}: {
+  label: string
+  value: number | string
+  tone?: 'default' | 'accent' | 'warn'
+}) {
+  const toneClass =
+    tone === 'accent'
+      ? 'warehouse-config-stat--accent'
+      : tone === 'warn'
+        ? 'warehouse-config-stat--warn'
+        : ''
+  return (
+    <div className={['warehouse-config-stat min-w-[88px]', toneClass].filter(Boolean).join(' ')}>
+      <div className="text-[10px] font-semibold uppercase tracking-[0.14em] opacity-70">{label}</div>
+      <div className="mt-0.5 text-base font-semibold tabular-nums leading-tight">{value}</div>
+    </div>
+  )
+}
 
 function WarehouseTreeLeafTitle({
   profile,
@@ -40,9 +70,9 @@ function WarehouseTreeLeafTitle({
       <Flex align="center" gap="small" className="min-w-0 flex-1">
         <span className="truncate">{profile.name}</span>
         {profile.lossTimeoutDays ? (
-          <Typography.Text type="warning" className="shrink-0 text-xs">
+          <span className="shrink-0 rounded bg-amber-50 px-1.5 py-0.5 text-[10px] font-medium text-amber-700 ring-1 ring-amber-200/80">
             {profile.lossTimeoutDays}天
-          </Typography.Text>
+          </span>
         ) : null}
       </Flex>
       <span className="warehouse-delete-btn shrink-0 opacity-0 transition-opacity duration-150">
@@ -56,7 +86,6 @@ function WarehouseTreeLeafTitle({
         >
           <Button
             type="text"
-            size="small"
             danger
             icon={<Trash2 className="h-3.5 w-3.5" />}
             aria-label={`删除 ${profile.name}`}
@@ -90,17 +119,27 @@ function slugifyHubId(name: string): string {
 
 function TagListEditor({
   label,
+  hint,
   values,
   onChange,
   placeholder,
 }: {
   label: string
+  hint?: string
   values: string[]
   onChange: (next: string[]) => void
   placeholder?: string
 }) {
   return (
-    <Form.Item label={label} className="mb-0">
+    <Form.Item
+      label={
+        <span className="text-xs font-semibold uppercase tracking-[0.06em] text-slate-500">
+          {label}
+        </span>
+      }
+      extra={hint ? <span className="text-xs text-slate-500">{hint}</span> : undefined}
+      className="mb-0"
+    >
       <Select
         mode="tags"
         value={values}
@@ -114,57 +153,99 @@ function TagListEditor({
   )
 }
 
-function GlobalRulesPanel({
+function GlobalRulesSection({
   global,
+  expanded,
+  onToggle,
   onChange,
 }: {
   global: WarehouseConfigDto['global']
+  expanded: boolean
+  onToggle: () => void
   onChange: (next: WarehouseConfigDto['global']) => void
 }) {
   return (
-    <Collapse
-      className="admin-panel overflow-hidden bg-white [&_.ant-collapse-header]:items-center!"
-      items={[
-        {
-          key: 'global',
-          label: (
-            <span>
-              全局规则{' '}
-              <Text type="secondary" className="text-xs font-normal">
-                （默认超时、全局操作员与正则）
-              </Text>
-            </span>
-          ),
-          children: (
-            <Space direction="vertical" size="middle" className="w-full">
-              <Flex gap="middle" wrap="wrap">
-                <Form.Item label="默认库内/库外丢失超时（天）" className="mb-0 min-w-[200px] flex-1">
-                  <InputNumber
-                    min={1}
-                    className="w-full"
-                    value={global.defaultLossTimeoutDays}
-                    onChange={(value) =>
-                      onChange({
-                        ...global,
-                        defaultLossTimeoutDays: value ?? 1,
-                      })
-                    }
-                  />
-                </Form.Item>
-                <Form.Item label="3PL 丢件超时（天）" className="mb-0 min-w-[200px] flex-1">
-                  <InputNumber
-                    min={1}
-                    className="w-full"
-                    value={global.externalCarrierLossTimeoutDays}
-                    onChange={(value) =>
-                      onChange({
-                        ...global,
-                        externalCarrierLossTimeoutDays: value ?? 1,
-                      })
-                    }
-                  />
-                </Form.Item>
-              </Flex>
+    <section className="border-b" style={{ borderColor: 'var(--admin-line)' }}>
+      <button
+        type="button"
+        onClick={onToggle}
+        className="flex w-full items-center justify-between gap-3 px-5 py-3.5 text-left transition hover:bg-slate-50/80"
+      >
+        <div className="flex min-w-0 items-center gap-3">
+          <span className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-[var(--admin-accent-soft)] text-[#1f6f68]">
+            <Globe2 className="h-4 w-4" aria-hidden />
+          </span>
+          <div className="min-w-0">
+            <div className="text-sm font-semibold text-slate-900">全局规则</div>
+            <div className="mt-0.5 truncate text-xs text-slate-500">
+              默认超时 {global.defaultLossTimeoutDays} 天 · 3PL {global.externalCarrierLossTimeoutDays}{' '}
+              天 · 操作员 {global.commonSystemOperators.length} 项
+            </div>
+          </div>
+        </div>
+        <ChevronDown
+          className={[
+            'h-4 w-4 shrink-0 text-slate-400 transition-transform duration-200',
+            expanded ? 'rotate-180' : '',
+          ].join(' ')}
+          aria-hidden
+        />
+      </button>
+
+      <div
+        className={[
+          'grid transition-[grid-template-rows] duration-200 ease-out',
+          expanded ? 'grid-rows-[1fr]' : 'grid-rows-[0fr]',
+        ].join(' ')}
+      >
+        <div className="overflow-hidden">
+          <div
+            className="space-y-5 border-t px-5 py-5"
+            style={{ borderColor: 'var(--admin-line)', background: 'var(--admin-surface-soft)' }}
+          >
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <Form.Item
+                label={
+                  <span className="text-xs font-semibold uppercase tracking-[0.06em] text-slate-500">
+                    默认库内/库外丢失超时（天）
+                  </span>
+                }
+                className="mb-0"
+              >
+                <InputNumber
+                  min={1}
+                  className="w-full"
+                  value={global.defaultLossTimeoutDays}
+                  onChange={(value) =>
+                    onChange({
+                      ...global,
+                      defaultLossTimeoutDays: value ?? 1,
+                    })
+                  }
+                />
+              </Form.Item>
+              <Form.Item
+                label={
+                  <span className="text-xs font-semibold uppercase tracking-[0.06em] text-slate-500">
+                    3PL 丢件超时（天）
+                  </span>
+                }
+                className="mb-0"
+              >
+                <InputNumber
+                  min={1}
+                  className="w-full"
+                  value={global.externalCarrierLossTimeoutDays}
+                  onChange={(value) =>
+                    onChange({
+                      ...global,
+                      externalCarrierLossTimeoutDays: value ?? 1,
+                    })
+                  }
+                />
+              </Form.Item>
+            </div>
+            <div className="grid grid-cols-1 gap-4 xl:grid-cols-3">
               <TagListEditor
                 label="全局系统操作员"
                 values={global.commonSystemOperators}
@@ -177,17 +258,18 @@ function GlobalRulesPanel({
               />
               <TagListEditor
                 label="全局非真实操作员正则"
+                hint="用于批量识别系统/虚拟操作员"
                 values={global.commonNonRealOperatorPatterns}
                 placeholder="例如 ^[A-Z]{2,5}\\s+OPS\\d+$"
                 onChange={(commonNonRealOperatorPatterns) =>
                   onChange({ ...global, commonNonRealOperatorPatterns })
                 }
               />
-            </Space>
-          ),
-        },
-      ]}
-    />
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
   )
 }
 
@@ -200,62 +282,107 @@ function ProfileEditor({
   defaultLossTimeoutDays: number
   onChange: (next: WarehouseProfileDto) => void
 }) {
+  const cityLabel =
+    WAREHOUSE_CITY_OPTIONS.find((item) => item.value === profile.cityId)?.label ?? profile.cityId
+
   return (
-    <Form layout="vertical" className="[&_.ant-form-item]:mb-0">
-      <Flex gap="middle" wrap="wrap">
-        <Form.Item label="城市" className="min-w-[140px] flex-1">
-          <Select<WarehouseCityId>
-            value={profile.cityId}
-            options={WAREHOUSE_CITY_OPTIONS}
-            onChange={(cityId) => onChange({ ...profile, cityId })}
-          />
-        </Form.Item>
-        <Form.Item
-          label="仓库名"
-          tooltip="须与轨迹【】内仓库名一致，分析据此匹配"
-          className="min-w-[180px] flex-1"
-        >
-          <Input
-            value={profile.name}
-            placeholder="如 MEL CSP 1"
-            onChange={(e) => onChange({ ...profile, name: e.target.value })}
-          />
-        </Form.Item>
-      </Flex>
+    <div key={profile.hubId} className="warehouse-config-editor-enter space-y-6">
+      <header className="flex flex-wrap items-start justify-between gap-3 border-b pb-5" style={{ borderColor: 'var(--admin-line)' }}>
+        <div className="min-w-0">
+          <div className="flex flex-wrap items-center gap-2">
+            <h3 className="truncate text-lg font-semibold tracking-tight text-slate-950">{profile.name}</h3>
+            <span className="inline-flex items-center gap-1 rounded-md bg-[var(--admin-sky-soft)] px-2 py-0.5 text-xs font-medium text-[#25526e] ring-1 ring-[#c8deee]">
+              <MapPin className="h-3 w-3" aria-hidden />
+              {cityLabel}
+            </span>
+          </div>
+          <p className="mt-1 text-xs text-slate-500">
+            仓库名须与轨迹【】内一致；别名用于匹配其它写法。
+          </p>
+        </div>
+        <span className="font-mono text-[11px] text-slate-400">{profile.hubId}</span>
+      </header>
 
-      <div className="mt-4">
-        <TagListEditor
-          label="额外轨迹别名（可选）"
-          values={profile.extraAliases ?? []}
-          placeholder="轨迹中还有其它写法时添加，如 ADL Center"
-          onChange={(extraAliases) =>
-            onChange({
-              ...profile,
-              extraAliases: extraAliases.length ? extraAliases : undefined,
-            })
-          }
-        />
-      </div>
+      <section className="space-y-4">
+        <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-400">
+          匹配信息
+        </div>
+        <Form layout="vertical" className="[&_.ant-form-item]:mb-0">
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+            <Form.Item
+              label={
+                <span className="text-xs font-semibold uppercase tracking-[0.06em] text-slate-500">
+                  城市
+                </span>
+              }
+            >
+              <Select<WarehouseCityId>
+                value={profile.cityId}
+                options={WAREHOUSE_CITY_OPTIONS}
+                onChange={(cityId) => onChange({ ...profile, cityId })}
+              />
+            </Form.Item>
+            <Form.Item
+              label={
+                <span className="text-xs font-semibold uppercase tracking-[0.06em] text-slate-500">
+                  仓库名
+                </span>
+              }
+              tooltip="须与轨迹【】内仓库名一致，分析据此匹配"
+            >
+              <Input
+                value={profile.name}
+                placeholder="如 MEL CSP 1"
+                onChange={(e) => onChange({ ...profile, name: e.target.value })}
+              />
+            </Form.Item>
+          </div>
+          <div className="mt-4">
+            <TagListEditor
+              label="额外轨迹别名（可选）"
+              hint="轨迹中还有其它写法时添加"
+              values={profile.extraAliases ?? []}
+              placeholder="如 ADL Center"
+              onChange={(extraAliases) =>
+                onChange({
+                  ...profile,
+                  extraAliases: extraAliases.length ? extraAliases : undefined,
+                })
+              }
+            />
+          </div>
+        </Form>
+      </section>
 
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4 mt-4">
-        <Form.Item
-          label={`仓库丢失超时（天，留空则用全局 ${defaultLossTimeoutDays} 天）`}
-          className="sm:col-span-1 xl:col-span-2"
-        >
-          <InputNumber
-            min={1}
-            className="w-full"
-            placeholder={`默认 ${defaultLossTimeoutDays}`}
-            value={profile.lossTimeoutDays}
-            onChange={(value) =>
-              onChange({
-                ...profile,
-                lossTimeoutDays: value ?? undefined,
-              })
+      <section className="space-y-4 border-t pt-6" style={{ borderColor: 'var(--admin-line)' }}>
+        <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-400">
+          超时与操作员
+        </div>
+        <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+          <Form.Item
+            label={
+              <span className="text-xs font-semibold uppercase tracking-[0.06em] text-slate-500">
+                仓库丢失超时（天）
+              </span>
             }
-          />
-        </Form.Item>
-        <div className="sm:col-span-1 xl:col-span-2">
+            extra={
+              <span className="text-xs text-slate-500">留空则使用全局 {defaultLossTimeoutDays} 天</span>
+            }
+            className="mb-0"
+          >
+            <InputNumber
+              min={1}
+              className="w-full"
+              placeholder={`默认 ${defaultLossTimeoutDays}`}
+              value={profile.lossTimeoutDays}
+              onChange={(value) =>
+                onChange({
+                  ...profile,
+                  lossTimeoutDays: value ?? undefined,
+                })
+              }
+            />
+          </Form.Item>
           <TagListEditor
             label="仓库非真实操作员"
             values={profile.nonRealOperators ?? []}
@@ -267,8 +394,8 @@ function ProfileEditor({
             }
           />
         </div>
-      </div>
-    </Form>
+      </section>
+    </div>
   )
 }
 
@@ -282,9 +409,11 @@ export function WarehouseConfigTabContent({
   onResetDefaults,
   isSaving,
 }: Props) {
+  const canEditConfig = usePermission(PERMISSION_KEYS.btnOrderExceptionConfigEdit)
   const [search, setSearch] = useState('')
   const [cityFilter, setCityFilter] = useState<WarehouseCityId | 'ALL'>('ALL')
   const [expandedTreeKeys, setExpandedTreeKeys] = useState<Key[]>([])
+  const [globalExpanded, setGlobalExpanded] = useState(false)
 
   const isDirty = useMemo(
     () => JSON.stringify(draftConfig) !== JSON.stringify(savedConfig),
@@ -292,6 +421,11 @@ export function WarehouseConfigTabContent({
   )
 
   const validationIssues = useMemo(() => validateWarehouseConfig(draftConfig), [draftConfig])
+
+  const cityCount = useMemo(
+    () => new Set(draftConfig.profiles.map((profile) => profile.cityId)).size,
+    [draftConfig.profiles]
+  )
 
   const filteredProfiles = useMemo(() => {
     const needle = search.trim().toLowerCase()
@@ -451,111 +585,197 @@ export function WarehouseConfigTabContent({
     [onSelectedHubIdChange]
   )
 
-  return (
-    <div className="space-y-4">
-      <GlobalRulesPanel
-        global={draftConfig.global}
-        onChange={(global) => onDraftConfigChange({ ...draftConfig, global })}
-      />
+  const saveStatusLabel = isDirty ? '未保存' : '已同步'
+  const saveStatusTone = isDirty ? 'warn' : 'accent'
 
-      <Card className="admin-panel" styles={{ body: { padding: 16 } }}>
-        <Flex wrap="wrap" gap="small" align="center">
-          <Input.Search
-            allowClear
-            placeholder="搜索仓库名 / 别名"
-            className="max-w-xs"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-          />
-          <Select<WarehouseCityId | 'ALL'>
-            className="min-w-[120px]"
-            value={cityFilter}
-            options={[{ value: 'ALL', label: '全部城市' }, ...WAREHOUSE_CITY_OPTIONS]}
-            onChange={setCityFilter}
-          />
-          <Button type="primary" icon={<Plus className="h-4 w-4" />} onClick={handleAddProfile}>
-            新建仓库
-          </Button>
-          <Flex wrap="wrap" gap="small" className="ml-auto">
-            <Upload {...uploadProps}>
-              <Button icon={<UploadIcon className="h-4 w-4" />}>导入</Button>
+  return (
+    <div className="warehouse-config">
+      <div className="warehouse-config-workspace">
+        <header
+          className="flex flex-wrap items-start justify-between gap-4 border-b px-5 py-4"
+          style={{ borderColor: 'var(--admin-line)' }}
+        >
+          <div className="min-w-0">
+            <div className="admin-eyebrow">Analysis Config</div>
+            <h3 className="mt-1 flex items-center gap-2 text-lg font-semibold tracking-tight text-slate-950">
+              <Settings2 className="h-5 w-5 text-[#2f8f87]" aria-hidden />
+              分析配置
+            </h3>
+            <p className="admin-description mt-1 max-w-2xl">
+              维护仓库匹配规则与全局超时；保存后下次异常分析将使用当前版本。
+            </p>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2">
+            <Upload {...uploadProps} disabled={!canEditConfig}>
+              <button type="button" className="admin-btn" disabled={!canEditConfig}>
+                <UploadIcon className="h-4 w-4" aria-hidden />
+                导入
+              </button>
             </Upload>
-            <Button icon={<Download className="h-4 w-4" />} onClick={handleExport}>
+            <button type="button" className="admin-btn" onClick={handleExport}>
+              <Download className="h-4 w-4" aria-hidden />
               导出
-            </Button>
-            <Button icon={<RotateCcw className="h-4 w-4" />} onClick={onResetDefaults}>
+            </button>
+            <button
+              type="button"
+              className="admin-btn"
+              onClick={onResetDefaults}
+              disabled={!canEditConfig}
+            >
+              <RotateCcw className="h-4 w-4" aria-hidden />
               恢复默认
-            </Button>
-            <Button
-              type="primary"
-              icon={<Save className="h-4 w-4" />}
-              loading={isSaving}
-              disabled={!isDirty}
+            </button>
+            <button
+              type="button"
+              className="admin-btn admin-btn-primary"
+              disabled={!isDirty || !canEditConfig || isSaving}
               onClick={handleSave}
             >
+              {isSaving ? (
+                <span className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-white/30 border-t-white" />
+              ) : (
+                <Save className="h-4 w-4" aria-hidden />
+              )}
               保存配置
-            </Button>
-          </Flex>
-        </Flex>
+            </button>
+          </div>
+        </header>
 
-        <div className="mt-3 space-y-2">
-          {isDirty ? (
-            <Alert type="warning" showIcon message="有未保存的修改；分析时将使用上次保存的版本。" />
-          ) : (
-            <Alert type="success" showIcon message="配置已保存，下次分析将使用当前版本。" />
-          )}
-          {validationIssues.length ? (
-            <Alert type="error" showIcon message={validationIssues[0].message} />
-          ) : null}
+        <div
+          className="flex flex-wrap items-center gap-3 border-b px-5 py-3"
+          style={{ borderColor: 'var(--admin-line)', background: 'rgba(255,255,255,0.72)' }}
+        >
+          <ConfigStat label="仓库" value={draftConfig.profiles.length} tone="accent" />
+          <ConfigStat label="城市" value={cityCount} />
+          <ConfigStat
+            label="全局超时"
+            value={`${draftConfig.global.defaultLossTimeoutDays}d`}
+          />
+          <ConfigStat label="保存状态" value={saveStatusLabel} tone={saveStatusTone} />
+
+          <div className="ml-auto flex min-w-0 max-w-full flex-wrap items-center gap-2">
+            {validationIssues.length ? (
+              <span className="inline-flex items-center gap-1.5 rounded-lg bg-red-50 px-2.5 py-1.5 text-xs font-medium text-red-700 ring-1 ring-red-200/80">
+                <AlertCircle className="h-3.5 w-3.5 shrink-0" aria-hidden />
+                {validationIssues[0].message}
+              </span>
+            ) : isDirty ? (
+              <span className="inline-flex items-center gap-1.5 rounded-lg bg-amber-50 px-2.5 py-1.5 text-xs font-medium text-amber-800 ring-1 ring-amber-200/80">
+                <AlertCircle className="h-3.5 w-3.5 shrink-0" aria-hidden />
+                有未保存修改；分析使用上次保存版本
+              </span>
+            ) : (
+              <span className="inline-flex items-center gap-1.5 rounded-lg bg-[var(--admin-accent-soft)] px-2.5 py-1.5 text-xs font-medium text-[#1f6f68] ring-1 ring-[rgba(47,143,135,0.18)]">
+                <CheckCircle2 className="h-3.5 w-3.5 shrink-0" aria-hidden />
+                配置已保存，分析将使用当前版本
+              </span>
+            )}
+          </div>
         </div>
-      </Card>
 
-      <Flex gap="middle" align="flex-start" className="flex-col lg:flex-row">
-        <Card
-          className="admin-panel w-full shrink-0 lg:w-[34%] lg:max-w-[360px]"
-          title="仓库列表"
-          styles={{ body: { padding: '8px 12px', maxHeight: 720, overflow: 'auto' } }}
-        >
-          {warehouseTreeData.length ? (
-            <Tree
-              blockNode
-              showLine
-              className="[&_.ant-tree-treenode:focus-within_.warehouse-delete-btn]:opacity-100 [&_.ant-tree-treenode:hover_.warehouse-delete-btn]:opacity-100"
-              expandedKeys={expandedTreeKeys}
-              onExpand={(keys) => setExpandedTreeKeys(keys)}
-              selectedKeys={selectedHubId ? [selectedHubId] : []}
-              treeData={warehouseTreeData}
-              onSelect={handleTreeSelect}
-              titleRender={(node) => {
-                if (!node.isLeaf) {
-                  return <span className="font-medium">{String(node.title)}</span>
-                }
-                const profile = draftConfig.profiles.find((item) => item.hubId === node.key)
-                if (!profile) return <span>{String(node.title)}</span>
-                return <WarehouseTreeLeafTitle profile={profile} onDelete={handleDeleteProfile} />
-              }}
-            />
-          ) : (
-            <Empty description="无匹配仓库" image={Empty.PRESENTED_IMAGE_SIMPLE} />
-          )}
-        </Card>
+        <GlobalRulesSection
+          global={draftConfig.global}
+          expanded={globalExpanded}
+          onToggle={() => setGlobalExpanded((prev) => !prev)}
+          onChange={(global) => onDraftConfigChange({ ...draftConfig, global })}
+        />
 
-        <Card
-          className="admin-panel min-h-[420px] flex-1"
-          title={selectedProfile ? '编辑仓库' : '仓库详情'}
-          styles={{ body: { padding: 20 } }}
-        >
-          {selectedProfile ? (
-            <ProfileEditor
-              profile={selectedProfile}
-              defaultLossTimeoutDays={draftConfig.global.defaultLossTimeoutDays}
-              onChange={(next) => updateProfile(selectedProfile.hubId, next)}
-            />
-          ) : (
-            <Empty description="请从左侧选择一个仓库进行编辑" image={Empty.PRESENTED_IMAGE_SIMPLE} />
-          )}
-        </Card>
-      </Flex>
+        <div className="flex min-h-[min(72vh,640px)] flex-col lg:flex-row">
+          <aside className="warehouse-config-sidebar">
+            <div
+              className="space-y-3 border-b px-4 py-3"
+              style={{ borderColor: 'var(--admin-line)' }}
+            >
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">
+                  仓库列表
+                </span>
+                <span className="text-xs tabular-nums text-slate-400">{filteredProfiles.length} 项</span>
+              </div>
+              <Input
+                allowClear
+                prefix={<Search className="h-3.5 w-3.5 text-slate-400" aria-hidden />}
+                placeholder="搜索仓库名 / 别名"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+              />
+              <div className="flex gap-2">
+                <Select<WarehouseCityId | 'ALL'>
+                  className="min-w-0 flex-1"
+                  value={cityFilter}
+                  options={[{ value: 'ALL', label: '全部城市' }, ...WAREHOUSE_CITY_OPTIONS]}
+                  onChange={setCityFilter}
+                />
+                <button
+                  type="button"
+                  className="admin-btn shrink-0 px-3"
+                  onClick={handleAddProfile}
+                  disabled={!canEditConfig}
+                >
+                  <Plus className="h-4 w-4" aria-hidden />
+                  新建
+                </button>
+              </div>
+            </div>
+
+            <div className="min-h-0 flex-1 overflow-auto px-2 py-2">
+              {warehouseTreeData.length ? (
+                <Tree
+                  blockNode
+                  showLine
+                  className="warehouse-config-tree [&_.ant-tree-treenode:focus-within_.warehouse-delete-btn]:opacity-100 [&_.ant-tree-treenode:hover_.warehouse-delete-btn]:opacity-100"
+                  expandedKeys={expandedTreeKeys}
+                  onExpand={(keys) => setExpandedTreeKeys(keys)}
+                  selectedKeys={selectedHubId ? [selectedHubId] : []}
+                  treeData={warehouseTreeData}
+                  onSelect={handleTreeSelect}
+                  titleRender={(node) => {
+                    if (!node.isLeaf) {
+                      return (
+                        <span className="text-xs font-semibold uppercase tracking-[0.08em] text-slate-500">
+                          {String(node.title)}
+                        </span>
+                      )
+                    }
+                    const profile = draftConfig.profiles.find((item) => item.hubId === node.key)
+                    if (!profile) return <span>{String(node.title)}</span>
+                    return <WarehouseTreeLeafTitle profile={profile} onDelete={handleDeleteProfile} />
+                  }}
+                />
+              ) : (
+                <Empty
+                  className="py-10"
+                  description="无匹配仓库"
+                  image={Empty.PRESENTED_IMAGE_SIMPLE}
+                />
+              )}
+            </div>
+          </aside>
+
+          <main className="flex min-h-[360px] min-w-0 flex-1 flex-col bg-white">
+            {selectedProfile ? (
+              <div className="flex-1 overflow-auto px-5 py-5 sm:px-6 sm:py-6">
+                <ProfileEditor
+                  profile={selectedProfile}
+                  defaultLossTimeoutDays={draftConfig.global.defaultLossTimeoutDays}
+                  onChange={(next) => updateProfile(selectedProfile.hubId, next)}
+                />
+              </div>
+            ) : (
+              <div className="flex flex-1 flex-col items-center justify-center gap-3 px-6 py-16 text-center">
+                <span className="inline-flex h-12 w-12 items-center justify-center rounded-2xl bg-[var(--admin-surface-soft)] text-slate-400 ring-1 ring-slate-200/80">
+                  <Warehouse className="h-6 w-6" aria-hidden />
+                </span>
+                <div>
+                  <p className="text-sm font-medium text-slate-700">选择仓库以编辑</p>
+                  <p className="mt-1 text-xs text-slate-500">从左侧列表选择，或新建仓库配置</p>
+                </div>
+              </div>
+            )}
+          </main>
+        </div>
+      </div>
     </div>
   )
 }

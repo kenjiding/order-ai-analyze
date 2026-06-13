@@ -66,7 +66,6 @@ export function ScannerPersonSortingHourlySection({
           <SectionTitle eyebrow={sectionEyebrow} title={sectionTitle} description={sectionDescription} />
         </div>
         <IconButton
-          size="small"
           aria-expanded={expanded}
           aria-label={expanded ? '收起按小时段表格' : '展开按小时段表格'}
           onClick={() => onExpandedChange(!expanded)}

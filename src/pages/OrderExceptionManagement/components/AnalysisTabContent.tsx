@@ -1,8 +1,9 @@
-import { Select, Tag } from 'antd'
+import { Select, Tag, Tooltip } from 'antd'
 import { saveAs } from 'file-saver'
 import { Loader2, Settings2, Upload } from 'lucide-react'
 import { useCallback, useMemo, useState, type ChangeEvent, type ReactNode } from 'react'
 import * as XLSX from 'xlsx-js-style'
+import { PERMISSION_KEYS, usePermission } from '../../../hooks/usePermission'
 import { applySheetCenterAlignment } from '../../../utils/xlsxCenteredSheet'
 import { DataTable, ExportButton, type DataTableColumn } from '../../ScannerEfficiency/components/ui'
 import {
@@ -203,6 +204,7 @@ export function AnalysisTabContent({
   apiTiming,
   onOpenWarehouseConfig,
 }: Props) {
+  const canAnalyze = usePermission(PERMISSION_KEYS.btnOrderExceptionAnalyze)
   const [detailRow, setDetailRow] = useState<Row | null>(null)
   const [visitedOrders, setVisitedOrders] = useState<Set<string>>(() => new Set())
 
@@ -327,15 +329,17 @@ export function AnalysisTabContent({
               <Settings2 className="h-4 w-4" />
               分析配置
             </button>
-            <button
-              type="button"
-              disabled={isAnalyzing}
-              onClick={onAnalyze}
-              className="admin-btn admin-btn-primary inline-flex items-center gap-2 disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              {isAnalyzing ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : null}
-              开始分析
-            </button>
+            <Tooltip title={!canAnalyze ? '无操作权限' : undefined}>
+              <button
+                type="button"
+                disabled={isAnalyzing || !canAnalyze}
+                onClick={onAnalyze}
+                className="admin-btn admin-btn-primary inline-flex items-center gap-2 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {isAnalyzing ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : null}
+                开始分析
+              </button>
+            </Tooltip>
           </div>
         </div>
         {importedAnalyzeOrders ? (
@@ -435,7 +439,8 @@ export function AnalysisTabContent({
             <h3 className="text-sm font-semibold text-slate-950">分析结果</h3>
             <ExportButton
               label="导出 Excel"
-              disabled={exportableRows.length === 0 || isAnalyzing}
+              permission={PERMISSION_KEYS.btnOrderExceptionAnalyze}
+              disabled={exportableRows.length === 0 || isAnalyzing || !canAnalyze}
               onClick={onExportResults}
               className="shrink-0"
             />

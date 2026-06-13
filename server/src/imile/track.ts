@@ -13,17 +13,11 @@
 import {
   buildImileAuthHeaders,
   envFirstOr,
-  imileRequestJson,
-  isRetryableBusyFailure,
   isRetryableUnauthorizedFailure,
   mergeBatchRaw,
   normalizeImileToken,
-  readImileBusinessFailure,
-  sleep,
-  truncateRawText,
-  type ImileBusinessFailure,
-  type ImileRequestJsonResult,
 } from './shared'
+import { requestImileApi } from './client'
 import { mapWithConcurrency } from '../orderAnalyze/runtime'
 
 function readTrackConcurrency(): number {
@@ -169,14 +163,19 @@ function searchTypeKey(searchType: string): string {
   return searchType.replace(/\s+/g, '')
 }
 
-async function postTrack(url: string, imileToken: string, body: Record<string, unknown>): Promise<ImileRequestJsonResult> {
-  const normalizedToken = normalizeImileToken(imileToken)
-  const headers = buildForwardHeaders(normalizedToken, body)
-  return imileRequestJson({
+async function postTrack(
+  url: string,
+  imileToken: string,
+  body: Record<string, unknown>,
+  label: string,
+) {
+  const headers = buildForwardHeaders(normalizeImileToken(imileToken), body)
+  return requestImileApi({
     url,
     method: 'POST',
     headers,
-    body: JSON.stringify(body),
+    body,
+    label,
   })
 }
 
@@ -190,30 +189,13 @@ export async function queryImileTracks(
 
   if (legacyMode) {
     const body = buildLegacyBatchBody(orderNos)
-    const res = await postTrack(url, token, body)
-    if (!res.readOk) {
+    const res = await postTrack(url, token, body, '轨迹查询')
+    if (!res.ok) {
       return {
         ok: false,
         status: res.status,
-        message: '轨迹接口返回非 JSON',
-        rawText: truncateRawText(res.text),
-      }
-    }
-    if (!res.httpOk) {
-      return {
-        ok: false,
-        status: res.status,
-        message: '轨迹接口 HTTP 错误',
-        rawText: truncateRawText(res.text),
-      }
-    }
-    const failure = readImileBusinessFailure(res.json)
-    if (failure) {
-      return {
-        ok: false,
-        status: res.status,
-        message: `轨迹接口业务失败：${failure.message}`,
-        rawText: truncateRawText(res.text),
+        message: res.message,
+        rawText: res.rawText,
       }
     }
     const trackInfo = extractTrackInfo(res.json)
@@ -228,47 +210,42 @@ export async function queryImileTracks(
     searchValue: string
   ): Promise<{ trackInfo: Record<string, TrackEvent[]>; orderInfo: Record<string, OrderQueryInfo | null>; raw: unknown }> {
     let resolved = false
-    let lastBusinessFailure: { message: string; rawText: string; status: number } | null = null
+    let lastBusinessFailure: { message: string; rawText?: string; status: number } | null = null
     const candidates = buildSearchCandidates(searchValue)
 
     for (const candidate of candidates) {
-      const maxAttempts = 3
-      let res: ImileRequestJsonResult | null = null
-      let failure: ImileBusinessFailure | null = null
-      for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
-        res = await postTrack(url, token, candidate.body)
-        if (!res.readOk || !res.httpOk) break
-        failure = readImileBusinessFailure(res.json)
-        if (!failure) break
-        if (!isRetryableBusyFailure(failure) || attempt >= maxAttempts - 1) break
-        await sleep(180 * (attempt + 1))
+      const res = await postTrack(
+        url,
+        token,
+        candidate.body,
+        `轨迹查询（运单 ${searchValue}，${candidate.label}）`,
+      )
+      if (res.ok) {
+        resolved = true
+        const trackInfo = extractTrackInfo(res.json)
+        const orderInfo = mapOrderInfoForTrackKeys(trackInfo, extractOrderInfo(res.json), searchValue)
+        return {
+          trackInfo,
+          orderInfo,
+          raw: { candidate: candidate.label, body: candidate.body, response: res.json },
+        }
       }
-      if (!res) {
-        throw new SingleTrackError({ ok: false, status: 502, message: `轨迹查询失败（运单 ${searchValue}）` })
-      }
-      if (!res.readOk) {
-        throw new SingleTrackError({ ok: false, status: res.status, message: '轨迹接口返回非 JSON', rawText: truncateRawText(res.text) })
-      }
-      if (!res.httpOk) {
-        throw new SingleTrackError({ ok: false, status: res.status, message: `轨迹接口 HTTP 错误（运单 ${searchValue}）`, rawText: truncateRawText(res.text) })
-      }
-      if (failure) {
+
+      if (res.businessFailure && isRetryableUnauthorizedFailure(res.businessFailure)) {
         lastBusinessFailure = {
           status: res.status,
-          message: `轨迹接口业务失败（运单 ${searchValue}，${candidate.label}）：${failure.message}`,
-          rawText: truncateRawText(res.text),
+          message: res.message,
+          rawText: res.rawText,
         }
-        if (isRetryableUnauthorizedFailure(failure)) continue
-        throw new SingleTrackError({ ok: false, status: res.status, message: lastBusinessFailure.message, rawText: lastBusinessFailure.rawText })
+        continue
       }
-      resolved = true
-      const trackInfo = extractTrackInfo(res.json)
-      const orderInfo = mapOrderInfoForTrackKeys(trackInfo, extractOrderInfo(res.json), searchValue)
-      return {
-        trackInfo,
-        orderInfo,
-        raw: { candidate: candidate.label, body: candidate.body, response: res.json },
-      }
+
+      throw new SingleTrackError({
+        ok: false,
+        status: res.status,
+        message: res.message,
+        rawText: res.rawText,
+      })
     }
 
     if (!resolved) {
@@ -278,7 +255,6 @@ export async function queryImileTracks(
           : { ok: false, status: 502, message: `轨迹查询失败（运单 ${searchValue}）` }
       )
     }
-    // 理论上不可达，满足 TypeScript 返回类型
     throw new SingleTrackError({ ok: false, status: 502, message: `轨迹查询失败（运单 ${searchValue}）` })
   }
 

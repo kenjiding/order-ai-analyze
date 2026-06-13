@@ -6,6 +6,8 @@ export function getApiBaseUrl(): string {
   const raw = import.meta.env.VITE_API_BASE as string | undefined
   const trimmed = typeof raw === 'string' ? raw.trim() : ''
   if (trimmed) return trimmed.replace(/\/$/, '')
-  // 生产默认同源（Nginx 反代 /api）；前后端分域时在构建时设置 VITE_API_BASE
-  return import.meta.env.MODE === 'production' ? '' : 'http://127.0.0.1:8787'
+  // 开发环境走 Vite proxy（/api → 后端），保持同源以便 httpOnly Cookie
+  if (import.meta.env.DEV) return ''
+  // 生产默认同源（Nginx 反代 /api）
+  return ''
 }

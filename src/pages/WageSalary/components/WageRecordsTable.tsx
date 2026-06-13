@@ -19,6 +19,7 @@ export function WageRecordsTable({
   saveRowEditing,
   cancelRowEditing,
   handleDeleteRecord,
+  canEditRecord = true,
 }) {
   const pageStart = (currentPage - 1) * pageSize
   const pageRows = filteredWageRecords.slice(pageStart, pageStart + pageSize)
@@ -294,16 +295,18 @@ export function WageRecordsTable({
                 <button
                   type="button"
                   onClick={() => startRowEditing(record)}
-                  className="text-blue-600 hover:text-blue-800"
-                  title="编辑"
+                  disabled={!canEditRecord}
+                  className="text-blue-600 hover:text-blue-800 disabled:cursor-not-allowed disabled:opacity-40"
+                  title={canEditRecord ? '编辑' : '无操作权限'}
                 >
                   <Edit2 className="h-4 w-4" />
                 </button>
                 <button
                   type="button"
                   onClick={() => handleDeleteRecord(record._id)}
-                  className="text-red-600 hover:text-red-800"
-                  title="删除"
+                  disabled={!canEditRecord}
+                  className="text-red-600 hover:text-red-800 disabled:cursor-not-allowed disabled:opacity-40"
+                  title={canEditRecord ? '删除' : '无操作权限'}
                 >
                   <Trash2 className="h-4 w-4" />
                 </button>

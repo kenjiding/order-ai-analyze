@@ -1,5 +1,5 @@
-import * as XLSX from 'xlsx'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useAppSettings } from '../../context/AppSettingsContext'
 import {
   buildDailyLaborCostFromPayrollByDate,
   computeAttendancePayrollFromFiles,
@@ -33,10 +33,11 @@ import {
   formatNumber,
 } from './formatAndParse'
 import { parseAllocationFiles, parseScanFiles, parseAttendanceFiles } from './parsers'
+import { fetchInboundScans } from './scannerEfficiencyApi'
+import { mapInboundRecordsToParsedScanRows } from './inboundScanMapper'
 import { flushPaint } from './excelParseClient'
-import { exportAttendanceSchedulingPlanExcel } from './exportAttendanceSchedulingPlanExcel'
-import { buildExportWorkbook, type SourceInfo } from './exportWorkbook'
 import { buildFrontDeskSaturation } from './frontDeskSaturation'
+import type { SourceInfo } from './sourceInfo'
 import { buildScannerTotalEfficiencyRows, sortingScanCountForPerson } from './sortingLookup'
 import type { DataTableRow } from './components/ui'
 import {
@@ -57,6 +58,16 @@ const EMPTY_SOURCE: SourceInfo = {
   droppedRows: 0,
   duplicateWaybillRows: 0,
   fileNames: [],
+}
+
+export type InboundApiFetchStats = {
+  dateRange: string
+  totalResult: number
+  fetched: number
+  mapped: number
+  sortingEligible: number
+  parseDropped: number
+  afterDedupe: number
 }
 
 function mergeOrderedUniqueFileNames(prev: string[], next: string[]): string[] {
@@ -84,6 +95,7 @@ function mergeOrderedUniqueFiles(prev: File[], next: File[]): File[] {
 /** 与工资页上传表默认一致：未勾选「分拣班次 / 公众假期」时的映射口径 */
 
 export function useScannerEfficiencyPage() {
+  const { imileToken, imilePortal } = useAppSettings()
   const [settings, setSettings] = useState<ScanSettings>(() => ({ ...DEFAULT_SETTINGS }))
 
   const [wageEmployees, setWageEmployees] = useState<{ employeeId: string; role: string }[]>([])
@@ -114,6 +126,7 @@ export function useScannerEfficiencyPage() {
 
   const [scanRows, setScanRows] = useState<ParsedScanRow[]>([])
   const [scanSourceInfo, setScanSourceInfo] = useState<SourceInfo>(EMPTY_SOURCE)
+  const [lastInboundApiStats, setLastInboundApiStats] = useState<InboundApiFetchStats | null>(null)
 
   const scanRowsRef = useRef(scanRows)
   const scanSourceInfoRef = useRef(scanSourceInfo)
@@ -448,6 +461,97 @@ export function useScannerEfficiencyPage() {
     }
   }
 
+  const handleScanApiFetch = async (startDate: string, endDate: string) => {
+    const token = imileToken.trim()
+    if (!token) {
+      setError('请先在全局设置中配置 iMile Token')
+      return
+    }
+    if (!startDate || !endDate) {
+      setError('请选择有效的日期区间')
+      return
+    }
+
+    setLoadingScan(true)
+    setError('')
+    await flushPaint()
+
+    try {
+      const result = await fetchInboundScans({
+        imileToken: token,
+        startDate,
+        endDate,
+        imilePortal,
+      })
+
+      console.group(`[ScannerEfficiency] iMile 到件 API 原始数据 ${startDate} ~ ${endDate}`)
+      console.log('records（resultObject.results，未裁剪）', result.records)
+      console.log('raw（完整分页 HTTP JSON）', result.raw)
+      console.groupEnd()
+
+      const sourceLabel = `iMile 到件 API（${startDate} ~ ${endDate}）`
+      const mapped = mapInboundRecordsToParsedScanRows(result.records, sourceLabel)
+      const prevRows = scanRowsRef.current
+      const prevSource = scanSourceInfoRef.current
+
+      console.info('[ScannerEfficiency] iMile 到件 API 拉取完成', {
+        dateRange: `${startDate} ~ ${endDate}`,
+        apiTotalResult: result.meta.totalResult,
+        apiFetched: result.records.length,
+        mappedRows: mapped.rows.length,
+        mappedDropped: mapped.droppedRows,
+        sortingEligible: mapped.sortingEligibleCount,
+      })
+
+      if (!mapped.rows.length) {
+        throw new Error(
+          prevRows.length
+            ? '本次 API 拉取没有可统计的到件记录，已有数据未改动。'
+            : '所选日期区间内没有可统计的到件记录。',
+        )
+      }
+
+      const combinedRawRows = prevRows.length ? [...prevRows, ...mapped.rows] : mapped.rows
+      const { rows: deduped, duplicateDropped } = dedupeParsedScanRowsByWaybill(combinedRawRows)
+      if (!deduped.length) {
+        throw new Error('到件扫描经运单号去重后没有可统计记录。')
+      }
+
+      console.info('[ScannerEfficiency] iMile 到件计入统计', {
+        afterDedupe: deduped.length,
+        duplicateDropped,
+      })
+
+      setScanRows(deduped)
+      setLastInboundApiStats({
+        dateRange: `${startDate} ~ ${endDate}`,
+        totalResult: result.meta.totalResult,
+        fetched: result.records.length,
+        mapped: mapped.rows.length,
+        sortingEligible: mapped.sortingEligibleCount,
+        parseDropped: mapped.droppedRows,
+        afterDedupe: deduped.length,
+      })
+      const mergedNames = prevRows.length
+        ? mergeOrderedUniqueFileNames(prevSource.fileNames, [sourceLabel])
+        : [sourceLabel]
+
+      setScanSourceInfo({
+        fileCount: mergedNames.length,
+        rowCount: deduped.length,
+        droppedRows: prevRows.length
+          ? prevSource.droppedRows + mapped.droppedRows
+          : mapped.droppedRows,
+        duplicateWaybillRows: duplicateDropped,
+        fileNames: mergedNames,
+      })
+    } catch (currentError: unknown) {
+      setError(currentError instanceof Error ? currentError.message : 'iMile 到件 API 拉取失败')
+    } finally {
+      setLoadingScan(false)
+    }
+  }
+
   const handleAttendanceFileChange = async (fileList: FileList | null) => {
     const files = Array.from(fileList || [])
     if (!files.length) return
@@ -562,6 +666,7 @@ export function useScannerEfficiencyPage() {
   const clearAll = () => {
     setScanRows([])
     setScanSourceInfo(EMPTY_SOURCE)
+    setLastInboundApiStats(null)
     setAttendanceRows([])
     setAttendanceSourceInfo(EMPTY_SOURCE)
     setAttendancePayroll(null)
@@ -569,43 +674,6 @@ export function useScannerEfficiencyPage() {
     setAllocationRows([])
     setAllocationSourceInfo(EMPTY_SOURCE)
     setError('')
-  }
-
-  const handleExport = async () => {
-    if (!scanAggregate) return
-    if (activeTab === TAB_KEYS.WEEKLY) return
-    if (activeTab === TAB_KEYS.PUSH) return
-    if (activeTab === TAB_KEYS.SCANNER && !scannerResult) return
-    if (activeTab === TAB_KEYS.FRONT_DESK) return
-    if (activeTab === TAB_KEYS.WAREHOUSE && attendanceResult) {
-      const { exportedCount } = await exportAttendanceSchedulingPlanExcel({
-        attendanceResult,
-        attendanceRows,
-        scannerResult,
-        dailyLaborCostByDate,
-      })
-      if (exportedCount === 0) {
-        setError('统计窗口内无开仓日，未生成出勤及排班计划。')
-      }
-      return
-    }
-    const workbook = buildExportWorkbook({
-      scanAggregate,
-      attendanceResult,
-      scannerResult,
-      sourceInfo: scanSourceInfo,
-      attendanceSourceInfo,
-      allocationSourceInfo,
-      exportTab: activeTab === TAB_KEYS.WAREHOUSE ? TAB_KEYS.WAREHOUSE : TAB_KEYS.SCANNER,
-      attendanceDailyCostPerTicket: dailyCostPerTicketByDate,
-      attendanceDailyTotalLaborCost: dailyTotalLaborCostByDate,
-      attendancePayrollTotal,
-      frontDeskResult,
-    })
-    if (!workbook) return
-    const exportName =
-      activeTab === TAB_KEYS.WAREHOUSE ? '仓库效率_开仓与总体.xlsx' : '仓库效率_一级分拣.xlsx'
-    XLSX.writeFile(workbook, exportName)
   }
 
   const hasScanData = Boolean(scanAggregate)
@@ -765,6 +833,7 @@ export function useScannerEfficiencyPage() {
   return {
     settings,
     scanSourceInfo,
+    lastInboundApiStats,
     attendanceSourceInfo,
     allocationSourceInfo,
     loading,
@@ -794,12 +863,12 @@ export function useScannerEfficiencyPage() {
     scannerTotalEfficiencyColumns,
     handleSettingChange,
     handleScanFileChange,
+    handleScanApiFetch,
     handleAttendanceFileChange,
     handleAllocationFileChange,
     clearAttendance,
     clearAllocation,
     clearAll,
-    handleExport,
     hasScanData,
     dailyCostPerTicketByDate,
     dailyTotalLaborCostByDate,

@@ -1,4 +1,4 @@
-/** iMile 开放平台 HTTP 调用公共能力（轨迹、阻断日志等接口共用）。 */
+/** iMile 开放平台 HTTP 调用公共能力（轨迹、阻断日志等接口共用）。业务模块请通过 client.requestImileApi 发请求，勿直接调用 imileRequestJson。 */
 
 export const IMILE_DEFAULT_FRONT_SEC = JSON.stringify({
   orgId: 10,

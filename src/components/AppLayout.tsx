@@ -1,13 +1,18 @@
 import { useMemo, useState } from 'react'
 import { NavLink, Outlet, useLocation } from 'react-router-dom'
-import { GlobalSettingsButton } from './AppSettings/GlobalSettingsButton'
+import { useAuth } from '../context/AuthContext'
 import Sidebar from './Layout/Sidebar'
+import UserAccountMenu from './Layout/UserAccountMenu'
 import { buildSidebarMenuItems, matchesSidebarActive } from './Layout/sidebarMenu'
 
 export default function AppLayout() {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
   const location = useLocation()
-  const mobileMenu = useMemo(() => buildSidebarMenuItems(), [])
+  const { hasPermission, isSuperAdmin } = useAuth()
+  const mobileMenu = useMemo(
+    () => buildSidebarMenuItems(hasPermission, isSuperAdmin),
+    [hasPermission, isSuperAdmin],
+  )
 
   return (
     <div className="admin-shell">
@@ -49,12 +54,8 @@ export default function AppLayout() {
               })}
             </nav>
 
-            <div className="flex flex-shrink-0 items-center gap-2">
-              <div className="hidden items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600 lg:flex">
-                <span className="h-2 w-2 rounded-full bg-[#2f8f87]" />
-                离线计算 · 本机存储
-              </div>
-              <GlobalSettingsButton />
+            <div className="flex flex-shrink-0 items-center">
+              <UserAccountMenu />
             </div>
           </div>
         </header>

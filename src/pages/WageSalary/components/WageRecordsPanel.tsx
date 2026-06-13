@@ -1,5 +1,7 @@
 // @ts-nocheck
 import { AlertCircle, Download, Search, X } from 'lucide-react'
+import { Tooltip } from 'antd'
+import { PERMISSION_KEYS, usePermission } from '../../../hooks/usePermission'
 
 import { WageChartsSection } from './WageChartsSection'
 import { WageRecordsTable } from './WageRecordsTable'
@@ -33,23 +35,27 @@ export function WageRecordsPanel({
   cancelRowEditing,
   handleDeleteRecord,
 }) {
+  const canExport = usePermission(PERMISSION_KEYS.btnWageSalaryExport)
+  const canEdit = usePermission(PERMISSION_KEYS.btnWageSalaryEdit)
   return (
     <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
       <div className="flex items-center justify-between mb-4">
         <h3 className="text-lg font-semibold text-gray-900">工资记录 ({wageRecords.length} 条)</h3>
-        <button
-          type="button"
-          onClick={handleExport}
-          disabled={filteredWageRecords.length === 0}
-          className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-colors ${
-            filteredWageRecords.length === 0
-              ? 'bg-gray-200 text-gray-500 cursor-not-allowed'
-              : 'bg-green-600 text-white hover:bg-green-700'
-          }`}
-        >
-          <Download className="w-4 h-4" />
-          导出Excel
-        </button>
+        <Tooltip title={!canExport ? '无操作权限' : undefined}>
+          <button
+            type="button"
+            onClick={handleExport}
+            disabled={filteredWageRecords.length === 0 || !canExport}
+            className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-colors ${
+              filteredWageRecords.length === 0 || !canExport
+                ? 'bg-gray-200 text-gray-500 cursor-not-allowed'
+                : 'bg-green-600 text-white hover:bg-green-700'
+            }`}
+          >
+            <Download className="w-4 h-4" />
+            导出Excel
+          </button>
+        </Tooltip>
       </div>
 
       <div className="mb-4 p-4 bg-gray-50 rounded-lg border border-gray-200">
@@ -194,6 +200,7 @@ export function WageRecordsPanel({
           saveRowEditing={saveRowEditing}
           cancelRowEditing={cancelRowEditing}
           handleDeleteRecord={handleDeleteRecord}
+          canEditRecord={canEdit}
         />
       )}
     </div>

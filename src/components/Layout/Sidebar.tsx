@@ -1,6 +1,7 @@
 import { useMemo } from 'react'
 import { NavLink, useLocation } from 'react-router-dom'
 import { Warehouse, ChevronLeft } from 'lucide-react'
+import { useAuth } from '../../context/AuthContext'
 import { buildSidebarMenuItems, matchesSidebarActive } from './sidebarMenu'
 
 export type SidebarProps = {
@@ -10,7 +11,11 @@ export type SidebarProps = {
 
 export default function Sidebar({ collapsed, onCollapsedChange }: SidebarProps) {
   const location = useLocation()
-  const menuItems = useMemo(() => buildSidebarMenuItems(), [])
+  const { hasPermission, isSuperAdmin } = useAuth()
+  const menuItems = useMemo(
+    () => buildSidebarMenuItems(hasPermission, isSuperAdmin),
+    [hasPermission, isSuperAdmin],
+  )
 
   return (
     <aside

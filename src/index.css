@@ -149,6 +149,45 @@ body::before {
     border-color: #b7d4e8;
   }
 
+  /** 文件/API 等双选切换：与 admin 侧栏激活态、accent 色板一致 */
+  .admin-toggle-track {
+    @apply inline-flex shrink-0 rounded-lg border p-0.5;
+    border-color: var(--admin-line);
+    background: var(--admin-surface-soft);
+  }
+
+  .admin-toggle-track .ant-radio-button-wrapper {
+    height: 36px;
+    line-height: 34px;
+    padding-inline: 14px;
+    border: none !important;
+    border-radius: 6px;
+    background: transparent !important;
+    color: var(--admin-muted);
+    font-weight: 500;
+    box-shadow: none !important;
+  }
+
+  .admin-toggle-track .ant-radio-button-wrapper::before {
+    display: none !important;
+  }
+
+  .admin-toggle-track .ant-radio-button-wrapper:hover {
+    color: #0f172a;
+  }
+
+  .admin-toggle-track .ant-radio-button-wrapper-checked {
+    background: var(--admin-surface) !important;
+    color: #1f6f68 !important;
+    box-shadow:
+      0 1px 2px rgba(47, 83, 105, 0.08),
+      0 0 0 1px rgba(47, 143, 135, 0.22) !important;
+  }
+
+  .admin-toggle-track .ant-radio-button-wrapper-checked:hover {
+    color: #1f6f68 !important;
+  }
+
   .admin-input {
     @apply rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:ring-2;
   }
@@ -206,12 +245,15 @@ body::before {
     flex-direction: column;
   }
 
-  .order-analysis-timeline .ant-timeline-item-rail {
-    border-inline-start-color: #d8e6ee;
+  .admin-drawer .ant-drawer-header-title,
+  .admin-drawer .ant-drawer-title {
+    flex: 1;
+    width: 100%;
+    margin: 0;
   }
 
-  .order-analysis-timeline .ant-timeline-item-icon {
-    box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.95);
+  .order-analysis-timeline .ant-timeline-item-rail {
+    border-inline-start-color: #d8e6ee;
   }
 
   /* Query 完整轨迹：条目间距更紧凑 */
@@ -227,6 +269,76 @@ body::before {
 
   .order-analysis-timeline--compact.ant-timeline-vertical > .ant-timeline-item:last-child {
     padding-bottom: 0;
+  }
+
+  .warehouse-config-workspace {
+    @apply overflow-hidden rounded-lg border bg-white;
+    border-color: var(--admin-line);
+    box-shadow: 0 18px 48px rgba(47, 83, 105, 0.07);
+  }
+
+  .warehouse-config-stat {
+    @apply rounded-lg px-3 py-2 ring-1 ring-[var(--admin-line)];
+    background: var(--admin-surface-soft);
+  }
+
+  .warehouse-config-stat--accent {
+    @apply ring-[rgba(47,143,135,0.18)];
+    background: var(--admin-accent-soft);
+    color: #1f6f68;
+  }
+
+  .warehouse-config-stat--warn {
+    @apply ring-amber-200/80;
+    background: #fffbeb;
+    color: #92400e;
+  }
+
+  .warehouse-config-sidebar {
+    @apply flex w-full shrink-0 flex-col border-r lg:w-[300px] xl:w-[320px];
+    border-color: var(--admin-line);
+    background: linear-gradient(180deg, #fbfdff 0%, var(--admin-surface-soft) 100%);
+  }
+
+  .warehouse-config-tree.ant-tree {
+    @apply bg-transparent text-sm;
+  }
+
+  .warehouse-config-tree .ant-tree-treenode {
+    @apply rounded-md px-1 py-0.5 transition-colors;
+  }
+
+  .warehouse-config-tree .ant-tree-treenode:hover {
+    background: rgba(255, 255, 255, 0.72);
+  }
+
+  .warehouse-config-tree .ant-tree-treenode-selected {
+    background: var(--admin-accent-soft) !important;
+  }
+
+  .warehouse-config-tree .ant-tree-node-content-wrapper {
+    @apply min-h-8 rounded-md;
+  }
+
+  .warehouse-config-tree .ant-tree-node-content-wrapper.ant-tree-node-selected {
+    background: transparent !important;
+    color: #1f6f68;
+    font-weight: 600;
+  }
+
+  .warehouse-config-editor-enter {
+    animation: warehouse-config-fade-in 220ms ease-out both;
+  }
+
+  @keyframes warehouse-config-fade-in {
+    from {
+      opacity: 0;
+      transform: translateY(6px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
   }
 }
 

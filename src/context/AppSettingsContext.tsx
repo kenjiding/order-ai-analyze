@@ -1,4 +1,11 @@
 import { createContext, useContext, useEffect, useMemo, useState } from 'react'
+import {
+  DEFAULT_IMILE_PORTAL_SETTINGS,
+  IMILE_PORTAL_STORAGE_KEY,
+  normalizeImilePortalSettings,
+  readStoredImilePortalSettings,
+  type ImilePortalSettings,
+} from '../imile/imilePortalSettings'
 
 /* Context 模块同时导出 Provider 与 hooks，故关闭 react-refresh 的仅导出组件规则。 */
 /* eslint-disable react-refresh/only-export-components */
@@ -13,6 +20,8 @@ export type AppSettingsContextValue = {
   setImileToken: (value: string) => void
   rememberImileToken: boolean
   setRememberImileToken: (value: boolean) => void
+  imilePortal: ImilePortalSettings
+  setImilePortal: (value: ImilePortalSettings) => void
 }
 
 const AppSettingsContext = createContext<AppSettingsContextValue | null>(null)
@@ -59,22 +68,39 @@ function readStoredImileToken(): string {
   return ''
 }
 
+function readStoredImilePortal(): ImilePortalSettings {
+  if (typeof localStorage === 'undefined') return { ...DEFAULT_IMILE_PORTAL_SETTINGS }
+  try {
+    if (!readRememberFlag()) return { ...DEFAULT_IMILE_PORTAL_SETTINGS }
+    return readStoredImilePortalSettings()
+  } catch {
+    return { ...DEFAULT_IMILE_PORTAL_SETTINGS }
+  }
+}
+
 export function AppSettingsProvider({ children }: { children: React.ReactNode }) {
   const [imileToken, setImileToken] = useState(readStoredImileToken)
   const [rememberImileToken, setRememberImileToken] = useState(readRememberFlag)
+  const [imilePortal, setImilePortalState] = useState(readStoredImilePortal)
+
+  const setImilePortal = (value: ImilePortalSettings) => {
+    setImilePortalState(normalizeImilePortalSettings(value))
+  }
 
   useEffect(() => {
     try {
       localStorage.setItem(GLOBAL_REMEMBER_KEY, rememberImileToken ? '1' : '0')
       if (rememberImileToken) {
         localStorage.setItem(GLOBAL_TOKEN_KEY, imileToken)
+        localStorage.setItem(IMILE_PORTAL_STORAGE_KEY, JSON.stringify(normalizeImilePortalSettings(imilePortal)))
       } else {
         localStorage.removeItem(GLOBAL_TOKEN_KEY)
+        localStorage.removeItem(IMILE_PORTAL_STORAGE_KEY)
       }
     } catch {
       /* ignore */
     }
-  }, [imileToken, rememberImileToken])
+  }, [imileToken, rememberImileToken, imilePortal])
 
   const value = useMemo<AppSettingsContextValue>(
     () => ({
@@ -82,8 +108,10 @@ export function AppSettingsProvider({ children }: { children: React.ReactNode })
       setImileToken,
       rememberImileToken,
       setRememberImileToken,
+      imilePortal,
+      setImilePortal,
     }),
-    [imileToken, rememberImileToken],
+    [imileToken, rememberImileToken, imilePortal],
   )
 
   return <AppSettingsContext.Provider value={value}>{children}</AppSettingsContext.Provider>

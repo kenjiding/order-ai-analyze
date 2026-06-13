@@ -3,6 +3,16 @@ export const SCAN_TIME_COLUMNS = ['扫描时间', '时间', '到件时间', '扫
 export const TRACKING_COLUMNS = ['运单号', '运单号码', '快递单号', '单号', '票号', '面单号']
 export const SCANNER_COLUMNS = ['扫描员', '操作员', '作业员', '员工', '姓名']
 
+export {
+  SCAN_ROUTE_CODE_COLUMNS,
+  SCAN_CONSIGNEE_ZIP_COLUMNS,
+  SCAN_DELIVERY_STATION_COLUMNS,
+  SCAN_STATION_COLUMNS,
+  SCAN_CLIENT_CODE_COLUMNS,
+  SCAN_CLIENT_NAME_COLUMNS,
+  SCAN_CONSIGNEE_CITY_COLUMNS,
+} from './scanInboundFieldMap'
+
 export const ATTENDANCE_DATE_COLUMNS = ['日期', '考勤日期', '工作日期', '打卡日期', '统计日期', 'date']
 /** 有值时优先用于工时结算（与工资页口径一致） */
 export const ATTENDANCE_WORK_HOURS_COLUMNS = [

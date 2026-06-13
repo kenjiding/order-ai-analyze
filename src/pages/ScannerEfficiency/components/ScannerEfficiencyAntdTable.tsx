@@ -59,7 +59,6 @@ export function ScannerEfficiencyAntdTable({
         columns={antdColumns}
         dataSource={rows}
         pagination={false}
-        size="small"
         rowKey={(record, index) => String(record.scanner ?? record.sorterName ?? index)}
         scroll={boundedScroll ? { y: BOUNDED_SCROLL_Y } : undefined}
         summary={

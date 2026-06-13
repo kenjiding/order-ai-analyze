@@ -6,7 +6,7 @@ import {
   type ScannerEfficiencyResult,
 } from './aggregates'
 import { formatInteger, formatNumber } from './formatAndParse'
-import type { SourceInfo } from './exportWorkbook'
+import type { SourceInfo } from './sourceInfo'
 import {
   buildWeeklySnapshotComparison,
   formatWeeklyMetricDeltaValue,

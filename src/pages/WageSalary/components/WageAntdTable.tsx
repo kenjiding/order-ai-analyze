@@ -34,7 +34,6 @@ export function WageAntdTable({
         columns={columns}
         dataSource={dataSource}
         rowKey={rowKey}
-        size="small"
         pagination={pagination}
         scroll={{ x: scrollX, y: scrollY }}
         summary={summary}

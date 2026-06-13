@@ -1,25 +1,31 @@
 import { type FormEvent, useEffect, useState } from 'react'
+import { useLocation, useNavigate } from 'react-router-dom'
 import { Warehouse } from 'lucide-react'
+import { useAuth } from '../../context/AuthContext'
+import { getDefaultRouteForPermissions, getDefaultRouteFromPermissionKeys } from '../../components/Layout/sidebarMenu'
 import { useLoginRive } from './useLoginRive'
 import './login.css'
 
 const REMEMBER_KEY = 'rememberMe'
-const EMAIL_KEY = 'email'
+const USERNAME_KEY = 'username'
 
 export default function LoginPage() {
+  const navigate = useNavigate()
+  const location = useLocation()
+  const { login, isAuthenticated, loading, hasPermission, isSuperAdmin } = useAuth()
+  const [submitting, setSubmitting] = useState(false)
   const {
     riveCanvasRef,
     eyeCanvasRef,
-    emailRef,
+    emailRef: usernameRef,
     passwordRef,
-    handleEmailFocus,
-    handleEmailInput,
-    handleEmailBlur,
+    handleEmailFocus: handleUsernameFocus,
+    handleEmailInput: handleUsernameInput,
+    handleEmailBlur: handleUsernameBlur,
     handlePasswordFocus,
     handlePasswordBlur,
     togglePasswordVisibility,
     fireWrongTrigger,
-    validateEmailFormat,
   } = useLoginRive()
 
   const [remember, setRemember] = useState(false)
@@ -27,14 +33,20 @@ export default function LoginPage() {
   const [passwordShake, setPasswordShake] = useState(false)
 
   useEffect(() => {
+    if (!loading && isAuthenticated) {
+      navigate(getDefaultRouteForPermissions(hasPermission, isSuperAdmin), { replace: true })
+    }
+  }, [loading, isAuthenticated, navigate, hasPermission, isSuperAdmin])
+
+  useEffect(() => {
     if (localStorage.getItem(REMEMBER_KEY) === 'true') {
-      const savedEmail = localStorage.getItem(EMAIL_KEY)
-      if (savedEmail && emailRef.current) {
-        emailRef.current.value = savedEmail
+      const savedUsername = localStorage.getItem(USERNAME_KEY)
+      if (savedUsername && usernameRef.current) {
+        usernameRef.current.value = savedUsername
         setRemember(true)
       }
     }
-  }, [emailRef])
+  }, [usernameRef])
 
   const triggerPasswordError = () => {
     setPasswordError(true)
@@ -48,13 +60,12 @@ export default function LoginPage() {
   const handleSubmit = (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault()
 
-    const email = emailRef.current?.value.trim() ?? ''
+    const username = usernameRef.current?.value.trim() ?? ''
     const password = passwordRef.current?.value ?? ''
-    const isEmailValid = validateEmailFormat(email)
 
-    if (!email || !isEmailValid) {
+    if (!username) {
       fireWrongTrigger()
-      alert('请输入有效的企业邮箱，例如 name@company.com')
+      alert('请输入用户名')
       return
     }
 
@@ -64,7 +75,29 @@ export default function LoginPage() {
       return
     }
 
-    triggerPasswordError()
+    setSubmitting(true)
+    void login(username, password)
+      .then((session) => {
+        if (remember) {
+          localStorage.setItem(REMEMBER_KEY, 'true')
+          localStorage.setItem(USERNAME_KEY, username)
+        } else {
+          localStorage.removeItem(REMEMBER_KEY)
+          localStorage.removeItem(USERNAME_KEY)
+        }
+        const from = (location.state as { from?: string } | null)?.from
+        const defaultRoute = getDefaultRouteFromPermissionKeys(
+          session.permissions,
+          session.user.role === 'super_admin',
+        )
+        navigate(from || defaultRoute, { replace: true })
+      })
+      .catch(() => {
+        triggerPasswordError()
+      })
+      .finally(() => {
+        setSubmitting(false)
+      })
   }
 
   const handlePasswordInput = () => {
@@ -103,12 +136,7 @@ export default function LoginPage() {
             <div className="login-frame login-frame--tr" />
             <div className="login-frame login-frame--bl" />
             <div className="login-frame login-frame--br" />
-            <canvas
-              ref={riveCanvasRef}
-              className="login-illustration__canvas"
-              width={900}
-              height={800}
-            />
+            <canvas ref={riveCanvasRef} className="login-illustration__canvas" width={900} height={800} />
             <div className="login-illustration__tint" aria-hidden />
             <div className="login-illustration__grid" aria-hidden />
           </div>
@@ -141,41 +169,34 @@ export default function LoginPage() {
             <div className="admin-panel overflow-hidden">
               <div className="border-b px-5 py-4" style={{ borderColor: 'var(--admin-line)' }}>
                 <p className="text-sm font-medium text-slate-800">账号验证</p>
-                <p className="mt-0.5 text-xs text-slate-500">登录后可访问效率分析、工资与异常管理模块</p>
+                <p className="mt-0.5 text-xs text-slate-500">使用用户名与密码登录</p>
               </div>
 
               <form className="space-y-4 px-5 py-5" onSubmit={handleSubmit}>
                 <div>
-                  <label htmlFor="email" className="login-field-label mb-1.5 block text-xs font-semibold text-slate-600">
-                    企业邮箱
+                  <label htmlFor="username" className="login-field-label mb-1.5 block text-xs font-semibold text-slate-600">
+                    用户名
                   </label>
                   <input
-                    ref={emailRef}
-                    id="email"
-                    type="email"
-                    autoComplete="email"
-                    placeholder="name@company.com"
+                    ref={usernameRef}
+                    id="username"
+                    type="text"
+                    autoComplete="username"
+                    placeholder="请输入用户名"
                     required
                     className="login-field-input"
-                    onFocus={handleEmailFocus}
-                    onInput={handleEmailInput}
-                    onBlur={handleEmailBlur}
+                    onFocus={handleUsernameFocus}
+                    onInput={handleUsernameInput}
+                    onBlur={handleUsernameBlur}
                   />
                 </div>
 
                 <div>
-                  <label
-                    htmlFor="password"
-                    className="login-field-label mb-1.5 block text-xs font-semibold text-slate-600"
-                  >
+                  <label htmlFor="password" className="login-field-label mb-1.5 block text-xs font-semibold text-slate-600">
                     密码
                   </label>
                   <div
-                    className={[
-                      'login-password-wrap',
-                      passwordError ? 'error' : '',
-                      passwordShake ? 'login-shake' : '',
-                    ]
+                    className={['login-password-wrap', passwordError ? 'error' : '', passwordShake ? 'login-shake' : '']
                       .filter(Boolean)
                       .join(' ')}
                   >
@@ -218,19 +239,23 @@ export default function LoginPage() {
                     className="text-xs font-medium text-[#1f6f68] transition hover:text-[var(--admin-accent)]"
                     onClick={(e) => e.preventDefault()}
                   >
-                    忘记密码
+                    忘记密码, 请联系管理员
                   </a>
                 </div>
 
-                <button type="submit" className="admin-btn admin-btn-primary mt-2 w-full py-2.5">
-                  进入控制台
+                <button
+                  type="submit"
+                  disabled={submitting}
+                  className="admin-btn admin-btn-primary mt-2 w-full py-2.5 disabled:opacity-60"
+                >
+                  {submitting ? '登录中…' : '进入控制台'}
                 </button>
               </form>
             </div>
 
             <div className="mt-6 flex items-center justify-center gap-2 text-xs text-slate-500">
               <span className="h-2 w-2 rounded-full bg-[var(--admin-accent)]" aria-hidden />
-              离线计算 · 本机存储
+              在线会话 · 权限受控
             </div>
           </div>
         </section>

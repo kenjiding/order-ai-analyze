@@ -99,12 +99,12 @@ export default function ScannerEfficiencyBody({ vm, level1Push }: Props) {
         <section className="admin-panel overflow-hidden">
           <SectionTitle
             eyebrow="Start Here"
-            title="先上传到件扫描文件"
-            description="可同时选多个到件扫描表，或分多次追加；合并去重后再按日期汇总货量，并根据是否上传考勤文件决定效率口径。"
+            title="先载入到件扫描数据"
+            description="可在上方通过 Excel 上传或 iMile API 按日期拉取；合并去重后按日汇总货量，并根据是否上传考勤决定效率口径。"
           />
           <div className="grid gap-3 p-5 lg:grid-cols-3">
             <div className="rounded-lg bg-slate-50 px-4 py-4 text-sm leading-7 text-slate-600">
-              只上传到件文件：先得到按日货量，若含「扫描员」可自动算分拣效率。支持多文件合并（单次多选或多次追加），运单号重复时保留最早扫描记录。
+              只载入到件数据：先得到按日货量，含扫描员信息时可自动算分拣效率。支持多文件或多次 API 合并，运单号重复时保留最早扫描记录。
             </div>
             <div className="rounded-lg bg-slate-50 px-4 py-4 text-sm leading-7 text-slate-600">
               同时上传考勤：自动输出开仓效率与总体效率。

@@ -7,9 +7,9 @@ import {
   Package,
   Route,
   ShieldAlert,
-  X,
 } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
+import { DrawerCloseButton } from '../../../components/Drawer/DrawerCloseButton'
 import { useAppSettings } from '../../../context/AppSettingsContext'
 import { showToast } from '../../../utils/toast'
 import {
@@ -501,14 +501,7 @@ export function OrderAnalysisDetailDrawer({ row, onClose }: Props) {
                 <OrderInfoMetaLine orderInfo={row.orderInfo} />
               </div>
 
-              <button
-                type="button"
-                onClick={onClose}
-                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-white/20 bg-white/10 text-white transition hover:bg-white/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/40"
-                aria-label="关闭订单详情"
-              >
-                <X className="h-4 w-4" aria-hidden />
-              </button>
+              <DrawerCloseButton onClick={onClose} variant="onDark" aria-label="关闭订单详情" />
             </div>
           </header>
 
@@ -522,7 +515,7 @@ export function OrderAnalysisDetailDrawer({ row, onClose }: Props) {
                   title="异常完结"
                 />
                 <div className="px-5 py-4">
-                  <Form layout="vertical" size="middle" colon={false}>
+                  <Form layout="vertical" colon={false}>
                     <div className="grid gap-x-4 sm:grid-cols-2">
                       <Form.Item label="异常类型" required className="mb-3">
                         <Select<ClosureExceptionTypeKey>
@@ -566,7 +559,7 @@ export function OrderAnalysisDetailDrawer({ row, onClose }: Props) {
                     </Form.Item>
 
                     <Form.Item className="mb-0">
-                      <Button type="primary" size="middle" onClick={handlePreviewSubmit} className="min-w-[120px]">
+                      <Button type="primary" onClick={handlePreviewSubmit} className="min-w-[120px]">
                         提交预览
                       </Button>
                     </Form.Item>
@@ -592,7 +585,7 @@ export function OrderAnalysisDetailDrawer({ row, onClose }: Props) {
                   title="供应商识别"
                 />
                 <div className="px-5 py-4">
-                  <Form layout="vertical" size="middle" colon={false}>
+                  <Form layout="vertical" colon={false}>
                     <Form.Item label="站点编码" className="mb-3">
                       <Input
                         value={stationCode}

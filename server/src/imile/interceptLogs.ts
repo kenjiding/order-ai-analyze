@@ -1,12 +1,10 @@
 import {
-  buildImileAuthHeaders,
-  envFirstOr,
-  imileRequestJson,
   isRecord,
   mergeBatchRaw,
   normalizeImileToken,
-  truncateRawText,
 } from './shared'
+import { requestImileApi } from './client'
+import { buildImilePortalHeaders, IMILE_OC_INTERCEPT_PORTAL } from './portal'
 import { mapWithConcurrency } from '../orderAnalyze/runtime'
 import { isConfiguredNonRealOrSystemOperator } from '../orderAnalyze/warehouseProfiles'
 
@@ -59,18 +57,11 @@ function classifyInterceptOperator(scanUserCode: string, scanUserName: string): 
 }
 
 function buildInterceptHeaders(imileToken: string): Record<string, string> {
-  return buildImileAuthHeaders({
+  return buildImilePortalHeaders({
     token: imileToken,
-    resourceCode: envFirstOr(['IMILE_INTERCEPT_RESOURCE_CODE'], 'listScanInterceptLogs'),
-    sysName: envFirstOr(['IMILE_INTERCEPT_SYS_NAME'], 'OC'),
-    sysPortal: envFirstOr(['IMILE_INTERCEPT_SYS_PORTAL'], 'OC'),
-    origin: envFirstOr(['IMILE_INTERCEPT_ORIGIN'], 'https://oc.imile.com'),
-    referer: envFirstOr(['IMILE_INTERCEPT_REFERER'], 'https://oc.imile.com/'),
-    frontSecEnvKeys: ['IMILE_INTERCEPT_FRONT_SEC', 'IMILE_TRACK_FRONT_SEC'],
-    hubcodeEnvKeys: ['IMILE_INTERCEPT_HUBCODE', 'IMILE_TRACK_HUBCODE'],
-    langEnvKeys: ['IMILE_INTERCEPT_LANG', 'IMILE_TRACK_LANG'],
-    timezoneEnvKeys: ['IMILE_INTERCEPT_TIMEZONE', 'IMILE_TRACK_TIMEZONE'],
-    cookieEnvKeys: ['IMILE_INTERCEPT_COOKIE', 'IMILE_TRACK_COOKIE'],
+    envPrefix: 'IMILE_INTERCEPT',
+    defaults: IMILE_OC_INTERCEPT_PORTAL,
+    sharedEnvPrefixes: ['IMILE_TRACK'],
   })
 }
 
@@ -122,34 +113,19 @@ async function queryOneInterceptLog(
   imileToken: string,
   orderNo: string
 ): Promise<{ ok: true; logs: ScanInterceptLog[]; raw: unknown } | { ok: false; status: number; message: string; rawText?: string }> {
-  const res = await imileRequestJson({
+  const res = await requestImileApi({
     url: buildInterceptUrl(orderNo),
     method: 'GET',
     headers: buildInterceptHeaders(imileToken),
+    label: `阻断日志（运单 ${orderNo}）`,
   })
 
-  if (!res.readOk) {
-    if (res.networkError) {
-      return {
-        ok: false,
-        status: res.status,
-        message: `阻断日志接口请求失败（运单 ${orderNo}）：${res.text}`,
-      }
-    }
+  if (!res.ok) {
     return {
       ok: false,
       status: res.status,
-      message: `阻断日志接口返回非 JSON（运单 ${orderNo}）`,
-      rawText: truncateRawText(res.text),
-    }
-  }
-
-  if (!res.httpOk) {
-    return {
-      ok: false,
-      status: res.status,
-      message: `阻断日志接口 HTTP 错误（运单 ${orderNo}）`,
-      rawText: truncateRawText(res.text),
+      message: res.message,
+      rawText: res.rawText,
     }
   }
 

@@ -5,6 +5,9 @@ type RiveNumberInput = { value: number }
 type RiveBooleanInput = { value: boolean }
 type RiveTrigger = { trigger?: () => void; fire?: () => void }
 
+const MOUSE_AMPLIFY = 1.85
+const REACTION_MS = 720
+
 function fireTrigger(t: RiveTrigger | null | undefined) {
   if (!t) return
   if (typeof t.trigger === 'function') {
@@ -14,9 +17,29 @@ function fireTrigger(t: RiveTrigger | null | undefined) {
   }
 }
 
-function validateEmailFormat(email: string) {
-  const emailRegex = /^[^\s@]+@[^\s@]+\.[a-zA-Z]{2,}$/
-  return emailRegex.test(email)
+function validateUsernameFormat(username: string) {
+  return username.length >= 2 && /^[\w.-]+$/.test(username)
+}
+
+function amplifyMousePoint(clientX: number, clientY: number, target: HTMLElement) {
+  const rect = target.getBoundingClientRect()
+  const cx = rect.left + rect.width / 2
+  const cy = rect.top + rect.height / 2
+  return {
+    clientX: cx + (clientX - cx) * MOUSE_AMPLIFY,
+    clientY: cy + (clientY - cy) * MOUSE_AMPLIFY,
+  }
+}
+
+function dispatchRiveMouseMove(target: HTMLElement, clientX: number, clientY: number) {
+  const point = amplifyMousePoint(clientX, clientY, target)
+  target.dispatchEvent(
+    new MouseEvent('mousemove', {
+      clientX: point.clientX,
+      clientY: point.clientY,
+      bubbles: false,
+    }),
+  )
 }
 
 export function useLoginRive() {
@@ -31,6 +54,35 @@ export function useLoginRive() {
   const correctTriggerRef = useRef<RiveTrigger | null>(null)
   const wrongTriggerRef = useRef<RiveTrigger | null>(null)
   const displayInputRef = useRef<RiveBooleanInput | null>(null)
+  const reactionTimerRef = useRef<number | null>(null)
+
+  const flashReaction = useCallback((type: 'wrong' | 'correct') => {
+    const stage = riveCanvasRef.current?.closest('.login-illustration__stage')
+    if (!(stage instanceof HTMLElement)) return
+
+    stage.classList.remove('login-illustration__stage--wrong', 'login-illustration__stage--correct')
+    void stage.offsetWidth
+    stage.classList.add(`login-illustration__stage--${type}`)
+
+    if (reactionTimerRef.current !== null) {
+      window.clearTimeout(reactionTimerRef.current)
+    }
+
+    reactionTimerRef.current = window.setTimeout(() => {
+      stage.classList.remove(`login-illustration__stage--${type}`)
+      reactionTimerRef.current = null
+    }, REACTION_MS)
+  }, [])
+
+  const fireCorrectTrigger = useCallback(() => {
+    fireTrigger(correctTriggerRef.current)
+    flashReaction('correct')
+  }, [flashReaction])
+
+  const fireWrongTrigger = useCallback(() => {
+    fireTrigger(wrongTriggerRef.current)
+    flashReaction('wrong')
+  }, [flashReaction])
 
   const syncPasswordVisuals = useCallback(() => {
     const statusInput = statusInputRef.current
@@ -162,23 +214,11 @@ export function useLoginRive() {
       const canvas = riveCanvasRef.current
 
       if (eyeCanvas) {
-        eyeCanvas.dispatchEvent(
-          new MouseEvent('mousemove', {
-            clientX: e.clientX,
-            clientY: e.clientY,
-            bubbles: false,
-          }),
-        )
+        dispatchRiveMouseMove(eyeCanvas, e.clientX, e.clientY)
       }
 
       if (canvas) {
-        canvas.dispatchEvent(
-          new MouseEvent('mousemove', {
-            clientX: e.clientX,
-            clientY: e.clientY,
-            bubbles: false,
-          }),
-        )
+        dispatchRiveMouseMove(canvas, e.clientX, e.clientY)
       }
     }
 
@@ -188,19 +228,26 @@ export function useLoginRive() {
     return () => {
       window.removeEventListener('resize', handleResize)
       window.removeEventListener('mousemove', handleMouseMove)
+      if (reactionTimerRef.current !== null) {
+        window.clearTimeout(reactionTimerRef.current)
+      }
     }
   }, [])
 
   const handleEmailFocus = useCallback(() => {
     syncPasswordVisuals()
-  }, [syncPasswordVisuals])
+    const username = emailRef.current?.value.trim() ?? ''
+    if (validateUsernameFormat(username)) {
+      fireCorrectTrigger()
+    }
+  }, [syncPasswordVisuals, fireCorrectTrigger])
 
   const handleEmailInput = useCallback(() => {
-    const email = emailRef.current?.value.trim() ?? ''
-    if (validateEmailFormat(email)) {
-      fireTrigger(correctTriggerRef.current)
+    const username = emailRef.current?.value.trim() ?? ''
+    if (validateUsernameFormat(username)) {
+      fireCorrectTrigger()
     }
-  }, [])
+  }, [fireCorrectTrigger])
 
   const handleEmailBlur = useCallback(() => {
     syncPasswordVisuals()
@@ -230,10 +277,6 @@ export function useLoginRive() {
     }, 0)
   }, [syncPasswordVisuals])
 
-  const fireWrongTrigger = useCallback(() => {
-    fireTrigger(wrongTriggerRef.current)
-  }, [])
-
   return {
     riveCanvasRef,
     eyeCanvasRef,
@@ -246,6 +289,6 @@ export function useLoginRive() {
     handlePasswordBlur,
     togglePasswordVisibility,
     fireWrongTrigger,
-    validateEmailFormat,
+    validateUsernameFormat,
   }
 }

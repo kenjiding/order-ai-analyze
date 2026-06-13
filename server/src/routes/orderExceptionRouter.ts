@@ -13,6 +13,7 @@ import {
   queryTracksWithCache,
 } from './orderExceptionData'
 import { registerOrderExceptionRegressionRoutes } from './orderExceptionRegressionRouter'
+import { readImileTokenFromRequest } from './imileAuth'
 
 export const orderExceptionRouter = Router()
 
@@ -20,21 +21,8 @@ function readJson<T>(req: Request): T {
   return req.body as T
 }
 
-function normalizeToken(raw: string): string {
-  return raw.replace(/^Bearer\s+/i, '').trim()
-}
-
 function readImileToken(req: Request, bodyToken: unknown): string {
-  const fromBody = String(bodyToken ?? '').trim()
-  if (fromBody) return normalizeToken(fromBody)
-
-  const fromQuery = String(req.query?.token ?? '').trim()
-  if (fromQuery) return normalizeToken(fromQuery)
-
-  const authHeader = String(req.headers.authorization ?? '').trim()
-  if (authHeader) return normalizeToken(authHeader)
-
-  return ''
+  return readImileTokenFromRequest(req, bodyToken, { allowQuery: true })
 }
 
 registerOrderExceptionRegressionRoutes(orderExceptionRouter, {

@@ -1,10 +1,13 @@
 import { Fragment, type ReactNode } from 'react'
+import { Tooltip } from 'antd'
+import { usePermission } from '../../../hooks/usePermission'
 
 type ExportButtonProps = {
   onClick: () => void
   disabled?: boolean
   label?: string
   className?: string
+  permission?: string
 }
 
 export function ExportButton({
@@ -12,17 +15,27 @@ export function ExportButton({
   disabled,
   label = '导出 Excel',
   className,
+  permission,
 }: ExportButtonProps) {
-  return (
+  const allowed = permission ? usePermission(permission) : true
+  const isDisabled = disabled || !allowed
+
+  const button = (
     <button
       type="button"
       onClick={onClick}
-      disabled={disabled}
+      disabled={isDisabled}
       className={['admin-btn', 'admin-btn-primary', className].filter(Boolean).join(' ')}
     >
       {label}
     </button>
   )
+
+  if (permission && !allowed) {
+    return <Tooltip title="无操作权限">{button}</Tooltip>
+  }
+
+  return button
 }
 
 type SectionTitleProps = {

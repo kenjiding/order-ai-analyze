@@ -27,3 +27,4 @@ temp
 *.njsproj
 *.sln
 *.sw?
+server/data/job-artifacts/

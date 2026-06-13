@@ -2,6 +2,7 @@ import { Button, Empty, Popconfirm, Table, Tabs, Tooltip, Typography } from 'ant
 import type { ColumnsType } from 'antd/es/table'
 import { Megaphone, PencilLine, Plus, Send, Trash2 } from 'lucide-react'
 import { useCallback, useState } from 'react'
+import { PERMISSION_KEYS, usePermission } from '../../hooks/usePermission'
 import { PushEntryEditModal } from './components/PushEntryEditModal'
 import { FleetSupplierPushTab } from './components/FleetSupplierPushTab'
 import { FEISHU_PUSH_KIND_LABELS, type FeishuPushEntryWithKind, type FeishuPushKind } from './feishuPushTypes'
@@ -36,6 +37,7 @@ function isWarehousePushTabKey(key: string): key is WarehousePushTabKey {
 
 export default function PushNotificationsPage() {
   const v = usePushNotificationsPage()
+  const canSend = usePermission(PERMISSION_KEYS.btnPushNotificationsSend)
   const [activeTabKey, setActiveTabKey] = useState<PushPageTabKey>('warehouse_efficiency')
   const [modalOpen, setModalOpen] = useState(false)
   const [editingRecord, setEditingRecord] = useState<FeishuPushEntryWithKind | null>(null)
@@ -76,6 +78,10 @@ export default function PushNotificationsPage() {
   }
 
   const handlePushTest = useCallback(async (record: FeishuPushEntryWithKind) => {
+    if (!canSend) {
+      showToast('无操作权限', 'error')
+      return
+    }
     if (record.isDisabled) {
       showToast(`「${record.pushName}」已禁用，请先启用后再测试。`, 'error')
       return
@@ -99,7 +105,7 @@ export default function PushNotificationsPage() {
     } finally {
       setTestingId(null)
     }
-  }, [])
+  }, [canSend])
 
   const buildColumns = useCallback(
     (showKindColumn: boolean): ColumnsType<FeishuPushEntryWithKind> => [
@@ -178,7 +184,6 @@ export default function PushNotificationsPage() {
           <div className="flex flex-nowrap items-center gap-0">
             <Button
               type="link"
-              size="small"
               className="!px-1"
               onClick={() => {
                 const nextDisabled = !(record.isDisabled === true)
@@ -190,18 +195,20 @@ export default function PushNotificationsPage() {
             </Button>
             <Button
               type="link"
-              size="small"
               className="!px-1"
               icon={<Send className="h-3.5 w-3.5" />}
               loading={testingId === record.id}
-              disabled={record.isDisabled === true || (testingId !== null && testingId !== record.id)}
+              disabled={
+                !canSend ||
+                record.isDisabled === true ||
+                (testingId !== null && testingId !== record.id)
+              }
               onClick={() => void handlePushTest(record)}
             >
               推送测试
             </Button>
             <Button
               type="link"
-              size="small"
               className="!px-1"
               icon={<PencilLine className="h-3.5 w-3.5" />}
               onClick={() => openEditModal(record)}
@@ -216,7 +223,7 @@ export default function PushNotificationsPage() {
               okButtonProps={{ danger: true }}
               onConfirm={() => handleDelete(record)}
             >
-              <Button type="link" size="small" className="!px-1" danger icon={<Trash2 className="h-3.5 w-3.5" />}>
+              <Button type="link" className="!px-1" danger icon={<Trash2 className="h-3.5 w-3.5" />}>
                 删除
               </Button>
             </Popconfirm>
@@ -224,7 +231,7 @@ export default function PushNotificationsPage() {
         ),
       },
     ],
-    [handlePushTest, testingId, v],
+    [canSend, handlePushTest, testingId, v],
   )
 
   const renderWarehousePushTab = (tabKey: WarehousePushTabKey, hint: string) => {
@@ -248,7 +255,6 @@ export default function PushNotificationsPage() {
           columns={buildColumns(showKindColumn)}
           dataSource={dataSource}
           pagination={false}
-          size="middle"
           locale={{
             emptyText: <Empty className="py-12" description="暂无推送条目，点击右上角「添加推送」开始配置。" />,
           }}

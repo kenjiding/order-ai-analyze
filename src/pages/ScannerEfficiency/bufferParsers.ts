@@ -17,12 +17,9 @@ import {
   ATTENDANCE_NAME_COLUMNS,
   ATTENDANCE_POSITION_CODE_COLUMNS,
   ATTENDANCE_POSITION_TITLE_COLUMNS,
-  SCANNER_COLUMNS,
-  SCAN_TIME_COLUMNS,
-  SORTING_REQUIRED_COLUMNS,
-  TRACKING_COLUMNS,
 } from './constants'
 import type { ParsedAllocationRow, ParsedAttendanceRow, ParsedScanRow } from './aggregates'
+import { mapExcelRowToParsedScanRow } from './inboundScanMapper'
 import {
   formatDateKey,
   getValueByCandidates,
@@ -31,13 +28,6 @@ import {
   parseDateValue,
   sanitizeText,
 } from './formatAndParse'
-
-/** 到件扫描：不纳入货量与效率统计的扫描员标识（trim 后小写比对） */
-const EXCLUDED_SCAN_IDENTITIES = new Set(['system', 'adl-shigong8'])
-
-function isExcludedScanIdentity(value: string): boolean {
-  return EXCLUDED_SCAN_IDENTITIES.has(value.trim().toLowerCase())
-}
 
 function isSystemAccount(value: string): boolean {
   return value.trim().toLowerCase() === 'system'
@@ -96,11 +86,6 @@ function combineDateAndClockTime(date: Date, value: unknown): Date | null {
   return null
 }
 
-/** 到件/分拣扫描中上述账号产生的记录，不参与货量与效率统计 */
-function isExcludedFromScanStats(scanner: string, sortingScanner: string): boolean {
-  return isExcludedScanIdentity(scanner) || isExcludedScanIdentity(sortingScanner)
-}
-
 /** 考勤中的系统账号不参与分拣人数、工时与效率统计 */
 function isExcludedSystemAttendanceRow({
   sorterKey,
@@ -133,39 +118,17 @@ export function parseScanFileBuffer(buffer: ArrayBuffer, fileName: string): {
     })
 
     jsonRows.forEach((rawRow, index) => {
-      const row = normalizeRow(rawRow)
-      const scanTimeValue = getValueByCandidates(row, SCAN_TIME_COLUMNS)
-      const scanTime = parseDateValue(scanTimeValue)
-      if (!scanTime) {
-        droppedRows += 1
-        return
-      }
-
-      const trackingNumber = sanitizeText(getValueByCandidates(row, TRACKING_COLUMNS))
-      const scanner = sanitizeText(getValueByCandidates(row, SCANNER_COLUMNS))
-
-      const sortingScanTime = parseDateValue(getValueByCandidates(row, [SORTING_REQUIRED_COLUMNS[0]]))
-      const sortingTrackingNumber = sanitizeText(getValueByCandidates(row, [SORTING_REQUIRED_COLUMNS[1]]))
-      const sortingScanner = sanitizeText(getValueByCandidates(row, [SORTING_REQUIRED_COLUMNS[2]]))
-      const sortingEligible = Boolean(sortingScanTime && sortingTrackingNumber && sortingScanner)
-
-      if (isExcludedFromScanStats(scanner, sortingScanner)) {
-        droppedRows += 1
-        return
-      }
-
-      rows.push({
-        scanTime,
-        trackingNumber,
-        scanner,
-        sortingScanTime,
-        sortingTrackingNumber,
-        sortingScanner,
-        sortingEligible,
-        sourceFileName: fileName,
-        sourceSheetName: sheetName,
-        sourceRowNumber: index + 2,
+      const parsed = mapExcelRowToParsedScanRow({
+        row: normalizeRow(rawRow),
+        fileName,
+        sheetName,
+        rowNumber: index + 2,
       })
+      if (!parsed) {
+        droppedRows += 1
+        return
+      }
+      rows.push(parsed)
     })
   })
 

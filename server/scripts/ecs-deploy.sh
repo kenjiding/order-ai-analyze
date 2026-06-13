@@ -71,20 +71,20 @@ case "$cmd" in
     ;;
   up)
     ensure_env
-    compose up -d --build
-    compose ps
+    compose --profile stack up -d --build
+    compose --profile stack ps
     echo ""
     echo "健康检查: curl -sf http://127.0.0.1:${PORT:-8787}/health"
     ;;
   down)
-    compose down
+    compose --profile stack down
     ;;
   restart)
     ensure_env
-    compose up -d --build --force-recreate
+    compose --profile stack up -d --build --force-recreate
     ;;
   logs)
-    compose logs -f --tail=200
+    compose --profile stack logs -f --tail=200
     ;;
   push)
     if [[ -z "$ACR_REGISTRY" ]]; then
@@ -103,8 +103,8 @@ case "$cmd" in
     remote="$(acr_image)"
     podman pull "$remote"
     podman tag "$remote" "$IMAGE"
-    compose up -d
-    compose ps
+    compose --profile stack up -d
+    compose --profile stack ps
     ;;
   health)
     curl -sf "http://127.0.0.1:${PORT:-8787}/health" && echo

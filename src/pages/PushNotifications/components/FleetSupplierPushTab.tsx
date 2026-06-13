@@ -564,10 +564,10 @@ export function FleetSupplierPushTab({
         fixed: 'right',
         render: (_, row) => (
           <div className="flex flex-nowrap items-center gap-0">
-            <Button type="link" size="small" className="!px-1" icon={<PencilLine className="h-3.5 w-3.5" />} onClick={() => openEdit(row)}>
+            <Button type="link" className="!px-1" icon={<PencilLine className="h-3.5 w-3.5" />} onClick={() => openEdit(row)}>
               编辑
             </Button>
-            <Button type="link" size="small" className="!px-1" danger icon={<Trash2 className="h-3.5 w-3.5" />} onClick={() => removeSupplier(row)}>
+            <Button type="link" className="!px-1" danger icon={<Trash2 className="h-3.5 w-3.5" />} onClick={() => removeSupplier(row)}>
               删除
             </Button>
           </div>
@@ -699,11 +699,11 @@ export function FleetSupplierPushTab({
           <div className="fs-card-head-title">供应商配置</div>
           <div className="flex flex-wrap items-center gap-2">
             {!secretsHidden ? (
-              <Button type="default" size="small" icon={<Download className="h-3.5 w-3.5" />} onClick={handleExportSuppliers}>
+              <Button type="default" icon={<Download className="h-3.5 w-3.5" />} onClick={handleExportSuppliers}>
                 导出配置
               </Button>
             ) : null}
-            <Button type="default" size="small" onClick={openImportModal}>
+            <Button type="default" onClick={openImportModal}>
               导入供应商配置
             </Button>
             <span className="fs-badge-count">
@@ -718,7 +718,6 @@ export function FleetSupplierPushTab({
               columns={columns}
               dataSource={suppliers}
               pagination={false}
-              size="middle"
               rowSelection={{
                 selectedRowKeys: effectiveSelectedKeys,
                 onChange: setSelectedSupplierKeys,

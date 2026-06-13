@@ -7,7 +7,7 @@ import {
   type FrontDeskSaturationStatus,
 } from '../frontDeskSaturation'
 import { formatInteger, formatNumber } from '../formatAndParse'
-import type { SourceInfo } from '../exportWorkbook'
+import type { SourceInfo } from '../sourceInfo'
 import { DataTable, Metric, SectionTitle, type DataTableColumn, type DataTableRow } from './ui'
 
 type Props = {

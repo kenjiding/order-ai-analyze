@@ -66,6 +66,13 @@
 
 ## 前端工程规范
 
+### UI 控件尺寸
+
+- 交互控件（Ant Design 的 `Button`、`Input`、`Select`、`DatePicker`、`Table`、`Form` 等；MUI 的 `IconButton` 等）**统一使用 middle / medium 尺寸**。
+- Ant Design 默认即为 `middle`：**省略 `size` 属性**，不要写 `size="small"` 或 `size="large"`。
+- MUI 默认即为 `medium`：同样省略 `size`，不要写 `size="small"` 或 `size="large"`。
+- 需要更紧凑的布局时，用间距、`className` 调整，不要通过缩小控件尺寸破坏全站一致性。
+
 - 组件职责单一，优先组合而不是复杂继承或过度配置。
 - UI 状态、业务状态、请求状态应区分清楚。
 - 交互应覆盖 loading、empty、error、disabled 等状态。
@@ -130,5 +137,4 @@ Same 12 rules as `CLAUDE.md`, filename change for Codex-style tooling that looks
 
 ## Project specifics
 
-
-<!-- Add repo-specific rules here. Keep it under 50 lines. -->
+- **UI control size**: Use Ant Design / MUI default middle (medium) only. Omit `size` on `Button`, `Input`, `Select`, `DatePicker`, `Table`, `Form`, `IconButton`, etc. Never use `size="small"` or `size="large"`. See `.cursor/rules/ui-component-size.mdc`.
