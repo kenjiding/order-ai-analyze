@@ -11,8 +11,8 @@ export type WarehouseConfigGlobalDto = {
 export type WarehouseProfileDto = {
   cityId: WarehouseCityId
   hubId: string
-  displayName: string
-  aliases: string[]
+  name: string
+  extraAliases?: string[]
   lossTimeoutDays?: number
   nonRealOperators?: string[]
   nonRealOperatorPatterns?: string[]
@@ -53,6 +53,22 @@ function normalizeText(raw: string): string {
   return raw.trim().toLowerCase().replace(/\s+/g, '')
 }
 
+function warehouseTrackNames(profile: Pick<WarehouseProfile, 'name' | 'extraAliases'>): string[] {
+  return [profile.name, ...(profile.extraAliases ?? [])]
+}
+
+function matchesWarehouseTrackName(
+  profile: Pick<WarehouseProfile, 'name' | 'extraAliases'>,
+  raw: string
+): boolean {
+  const normalized = normalizeText(raw)
+  if (!normalized) return false
+  return warehouseTrackNames(profile).some((candidate) => {
+    const normalizedCandidate = normalizeText(candidate)
+    return normalized === normalizedCandidate || normalized.includes(normalizedCandidate)
+  })
+}
+
 function operatorNameEquals(a: string, b: string): boolean {
   return a.trim().toLowerCase() === b.trim().toLowerCase()
 }
@@ -75,9 +91,12 @@ function toRuntimeProfile(dto: WarehouseProfileDto): WarehouseProfile {
   const profile: WarehouseProfile = {
     cityId: dto.cityId,
     hubId: dto.hubId.trim(),
-    displayName: dto.displayName.trim(),
-    aliases: dto.aliases.map((alias) => alias.trim()).filter(Boolean),
+    name: dto.name.trim(),
   }
+  const extraAliases = sanitizeStringList(dto.extraAliases).filter(
+    (alias) => normalizeText(alias) !== normalizeText(dto.name)
+  )
+  if (extraAliases.length) profile.extraAliases = extraAliases
   if (dto.lossTimeoutDays !== undefined) profile.lossTimeoutDays = dto.lossTimeoutDays
   if (dto.nonRealOperators?.length) profile.nonRealOperators = [...dto.nonRealOperators]
   if (dto.systemOperators?.length) profile.systemOperators = [...dto.systemOperators]
@@ -123,11 +142,14 @@ function sanitizeProfile(raw: unknown): WarehouseProfileDto | null {
   const cityId = String(input.cityId ?? '').trim() as WarehouseCityId
   if (!WAREHOUSE_CITY_IDS.includes(cityId)) return null
   const hubId = String(input.hubId ?? '').trim()
-  const displayName = String(input.displayName ?? '').trim()
-  const aliases = sanitizeStringList(input.aliases)
-  if (!hubId || !displayName || !aliases.length) return null
+  const name = String(input.name ?? '').trim()
+  if (!hubId || !name) return null
 
-  const profile: WarehouseProfileDto = { cityId, hubId, displayName, aliases }
+  const profile: WarehouseProfileDto = { cityId, hubId, name }
+  const extraAliases = sanitizeStringList(input.extraAliases).filter(
+    (alias) => normalizeText(alias) !== normalizeText(name)
+  )
+  if (extraAliases.length) profile.extraAliases = extraAliases
   const lossTimeoutDays = Number(input.lossTimeoutDays)
   if (Number.isFinite(lossTimeoutDays) && lossTimeoutDays >= 1) {
     profile.lossTimeoutDays = Math.floor(lossTimeoutDays)
@@ -153,67 +175,66 @@ export const DEFAULT_WAREHOUSE_CONFIG: WarehouseConfigDto = {
     {
       cityId: 'ADL',
       hubId: 'adelaide_center',
-      displayName: 'Adelaide Center',
-      aliases: ['Adelaide Center', 'adeliade center', 'Adelaide Centre', 'ADL Center', 'ADL Centre'],
+      name: 'Adelaide Center',
+      extraAliases: ['adeliade center', 'Adelaide Centre', 'ADL Center', 'ADL Centre'],
       nonRealOperators: ['ADL-DC-Unload', 'Kuangyi Gao', 'Leeki', 'sorter', 'ADL OP1'],
       systemOperators: ['ADL OP1'],
     },
     {
       cityId: 'ADL',
       hubId: 'adelaide_ds',
-      displayName: 'Adelaide DS',
-      aliases: ['Adelaide DS', 'adelaide DS', 'ADL DS'],
+      name: 'Adelaide DS',
+      extraAliases: ['adelaide DS', 'ADL DS'],
       nonRealOperators: ['ADL-DC-Unload', 'Kuangyi Gao', 'Leeki', 'sorter', 'ADL OP1'],
       systemOperators: ['ADL OP1'],
     },
     {
       cityId: 'MEL',
       hubId: 'melbourne_center',
-      displayName: 'Melbourne Center',
-      aliases: ['Melbourne Center', 'Melbourne Centre', 'MEL Center', 'MEL Centre'],
+      name: 'Melbourne Center',
+      extraAliases: ['Melbourne Centre', 'MEL Center', 'MEL Centre'],
     },
     {
       cityId: 'MEL',
       hubId: 'Mel South East',
-      displayName: 'Mel South East',
-      aliases: ['Mel South East', 'MEL DS'],
+      name: 'Mel South East',
+      extraAliases: ['MEL DS'],
     },
     {
       cityId: 'QLD',
       hubId: 'Townsville Station',
-      displayName: 'Queensland',
-      aliases: ['Townsville Station'],
+      name: 'Townsville Station',
       systemOperators: ['Townsville Station'],
     },
     {
       cityId: 'CBR',
       hubId: 'canberra_station',
-      displayName: 'Canberra Station',
-      aliases: ['Canberra Station', 'Canberra station'],
+      name: 'Canberra Station',
+      extraAliases: ['Canberra station'],
     },
     {
       cityId: 'QLD',
       hubId: 'gold_coast_station',
-      displayName: 'Gold Coast Station',
-      aliases: ['Gold Coast Station', 'Gold Coast station'],
+      name: 'Gold Coast Station',
+      extraAliases: ['Gold Coast station'],
     },
     {
       cityId: 'QLD',
       hubId: 'sunshine_coast_station',
-      displayName: 'Sunshine Coast Station',
-      aliases: ['Sunshine Coast Station', 'Sunshine Coast station'],
+      name: 'Sunshine Coast Station',
+      extraAliases: ['Sunshine Coast station'],
     },
     {
       cityId: 'SYD',
       hubId: 'newcastle_2',
-      displayName: 'Newcastle-2',
-      aliases: ['Newcastle-2', 'Newcastle 2', 'Newcasle-2'],
+      name: 'Newcastle-2',
+      extraAliases: ['Newcastle 2', 'Newcasle-2'],
     },
     {
       cityId: 'PER',
       hubId: 'perth_placeholder',
-      displayName: 'Perth',
-      aliases: ['Perth Center', 'Perth Centre', 'Perth DS', 'PER Center', 'PER DS'],
+      name: 'Perth Center',
+      extraAliases: ['Perth Centre', 'Perth DS', 'PER Center', 'PER DS', 'Perth'],
       nonRealOperators: [
         'PER OPS1',
         'PER OPS2',
@@ -230,14 +251,13 @@ export const DEFAULT_WAREHOUSE_CONFIG: WarehouseConfigDto = {
     {
       cityId: 'SYD',
       hubId: 'sydney_placeholder',
-      displayName: 'Sydney',
-      aliases: ['Sydney Center', 'Sydney Centre', 'Sydney DS', 'SYD Center', 'SYD DS'],
+      name: 'Sydney Center',
+      extraAliases: ['Sydney Centre', 'Sydney DS', 'SYD Center', 'SYD DS', 'Sydney'],
     },
     {
       cityId: 'SYD',
       hubId: 'SYDN',
-      displayName: 'SYDN',
-      aliases: ['SYDN'],
+      name: 'SYDN',
       nonRealOperators: [
         'SYDN OPS1',
         'SYDN OPS2',
@@ -255,8 +275,8 @@ export const DEFAULT_WAREHOUSE_CONFIG: WarehouseConfigDto = {
     {
       cityId: 'SYD',
       hubId: 'SYDE',
-      displayName: 'SYDE',
-      aliases: ['SYDE', 'Sydney East', 'Sydney East DS', 'SYDE DS'],
+      name: 'SYDE',
+      extraAliases: ['Sydney East', 'Sydney East DS', 'SYDE DS'],
       nonRealOperators: [
         'SYDE OPS1',
         'SYDE OPS2',
@@ -274,14 +294,13 @@ export const DEFAULT_WAREHOUSE_CONFIG: WarehouseConfigDto = {
     {
       cityId: 'SYD',
       hubId: 'syd_csp_7',
-      displayName: 'SYD CSP 7',
-      aliases: ['SYD CSP 7'],
+      name: 'SYD CSP 7',
     },
     {
       cityId: 'BNE',
       hubId: 'brisbane_placeholder',
-      displayName: 'Brisbane',
-      aliases: ['Brisbane Center', 'Brisbane Centre', 'Brisbane DS', 'BNE Center', 'BNE DS'],
+      name: 'Brisbane Center',
+      extraAliases: ['Brisbane Centre', 'Brisbane DS', 'BNE Center', 'BNE DS', 'Brisbane'],
     },
   ],
 }
@@ -310,16 +329,7 @@ export function createWarehouseProfileContext(config: WarehouseConfigDto): Wareh
     defaultLossTimeoutDays: global.defaultLossTimeoutDays,
     externalCarrierLossTimeoutDays: global.externalCarrierLossTimeoutDays,
     findWarehouseProfileByName(raw: string) {
-      const normalized = normalizeText(raw)
-      if (!normalized) return null
-      return (
-        profiles.find((profile) =>
-          profile.aliases.some((alias) => {
-            const normalizedAlias = normalizeText(alias)
-            return normalized === normalizedAlias || normalized.includes(normalizedAlias)
-          })
-        ) ?? null
-      )
+      return profiles.find((profile) => matchesWarehouseTrackName(profile, raw)) ?? null
     },
     classifyOperatorForWarehouse(operatorName: string, profile: WarehouseProfile | null) {
       const name = operatorName.trim()

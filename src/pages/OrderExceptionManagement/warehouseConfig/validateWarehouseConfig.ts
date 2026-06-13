@@ -5,8 +5,12 @@ export type WarehouseConfigValidationIssue = {
   message: string
 }
 
-function normalizeAlias(raw: string): string {
+function normalizeTrackName(raw: string): string {
   return raw.trim().toLowerCase().replace(/\s+/g, '')
+}
+
+function profileTrackNames(profile: WarehouseProfileDto): string[] {
+  return [profile.name, ...(profile.extraAliases ?? [])]
 }
 
 export function validateWarehouseConfig(config: WarehouseConfigDto): WarehouseConfigValidationIssue[] {
@@ -30,7 +34,7 @@ export function validateWarehouseConfig(config: WarehouseConfigDto): WarehouseCo
   }
 
   const hubIds = new Set<string>()
-  const aliasOwners = new Map<string, string>()
+  const trackNameOwners = new Map<string, string>()
 
   profiles.forEach((profile, index) => {
     const prefix = `profiles[${index}]`
@@ -42,25 +46,21 @@ export function validateWarehouseConfig(config: WarehouseConfigDto): WarehouseCo
       hubIds.add(profile.hubId.trim())
     }
 
-    if (!profile.displayName.trim()) {
-      issues.push({ field: `${prefix}.displayName`, message: '显示名不能为空' })
+    if (!profile.name.trim()) {
+      issues.push({ field: `${prefix}.name`, message: '仓库名不能为空' })
     }
 
-    if (!profile.aliases.length) {
-      issues.push({ field: `${prefix}.aliases`, message: '至少需要一个别名' })
-    }
-
-    for (const alias of profile.aliases) {
-      const key = normalizeAlias(alias)
+    for (const trackName of profileTrackNames(profile)) {
+      const key = normalizeTrackName(trackName)
       if (!key) continue
-      const owner = aliasOwners.get(key)
+      const owner = trackNameOwners.get(key)
       if (owner && owner !== profile.hubId) {
         issues.push({
-          field: `${prefix}.aliases`,
-          message: `别名「${alias}」已被 ${owner} 使用`,
+          field: `${prefix}.name`,
+          message: `轨迹名「${trackName}」已被 ${owner} 使用`,
         })
       } else {
-        aliasOwners.set(key, profile.hubId)
+        trackNameOwners.set(key, profile.hubId)
       }
     }
 
@@ -83,17 +83,17 @@ export function validateWarehouseConfig(config: WarehouseConfigDto): WarehouseCo
   return issues
 }
 
-export function findWarehouseProfileByAlias(
+export function findWarehouseProfileByTrackName(
   config: WarehouseConfigDto,
   raw: string
 ): WarehouseProfileDto | null {
-  const normalized = normalizeAlias(raw)
+  const normalized = normalizeTrackName(raw)
   if (!normalized) return null
   return (
     config.profiles.find((profile) =>
-      profile.aliases.some((alias) => {
-        const normalizedAlias = normalizeAlias(alias)
-        return normalized === normalizedAlias || normalized.includes(normalizedAlias)
+      profileTrackNames(profile).some((trackName) => {
+        const normalizedTrackName = normalizeTrackName(trackName)
+        return normalized === normalizedTrackName || normalized.includes(normalizedTrackName)
       })
     ) ?? null
   )

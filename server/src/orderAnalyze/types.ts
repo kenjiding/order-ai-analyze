@@ -23,8 +23,10 @@ export type WarehouseCityId = 'ADL' | 'MEL' | 'PER' | 'SYD' | 'BNE' | 'QLD' | 'C
 export type WarehouseProfile = {
   cityId: WarehouseCityId
   hubId: string
-  displayName: string
-  aliases: readonly string[]
+  /** 与轨迹【】内仓库名一致，分析匹配的主键 */
+  name: string
+  /** 轨迹中可能出现的其他写法，可选 */
+  extraAliases?: readonly string[]
   /** 当前仓库库内/库外丢失判定超时天数；未配置时使用系统默认值 */
   lossTimeoutDays?: number
   nonRealOperators?: readonly string[]

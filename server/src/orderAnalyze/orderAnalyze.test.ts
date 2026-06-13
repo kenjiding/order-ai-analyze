@@ -9,7 +9,12 @@ import { normalizeSubType } from './exceptionCatalog'
 import { parseOrderAnalyzeResults, prepareAnalyzeCategories } from './prompt'
 import { deriveTrackFacts, summarizeTracks } from './trackFacts'
 import { formatCurrentResponsibilityParty } from './pipeline'
-import { classifyOperatorForWarehouse, findWarehouseProfileByName } from './warehouseProfiles'
+import {
+  classifyOperatorForWarehouse,
+  findWarehouseProfileByName,
+  runWithWarehouseProfileContext,
+  type WarehouseConfigDto,
+} from './warehouseProfiles'
 import type { OrderAnalyzeResult, TrackFacts } from './types'
 
 function track(time: string, content: string, trackType = '', trackStageTx = ''): TrackEvent {
@@ -1000,6 +1005,38 @@ test('未知当前仓库配置时依赖扫描员的结论进入人工判断', ()
   assert.equal(facts.unknownWarehouseInActiveSegment, true)
   assert.equal(guarded.lossScope, '需人工判断')
   assert.equal(guarded.appliedDecisionRuleId, 'unknown_active_warehouse_needs_review')
+})
+
+test('仓库名与轨迹【】文案一致时匹配配置', () => {
+  const config: WarehouseConfigDto = {
+    global: {
+      defaultLossTimeoutDays: 15,
+      externalCarrierLossTimeoutDays: 15,
+      commonSystemOperators: ['System'],
+      commonNonRealOperators: ['MEL-CSP1'],
+      commonNonRealOperatorPatterns: [],
+    },
+    profiles: [
+      {
+        cityId: 'MEL',
+        hubId: 'mel_csp_1',
+        name: 'MEL CSP 1',
+        nonRealOperators: ['MEL-CSP1'],
+      },
+    ],
+  }
+
+  runWithWarehouseProfileContext(config, () => {
+    const profile = findWarehouseProfileByName('MEL CSP 1')
+    const facts = deriveTrackFacts([
+      track(daysAgo(3), '【MEL CSP 1】包号[2603191734601]已到达。操作员【MEL Scanner】 。'),
+    ])
+
+    assert.equal(profile?.hubId, 'mel_csp_1')
+    assert.equal(facts.unknownWarehouseInActiveSegment, false)
+    assert.equal(facts.activeWarehouseName, 'MEL CSP 1')
+    assert.equal(classifyOperatorForWarehouse('MEL-CSP1', profile), 'non_real')
+  })
 })
 
 test('分配-取消循环无出库与出库后回仓再分配取消保持区分', () => {

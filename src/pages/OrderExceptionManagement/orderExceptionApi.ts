@@ -232,8 +232,8 @@ export type OrderAnalyzeWarehouseConfig = {
   profiles: Array<{
     cityId: string
     hubId: string
-    displayName: string
-    aliases: string[]
+    name: string
+    extraAliases?: string[]
     lossTimeoutDays?: number
     nonRealOperators?: string[]
     nonRealOperatorPatterns?: string[]

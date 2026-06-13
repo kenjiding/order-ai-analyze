@@ -38,7 +38,7 @@ function WarehouseTreeLeafTitle({
   return (
     <Flex align="center" justify="space-between" gap="small" className="w-full pr-1">
       <Flex align="center" gap="small" className="min-w-0 flex-1">
-        <span className="truncate">{profile.displayName}</span>
+        <span className="truncate">{profile.name}</span>
         {profile.lossTimeoutDays ? (
           <Typography.Text type="warning" className="shrink-0 text-xs">
             {profile.lossTimeoutDays}天
@@ -47,7 +47,7 @@ function WarehouseTreeLeafTitle({
       </Flex>
       <span className="warehouse-delete-btn shrink-0 opacity-0 transition-opacity duration-150">
         <Popconfirm
-          title={`删除「${profile.displayName}」？`}
+          title={`删除「${profile.name}」？`}
           description="删除后需保存配置才会在分析中生效。"
           okText="删除"
           cancelText="取消"
@@ -59,7 +59,7 @@ function WarehouseTreeLeafTitle({
             size="small"
             danger
             icon={<Trash2 className="h-3.5 w-3.5" />}
-            aria-label={`删除 ${profile.displayName}`}
+            aria-label={`删除 ${profile.name}`}
             onClick={(e) => e.stopPropagation()}
             onMouseDown={(e) => e.stopPropagation()}
           />
@@ -80,8 +80,8 @@ type Props = {
   isSaving: boolean
 }
 
-function slugifyHubId(displayName: string): string {
-  return displayName
+function slugifyHubId(name: string): string {
+  return name
     .trim()
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, '_')
@@ -210,13 +210,32 @@ function ProfileEditor({
             onChange={(cityId) => onChange({ ...profile, cityId })}
           />
         </Form.Item>
-        <Form.Item label="仓库名" className="min-w-[180px] flex-1">
+        <Form.Item
+          label="仓库名"
+          tooltip="须与轨迹【】内仓库名一致，分析据此匹配"
+          className="min-w-[180px] flex-1"
+        >
           <Input
-            value={profile.displayName}
-            onChange={(e) => onChange({ ...profile, displayName: e.target.value })}
+            value={profile.name}
+            placeholder="如 MEL CSP 1"
+            onChange={(e) => onChange({ ...profile, name: e.target.value })}
           />
         </Form.Item>
       </Flex>
+
+      <div className="mt-4">
+        <TagListEditor
+          label="额外轨迹别名（可选）"
+          values={profile.extraAliases ?? []}
+          placeholder="轨迹中还有其它写法时添加，如 ADL Center"
+          onChange={(extraAliases) =>
+            onChange({
+              ...profile,
+              extraAliases: extraAliases.length ? extraAliases : undefined,
+            })
+          }
+        />
+      </div>
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4 mt-4">
         <Form.Item
@@ -279,7 +298,7 @@ export function WarehouseConfigTabContent({
     return draftConfig.profiles.filter((profile) => {
       if (cityFilter !== 'ALL' && profile.cityId !== cityFilter) return false
       if (!needle) return true
-      const haystack = [profile.displayName, profile.hubId, ...profile.aliases]
+      const haystack = [profile.name, profile.hubId, ...(profile.extraAliases ?? [])]
         .join(' ')
         .toLowerCase()
       return haystack.includes(needle)
@@ -310,7 +329,7 @@ export function WarehouseConfigTabContent({
           selectable: false,
           children: profiles.map((profile) => ({
             key: profile.hubId,
-            title: profile.displayName,
+            title: profile.name,
             isLeaf: true,
           })),
         }
@@ -385,13 +404,12 @@ export function WarehouseConfigTabContent({
   }
 
   const handleAddProfile = useCallback(() => {
-    const displayName = '新仓库'
-    const hubId = `${slugifyHubId(displayName)}_${Date.now()}`
+    const name = '新仓库'
+    const hubId = `${slugifyHubId(name)}_${Date.now()}`
     const profile: WarehouseProfileDto = {
       cityId: 'SYD',
       hubId,
-      displayName,
-      aliases: [displayName],
+      name,
     }
     onDraftConfigChange({
       ...draftConfig,
@@ -444,7 +462,7 @@ export function WarehouseConfigTabContent({
         <Flex wrap="wrap" gap="small" align="center">
           <Input.Search
             allowClear
-            placeholder="搜索仓库 / 别名"
+            placeholder="搜索仓库名 / 别名"
             className="max-w-xs"
             value={search}
             onChange={(e) => setSearch(e.target.value)}

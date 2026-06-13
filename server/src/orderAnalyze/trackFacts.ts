@@ -818,14 +818,14 @@ function reconcileSegmentsWithInterceptArrivals(
     if (active.owner === 'company_warehouse' && active.hubId === hubProfile.hubId) continue
     const op = interceptHubOpOwner(log, hubProfile)
     if (!op) continue
-    closeSegment(active, log.gmtIntercept, `阻断日志显示已在 ${hubProfile.displayName} 操作`)
+    closeSegment(active, log.gmtIntercept, `阻断日志显示已在 ${hubProfile.name} 操作`)
     segments.push(
       makeSegment({
         owner: 'company_warehouse',
         status: op === 'out_warehouse' ? 'out_warehouse' : 'in_warehouse',
         startTime: log.gmtIntercept,
-        startReason: `阻断日志 ${log.scanUserName || log.scanUserCode} 在 ${hubProfile.displayName} 的真实操作，责任转入该仓`,
-        hubName: hubProfile.displayName,
+        startReason: `阻断日志 ${log.scanUserName || log.scanUserCode} 在 ${hubProfile.name} 的真实操作，责任转入该仓`,
+        hubName: hubProfile.name,
       })
     )
   }

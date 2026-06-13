@@ -21,8 +21,10 @@ export type WarehouseConfigGlobalDto = {
 export type WarehouseProfileDto = {
   cityId: WarehouseCityId
   hubId: string
-  displayName: string
-  aliases: string[]
+  /** 与轨迹【】内仓库名一致 */
+  name: string
+  /** 轨迹中可能出现的其他写法，可选 */
+  extraAliases?: string[]
   lossTimeoutDays?: number
   nonRealOperators?: string[]
   nonRealOperatorPatterns?: string[]

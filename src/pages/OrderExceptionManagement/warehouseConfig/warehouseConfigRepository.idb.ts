@@ -25,12 +25,19 @@ const openDb = createSingletonIdb<WarehouseConfigDb>({
   },
 })
 
+function isWarehouseConfigDto(raw: unknown): raw is WarehouseConfigDto {
+  if (!raw || typeof raw !== 'object') return false
+  const config = raw as WarehouseConfigDto
+  if (!config.global || !Array.isArray(config.profiles)) return false
+  return config.profiles.every((profile) => typeof profile.name === 'string' && profile.name.trim())
+}
+
 export async function loadWarehouseConfigFromIdb(): Promise<WarehouseConfigDto> {
   if (typeof indexedDB === 'undefined') return cloneDefaultWarehouseConfig()
   try {
     const db = await openDb()
     const stored = await db.get(DOC_STORE, DOC_KEY)
-    if (stored) return stored
+    if (stored && isWarehouseConfigDto(stored)) return stored
     return cloneDefaultWarehouseConfig()
   } catch {
     return cloneDefaultWarehouseConfig()
