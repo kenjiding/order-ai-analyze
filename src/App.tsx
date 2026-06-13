@@ -8,6 +8,7 @@ import ScannerEfficiencyPage from './pages/ScannerEfficiency/ScannerEfficiencyPa
 import PushNotificationsPage from './pages/PushNotifications/PushNotificationsPage'
 import WageSalaryPage from './pages/WageSalary/WageSalaryPage'
 import WarehouseSafetyInspectionPage from './pages/WarehouseSafetyInspection/WarehouseSafetyInspectionPage'
+import LoginPage from './pages/Login/LoginPage'
 
 const muiTheme = createTheme({
   palette: {
@@ -74,6 +75,7 @@ export default function App() {
         <BrowserRouter>
           <AliveScope>
             <Routes>
+              <Route path="/login" element={<LoginPage />} />
               <Route element={<AppLayout />}>
                 <Route path="/" element={<Navigate to="/efficiency" replace />} />
                 <Route path="/efficiency" element={<KeptScannerEfficiencyPage />} />

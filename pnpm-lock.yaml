@@ -17,6 +17,9 @@ dependencies:
   '@mui/material':
     specifier: ^9.0.0
     version: 9.1.1(@emotion/react@11.14.0)(@emotion/styled@11.14.1)(@types/react@19.2.17)(react-dom@19.2.7)(react@19.2.7)
+  '@rive-app/canvas':
+    specifier: ^2.38.1
+    version: 2.38.1
   antd:
     specifier: ^6.3.7
     version: 6.4.4(date-fns@4.4.0)(react-dom@19.2.7)(react@19.2.7)
@@ -1568,6 +1571,10 @@ packages:
       clsx: 2.1.1
       react: 19.2.7
       react-dom: 19.2.7(react@19.2.7)
+    dev: false
+
+  /@rive-app/canvas@2.38.1:
+    resolution: {integrity: sha512-iK5HH2N1ZtkgbGV9nkIEyTv6j7Zbx6tVns/y6a8Yk+hPPnQl8XO5RS6gMM4V2NNmyvQ9PnAmnZDNaZCJUtaU8g==}
     dev: false
 
   /@rolldown/binding-android-arm64@1.0.3:
