@@ -15,6 +15,7 @@ temp
 .env
 .env.production
 .env.development
+.env.ecs-web
 
 
 # Editor directories and files

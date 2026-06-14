@@ -71,20 +71,28 @@ case "$cmd" in
     ;;
   up)
     ensure_env
-    compose --profile stack up -d --build
-    compose --profile stack ps
+    compose up -d --build
+    compose ps
     echo ""
     echo "健康检查: curl -sf http://127.0.0.1:${PORT:-8787}/health"
     ;;
   down)
-    compose --profile stack down
+    compose down
     ;;
   restart)
     ensure_env
-    compose --profile stack up -d --build --force-recreate
+    compose up -d --build --force-recreate
+    bash "$ROOT/scripts/ecs-ensure-running.sh"
+    compose ps
+    echo ""
+    echo "健康检查: curl -sf http://127.0.0.1:${PORT:-8787}/health"
+    ;;
+  ensure)
+    bash "$ROOT/scripts/ecs-ensure-running.sh"
+    compose ps
     ;;
   logs)
-    compose --profile stack logs -f --tail=200
+    compose logs -f --tail=200
     ;;
   push)
     if [[ -z "$ACR_REGISTRY" ]]; then
@@ -103,14 +111,14 @@ case "$cmd" in
     remote="$(acr_image)"
     podman pull "$remote"
     podman tag "$remote" "$IMAGE"
-    compose --profile stack up -d
-    compose --profile stack ps
+    compose up -d
+    compose ps
     ;;
   health)
     curl -sf "http://127.0.0.1:${PORT:-8787}/health" && echo
     ;;
   *)
-    echo "用法: $0 {build|up|down|restart|logs|push|pull-up|health}" >&2
+    echo "用法: $0 {build|up|down|restart|ensure|logs|push|pull-up|health}" >&2
     exit 1
     ;;
 esac

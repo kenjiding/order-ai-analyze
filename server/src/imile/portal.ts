@@ -169,6 +169,27 @@ export const IMILE_DS_CLOSURE_PORTAL: ImilePortalDefaults = {
   referer: 'https://ds.imile.com/',
 }
 
+/** ds.imile.com saastms 报表 / 运单查询门户默认配置 */
+export const IMILE_DS_SAAS_TMS_PORTAL: ImilePortalDefaults = {
+  resourceCode: 'cancelScanQuery',
+  sysName: 'DS',
+  sysPortal: 'DS',
+  origin: 'https://ds.imile.com',
+  referer: 'https://ds.imile.com/',
+  hubcode: 'S210431701',
+}
+
+/** ds.imile.com 前台箱号分配列表（assignedList）门户默认配置 */
+export const IMILE_DS_BOX_ASSIGNED_PORTAL: ImilePortalDefaults = {
+  resourceCode: 'assignedList',
+  sysName: 'DS',
+  sysPortal: 'DS',
+  origin: 'https://ds.imile.com',
+  referer: 'https://ds.imile.com/',
+  hubcode: 'S210431701',
+  path: '/DSOperation/hubOperation/report/pd/box/assignedList',
+}
+
 /** oc.imile.com 阻断日志门户默认配置 */
 export const IMILE_OC_INTERCEPT_PORTAL: ImilePortalDefaults = {
   resourceCode: 'listScanInterceptLogs',

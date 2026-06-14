@@ -12,7 +12,12 @@ import {
   isValidUsername,
   normalizeUsername,
 } from '../regions/registry'
-import { PERMISSION_REGISTRY, SUPER_ADMIN_ROLE, USER_ROLE, type UserRole } from '../permissions/registry'
+import {
+  ASSIGNABLE_PERMISSION_REGISTRY,
+  SUPER_ADMIN_ROLE,
+  USER_ROLE,
+  type UserRole,
+} from '../permissions/registry'
 
 type CreateUserBody = {
   username?: string
@@ -28,8 +33,8 @@ type UpdateUserBody = {
   password?: string
 }
 
-function isValidPermissionKeys(keys: string[]): boolean {
-  const allowed = new Set(PERMISSION_REGISTRY.map((p) => p.key))
+function isValidAssignablePermissionKeys(keys: string[]): boolean {
+  const allowed = new Set(ASSIGNABLE_PERMISSION_REGISTRY.map((item) => item.key))
   return keys.every((key) => allowed.has(key))
 }
 
@@ -77,7 +82,7 @@ export async function listUsers(_req: AuthenticatedRequest, res: Response): Prom
     rows.map(async (user) => ({
       ...toPublicUser({
         ...user,
-        regionName: user.regionName ?? getRegionLabel(user.regionId),
+        regionName: user.regionName ?? (user.regionId ? getRegionLabel(user.regionId) : null),
       }),
       permissions: user.role === SUPER_ADMIN_ROLE ? ['*'] : await getUserPermissionKeys(user.id),
     })),
@@ -86,7 +91,7 @@ export async function listUsers(_req: AuthenticatedRequest, res: Response): Prom
 }
 
 export async function listPermissions(_req: AuthenticatedRequest, res: Response): Promise<void> {
-  res.json({ permissions: PERMISSION_REGISTRY })
+  res.json({ permissions: ASSIGNABLE_PERMISSION_REGISTRY })
 }
 
 export async function createUser(req: AuthenticatedRequest, res: Response): Promise<void> {
@@ -95,9 +100,7 @@ export async function createUser(req: AuthenticatedRequest, res: Response): Prom
   const regionCode = String(body.regionCode ?? '').trim().toUpperCase()
   const password = String(body.password ?? '')
   const displayName = String(body.displayName ?? '').trim() || null
-  const permissionKeys = Array.isArray(body.permissionKeys)
-    ? body.permissionKeys.map(String)
-    : []
+  const permissionKeys = Array.isArray(body.permissionKeys) ? body.permissionKeys.map(String) : []
 
   if (!username || !password || !regionCode) {
     res.status(400).json({ error: '州/区域、用户名和密码不能为空' })
@@ -115,7 +118,7 @@ export async function createUser(req: AuthenticatedRequest, res: Response): Prom
     res.status(400).json({ error: '密码至少 8 位' })
     return
   }
-  if (!isValidPermissionKeys(permissionKeys)) {
+  if (!isValidAssignablePermissionKeys(permissionKeys)) {
     res.status(400).json({ error: '包含无效的权限 key' })
     return
   }
@@ -255,18 +258,19 @@ export async function deleteUser(req: AuthenticatedRequest, res: Response): Prom
 
 export async function updateUserPermissions(req: AuthenticatedRequest, res: Response): Promise<void> {
   const userId = String(req.params.id ?? '')
-  const permissionKeys = Array.isArray(req.body?.permissionKeys)
+  const rawKeys = Array.isArray(req.body?.permissionKeys)
     ? (req.body.permissionKeys as unknown[]).map(String)
     : null
 
-  if (!permissionKeys) {
+  if (!rawKeys) {
     res.status(400).json({ error: 'permissionKeys 必须为数组' })
     return
   }
-  if (!isValidPermissionKeys(permissionKeys)) {
+  if (!isValidAssignablePermissionKeys(rawKeys)) {
     res.status(400).json({ error: '包含无效的权限 key' })
     return
   }
+  const permissionKeys = rawKeys
 
   const db = getDb()
   const [existing] = await db.select().from(users).where(eq(users.id, userId)).limit(1)

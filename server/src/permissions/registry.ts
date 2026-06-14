@@ -11,6 +11,13 @@ export type PermissionDefinition = {
 
 export const PERMISSION_REGISTRY: PermissionDefinition[] = [
   { key: 'menu:efficiency', type: 'menu', label: '效率考勤', description: '到件与考勤效率分析', sortOrder: 10 },
+  {
+    key: 'menu:efficiency-records',
+    type: 'menu',
+    label: '效率考勤记录',
+    description: '按日保存的效率与考勤计算结果',
+    sortOrder: 15,
+  },
   { key: 'menu:wage-salary', type: 'menu', label: '工资结算', description: '员工工资计算与管理', sortOrder: 20 },
   { key: 'menu:order-exception', type: 'menu', label: 'AI订单异常分析', description: '轨迹样本与异常分类分析', sortOrder: 30 },
   { key: 'menu:push-notifications', type: 'menu', label: '推送功能', description: '飞书群机器人推送配置', sortOrder: 40 },
@@ -59,6 +66,11 @@ export const PERMISSION_REGISTRY: PermissionDefinition[] = [
     sortOrder: 510,
   },
 ]
+
+/** 可分配给普通用户的权限；超级管理员通过 role 拥有全部能力，不通过 permission 分配用户管理 */
+export const ASSIGNABLE_PERMISSION_REGISTRY = PERMISSION_REGISTRY.filter(
+  (item) => item.key !== 'menu:system-users',
+)
 
 export type UserRole = 'super_admin' | 'user'
 

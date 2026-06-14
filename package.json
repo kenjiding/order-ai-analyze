@@ -10,6 +10,8 @@
     "dev:backend": "concurrently -k -n api,worker \"pnpm --dir server run dev\" \"pnpm --dir server run worker:dev\"",
     "dev:all": "concurrently -k -n api,worker,web \"pnpm --dir server run dev\" \"pnpm --dir server run worker:dev\" \"pnpm dev\"",
     "build": "tsc -b && vite build",
+    "ecs:upload-web": "bash scripts/ecs-upload-web.sh",
+    "ecs:deploy-web": "bash scripts/ecs-upload-web.sh --reload-nginx",
     "lint": "eslint .",
     "preview": "vite preview"
   },

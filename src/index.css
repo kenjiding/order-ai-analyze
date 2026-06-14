@@ -149,45 +149,6 @@ body::before {
     border-color: #b7d4e8;
   }
 
-  /** 文件/API 等双选切换：与 admin 侧栏激活态、accent 色板一致 */
-  .admin-toggle-track {
-    @apply inline-flex shrink-0 rounded-lg border p-0.5;
-    border-color: var(--admin-line);
-    background: var(--admin-surface-soft);
-  }
-
-  .admin-toggle-track .ant-radio-button-wrapper {
-    height: 36px;
-    line-height: 34px;
-    padding-inline: 14px;
-    border: none !important;
-    border-radius: 6px;
-    background: transparent !important;
-    color: var(--admin-muted);
-    font-weight: 500;
-    box-shadow: none !important;
-  }
-
-  .admin-toggle-track .ant-radio-button-wrapper::before {
-    display: none !important;
-  }
-
-  .admin-toggle-track .ant-radio-button-wrapper:hover {
-    color: #0f172a;
-  }
-
-  .admin-toggle-track .ant-radio-button-wrapper-checked {
-    background: var(--admin-surface) !important;
-    color: #1f6f68 !important;
-    box-shadow:
-      0 1px 2px rgba(47, 83, 105, 0.08),
-      0 0 0 1px rgba(47, 143, 135, 0.22) !important;
-  }
-
-  .admin-toggle-track .ant-radio-button-wrapper-checked:hover {
-    color: #1f6f68 !important;
-  }
-
   .admin-input {
     @apply rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:ring-2;
   }
@@ -317,7 +278,7 @@ body::before {
   }
 
   .warehouse-config-tree .ant-tree-node-content-wrapper {
-    @apply min-h-8 rounded-md;
+    @apply rounded-md;
   }
 
   .warehouse-config-tree .ant-tree-node-content-wrapper.ant-tree-node-selected {

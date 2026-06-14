@@ -1,4 +1,4 @@
-import { Calculator, ClipboardCheck, DollarSign, Megaphone, PackageSearch, Settings, type LucideIcon } from 'lucide-react'
+import { Calculator, ClipboardCheck, DollarSign, History, Megaphone, PackageSearch, Settings, type LucideIcon } from 'lucide-react'
 
 export type SidebarMenuItem = {
   id: string
@@ -17,6 +17,14 @@ const items: SidebarMenuItem[] = [
     label: '效率考勤',
     icon: Calculator,
     description: '到件与考勤效率分析',
+  },
+  {
+    id: 'efficiency-records',
+    path: '/efficiency-records',
+    permissionKey: 'menu:efficiency-records',
+    label: '效率考勤记录',
+    icon: History,
+    description: '按日保存的效率计算结果',
   },
   {
     id: 'wage-salary',

@@ -1,4 +1,4 @@
-import { Alert, Button, Table, Tag, Tooltip } from 'antd'
+import { Button, Table, Tag, Tooltip } from 'antd'
 import type { ColumnsType } from 'antd/es/table'
 import { Navigate } from 'react-router-dom'
 import { Plus, Shield, UserCog, Users } from 'lucide-react'
@@ -40,7 +40,6 @@ export default function SystemUsersPage() {
     menuPermissions,
     buttonPermissions,
     loading,
-    error,
     modalOpen,
     editingUser,
     saving,
@@ -168,8 +167,6 @@ export default function SystemUsersPage() {
         <StatChip label="启用中" value={stats.activeCount} />
         <StatChip label="超级管理员" value={stats.adminCount} />
       </div>
-
-      {error ? <Alert type="error" showIcon message={error} className="mb-4" /> : null}
 
       <div className="admin-panel overflow-hidden">
         <div className="flex items-center gap-2 border-b border-slate-200 px-5 py-3 text-xs text-slate-500">

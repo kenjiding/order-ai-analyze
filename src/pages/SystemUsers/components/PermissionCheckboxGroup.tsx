@@ -4,8 +4,8 @@ import type { PermissionDefinition } from '../../../api/adminUsersApi'
 type PermissionCheckboxGroupProps = {
   menuPermissions: PermissionDefinition[]
   buttonPermissions: PermissionDefinition[]
-  value: string[]
-  onChange: (keys: string[]) => void
+  value?: string[]
+  onChange?: (keys: string[]) => void
   disabled?: boolean
 }
 
@@ -21,12 +21,13 @@ function PermissionSection({
   hint: string
   items: PermissionDefinition[]
   value: string[]
-  onChange: (keys: string[]) => void
+  onChange?: (keys: string[]) => void
   disabled?: boolean
 }) {
   const selectedCount = items.filter((item) => value.includes(item.key)).length
 
   const toggle = (key: string, checked: boolean) => {
+    if (!onChange) return
     if (checked) {
       onChange(Array.from(new Set([...value, key])))
       return
@@ -35,10 +36,12 @@ function PermissionSection({
   }
 
   const selectAll = () => {
+    if (!onChange) return
     onChange(Array.from(new Set([...value, ...items.map((item) => item.key)])))
   }
 
   const clearSection = () => {
+    if (!onChange) return
     const sectionKeys = new Set(items.map((item) => item.key))
     onChange(value.filter((key) => !sectionKeys.has(key)))
   }
@@ -115,7 +118,7 @@ function PermissionSection({
 export default function PermissionCheckboxGroup({
   menuPermissions,
   buttonPermissions,
-  value,
+  value = [],
   onChange,
   disabled,
 }: PermissionCheckboxGroupProps) {

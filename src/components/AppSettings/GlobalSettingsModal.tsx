@@ -8,6 +8,7 @@ import {
   type ImilePortalSettings,
 } from '../../imile/imilePortalSettings'
 import { showToast } from '../../utils/toast'
+import { confirmDialog } from '../../utils/confirmDialog'
 
 export type SettingsSectionId = 'imile' | 'general'
 
@@ -83,8 +84,17 @@ export function GlobalSettingsModal({ isOpen, onClose }: Props) {
     return !portalDraftEqual(draft.imilePortal, savedDraft.imilePortal)
   }, [draft, savedDraft])
 
-  const handleRequestClose = () => {
-    if (isDirty && !window.confirm('有未保存的修改，确定放弃吗？')) return
+  const handleRequestClose = async () => {
+    if (isDirty) {
+      const confirmed = await confirmDialog({
+        title: '放弃未保存的修改？',
+        content: '有未保存的修改，确定放弃吗？',
+        okText: '放弃',
+        cancelText: '继续编辑',
+        danger: true,
+      })
+      if (!confirmed) return
+    }
     onClose()
   }
 
@@ -99,7 +109,7 @@ export function GlobalSettingsModal({ isOpen, onClose }: Props) {
   return (
     <Modal
       isOpen={isOpen}
-      onClose={handleRequestClose}
+      onClose={() => void handleRequestClose()}
       title="系统设置"
       maxWidth="max-w-4xl"
       showCloseButton
@@ -109,7 +119,7 @@ export function GlobalSettingsModal({ isOpen, onClose }: Props) {
             {isDirty ? '有未保存的修改' : '已与当前配置同步'}
           </p>
           <div className="flex items-center gap-2">
-            <button type="button" onClick={handleRequestClose} className="admin-btn px-4 py-2">
+            <button type="button" onClick={() => void handleRequestClose()} className="admin-btn px-4 py-2">
               取消
             </button>
             <button
@@ -156,10 +166,6 @@ export function GlobalSettingsModal({ isOpen, onClose }: Props) {
             <div className="space-y-4">
               <div>
                 <h4 className="text-base font-semibold text-slate-950">iMile Bearer Token</h4>
-                <p className="mt-1 text-sm text-slate-600">
-                  用于后端代理调用 iMile 轨迹接口（Authorization）。点击「保存」后才会写入本机
-                  localStorage（若勾选记住）。
-                </p>
               </div>
               <label className="block text-sm font-medium text-slate-700">
                 Token
@@ -186,10 +192,6 @@ export function GlobalSettingsModal({ isOpen, onClose }: Props) {
 
               <div className="border-t border-slate-200 pt-4">
                 <h4 className="text-base font-semibold text-slate-950">iMile 门户上下文</h4>
-                <p className="mt-1 text-sm text-slate-600">
-                  与浏览器 DevTools 中 ScanQuery 请求头一致。配置错误会导致 operator 显示为 system
-                  或数据与控制台不一致。
-                </p>
                 <div className="mt-3 grid max-w-xl gap-3 sm:grid-cols-2">
                   <label className="block text-sm font-medium text-slate-700 sm:col-span-2">
                     hubcode

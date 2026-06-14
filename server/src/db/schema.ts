@@ -86,8 +86,30 @@ export const jobs = pgTable(
   ],
 )
 
+export const efficiencyAttendanceDailyRecords = pgTable(
+  'efficiency_attendance_daily_records',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    recordDate: varchar('record_date', { length: 10 }).notNull(),
+    regionCode: varchar('region_code', { length: 16 }).notNull().default('global'),
+    payload: jsonb('payload').notNull(),
+    savedBy: uuid('saved_by').references(() => users.id, { onDelete: 'set null' }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    uniqueIndex('efficiency_attendance_daily_records_date_region_unique').on(
+      table.recordDate,
+      table.regionCode,
+    ),
+    index('efficiency_attendance_daily_records_region_updated_idx').on(table.regionCode, table.updatedAt),
+  ],
+)
+
 export type User = typeof users.$inferSelect
 export type Region = typeof regions.$inferSelect
 export type Permission = typeof permissions.$inferSelect
 export type Job = typeof jobs.$inferSelect
 export type NewJob = typeof jobs.$inferInsert
+export type EfficiencyAttendanceDailyRecord = typeof efficiencyAttendanceDailyRecords.$inferSelect
+export type NewEfficiencyAttendanceDailyRecord = typeof efficiencyAttendanceDailyRecords.$inferInsert

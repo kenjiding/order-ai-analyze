@@ -9,6 +9,7 @@ import AppLayout from './components/AppLayout'
 import ProtectedRoute from './components/ProtectedRoute'
 import OrderExceptionManagementPage from './pages/OrderExceptionManagement/OrderExceptionManagementPage'
 import ScannerEfficiencyPage from './pages/ScannerEfficiency/ScannerEfficiencyPage'
+import EfficiencyAttendanceRecordsPage from './pages/EfficiencyAttendanceRecords/EfficiencyAttendanceRecordsPage'
 import PushNotificationsPage from './pages/PushNotifications/PushNotificationsPage'
 import WageSalaryPage from './pages/WageSalary/WageSalaryPage'
 import WarehouseSafetyInspectionPage from './pages/WarehouseSafetyInspection/WarehouseSafetyInspectionPage'
@@ -82,9 +83,26 @@ function KeptSystemUsersPage() {
   )
 }
 
+function AuthenticatedShell() {
+  return (
+    <AliveScope>
+      <AppLayout />
+    </AliveScope>
+  )
+}
+
 function DefaultHomeRedirect() {
-  const { hasPermission, isSuperAdmin, loading } = useAuth()
-  if (loading) return null
+  const { hasPermission, isSuperAdmin, loading, isAuthenticated } = useAuth()
+  if (loading) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-slate-50 text-sm text-slate-600">
+        正在验证登录状态…
+      </div>
+    )
+  }
+  if (!isAuthenticated) {
+    return <Navigate to="/login" replace />
+  }
   return <Navigate to={getDefaultRouteForPermissions(hasPermission, isSuperAdmin)} replace />
 }
 
@@ -93,9 +111,10 @@ function AppRoutes() {
     <Routes>
       <Route path="/login" element={<LoginPage />} />
       <Route element={<ProtectedRoute />}>
-        <Route element={<AppLayout />}>
+        <Route element={<AuthenticatedShell />}>
           <Route path="/" element={<DefaultHomeRedirect />} />
           <Route path="/efficiency" element={<KeptScannerEfficiencyPage />} />
+          <Route path="/efficiency-records" element={<EfficiencyAttendanceRecordsPage />} />
           <Route path="/wage-salary" element={<KeptWageSalaryPage />} />
           <Route path="/order-exception" element={<KeptOrderExceptionPage />} />
           <Route path="/push-notifications" element={<KeptPushNotificationsPage />} />
@@ -116,9 +135,7 @@ export default function App() {
           <AuthProvider>
             <AppSettingsProvider>
               <BrowserRouter>
-                <AliveScope>
-                  <AppRoutes />
-                </AliveScope>
+                <AppRoutes />
               </BrowserRouter>
             </AppSettingsProvider>
           </AuthProvider>

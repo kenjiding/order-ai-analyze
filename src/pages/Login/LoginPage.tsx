@@ -3,6 +3,7 @@ import { useLocation, useNavigate } from 'react-router-dom'
 import { Warehouse } from 'lucide-react'
 import { useAuth } from '../../context/AuthContext'
 import { getDefaultRouteForPermissions, getDefaultRouteFromPermissionKeys } from '../../components/Layout/sidebarMenu'
+import { showToast } from '../../utils/toast'
 import { useLoginRive } from './useLoginRive'
 import './login.css'
 
@@ -48,13 +49,19 @@ export default function LoginPage() {
     }
   }, [usernameRef])
 
-  const triggerPasswordError = () => {
+  const triggerPasswordError = (message?: string) => {
+    if (message) showToast(message, 'error')
     setPasswordError(true)
     setPasswordShake(false)
     requestAnimationFrame(() => {
       setPasswordShake(true)
     })
     fireWrongTrigger()
+  }
+
+  const clearPasswordError = () => {
+    setPasswordError(false)
+    setPasswordShake(false)
   }
 
   const handleSubmit = (e: FormEvent<HTMLFormElement>) => {
@@ -64,20 +71,19 @@ export default function LoginPage() {
     const password = passwordRef.current?.value ?? ''
 
     if (!username) {
-      fireWrongTrigger()
-      alert('请输入用户名')
+      triggerPasswordError('请输入用户名')
       return
     }
 
     if (!password) {
-      fireWrongTrigger()
-      alert('请输入密码')
+      triggerPasswordError('请输入密码')
       return
     }
 
     setSubmitting(true)
     void login(username, password)
       .then((session) => {
+        clearPasswordError()
         if (remember) {
           localStorage.setItem(REMEMBER_KEY, 'true')
           localStorage.setItem(USERNAME_KEY, username)
@@ -92,8 +98,9 @@ export default function LoginPage() {
         )
         navigate(from || defaultRoute, { replace: true })
       })
-      .catch(() => {
-        triggerPasswordError()
+      .catch((e: unknown) => {
+        const message = e instanceof Error ? e.message : '登录失败'
+        triggerPasswordError(message)
       })
       .finally(() => {
         setSubmitting(false)
@@ -101,10 +108,12 @@ export default function LoginPage() {
   }
 
   const handlePasswordInput = () => {
-    if (passwordError) {
-      setPasswordError(false)
-      setPasswordShake(false)
-    }
+    if (passwordError) clearPasswordError()
+  }
+
+  const handleUsernameInputWithClear = () => {
+    handleUsernameInput()
+    if (passwordError) clearPasswordError()
   }
 
   const handleTogglePasswordMouseDown = (e: React.MouseEvent<HTMLButtonElement>) => {
@@ -186,7 +195,7 @@ export default function LoginPage() {
                     required
                     className="login-field-input"
                     onFocus={handleUsernameFocus}
-                    onInput={handleUsernameInput}
+                    onInput={handleUsernameInputWithClear}
                     onBlur={handleUsernameBlur}
                   />
                 </div>

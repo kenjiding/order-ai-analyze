@@ -16,8 +16,10 @@
     "test:order-analyze": "tsx --test src/orderAnalyze/orderAnalyze.test.ts",
     "test:order-analyze-regression": "tsx src/orderAnalyze/regression/regressionCli.ts",
     "podman:build": "podman build -t warehouse-server:latest -f Containerfile .",
-    "podman:up": "podman compose --profile stack up -d --build",
-    "podman:down": "podman compose --profile stack down"
+    "podman:up": "podman compose up -d --build",
+    "podman:down": "podman compose down",
+    "ecs:upload": "bash scripts/ecs-upload.sh",
+    "ecs:deploy": "bash scripts/ecs-upload.sh --deploy"
   },
   "dependencies": {
     "bcrypt": "^6.0.0",

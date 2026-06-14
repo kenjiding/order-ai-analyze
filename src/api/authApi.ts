@@ -46,13 +46,25 @@ export async function fetchAuthMe(): Promise<AuthSession | null> {
 }
 
 export async function fetchLogin(username: string, password: string): Promise<AuthSession> {
-  const res = await fetch(`${getApiBaseUrl()}/api/auth/login`, {
-    method: 'POST',
-    credentials: 'include',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ username, password }),
-  })
-  const body = await parseJson<AuthSession & ApiErrorBody>(res)
+  let res: Response
+  try {
+    res = await fetch(`${getApiBaseUrl()}/api/auth/login`, {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username, password }),
+    })
+  } catch {
+    throw new Error('网络异常，请检查连接后重试')
+  }
+
+  let body: AuthSession & ApiErrorBody
+  try {
+    body = await parseJson<AuthSession & ApiErrorBody>(res)
+  } catch {
+    throw new Error(res.ok ? '登录响应解析失败' : '登录失败，请稍后重试')
+  }
+
   if (!res.ok) {
     throw new Error(body.error ?? '登录失败')
   }

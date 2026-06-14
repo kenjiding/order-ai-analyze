@@ -4,6 +4,7 @@ import { Camera, Download, Filter, ImagePlus, Loader2, RotateCcw, X } from 'luci
 import { useCallback, useId, useState, type ChangeEvent } from 'react'
 import { PERMISSION_KEYS, usePermission } from '../../../hooks/usePermission'
 import { showToast } from '../../../utils/toast'
+import { confirmDialog } from '../../../utils/confirmDialog'
 import {
   exportDailyChecklistExcel,
   validateDailyChecklistForExport,
@@ -125,7 +126,14 @@ export function DailyChecklistTable({ vm }: Props) {
               type="button"
               className="inline-flex items-center gap-1.5 rounded-md border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50"
               onClick={() => {
-                if (window.confirm('确定清空当前填写内容？')) resetForm()
+                void confirmDialog({
+                  title: '清空填写内容',
+                  content: '确定清空当前填写内容？',
+                  okText: '清空',
+                  danger: true,
+                }).then((confirmed) => {
+                  if (confirmed) resetForm()
+                })
               }}
             >
               清空

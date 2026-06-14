@@ -9,6 +9,7 @@ import { EfficiencyDailyDetailByDaySection } from '../EfficiencyDailyDetailByDay
 import { formatInteger } from '../formatAndParse'
 import WeeklyReportPanel from '../WeeklyReportPanel'
 import { FrontDeskSaturationSection } from './FrontDeskSaturationSection'
+import { CancelScanAnalysisSection } from './CancelScanAnalysisSection'
 import ScannerEfficiencyPushSection from './ScannerEfficiencyPushSection'
 import { ScannerPersonSortingHourlySection } from './ScannerPersonSortingHourlySection'
 import { ScannerPersonSortingSummarySection } from './ScannerPersonSortingSummarySection'
@@ -38,7 +39,6 @@ export default function ScannerEfficiencyBody({ vm, level1Push }: Props) {
     attendanceResult,
     attendanceRows,
     scannerResult,
-    frontDeskResult,
     activeTab,
     setActiveTab,
     weeklyPanelKey,
@@ -60,8 +60,8 @@ export default function ScannerEfficiencyBody({ vm, level1Push }: Props) {
     attendanceDailyAsTable,
     attendanceWeeklyAsTable,
     attendancePersonAsTable,
-    frontDeskDailyAsTable,
-    frontDeskDensityAsTable,
+    allocationDensityAsTable,
+    frontDeskClockOutAsTable,
     scannerDailyAsTable,
     scannerHourlyPivotTables,
     scannerDailyEfficiencyTrendPoints,
@@ -135,7 +135,8 @@ export default function ScannerEfficiencyBody({ vm, level1Push }: Props) {
             >
               <Tab label="开仓效率 / 总体效率" value={TAB_KEYS.WAREHOUSE} />
               <Tab label="分拣员个人效率" value={TAB_KEYS.SCANNER} />
-              <Tab label="前台饱和度分析" value={TAB_KEYS.FRONT_DESK} />
+              <Tab label="包裹分配密度" value={TAB_KEYS.FRONT_DESK} />
+              <Tab label="取消扫描分析" value={TAB_KEYS.CANCEL_SCAN} />
               <Tab label="周报生成器" value={TAB_KEYS.WEEKLY} />
               <Tab label="推送" value={TAB_KEYS.PUSH} />
             </Tabs>
@@ -143,7 +144,8 @@ export default function ScannerEfficiencyBody({ vm, level1Push }: Props) {
 
           {summaryMetrics.length > 0 &&
             activeTab !== TAB_KEYS.WEEKLY &&
-            activeTab !== TAB_KEYS.PUSH && (
+            activeTab !== TAB_KEYS.PUSH &&
+            activeTab !== TAB_KEYS.CANCEL_SCAN && (
             <>
               <section
                 className={`grid gap-4 ${
@@ -167,7 +169,7 @@ export default function ScannerEfficiencyBody({ vm, level1Push }: Props) {
             </>
           )}
 
-          {activeTab !== TAB_KEYS.WEEKLY && activeTab !== TAB_KEYS.PUSH && (
+          {activeTab !== TAB_KEYS.WEEKLY && activeTab !== TAB_KEYS.PUSH && activeTab !== TAB_KEYS.CANCEL_SCAN && (
             <>
               {activeTab === TAB_KEYS.WAREHOUSE && (
                 <section className="space-y-4">
@@ -290,16 +292,23 @@ export default function ScannerEfficiencyBody({ vm, level1Push }: Props) {
 
               {activeTab === TAB_KEYS.FRONT_DESK && (
                 <FrontDeskSaturationSection
-                  result={frontDeskResult}
-                  dailyRows={frontDeskDailyAsTable}
-                  densityRows={frontDeskDensityAsTable}
-                  afternoonStartHour={settings.frontDeskAfternoonStartHour}
+                  densityRows={allocationDensityAsTable}
+                  clockOutRows={frontDeskClockOutAsTable}
                   allocationSourceInfo={vm.allocationSourceInfo}
+                  loadingAllocationApi={vm.loadingAllocationApi}
                   onAllocationFileChange={vm.handleAllocationFileChange}
                   onClearAllocation={vm.clearAllocation}
+                  readOnly={Boolean(vm.snapshotRestore)}
                 />
               )}
             </>
+          )}
+
+          {activeTab === TAB_KEYS.CANCEL_SCAN && (
+            <CancelScanAnalysisSection
+              analysis={vm.cancelScanAnalysis}
+              loading={vm.loadingCancelScanAnalysis}
+            />
           )}
 
           {activeTab === TAB_KEYS.SCANNER && !scannerResult && (
@@ -326,22 +335,6 @@ export default function ScannerEfficiencyBody({ vm, level1Push }: Props) {
               />
               <div className="px-5 py-4 text-sm leading-7">
                 请上传“考勤记录报表.csv”或同结构文件（至少包含日期、人员；有「工作时长」则优先使用，否则使用「总时长」），即可启用该标签页。
-                <br />
-                当前考勤识别：有效 {formatInteger(attendanceSourceInfo.rowCount)} 行，未识别{' '}
-                {formatInteger(attendanceSourceInfo.droppedRows)} 行。
-              </div>
-            </section>
-          )}
-
-          {activeTab === TAB_KEYS.FRONT_DESK && !attendanceResult && (
-            <section className="rounded-lg border border-amber-200 bg-amber-50 text-amber-900 shadow-[0_18px_50px_rgba(15,23,42,0.07)]">
-              <SectionTitle
-                eyebrow="Front Desk Mode"
-                title="前台饱和度模块未启用"
-                description="当前尚未上传可识别的考勤数据，无法识别前台/分拣下班基准。"
-              />
-              <div className="px-5 py-4 text-sm leading-7">
-                请先上传“考勤记录报表.csv”或同结构文件（至少包含日期、人员；有「工作时长」则优先使用，否则使用「总时长」），再在本标签页上传前台分配包裹表。
                 <br />
                 当前考勤识别：有效 {formatInteger(attendanceSourceInfo.rowCount)} 行，未识别{' '}
                 {formatInteger(attendanceSourceInfo.droppedRows)} 行。

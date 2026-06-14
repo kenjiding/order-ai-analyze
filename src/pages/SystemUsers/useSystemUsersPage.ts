@@ -11,6 +11,8 @@ import {
   type PermissionDefinition,
 } from '../../api/adminUsersApi'
 import type { RegionOption } from '../../api/authApi'
+import { showToast } from '../../utils/toast'
+import { confirmDialog } from '../../utils/confirmDialog'
 import { type UserFormValues } from './components/UserFormModal'
 
 export function useSystemUsersPage() {
@@ -18,14 +20,12 @@ export function useSystemUsersPage() {
   const [regions, setRegions] = useState<RegionOption[]>([])
   const [permissions, setPermissions] = useState<PermissionDefinition[]>([])
   const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
   const [modalOpen, setModalOpen] = useState(false)
   const [editingUser, setEditingUser] = useState<AdminUser | null>(null)
   const [saving, setSaving] = useState(false)
 
   const reload = useCallback(async () => {
     setLoading(true)
-    setError(null)
     try {
       const [userRows, regionRows, permissionRows] = await Promise.all([
         fetchAdminUsers(),
@@ -36,7 +36,7 @@ export function useSystemUsersPage() {
       setRegions(regionRows)
       setPermissions(permissionRows)
     } catch (e) {
-      setError(e instanceof Error ? e.message : '加载失败')
+      showToast(e instanceof Error ? e.message : '加载失败', 'error')
     } finally {
       setLoading(false)
     }
@@ -64,8 +64,9 @@ export function useSystemUsersPage() {
   const handleSubmit = useCallback(
     async (values: UserFormValues) => {
       setSaving(true)
-      setError(null)
       try {
+        const permissionKeys = Array.isArray(values.permissionKeys) ? values.permissionKeys : []
+
         if (editingUser) {
           await updateAdminUser(editingUser.id, {
             displayName: values.displayName,
@@ -73,7 +74,7 @@ export function useSystemUsersPage() {
             password: values.password || undefined,
           })
           if (editingUser.role !== 'super_admin') {
-            await updateAdminUserPermissions(editingUser.id, values.permissionKeys)
+            await updateAdminUserPermissions(editingUser.id, permissionKeys)
           }
         } else {
           await createAdminUser({
@@ -81,13 +82,14 @@ export function useSystemUsersPage() {
             username: values.username,
             password: values.password,
             displayName: values.displayName,
-            permissionKeys: values.permissionKeys,
+            permissionKeys,
           })
         }
         closeModal()
         await reload()
+        showToast(editingUser ? '用户已更新' : '用户已创建', 'success')
       } catch (e) {
-        setError(e instanceof Error ? e.message : '保存失败')
+        showToast(e instanceof Error ? e.message : '保存失败', 'error')
       } finally {
         setSaving(false)
       }
@@ -97,13 +99,19 @@ export function useSystemUsersPage() {
 
   const handleDisable = useCallback(
     async (user: AdminUser) => {
-      if (!window.confirm(`确定禁用用户 ${user.username}（${user.regionName ?? '系统'}）？`)) return
-      setError(null)
+      const confirmed = await confirmDialog({
+        title: '禁用用户',
+        content: `确定禁用用户 ${user.username}（${user.regionName ?? '系统'}）？`,
+        okText: '禁用',
+        danger: true,
+      })
+      if (!confirmed) return
       try {
         await deleteAdminUser(user.id)
         await reload()
+        showToast('用户已禁用', 'success')
       } catch (e) {
-        setError(e instanceof Error ? e.message : '操作失败')
+        showToast(e instanceof Error ? e.message : '操作失败', 'error')
       }
     },
     [reload],
@@ -125,7 +133,6 @@ export function useSystemUsersPage() {
     menuPermissions,
     buttonPermissions,
     loading,
-    error,
     modalOpen,
     editingUser,
     saving,

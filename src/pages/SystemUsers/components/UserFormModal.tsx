@@ -15,32 +15,6 @@ export type UserFormValues = {
   permissionKeys: string[]
 }
 
-type PermissionFieldProps = {
-  value?: string[]
-  onChange?: (value: string[]) => void
-  menuPermissions: PermissionDefinition[]
-  buttonPermissions: PermissionDefinition[]
-  disabled?: boolean
-}
-
-function PermissionField({
-  value = [],
-  onChange,
-  menuPermissions,
-  buttonPermissions,
-  disabled,
-}: PermissionFieldProps) {
-  return (
-    <PermissionCheckboxGroup
-      menuPermissions={menuPermissions}
-      buttonPermissions={buttonPermissions}
-      value={value}
-      onChange={onChange ?? (() => undefined)}
-      disabled={disabled}
-    />
-  )
-}
-
 type UserFormModalProps = {
   open: boolean
   saving: boolean
@@ -217,14 +191,14 @@ export default function UserFormModal({
             {isEdit ? (
               <Col xs={24} md={12}>
                 <Form.Item
-                  name="isActive"
                   label={<span className="text-xs font-semibold text-slate-600">账号状态</span>}
-                  valuePropName="checked"
                   className="mb-0"
                 >
                   <div className="flex h-10 items-center justify-between rounded-lg border border-slate-200 bg-slate-50/80 px-3">
                     <span className="text-sm text-slate-700">{isSuperAdmin ? '超级管理员始终启用' : '启用此账号'}</span>
-                    <Switch disabled={isSuperAdmin} />
+                    <Form.Item name="isActive" valuePropName="checked" noStyle>
+                      <Switch disabled={isSuperAdmin} />
+                    </Form.Item>
                   </div>
                 </Form.Item>
               </Col>
@@ -249,7 +223,10 @@ export default function UserFormModal({
             icon={<ShieldCheck className="h-4 w-4" aria-hidden />}
           >
             <Form.Item name="permissionKeys" className="mb-0">
-              <PermissionField menuPermissions={menuPermissions} buttonPermissions={buttonPermissions} />
+              <PermissionCheckboxGroup
+                menuPermissions={menuPermissions}
+                buttonPermissions={buttonPermissions}
+              />
             </Form.Item>
           </FormSection>
         )}

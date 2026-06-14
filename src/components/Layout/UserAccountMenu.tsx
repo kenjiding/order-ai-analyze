@@ -19,6 +19,11 @@ function getRoleLabel(role: AuthUser['role']): string {
   return role === 'super_admin' ? '超级管理员' : '普通用户'
 }
 
+function getAccountSubtitle(user: AuthUser | null): string {
+  if (!user) return '—'
+  return user.regionName?.trim() || getRoleLabel(user.role)
+}
+
 type MetaRowProps = {
   icon: ReactNode
   label: string
@@ -183,7 +188,7 @@ export default function UserAccountMenu() {
           <span className="min-w-0 flex-1 leading-tight">
             <span className="block truncate text-xs font-semibold text-slate-900">{displayName}</span>
             <span className="block truncate text-[10px] text-slate-500">
-              {user?.regionName ?? getRoleLabel(user?.role ?? 'user')}
+              {getAccountSubtitle(user)}
             </span>
           </span>
           <ChevronDown

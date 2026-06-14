@@ -1,6 +1,5 @@
 services:
   postgres:
-    profiles: [stack]
     image: docker.io/library/postgres:16-alpine
     container_name: warehouse-postgres
     restart: unless-stopped
@@ -18,7 +17,6 @@ services:
       start_period: 10s
 
   warehouse-server:
-    profiles: [stack]
     build:
       context: .
       dockerfile: Containerfile
@@ -39,13 +37,7 @@ services:
       DATABASE_URL: postgresql://${POSTGRES_USER:-warehouse}:${POSTGRES_PASSWORD:-warehouse}@postgres:5432/${POSTGRES_DB:-warehouse}
       JOB_ARTIFACT_DIR: /data/job-artifacts
     healthcheck:
-      test:
-        [
-          'CMD',
-          'node',
-          '-e',
-          "fetch('http://127.0.0.1:8787/health').then((r)=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))",
-        ]
+      test: ['CMD-SHELL', 'wget -qO- http://127.0.0.1:8787/health | grep -q "\"ok\":true"']
       interval: 30s
       timeout: 5s
       retries: 3
@@ -54,7 +46,6 @@ services:
       - job_artifacts:/data/job-artifacts
 
   warehouse-worker:
-    profiles: [stack]
     build:
       context: .
       dockerfile: Containerfile

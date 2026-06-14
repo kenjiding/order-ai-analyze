@@ -52,7 +52,16 @@ export { ATTENDANCE_CLOCK_TIME_OFFSET_MINUTES } from '../../payroll/attendanceCl
 
 export const ALLOCATION_TIME_COLUMNS = ['分配时间', '分配日期', '交接时间', '派单时间', '时间', '日期', 'allocationTime']
 export const ALLOCATION_BOX_COLUMNS = ['箱号', '包号', '集包号', '批次号', 'containerNo', 'boxNo']
-export const ALLOCATION_DRIVER_COLUMNS = ['派送员', '派件员', '配送员', '司机', 'driver', 'courier']
+export const ALLOCATION_DRIVER_COLUMNS = [
+  '派送员',
+  '派件员',
+  '配送员',
+  '司机',
+  '司机名称',
+  'driver',
+  'courier',
+  'assignDaName',
+]
 export const ALLOCATION_DRIVER_COMPANY_COLUMNS = [
   '司机所属公司',
   '所属公司',
@@ -62,6 +71,9 @@ export const ALLOCATION_DRIVER_COMPANY_COLUMNS = [
   'driverCompany',
 ]
 export const ALLOCATION_DRIVER_CODE_COLUMNS = [
+  'Route Code',
+  'routeCode',
+  '路由编码',
   '司机编码',
   '司机编号',
   '派送员编号',
@@ -88,8 +100,6 @@ export const DEFAULT_SETTINGS = {
   minSingleScanSessionMinutes: 2,
   /** 脏数据阈值：某扫描员在某日的扫描量低于此值时，该日数据整体剔除（不计入效率、汇总与按小时段）。 */
   minDayScanCount: 300,
-  /** 前台晚间/下午取货窗口起点；13 表示取当日 13:00 后第一条分配记录。 */
-  frontDeskAfternoonStartHour: 13,
 } as const
 
 export type ScanSettings = {
@@ -100,14 +110,13 @@ export type ScanSettings = {
   minSingleScanSessionMinutes: number
   /** 脏数据阈值：某扫描员在某日的扫描量低于此值时，该日数据整体剔除。 */
   minDayScanCount: number
-  /** 前台晚间/下午取货窗口起点。 */
-  frontDeskAfternoonStartHour: number
 }
 
 export const TAB_KEYS = {
   WAREHOUSE: 'warehouse',
   SCANNER: 'scanner',
   FRONT_DESK: 'frontDesk',
+  CANCEL_SCAN: 'cancelScan',
   WEEKLY: 'weekly',
   PUSH: 'push',
 } as const

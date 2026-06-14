@@ -20,6 +20,7 @@ import {
 import { readLocalPushImage, type LocalPushImage } from '../pushImageLocal'
 import { withRetry } from '../feishuPushRetry'
 import { showToast } from '../../../utils/toast'
+import { confirmDialog } from '../../../utils/confirmDialog'
 import { FleetSupplierEditModal } from './FleetSupplierEditModal'
 import './fleetSupplierPushTab.css'
 
@@ -480,21 +481,20 @@ export function FleetSupplierPushTab({
         }
         return
       }
-      Modal.confirm({
+      const confirmed = await confirmDialog({
         title: '确认替换全部本地供应商？',
         content: `将删除当前 ${suppliers.length} 条配置，仅保留文件中的 ${r.suppliers.length} 条。`,
         okText: '替换',
-        okButtonProps: { danger: true },
-        onOk: async () => {
-          try {
-            await persist(r.suppliers)
-            closeImportModal()
-            showToast(`已导入并替换为 ${r.suppliers.length} 条供应商。`, 'success')
-          } catch {
-            /* persist 已提示 */
-          }
-        },
+        danger: true,
       })
+      if (!confirmed) return
+      try {
+        await persist(r.suppliers)
+        closeImportModal()
+        showToast(`已导入并替换为 ${r.suppliers.length} 条供应商。`, 'success')
+      } catch {
+        /* persist 已提示 */
+      }
     } finally {
       setImporting(false)
     }

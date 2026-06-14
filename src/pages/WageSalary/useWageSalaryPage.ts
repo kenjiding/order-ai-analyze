@@ -23,6 +23,7 @@ import {
 } from './wageExport'
 import { generateId } from '../../utils/generateId'
 import { showToast } from '../../utils/toast'
+import { confirmDialog } from '../../utils/confirmDialog'
 import {
   formatDateDisplay,
   formatWorkdayDisplay,
@@ -400,8 +401,14 @@ export function useWageSalaryPage() {
     cancelRowEditing(recordId)
   }
 
-  const handleDeleteRecord = (recordId) => {
-    if (!confirm('确定要删除这条记录吗？')) return
+  const handleDeleteRecord = async (recordId) => {
+    const confirmed = await confirmDialog({
+      title: '删除工资记录',
+      content: '确定要删除这条记录吗？',
+      okText: '删除',
+      danger: true,
+    })
+    if (!confirmed) return
     setWageRecords((prev) => prev.filter((r) => r._id !== recordId))
     showToast('删除成功', 'success')
   }
@@ -416,17 +423,17 @@ export function useWageSalaryPage() {
     setEditingEmployeeId(null)
   }
 
-  const handleDeleteEmployee = (employee) => {
+  const handleDeleteEmployee = async (employee) => {
     const { employeeId, nickname } = employee
     const nick = String(nickname ?? '').trim()
     const display = nick || String(employeeId)
-    if (
-      !confirm(
-        `确定要删除员工 ${display} (${employeeId}${nick ? ` / 昵称 ${nick}` : ''}) 吗？将同时移除当前工资表中对应昵称的薪资记录。`,
-      )
-    ) {
-      return
-    }
+    const confirmed = await confirmDialog({
+      title: '删除员工',
+      content: `确定要删除员工 ${display} (${employeeId}${nick ? ` / 昵称 ${nick}` : ''}) 吗？将同时移除当前工资表中对应昵称的薪资记录。`,
+      okText: '删除',
+      danger: true,
+    })
+    if (!confirmed) return
     setEmployees((prev) => {
       const next = prev.filter((e) => e._id !== employee._id)
       void saveEmployeesToStorage(next).catch((err) => console.error('保存员工列表失败:', err))

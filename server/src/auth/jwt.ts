@@ -57,19 +57,30 @@ export function verifyAuthToken(token: string): AuthTokenPayload | null {
   }
 }
 
-export function setAuthCookie(res: Response, token: string): void {
-  const isProduction = process.env.NODE_ENV === 'production'
-  res.cookie(AUTH_COOKIE_NAME, token, {
+function isSecureCookie(): boolean {
+  const raw = String(process.env.AUTH_COOKIE_SECURE ?? '').trim().toLowerCase()
+  if (raw === 'true' || raw === '1' || raw === 'yes') return true
+  if (raw === 'false' || raw === '0' || raw === 'no') return false
+  // 生产默认 Secure；纯 HTTP（无 TLS）部署须设 AUTH_COOKIE_SECURE=false
+  return process.env.NODE_ENV === 'production'
+}
+
+function authCookieOptions() {
+  return {
     httpOnly: true,
-    secure: isProduction,
-    sameSite: 'lax',
+    secure: isSecureCookie(),
+    sameSite: 'lax' as const,
     maxAge: 7 * 24 * 60 * 60 * 1000,
     path: '/',
-  })
+  }
+}
+
+export function setAuthCookie(res: Response, token: string): void {
+  res.cookie(AUTH_COOKIE_NAME, token, authCookieOptions())
 }
 
 export function clearAuthCookie(res: Response): void {
-  res.clearCookie(AUTH_COOKIE_NAME, { path: '/' })
+  res.clearCookie(AUTH_COOKIE_NAME, authCookieOptions())
 }
 
 export function toPublicUser(user: {

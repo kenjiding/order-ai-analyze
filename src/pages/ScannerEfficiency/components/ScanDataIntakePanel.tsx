@@ -1,7 +1,8 @@
 import { Button, DatePicker, Radio, Tooltip } from 'antd'
-import { CloudDownload, FileSpreadsheet, Upload, Users } from 'lucide-react'
-import { useRef, useState } from 'react'
+import { CloudDownload, FileSpreadsheet, Save, Upload, Users } from 'lucide-react'
+import { useMemo, useRef, useState } from 'react'
 import type { Dayjs } from 'dayjs'
+import { formatInteger } from '../formatAndParse'
 import type { ScannerEfficiencyViewModel } from '../useScannerEfficiencyPage'
 
 type IntakeMode = 'upload' | 'api'
@@ -16,34 +17,57 @@ export function ScanDataIntakePanel({ vm }: Props) {
     handleScanFileChange,
     handleScanApiFetch,
     handleAttendanceFileChange,
+    handleSaveDailyRecords,
+    canSaveDailyRecords,
+    savingDailyRecords,
     clearAttendance,
     clearAll,
+    scanSourceInfo,
+    attendanceSourceInfo,
+    snapshotRestore,
   } = vm
 
+  const readOnly = Boolean(snapshotRestore)
   const [mode, setMode] = useState<IntakeMode>('api')
   const [range, setRange] = useState<[Dayjs, Dayjs] | null>(null)
   const scanFileInputRef = useRef<HTMLInputElement>(null)
   const attendanceFileInputRef = useRef<HTMLInputElement>(null)
 
   const handleFetch = () => {
-    if (!range) return
+    if (!range || readOnly) return
     void handleScanApiFetch(range[0].format('YYYY-MM-DD'), range[1].format('YYYY-MM-DD'))
   }
 
+  const statusLine = useMemo(() => {
+    if (readOnly) return '记录查看模式，重新载入或退出查看后可操作'
+    const parts: string[] = []
+    if (scanSourceInfo.rowCount > 0) {
+      parts.push(`到件 ${formatInteger(scanSourceInfo.rowCount)} 条`)
+    }
+    if (attendanceSourceInfo.rowCount > 0) {
+      parts.push(`考勤 ${formatInteger(attendanceSourceInfo.rowCount)} 条`)
+    }
+    if (!parts.length) return '尚未载入数据'
+    if (canSaveDailyRecords) return `${parts.join(' · ')} · 可保存`
+    return parts.join(' · ')
+  }, [attendanceSourceInfo.rowCount, canSaveDailyRecords, readOnly, scanSourceInfo.rowCount])
+
+  const actionsDisabled = readOnly || loading
+
   return (
-    <div className="space-y-3">
-      <div className="flex flex-wrap items-center justify-between gap-3">
+    <div className="flex flex-col gap-4">
+      <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">
           <h2 className="text-sm font-semibold text-slate-950">载入扫描记录</h2>
-          <p className="mt-0.5 text-xs text-slate-500">文件与 API 可并存，多次载入合并并按运单号去重</p>
         </div>
 
         <Radio.Group
-          className="admin-toggle-track"
+          className="shrink-0"
           value={mode}
           onChange={(e) => setMode(e.target.value as IntakeMode)}
           optionType="button"
-          buttonStyle="outline"
+          buttonStyle="solid"
+          disabled={actionsDisabled}
         >
           <Radio.Button value="upload">
             <span className="inline-flex items-center gap-1.5">
@@ -60,83 +84,113 @@ export function ScanDataIntakePanel({ vm }: Props) {
         </Radio.Group>
       </div>
 
-      <div className="flex flex-wrap items-center gap-2 sm:gap-3">
-        {mode === 'upload' ? (
-          <>
+      <div className="grid gap-4 sm:grid-cols-2">
+        <div className="min-w-0 border-l-2 border-[#2f8f87] pl-3">
+          <div className="text-[11px] font-semibold uppercase tracking-wide text-[#1f6f68]">到件 · 必传</div>
+          <div className="mt-2 flex min-w-0 flex-col gap-2">
+            {mode === 'upload' ? (
+              <>
+                <input
+                  ref={scanFileInputRef}
+                  type="file"
+                  accept=".xlsx,.xls"
+                  multiple
+                  className="hidden"
+                  disabled={actionsDisabled}
+                  onChange={(event) => {
+                    void handleScanFileChange(event.target.files)
+                    event.target.value = ''
+                  }}
+                />
+                <Button
+                  type="default"
+                  block
+                  icon={<Upload className="h-4 w-4" aria-hidden />}
+                  disabled={actionsDisabled}
+                  onClick={() => scanFileInputRef.current?.click()}
+                >
+                  上传到件扫描
+                </Button>
+                <p className="text-[11px] text-slate-500">.xlsx / .xls，可多选</p>
+              </>
+            ) : (
+              <div className="flex min-w-0 flex-wrap items-center gap-2">
+                <DatePicker.RangePicker
+                  value={range}
+                  onChange={(values) => setRange(values as [Dayjs, Dayjs] | null)}
+                  allowClear
+                  format="YYYY-MM-DD"
+                  disabled={actionsDisabled}
+                  className="min-w-0 flex-1"
+                />
+                <Button
+                  type="primary"
+                  icon={<CloudDownload className="h-4 w-4" aria-hidden />}
+                  loading={loading}
+                  disabled={!range || readOnly}
+                  onClick={handleFetch}
+                >
+                  获取数据
+                </Button>
+              </div>
+            )}
+          </div>
+        </div>
+
+        <div className="min-w-0 border-l-2 border-slate-200 pl-3">
+          <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">考勤 · 可选</div>
+          <div className="mt-2 flex min-w-0 flex-col gap-2">
             <input
-              ref={scanFileInputRef}
+              ref={attendanceFileInputRef}
               type="file"
-              accept=".xlsx,.xls"
+              accept=".csv,.xlsx,.xls"
               multiple
               className="hidden"
-              disabled={loading}
+              disabled={actionsDisabled}
               onChange={(event) => {
-                void handleScanFileChange(event.target.files)
+                void handleAttendanceFileChange(event.target.files)
                 event.target.value = ''
               }}
             />
             <Button
               type="default"
-              icon={<Upload className="h-4 w-4" aria-hidden />}
-              disabled={loading}
-              onClick={() => scanFileInputRef.current?.click()}
+              block
+              icon={<Users className="h-4 w-4" aria-hidden />}
+              disabled={actionsDisabled}
+              onClick={() => attendanceFileInputRef.current?.click()}
             >
-              上传到件扫描文件
-              <span className="hidden font-normal text-slate-500 sm:inline">（.xlsx / .xls · 可多选）</span>
+              上传考勤
             </Button>
-          </>
-        ) : (
-          <>
-            <DatePicker.RangePicker
-              value={range}
-              onChange={(values) => setRange(values as [Dayjs, Dayjs] | null)}
-              allowClear
-              format="YYYY-MM-DD"
-              disabled={loading}
-              className="min-w-[220px]"
-            />
+          </div>
+        </div>
+      </div>
+
+      <div className="flex flex-col gap-2 border-t border-[var(--admin-line)] pt-3 sm:flex-row sm:items-center sm:justify-between">
+        <p className="min-w-0 text-xs leading-relaxed text-slate-500">{statusLine}</p>
+        <div className="flex flex-wrap items-center gap-1.5 sm:justify-end">
+          <Tooltip
+            title={
+              canSaveDailyRecords
+                ? '按日写入效率考勤记录，同日覆盖'
+                : '需同时载入到件与考勤'
+            }
+          >
             <Button
               type="primary"
-              icon={<CloudDownload className="h-4 w-4" aria-hidden />}
-              loading={loading}
-              disabled={!range}
-              onClick={handleFetch}
+              icon={<Save className="h-4 w-4" aria-hidden />}
+              loading={savingDailyRecords}
+              disabled={!canSaveDailyRecords || actionsDisabled}
+              onClick={() => void handleSaveDailyRecords()}
             >
-              拉取到件
+              保存
             </Button>
-          </>
-        )}
-
-        <span className="hidden h-4 w-px bg-[var(--admin-line)] sm:block" aria-hidden />
-
-        <input
-          ref={attendanceFileInputRef}
-          type="file"
-          accept=".csv,.xlsx,.xls"
-          multiple
-          className="hidden"
-          disabled={loading}
-          onChange={(event) => {
-            void handleAttendanceFileChange(event.target.files)
-            event.target.value = ''
-          }}
-        />
-        <Button
-          type="default"
-          icon={<Users className="h-4 w-4" aria-hidden />}
-          disabled={loading}
-          onClick={() => attendanceFileInputRef.current?.click()}
-        >
-          上传考勤（可选）
-        </Button>
-
-        <div className="ml-auto flex flex-wrap items-center gap-2">
+          </Tooltip>
           <Tooltip title="仅清除考勤数据，保留到件扫描">
-            <Button type="default" danger onClick={clearAttendance}>
+            <Button type="default" danger disabled={actionsDisabled} onClick={clearAttendance}>
               清空考勤
             </Button>
           </Tooltip>
-          <Button type="default" onClick={clearAll}>
+          <Button type="default" disabled={actionsDisabled} onClick={clearAll}>
             清空全部
           </Button>
         </div>

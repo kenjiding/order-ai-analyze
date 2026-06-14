@@ -59,7 +59,7 @@ export async function requireAuth(req: AuthenticatedRequest, res: Response, next
 
   req.authUser = toPublicUser({
     ...user,
-    regionName: user.regionName ?? getRegionLabel(user.regionId),
+    regionName: user.regionName ?? (user.regionId ? getRegionLabel(user.regionId) : null),
   })
   if (user.role === SUPER_ADMIN_ROLE) {
     req.permissions = ['*']

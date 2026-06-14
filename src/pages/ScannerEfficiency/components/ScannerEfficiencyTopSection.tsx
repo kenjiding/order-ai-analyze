@@ -1,4 +1,5 @@
 import Tooltip from '@mui/material/Tooltip'
+import { Button } from 'antd'
 import { Gauge } from 'lucide-react'
 import type { ScannerEfficiencyViewModel } from '../useScannerEfficiencyPage'
 import { ScanDataIntakePanel } from './ScanDataIntakePanel'
@@ -8,10 +9,34 @@ type Props = {
 }
 
 export default function ScannerEfficiencyTopSection({ vm }: Props) {
-  const { settings, handleSettingChange, openDayRuleTooltipText } = vm
+  const {
+    settings,
+    handleSettingChange,
+    openDayRuleTooltipText,
+    snapshotRestore,
+    dismissSnapshotRestore,
+  } = vm
 
   return (
     <section className="admin-panel overflow-hidden">
+      {snapshotRestore ? (
+        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[rgba(47,143,135,0.22)] bg-[var(--admin-accent-soft)] px-5 py-3 sm:px-6">
+          <div className="min-w-0 text-sm text-[#1f6f68]">
+            <span className="font-semibold">记录查看模式</span>
+            <span className="mx-2 text-[#2f8f87]/60" aria-hidden>
+              ·
+            </span>
+            正在查看 {snapshotRestore.restoredDate} 的效率考勤记录
+            {snapshotRestore.restoredDates.length > 1
+              ? `（${snapshotRestore.restoredDates.length} 天合并）`
+              : ''}
+            （只读快照，重新载入数据将退出此模式）
+          </div>
+          <Button type="default" onClick={dismissSnapshotRestore}>
+            退出查看
+          </Button>
+        </div>
+      ) : null}
       <header className="border-b border-[var(--admin-line)] px-5 py-4 sm:px-6">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
@@ -48,6 +73,7 @@ export default function ScannerEfficiencyTopSection({ vm }: Props) {
                 min={1}
                 step={1}
                 value={settings.openDayThreshold}
+                disabled={Boolean(snapshotRestore)}
                 onChange={(event) => handleSettingChange('openDayThreshold', event.target.value)}
                 className="box-border w-full rounded-md border border-[var(--admin-line)] bg-white px-2 py-1.5 text-center text-base font-semibold tabular-nums text-slate-950 outline-none focus:ring-2 focus:ring-[rgba(47,143,135,0.35)]"
               />
@@ -72,6 +98,7 @@ export default function ScannerEfficiencyTopSection({ vm }: Props) {
                 min={1}
                 step={50}
                 value={settings.minDayScanCount}
+                disabled={Boolean(snapshotRestore)}
                 onChange={(event) => handleSettingChange('minDayScanCount', event.target.value)}
                 className="box-border w-full rounded-md border border-[var(--admin-line)] bg-white px-2 py-1.5 text-center text-base font-semibold tabular-nums text-slate-950 outline-none focus:ring-2 focus:ring-[rgba(47,143,135,0.35)]"
               />

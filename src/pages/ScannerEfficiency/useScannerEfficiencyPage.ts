@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useLocation, useNavigate } from 'react-router-dom'
 import { useAppSettings } from '../../context/AppSettingsContext'
 import {
   buildDailyLaborCostFromPayrollByDate,
@@ -33,13 +34,25 @@ import {
   formatNumber,
 } from './formatAndParse'
 import { parseAllocationFiles, parseScanFiles, parseAttendanceFiles } from './parsers'
-import { fetchInboundScans } from './scannerEfficiencyApi'
+import {
+  dedupeParsedAllocationRows,
+  mapAssignedListRecordsToParsedAllocationRows,
+} from './assignedListMapper'
+import { fetchBoxAssignedList, fetchCancelScanAnalysis, fetchInboundScans, saveDailyEfficiencyRecords } from './scannerEfficiencyApi'
 import { mapInboundRecordsToParsedScanRows } from './inboundScanMapper'
+import type { CancelScanAnalysisState } from './cancelScanAnalysisTypes'
 import { flushPaint } from './excelParseClient'
-import { buildFrontDeskSaturation } from './frontDeskSaturation'
+import { buildAllocationDensity, buildFrontDeskClockOutDays } from './frontDeskSaturation'
+import {
+  buildDailyEfficiencyRecordSnapshots,
+  buildRestoreStateFromDailyPayloads,
+  type DailyEfficiencyRecordPayload,
+  type DailyEfficiencyRestoreState,
+} from './dailyEfficiencyRecordSnapshot'
 import type { SourceInfo } from './sourceInfo'
 import { buildScannerTotalEfficiencyRows, sortingScanCountForPerson } from './sortingLookup'
 import type { DataTableRow } from './components/ui'
+import { showToast } from '../../utils/toast'
 import {
   buildAttendanceMatchColumns,
   buildAttendancePersonColumns,
@@ -96,7 +109,11 @@ function mergeOrderedUniqueFiles(prev: File[], next: File[]): File[] {
 
 export function useScannerEfficiencyPage() {
   const { imileToken, imilePortal } = useAppSettings()
+  const location = useLocation()
+  const navigate = useNavigate()
   const [settings, setSettings] = useState<ScanSettings>(() => ({ ...DEFAULT_SETTINGS }))
+  const [snapshotRestore, setSnapshotRestore] = useState<DailyEfficiencyRestoreState | null>(null)
+  const [savingDailyRecords, setSavingDailyRecords] = useState(false)
 
   const [wageEmployees, setWageEmployees] = useState<{ employeeId: string; role: string }[]>([])
   const [rateSettingsForLabor, setRateSettingsForLabor] = useState<RateSettings>(() =>
@@ -158,9 +175,23 @@ export function useScannerEfficiencyPage() {
   const [allocationRows, setAllocationRows] = useState<ParsedAllocationRow[]>([])
   const [allocationSourceInfo, setAllocationSourceInfo] = useState<SourceInfo>(EMPTY_SOURCE)
 
+  const allocationRowsRef = useRef(allocationRows)
+  const allocationSourceInfoRef = useRef(allocationSourceInfo)
+
+  useEffect(() => {
+    allocationRowsRef.current = allocationRows
+  }, [allocationRows])
+
+  useEffect(() => {
+    allocationSourceInfoRef.current = allocationSourceInfo
+  }, [allocationSourceInfo])
+
   const [loadingScan, setLoadingScan] = useState(false)
   const [loadingAttendance, setLoadingAttendance] = useState(false)
   const [loadingAllocation, setLoadingAllocation] = useState(false)
+  const [loadingAllocationApi, setLoadingAllocationApi] = useState(false)
+  const [loadingCancelScanAnalysis, setLoadingCancelScanAnalysis] = useState(false)
+  const [cancelScanAnalysis, setCancelScanAnalysis] = useState<CancelScanAnalysisState | null>(null)
   const [error, setError] = useState('')
   const [manualTab, setManualTab] = useState<TabKey>(TAB_KEYS.WAREHOUSE)
   const [scannerHourlyExpanded, setScannerHourlyExpanded] = useState(false)
@@ -192,19 +223,22 @@ export function useScannerEfficiencyPage() {
   }, [])
 
   const scanAggregate = useMemo(() => {
+    if (snapshotRestore) return snapshotRestore.scanAggregate
     if (!scanRows.length) return null
     return buildScanAggregate(scanRows)
-  }, [scanRows])
+  }, [scanRows, snapshotRestore])
 
   const attendanceAggregate = useMemo(() => {
+    if (snapshotRestore) return null
     if (!attendanceRows.length) return null
     return buildAttendanceAggregate(attendanceRows, settings.openDayThreshold)
-  }, [attendanceRows, settings.openDayThreshold])
+  }, [attendanceRows, settings.openDayThreshold, snapshotRestore])
 
   const attendanceEfficiencyBase = useMemo(() => {
+    if (snapshotRestore) return snapshotRestore.attendanceResult
     if (!scanAggregate || !attendanceAggregate) return null
     return buildAttendanceEfficiency(scanAggregate, attendanceAggregate)
-  }, [scanAggregate, attendanceAggregate])
+  }, [scanAggregate, attendanceAggregate, snapshotRestore])
 
   const [dailyHoursOverrides, setDailyHoursOverrides] = useState<Record<string, number>>({})
 
@@ -213,11 +247,13 @@ export function useScannerEfficiencyPage() {
   }, [scanRows, attendanceRows])
 
   const attendanceResult = useMemo(() => {
+    if (snapshotRestore) return snapshotRestore.attendanceResult
     if (!attendanceEfficiencyBase) return null
     return applyAttendanceDailyHoursOverrides(attendanceEfficiencyBase, dailyHoursOverrides)
-  }, [attendanceEfficiencyBase, dailyHoursOverrides])
+  }, [attendanceEfficiencyBase, dailyHoursOverrides, snapshotRestore])
 
   const handleDailyTotalHoursCommit = useCallback((date: string, value: number | null) => {
+    if (snapshotRestore) return
     setDailyHoursOverrides((prev) => {
       if (value === null) {
         const { [date]: _, ...rest } = prev
@@ -225,34 +261,30 @@ export function useScannerEfficiencyPage() {
       }
       return { ...prev, [date]: value }
     })
-  }, [])
+  }, [snapshotRestore])
 
   const scannerResult = useMemo(() => {
+    if (snapshotRestore) return snapshotRestore.scannerResult
     if (!scanRows.length) return null
     return buildScannerEfficiency(scanRows, settings)
-  }, [scanRows, settings])
+  }, [scanRows, settings, snapshotRestore])
 
-  const frontDeskResult = useMemo(
+  const allocationDensityRows = useMemo(
+    () => snapshotRestore?.allocationDensityRows ?? buildAllocationDensity(allocationRows),
+    [allocationRows, snapshotRestore],
+  )
+
+  const frontDeskClockOutRows = useMemo(
     () =>
-      buildFrontDeskSaturation({
-        attendanceResult,
-        attendanceRows,
-        allocationRows,
-        scannerResult,
-        afternoonStartHour: settings.frontDeskAfternoonStartHour,
-      }),
-    [
-      allocationRows,
-      attendanceResult,
-      attendanceRows,
-      scannerResult,
-      settings.frontDeskAfternoonStartHour,
-    ],
+      snapshotRestore?.frontDeskClockOutRows ??
+      buildFrontDeskClockOutDays({ attendanceRows, allocationRows }),
+    [attendanceRows, allocationRows, snapshotRestore],
   )
 
   const activeTab = useMemo((): TabKey => {
     if (manualTab === TAB_KEYS.WEEKLY) return TAB_KEYS.WEEKLY
     if (manualTab === TAB_KEYS.PUSH) return TAB_KEYS.PUSH
+    if (manualTab === TAB_KEYS.CANCEL_SCAN) return TAB_KEYS.CANCEL_SCAN
     const coerced: TabKey | null =
       attendanceEfficiencyBase && !scannerResult
         ? TAB_KEYS.WAREHOUSE
@@ -269,6 +301,7 @@ export function useScannerEfficiencyPage() {
   const weeklyPanelKey = useMemo(
     () =>
       [
+        snapshotRestore?.restoredDates.join(',') ?? '',
         scanSourceInfo.fileNames.join(','),
         String(scanSourceInfo.rowCount),
         String(scanSourceInfo.droppedRows),
@@ -280,12 +313,12 @@ export function useScannerEfficiencyPage() {
         String(settings.breakCapMinutes),
         String(settings.splitThresholdMinutes),
         String(settings.minSingleScanSessionMinutes),
-        String(settings.frontDeskAfternoonStartHour),
         allocationSourceInfo.fileNames.join(','),
         String(allocationSourceInfo.rowCount),
         String(allocationSourceInfo.droppedRows),
       ].join('|'),
     [
+      snapshotRestore?.restoredDates,
       scanSourceInfo.fileNames,
       scanSourceInfo.rowCount,
       scanSourceInfo.droppedRows,
@@ -297,7 +330,6 @@ export function useScannerEfficiencyPage() {
       settings.breakCapMinutes,
       settings.splitThresholdMinutes,
       settings.minSingleScanSessionMinutes,
-      settings.frontDeskAfternoonStartHour,
       allocationSourceInfo.fileNames,
       allocationSourceInfo.rowCount,
       allocationSourceInfo.droppedRows,
@@ -405,7 +437,108 @@ export function useScannerEfficiencyPage() {
   const scannerPersonColumns = useMemo(() => buildScannerPersonColumns(), [])
   const scannerTotalEfficiencyColumns = useMemo(() => buildScannerTotalEfficiencyColumns(), [])
 
+  const clearSnapshotRestore = useCallback(() => {
+    setSnapshotRestore(null)
+  }, [])
+
+  const dismissSnapshotRestore = useCallback(() => {
+    setSnapshotRestore(null)
+    setScanRows([])
+    setScanSourceInfo(EMPTY_SOURCE)
+    setLastInboundApiStats(null)
+    setAttendanceRows([])
+    setAttendanceSourceInfo(EMPTY_SOURCE)
+    setAttendancePayroll(null)
+    lastAttendanceFilesRef.current = []
+    setAllocationRows([])
+    setAllocationSourceInfo(EMPTY_SOURCE)
+    setDailyHoursOverrides({})
+    setCancelScanAnalysis(null)
+    setError('')
+  }, [])
+
+  const applyDailyRecordRestore = useCallback((payloads: DailyEfficiencyRecordPayload[]) => {
+    const restore = buildRestoreStateFromDailyPayloads(payloads)
+    setSnapshotRestore(restore)
+    setSettings((current) => ({ ...current, ...restore.settings }))
+    setScanRows([])
+    setAttendanceRows(restore.attendanceRows)
+    setAllocationRows([])
+    setScanSourceInfo(restore.scanSourceInfo)
+    setAttendanceSourceInfo(restore.attendanceSourceInfo)
+    setAllocationSourceInfo(restore.allocationSourceInfo)
+    setAttendancePayroll(null)
+    lastAttendanceFilesRef.current = []
+    setLastInboundApiStats(null)
+    setDailyHoursOverrides({})
+    setError('')
+  }, [])
+
+  useEffect(() => {
+    const state = location.state as {
+      restoreDailyRecord?: DailyEfficiencyRecordPayload
+      restoreDailyRecords?: DailyEfficiencyRecordPayload[]
+    } | null
+    const payloads = state?.restoreDailyRecords?.length
+      ? state.restoreDailyRecords
+      : state?.restoreDailyRecord
+        ? [state.restoreDailyRecord]
+        : null
+    if (!payloads?.length) return
+    applyDailyRecordRestore(payloads)
+    navigate(location.pathname, { replace: true, state: null })
+  }, [applyDailyRecordRestore, location.pathname, location.state, navigate])
+
+  const canSaveDailyRecords = Boolean(
+    !snapshotRestore && scanAggregate && attendanceResult && attendanceRows.length,
+  )
+
+  const handleSaveDailyRecords = useCallback(async () => {
+    if (!canSaveDailyRecords || !attendanceResult) return
+
+    setSavingDailyRecords(true)
+    setError('')
+    try {
+      const records = buildDailyEfficiencyRecordSnapshots({
+        attendanceResult,
+        attendanceRows,
+        scannerResult,
+        allocationDensityRows,
+        frontDeskClockOutRows,
+        cancelScanAnalysis,
+        settings,
+        scanSourceInfo,
+        attendanceSourceInfo,
+        allocationSourceInfo,
+      })
+      if (!records.length) {
+        throw new Error('当前没有可保存的按日效率记录')
+      }
+      const { savedCount } = await saveDailyEfficiencyRecords(records)
+      showToast(`已保存 ${savedCount} 天到效率考勤记录`, 'success')
+    } catch (currentError: unknown) {
+      const message = currentError instanceof Error ? currentError.message : '保存效率考勤记录失败'
+      showToast(message, 'error')
+    } finally {
+      setSavingDailyRecords(false)
+    }
+  }, [
+    allocationDensityRows,
+    allocationSourceInfo,
+    cancelScanAnalysis,
+    attendanceResult,
+    attendanceRows,
+    attendanceSourceInfo,
+    canSaveDailyRecords,
+    frontDeskClockOutRows,
+    scanAggregate,
+    scanSourceInfo,
+    scannerResult,
+    settings,
+  ])
+
   const handleSettingChange = (key: keyof ScanSettings, value: string) => {
+    if (snapshotRestore) return
     const numeric = Number(value)
     setSettings((current) => ({
       ...current,
@@ -417,6 +550,7 @@ export function useScannerEfficiencyPage() {
     const files = Array.from(fileList || [])
     if (!files.length) return
 
+    clearSnapshotRestore()
     setLoadingScan(true)
     setError('')
     await flushPaint()
@@ -472,9 +606,127 @@ export function useScannerEfficiencyPage() {
       return
     }
 
+    clearSnapshotRestore()
     setLoadingScan(true)
     setError('')
     await flushPaint()
+
+    const loadCancelScanAnalysisAsync = async () => {
+      setLoadingCancelScanAnalysis(true)
+      try {
+        const result = await fetchCancelScanAnalysis({
+          imileToken: token,
+          startDate,
+          endDate,
+          imilePortal,
+        })
+
+        console.group(`[ScannerEfficiency] 取消扫描分析 API 原始数据 ${startDate} ~ ${endDate}`)
+        console.log('cancelScanRecords', result.cancelScanRecords)
+        console.log('waybillRecords', result.waybillRecords)
+        console.log('routeCodeDistribution', result.routeCodeDistribution)
+        console.log('raw', result.raw)
+        console.groupEnd()
+
+        setCancelScanAnalysis({
+          dateRange: `${startDate} ~ ${endDate}`,
+          routeCodeDistribution: result.routeCodeDistribution,
+          dailyRouteCodeCounts: result.dailyRouteCodeCounts,
+          meta: result.meta,
+        })
+
+        if (result.meta.cancelScanFetched === 0) {
+          showToast('所选日期区间内没有取消扫描记录。', 'warning')
+          return
+        }
+
+        showToast(
+          `取消扫描分析完成：${formatInteger(result.meta.cancelScanFetched)} 条记录，${formatInteger(result.routeCodeDistribution.length)} 种路由码`,
+          'success',
+        )
+      } catch (currentError: unknown) {
+        const message =
+          currentError instanceof Error ? currentError.message : '取消扫描分析拉取失败'
+        showToast(message, 'error')
+      } finally {
+        setLoadingCancelScanAnalysis(false)
+      }
+    }
+
+    void loadCancelScanAnalysisAsync()
+
+    const loadBoxAssignedListAsync = async () => {
+      setLoadingAllocationApi(true)
+      try {
+        const result = await fetchBoxAssignedList({
+          imileToken: token,
+          startDate,
+          endDate,
+          imilePortal,
+        })
+
+        console.group(`[ScannerEfficiency] iMile 前台分配 API 原始数据 ${startDate} ~ ${endDate}`)
+        console.log('records（resultObject.results，未裁剪）', result.records)
+        console.log('raw（完整分页 HTTP JSON）', result.raw)
+        console.groupEnd()
+
+        const sourceLabel = `iMile 前台分配 API（${startDate} ~ ${endDate}）`
+        const mapped = mapAssignedListRecordsToParsedAllocationRows(result.records, sourceLabel)
+        const prevRows = allocationRowsRef.current
+        const prevSource = allocationSourceInfoRef.current
+
+        console.info('[ScannerEfficiency] iMile 前台分配 API 拉取完成', {
+          dateRange: `${startDate} ~ ${endDate}`,
+          apiTotalResult: result.meta.totalResult,
+          apiFetched: result.records.length,
+          mappedRows: mapped.rows.length,
+          mappedDropped: mapped.droppedRows,
+        })
+
+        if (!mapped.rows.length) {
+          showToast(
+            prevRows.length
+              ? '本次前台分配 API 没有可统计记录，已有分配数据未改动。'
+              : '所选日期区间内没有可统计的前台分配记录。',
+            'warning',
+          )
+          return
+        }
+
+        const combinedRawRows = prevRows.length ? [...prevRows, ...mapped.rows] : mapped.rows
+        const { rows: deduped, duplicateDropped } = dedupeParsedAllocationRows(combinedRawRows)
+        if (!deduped.length) {
+          showToast('前台分配经去重后没有可统计记录。', 'warning')
+          return
+        }
+
+        setAllocationRows(deduped)
+        const mergedNames = prevRows.length
+          ? mergeOrderedUniqueFileNames(prevSource.fileNames, [sourceLabel])
+          : [sourceLabel]
+
+        setAllocationSourceInfo({
+          fileCount: mergedNames.length,
+          rowCount: deduped.length,
+          droppedRows: prevRows.length
+            ? prevSource.droppedRows + mapped.droppedRows
+            : mapped.droppedRows,
+          duplicateWaybillRows: duplicateDropped,
+          fileNames: mergedNames,
+        })
+
+        showToast(
+          `前台分配 API 已载入 ${formatInteger(deduped.length)} 条（${startDate} ~ ${endDate}）`,
+          'success',
+        )
+      } catch (currentError: unknown) {
+        const message =
+          currentError instanceof Error ? currentError.message : 'iMile 前台分配 API 拉取失败'
+        showToast(message, 'error')
+      } finally {
+        setLoadingAllocationApi(false)
+      }
+    }
 
     try {
       const result = await fetchInboundScans({
@@ -545,6 +797,8 @@ export function useScannerEfficiencyPage() {
         duplicateWaybillRows: duplicateDropped,
         fileNames: mergedNames,
       })
+
+      void loadBoxAssignedListAsync()
     } catch (currentError: unknown) {
       setError(currentError instanceof Error ? currentError.message : 'iMile 到件 API 拉取失败')
     } finally {
@@ -556,6 +810,7 @@ export function useScannerEfficiencyPage() {
     const files = Array.from(fileList || [])
     if (!files.length) return
 
+    clearSnapshotRestore()
     setLoadingAttendance(true)
     setError('')
     await flushPaint()
@@ -619,11 +874,13 @@ export function useScannerEfficiencyPage() {
     const files = Array.from(fileList || [])
 
     if (!files.length) {
+      clearSnapshotRestore()
       setAllocationRows([])
       setAllocationSourceInfo(EMPTY_SOURCE)
       return
     }
 
+    clearSnapshotRestore()
     setLoadingAllocation(true)
     setError('')
     await flushPaint()
@@ -659,11 +916,13 @@ export function useScannerEfficiencyPage() {
   }
 
   const clearAllocation = () => {
+    clearSnapshotRestore()
     setAllocationRows([])
     setAllocationSourceInfo(EMPTY_SOURCE)
   }
 
   const clearAll = () => {
+    clearSnapshotRestore()
     setScanRows([])
     setScanSourceInfo(EMPTY_SOURCE)
     setLastInboundApiStats(null)
@@ -673,6 +932,7 @@ export function useScannerEfficiencyPage() {
     lastAttendanceFilesRef.current = []
     setAllocationRows([])
     setAllocationSourceInfo(EMPTY_SOURCE)
+    setCancelScanAnalysis(null)
     setError('')
   }
 
@@ -806,8 +1066,8 @@ export function useScannerEfficiencyPage() {
   }, [attendanceEfficiencyBase, scannerResult])
 
   const scannerDailyAsTable = (scannerResult?.dailySummaryRows ?? []) as unknown as DataTableRow[]
-  const frontDeskDailyAsTable = (frontDeskResult?.dailyRows ?? []) as unknown as DataTableRow[]
-  const frontDeskDensityAsTable = (frontDeskResult?.densityRows ?? []) as unknown as DataTableRow[]
+  const allocationDensityAsTable = allocationDensityRows as unknown as DataTableRow[]
+  const frontDeskClockOutAsTable = frontDeskClockOutRows as unknown as DataTableRow[]
 
   const scannerHourlyPivotTables = useMemo(
     () => buildScannerHourlyPivotTables(scannerResult?.scannerHourlyRows ?? []),
@@ -830,12 +1090,20 @@ export function useScannerEfficiencyPage() {
 
   const openDayRuleTooltipText = `当前规则：分拣人数 > ${settings.openDayThreshold} 计入开仓日；分拣人数 ≤ ${settings.openDayThreshold} 计入不开仓日。`
 
+  const effectiveCancelScanAnalysis = useMemo(
+    () => snapshotRestore?.cancelScanAnalysis ?? cancelScanAnalysis,
+    [snapshotRestore?.cancelScanAnalysis, cancelScanAnalysis],
+  )
+
   return {
     settings,
     scanSourceInfo,
     lastInboundApiStats,
     attendanceSourceInfo,
     allocationSourceInfo,
+    loadingAllocationApi,
+    loadingCancelScanAnalysis,
+    cancelScanAnalysis: effectiveCancelScanAnalysis,
     loading,
     error,
     scannerHourlyExpanded,
@@ -850,7 +1118,8 @@ export function useScannerEfficiencyPage() {
     attendanceResult,
     attendanceRows,
     scannerResult,
-    frontDeskResult,
+    allocationDensityRows,
+    frontDeskClockOutRows,
     activeTab,
     setActiveTab,
     weeklyPanelKey,
@@ -880,14 +1149,19 @@ export function useScannerEfficiencyPage() {
     attendanceWeeklyAsTable,
     attendancePersonAsTable,
     scannerDailyAsTable,
-    frontDeskDailyAsTable,
-    frontDeskDensityAsTable,
+    allocationDensityAsTable,
+    frontDeskClockOutAsTable,
     scannerHourlyPivotTables,
     scannerPersonAsTable,
     scannerTotalEfficiencyRows,
     scannerTotalEfficiencyAsTable,
     scannerDailyEfficiencyTrendPoints,
     openDayRuleTooltipText,
+    snapshotRestore,
+    dismissSnapshotRestore,
+    canSaveDailyRecords,
+    savingDailyRecords,
+    handleSaveDailyRecords,
   }
 }
 
