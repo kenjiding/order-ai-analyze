@@ -1,12 +1,15 @@
 import { getApiBaseUrl } from '../../utils/apiBaseUrl'
+import type { PushApiScope } from '../../permissions/pushNotificationAccess'
 
 export type FeishuPushTestPayload = {
+  pushScope: PushApiScope
   webhookUrl: string
   signingSecret?: string | undefined
   pushName: string
 }
 
 export type FeishuPushImagePayload = {
+  pushScope: PushApiScope
   webhookUrl: string
   signingSecret?: string | undefined
   /** 纯 base64 或 data:image/png;base64,... */
@@ -74,6 +77,7 @@ export async function postFeishuPushTest(payload: FeishuPushTestPayload): Promis
 }
 
 export async function postFeishuPushText(payload: {
+  pushScope: PushApiScope
   webhookUrl: string
   signingSecret?: string
   text: string
@@ -84,6 +88,7 @@ export async function postFeishuPushText(payload: {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
+        pushScope: payload.pushScope,
         webhookUrl: payload.webhookUrl.trim(),
         signingSecret: payload.signingSecret,
         text: payload.text,
@@ -131,6 +136,7 @@ export async function postFeishuPushImage(
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
+        pushScope: payload.pushScope,
         webhookUrl: payload.webhookUrl.trim(),
         signingSecret: payload.signingSecret,
         imageBase64: payload.imageBase64,

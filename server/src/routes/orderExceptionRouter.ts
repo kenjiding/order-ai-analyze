@@ -228,7 +228,7 @@ orderExceptionRouter.post('/analyze', async (req: Request, res: Response) => {
 
     const aiStartedAt = performance.now()
     const warehouseConfig = parseWarehouseConfigInput(body.warehouseConfig)
-    const { results, tokenUsage } = await runOrderAnalyzePipeline({
+    const { results, tokenUsage, trackFacts } = await runOrderAnalyzePipeline({
       targets,
       aiProvider,
       enableAiExplain,
@@ -243,6 +243,7 @@ orderExceptionRouter.post('/analyze', async (req: Request, res: Response) => {
       interceptLogs: sourceResult.interceptLogs,
       tokenUsage,
       timing: { imileMs, aiMs },
+      trackFacts,
     })
   } catch (e) {
     res.status(500).json({ error: (e as Error).message || '分析失败' })

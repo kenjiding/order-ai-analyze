@@ -52,6 +52,35 @@ async function syncPermissionRegistry(): Promise<void> {
   await db.delete(permissions).where(notInArray(permissions.key, REGISTRY_PERMISSION_KEYS))
 }
 
+/** 将已下线的「发送推送」权限迁移为三个子权限，避免升级后已有用户失去推送能力 */
+async function migrateLegacyPushSendPermission(): Promise<void> {
+  const db = getDb()
+  const legacyKey = 'btn:push-notifications:send'
+  const nextKeys = [
+    'btn:push-notifications:warehouse-efficiency',
+    'btn:push-notifications:attendance-scheduling',
+    'btn:push-notifications:fleet-supplier',
+  ] as const
+
+  const holders = await db
+    .select({ userId: userPermissions.userId })
+    .from(userPermissions)
+    .where(eq(userPermissions.permissionKey, legacyKey))
+
+  if (holders.length === 0) return
+
+  for (const { userId } of holders) {
+    for (const permissionKey of nextKeys) {
+      await db
+        .insert(userPermissions)
+        .values({ userId, permissionKey })
+        .onConflictDoNothing()
+    }
+  }
+
+  await db.delete(userPermissions).where(eq(userPermissions.permissionKey, legacyKey))
+}
+
 async function cleanupInvalidUserPermissions(): Promise<void> {
   const db = getDb()
   const rows = await db
@@ -100,6 +129,7 @@ export async function seedDatabase(): Promise<void> {
   }
 
   await syncPermissionRegistry()
+  await migrateLegacyPushSendPermission()
   await cleanupInvalidUserPermissions()
   await syncSuperAdminRegion()
 

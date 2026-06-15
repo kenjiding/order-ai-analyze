@@ -10,7 +10,7 @@ import { captureScannerPushRegion, mergeImagesVertically } from './feishuLevel1S
 import { showToast } from '../../utils/toast'
 
 const PUSH_ERROR_HINT =
-  '可到「推送通知 → 仓库出勤/排班推送」维护 webhook；若上载失败请在后端 .env 核对 FEISHU_APP_ID 与 FEISHU_APP_SECRET。'
+  '请到「飞书推送 → 仓库出勤/排班推送」维护 webhook；若上载失败请在后端 .env 核对 FEISHU_APP_ID 与 FEISHU_APP_SECRET。'
 
 function pushErrorToast(text: string) {
   showToast(`${text} ${PUSH_ERROR_HINT}`, 'error', 8)
@@ -34,7 +34,7 @@ export function useAttendanceSchedulingFeishuPush() {
     const entries = store.attendance_scheduling.filter((e) => e.webhookUrl.trim() && e.isDisabled !== true)
     if (!entries.length) {
       const kindLabel = FEISHU_PUSH_KIND_LABELS.attendance_scheduling
-      pushErrorToast(`请先前往「推送通知」页面配置并启用「${kindLabel}」，至少保留一条可用的群 webhook。`)
+      pushErrorToast(`请先前往「飞书推送 → ${kindLabel}」配置并启用 webhook，至少保留一条可用条目。`)
       return
     }
 
@@ -65,6 +65,7 @@ export function useAttendanceSchedulingFeishuPush() {
       for (const entry of entries) {
         const name = entry.pushName.trim() || '未命名推送'
         const pushRes = await postFeishuPushImage({
+          pushScope: 'attendance-scheduling',
           webhookUrl: entry.webhookUrl,
           signingSecret: entry.signingSecret,
           imageBase64: mergedImg,

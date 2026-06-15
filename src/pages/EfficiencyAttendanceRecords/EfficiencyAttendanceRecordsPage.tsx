@@ -9,14 +9,15 @@ import {
   fetchDailyEfficiencyRecords,
 } from '../ScannerEfficiency/scannerEfficiencyApi'
 import {
-  toDailyEfficiencyRecordListItem,
-  type DailyEfficiencyRecordListItem,
-  type DailyEfficiencyRecordPayload,
+  normalizeEfficiencyAttendanceDayRecord,
+  toEfficiencyAttendanceDayRecordListItem,
+  type EfficiencyAttendanceDayRecord,
+  type EfficiencyAttendanceDayRecordListItem,
 } from '../ScannerEfficiency/dailyEfficiencyRecordSnapshot'
 import { formatInteger, formatNumber } from '../ScannerEfficiency/formatAndParse'
 import { showToast } from '../../utils/toast'
 
-type RecordRow = DailyEfficiencyRecordListItem & { key: string }
+type RecordRow = EfficiencyAttendanceDayRecordListItem & { key: string }
 
 function formatSavedAt(value: string): string {
   if (!value) return '—'
@@ -47,7 +48,7 @@ export default function EfficiencyAttendanceRecordsPage() {
   const navigate = useNavigate()
   const [loading, setLoading] = useState(true)
   const [rows, setRows] = useState<RecordRow[]>([])
-  const [payloadByDate, setPayloadByDate] = useState<Map<string, DailyEfficiencyRecordPayload>>(new Map())
+  const [recordByDate, setRecordByDate] = useState<Map<string, EfficiencyAttendanceDayRecord>>(new Map())
   const [deletingDate, setDeletingDate] = useState<string | null>(null)
   const [batchDeleting, setBatchDeleting] = useState(false)
   const [selectedRowKeys, setSelectedRowKeys] = useState<string[]>([])
@@ -56,22 +57,22 @@ export default function EfficiencyAttendanceRecordsPage() {
     setLoading(true)
     try {
       const response = await fetchDailyEfficiencyRecords()
-      const nextPayloadByDate = new Map<string, DailyEfficiencyRecordPayload>()
+      const nextRecordByDate = new Map<string, EfficiencyAttendanceDayRecord>()
       const nextRows: RecordRow[] = response.items
         .map((item) => {
-          const payload = item.payload as DailyEfficiencyRecordPayload
-          if (!payload?.date) return null
-          nextPayloadByDate.set(payload.date, payload)
+          const record = normalizeEfficiencyAttendanceDayRecord(item.payload)
+          if (!record) return null
+          nextRecordByDate.set(record.date, record)
           return {
-            key: payload.date,
-            ...toDailyEfficiencyRecordListItem(payload, item.updatedAt),
+            key: record.date,
+            ...toEfficiencyAttendanceDayRecordListItem(record, item.updatedAt),
           }
         })
         .filter((row): row is RecordRow => row != null)
 
-      setPayloadByDate(nextPayloadByDate)
+      setRecordByDate(nextRecordByDate)
       setRows(nextRows)
-      setSelectedRowKeys((prev) => prev.filter((key) => nextPayloadByDate.has(key)))
+      setSelectedRowKeys((prev) => prev.filter((key) => nextRecordByDate.has(key)))
     } catch (error: unknown) {
       showToast(error instanceof Error ? error.message : '加载效率考勤记录失败', 'error')
     } finally {
@@ -98,25 +99,25 @@ export default function EfficiencyAttendanceRecordsPage() {
     [selectedRowKeys],
   )
 
-  const navigateWithPayloads = useCallback(
+  const navigateWithRecords = useCallback(
     (dates: string[]) => {
-      const payloads = dates
-        .map((date) => payloadByDate.get(date))
-        .filter((payload): payload is DailyEfficiencyRecordPayload => payload != null)
+      const records = dates
+        .map((date) => recordByDate.get(date))
+        .filter((record): record is EfficiencyAttendanceDayRecord => record != null)
         .sort((a, b) => a.date.localeCompare(b.date))
 
-      if (!payloads.length) {
+      if (!records.length) {
         showToast('记录数据不可用，请刷新后重试', 'error')
         return
       }
 
       navigate('/efficiency', {
         state: {
-          restoreDailyRecords: payloads,
+          restoreDailyRecords: records,
         },
       })
     },
-    [navigate, payloadByDate],
+    [navigate, recordByDate],
   )
 
   const handleViewSelected = useCallback(() => {
@@ -124,14 +125,14 @@ export default function EfficiencyAttendanceRecordsPage() {
       showToast('请先选择至少一条记录', 'warning')
       return
     }
-    navigateWithPayloads(selectedDates)
-  }, [navigateWithPayloads, selectedDates])
+    navigateWithRecords(selectedDates)
+  }, [navigateWithRecords, selectedDates])
 
   const handleView = useCallback(
     (date: string) => {
-      navigateWithPayloads([date])
+      navigateWithRecords([date])
     },
-    [navigateWithPayloads],
+    [navigateWithRecords],
   )
 
   const handleDeleteSelected = useCallback(() => {

@@ -6,15 +6,16 @@ import {
   Form,
   Input,
   InputNumber,
+  Layout,
   Popconfirm,
   Select,
+  Tag,
   Tree,
+  Typography,
   Upload,
 } from 'antd'
 import type { UploadProps } from 'antd'
 import {
-  AlertCircle,
-  CheckCircle2,
   ChevronDown,
   Download,
   Globe2,
@@ -22,7 +23,6 @@ import {
   Plus,
   RotateCcw,
   Save,
-  Search,
   Settings2,
   Trash2,
   Upload as UploadIcon,
@@ -35,29 +35,6 @@ import type { WarehouseCityId, WarehouseConfigDto, WarehouseProfileDto } from '.
 import { WAREHOUSE_CITY_OPTIONS } from '../warehouseConfig/types'
 import { validateWarehouseConfig } from '../warehouseConfig/validateWarehouseConfig'
 
-function ConfigStat({
-  label,
-  value,
-  tone = 'default',
-}: {
-  label: string
-  value: number | string
-  tone?: 'default' | 'accent' | 'warn'
-}) {
-  const toneClass =
-    tone === 'accent'
-      ? 'warehouse-config-stat--accent'
-      : tone === 'warn'
-        ? 'warehouse-config-stat--warn'
-        : ''
-  return (
-    <div className={['warehouse-config-stat min-w-[88px]', toneClass].filter(Boolean).join(' ')}>
-      <div className="text-[10px] font-semibold uppercase tracking-[0.14em] opacity-70">{label}</div>
-      <div className="mt-0.5 text-base font-semibold tabular-nums leading-tight">{value}</div>
-    </div>
-  )
-}
-
 function WarehouseTreeLeafTitle({
   profile,
   onDelete,
@@ -66,14 +43,10 @@ function WarehouseTreeLeafTitle({
   onDelete: (hubId: string) => void
 }) {
   return (
-    <Flex align="center" justify="space-between" gap="small" className="w-full pr-1">
-      <Flex align="center" gap="small" className="min-w-0 flex-1">
-        <span className="truncate">{profile.name}</span>
-        {profile.lossTimeoutDays ? (
-          <span className="shrink-0 rounded bg-amber-50 px-1.5 py-0.5 text-[10px] font-medium text-amber-700 ring-1 ring-amber-200/80">
-            {profile.lossTimeoutDays}天
-          </span>
-        ) : null}
+    <Flex align="center" justify="space-between" gap="small">
+      <Flex align="center" gap="small" style={{ minWidth: 0, flex: 1 }}>
+        <Typography.Text ellipsis>{profile.name}</Typography.Text>
+        {profile.lossTimeoutDays ? <Tag color="warning">{profile.lossTimeoutDays}天</Tag> : null}
       </Flex>
       <span className="warehouse-delete-btn shrink-0 opacity-0 transition-opacity duration-150">
         <Popconfirm
@@ -85,9 +58,10 @@ function WarehouseTreeLeafTitle({
           onConfirm={() => onDelete(profile.hubId)}
         >
           <Button
-            type="text"
+            type="link"
             danger
-            icon={<Trash2 className="h-3.5 w-3.5" />}
+            className="!px-1"
+            icon={<Trash2 className="h-3.5 w-3.5" aria-hidden />}
             aria-label={`删除 ${profile.name}`}
             onClick={(e) => e.stopPropagation()}
             onMouseDown={(e) => e.stopPropagation()}
@@ -296,9 +270,7 @@ function ProfileEditor({
               {cityLabel}
             </span>
           </div>
-          <p className="mt-1 text-xs text-slate-500">
-            仓库名须与轨迹【】内一致；别名用于匹配其它写法。
-          </p>
+          <p className="mt-1 text-xs text-slate-500">仓库名须与轨迹【】内一致。</p>
         </div>
         <span className="font-mono text-[11px] text-slate-400">{profile.hubId}</span>
       </header>
@@ -336,20 +308,6 @@ function ProfileEditor({
                 onChange={(e) => onChange({ ...profile, name: e.target.value })}
               />
             </Form.Item>
-          </div>
-          <div className="mt-4">
-            <TagListEditor
-              label="额外轨迹别名（可选）"
-              hint="轨迹中还有其它写法时添加"
-              values={profile.extraAliases ?? []}
-              placeholder="如 ADL Center"
-              onChange={(extraAliases) =>
-                onChange({
-                  ...profile,
-                  extraAliases: extraAliases.length ? extraAliases : undefined,
-                })
-              }
-            />
           </div>
         </Form>
       </section>
@@ -422,19 +380,12 @@ export function WarehouseConfigTabContent({
 
   const validationIssues = useMemo(() => validateWarehouseConfig(draftConfig), [draftConfig])
 
-  const cityCount = useMemo(
-    () => new Set(draftConfig.profiles.map((profile) => profile.cityId)).size,
-    [draftConfig.profiles]
-  )
-
   const filteredProfiles = useMemo(() => {
     const needle = search.trim().toLowerCase()
     return draftConfig.profiles.filter((profile) => {
       if (cityFilter !== 'ALL' && profile.cityId !== cityFilter) return false
       if (!needle) return true
-      const haystack = [profile.name, profile.hubId, ...(profile.extraAliases ?? [])]
-        .join(' ')
-        .toLowerCase()
+      const haystack = [profile.name, profile.hubId].join(' ').toLowerCase()
       return haystack.includes(needle)
     })
   }, [cityFilter, draftConfig.profiles, search])
@@ -585,9 +536,6 @@ export function WarehouseConfigTabContent({
     [onSelectedHubIdChange]
   )
 
-  const saveStatusLabel = isDirty ? '未保存' : '已同步'
-  const saveStatusTone = isDirty ? 'warn' : 'accent'
-
   return (
     <div className="warehouse-config">
       <div className="warehouse-config-workspace">
@@ -642,38 +590,6 @@ export function WarehouseConfigTabContent({
           </div>
         </header>
 
-        <div
-          className="flex flex-wrap items-center gap-3 border-b px-5 py-3"
-          style={{ borderColor: 'var(--admin-line)', background: 'rgba(255,255,255,0.72)' }}
-        >
-          <ConfigStat label="仓库" value={draftConfig.profiles.length} tone="accent" />
-          <ConfigStat label="城市" value={cityCount} />
-          <ConfigStat
-            label="全局超时"
-            value={`${draftConfig.global.defaultLossTimeoutDays}d`}
-          />
-          <ConfigStat label="保存状态" value={saveStatusLabel} tone={saveStatusTone} />
-
-          <div className="ml-auto flex min-w-0 max-w-full flex-wrap items-center gap-2">
-            {validationIssues.length ? (
-              <span className="inline-flex items-center gap-1.5 rounded-lg bg-red-50 px-2.5 py-1.5 text-xs font-medium text-red-700 ring-1 ring-red-200/80">
-                <AlertCircle className="h-3.5 w-3.5 shrink-0" aria-hidden />
-                {validationIssues[0].message}
-              </span>
-            ) : isDirty ? (
-              <span className="inline-flex items-center gap-1.5 rounded-lg bg-amber-50 px-2.5 py-1.5 text-xs font-medium text-amber-800 ring-1 ring-amber-200/80">
-                <AlertCircle className="h-3.5 w-3.5 shrink-0" aria-hidden />
-                有未保存修改；分析使用上次保存版本
-              </span>
-            ) : (
-              <span className="inline-flex items-center gap-1.5 rounded-lg bg-[var(--admin-accent-soft)] px-2.5 py-1.5 text-xs font-medium text-[#1f6f68] ring-1 ring-[rgba(47,143,135,0.18)]">
-                <CheckCircle2 className="h-3.5 w-3.5 shrink-0" aria-hidden />
-                配置已保存，分析将使用当前版本
-              </span>
-            )}
-          </div>
-        </div>
-
         <GlobalRulesSection
           global={draftConfig.global}
           expanded={globalExpanded}
@@ -681,50 +597,39 @@ export function WarehouseConfigTabContent({
           onChange={(global) => onDraftConfigChange({ ...draftConfig, global })}
         />
 
-        <div className="flex min-h-[min(72vh,640px)] flex-col lg:flex-row">
-          <aside className="warehouse-config-sidebar">
-            <div
-              className="space-y-3 border-b px-4 py-3"
-              style={{ borderColor: 'var(--admin-line)' }}
-            >
-              <div className="flex items-center justify-between gap-2">
-                <span className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">
-                  仓库列表
-                </span>
-                <span className="text-xs tabular-nums text-slate-400">{filteredProfiles.length} 项</span>
-              </div>
-              <Input
+        <Layout hasSider className="min-h-[min(72vh,640px)]">
+          <Layout.Sider
+            width={300}
+            theme="light"
+            style={{ borderInlineEnd: '1px solid var(--admin-line)' }}
+          >
+            <Flex vertical gap="middle" style={{ padding: 12 }}>
+              <Flex justify="space-between" align="center">
+                <Typography.Text strong>仓库列表</Typography.Text>
+                <Typography.Text type="secondary">{filteredProfiles.length} 项</Typography.Text>
+              </Flex>
+              <Input.Search
                 allowClear
-                prefix={<Search className="h-3.5 w-3.5 text-slate-400" aria-hidden />}
-                placeholder="搜索仓库名 / 别名"
+                placeholder="搜索仓库名"
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
               />
-              <div className="flex gap-2">
+              <Flex gap="small">
                 <Select<WarehouseCityId | 'ALL'>
-                  className="min-w-0 flex-1"
+                  style={{ flex: 1, minWidth: 0 }}
                   value={cityFilter}
                   options={[{ value: 'ALL', label: '全部城市' }, ...WAREHOUSE_CITY_OPTIONS]}
                   onChange={setCityFilter}
                 />
-                <button
-                  type="button"
-                  className="admin-btn shrink-0 px-3"
-                  onClick={handleAddProfile}
-                  disabled={!canEditConfig}
-                >
-                  <Plus className="h-4 w-4" aria-hidden />
+                <Button icon={<Plus />} onClick={handleAddProfile} disabled={!canEditConfig}>
                   新建
-                </button>
-              </div>
-            </div>
-
-            <div className="min-h-0 flex-1 overflow-auto px-2 py-2">
+                </Button>
+              </Flex>
               {warehouseTreeData.length ? (
                 <Tree
                   blockNode
                   showLine
-                  className="warehouse-config-tree [&_.ant-tree-treenode:focus-within_.warehouse-delete-btn]:opacity-100 [&_.ant-tree-treenode:hover_.warehouse-delete-btn]:opacity-100"
+                  className="[&_.ant-tree-switcher:not(.ant-tree-switcher-noop):hover:before]:!bg-transparent [&_.ant-tree-treenode:hover_.warehouse-delete-btn]:opacity-100 [&_.ant-tree-treenode:focus-within_.warehouse-delete-btn]:opacity-100"
                   expandedKeys={expandedTreeKeys}
                   onExpand={(keys) => setExpandedTreeKeys(keys)}
                   selectedKeys={selectedHubId ? [selectedHubId] : []}
@@ -732,11 +637,7 @@ export function WarehouseConfigTabContent({
                   onSelect={handleTreeSelect}
                   titleRender={(node) => {
                     if (!node.isLeaf) {
-                      return (
-                        <span className="text-xs font-semibold uppercase tracking-[0.08em] text-slate-500">
-                          {String(node.title)}
-                        </span>
-                      )
+                      return <Typography.Text type="secondary">{String(node.title)}</Typography.Text>
                     }
                     const profile = draftConfig.profiles.find((item) => item.hubId === node.key)
                     if (!profile) return <span>{String(node.title)}</span>
@@ -744,16 +645,12 @@ export function WarehouseConfigTabContent({
                   }}
                 />
               ) : (
-                <Empty
-                  className="py-10"
-                  description="无匹配仓库"
-                  image={Empty.PRESENTED_IMAGE_SIMPLE}
-                />
+                <Empty description="无匹配仓库" image={Empty.PRESENTED_IMAGE_SIMPLE} />
               )}
-            </div>
-          </aside>
+            </Flex>
+          </Layout.Sider>
 
-          <main className="flex min-h-[360px] min-w-0 flex-1 flex-col bg-white">
+          <Layout.Content className="flex min-h-[360px] min-w-0 flex-col bg-white">
             {selectedProfile ? (
               <div className="flex-1 overflow-auto px-5 py-5 sm:px-6 sm:py-6">
                 <ProfileEditor
@@ -773,8 +670,8 @@ export function WarehouseConfigTabContent({
                 </div>
               </div>
             )}
-          </main>
-        </div>
+          </Layout.Content>
+        </Layout>
       </div>
     </div>
   )

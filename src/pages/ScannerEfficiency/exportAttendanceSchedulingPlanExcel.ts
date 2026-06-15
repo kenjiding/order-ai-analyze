@@ -23,7 +23,7 @@ export const BASE_SHEET_COLUMN_WIDTHS = [14, 16, 19, 16, 14, 16, 14] as const
 /** 仅「作业人员出勤说明」向右扩展的附加列宽 */
 export const ATTENDANCE_EXTRA_COLUMN_WIDTHS = [24, 24, 22] as const
 
-function formatPlanDateLabel(isoDate: string): string {
+export function formatPlanDateLabel(isoDate: string): string {
   const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(isoDate.trim())
   if (!m) return isoDate
   return `${Number(m[1])}年${Number(m[2])}月${Number(m[3])}日`

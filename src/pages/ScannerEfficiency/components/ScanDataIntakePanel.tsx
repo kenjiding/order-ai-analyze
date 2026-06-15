@@ -48,8 +48,8 @@ export function ScanDataIntakePanel({ vm }: Props) {
       parts.push(`考勤 ${formatInteger(attendanceSourceInfo.rowCount)} 条`)
     }
     if (!parts.length) return '尚未载入数据'
-    if (canSaveDailyRecords) return `${parts.join(' · ')} · 可保存`
-    return parts.join(' · ')
+    if (canSaveDailyRecords) return `${parts.join('，')}，可保存`
+    return parts.join('，')
   }, [attendanceSourceInfo.rowCount, canSaveDailyRecords, readOnly, scanSourceInfo.rowCount])
 
   const actionsDisabled = readOnly || loading
@@ -58,7 +58,8 @@ export function ScanDataIntakePanel({ vm }: Props) {
     <div className="flex flex-col gap-4">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">
-          <h2 className="text-sm font-semibold text-slate-950">载入扫描记录</h2>
+          <h2 className="text-sm font-semibold text-[var(--admin-text)]">载入扫描记录</h2>
+          <p className="mt-0.5 text-xs text-[var(--admin-muted)]">支持 Excel 上传或按日期范围 API 拉取</p>
         </div>
 
         <Radio.Group
@@ -84,10 +85,12 @@ export function ScanDataIntakePanel({ vm }: Props) {
         </Radio.Group>
       </div>
 
-      <div className="grid gap-4 sm:grid-cols-2">
-        <div className="min-w-0 border-l-2 border-[#2f8f87] pl-3">
-          <div className="text-[11px] font-semibold uppercase tracking-wide text-[#1f6f68]">到件 · 必传</div>
-          <div className="mt-2 flex min-w-0 flex-col gap-2">
+      <div className="grid gap-3 sm:grid-cols-2">
+        <div className="se-intake-lane min-w-0">
+          <div className="se-intake-lane-label">
+            到件 <span>必传</span>
+          </div>
+          <div className="mt-2.5 flex min-w-0 flex-col gap-2">
             {mode === 'upload' ? (
               <>
                 <input
@@ -111,7 +114,7 @@ export function ScanDataIntakePanel({ vm }: Props) {
                 >
                   上传到件扫描
                 </Button>
-                <p className="text-[11px] text-slate-500">.xlsx / .xls，可多选</p>
+                <p className="text-[11px] text-[var(--admin-muted)]">.xlsx / .xls，可多选</p>
               </>
             ) : (
               <div className="flex min-w-0 flex-wrap items-center gap-2">
@@ -137,9 +140,11 @@ export function ScanDataIntakePanel({ vm }: Props) {
           </div>
         </div>
 
-        <div className="min-w-0 border-l-2 border-slate-200 pl-3">
-          <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">考勤 · 可选</div>
-          <div className="mt-2 flex min-w-0 flex-col gap-2">
+        <div className="se-intake-lane min-w-0">
+          <div className="se-intake-lane-label">
+            考勤 <span>可选</span>
+          </div>
+          <div className="mt-2.5 flex min-w-0 flex-col gap-2">
             <input
               ref={attendanceFileInputRef}
               type="file"
@@ -161,12 +166,13 @@ export function ScanDataIntakePanel({ vm }: Props) {
             >
               上传考勤
             </Button>
+            <p className="text-[11px] text-[var(--admin-muted)]">.csv / .xlsx / .xls</p>
           </div>
         </div>
       </div>
 
       <div className="flex flex-col gap-2 border-t border-[var(--admin-line)] pt-3 sm:flex-row sm:items-center sm:justify-between">
-        <p className="min-w-0 text-xs leading-relaxed text-slate-500">{statusLine}</p>
+        <p className="min-w-0 text-xs leading-relaxed text-[var(--admin-muted)] tabular-nums">{statusLine}</p>
         <div className="flex flex-wrap items-center gap-1.5 sm:justify-end">
           <Tooltip
             title={

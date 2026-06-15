@@ -1,3 +1,4 @@
+import './scannerEfficiency.css'
 import ScannerEfficiencyBody from './components/ScannerEfficiencyBody'
 import ScannerEfficiencyTopSection from './components/ScannerEfficiencyTopSection'
 import { useScannerEfficiencyPage } from './useScannerEfficiencyPage'
@@ -8,8 +9,8 @@ export default function ScannerEfficiencyPage() {
   const level1Push = useScannerLevel1FeishuPush(vm)
 
   return (
-    <div className="admin-page">
-      <main className="space-y-5">
+    <div className="scanner-efficiency-page admin-page">
+      <main className="space-y-6">
         <ScannerEfficiencyTopSection vm={vm} />
         <ScannerEfficiencyBody vm={vm} level1Push={level1Push} />
       </main>

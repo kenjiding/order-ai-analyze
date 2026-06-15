@@ -25,14 +25,13 @@ export function ScannerPersonTotalEfficiencySection({
   const averageRow = buildScannerTotalEfficiencyAverageRow(rows)
 
   return (
-    <section className="space-y-4">
+    <section className="admin-panel overflow-hidden">
       <SectionTitle
-        eyebrow="Sorter Total Efficiency"
         title="分拣员总效率"
         description="不同角色分拣员总效率计算口径不同"
       />
-      <div className="grid gap-4 xl:grid-cols-[minmax(0,1.05fr)_minmax(320px,0.95fr)] xl:items-start">
-        <div className="min-w-0 px-4">
+      <div className="grid gap-4 p-4 pt-0 xl:grid-cols-[minmax(0,1.05fr)_minmax(320px,0.95fr)] xl:items-start">
+        <div className="min-w-0">
           <ScannerEfficiencyAntdTable
             boundedScroll={boundedScroll}
             columns={columns}

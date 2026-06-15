@@ -285,7 +285,7 @@ export async function runOrderAnalyzePipeline(input: {
   aiProvider: OrderAnalyzeAiProvider
   enableAiExplain?: boolean
   warehouseConfig?: WarehouseConfigDto | null
-}): Promise<{ results: OrderAnalyzeResult[]; tokenUsage: TokenUsage }> {
+}): Promise<{ results: OrderAnalyzeResult[]; tokenUsage: TokenUsage; trackFacts: Record<string, TrackFacts> }> {
   return runWithWarehouseProfileContextAsync(input.warehouseConfig, async () => {
   const { targets } = input
   const useDeepSeek = input.aiProvider === 'deepseek'
@@ -361,6 +361,7 @@ export async function runOrderAnalyzePipeline(input: {
   const normalizedResults = mergedResults.map((result) =>
     finalizeResultWithFacts(result, targetFactsMap.get(result.orderNo))
   )
-  return { results: normalizedResults, tokenUsage }
+  const trackFacts: Record<string, TrackFacts> = Object.fromEntries(targetFactsMap.entries())
+  return { results: normalizedResults, tokenUsage, trackFacts }
   })
 }

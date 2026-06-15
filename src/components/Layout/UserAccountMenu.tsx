@@ -172,10 +172,10 @@ export default function UserAccountMenu() {
           aria-haspopup="menu"
           aria-expanded={open}
           className={[
-            'inline-flex max-w-[min(14rem,calc(100vw-5rem))] items-center gap-1.5 rounded-md border bg-white px-1.5 py-1 text-left shadow-sm transition',
+            'inline-flex max-w-[min(14rem,calc(100vw-5rem))] items-center gap-1.5 rounded-md bg-white px-1.5 py-1 text-left transition',
             open
-              ? 'border-[rgba(47,143,135,0.35)] ring-1 ring-[rgba(47,143,135,0.12)]'
-              : 'border-[var(--admin-line)] hover:border-slate-300 hover:bg-slate-50',
+              ? 'bg-slate-50 shadow-[0_4px_14px_rgba(47,83,105,0.12)]'
+              : 'hover:bg-slate-50 hover:shadow-[0_4px_14px_rgba(47,83,105,0.12)]',
           ].join(' ')}
         >
           <span className="relative flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[var(--admin-accent-soft)] text-[11px] font-semibold text-[var(--admin-accent)]">

@@ -1,16 +1,17 @@
 import type { AttendanceEfficiencyResult, ParsedAttendanceRow, ScannerEfficiencyResult } from './aggregates'
 import type { OperatorAttendancePlanRow } from './attendanceSchedulingPlanOperators'
-import { resolveOperatorAttendancePlanRows } from './attendanceSchedulingPlanOperators'
+import {
+  buildDefaultOperatorAttendancePlanRows,
+  resolveOperatorAttendancePlanRows,
+} from './attendanceSchedulingPlanOperators'
 import { formatCainiaoSharePercent } from './cainiaoWaybill'
 import type { DailyLaborCostMetrics } from '../../payroll/laborCostFromAttendance'
 import {
   buildAttendanceSchedulingPlanSnapshot,
   COARSE_SORT_TARGET_EFFICIENCY,
-  formatCostPerTicketDisplay,
-  formatTotalLaborCostDisplay,
   OVERALL_TARGET_EFFICIENCY,
-  OVERALL_COST_PER_TICKET_NOTE,
   OVERALL_TOTAL_HOURS_NOTE,
+  formatPlanDateLabel,
   resolveOpenPlanDates,
   type AttendanceSchedulingPlanSnapshot,
 } from './exportAttendanceSchedulingPlanExcel'
@@ -84,56 +85,55 @@ function noteCell(key: string, text: string): PlanPreviewCell {
   return cell(key, text, { variant: 'body', align: 'left', emphasis: 'note' })
 }
 
+type BuildTablesOptions = {
+  /** 飞书推送手动模板：仅保留固定备注，其余数值为空 */
+  blankMetrics?: boolean
+}
+
 function buildTablesFromSnapshot(
   planDate: string,
   snap: AttendanceSchedulingPlanSnapshot,
   operatorRows: OperatorAttendancePlanRow[],
+  options: BuildTablesOptions = {},
 ): PlanPreviewTable[] {
+  const blankMetrics = options.blankMetrics === true
   const p = (suffix: string) => `${planDate}:${suffix}`
+  const metric = (key: string, text: string, tone: PlanPreviewCellTone = 'default') =>
+    bodyValue(key, blankMetrics ? '' : text, tone)
 
   const mainRows: PlanPreviewCell[][] = [
-    [cell(p('title'), snap.sheetTitle, { colSpan: 7, variant: 'title' })],
+    [
+      cell(p('title'), snap.sheetTitle, {
+        colSpan: 7,
+        variant: 'title',
+        editable: blankMetrics,
+      }),
+    ],
     [],
     [cell(p('sec-overall'), '总体情况', { colSpan: 7, variant: 'section' })],
     [
       labelCell(p('ov-l1'), '预计入站件量'),
-      bodyValue(p('ov-v1'), String(snap.totalVolume)),
+      metric(p('ov-v1'), String(snap.totalVolume)),
       labelCell(p('ov-l2'), '预计总工时/h'),
-      bodyValue(p('ov-v2'), Number(snap.totalHours.toFixed(1)).toString()),
+      metric(p('ov-v2'), Number(snap.totalHours.toFixed(1)).toString()),
       noteCell(p('ov-note'), OVERALL_TOTAL_HOURS_NOTE),
     ],
     [
       labelCell(p('cs-l1'), '粗分件量'),
-      bodyValue(p('cs-v1'), String(snap.totalVolume)),
+      metric(p('cs-v1'), String(snap.totalVolume)),
       labelCell(p('cs-l2'), '粗分环节工时/h'),
-      bodyValue(
+      metric(
         p('cs-v2'),
         snap.coarseStageHours != null ? Number(snap.coarseStageHours.toFixed(1)).toString() : '',
-        'default',
       ),
       noteCell(p('cs-note'), ''),
     ],
     [
       labelCell(p('fs-l1'), '细分件量'),
-      bodyValue(p('fs-v1'), String(snap.totalVolume)),
+      metric(p('fs-v1'), String(snap.totalVolume)),
       labelCell(p('fs-l2'), '细分环节工时/h'),
-      bodyValue(p('fs-v2'), ''),
+      metric(p('fs-v2'), ''),
       noteCell(p('fs-note'), ''),
-    ],
-    [
-      labelCell(p('cost-l1'), '总成本'),
-      bodyValue(
-        p('cost-v1'),
-        formatTotalLaborCostDisplay(snap.totalLaborCost),
-        snap.totalLaborCost != null ? 'red' : 'default',
-      ),
-      labelCell(p('cost-l2'), '每票成本/$'),
-      bodyValue(
-        p('cost-v2'),
-        formatCostPerTicketDisplay(snap.costPerTicket),
-        snap.costPerTicket != null ? 'red' : 'default',
-      ),
-      noteCell(p('cost-note'), OVERALL_COST_PER_TICKET_NOTE),
     ],
     [],
     [cell(p('sec-eff'), '效率达成情况', { colSpan: 7, variant: 'section' })],
@@ -170,18 +170,25 @@ function buildTablesFromSnapshot(
 
   for (const [idx, [type, target, actual, ratioText, achievementRatio, feedback]] of effRows.entries()) {
     const ratioTone: PlanPreviewCellTone =
-      achievementRatio != null && Number.isFinite(achievementRatio)
-        ? achievementRatio < 1
+      blankMetrics || achievementRatio == null || !Number.isFinite(achievementRatio)
+        ? 'default'
+        : achievementRatio < 1
           ? 'red'
           : 'green'
-        : 'default'
-    const feedbackTone = type === '总体人效' && feedback ? 'red' : 'default'
+    const feedbackTone = !blankMetrics && type === '总体人效' && feedback ? 'red' : 'default'
     mainRows.push([
       labelCell(p(`eff-${idx}-t`), type),
-      bodyValue(p(`eff-${idx}-target`), target),
-      bodyValue(p(`eff-${idx}-actual`), actual),
-      ratioValue(p(`eff-${idx}-ratio`), ratioText, ratioTone),
-      cell(p(`eff-${idx}-fb`), feedback, {
+      metric(p(`eff-${idx}-target`), target),
+      metric(p(`eff-${idx}-actual`), actual),
+      blankMetrics
+        ? cell(p(`eff-${idx}-ratio`), ratioText, {
+            editable: false,
+            variant: 'body',
+            align: 'center',
+            emphasis: 'ratio',
+          })
+        : ratioValue(p(`eff-${idx}-ratio`), ratioText, ratioTone),
+      cell(p(`eff-${idx}-fb`), blankMetrics ? '' : feedback, {
         colSpan: 3,
         editable: true,
         tone: feedbackTone,
@@ -206,7 +213,7 @@ function buildTablesFromSnapshot(
   for (const [idx, [label, value]] of laborRows.entries()) {
     mainRows.push([
       labelCell(p(`lb-${idx}-l`), label, 3),
-      bodyValue(p(`lb-${idx}-v`), value, 'default'),
+      metric(p(`lb-${idx}-v`), value),
     ])
   }
 
@@ -215,9 +222,9 @@ function buildTablesFromSnapshot(
     [cell(p('sec-mgr'), '管理人员出勤说明', { colSpan: 7, variant: 'section' })],
     [
       cell(p('mgr-h1'), '人数', { variant: 'header' }),
-      bodyValue(p('mgr-v1'), '1'),
+      metric(p('mgr-v1'), '1'),
       cell(p('mgr-h2'), '姓名', { variant: 'header' }),
-      bodyValue(p('mgr-v2'), 'Tong'),
+      metric(p('mgr-v2'), 'Tong'),
     ],
   )
 
@@ -235,12 +242,13 @@ function buildTablesFromSnapshot(
   ]
 
   for (const [idx, op] of operatorRows.entries()) {
+    const countText = blankMetrics ? (op.count > 0 ? String(op.count) : '') : String(op.count)
     attendanceRows.push([
       cell(p(`op-${idx}-pos`), op.position, { variant: 'body', emphasis: 'label' }),
-      bodyValue(p(`op-${idx}-count`), String(op.count)),
-      bodyValue(p(`op-${idx}-start`), op.plannedStart),
-      bodyValue(p(`op-${idx}-end`), op.plannedEnd),
-      bodyValue(p(`op-${idx}-hours`), op.expectedHours === '' ? '' : String(op.expectedHours)),
+      metric(p(`op-${idx}-count`), countText),
+      metric(p(`op-${idx}-start`), op.plannedStart),
+      metric(p(`op-${idx}-end`), op.plannedEnd),
+      metric(p(`op-${idx}-hours`), op.expectedHours === '' ? '' : String(op.expectedHours)),
       cell(p(`op-${idx}-remark`), op.remark, { colSpan: 3, editable: true, align: 'left', variant: 'body' }),
       cell(p(`op-${idx}-note`), op.note, {
         colSpan: 2,
@@ -323,6 +331,80 @@ export function buildAttendanceSchedulingPlanPreview({
     planDate,
     title: snap.sheetTitle,
     tables: buildTablesFromSnapshot(planDate, snap, operatorRows),
+  }
+}
+
+export function buildManualAttendanceSchedulingPlanTitle(
+  planDate: string,
+  warehouseTitle = '阿德莱德仓库',
+): string {
+  return `${warehouseTitle} 出勤及排班计划 (${formatPlanDateLabel(planDate)})`
+}
+
+export function syncPlanTitleForDateChange(
+  cellTexts: Record<string, string>,
+  fromPlanDate: string,
+  toPlanDate: string,
+  warehouseTitle = '阿德莱德仓库',
+): Record<string, string> {
+  const titleKey = `${toPlanDate}:title`
+  const currentTitle = cellTexts[titleKey]
+  if (!currentTitle?.trim()) {
+    return { ...cellTexts, [titleKey]: buildManualAttendanceSchedulingPlanTitle(toPlanDate, warehouseTitle) }
+  }
+
+  const defaultOld = buildManualAttendanceSchedulingPlanTitle(fromPlanDate, warehouseTitle)
+  if (currentTitle === defaultOld) {
+    return { ...cellTexts, [titleKey]: buildManualAttendanceSchedulingPlanTitle(toPlanDate, warehouseTitle) }
+  }
+
+  const oldLabel = formatPlanDateLabel(fromPlanDate)
+  const newLabel = formatPlanDateLabel(toPlanDate)
+  if (oldLabel !== newLabel && currentTitle.includes(oldLabel)) {
+    return { ...cellTexts, [titleKey]: currentTitle.replace(oldLabel, newLabel) }
+  }
+
+  return cellTexts
+}
+
+export function resolveAttendanceSchedulingPlanTitle(
+  preview: AttendanceSchedulingPlanPreview,
+  cellTexts: Record<string, string>,
+): string {
+  return cellTexts[`${preview.planDate}:title`]?.trim() || preview.title
+}
+
+export function buildManualAttendanceSchedulingPlanPreview({
+  planDate,
+  warehouseTitle = '阿德莱德仓库',
+}: {
+  planDate: string
+  warehouseTitle?: string
+}): AttendanceSchedulingPlanPreview {
+  const sheetTitle = buildManualAttendanceSchedulingPlanTitle(planDate, warehouseTitle)
+  const snap: AttendanceSchedulingPlanSnapshot = {
+    sheetTitle,
+    totalVolume: 0,
+    totalHours: 0,
+    coarseStageHours: null,
+    level1SorterCount: 0,
+    avgSortingEfficiency: '',
+    coarseAchievementRatio: null,
+    overallEfficiency: null,
+    overallAchievementRatio: null,
+    overallCainiaoShare: null,
+    directStaffRatio: null,
+    operatorHeadcount: 0,
+    totalLaborCost: null,
+    costPerTicket: null,
+  }
+
+  return {
+    planDate,
+    title: sheetTitle,
+    tables: buildTablesFromSnapshot(planDate, snap, buildDefaultOperatorAttendancePlanRows(), {
+      blankMetrics: true,
+    }),
   }
 }
 

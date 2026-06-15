@@ -1,5 +1,6 @@
-import { Button, Checkbox, Empty, Typography } from 'antd'
+import { Button, Checkbox, Empty, Tooltip, Typography } from 'antd'
 import { Send } from 'lucide-react'
+import { PERMISSION_KEYS, usePermission } from '../../../hooks/usePermission'
 import { SKIP_FEISHU_CAPTURE_ATTR } from '../feishuLevel1ScreenshotCapture'
 import type { ScannerEfficiencyViewModel } from '../useScannerEfficiencyPage'
 import {
@@ -16,6 +17,7 @@ type Props = {
 }
 
 export default function SortEfficiencyPushTab({ vm, level1Push }: Props) {
+  const canSend = usePermission(PERMISSION_KEYS.btnPushNotificationsWarehouseEfficiency)
   const { attendanceResult, scannerResult } = vm
 
   const {
@@ -72,15 +74,22 @@ export default function SortEfficiencyPushTab({ vm, level1Push }: Props) {
             />
           </div>
           <div {...{ [SKIP_FEISHU_CAPTURE_ATTR]: '' }}>
-            <Button
-              type="primary"
-              icon={<Send className="h-4 w-4" />}
-              loading={level1PushWorking}
-              disabled={pushDisabled}
-              onClick={() => void pushLevel1EfficiencyScreenshots()}
-            >
-              {level1PushWorking ? '正在推送…' : '推送到飞书'}
-            </Button>
+            <Tooltip title={!canSend ? '无操作权限' : undefined}>
+              <Button
+                type="primary"
+                icon={<Send className="h-4 w-4" />}
+                loading={level1PushWorking}
+                disabled={!canSend || pushDisabled}
+                onClick={() => {
+                  if (!canSend) {
+                    return
+                  }
+                  void pushLevel1EfficiencyScreenshots()
+                }}
+              >
+                {level1PushWorking ? '正在推送…' : '推送到飞书'}
+              </Button>
+            </Tooltip>
           </div>
         </div>
       </div>

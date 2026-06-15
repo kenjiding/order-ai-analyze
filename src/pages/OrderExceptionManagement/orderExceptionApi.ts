@@ -241,6 +241,56 @@ export type OrderAnalyzeWarehouseConfig = {
   }>
 }
 
+export type OrderTrackFacts = {
+  todayStr: string
+  lastEventTime: string
+  lastEventDaysDiff: number
+  latestEventKind: string
+  activeResponsibilityOwner: string
+  activeSegmentStatus: string
+  activeWarehouseName: string | null
+  activeWarehouseKnown: boolean
+  activeWarehouseLossTimeoutDays: number
+  activeExternalCarrierName: string | null
+  activeSegmentStartTime: string | null
+  activeSegmentDaysDiff: number
+  hasRealOperatorScan: boolean
+  inWarehouseStartTime: string | null
+  inWarehouseBasis: string | null
+  inWarehouseDaysDiff: number
+  inWarehouseStartSupersededByDispatch: boolean
+  lastDispatchedOutTime: string | null
+  outWarehouseDaysDiff: number
+  lastDispatchHasReturn: boolean
+  deliveryAssignmentCount: number
+  deliveryCancelCount: number
+  problemCount: number
+  hasDeliveryCompletion: boolean
+  deliveryCompletionTime: string | null
+  deliveryCompletionEvidence: string | null
+  latestOrderExceptionClosed: boolean
+  stationLossCompletion: boolean
+  assignCancelLoopWithoutDispatch: boolean
+  hasInterceptLogs: boolean
+  latestInterceptTime: string | null
+  latestInterceptUserCode: string | null
+  latestInterceptOperatorType: string | null
+  interceptAdjustedResponsibilityOwner: string | null
+  interceptAdjustedResponsibilityBasis: string | null
+  interceptAdjustedResponsibilityDaysDiff: number
+  finalResponsibilityOwner: string | null
+  finalResponsibilityStartTime: string | null
+  finalResponsibilityDaysDiff: number
+  finalResponsibilityBasis: string | null
+  merchantDestroyConfirmed: boolean
+  merchantDestroyConfirmTime: string | null
+  merchantAbandonActive: boolean
+  merchantStorageActive: boolean
+  merchantReturnClosed: boolean
+  merchantReturnRequested: boolean
+  unknownWarehouseInActiveSegment: boolean
+}
+
 export async function postOrderExceptionAnalyze(payload: {
   imileToken: string
   orderNos: string[]
@@ -253,6 +303,7 @@ export async function postOrderExceptionAnalyze(payload: {
   interceptLogs: Record<string, OrderAnalyzeInterceptLog[]>
   tokenUsage: OrderAnalyzeTokenUsage
   timing?: OrderAnalyzeApiTiming
+  trackFacts?: Record<string, OrderTrackFacts>
 }> {
   const res = await fetch(`${orderExceptionApi}/analyze`, {
     method: 'POST',

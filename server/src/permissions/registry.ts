@@ -52,11 +52,25 @@ export const PERMISSION_REGISTRY: PermissionDefinition[] = [
     sortOrder: 320,
   },
   {
-    key: 'btn:push-notifications:send',
+    key: 'btn:push-notifications:warehouse-efficiency',
     type: 'button',
-    label: '发送推送',
+    label: '仓库效率推送',
     menuKey: 'push-notifications',
     sortOrder: 410,
+  },
+  {
+    key: 'btn:push-notifications:attendance-scheduling',
+    type: 'button',
+    label: '仓库出勤/排班推送',
+    menuKey: 'push-notifications',
+    sortOrder: 411,
+  },
+  {
+    key: 'btn:push-notifications:fleet-supplier',
+    type: 'button',
+    label: '车队供应商推送',
+    menuKey: 'push-notifications',
+    sortOrder: 412,
   },
   {
     key: 'btn:warehouse-safety:export',

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { useAppSettings } from '../../context/AppSettingsContext'
+import { PERMISSION_KEYS, usePermission } from '../../hooks/usePermission'
 import {
   buildDailyLaborCostFromPayrollByDate,
   computeAttendancePayrollFromFiles,
@@ -44,10 +45,11 @@ import type { CancelScanAnalysisState } from './cancelScanAnalysisTypes'
 import { flushPaint } from './excelParseClient'
 import { buildAllocationDensity, buildFrontDeskClockOutDays } from './frontDeskSaturation'
 import {
-  buildDailyEfficiencyRecordSnapshots,
-  buildRestoreStateFromDailyPayloads,
-  type DailyEfficiencyRecordPayload,
-  type DailyEfficiencyRestoreState,
+  captureEfficiencyAttendanceDayRecords,
+  normalizeEfficiencyAttendanceDayRecord,
+  restoreEfficiencyAttendancePage,
+  type EfficiencyAttendanceDayRecord,
+  type EfficiencyAttendancePageRestore,
 } from './dailyEfficiencyRecordSnapshot'
 import type { SourceInfo } from './sourceInfo'
 import { buildScannerTotalEfficiencyRows, sortingScanCountForPerson } from './sortingLookup'
@@ -112,7 +114,7 @@ export function useScannerEfficiencyPage() {
   const location = useLocation()
   const navigate = useNavigate()
   const [settings, setSettings] = useState<ScanSettings>(() => ({ ...DEFAULT_SETTINGS }))
-  const [snapshotRestore, setSnapshotRestore] = useState<DailyEfficiencyRestoreState | null>(null)
+  const [snapshotRestore, setSnapshotRestore] = useState<EfficiencyAttendancePageRestore | null>(null)
   const [savingDailyRecords, setSavingDailyRecords] = useState(false)
 
   const [wageEmployees, setWageEmployees] = useState<{ employeeId: string; role: string }[]>([])
@@ -281,9 +283,13 @@ export function useScannerEfficiencyPage() {
     [attendanceRows, allocationRows, snapshotRestore],
   )
 
+  const showPushTab = usePermission(PERMISSION_KEYS.btnPushNotificationsWarehouseEfficiency)
+
   const activeTab = useMemo((): TabKey => {
     if (manualTab === TAB_KEYS.WEEKLY) return TAB_KEYS.WEEKLY
-    if (manualTab === TAB_KEYS.PUSH) return TAB_KEYS.PUSH
+    if (manualTab === TAB_KEYS.PUSH) {
+      return showPushTab ? TAB_KEYS.PUSH : TAB_KEYS.WAREHOUSE
+    }
     if (manualTab === TAB_KEYS.CANCEL_SCAN) return TAB_KEYS.CANCEL_SCAN
     const coerced: TabKey | null =
       attendanceEfficiencyBase && !scannerResult
@@ -294,7 +300,7 @@ export function useScannerEfficiencyPage() {
             ? TAB_KEYS.WAREHOUSE
             : null
     return coerced ?? manualTab
-  }, [manualTab, attendanceEfficiencyBase, scannerResult])
+  }, [manualTab, attendanceEfficiencyBase, scannerResult, showPushTab])
 
   const setActiveTab = (tab: TabKey) => setManualTab(tab)
 
@@ -457,8 +463,15 @@ export function useScannerEfficiencyPage() {
     setError('')
   }, [])
 
-  const applyDailyRecordRestore = useCallback((payloads: DailyEfficiencyRecordPayload[]) => {
-    const restore = buildRestoreStateFromDailyPayloads(payloads)
+  const applyDailyRecordRestore = useCallback((rawRecords: unknown[]) => {
+    const records = rawRecords
+      .map((item) => normalizeEfficiencyAttendanceDayRecord(item))
+      .filter((item): item is EfficiencyAttendanceDayRecord => item != null)
+    if (!records.length) {
+      showToast('记录数据不可用，请刷新后重试', 'error')
+      return
+    }
+    const restore = restoreEfficiencyAttendancePage(records)
     setSnapshotRestore(restore)
     setSettings((current) => ({ ...current, ...restore.settings }))
     setScanRows([])
@@ -467,7 +480,7 @@ export function useScannerEfficiencyPage() {
     setScanSourceInfo(restore.scanSourceInfo)
     setAttendanceSourceInfo(restore.attendanceSourceInfo)
     setAllocationSourceInfo(restore.allocationSourceInfo)
-    setAttendancePayroll(null)
+    setAttendancePayroll(restore.attendancePayroll)
     lastAttendanceFilesRef.current = []
     setLastInboundApiStats(null)
     setDailyHoursOverrides({})
@@ -476,16 +489,16 @@ export function useScannerEfficiencyPage() {
 
   useEffect(() => {
     const state = location.state as {
-      restoreDailyRecord?: DailyEfficiencyRecordPayload
-      restoreDailyRecords?: DailyEfficiencyRecordPayload[]
+      restoreDailyRecord?: unknown
+      restoreDailyRecords?: unknown[]
     } | null
-    const payloads = state?.restoreDailyRecords?.length
+    const rawRecords = state?.restoreDailyRecords?.length
       ? state.restoreDailyRecords
       : state?.restoreDailyRecord
         ? [state.restoreDailyRecord]
         : null
-    if (!payloads?.length) return
-    applyDailyRecordRestore(payloads)
+    if (!rawRecords?.length) return
+    applyDailyRecordRestore(rawRecords)
     navigate(location.pathname, { replace: true, state: null })
   }, [applyDailyRecordRestore, location.pathname, location.state, navigate])
 
@@ -499,13 +512,14 @@ export function useScannerEfficiencyPage() {
     setSavingDailyRecords(true)
     setError('')
     try {
-      const records = buildDailyEfficiencyRecordSnapshots({
+      const records = captureEfficiencyAttendanceDayRecords({
         attendanceResult,
         attendanceRows,
         scannerResult,
         allocationDensityRows,
         frontDeskClockOutRows,
         cancelScanAnalysis,
+        attendancePayroll,
         settings,
         scanSourceInfo,
         attendanceSourceInfo,
@@ -525,6 +539,7 @@ export function useScannerEfficiencyPage() {
   }, [
     allocationDensityRows,
     allocationSourceInfo,
+    attendancePayroll,
     cancelScanAnalysis,
     attendanceResult,
     attendanceRows,
@@ -1122,6 +1137,7 @@ export function useScannerEfficiencyPage() {
     frontDeskClockOutRows,
     activeTab,
     setActiveTab,
+    showPushTab,
     weeklyPanelKey,
     summaryMetrics,
     dailyVolumeColumns,

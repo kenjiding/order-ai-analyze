@@ -27,7 +27,7 @@ export function ScannerPersonSortingSummarySection({
   scannerTotalRows,
   boundedScroll = true,
   emptyTableText = '暂无扫描员汇总。',
-  sectionEyebrow = 'Scanner Summary',
+  sectionEyebrow,
   sectionTitle = '扫描员一级分拣效率汇总',
   sectionDescription = '按扫描员汇总总扫描量、推算有效工时、原始总效率与按样本可靠度回归后的修正效率（团队基准=一级分拣整体效率）。',
   sectionTitleRight,
@@ -35,15 +35,15 @@ export function ScannerPersonSortingSummarySection({
   const bodyRows = scannerTotalRows as unknown as DataTableRow[]
   const averageRow = buildScannerPersonSummaryAverageRow(scannerTotalRows)
   return (
-    <section className="space-y-4">
+    <section className="admin-panel overflow-hidden">
       <SectionTitle
-        eyebrow={sectionEyebrow}
+        kicker={sectionEyebrow}
         title={sectionTitle}
         description={sectionDescription}
         right={sectionTitleRight}
       />
-      <div className="grid gap-4 xl:grid-cols-[minmax(0,1.05fr)_minmax(320px,0.95fr)] xl:items-start">
-        <div className="min-w-0 px-4">
+      <div className="grid gap-4 p-4 pt-0 xl:grid-cols-[minmax(0,1.05fr)_minmax(320px,0.95fr)] xl:items-start">
+        <div className="min-w-0">
           <ScannerEfficiencyAntdTable
             boundedScroll={boundedScroll}
             columns={columns}

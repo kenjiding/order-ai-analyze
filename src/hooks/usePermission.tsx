@@ -70,6 +70,8 @@ export const PERMISSION_KEYS = {
   btnWageSalaryEdit: 'btn:wage-salary:edit',
   btnOrderExceptionAnalyze: 'btn:order-exception:analyze',
   btnOrderExceptionConfigEdit: 'btn:order-exception:config-edit',
-  btnPushNotificationsSend: 'btn:push-notifications:send',
+  btnPushNotificationsWarehouseEfficiency: 'btn:push-notifications:warehouse-efficiency',
+  btnPushNotificationsAttendanceScheduling: 'btn:push-notifications:attendance-scheduling',
+  btnPushNotificationsFleetSupplier: 'btn:push-notifications:fleet-supplier',
   btnWarehouseSafetyExport: 'btn:warehouse-safety:export',
 } as const

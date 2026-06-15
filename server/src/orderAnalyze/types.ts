@@ -125,7 +125,7 @@ export type TrackFacts = {
   inWarehouseStartSupersededByDispatch: boolean
   /** 是否存在任何取消分配记录（仅表示存在，非全程无出库的循环） */
   hasDeliveryCancellations: boolean
-  /** 是否存在仓内真实操作员扫描/盘点记录，不包含派件员二次出库扫描 */
+  /** 是否存在仓内真实操作员扫描/盘点或外部承运商退件入仓确认记录，不含派件员二次出库扫描 */
   hasRealOperatorScan: boolean
   /** 是否已有签收、妥投、派件完成等正常完结记录 */
   hasDeliveryCompletion: boolean

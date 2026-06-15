@@ -266,6 +266,7 @@ export function useScannerLevel1FeishuPush(
         const name = entry.pushName.trim() || '未命名推送'
         for (const task of pushTasks) {
           const pushRes = await postFeishuPushImage({
+            pushScope: 'warehouse-efficiency',
             webhookUrl: entry.webhookUrl,
             signingSecret: entry.signingSecret,
             imageBase64: task.img,

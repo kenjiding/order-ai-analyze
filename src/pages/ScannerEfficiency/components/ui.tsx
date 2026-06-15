@@ -39,28 +39,35 @@ export function ExportButton({
 }
 
 type SectionTitleProps = {
-  eyebrow: string
+  /** 可选分类标签；页面内不宜过多使用 */
+  kicker?: string
+  /** @deprecated 使用 kicker */
+  eyebrow?: string
   title: string
-  description: string
+  description?: string
+  /** 嵌入告警等有色容器时，省略区块顶部分割样式 */
+  bare?: boolean
   /** 与标题区块同一行区域内靠右展示（如操作按钮） */
   right?: ReactNode
 }
 
-export function SectionTitle({ eyebrow, title, description, right }: SectionTitleProps) {
+export function SectionTitle({ kicker, eyebrow, title, description, bare, right }: SectionTitleProps) {
+  const sectionKicker = kicker ?? eyebrow
   const main = (
     <>
-      <p className="admin-eyebrow">{eyebrow}</p>
-      <h2 className="admin-title">{title}</h2>
-      <p className="admin-description">{description}</p>
+      {sectionKicker ? <p className="se-section-kicker">{sectionKicker}</p> : null}
+      <h2 className={sectionKicker ? 'se-section-title' : 'se-section-title mt-0'}>{title}</h2>
+      {description ? <p className="se-section-desc">{description}</p> : null}
     </>
   )
+  const headClass = bare ? 'px-5 py-4' : 'se-section-head'
   if (!right) {
-    return <div className="admin-section-title">{main}</div>
+    return <div className={headClass}>{main}</div>
   }
   return (
-    <div className="admin-section-title flex flex-wrap items-start justify-between gap-4">
+    <div className={`${headClass} flex flex-wrap items-start justify-between gap-4`}>
       <div className="min-w-0 flex-1">{main}</div>
-      <div className="shrink-0 pt-0.5 sm:pt-1">{right}</div>
+      <div className="shrink-0 pt-0.5">{right}</div>
     </div>
   )
 }
@@ -69,32 +76,37 @@ type MetricProps = {
   label: string
   value: ReactNode
   hint: ReactNode
-  tone?: 'light' | 'dark'
+  featured?: boolean
 }
 
-export function Metric({ label, value, hint, tone = 'light' }: MetricProps) {
+export function Metric({ label, value, hint, featured = false }: MetricProps) {
   return (
-    <div
-      className={
-        tone === 'dark'
-          ? 'rounded-lg border border-[#b8ddd7] bg-[#e1f5f1] p-5 text-slate-950 shadow-[0_18px_48px_rgba(47,83,105,0.08)]'
-          : 'admin-panel p-5 text-slate-950'
-      }
-    >
-      <p
-        className={
-          tone === 'dark'
-            ? 'text-xs uppercase tracking-[0.24em] text-slate-600'
-            : 'text-xs uppercase tracking-[0.24em] text-slate-500'
-        }
-      >
-        {label}
-      </p>
-      <p className={`mt-3 text-2xl font-semibold tracking-tight ${tone === 'dark' ? 'text-[#1f6f68]' : 'text-[#2f8f87]'}`}>
-        {value}
-      </p>
-      <p className={tone === 'dark' ? 'mt-2 text-sm text-slate-600' : 'mt-2 text-sm text-slate-500'}>{hint}</p>
+    <div className={['se-metric', featured ? 'se-metric--featured' : ''].filter(Boolean).join(' ')}>
+      <p className="se-metric-label">{label}</p>
+      <p className="se-metric-value">{value}</p>
+      <p className="se-metric-hint">{hint}</p>
     </div>
+  )
+}
+
+export function LoadingPanel() {
+  return (
+    <section className="se-loading-panel" aria-busy="true" aria-label="正在加载">
+      <div className="flex flex-col gap-3">
+        <div className="se-skeleton h-4 w-40" />
+        <div className="se-skeleton h-3 w-full max-w-md" />
+      </div>
+      <div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        {Array.from({ length: 4 }, (_, i) => (
+          <div key={i} className="rounded-lg border border-[var(--admin-line)] p-4">
+            <div className="se-skeleton h-3 w-24" />
+            <div className="se-skeleton mt-3 h-8 w-28" />
+            <div className="se-skeleton mt-2 h-3 w-full" />
+          </div>
+        ))}
+      </div>
+      <p className="mt-4 text-sm text-[var(--admin-muted)]">正在读取并计算，请稍候…</p>
+    </section>
   )
 }
 
@@ -171,7 +183,7 @@ export function DataTable({
 }: DataTableProps) {
   if (!rows.length) {
     return (
-      <div className="rounded-lg border border-dashed border-slate-300 bg-white px-6 py-12 text-center text-sm text-slate-500">
+      <div className="rounded-lg border border-dashed border-[var(--admin-line)] bg-[var(--admin-surface-soft)] px-6 py-10 text-center text-sm text-[var(--admin-muted)]">
         {emptyText}
       </div>
     )

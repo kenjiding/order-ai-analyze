@@ -137,7 +137,7 @@ scannerEfficiencyRouter.post('/daily-records', async (req: AuthenticatedRequest,
       if (!isRecordPayload(item)) continue
       const date = parseDateKey(item.date)
       const payload = item
-      if (!date || payload.schemaVersion !== 1) continue
+      if (!date || (payload.schemaVersion !== 1 && payload.schemaVersion !== 2)) continue
       validRecords.push({ date, payload })
     }
 

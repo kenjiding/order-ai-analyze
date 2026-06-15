@@ -2,6 +2,7 @@ import { Col, Form, Input, Row, Select, Switch, Typography } from 'antd'
 import { ShieldCheck, UserRound } from 'lucide-react'
 import { useEffect, type ReactNode } from 'react'
 import { AdminDrawer } from '../../../components/Drawer/AdminDrawer'
+import '../systemUsers.css'
 import type { AdminUser, PermissionDefinition } from '../../../api/adminUsersApi'
 import type { RegionOption } from '../../../api/authApi'
 import PermissionCheckboxGroup from './PermissionCheckboxGroup'
@@ -38,17 +39,15 @@ function FormSection({
   children: ReactNode
 }) {
   return (
-    <section className="overflow-hidden rounded-xl border border-slate-200/90 bg-white">
-      <div className="flex items-start gap-3 border-b border-slate-200/80 bg-slate-50/60 px-5 py-4">
-        <div className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[var(--admin-accent-soft)] text-[var(--admin-accent)]">
-          {icon}
-        </div>
+    <section className="su-form-section">
+      <div className="su-form-section-head">
+        <div className="su-form-section-icon">{icon}</div>
         <div className="min-w-0">
-          <h3 className="text-sm font-semibold text-slate-950">{title}</h3>
-          <p className="mt-0.5 text-xs leading-relaxed text-slate-500">{description}</p>
+          <h3 className="text-sm font-semibold text-[var(--admin-text)]">{title}</h3>
+          <p className="mt-0.5 text-xs leading-relaxed text-[var(--admin-muted)]">{description}</p>
         </div>
       </div>
-      <div className="px-5 py-5">{children}</div>
+      <div className="su-form-section-body">{children}</div>
     </section>
   )
 }
@@ -99,6 +98,7 @@ export default function UserFormModal({
 
   return (
     <AdminDrawer
+      className="system-users-drawer"
       open={open}
       onClose={onCancel}
       title={drawerTitle}

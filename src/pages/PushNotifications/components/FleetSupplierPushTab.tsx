@@ -21,6 +21,7 @@ import { readLocalPushImage, type LocalPushImage } from '../pushImageLocal'
 import { withRetry } from '../feishuPushRetry'
 import { showToast } from '../../../utils/toast'
 import { confirmDialog } from '../../../utils/confirmDialog'
+import { PERMISSION_KEYS, usePermission } from '../../../hooks/usePermission'
 import { FleetSupplierEditModal } from './FleetSupplierEditModal'
 import './fleetSupplierPushTab.css'
 
@@ -41,6 +42,7 @@ type Props = {
 export function FleetSupplierPushTab({
   supplierSecretsVisibility = 'full',
 }: Props) {
+  const canSend = usePermission(PERMISSION_KEYS.btnPushNotificationsFleetSupplier)
   const [globalPushText, setGlobalPushText] = useState('')
   const [pushImages, setPushImages] = useState<LocalPushImage[]>([])
   const [suppliers, setSuppliers] = useState<FleetSupplierConfig[]>([])
@@ -231,6 +233,7 @@ export function FleetSupplierPushTab({
     for (const img of pushImages) {
       const res = await withRetry(() =>
         postFeishuPushImage({
+          pushScope: 'fleet-supplier',
           webhookUrl: s.webhookUrl,
           signingSecret: s.signingSecret,
           imageBase64: img.dataUrl,
@@ -248,6 +251,10 @@ export function FleetSupplierPushTab({
   }
 
   const handlePushAll = async () => {
+    if (!canSend) {
+      showToast('无操作权限', 'error')
+      return
+    }
     const g = globalPushText.trim()
     if (scanParsing) {
       return
@@ -302,6 +309,7 @@ export function FleetSupplierPushTab({
           if (textBody) {
             const textRes = await withRetry(() =>
               postFeishuPushText({
+                pushScope: 'fleet-supplier',
                 webhookUrl: s.webhookUrl,
                 signingSecret: s.signingSecret,
                 text: textBody,
@@ -358,6 +366,7 @@ export function FleetSupplierPushTab({
         if (textBody) {
           const textRes = await withRetry(() =>
             postFeishuPushText({
+              pushScope: 'fleet-supplier',
               webhookUrl: s.webhookUrl,
               signingSecret: s.signingSecret,
               text: textBody,
@@ -382,6 +391,7 @@ export function FleetSupplierPushTab({
         const reportHeadline = textSent ? '' : headlineBase
         const res = await withRetry(() =>
           postFeishuPushImage({
+            pushScope: 'fleet-supplier',
             webhookUrl: s.webhookUrl,
             signingSecret: s.signingSecret,
             imageBase64: png,
@@ -627,20 +637,23 @@ export function FleetSupplierPushTab({
             >
               {pushImagesLoading ? '正在读取…' : '选择推送图片'}
             </Button>
-            <Button
-              type="primary"
-              icon={<Send className="h-4 w-4" />}
-              loading={pushing}
-              disabled={
-                scanParsing ||
-                !suppliers.length ||
-                effectiveSelectedKeys.length === 0 ||
-                (!hasScanData && !hasTypedContentForPush && !hasPushImages)
-              }
-              onClick={() => void handlePushAll()}
-            >
-              推送所选供应商
-            </Button>
+            <Tooltip title={!canSend ? '无操作权限' : undefined}>
+              <Button
+                type="primary"
+                icon={<Send className="h-4 w-4" />}
+                loading={pushing}
+                disabled={
+                  !canSend ||
+                  scanParsing ||
+                  !suppliers.length ||
+                  effectiveSelectedKeys.length === 0 ||
+                  (!hasScanData && !hasTypedContentForPush && !hasPushImages)
+                }
+                onClick={() => void handlePushAll()}
+              >
+                推送所选供应商
+              </Button>
+            </Tooltip>
             <Button type="dashed" icon={<Plus className="h-4 w-4" />} onClick={openCreate}>
               添加供应商
             </Button>

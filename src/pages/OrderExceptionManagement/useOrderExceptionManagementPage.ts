@@ -11,6 +11,7 @@ import {
   type OrderAnalyzeApiTiming,
   type OrderAnalyzeResultItem,
   type OrderAnalyzeResponsibilityOwner,
+  type OrderTrackFacts,
   type ResponsibilityTrackMarker,
   type OrderAnalyzeTokenUsage,
   type OrderQueryInfo,
@@ -110,6 +111,50 @@ function mergeAnalyzeApiTiming(
     imileMs: acc.imileMs + next.imileMs,
     aiMs: acc.aiMs + next.aiMs,
   }
+}
+
+function logOrderAnalysisFacts(orderNo: string, facts: OrderTrackFacts | undefined): void {
+  if (!facts) return
+  console.group(`%c[程序化关键判断点] ${orderNo}`, 'color:#1677ff;font-weight:bold')
+  console.log('📅 今天 / 最后轨迹更新:', facts.todayStr, '/', facts.lastEventTime, `(距今 ${facts.lastEventDaysDiff} 天)`)
+  console.log('📦 当前最新事件:', facts.latestEventKind)
+  console.log('🏭 当前责任主体:', facts.activeResponsibilityOwner, '|', facts.activeWarehouseName ?? '未知仓库', facts.activeWarehouseKnown ? '' : '(未配置)')
+  console.log('⏱️ 当前仓库丢失阈值:', facts.activeWarehouseLossTimeoutDays, '天')
+  console.log('📍 责任段状态:', facts.activeSegmentStatus, '| 起算:', facts.activeSegmentStartTime ?? '-', `(距今 ${facts.activeSegmentDaysDiff} 天)`)
+  console.log('✅ 真实操作员扫描:', facts.hasRealOperatorScan ? '有' : '无')
+  if (facts.inWarehouseStartTime) {
+    console.log('🔒 库内责任起算:', facts.inWarehouseStartTime, `(距今 ${facts.inWarehouseDaysDiff} 天)`, '|', facts.inWarehouseBasis ?? '')
+    console.log('   库内责任已被出库覆盖:', facts.inWarehouseStartSupersededByDispatch ? '是' : '否')
+  } else {
+    console.log('🔒 库内责任起算: 无法确定')
+  }
+  if (facts.lastDispatchedOutTime) {
+    console.log('🚚 最近出库时间:', facts.lastDispatchedOutTime, `(距今 ${facts.outWarehouseDaysDiff} 天)`, '| 出库后有回仓:', facts.lastDispatchHasReturn ? '是' : '否')
+  }
+  if (facts.finalResponsibilityOwner) {
+    console.log('⚖️ 最终责任点:', facts.finalResponsibilityOwner, '|', facts.finalResponsibilityStartTime ?? '-', `(距今 ${facts.finalResponsibilityDaysDiff} 天)`)
+    console.log('   依据:', facts.finalResponsibilityBasis ?? '-')
+  }
+  console.log('📊 派送分配次数:', facts.deliveryAssignmentCount, '| 取消分配次数:', facts.deliveryCancelCount, '| 问题件次数:', facts.problemCount)
+  console.log('🔄 分配-取消循环(无出库):', facts.assignCancelLoopWithoutDispatch ? '是' : '否')
+  if (facts.hasDeliveryCompletion) {
+    console.log('✔️ 正常完结:', facts.deliveryCompletionTime ?? '-', facts.deliveryCompletionEvidence ?? '')
+  }
+  if (facts.latestOrderExceptionClosed) console.log('🔚 订单异常完结终态: 是')
+  if (facts.stationLossCompletion) console.log('🏪 承运商站内丢包标记: 是')
+  if (facts.merchantDestroyConfirmed) console.log('🗑️ 商家销毁确认: 是 |', facts.merchantDestroyConfirmTime ?? '-')
+  if (facts.merchantAbandonActive) console.log('🗑️ 商家Abandon销毁: 是')
+  if (facts.merchantStorageActive) console.log('📦 商家暂存: 是')
+  if (facts.merchantReturnClosed) console.log('↩️ 退返商家闭环: 是')
+  if (facts.merchantReturnRequested) console.log('↩️ 退返商家待处理: 是')
+  if (facts.unknownWarehouseInActiveSegment) console.log('⚠️ 当前仓库未匹配配置: 是')
+  if (facts.hasInterceptLogs) {
+    console.log('🚫 阻断日志最新时间:', facts.latestInterceptTime ?? '-', '| 操作员:', facts.latestInterceptUserCode ?? '-', `(${facts.latestInterceptOperatorType ?? '未知'})`)
+    if (facts.interceptAdjustedResponsibilityOwner) {
+      console.log('   阻断日志调整后责任:', facts.interceptAdjustedResponsibilityOwner, `(距今 ${facts.interceptAdjustedResponsibilityDaysDiff} 天)`, '|', facts.interceptAdjustedResponsibilityBasis ?? '')
+    }
+  }
+  console.groupEnd()
 }
 
 function createPendingAnalysisRow(orderNo: string): AnalysisRow {
@@ -389,7 +434,7 @@ export function useOrderExceptionManagementPage() {
       )
 
       try {
-        const { results, trackInfo, orderInfo, interceptLogs, tokenUsage, timing } =
+        const { results, trackInfo, orderInfo, interceptLogs, tokenUsage, timing, trackFacts } =
           await postOrderExceptionAnalyze({
           imileToken: token,
           orderNos,
@@ -398,17 +443,19 @@ export function useOrderExceptionManagementPage() {
         })
         if (isStaleRun()) return
 
-        setAnalysisRows(
-          orderNos.map((orderNo) =>
-            mapAnalyzeHitToRow(
-              orderNo,
-              results.find((r) => r.orderNo === orderNo),
-              trackInfo,
-              interceptLogs,
-              orderInfo ?? {}
-            )
+        const rows = orderNos.map((orderNo) =>
+          mapAnalyzeHitToRow(
+            orderNo,
+            results.find((r) => r.orderNo === orderNo),
+            trackInfo,
+            interceptLogs,
+            orderInfo ?? {}
           )
         )
+        if (trackFacts) {
+          rows.forEach((row) => logOrderAnalysisFacts(row.orderNo, trackFacts[row.orderNo]))
+        }
+        setAnalysisRows(rows)
         setAnalyzeTokenUsage(tokenUsage)
         if (timing) setAnalyzeApiTiming(timing)
         succeeded = orderNos.length
@@ -456,7 +503,7 @@ export function useOrderExceptionManagementPage() {
         )
 
         try {
-          const { results, trackInfo, orderInfo, interceptLogs, tokenUsage, timing } =
+          const { results, trackInfo, orderInfo, interceptLogs, tokenUsage, timing, trackFacts } =
             await postOrderExceptionAnalyze({
             imileToken: token,
             orderNos: [orderNo],
@@ -472,6 +519,7 @@ export function useOrderExceptionManagementPage() {
             interceptLogs,
             orderInfo ?? {}
           )
+          if (trackFacts) logOrderAnalysisFacts(orderNo, trackFacts[orderNo])
           setAnalysisRows((prev) => prev.map((r) => (r.orderNo === orderNo ? row : r)))
           accumulatedTokenUsage = mergeAnalyzeTokenUsage(accumulatedTokenUsage, tokenUsage)
           setAnalyzeTokenUsage(accumulatedTokenUsage)

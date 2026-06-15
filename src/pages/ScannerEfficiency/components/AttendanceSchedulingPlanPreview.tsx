@@ -2,6 +2,7 @@ import { useMemo } from 'react'
 import type {
   AttendanceSchedulingPlanPreview,
   PlanPreviewCell,
+  PlanPreviewCellTone,
   PlanPreviewTable,
 } from '../attendanceSchedulingPlanPreviewModel'
 import {
@@ -74,6 +75,15 @@ type Props = {
   onCellChange: (key: string, text: string) => void
 }
 
+function resolveRatioToneFromText(text: string): PlanPreviewCellTone {
+  const match = /^(\d+(?:\.\d+)?)\s*%$/.exec(text.trim())
+  if (!match) return 'default'
+  const percent = Number(match[1])
+  if (!Number.isFinite(percent)) return 'default'
+  if (percent < 100) return 'red'
+  return 'green'
+}
+
 function cellClassName(c: PlanPreviewCell, text: string): string {
   const parts = ['attendance-plan-preview__cell']
   if (c.variant === 'title') parts.push('attendance-plan-preview__cell--title')
@@ -90,20 +100,19 @@ function cellClassName(c: PlanPreviewCell, text: string): string {
   else if (c.align === 'center' || c.variant === 'header' || c.variant === 'section' || c.variant === 'title') {
     parts.push('attendance-plan-preview__cell--center')
   }
-  if (c.tone === 'red') parts.push('attendance-plan-preview__cell--red')
-  if (c.tone === 'green') parts.push('attendance-plan-preview__cell--green')
+  const tone = c.emphasis === 'ratio' && text.trim() ? resolveRatioToneFromText(text) : c.tone
+  if (tone === 'red') parts.push('attendance-plan-preview__cell--red')
+  if (tone === 'green') parts.push('attendance-plan-preview__cell--green')
   if (c.editable) parts.push('attendance-plan-preview__cell--editable')
   return parts.join(' ')
 }
 
 function renderCellContent(c: PlanPreviewCell, text: string) {
-  if (
-    !c.editable &&
-    c.emphasis === 'ratio' &&
-    text.trim() &&
-    (c.tone === 'red' || c.tone === 'green')
-  ) {
-    return <span className="attendance-plan-preview__ratio-pill">{text}</span>
+  if (c.emphasis === 'ratio' && text.trim()) {
+    const tone = resolveRatioToneFromText(text)
+    if (tone === 'red' || tone === 'green') {
+      return <span className="attendance-plan-preview__ratio-pill">{text}</span>
+    }
   }
   return text
 }

@@ -339,12 +339,27 @@ function isReturnOrInventoryEvent(t: TrackEvent): boolean {
   return t.content.includes('已回到网点') || t.content.includes('已盘点') || t.content.includes('已归班')
 }
 
+/**
+ * 外部承运商将包裹退回仓库的入仓确认事件。
+ * 例："【Sydney Center】已收到【Australia Fastway】退回包裹" 或 "已收到退件包裹"。
+ * 此类事件与 isReturnOrInventoryEvent 中的「已回到网点/已盘点」地位等同：
+ * 物理包裹到仓已由平台记录确认，不依赖操作员账号类型即可建立库内责任起算点。
+ */
+function isReturnFromCarrierArrivalEvent(content: string): boolean {
+  return (content.includes('已收到') && content.includes('退回包裹')) || content.includes('已收到退件包裹')
+}
+
 function isProblemEvent(t: TrackEvent): boolean {
   return t.content.includes('登记问题件') || hasTrackType(t, 'problem')
 }
 
 function isWarehouseArrivalEvent(t: TrackEvent): boolean {
-  return t.content.includes('已到达') || t.content.includes('已收到退件包裹')
+  const c = t.content
+  return (
+    c.includes('已到达') ||
+    c.includes('已收到退件包裹') ||
+    (c.includes('已收到') && c.includes('退回包裹'))
+  )
 }
 
 function isWarehousePhysicalResponsibilityEvent(t: TrackEvent): boolean {
@@ -438,6 +453,15 @@ function getTrackResponsibilityPoint(
       owner: 'in_warehouse',
       time: event.time,
       basis: `正常轨迹「${label}」回仓/盘点责任点（${event.time}）`,
+      source: 'track',
+    }
+  }
+
+  if (isReturnFromCarrierArrivalEvent(event.content)) {
+    return {
+      owner: 'in_warehouse',
+      time: event.time,
+      basis: `正常轨迹外部承运商退件入仓确认责任点（${event.time}）`,
       source: 'track',
     }
   }
@@ -683,7 +707,8 @@ function buildResponsibilitySegments(sorted: TrackEvent[]): InternalSegment[] {
         !active ||
         active.owner === 'unknown' ||
         (active.owner === 'company_warehouse' && isWarehousePhysicalResponsibilityEvent(event)) ||
-        (active.owner === 'company_warehouse' && hasSameHub(active, leadingHub))
+        (active.owner === 'company_warehouse' && hasSameHub(active, leadingHub)) ||
+        (active.owner === 'external_carrier' && isWarehousePhysicalResponsibilityEvent(event))
 
       if (canLocateWarehouse) {
         ensureWarehouseSegment(
@@ -725,6 +750,7 @@ function findLastEvent(events: TrackEvent[], predicate: (event: TrackEvent) => b
 function findFirstRealScan(events: TrackEvent[], profile: WarehouseProfile | null): TrackEvent | null {
   for (const event of events) {
     if (isSorterDeviceScanEvent(event.content)) return event
+    if (isReturnFromCarrierArrivalEvent(event.content)) return event
     const op = extractOperatorFromContent(event.content)
     if (classifyOperatorForWarehouse(op, profile) !== 'real') continue
     if (
@@ -742,6 +768,7 @@ function findLastRealScan(events: TrackEvent[], profile: WarehouseProfile | null
   for (let i = events.length - 1; i >= 0; i -= 1) {
     const event = events[i]
     if (isSorterDeviceScanEvent(event.content)) return event
+    if (isReturnFromCarrierArrivalEvent(event.content)) return event
     const op = extractOperatorFromContent(event.content)
     if (classifyOperatorForWarehouse(op, profile) !== 'real') continue
     if (

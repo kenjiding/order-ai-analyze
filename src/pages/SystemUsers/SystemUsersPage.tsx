@@ -1,35 +1,18 @@
 import { Button, Table, Tag, Tooltip } from 'antd'
 import type { ColumnsType } from 'antd/es/table'
 import { Navigate } from 'react-router-dom'
-import { Plus, Shield, UserCog, Users } from 'lucide-react'
+import { Plus, Shield, UserCog, UserPlus, Users } from 'lucide-react'
 import { useMemo } from 'react'
 import { useAuth } from '../../context/AuthContext'
 import type { AdminUser } from '../../api/adminUsersApi'
 import UserFormModal from './components/UserFormModal'
 import { useSystemUsersPage } from './useSystemUsersPage'
+import './systemUsers.css'
 
-function StatChip({
-  label,
-  value,
-  tone = 'default',
-}: {
-  label: string
-  value: number | string
-  tone?: 'default' | 'accent'
-}) {
-  return (
-    <div
-      className={[
-        'rounded-lg px-3 py-2 ring-1',
-        tone === 'accent'
-          ? 'bg-[var(--admin-accent-soft)] text-[#1f6f68] ring-[rgba(47,143,135,0.18)]'
-          : 'bg-white text-slate-700 ring-slate-200',
-      ].join(' ')}
-    >
-      <div className="text-[11px] font-medium uppercase tracking-wide opacity-70">{label}</div>
-      <div className="mt-0.5 text-lg font-semibold tabular-nums">{value}</div>
-    </div>
-  )
+function userInitial(username: string): string {
+  const trimmed = username.trim()
+  if (!trimmed) return '?'
+  return trimmed.slice(0, 1).toUpperCase()
 }
 
 export default function SystemUsersPage() {
@@ -53,7 +36,8 @@ export default function SystemUsersPage() {
   const stats = useMemo(() => {
     const activeCount = users.filter((user) => user.isActive).length
     const adminCount = users.filter((user) => user.role === 'super_admin').length
-    return { activeCount, adminCount }
+    const inactiveCount = users.length - activeCount
+    return { activeCount, adminCount, inactiveCount }
   }, [users])
 
   if (!isSuperAdmin) {
@@ -65,32 +49,40 @@ export default function SystemUsersPage() {
       title: '用户',
       key: 'username',
       ellipsis: true,
-      render: (_, row) => (
-        <div className="min-w-0">
-          <div className="truncate font-medium text-slate-900">{row.username}</div>
-          {row.displayName ? <div className="truncate text-xs text-slate-500">{row.displayName}</div> : null}
-        </div>
-      ),
+      render: (_, row) => {
+        const isAdmin = row.role === 'super_admin'
+        return (
+          <div className="su-user-cell">
+            <span className={['su-user-avatar', isAdmin ? 'is-admin' : ''].filter(Boolean).join(' ')}>
+              {userInitial(row.username)}
+            </span>
+            <div className="min-w-0">
+              <div className="su-user-name truncate">{row.username}</div>
+              {row.displayName ? <div className="su-user-display">{row.displayName}</div> : null}
+            </div>
+          </div>
+        )
+      },
     },
     {
       title: '州/区域',
       dataIndex: 'regionName',
       key: 'regionName',
       width: 140,
-      render: (name: string | null, row) => name ?? (row.role === 'super_admin' ? '系统管理' : '—'),
+      render: (name: string | null, row) => name ?? (row.role === 'super_admin' ? '系统管理' : '未分配'),
     },
     {
       title: '角色',
       dataIndex: 'role',
       key: 'role',
-      width: 120,
+      width: 128,
       render: (role: AdminUser['role']) =>
         role === 'super_admin' ? (
-          <Tag bordered={false} className="mr-0 bg-emerald-50 text-emerald-700">
+          <Tag bordered={false} className="su-role-tag admin">
             超级管理员
           </Tag>
         ) : (
-          <Tag bordered={false} className="mr-0 bg-slate-100 text-slate-700">
+          <Tag bordered={false} className="su-role-tag user">
             普通用户
           </Tag>
         ),
@@ -102,8 +94,8 @@ export default function SystemUsersPage() {
       width: 96,
       render: (active: boolean) =>
         active ? (
-          <span className="inline-flex items-center gap-1.5 text-sm text-slate-700">
-            <span className="h-1.5 w-1.5 rounded-full bg-[#2f8f87]" />
+          <span className="su-status-on">
+            <span className="su-status-dot" aria-hidden />
             启用
           </span>
         ) : (
@@ -116,13 +108,13 @@ export default function SystemUsersPage() {
       width: 120,
       render: (_, row) =>
         row.role === 'super_admin' ? (
-          <span className="inline-flex items-center gap-1 text-sm text-[#1f6f68]">
+          <span className="su-perm-pill">
             <Shield className="h-3.5 w-3.5" aria-hidden />
             全部
           </span>
         ) : (
-          <Tooltip title={`${row.permissions.length} 项已分配`}>
-            <span className="text-sm tabular-nums text-slate-700">{row.permissions.length} 项</span>
+          <Tooltip title={`已分配 ${row.permissions.length} 项权限`}>
+            <span className="su-perm-count">{row.permissions.length} 项</span>
           </Tooltip>
         ),
     },
@@ -147,41 +139,83 @@ export default function SystemUsersPage() {
   ]
 
   return (
-    <main className="admin-page mx-auto max-w-[1680px] px-4 py-6 sm:px-6 lg:px-8">
-      <div className="mb-5 flex flex-wrap items-start justify-between gap-4">
-        <div>
-          <div className="text-xs font-medium uppercase tracking-[0.18em] text-slate-500">System Access</div>
-          <h1 className="mt-1 flex items-center gap-2.5 text-xl font-semibold tracking-tight text-slate-950">
-            <UserCog className="h-6 w-6 text-[var(--admin-accent)]" aria-hidden />
-            用户管理
-          </h1>
-          <p className="mt-1 max-w-2xl text-sm text-slate-500">维护后台账号与权限，不支持用户自助注册。</p>
+    <div className="system-users-page admin-page">
+      <header className="admin-panel su-hero mb-5 overflow-hidden">
+        <div className="su-hero-head border-b border-[var(--admin-line)] px-5 py-5 sm:px-6">
+          <div className="flex flex-wrap items-start justify-between gap-4">
+            <div className="min-w-0">
+              <h1 className="su-page-title flex items-center gap-2.5">
+                <UserCog className="h-6 w-6 shrink-0 text-[var(--admin-accent)]" aria-hidden />
+                用户管理
+              </h1>
+              <p className="su-page-lead">
+                维护后台账号、区域归属与菜单/按钮权限。账号由管理员创建，不支持自助注册。
+              </p>
+            </div>
+            <Button type="primary" icon={<Plus className="h-4 w-4" aria-hidden />} onClick={openCreate}>
+              新建用户
+            </Button>
+          </div>
         </div>
-        <Button type="primary" icon={<Plus className="h-4 w-4" />} onClick={openCreate}>
-          新建用户
-        </Button>
-      </div>
 
-      <div className="mb-4 grid grid-cols-2 gap-3 sm:grid-cols-3 sm:max-w-xl">
-        <StatChip label="总用户" value={users.length} tone="accent" />
-        <StatChip label="启用中" value={stats.activeCount} />
-        <StatChip label="超级管理员" value={stats.adminCount} />
-      </div>
-
-      <div className="admin-panel overflow-hidden">
-        <div className="flex items-center gap-2 border-b border-slate-200 px-5 py-3 text-xs text-slate-500">
-          <Users className="h-3.5 w-3.5" aria-hidden />
-          账号列表
+        <div className="grid grid-cols-1 divide-y divide-[var(--admin-line)] sm:grid-cols-2 lg:grid-cols-4 lg:divide-x lg:divide-y-0">
+          <div className="su-metric">
+            <div className="su-metric-label">总用户</div>
+            <div className="su-metric-value is-accent">
+              <span className="su-metric-icon" aria-hidden>
+                <Users className="h-4 w-4" />
+              </span>
+              {users.length}
+            </div>
+          </div>
+          <div className="su-metric">
+            <div className="su-metric-label">启用中</div>
+            <div className="su-metric-value">{stats.activeCount}</div>
+          </div>
+          <div className="su-metric">
+            <div className="su-metric-label">已禁用</div>
+            <div className="su-metric-value">{stats.inactiveCount}</div>
+          </div>
+          <div className="su-metric">
+            <div className="su-metric-label">超级管理员</div>
+            <div className="su-metric-value">{stats.adminCount}</div>
+          </div>
         </div>
+      </header>
+
+      <section className="admin-panel overflow-hidden">
+        <div className="su-table-toolbar">
+          <div className="su-table-toolbar-title">
+            <Users className="h-4 w-4 text-[var(--admin-accent)]" aria-hidden />
+            账号列表
+          </div>
+          <p className="su-table-toolbar-hint">
+            {loading ? '正在加载…' : `共 ${users.length} 个账号，${stats.activeCount} 个处于启用状态`}
+          </p>
+        </div>
+
         <Table<AdminUser>
           rowKey="id"
           loading={loading}
           columns={columns}
           dataSource={users}
-          scroll={{ x: 720 }}
-          pagination={{ pageSize: 10, showSizeChanger: false, showTotal: (total) => `共 ${total} 条` }}
+          scroll={{ x: 760 }}
+          pagination={{
+            pageSize: 10,
+            showSizeChanger: true,
+            pageSizeOptions: ['10', '20', '50'],
+            showTotal: (total) => `共 ${total} 条`,
+          }}
+          locale={{
+            emptyText: (
+              <div className="su-empty-panel">
+                <UserPlus className="mx-auto h-8 w-8 text-[var(--admin-accent)]" aria-hidden />
+                <p>暂无后台账号。点击右上角「新建用户」创建第一个账号。</p>
+              </div>
+            ),
+          }}
         />
-      </div>
+      </section>
 
       <UserFormModal
         open={modalOpen}
@@ -193,6 +227,6 @@ export default function SystemUsersPage() {
         onCancel={closeModal}
         onSubmit={handleSubmit}
       />
-    </main>
+    </div>
   )
 }

@@ -1,5 +1,7 @@
-import type { Request, Response } from 'express'
+import type { Response } from 'express'
 import { Router } from 'express'
+import type { AuthenticatedRequest } from '../auth/middleware'
+import { requirePushApiScope } from '../permissions/pushNotificationAccess'
 import { getFeishuTenantAccessToken } from '../feishuServerEnv'
 import {
   FEISHU_UPLOAD_IMAGES_URL,
@@ -19,9 +21,12 @@ type TestBody = {
   webhookUrl?: unknown
   signingSecret?: unknown
   pushName?: unknown
+  pushScope?: unknown
 }
 
-feishuWebhookTestRouter.post('/test', async (req: Request, res: Response) => {
+feishuWebhookTestRouter.post('/test', async (req: AuthenticatedRequest, res: Response) => {
+  if (!requirePushApiScope(req, res)) return
+
   const body = req.body as TestBody
   let webhookHref: string
   try {
@@ -95,10 +100,13 @@ type PushTextBody = {
   signingSecret?: unknown
   /** 完整可见正文（建议由前端加好前缀如 [仓库管理]） */
   text?: unknown
+  pushScope?: unknown
 }
 
 /** 仅推送文本：无需图片与 tenant_access_token；长文案按段拆分发送 */
-feishuWebhookTestRouter.post('/push-text', async (req: Request, res: Response) => {
+feishuWebhookTestRouter.post('/push-text', async (req: AuthenticatedRequest, res: Response) => {
+  if (!requirePushApiScope(req, res)) return
+
   const body = req.body as PushTextBody
   let webhookHref: string
   try {
@@ -167,6 +175,7 @@ feishuWebhookTestRouter.post('/push-text', async (req: Request, res: Response) =
 })
 
 type PushImageBody = {
+  pushScope?: unknown
   webhookUrl?: unknown
   signingSecret?: unknown
   imageBase64?: unknown
@@ -205,7 +214,9 @@ async function postWebhookJson(webhookHref: string, payload: Record<string, unkn
   return { ok, httpStatus: upstream.status, feishu }
 }
 
-feishuWebhookTestRouter.post('/push-image', async (req: Request, res: Response) => {
+feishuWebhookTestRouter.post('/push-image', async (req: AuthenticatedRequest, res: Response) => {
+  if (!requirePushApiScope(req, res)) return
+
   const body = req.body as PushImageBody
   let webhookHref: string
   try {

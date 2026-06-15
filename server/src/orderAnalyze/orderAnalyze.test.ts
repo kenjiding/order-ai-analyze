@@ -1474,3 +1474,56 @@ test('分析提示不向模型暴露仓库正则画像，操作员判断只读�
   assert.match(fullPrompt, /模型禁止自行解析账号名前缀/)
   assert.match(fullPrompt, /真实操作员扫描记录: 否/)
 })
+
+test('3PL 退件返回公司仓后责任段应切回公司仓库，不再视为外部承运', () => {
+  const returnTime = '2026-04-09 16:45:52'
+  const facts = deriveTrackFacts([
+    track('2026-04-09 15:26:21', '【Sydney Center】包号[2604011987301]已到达。操作员【SYD Warehouse9】'),
+    track('2026-04-09 16:45:35', '【Sydney Center】包裹已转交至【JD.COM AUSTRALIA PTY LTD】进行承运。操作员【SYD OPS2】'),
+    track(returnTime, '【Sydney Center】已收到【JD.COM AUSTRALIA PTY LTD】退回包裹。操作员【SYD Warehouse9】'),
+    track('2026-04-09 16:45:53', '【Sydney Center】已进入NDR，NDR来源[供应商退件到件]'),
+  ])
+
+  assert.equal(facts.activeResponsibilityOwner, 'company_warehouse')
+  assert.equal(facts.activeWarehouseName, 'Sydney Center')
+  assert.equal(facts.hasRealOperatorScan, true)
+  assert.equal(facts.inWarehouseStartTime, returnTime)
+})
+
+test('3PL 自身载运事件（操作员为承运商）不应切回公司仓', () => {
+  const facts = deriveTrackFacts([
+    track('2026-04-09 16:45:35', '【Sydney Center】包裹已转交至【JD.COM AUSTRALIA PTY LTD】进行承运。操作员【SYD OPS2】'),
+    track('2026-04-17 22:38:11', '【Sydney Center】已到达。操作员【JD AUS JD.COM AUSTRALIA PTY LTD】'),
+    track('2026-04-20 12:38:11', '【Sydney Center】包裹正在派送中(派件员: ,ID: ,电话: )。操作员【JD AUS JD.COM AUSTRALIA PTY LTD】', 'delivery'),
+  ])
+
+  assert.equal(facts.activeResponsibilityOwner, 'external_carrier')
+  assert.equal(facts.activeExternalCarrierName, 'JD.COM AUSTRALIA PTY LTD')
+})
+
+test('3PL 退返仓库后商家给出 RTC 退件方向，责任段正确切回公司仓', () => {
+  const returnTime = '2026-04-09 16:45:52'
+  const facts = deriveTrackFacts(
+    [
+      track('2026-04-04 12:56:28', '【Brisbane Center】已揽收, 操作员【System】。'),
+      track('2026-04-04 12:56:58', '【Brisbane Center】已到达。操作员【BNE Warehouse5】'),
+      track('2026-04-04 13:16:39', '【Brisbane Center】已装箱，集包号[2604011987301]，目的地【Sydney Center】。操作员【BNEN Warehouse2】'),
+      track('2026-04-09 15:23:59', '【Sydney Center】包号[2604011987301]已到达。操作员【SYD OPS2】'),
+      track('2026-04-09 15:26:21', '【Sydney Center】包号[2604011987301]已到达。操作员【SYD Warehouse9】'),
+      track('2026-04-09 16:45:35', '【Sydney Center】包裹已转交至【JD.COM AUSTRALIA PTY LTD】进行承运。操作员【SYD OPS2】'),
+      track(returnTime, '【Sydney Center】已收到【JD.COM AUSTRALIA PTY LTD】退回包裹。操作员【SYD Warehouse9】'),
+      track('2026-04-09 16:45:53', '【Sydney Center】已进入NDR，NDR来源[供应商退件到件]'),
+      track('2026-04-24 08:03:51', '【Sydney Center】包裹确认派送结束, 将按照商家反馈意见[暂存]进行处理。'),
+      track('2026-05-07 15:46:10', '商家已反馈退件处理意见[RTC]，操作员【刘欣】'),
+    ],
+    [],
+    { analysisDate: '2026-06-14' }
+  )
+
+  assert.equal(facts.activeResponsibilityOwner, 'company_warehouse')
+  assert.equal(facts.activeWarehouseName, 'Sydney Center')
+  assert.equal(facts.hasRealOperatorScan, true)
+  assert.equal(facts.inWarehouseStartTime, returnTime)
+  assert.equal(facts.merchantReturnRequested, true)
+  assert.equal(facts.merchantStorageSupersededByBusinessProgress, true)
+})

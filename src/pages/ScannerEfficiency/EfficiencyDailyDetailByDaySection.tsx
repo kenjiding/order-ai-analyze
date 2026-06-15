@@ -37,11 +37,7 @@ function DimensionToggle({
   onChange: (next: EfficiencyDetailDimension) => void
 }) {
   return (
-    <div
-      className="inline-flex rounded-lg border border-slate-200 bg-slate-50 p-0.5"
-      role="tablist"
-      aria-label="效率明细维度"
-    >
+    <div className="se-segmented" role="tablist" aria-label="效率明细维度">
       {DIMENSION_OPTIONS.map((option) => {
         const active = value === option.key
         return (
@@ -50,12 +46,7 @@ function DimensionToggle({
             type="button"
             role="tab"
             aria-selected={active}
-            className={[
-              'rounded-md px-3 py-1.5 text-xs font-semibold transition',
-              active
-                ? 'bg-white text-slate-900 shadow-sm ring-1 ring-slate-200'
-                : 'text-slate-600 hover:text-slate-900',
-            ].join(' ')}
+            className={['se-segmented-btn', active ? 'se-segmented-btn--active' : ''].join(' ')}
             onClick={() => onChange(option.key)}
           >
             {option.label}
@@ -74,28 +65,17 @@ function OpenDayChartToggle({
   onChange: (next: boolean) => void
 }) {
   return (
-    <div
-      className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs font-semibold text-slate-700"
-      title={EFFICIENCY_CHART_OPEN_DAY_FILTER_TOOLTIP}
-    >
+    <div className="se-control-toggle" title={EFFICIENCY_CHART_OPEN_DAY_FILTER_TOOLTIP}>
       <span>开仓</span>
       <button
         type="button"
         role="switch"
         aria-checked={checked}
         aria-label={EFFICIENCY_CHART_OPEN_DAY_FILTER_TOOLTIP}
-        className={[
-          'relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition',
-          checked ? 'bg-blue-600' : 'bg-slate-300',
-        ].join(' ')}
+        className={['se-switch', checked ? 'se-switch--on' : ''].join(' ')}
         onClick={() => onChange(!checked)}
       >
-        <span
-          className={[
-            'inline-block h-4 w-4 rounded-full bg-white shadow transition',
-            checked ? 'translate-x-[18px]' : 'translate-x-0.5',
-          ].join(' ')}
-        />
+        <span className="se-switch-knob" />
       </button>
     </div>
   )
@@ -186,19 +166,25 @@ export function EfficiencyDailyDetailByDaySection({
   }
 
   return (
-    <section className="space-y-4">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <SectionTitle
-          eyebrow="Attendance Matching"
-          title="效率明细/天"
-          description={description}
-        />
-        <div className="flex flex-wrap items-center gap-2">
-          <OpenDayChartToggle checked={chartOpenDaysOnly} onChange={onChartOpenDaysOnlyChange} />
-          <DimensionToggle value={dimension} onChange={onDimensionChange} />
-        </div>
-      </div>
-      <div className={useStackedLayout ? 'grid gap-4' : 'grid gap-4 xl:grid-cols-[minmax(0,1.05fr)_minmax(320px,0.95fr)] xl:items-start'}>
+    <section className="admin-panel overflow-hidden">
+      <SectionTitle
+        title="效率明细/天"
+        description={description}
+        right={
+          <div className="flex flex-wrap items-center gap-2">
+            <OpenDayChartToggle checked={chartOpenDaysOnly} onChange={onChartOpenDaysOnlyChange} />
+            <DimensionToggle value={dimension} onChange={onDimensionChange} />
+          </div>
+        }
+      />
+      <div
+        className={[
+          'p-4 pt-0',
+          useStackedLayout
+            ? 'grid gap-4'
+            : 'grid gap-4 xl:grid-cols-[minmax(0,1.05fr)_minmax(320px,0.95fr)] xl:items-start',
+        ].join(' ')}
+      >
         <div className={`admin-panel min-w-0 overflow-hidden p-4 sm:p-5 ${useStackedLayout ? '' : 'xl:order-2'}`}>
           <DailyEfficiencyComboChart
             data={chartBubbleData}
@@ -206,7 +192,7 @@ export function EfficiencyDailyDetailByDaySection({
             attendanceDailyRows={attendanceDailyRows}
           />
         </div>
-        <div className={`min-w-0 overflow-x-auto px-4 ${useStackedLayout ? '' : 'xl:order-1'}`}>
+        <div className={`min-w-0 overflow-x-auto ${useStackedLayout ? '' : 'xl:order-1'}`}>
           <EfficiencyDetailDataTable
             dimension={dimension}
             expandedWeekKeys={expandedWeekKeys}
