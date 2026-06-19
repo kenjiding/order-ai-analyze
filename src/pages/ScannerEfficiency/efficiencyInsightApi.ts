@@ -135,6 +135,44 @@ export async function generateScannerInsight(
   return parsed
 }
 
+export async function generateCompareInsight(
+  daySnapshots: ReturnType<typeof import('../EfficiencyAttendanceRecords/compareAnalysis').buildDaySnapshots>,
+  bestDate: string,
+  worstDate: string,
+  efficiencyGapPct: number,
+  aiProvider: EfficiencyInsightAiProvider = 'deepseek',
+): Promise<EfficiencyAiAnalysis> {
+  const response = await fetch(`${getApiBaseUrl()}/api/efficiency-insight`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      tab: 'compare',
+      aiProvider,
+      daySnapshots,
+      bestDate,
+      worstDate,
+      efficiencyGapPct,
+    }),
+  })
+
+  if (!response.ok) {
+    const msg = await response.text()
+    throw new Error(msg || `HTTP ${response.status}`)
+  }
+
+  const data = (await response.json()) as { analysis?: unknown }
+  const analysis = (data?.analysis ?? {}) as Record<string, unknown>
+  const parsed: EfficiencyAiAnalysis = {
+    findings: asStringArray(analysis.findings),
+    suggestions: asStringArray(analysis.suggestions),
+    topPerformers: [],
+  }
+  if (!parsed.findings.length && !parsed.suggestions.length) {
+    throw new Error('AI 返回内容为空')
+  }
+  return parsed
+}
+
 function asStringArray(v: unknown): string[] {
   if (!Array.isArray(v)) return []
   return v.map((x) => String(x ?? '').trim()).filter(Boolean)

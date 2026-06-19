@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Button, Modal, Table, Tag } from 'antd'
+import { Button, Modal, Table, Tag, Tooltip } from 'antd'
 import type { ColumnsType, TableRowSelection } from 'antd/es/table/interface'
-import { Archive, Eye, RefreshCw, Trash2 } from 'lucide-react'
+import { Archive, BarChart2, Eye, RefreshCw, Trash2 } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import {
   deleteDailyEfficiencyRecord,
@@ -16,6 +16,7 @@ import {
 } from '../ScannerEfficiency/dailyEfficiencyRecordSnapshot'
 import { formatInteger, formatNumber } from '../ScannerEfficiency/formatAndParse'
 import { showToast } from '../../utils/toast'
+import { CompareAnalysisDrawer } from './CompareAnalysisDrawer'
 
 type RecordRow = EfficiencyAttendanceDayRecordListItem & { key: string }
 
@@ -52,6 +53,7 @@ export default function EfficiencyAttendanceRecordsPage() {
   const [deletingDate, setDeletingDate] = useState<string | null>(null)
   const [batchDeleting, setBatchDeleting] = useState(false)
   const [selectedRowKeys, setSelectedRowKeys] = useState<string[]>([])
+  const [compareOpen, setCompareOpen] = useState(false)
 
   const loadRecords = useCallback(async () => {
     setLoading(true)
@@ -362,6 +364,23 @@ export default function EfficiencyAttendanceRecordsPage() {
             >
               清空选择
             </Button>
+            <Tooltip
+              title={
+                selectedDates.length < 2
+                  ? '请勾选 2~6 天进行对比'
+                  : selectedDates.length > 6
+                    ? '最多选 6 天'
+                    : undefined
+              }
+            >
+              <Button
+                icon={<BarChart2 className="h-4 w-4" aria-hidden />}
+                disabled={selectedDates.length < 2 || selectedDates.length > 6}
+                onClick={() => setCompareOpen(true)}
+              >
+                对比分析差异
+              </Button>
+            </Tooltip>
             <Button
               type="primary"
               icon={<Eye className="h-4 w-4" aria-hidden />}
@@ -397,6 +416,14 @@ export default function EfficiencyAttendanceRecordsPage() {
           scroll={{ x: 1080 }}
         />
       </section>
+
+      <CompareAnalysisDrawer
+        open={compareOpen}
+        onClose={() => setCompareOpen(false)}
+        records={selectedDates
+          .map((d) => recordByDate.get(d))
+          .filter((r): r is EfficiencyAttendanceDayRecord => r != null)}
+      />
     </div>
   )
 }

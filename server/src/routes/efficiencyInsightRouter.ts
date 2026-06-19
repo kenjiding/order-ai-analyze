@@ -49,7 +49,46 @@ type ScannerInsightPayload = {
   topPerformerCandidates: TopPerformerCandidatePayload[]
 }
 
-type EfficiencyInsightPayload = WarehouseInsightPayload | ScannerInsightPayload
+type PersonnelSnapshotItem = {
+  name: string
+  hours: number
+  role: string
+  isFrontDesk: boolean
+}
+
+type ScannerSnapshotItem = {
+  name: string
+  scanCount: number
+  rawEfficiency: number
+  adjustedEfficiency: number
+  cainiaoShare: number
+}
+
+type DaySnapshot = {
+  date: string
+  dayEfficiency: number | null
+  volume: number
+  totalHours: number
+  sorterCount: number
+  frontDeskHours: number
+  sorterHours: number
+  frontDeskSharePct: number
+  cainiaoShare: number
+  laborCost: number | null
+  personnel: PersonnelSnapshotItem[]
+  scanners: ScannerSnapshotItem[]
+}
+
+type CompareInsightPayload = {
+  tab: 'compare'
+  aiProvider?: AiProvider
+  daySnapshots: DaySnapshot[]
+  bestDate: string
+  worstDate: string
+  efficiencyGapPct: number
+}
+
+type EfficiencyInsightPayload = WarehouseInsightPayload | ScannerInsightPayload | CompareInsightPayload
 
 export type EfficiencyAiAnalysis = {
   findings: string[]
@@ -87,7 +126,43 @@ efficiencyInsightRouter.post('/', async (req: Request, res: Response) => {
   ].join('\n')
 
   let userPrompt: string
-  if (payload.tab === 'warehouse') {
+  if (payload.tab === 'compare') {
+    const { daySnapshots, bestDate, worstDate, efficiencyGapPct } = payload
+    userPrompt = [
+      `请深度分析以下多日效率对比数据，找出导致"总效率"差距（最大差距 ${efficiencyGapPct.toFixed(1)}%）的真实原因，输出 findings（4～6 条：必须结合具体人员名单、工时数字、扫描效率说明问题）和 suggestions（3～5 条：具体可执行的改善措施）。`,
+      `效率最高日：${bestDate}，效率最低日：${worstDate}。`,
+      '',
+      '按日详细数据（含人员构成和扫描员表现）：',
+      JSON.stringify(
+        daySnapshots.map((d) => ({
+          日期: d.date,
+          标注: d.date === bestDate ? '【效率最高日】' : d.date === worstDate ? '【效率最低日】' : '',
+          当日效率_票每小时: formatFixed(d.dayEfficiency),
+          货量_票: d.volume,
+          总工时_小时: formatFixed(d.totalHours),
+          分拣人数: d.sorterCount,
+          分拣员工时_小时: formatFixed(d.sorterHours),
+          前台工时_小时: formatFixed(d.frontDeskHours),
+          前台工时占比_pct: formatFixed(d.frontDeskSharePct * 100, 1),
+          菜鸟占比_pct: formatFixed(d.cainiaoShare * 100, 1),
+          人工成本: d.laborCost != null ? formatFixed(d.laborCost, 0) : null,
+          人员名单: d.personnel.map((p) => ({
+            姓名: p.name,
+            工时: formatFixed(p.hours, 1),
+            角色: p.role,
+            是否前台: p.isFrontDesk,
+          })),
+          分拣员扫描效率: d.scanners.slice(0, 15).map((s) => ({
+            扫描员: s.name,
+            扫描量: s.scanCount,
+            原始效率_票每小时: formatFixed(s.rawEfficiency),
+            修正效率_票每小时: formatFixed(s.adjustedEfficiency),
+            菜鸟占比_pct: formatFixed(s.cainiaoShare * 100, 1),
+          })),
+        })),
+      ),
+    ].join('\n')
+  } else if (payload.tab === 'warehouse') {
     userPrompt = [
       '请分析以下开仓效率 / 总体效率数据，输出 findings（3～5 条：数据亮点或问题）和 suggestions（2～4 条：具体改进建议）：',
       JSON.stringify({

@@ -664,6 +664,7 @@ export function buildScannerEfficiency(rows: ParsedScanRow[], settings: ScanSett
     date: string
     scanner: string
     scanCount: number
+    cainiaoScanCount: number
     sessionCount: number
     effectiveMinutes: number
     effectiveHours: number
@@ -701,11 +702,13 @@ export function buildScannerEfficiency(rows: ParsedScanRow[], settings: ScanSett
       group.records[0].scanTime,
     )
     const efficiency = effectiveMinutes > 0 ? scanCount / (effectiveMinutes / 60) : 0
+    const cainiaoScanCount = group.records.filter((r) => isCainiaoWaybill(r.trackingNumber)).length
 
     const dailyRow = {
       date: group.date,
       scanner: group.scanner,
       scanCount,
+      cainiaoScanCount,
       sessionCount: sessions.length,
       effectiveMinutes,
       effectiveHours: effectiveMinutes / 60,

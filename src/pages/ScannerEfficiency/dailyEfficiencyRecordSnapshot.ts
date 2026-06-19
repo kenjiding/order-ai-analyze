@@ -162,6 +162,8 @@ export type DailyEfficiencyRestoreState = EfficiencyAttendancePageRestore
 
 const SCANNER_RELIABILITY_BASE_SCAN_COUNT = 1100
 const SCANNER_RELIABILITY_BASE_EFFECTIVE_HOURS = 2.35
+/** 与 aggregates.ts 保持一致：菜鸟件相对普通件的分拣难度比率 */
+const CAINIAO_DIFFICULTY_RATIO = 0.75
 
 function round2(value: number): number {
   return Math.round(value * 100) / 100
@@ -214,7 +216,13 @@ function buildScannerTotalRowsForDay(
 ): ScannerEfficiencyResult['scannerTotalRows'] {
   const byScanner = new Map<
     string,
-    { scanner: string; scanCount: number; effectiveMinutes: number; activeDateSet: Set<string> }
+    {
+      scanner: string
+      scanCount: number
+      cainiaoScanCount: number
+      effectiveMinutes: number
+      activeDateSet: Set<string>
+    }
   >()
 
   for (const row of dailyScannerRows) {
@@ -222,15 +230,26 @@ function buildScannerTotalRowsForDay(
       byScanner.set(row.scanner, {
         scanner: row.scanner,
         scanCount: 0,
+        cainiaoScanCount: 0,
         effectiveMinutes: 0,
         activeDateSet: new Set(),
       })
     }
     const item = byScanner.get(row.scanner)!
     item.scanCount += row.scanCount
+    item.cainiaoScanCount += row.cainiaoScanCount ?? 0
     item.effectiveMinutes += row.effectiveMinutes
     item.activeDateSet.add(row.date)
   }
+
+  let totalScanCountAll = 0
+  let totalCainiaoCountAll = 0
+  byScanner.forEach((item) => {
+    totalScanCountAll += item.scanCount
+    totalCainiaoCountAll += item.cainiaoScanCount
+  })
+  const cainiaoShareTeam = totalScanCountAll > 0 ? totalCainiaoCountAll / totalScanCountAll : 0
+  const difficultyTeam = 1 - (1 - CAINIAO_DIFFICULTY_RATIO) * cainiaoShareTeam
 
   return Array.from(byScanner.values())
     .map((item) => {
@@ -242,22 +261,29 @@ function buildScannerTotalRowsForDay(
       const hourWeight = Math.min(avgDailyEffectiveHours / SCANNER_RELIABILITY_BASE_EFFECTIVE_HOURS, 1)
       const reliabilityWeight = scanWeight * hourWeight
       const adjustedEfficiency = efficiency * reliabilityWeight + windowTotalEfficiency * (1 - reliabilityWeight)
+
+      const cainiaoScanCount = item.cainiaoScanCount
+      const cainiaoShare = item.scanCount > 0 ? cainiaoScanCount / item.scanCount : 0
+      const difficultyI = 1 - (1 - CAINIAO_DIFFICULTY_RATIO) * cainiaoShare
+      const rawFactor = difficultyTeam > 0 ? difficultyI / difficultyTeam : 1
+      const cainiaoCorrectionFactor = Math.max(0.80, Math.min(1.20, rawFactor))
+      const cainiaoAdjustedEfficiency = adjustedEfficiency * cainiaoCorrectionFactor
+
       return {
         scanner: item.scanner,
         scanCount: item.scanCount,
-        cainiaoScanCount: 0,
-        cainiaoShare: 0,
-        cainiaoCorrectionFactor: 1,
+        cainiaoScanCount,
+        cainiaoShare,
+        cainiaoCorrectionFactor,
         activeDays,
         effectiveHours: round4(effectiveHours),
         efficiency: round2(efficiency),
         reliabilityWeight: round4(reliabilityWeight),
         adjustedEfficiency: round2(adjustedEfficiency),
-        // 快照无运单级菜鸟标记，修正效率退化为可靠度修正效率
-        cainiaoAdjustedEfficiency: round2(adjustedEfficiency),
+        cainiaoAdjustedEfficiency: round2(cainiaoAdjustedEfficiency),
       }
     })
-    .sort((a, b) => b.adjustedEfficiency - a.adjustedEfficiency)
+    .sort((a, b) => b.cainiaoAdjustedEfficiency - a.cainiaoAdjustedEfficiency)
 }
 
 function buildPersonRowsFromPersonDayRows(
