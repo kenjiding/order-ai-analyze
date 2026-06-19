@@ -15,7 +15,7 @@ export function OrderExceptionManagementHeader({
   activeJobCount,
 }: Props) {
   const tabItems: PageSectionTabItem[] = [
-    { id: 'analyze', label: '异常订单分析', icon: PackageSearch },
+    { id: 'analyze', label: 'AI异常订单分析', icon: PackageSearch },
     {
       id: 'jobs',
       label: '任务队列',
@@ -33,7 +33,7 @@ export function OrderExceptionManagementHeader({
             <div className="admin-eyebrow">Exception Operations</div>
             <h2 className="mt-1 flex items-center gap-2 text-xl font-semibold tracking-tight text-slate-950">
               <PackageSearch className="h-5 w-5 text-[#2f8f87]" aria-hidden />
-              订单异常管理
+              AI订单异常管理
             </h2>
           </div>
         </div>

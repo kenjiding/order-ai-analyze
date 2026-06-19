@@ -448,6 +448,14 @@ export function buildScannerTotalEfficiencyColumns(): DataTableColumn[] {
           : formatInteger(Number(row.scanCount)),
     },
     {
+      key: 'cainiaoShare',
+      title: '菜鸟占比',
+      render: (row: DataTableRow) => {
+        if (row.cainiaoShare == null) return '—'
+        return formatCainiaoSharePercent(Number(row.cainiaoShare))
+      },
+    },
+    {
       key: 'totalHours',
       title: '总工时(小时)',
       render: (row: DataTableRow) => {
@@ -456,15 +464,16 @@ export function buildScannerTotalEfficiencyColumns(): DataTableColumn[] {
       },
     },
     {
-      key: 'totalEfficiency',
+      key: 'cainiaoAdjustedTotalEfficiency',
       title: '总效率(票/小时)',
       render: (row: DataTableRow) => {
-        if (row.totalEfficiency == null) return '—'
-        const v = Number(row.totalEfficiency)
-        const low = !row.isTableAverageRow && isScannerTotalEfficiencyLow(v)
+        const v = row.cainiaoAdjustedTotalEfficiency ?? row.totalEfficiency
+        if (v == null) return '—'
+        const num = Number(v)
+        const low = !row.isTableAverageRow && isScannerTotalEfficiencyLow(num)
         return (
           <span className={low ? SCANNER_EFFICIENCY_TABLE_LOW_CLASS : SCANNER_EFFICIENCY_TABLE_NORMAL_CLASS}>
-            {formatNumber(v, 2)}
+            {formatNumber(num, 2)}
           </span>
         )
       },
@@ -484,6 +493,14 @@ export function buildScannerPersonColumns(): DataTableColumn[] {
           : formatInteger(Number(row.scanCount)),
     },
     {
+      key: 'cainiaoShare',
+      title: '菜鸟占比',
+      render: (row: DataTableRow) => {
+        if (row.cainiaoShare == null) return '—'
+        return formatCainiaoSharePercent(Number(row.cainiaoShare))
+      },
+    },
+    {
       key: 'activeDays',
       title: '活跃天数',
       render: (row: DataTableRow) =>
@@ -496,21 +513,17 @@ export function buildScannerPersonColumns(): DataTableColumn[] {
       title: '一级分拣有效工时',
       render: (row: DataTableRow) => formatNumber(Number(row.effectiveHours), 2),
     },
-    // {
-    //   key: 'efficiency',
-    //   title: '总效率(票/小时)',
-    //   render: (row: DataTableRow) => formatNumber(Number(row.efficiency), 2),
-    // },
     {
-      key: 'adjustedEfficiency',
+      key: 'cainiaoAdjustedEfficiency',
       title: '修正效率(票/小时)',
       render: (row: DataTableRow) => {
-        if (row.adjustedEfficiency == null && row.isTableAverageRow) return '—'
-        const v = Number(row.adjustedEfficiency)
-        const low = !row.isTableAverageRow && isScannerAdjustedEfficiencyLow(v)
+        const v = row.cainiaoAdjustedEfficiency ?? row.adjustedEfficiency
+        if (v == null && row.isTableAverageRow) return '—'
+        const num = Number(v)
+        const low = !row.isTableAverageRow && isScannerAdjustedEfficiencyLow(num)
         return (
           <span className={low ? SCANNER_EFFICIENCY_TABLE_LOW_CLASS : SCANNER_EFFICIENCY_TABLE_NORMAL_CLASS}>
-            {formatNumber(v, 2)}
+            {formatNumber(num, 2)}
           </span>
         )
       },

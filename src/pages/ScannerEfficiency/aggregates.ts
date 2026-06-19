@@ -13,6 +13,13 @@ const padHour = (n: number) => String(n).padStart(2, '0')
 const SCANNER_RELIABILITY_BASE_SCAN_COUNT = 1100
 const SCANNER_RELIABILITY_BASE_EFFECTIVE_HOURS = 2.35
 
+/**
+ * 菜鸟件相对普通件的分拣难度比率（0~1）。
+ * 0.75 表示菜鸟件仅需普通件 75% 的时间/精力，差值 0.25 即为"难度折扣幅度"。
+ * 该值用于按菜鸟占比对扫描员效率做难度归一化修正。
+ */
+const CAINIAO_DIFFICULTY_RATIO = 0.75
+
 /** 自然小时区间标签，与 dayjs 本地时区一致；23 点为 23:00–24:00。 */
 export const scannerHourSlotLabel = (hour: number): string => {
   if (!Number.isFinite(hour) || hour < 0 || hour > 23) return ''
@@ -673,7 +680,7 @@ export function buildScannerEfficiency(rows: ParsedScanRow[], settings: ScanSett
   >()
   const scannerTotalMap = new Map<
     string,
-    { scanner: string; scanCount: number; effectiveMinutes: number; activeDateSet: Set<string> }
+    { scanner: string; scanCount: number; cainiaoCount: number; effectiveMinutes: number; activeDateSet: Set<string> }
   >()
 
   dailyScannerMap.forEach((group) => {
@@ -729,6 +736,7 @@ export function buildScannerEfficiency(rows: ParsedScanRow[], settings: ScanSett
       scannerTotalMap.set(group.scanner, {
         scanner: group.scanner,
         scanCount: 0,
+        cainiaoCount: 0,
         effectiveMinutes: 0,
         activeDateSet: new Set(),
       })
@@ -736,6 +744,7 @@ export function buildScannerEfficiency(rows: ParsedScanRow[], settings: ScanSett
 
     const scannerTotal = scannerTotalMap.get(group.scanner)!
     scannerTotal.scanCount += scanCount
+    scannerTotal.cainiaoCount += group.records.filter((r) => isCainiaoWaybill(r.trackingNumber)).length
     scannerTotal.effectiveMinutes += effectiveMinutes
     scannerTotal.activeDateSet.add(group.date)
   })
@@ -754,6 +763,18 @@ export function buildScannerEfficiency(rows: ParsedScanRow[], settings: ScanSett
   const totalEffectiveHours = dailySummaryRows.reduce((sum, row) => sum + row.effectiveHours, 0)
   const totalEfficiency = totalEffectiveHours > 0 ? totalScanCount / totalEffectiveHours : 0
 
+  // Step 1: 计算团队整体菜鸟占比（以各扫描员扫描量为权重的加权均值）
+  let totalScanCountAll = 0
+  let totalCainiaoCountAll = 0
+  scannerTotalMap.forEach((item) => {
+    totalScanCountAll += item.scanCount
+    totalCainiaoCountAll += item.cainiaoCount
+  })
+  const cainiaoShareTeam = totalScanCountAll > 0 ? totalCainiaoCountAll / totalScanCountAll : 0
+  // 团队平均难度指数：菜鸟件按 CAINIAO_DIFFICULTY_RATIO 折算难度
+  const difficultyTeam = 1 - (1 - CAINIAO_DIFFICULTY_RATIO) * cainiaoShareTeam
+
+  // Step 2: 按个人菜鸟占比计算难度修正因子，并得到菜鸟修正后的效率
   const scannerTotalRows = Array.from(scannerTotalMap.values())
     .map((item) => {
       const effectiveHours = item.effectiveMinutes / 60
@@ -765,17 +786,31 @@ export function buildScannerEfficiency(rows: ParsedScanRow[], settings: ScanSett
       const hourWeight = Math.min(avgDailyEffectiveHours / SCANNER_RELIABILITY_BASE_EFFECTIVE_HOURS, 1)
       const reliabilityWeight = scanWeight * hourWeight
       const adjustedEfficiency = efficiency * reliabilityWeight + totalEfficiency * (1 - reliabilityWeight)
+
+      // 菜鸟难度归一化修正
+      const cainiaoScanCount = item.cainiaoCount
+      const cainiaoShare = item.scanCount > 0 ? cainiaoScanCount / item.scanCount : 0
+      const difficultyI = 1 - (1 - CAINIAO_DIFFICULTY_RATIO) * cainiaoShare
+      const rawFactor = difficultyTeam > 0 ? difficultyI / difficultyTeam : 1
+      // 软限制 ±20%，防止极端菜鸟占比差异引起过度修正
+      const cainiaoCorrectionFactor = Math.max(0.80, Math.min(1.20, rawFactor))
+      const cainiaoAdjustedEfficiency = adjustedEfficiency * cainiaoCorrectionFactor
+
       return {
         scanner: item.scanner,
         scanCount: item.scanCount,
+        cainiaoScanCount,
+        cainiaoShare,
+        cainiaoCorrectionFactor,
         activeDays,
         effectiveHours,
         efficiency,
         reliabilityWeight,
         adjustedEfficiency,
+        cainiaoAdjustedEfficiency,
       }
     })
-    .sort((a, b) => b.adjustedEfficiency - a.adjustedEfficiency)
+    .sort((a, b) => b.cainiaoAdjustedEfficiency - a.cainiaoAdjustedEfficiency)
 
   return {
     dailyScannerRows: dailyScannerRows.sort((a, b) => {

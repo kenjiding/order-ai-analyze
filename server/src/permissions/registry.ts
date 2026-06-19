@@ -74,6 +74,13 @@ export const PERMISSION_REGISTRY: PermissionDefinition[] = [
     sortOrder: 412,
   },
   {
+    key: 'btn:push-notifications:order-exception',
+    type: 'button',
+    label: '订单异常分析推送',
+    menuKey: 'push-notifications',
+    sortOrder: 413,
+  },
+  {
     key: 'btn:warehouse-safety:export',
     type: 'button',
     label: '导出检查表',

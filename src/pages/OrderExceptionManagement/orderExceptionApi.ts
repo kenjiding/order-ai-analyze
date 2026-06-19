@@ -5,6 +5,7 @@ const JSON_HEADERS = { 'Content-Type': 'application/json' } as const
 
 const orderExceptionApi = `${getApiBaseUrl()}/api/order-exception`
 const jobsApi = `${getApiBaseUrl()}/api/jobs`
+const feishuWebhookApi = `${getApiBaseUrl()}/api/feishu-webhook`
 
 async function readHttpError(res: Response, text: string): Promise<string> {
   try {
@@ -445,4 +446,38 @@ export async function cancelJobApi(jobId: string): Promise<PublicJob> {
   if (!res.ok) throw new Error(await readHttpError(res, text))
   const parsed = JSON.parse(text) as { job: PublicJob }
   return parsed.job
+}
+
+export type OrderExceptionPushRow = {
+  lossScope: string
+  categoryName: string
+  currentResponsibilityParty: string
+  confidence: string
+}
+
+export type OrderExceptionPushResult = {
+  ok: boolean
+  aiSummaryGenerated?: boolean
+  aiError?: string
+  httpStatus?: number
+  feishu?: unknown
+  error?: string
+}
+
+export async function postFeishuPushOrderException(payload: {
+  pushScope: 'order-exception'
+  webhookUrl: string
+  signingSecret?: string
+  rows: OrderExceptionPushRow[]
+  analysisDate: string
+  aiProvider: 'deepseek' | 'openai'
+}): Promise<OrderExceptionPushResult> {
+  const res = await fetch(`${feishuWebhookApi}/push-order-exception`, {
+    method: 'POST',
+    headers: JSON_HEADERS,
+    body: JSON.stringify(payload),
+  })
+  const text = await res.text()
+  if (!res.ok) throw new Error(await readHttpError(res, text))
+  return JSON.parse(text) as OrderExceptionPushResult
 }

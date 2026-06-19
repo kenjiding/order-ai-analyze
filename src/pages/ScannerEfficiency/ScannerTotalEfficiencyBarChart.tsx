@@ -22,14 +22,14 @@ export default function ScannerTotalEfficiencyBarChart({ rows, className }: Prop
   const chartRows = useMemo(
     () =>
       rows.filter(
-        (row): row is ScannerTotalEfficiencyRow & { totalEfficiency: number } =>
-          row.totalEfficiency != null && Number.isFinite(row.totalEfficiency),
+        (row): row is ScannerTotalEfficiencyRow & { cainiaoAdjustedTotalEfficiency: number } =>
+          row.cainiaoAdjustedTotalEfficiency != null && Number.isFinite(row.cainiaoAdjustedTotalEfficiency),
       ),
     [rows],
   )
 
   const rowsKey = useMemo(
-    () => chartRows.map((r) => `${r.scanner}\t${r.totalEfficiency}`).join('|'),
+    () => chartRows.map((r) => `${r.scanner}\t${r.cainiaoAdjustedTotalEfficiency}`).join('|'),
     [chartRows],
   )
 
@@ -40,7 +40,7 @@ export default function ScannerTotalEfficiencyBarChart({ rows, className }: Prop
 
     const data = chartRows.map((r) => ({
       ...r,
-      totalEfficiency: Number(r.totalEfficiency.toFixed(2)),
+      cainiaoAdjustedTotalEfficiency: Number(r.cainiaoAdjustedTotalEfficiency.toFixed(2)),
     }))
 
     const chart = new Chart({
@@ -62,7 +62,7 @@ export default function ScannerTotalEfficiencyBarChart({ rows, className }: Prop
     })
 
     chart.axis('y', {
-      title: '总效率（票/小时）',
+      title: '总效率（票/小时，含菜鸟修正）',
       grid: true,
       gridLineDash: [4, 4],
       gridStroke: '#e2e8f0',
@@ -75,9 +75,9 @@ export default function ScannerTotalEfficiencyBarChart({ rows, className }: Prop
       .coordinate({ transform: [{ type: 'transpose' }] })
       .data(data)
       .encode('x', 'scanner')
-      .encode('y', 'totalEfficiency')
+      .encode('y', 'cainiaoAdjustedTotalEfficiency')
       .style('fill', (d: (typeof data)[number]) =>
-        isScannerTotalEfficiencyLow(d.totalEfficiency) ? FILL_LOW : FILL_NORMAL,
+        isScannerTotalEfficiencyLow(d.cainiaoAdjustedTotalEfficiency) ? FILL_LOW : FILL_NORMAL,
       )
       .style('fillOpacity', 0.88)
 

@@ -15,6 +15,7 @@ import type { AnalysisRow, AnalyzeProgress, ImportedAnalyzeOrders, SubmittedJobB
 import type { PostFilterConfig } from '../postFilter/types'
 import { AnalyzeProgressStrip } from './AnalyzeProgressStrip'
 import { OrderAnalysisDetailDrawer } from './OrderAnalysisDetailDrawer'
+import { OrderExceptionPushSection } from './OrderExceptionPushSection'
 import { PostFilterConfigSection } from './PostFilterConfigSection'
 
 type Row = AnalysisRow
@@ -318,6 +319,8 @@ function buildColumns(
     },
   ]
 }
+
+const ANALYSIS_RESULTS_MAX_HEIGHT_PX = 600
 
 const ANALYZE_MODEL_OPTIONS: { value: OrderAnalyzeAiProvider; label: string }[] = [
   { value: 'deepseek', label: 'DeepSeek' },
@@ -712,22 +715,23 @@ export function AnalysisTabContent({
               onGoToJobs={onGoToJobsTab}
             />
           ) : null}
-          <div className="mt-4 flex items-start gap-0">
+          {analyzeProgress ? (
+            <div className="mt-4">
+              <AnalyzeProgressStrip
+                progress={analyzeProgress}
+                isAnalyzing={isAnalyzing}
+                incrementalResults={!batchAnalyze}
+              />
+            </div>
+          ) : null}
+          <div className="mt-4 flex items-stretch gap-0">
             <div className="min-w-0 flex-1 pr-[10px]">
-              {analyzeProgress ? (
-                <div className="mb-4">
-                  <AnalyzeProgressStrip
-                    progress={analyzeProgress}
-                    isAnalyzing={isAnalyzing}
-                    incrementalResults={!batchAnalyze}
-                  />
-                </div>
-              ) : null}
               <DataTable
                 columns={columns}
                 rows={tableRows}
                 emptyText="暂无结果，填写订单号并点击开始分析。"
                 boundedScroll
+                boundedScrollMaxHeight={ANALYSIS_RESULTS_MAX_HEIGHT_PX}
               />
             </div>
             <PostFilterConfigSection
@@ -735,10 +739,23 @@ export function AnalysisTabContent({
               applied={appliedPostFilter}
               onChange={onPostFilterDraftChange}
               onApply={onRunPostFilter}
+              maxHeight={ANALYSIS_RESULTS_MAX_HEIGHT_PX}
             />
           </div>
         </section>
       ) : null}
+
+      {exportableRows.length > 0 && (
+        <OrderExceptionPushSection
+          doneRows={exportableRows.map((r) => ({
+            lossScope: r.lossScope ?? '',
+            categoryName: r.categoryName ?? '',
+            currentResponsibilityParty: r.currentResponsibilityParty ?? '',
+            confidence: r.confidence ?? '',
+          }))}
+          analysisDate={new Date().toISOString().slice(0, 10)}
+        />
+      )}
 
       <OrderAnalysisDetailDrawer row={detailRow} onClose={() => setDetailRow(null)} />
     </div>

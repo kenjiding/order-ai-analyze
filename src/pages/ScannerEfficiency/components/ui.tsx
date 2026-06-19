@@ -126,6 +126,8 @@ type DataTableProps = {
   emptyText: string
   /** 限制表格区域高度并在内部滚动（适合按月等长列表）；表头 sticky */
   boundedScroll?: boolean
+  /** 与 boundedScroll 联用，覆盖默认 max-height（px） */
+  boundedScrollMaxHeight?: number
   /** 行是否可展开（如周汇总行） */
   isRowExpandable?: (row: DataTableRow) => boolean
   isRowExpanded?: (row: DataTableRow) => boolean
@@ -178,6 +180,7 @@ export function DataTable({
   rows,
   emptyText,
   boundedScroll,
+  boundedScrollMaxHeight,
   isRowExpandable,
   isRowExpanded,
   getExpandedChildRows,
@@ -197,6 +200,7 @@ export function DataTable({
         'data-table admin-panel',
         boundedScroll ? 'data-table--bounded' : 'overflow-x-auto',
       ].join(' ')}
+      style={boundedScroll && boundedScrollMaxHeight != null ? { maxHeight: boundedScrollMaxHeight } : undefined}
     >
       <table className="admin-table">
         <thead>

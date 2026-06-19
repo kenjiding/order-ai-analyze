@@ -18,11 +18,12 @@ import {
   type PushPageTabKey,
 } from '../../permissions/pushNotificationAccess'
 
-type WarehousePushTabKey = 'warehouse_efficiency' | 'attendance_scheduling'
+type WarehousePushTabKey = 'warehouse_efficiency' | 'attendance_scheduling' | 'order_exception'
 
 const WAREHOUSE_PUSH_TAB_KIND: Record<WarehousePushTabKey, FeishuPushKind> = {
   warehouse_efficiency: 'sort_efficiency',
   attendance_scheduling: 'attendance_scheduling',
+  order_exception: 'order_exception',
 }
 
 function truncateMiddle(s: string, maxChars: number): string {
@@ -32,7 +33,7 @@ function truncateMiddle(s: string, maxChars: number): string {
 }
 
 function isWarehousePushTabKey(key: PushPageTabKey): key is WarehousePushTabKey {
-  return key === 'warehouse_efficiency' || key === 'attendance_scheduling'
+  return key === 'warehouse_efficiency' || key === 'attendance_scheduling' || key === 'order_exception'
 }
 
 export default function PushNotificationsPage() {
@@ -343,6 +344,16 @@ export default function PushNotificationsPage() {
               webhookColumns={buildColumns(false, hasPermission(feature.permissionKey))}
               onOpenCreate={() => openCreateModal('attendance_scheduling')}
             />
+          ),
+        }
+      }
+      if (feature.tabKey === 'order_exception') {
+        return {
+          key: feature.tabKey,
+          label: feature.label,
+          children: renderWarehousePushTab(
+            'order_exception',
+            '配置订单异常分析结果推送目标；在「AI订单异常管理」完成分析后，可一键推送 AI 总结卡片到此处配置的飞书群。',
           ),
         }
       }

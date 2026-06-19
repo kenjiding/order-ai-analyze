@@ -15,6 +15,12 @@ import {
   splitFeishuWebhookTextChunks,
 } from '../sortEfficiencyFeishuAnalysis'
 import { upsertFeishuPushSnapshot } from '../feishu/pushSnapshotRepository'
+import {
+  buildOrderExceptionFeishuCard,
+  buildOrderExceptionPushStats,
+  generateOrderExceptionFeishuSummary,
+  type OrderExceptionPushRow,
+} from '../orderExceptionFeishuAnalysis'
 
 export const feishuWebhookTestRouter = Router()
 
@@ -458,5 +464,74 @@ feishuWebhookTestRouter.post('/push-image', async (req: AuthenticatedRequest, re
       aiAnalysisGenerated,
       aiAnalysisError,
     })
+  }
+})
+
+type PushOrderExceptionBody = {
+  pushScope?: unknown
+  webhookUrl?: unknown
+  signingSecret?: unknown
+  /** 已完成分析的行（done 状态），从前端过滤后传入 */
+  rows?: unknown
+  analysisDate?: unknown
+  /** 'deepseek' | 'openai'，默认 deepseek */
+  aiProvider?: unknown
+}
+
+/** 订单异常分析结果推送：AI 总结 + 富文本卡片 */
+feishuWebhookTestRouter.post('/push-order-exception', async (req: AuthenticatedRequest, res: Response) => {
+  if (!requirePushApiScope(req, res)) return
+
+  const body = req.body as PushOrderExceptionBody
+  let webhookHref: string
+  try {
+    webhookHref = parseSafeWebhookUrl(body.webhookUrl).href
+  } catch {
+    res.status(400).json({ ok: false, error: '仅允许访问飞书开放平台官方 webhook 地址（HTTPS，open.feishu.cn/open-apis/bot/v2/hook/…）。' })
+    return
+  }
+
+  if (!Array.isArray(body.rows) || body.rows.length === 0) {
+    res.status(400).json({ ok: false, error: '缺少分析结果数据（rows 为空）' })
+    return
+  }
+
+  const secretRaw = body.signingSecret
+  const secret = typeof secretRaw === 'string' && secretRaw.trim() !== '' ? secretRaw.trim() : undefined
+  const analysisDate = typeof body.analysisDate === 'string' && body.analysisDate
+    ? body.analysisDate
+    : new Date().toISOString().slice(0, 10)
+  const aiProvider = body.aiProvider === 'openai' ? 'openai' : 'deepseek'
+
+  const rows = (body.rows as unknown[]).map((r) => {
+    const o = (r && typeof r === 'object' ? r : {}) as Record<string, unknown>
+    return {
+      lossScope: String(o.lossScope ?? ''),
+      categoryName: String(o.categoryName ?? ''),
+      currentResponsibilityParty: String(o.currentResponsibilityParty ?? ''),
+      confidence: String(o.confidence ?? ''),
+    } satisfies OrderExceptionPushRow
+  })
+
+  const stats = buildOrderExceptionPushStats(rows, analysisDate)
+
+  const aiResult = await generateOrderExceptionFeishuSummary(stats, aiProvider)
+  const aiSummary = aiResult.ok ? aiResult.text : null
+  const aiError = aiResult.ok ? undefined : aiResult.error
+
+  const card = buildOrderExceptionFeishuCard(stats, aiSummary)
+
+  const payload: Record<string, unknown> = { msg_type: 'interactive', card }
+  if (secret) await appendWebhookSign(payload, secret)
+
+  try {
+    const r = await postWebhookJson(webhookHref, payload)
+    if (!r.ok) {
+      res.status(502).json({ ok: false, error: '飞书 webhook 卡片消息发送失败。', httpStatus: r.httpStatus, feishu: r.feishu })
+      return
+    }
+    res.status(200).json({ ok: true, httpStatus: r.httpStatus, feishu: r.feishu, aiSummaryGenerated: Boolean(aiSummary), aiError })
+  } catch {
+    res.status(502).json({ ok: false, error: '推送卡片时发生网络错误，请稍后重试。' })
   }
 })

@@ -1,5 +1,11 @@
 import { Tabs, Tooltip } from 'antd'
-import { useMemo, type ReactNode } from 'react'
+import { useCallback, useMemo, useState, type ReactNode } from 'react'
+import {
+  generateWarehouseInsight,
+  generateScannerInsight,
+  type EfficiencyAiAnalysis,
+  type EfficiencyInsightAiProvider,
+} from '../efficiencyInsightApi'
 import type { ScannerLevel1FeishuPush } from '../useScannerLevel1FeishuPush'
 import { TAB_KEYS, type TabKey } from '../constants'
 import DailyTrendLineChart from '../DailyTrendLineChart'
@@ -13,6 +19,7 @@ import ScannerEfficiencyPushSection from './ScannerEfficiencyPushSection'
 import { ScannerPersonSortingHourlySection } from './ScannerPersonSortingHourlySection'
 import { ScannerPersonSortingSummarySection } from './ScannerPersonSortingSummarySection'
 import { ScannerPersonTotalEfficiencySection } from './ScannerPersonTotalEfficiencySection'
+import { EfficiencyAiInsightBlock } from './EfficiencyAiInsightBlock'
 import type { ScannerEfficiencyViewModel } from '../useScannerEfficiencyPage'
 import { DataTable, LoadingPanel, Metric, SectionTitle } from './ui'
 
@@ -22,6 +29,44 @@ type Props = {
 }
 
 export default function ScannerEfficiencyBody({ vm, level1Push }: Props) {
+  // AI 分析状态提升到此处，切换 tab 不会重置
+  const [warehouseAiProvider, setWarehouseAiProvider] = useState<EfficiencyInsightAiProvider>('deepseek')
+  const [warehouseLoading, setWarehouseLoading] = useState(false)
+  const [warehouseError, setWarehouseError] = useState('')
+  const [warehouseAnalysis, setWarehouseAnalysis] = useState<EfficiencyAiAnalysis | null>(null)
+
+  const [scannerAiProvider, setScannerAiProvider] = useState<EfficiencyInsightAiProvider>('deepseek')
+  const [scannerLoading, setScannerLoading] = useState(false)
+  const [scannerError, setScannerError] = useState('')
+  const [scannerAnalysis, setScannerAnalysis] = useState<EfficiencyAiAnalysis | null>(null)
+
+  const handleWarehouseGenerate = useCallback(async () => {
+    if (!vm.attendanceResult) return
+    setWarehouseLoading(true)
+    setWarehouseError('')
+    try {
+      const result = await generateWarehouseInsight(vm.attendanceResult, warehouseAiProvider)
+      setWarehouseAnalysis(result)
+    } catch (err) {
+      setWarehouseError(err instanceof Error ? err.message : 'AI 分析失败，请稍后重试。')
+    } finally {
+      setWarehouseLoading(false)
+    }
+  }, [vm.attendanceResult, warehouseAiProvider])
+
+  const handleScannerGenerate = useCallback(async () => {
+    if (!vm.scannerResult) return
+    setScannerLoading(true)
+    setScannerError('')
+    try {
+      const result = await generateScannerInsight(vm.scannerResult, scannerAiProvider, vm.scannerTotalEfficiencyRows)
+      setScannerAnalysis(result)
+    } catch (err) {
+      setScannerError(err instanceof Error ? err.message : 'AI 分析失败，请稍后重试。')
+    } finally {
+      setScannerLoading(false)
+    }
+  }, [vm.scannerResult, vm.scannerTotalEfficiencyRows, scannerAiProvider])
   const {
     attendanceTableCaptureRef,
     attendanceChartCaptureRef,
@@ -180,6 +225,18 @@ export default function ScannerEfficiencyBody({ vm, level1Push }: Props) {
           )}
 
           {/* 开仓效率 / 总体效率 */}
+          {hasScanData && activeTab === TAB_KEYS.WAREHOUSE && attendanceResult && (
+            <EfficiencyAiInsightBlock
+              tab="warehouse"
+              aiProvider={warehouseAiProvider}
+              onProviderChange={setWarehouseAiProvider}
+              loading={warehouseLoading}
+              error={warehouseError}
+              analysis={warehouseAnalysis}
+              onGenerate={handleWarehouseGenerate}
+            />
+          )}
+
           {hasScanData && activeTab === TAB_KEYS.WAREHOUSE && (
             <section className="admin-panel overflow-hidden space-y-0">
               <SectionTitle
@@ -254,6 +311,15 @@ export default function ScannerEfficiencyBody({ vm, level1Push }: Props) {
           {/* 分拣员个人效率 */}
           {hasScanData && activeTab === TAB_KEYS.SCANNER && scannerResult && (
             <>
+              <EfficiencyAiInsightBlock
+                tab="scanner"
+                aiProvider={scannerAiProvider}
+                onProviderChange={setScannerAiProvider}
+                loading={scannerLoading}
+                error={scannerError}
+                analysis={scannerAnalysis}
+                onGenerate={handleScannerGenerate}
+              />
               <section className="admin-panel overflow-hidden">
                 <SectionTitle
                   title="一级分拣效率（按日合计）"

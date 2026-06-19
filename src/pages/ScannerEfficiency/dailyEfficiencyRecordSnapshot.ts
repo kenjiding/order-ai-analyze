@@ -245,11 +245,16 @@ function buildScannerTotalRowsForDay(
       return {
         scanner: item.scanner,
         scanCount: item.scanCount,
+        cainiaoScanCount: 0,
+        cainiaoShare: 0,
+        cainiaoCorrectionFactor: 1,
         activeDays,
         effectiveHours: round4(effectiveHours),
         efficiency: round2(efficiency),
         reliabilityWeight: round4(reliabilityWeight),
         adjustedEfficiency: round2(adjustedEfficiency),
+        // 快照无运单级菜鸟标记，修正效率退化为可靠度修正效率
+        cainiaoAdjustedEfficiency: round2(adjustedEfficiency),
       }
     })
     .sort((a, b) => b.adjustedEfficiency - a.adjustedEfficiency)

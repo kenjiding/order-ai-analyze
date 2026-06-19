@@ -74,5 +74,6 @@ export const PERMISSION_KEYS = {
   btnPushNotificationsWarehouseEfficiency: 'btn:push-notifications:warehouse-efficiency',
   btnPushNotificationsAttendanceScheduling: 'btn:push-notifications:attendance-scheduling',
   btnPushNotificationsFleetSupplier: 'btn:push-notifications:fleet-supplier',
+  btnPushNotificationsOrderException: 'btn:push-notifications:order-exception',
   btnWarehouseSafetyExport: 'btn:warehouse-safety:export',
 } as const

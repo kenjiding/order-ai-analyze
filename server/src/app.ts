@@ -10,6 +10,7 @@ import { newMerchantRouter } from './routes/newMerchantRouter'
 import { orderExceptionRouter } from './routes/orderExceptionRouter'
 import { scannerEfficiencyRouter } from './routes/scannerEfficiencyRouter'
 import { weeklyReportInsightRouter } from './routes/weeklyReportInsightRouter'
+import { efficiencyInsightRouter } from './routes/efficiencyInsightRouter'
 import { jobsRouter } from './routes/jobsRouter'
 
 const app = express()
@@ -47,6 +48,7 @@ app.use('/api/order-exception', requireAuth, orderExceptionRouter)
 app.use('/api/scanner-efficiency', requireAuth, scannerEfficiencyRouter)
 app.use('/api/new-merchant', requireAuth, newMerchantRouter)
 app.use('/api/weekly-report-insight', requireAuth, weeklyReportInsightRouter)
+app.use('/api/efficiency-insight', requireAuth, efficiencyInsightRouter)
 app.use('/api/jobs', jobsRouter)
 app.use('/api/feishu-webhook', requireAuth, feishuWebhookTestRouter)
 

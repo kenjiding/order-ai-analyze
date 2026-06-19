@@ -448,3 +448,240 @@
 .scanner-efficiency-page .se-switch--on .se-switch-knob {
   transform: translateX(1.125rem);
 }
+
+/* ── AI 数据分析建议块 ─────────────────────────────────────────── */
+
+.scanner-efficiency-page .se-ai-insight-block {
+  border: 1px solid rgba(99, 102, 241, 0.18);
+  background: linear-gradient(135deg, rgba(238, 242, 255, 0.6) 0%, rgba(245, 248, 255, 0.4) 100%);
+}
+
+.scanner-efficiency-page .se-ai-insight-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  padding: 1rem 1.25rem;
+  border-bottom: 1px solid rgba(99, 102, 241, 0.12);
+}
+
+.scanner-efficiency-page .se-ai-insight-header-left {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.scanner-efficiency-page .se-ai-insight-icon {
+  font-size: 1rem;
+  color: #6366f1;
+  line-height: 1;
+}
+
+.scanner-efficiency-page .se-ai-insight-title {
+  font-size: 0.9375rem;
+  font-weight: 600;
+  color: #3730a3;
+  letter-spacing: -0.01em;
+}
+
+.scanner-efficiency-page .se-ai-insight-subtitle {
+  font-size: 0.75rem;
+  color: #6d6d8a;
+  padding-left: 0.25rem;
+}
+
+.scanner-efficiency-page .se-ai-insight-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.scanner-efficiency-page .se-ai-insight-btn {
+  display: inline-flex;
+  align-items: center;
+  padding: 0 0.875rem;
+  height: 32px;
+  border-radius: 6px;
+  border: 1px solid rgba(99, 102, 241, 0.5);
+  background: linear-gradient(180deg, #6366f1, #4f46e5);
+  color: #fff;
+  font-size: 0.8125rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: opacity 150ms ease;
+  white-space: nowrap;
+}
+
+.scanner-efficiency-page .se-ai-insight-btn:hover:not(:disabled) {
+  opacity: 0.88;
+}
+
+.scanner-efficiency-page .se-ai-insight-btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.scanner-efficiency-page .se-ai-insight-placeholder {
+  padding: 1rem 1.25rem;
+  font-size: 0.8125rem;
+  color: #8b8ba8;
+}
+
+.scanner-efficiency-page .se-ai-insight-error {
+  padding: 0.75rem 1.25rem;
+  font-size: 0.8125rem;
+  color: #b91c1c;
+  background: rgba(254, 226, 226, 0.5);
+}
+
+.scanner-efficiency-page .se-ai-insight-loading {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 1rem 1.25rem;
+  font-size: 0.8125rem;
+  color: #6366f1;
+}
+
+.scanner-efficiency-page .se-ai-insight-loading-dots {
+  display: flex;
+  gap: 4px;
+}
+
+.scanner-efficiency-page .se-ai-insight-loading-dots span {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #6366f1;
+  animation: se-ai-dot-bounce 1.2s ease-in-out infinite;
+}
+
+.scanner-efficiency-page .se-ai-insight-loading-dots span:nth-child(2) {
+  animation-delay: 0.2s;
+}
+
+.scanner-efficiency-page .se-ai-insight-loading-dots span:nth-child(3) {
+  animation-delay: 0.4s;
+}
+
+@keyframes se-ai-dot-bounce {
+  0%, 80%, 100% { transform: scale(0.6); opacity: 0.4; }
+  40% { transform: scale(1); opacity: 1; }
+}
+
+.scanner-efficiency-page .se-ai-insight-body {
+  padding: 1rem 1.25rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.scanner-efficiency-page .se-ai-insight-section {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.scanner-efficiency-page .se-ai-insight-section-label {
+  font-size: 0.6875rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.scanner-efficiency-page .se-ai-insight-label-findings {
+  color: #4338ca;
+}
+
+.scanner-efficiency-page .se-ai-insight-label-suggestions {
+  color: #0369a1;
+}
+
+.scanner-efficiency-page .se-ai-insight-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.scanner-efficiency-page .se-ai-insight-item {
+  display: flex;
+  align-items: baseline;
+  gap: 0.5rem;
+  font-size: 0.8125rem;
+  line-height: 1.55;
+  color: var(--admin-text);
+}
+
+.scanner-efficiency-page .se-ai-insight-bullet {
+  flex-shrink: 0;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  margin-top: 0.45em;
+}
+
+.scanner-efficiency-page .se-ai-insight-item-finding .se-ai-insight-bullet {
+  background: #6366f1;
+}
+
+.scanner-efficiency-page .se-ai-insight-item-suggestion .se-ai-insight-bullet {
+  background: #0ea5e9;
+}
+
+/* 值得奖励的员工 */
+.scanner-efficiency-page .se-ai-insight-label-top-performers {
+  color: #b45309;
+}
+
+.scanner-efficiency-page .se-ai-top-performers-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.scanner-efficiency-page .se-ai-top-performer-card {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.75rem;
+  background: linear-gradient(135deg, #fffbeb 0%, #fef3c7 100%);
+  border: 1px solid #fcd34d;
+  border-radius: 8px;
+  padding: 0.625rem 0.875rem;
+}
+
+.scanner-efficiency-page .se-ai-top-performer-rank {
+  flex-shrink: 0;
+  width: 1.5rem;
+  height: 1.5rem;
+  border-radius: 50%;
+  background: #f59e0b;
+  color: #fff;
+  font-size: 0.75rem;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-top: 0.1rem;
+}
+
+.scanner-efficiency-page .se-ai-top-performer-body {
+  flex: 1;
+  min-width: 0;
+}
+
+.scanner-efficiency-page .se-ai-top-performer-name {
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: #92400e;
+  margin-bottom: 0.2rem;
+}
+
+.scanner-efficiency-page .se-ai-top-performer-reason {
+  font-size: 0.8125rem;
+  line-height: 1.55;
+  color: #78350f;
+}

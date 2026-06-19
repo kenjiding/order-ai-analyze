@@ -51,9 +51,10 @@ type Props = {
   applied: PostFilterConfig
   onChange: (next: PostFilterConfig) => void
   onApply: () => void
+  maxHeight?: number
 }
 
-export function PostFilterConfigSection({ draft, applied, onChange, onApply }: Props) {
+export function PostFilterConfigSection({ draft, applied, onChange, onApply, maxHeight }: Props) {
   const [expanded, setExpanded] = useState(true)
   const { amountFilter, weightFilter, merchantFilter, timeoutFilter } = draft
   const appliedCount = countActivePostFilters(applied)
@@ -77,17 +78,22 @@ export function PostFilterConfigSection({ draft, applied, onChange, onApply }: P
     merchantFilter.merchantCodes.length > 0 || merchantFilter.merchantNameKeyword.trim() !== ''
   const timeoutActive = timeoutFilter.minDays != null || timeoutFilter.maxDays != null
 
+  const panelStyle = {
+    borderColor: 'var(--admin-line)',
+    ...(maxHeight != null ? { maxHeight } : {}),
+  }
+
   if (!expanded) {
     return (
       <aside
-        className="flex w-11 shrink-0 flex-col border-l"
-        style={{ borderColor: 'var(--admin-line)' }}
+        className="flex w-11 shrink-0 flex-col self-stretch border-l"
+        style={panelStyle}
         aria-label="后置过滤"
       >
         <button
           type="button"
           onClick={() => setExpanded(true)}
-          className="flex min-h-[min(72vh,30rem)] w-full flex-col items-center gap-2 py-4 text-slate-400 transition hover:bg-slate-50/80 hover:text-[#1f6f68]"
+          className="flex h-full w-full flex-col items-center gap-2 py-4 text-slate-400 transition hover:bg-slate-50/80 hover:text-[#1f6f68]"
           aria-label="展开后置过滤"
           title="展开后置过滤"
         >
@@ -110,8 +116,8 @@ export function PostFilterConfigSection({ draft, applied, onChange, onApply }: P
 
   return (
     <aside
-      className="flex max-h-[min(72vh,30rem)] w-[280px] shrink-0 flex-col border-l pl-5"
-      style={{ borderColor: 'var(--admin-line)' }}
+      className="flex w-[280px] shrink-0 flex-col self-stretch border-l pl-5"
+      style={panelStyle}
       aria-label="后置过滤"
     >
       <div className="mb-1 flex shrink-0 items-center gap-2">

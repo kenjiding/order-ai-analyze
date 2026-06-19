@@ -10,11 +10,15 @@ import {
 export type ScannerSummaryChartRow = {
   scanner: string
   scanCount: number
+  cainiaoScanCount: number
+  cainiaoShare: number
+  cainiaoCorrectionFactor: number
   activeDays: number
   effectiveHours: number
   efficiency: number
   reliabilityWeight: number
   adjustedEfficiency: number
+  cainiaoAdjustedEfficiency: number
 }
 
 type Props = {
@@ -29,7 +33,7 @@ export default function ScannerSummaryBarChart({ rows, className }: Props) {
   const containerRef = useRef<HTMLDivElement>(null)
 
   const rowsKey = useMemo(
-    () => rows.map((r) => `${r.scanner}\t${r.adjustedEfficiency}`).join('|'),
+    () => rows.map((r) => `${r.scanner}\t${r.cainiaoAdjustedEfficiency}`).join('|'),
     [rows],
   )
 
@@ -40,7 +44,7 @@ export default function ScannerSummaryBarChart({ rows, className }: Props) {
 
     const data = rows.map((r) => ({
       ...r,
-      adjustedEfficiency: Number.isFinite(r.adjustedEfficiency) ? r.adjustedEfficiency : 0,
+      cainiaoAdjustedEfficiency: Number.isFinite(r.cainiaoAdjustedEfficiency) ? r.cainiaoAdjustedEfficiency : 0,
     }))
 
     const chart = new Chart({
@@ -62,7 +66,7 @@ export default function ScannerSummaryBarChart({ rows, className }: Props) {
     })
 
     chart.axis('y', {
-      title: '修正效率（票/小时）',
+      title: '修正效率（票/小时，含菜鸟修正）',
       grid: true,
       gridLineDash: [4, 4],
       gridStroke: '#e2e8f0',
@@ -75,9 +79,9 @@ export default function ScannerSummaryBarChart({ rows, className }: Props) {
       .coordinate({ transform: [{ type: 'transpose' }] })
       .data(data)
       .encode('x', 'scanner')
-      .encode('y', 'adjustedEfficiency')
+      .encode('y', 'cainiaoAdjustedEfficiency')
       .style('fill', (d: (typeof data)[number]) =>
-        isScannerAdjustedEfficiencyLow(d.adjustedEfficiency) ? FILL_LOW : FILL_NORMAL,
+        isScannerAdjustedEfficiencyLow(d.cainiaoAdjustedEfficiency) ? FILL_LOW : FILL_NORMAL,
       )
       .style('fillOpacity', 0.88)
 
