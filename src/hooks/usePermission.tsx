@@ -63,6 +63,7 @@ export const PERMISSION_KEYS = {
   menuEfficiency: 'menu:efficiency',
   menuWageSalary: 'menu:wage-salary',
   menuOrderException: 'menu:order-exception',
+  menuNewMerchantMonitor: 'menu:new-merchant-monitor',
   menuPushNotifications: 'menu:push-notifications',
   menuWarehouseSafety: 'menu:warehouse-safety',
   menuSystemUsers: 'menu:system-users',

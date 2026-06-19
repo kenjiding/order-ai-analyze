@@ -229,8 +229,8 @@ function appendDailyComboLayers(
     .axis('y', {
       position: 'right',
       title: '当天效率（票/h）',
-      titleFontSize: 11,
-      labelFontSize: 11,
+      titleFontSize: 13,
+      labelFontSize: 15,
       labelFormatter: (v: string | number) => fmt1(typeof v === 'number' ? v : Number(v)),
       grid: false,
     })
@@ -253,8 +253,8 @@ function appendDailyComboLayers(
     .label({
       text: (d: DailyEfficiencyBubbleDatum) => fmt1(d.efficiency),
       position: 'top',
-      style: { fontSize: 10, fontWeight: 600, fill: '#c2410c' },
-      dy: -8,
+      style: { fontSize: 15, fontWeight: 600, fill: '#c2410c' },
+      dy: -12,
     })
     .tooltip(false)
 }

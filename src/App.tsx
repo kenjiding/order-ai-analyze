@@ -7,6 +7,7 @@ import { antdTheme } from './theme/antdTheme'
 import { AppSettingsProvider } from './context/AppSettingsContext'
 import AppLayout from './components/AppLayout'
 import ProtectedRoute from './components/ProtectedRoute'
+import NewMerchantMonitorPage from './pages/NewMerchantMonitor/NewMerchantMonitorPage'
 import OrderExceptionManagementPage from './pages/OrderExceptionManagement/OrderExceptionManagementPage'
 import ScannerEfficiencyPage from './pages/ScannerEfficiency/ScannerEfficiencyPage'
 import EfficiencyAttendanceRecordsPage from './pages/EfficiencyAttendanceRecords/EfficiencyAttendanceRecordsPage'
@@ -17,6 +18,7 @@ import SystemUsersPage from './pages/SystemUsers/SystemUsersPage'
 import LoginPage from './pages/Login/LoginPage'
 import { getDefaultRouteForPermissions } from './components/Layout/sidebarMenu'
 import { useAuth } from './context/AuthContext'
+import { ToastBridge } from './utils/toast'
 
 const muiTheme = createTheme({
   palette: {
@@ -55,6 +57,14 @@ function KeptOrderExceptionPage() {
   return (
     <KeepAlive cacheKey="page-order-exception" name="order-exception" autoFreeze={false}>
       <OrderExceptionManagementPage />
+    </KeepAlive>
+  )
+}
+
+function KeptNewMerchantMonitorPage() {
+  return (
+    <KeepAlive cacheKey="page-new-merchant-monitor" name="new-merchant-monitor" autoFreeze={false}>
+      <NewMerchantMonitorPage />
     </KeepAlive>
   )
 }
@@ -117,6 +127,7 @@ function AppRoutes() {
           <Route path="/efficiency-records" element={<EfficiencyAttendanceRecordsPage />} />
           <Route path="/wage-salary" element={<KeptWageSalaryPage />} />
           <Route path="/order-exception" element={<KeptOrderExceptionPage />} />
+          <Route path="/new-merchant-monitor" element={<KeptNewMerchantMonitorPage />} />
           <Route path="/push-notifications" element={<KeptPushNotificationsPage />} />
           <Route path="/warehouse-safety" element={<KeptWarehouseSafetyInspectionPage />} />
           <Route path="/system/users" element={<KeptSystemUsersPage />} />
@@ -131,6 +142,7 @@ export default function App() {
   return (
     <ConfigProvider theme={antdTheme}>
       <AntdApp>
+        <ToastBridge />
         <ThemeProvider theme={muiTheme}>
           <AuthProvider>
             <AppSettingsProvider>

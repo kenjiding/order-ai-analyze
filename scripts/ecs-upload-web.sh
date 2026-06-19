@@ -110,11 +110,25 @@ run_ssh() {
 
 remote_prepare_and_extract() {
   local dir="$1"
-  local extract_cmd="tar xzf - --warning=no-unknown-keyword -C ${dir} 2>/dev/null || tar xzf - -C ${dir}"
+  local tmp="${dir}_upload_new"
+  local bak="${dir}_upload_bak"
+  # 上传到临时目录，成功后原子 mv 替换，失败时旧文件不受影响
   if $USE_SUDO; then
-    run_ssh "sudo mkdir -p ${dir} && sudo find ${dir} -mindepth 1 -maxdepth 1 -exec rm -rf {} + && sudo ${extract_cmd}"
+    run_ssh "sudo rm -rf ${tmp} \
+      && sudo mkdir -p ${tmp} \
+      && sudo tar xzf - -C ${tmp} 2>/dev/null \
+      && sudo rm -rf ${bak} \
+      && { test -d ${dir} && sudo mv ${dir} ${bak} || true; } \
+      && sudo mv ${tmp} ${dir} \
+      && sudo rm -rf ${bak}"
   else
-    run_ssh "mkdir -p ${dir} && find ${dir} -mindepth 1 -maxdepth 1 -exec rm -rf {} + && ${extract_cmd}"
+    run_ssh "rm -rf ${tmp} \
+      && mkdir -p ${tmp} \
+      && tar xzf - -C ${tmp} 2>/dev/null \
+      && rm -rf ${bak} \
+      && { test -d ${dir} && mv ${dir} ${bak} || true; } \
+      && mv ${tmp} ${dir} \
+      && rm -rf ${bak}"
   fi
 }
 

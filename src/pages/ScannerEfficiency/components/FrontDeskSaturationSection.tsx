@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import Collapse from '@mui/material/Collapse'
-import { Popover } from 'antd'
-import { ChevronDown } from 'lucide-react'
+import { Button, Popover } from 'antd'
+import { ChevronDown, CloudDownload } from 'lucide-react'
 import {
   DensityHeatmapCellDetail,
   type DensityHeatmapClockOutDetail,
@@ -28,6 +28,7 @@ type Props = {
   loadingAllocationApi: boolean
   onAllocationFileChange: (files: FileList | null) => Promise<void>
   onClearAllocation: () => void
+  onApiFetch?: () => void
   readOnly?: boolean
 }
 
@@ -271,6 +272,7 @@ export function FrontDeskSaturationSection({
   loadingAllocationApi,
   onAllocationFileChange,
   onClearAllocation,
+  onApiFetch,
   readOnly = false,
 }: Props) {
   const [offDutyIdleOffsetMinutes, setOffDutyIdleOffsetMinutes] = useState(30)
@@ -291,21 +293,34 @@ export function FrontDeskSaturationSection({
         title="包裹分配密度热力图"
         description=""
         right={
-          <label className="inline-flex items-center gap-2 text-sm text-slate-600">
-            <input
-              type="number"
-              min={0}
-              step={1}
-              value={offDutyIdleOffsetMinutes}
-              onChange={(event) => {
-                const next = Number(event.target.value)
-                if (Number.isFinite(next) && next >= 0) setOffDutyIdleOffsetMinutes(next)
-              }}
-              className="w-20 rounded-md border border-slate-300 bg-white px-2 py-1 text-center text-sm font-semibold tabular-nums text-slate-900 outline-none focus:ring-2 focus:ring-[#2f8f87] focus:ring-offset-0"
-              aria-label="前台下班空档扣减分钟"
-            />
-            <span className="text-xs text-slate-500">分钟</span>
-          </label>
+          <div className="flex items-center gap-3">
+            {onApiFetch && !readOnly && (
+              <Button
+                type='primary'
+                icon={<CloudDownload className="h-4 w-4" aria-hidden />}
+                loading={loadingAllocationApi}
+                disabled={loadingAllocationApi}
+                onClick={onApiFetch}
+              >
+                API 获取
+              </Button>
+            )}
+            <label className="inline-flex items-center gap-2 text-sm text-slate-600">
+              <input
+                type="number"
+                min={0}
+                step={1}
+                value={offDutyIdleOffsetMinutes}
+                onChange={(event) => {
+                  const next = Number(event.target.value)
+                  if (Number.isFinite(next) && next >= 0) setOffDutyIdleOffsetMinutes(next)
+                }}
+                className="w-20 rounded-md border border-slate-300 bg-white px-2 py-1 text-center text-sm font-semibold tabular-nums text-slate-900 outline-none focus:ring-2 focus:ring-[#2f8f87] focus:ring-offset-0"
+                aria-label="前台下班空档扣减分钟"
+              />
+              <span className="text-xs text-slate-500">分钟</span>
+            </label>
+          </div>
         }
       />
 

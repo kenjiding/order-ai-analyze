@@ -81,11 +81,31 @@ case "$cmd" in
     ;;
   restart)
     ensure_env
-    compose up -d --build --force-recreate
-    bash "$ROOT/scripts/ecs-ensure-running.sh"
+    # 先构建新镜像；build 失败时旧容器继续运行，不影响线上
+    echo "[deploy] 构建镜像..."
+    compose build warehouse-server
+    echo "[deploy] 重建应用容器（postgres 保持运行，不重启）..."
+    compose up -d --force-recreate --no-deps warehouse-server warehouse-worker
     compose ps
     echo ""
-    echo "健康检查: curl -sf http://127.0.0.1:${PORT:-8787}/health"
+    _port="${PORT:-8787}"
+    echo "[deploy] 等待 health（最多 120s）..."
+    _ok=false
+    for (( _i=1; _i<=24; _i++ )); do
+      if curl -sf "http://127.0.0.1:${_port}/health" >/dev/null 2>&1; then
+        _ok=true
+        break
+      fi
+      echo "[deploy] 第 ${_i}/24 次..."
+      sleep 5
+    done
+    if $_ok; then
+      echo "[deploy] ok  http://127.0.0.1:${_port}/health"
+    else
+      echo "[deploy] ⚠ 120s 内未通过 health 检查，最新日志：" >&2
+      compose logs --tail=30 warehouse-server >&2
+      exit 1
+    fi
     ;;
   ensure)
     bash "$ROOT/scripts/ecs-ensure-running.sh"

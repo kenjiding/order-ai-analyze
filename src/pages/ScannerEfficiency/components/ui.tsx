@@ -115,6 +115,8 @@ export type DataTableRow = Record<string, unknown>
 export type DataTableColumn = {
   key: string
   title: string
+  /** 自定义表头渲染；优先于 title */
+  renderTitle?: () => ReactNode
   render?: (row: DataTableRow) => ReactNode
 }
 
@@ -201,7 +203,7 @@ export function DataTable({
           <tr>
             {columns.map((column) => (
               <th key={column.key}>
-                {column.title}
+                {column.renderTitle ? column.renderTitle() : column.title}
               </th>
             ))}
           </tr>

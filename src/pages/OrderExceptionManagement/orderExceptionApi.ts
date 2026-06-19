@@ -4,6 +4,7 @@ import type { TrackEvent } from './types'
 const JSON_HEADERS = { 'Content-Type': 'application/json' } as const
 
 const orderExceptionApi = `${getApiBaseUrl()}/api/order-exception`
+const jobsApi = `${getApiBaseUrl()}/api/jobs`
 
 async function readHttpError(res: Response, text: string): Promise<string> {
   try {
@@ -221,26 +222,6 @@ export async function postOrderExceptionPrefetch(payload: {
   }
 }
 
-export type OrderAnalyzeWarehouseConfig = {
-  global: {
-    defaultLossTimeoutDays: number
-    externalCarrierLossTimeoutDays: number
-    commonSystemOperators: string[]
-    commonNonRealOperators: string[]
-    commonNonRealOperatorPatterns: string[]
-  }
-  profiles: Array<{
-    cityId: string
-    hubId: string
-    name: string
-    extraAliases?: string[]
-    lossTimeoutDays?: number
-    nonRealOperators?: string[]
-    nonRealOperatorPatterns?: string[]
-    systemOperators?: string[]
-  }>
-}
-
 export type OrderTrackFacts = {
   todayStr: string
   lastEventTime: string
@@ -295,7 +276,6 @@ export async function postOrderExceptionAnalyze(payload: {
   imileToken: string
   orderNos: string[]
   aiProvider?: OrderAnalyzeAiProvider
-  warehouseConfig?: OrderAnalyzeWarehouseConfig
 }): Promise<{
   results: OrderAnalyzeResultItem[]
   trackInfo: Record<string, TrackEvent[]>
@@ -311,7 +291,6 @@ export async function postOrderExceptionAnalyze(payload: {
     body: JSON.stringify({
       ...payload,
       aiProvider: payload.aiProvider ?? 'deepseek',
-      warehouseConfig: payload.warehouseConfig,
     }),
   })
   const text = await res.text()
@@ -365,4 +344,105 @@ export async function postClosureDriverVendor(payload: {
     stationCode: string
     result: { driverId: string; vendorCode: string; vendorName: string } | null
   }
+}
+
+// ─── 异步 AI 分析（jobs queue）───────────────────────────────────────────────
+
+export type JobStatus = 'pending' | 'running' | 'succeeded' | 'failed' | 'cancelled'
+
+export type PublicJob = {
+  id: string
+  type: string
+  status: JobStatus
+  payload: Record<string, unknown>
+  progress: Record<string, unknown>
+  error: string | null
+  artifactPath: string | null
+  artifactExpiresAt: string | null
+  attemptCount: number
+  maxAttempts: number
+  startedAt: string | null
+  finishedAt: string | null
+  createdAt: string
+  updatedAt: string
+}
+
+/** artifact 与同步 /analyze 响应的 shape 一致（无 timing 字段）。 */
+export type AnalyzeJobArtifact = {
+  results: OrderAnalyzeResultItem[]
+  trackInfo: Record<string, TrackEvent[]>
+  orderInfo: Record<string, OrderQueryInfo | null>
+  interceptLogs: Record<string, OrderAnalyzeInterceptLog[]>
+  tokenUsage: OrderAnalyzeTokenUsage
+  trackFacts?: Record<string, OrderTrackFacts>
+}
+
+/** 提交批量异步分析任务；立即返回 jobId，通过 getJobById 轮询状态。 */
+export async function postOrderExceptionAnalyzeAsync(payload: {
+  imileToken: string
+  orderNos: string[]
+  aiProvider?: OrderAnalyzeAiProvider
+  enableAiExplain?: boolean
+}): Promise<{ jobId: string; status: JobStatus; orderCount: number }> {
+  const res = await fetch(`${orderExceptionApi}/analyze-async`, {
+    method: 'POST',
+    headers: JSON_HEADERS,
+    body: JSON.stringify({
+      ...payload,
+      aiProvider: payload.aiProvider ?? 'deepseek',
+    }),
+  })
+  const text = await res.text()
+  if (!res.ok) throw new Error(await readHttpError(res, text))
+  return JSON.parse(text) as { jobId: string; status: JobStatus; orderCount: number }
+}
+
+export async function getJobById(jobId: string): Promise<PublicJob> {
+  const res = await fetch(`${jobsApi}/${encodeURIComponent(jobId)}`, { cache: 'no-store' })
+  const text = await res.text()
+  if (!res.ok) throw new Error(await readHttpError(res, text))
+  const parsed = JSON.parse(text) as { job: PublicJob }
+  return parsed.job
+}
+
+export async function getJobArtifact(jobId: string): Promise<AnalyzeJobArtifact> {
+  const res = await fetch(`${jobsApi}/${encodeURIComponent(jobId)}/artifact`, { cache: 'no-store' })
+  const text = await res.text()
+  if (!res.ok) throw new Error(await readHttpError(res, text))
+  const parsed = JSON.parse(text) as { artifact: AnalyzeJobArtifact }
+  return parsed.artifact
+}
+
+export async function listJobsApi(params?: {
+  type?: string
+  limit?: number
+}): Promise<{ jobs: PublicJob[]; total: number }> {
+  const qs = new URLSearchParams()
+  if (params?.type) qs.set('type', params.type)
+  if (params?.limit != null) qs.set('limit', String(params.limit))
+  const url = `${jobsApi}?${qs.toString()}`
+  const res = await fetch(url, { cache: 'no-store' })
+  const text = await res.text()
+  if (!res.ok) throw new Error(await readHttpError(res, text))
+  return JSON.parse(text) as { jobs: PublicJob[]; total: number }
+}
+
+export async function deleteJobApi(jobId: string): Promise<void> {
+  const res = await fetch(`${jobsApi}/${encodeURIComponent(jobId)}`, { method: 'DELETE' })
+  if (!res.ok) {
+    const text = await res.text()
+    throw new Error(await readHttpError(res, text))
+  }
+}
+
+export async function cancelJobApi(jobId: string): Promise<PublicJob> {
+  const res = await fetch(`${jobsApi}/${encodeURIComponent(jobId)}/cancel`, {
+    method: 'POST',
+    headers: JSON_HEADERS,
+    body: JSON.stringify({}),
+  })
+  const text = await res.text()
+  if (!res.ok) throw new Error(await readHttpError(res, text))
+  const parsed = JSON.parse(text) as { job: PublicJob }
+  return parsed.job
 }

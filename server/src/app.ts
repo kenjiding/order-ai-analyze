@@ -6,6 +6,7 @@ import { pingDatabase } from './db'
 import { adminUsersRouter } from './routes/adminUsersRouter'
 import { authRouter } from './routes/authRouter'
 import { feishuWebhookTestRouter } from './routes/feishuWebhookTestRouter'
+import { newMerchantRouter } from './routes/newMerchantRouter'
 import { orderExceptionRouter } from './routes/orderExceptionRouter'
 import { scannerEfficiencyRouter } from './routes/scannerEfficiencyRouter'
 import { weeklyReportInsightRouter } from './routes/weeklyReportInsightRouter'
@@ -44,6 +45,7 @@ app.use('/api/admin/users', adminUsersRouter)
 
 app.use('/api/order-exception', requireAuth, orderExceptionRouter)
 app.use('/api/scanner-efficiency', requireAuth, scannerEfficiencyRouter)
+app.use('/api/new-merchant', requireAuth, newMerchantRouter)
 app.use('/api/weekly-report-insight', requireAuth, weeklyReportInsightRouter)
 app.use('/api/jobs', jobsRouter)
 app.use('/api/feishu-webhook', requireAuth, feishuWebhookTestRouter)

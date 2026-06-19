@@ -4,6 +4,7 @@ export type PageSectionTabItem = {
   id: string
   label: string
   icon?: LucideIcon
+  badge?: string
 }
 
 type Props = {
@@ -33,6 +34,11 @@ export function PageSectionTabs({ activeId, items, onChange }: Props) {
             >
               {Icon ? <Icon className="w-4 h-4 shrink-0" aria-hidden /> : null}
               {t.label}
+              {t.badge ? (
+                <span className="ml-0.5 rounded-full bg-blue-500 px-1.5 py-0.5 text-[10px] font-semibold leading-none text-white">
+                  {t.badge}
+                </span>
+              ) : null}
             </button>
           )
         })}

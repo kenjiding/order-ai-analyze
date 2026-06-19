@@ -1,11 +1,18 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   ORDER_EXCEPTION_ANALYZE_MAX_BATCH,
   captureRegressionCase,
+  cancelJobApi,
+  deleteJobApi,
   deleteRegressionCase,
   listRegressionCases,
+  listJobsApi,
   postOrderExceptionAnalyze,
+  postOrderExceptionAnalyzeAsync,
+  getJobById,
+  getJobArtifact,
   runRegression,
+  type PublicJob,
   type OrderAnalyzeInterceptLog,
   type OrderAnalyzeAiProvider,
   type OrderAnalyzeApiTiming,
@@ -24,16 +31,18 @@ import { parseOrderNumbersFromFile } from './parseOrderNumbersFromFile'
 import { parseOrderNumbersUnique } from '../../utils/orderNoInput'
 import { showToast } from '../../utils/toast'
 import { cloneDefaultWarehouseConfig } from './warehouseConfig/defaults'
-import {
-  loadWarehouseConfigFromIdb,
-  saveWarehouseConfigToIdb,
-} from './warehouseConfig/warehouseConfigRepository.idb'
+import { fetchWarehouseConfig, saveWarehouseConfigApi } from './warehouseConfig/warehouseConfigApi'
 import type { WarehouseConfigDto } from './warehouseConfig/types'
 import { validateWarehouseConfig } from './warehouseConfig/validateWarehouseConfig'
+import { DEFAULT_POST_FILTER_CONFIG } from './postFilter/defaults'
+import { applyPostFilter } from './postFilter/applyPostFilter'
+import type { PostFilterConfig } from './postFilter/types'
 
 const ANALYZE_AI_PROVIDER_KEY = 'order_exception_analyze_ai_v1'
 const BATCH_ANALYZE_KEY = 'order_exception_batch_analyze_v1'
 const TRACK_DRIVER_ID_RE = /\bID\s*[:：]\s*(D[0-9A-Za-z-]+)/i
+const JOBS_POLL_INTERVAL_MS = 3000
+const JOBS_LIST_TYPE = 'order.analyze'
 
 function readStoredAnalyzeAiProvider(): OrderAnalyzeAiProvider {
   if (typeof localStorage === 'undefined') return 'deepseek'
@@ -55,7 +64,12 @@ function readStoredBatchAnalyze(): boolean {
   }
 }
 
-export type TabId = 'analyze' | 'regression' | 'warehouse-config'
+export type TabId = 'analyze' | 'jobs' | 'regression' | 'warehouse-config'
+
+export type SubmittedJobBanner = {
+  jobId: string
+  orderCount: number
+}
 
 export type AnalysisRowStatus = 'pending' | 'analyzing' | 'done' | 'error'
 
@@ -273,7 +287,12 @@ export function useOrderExceptionManagementPage() {
 
   const [analysisRows, setAnalysisRows] = useState<AnalysisRow[]>([])
   const [analyzeProgress, setAnalyzeProgress] = useState<AnalyzeProgress | null>(null)
+  const [submittedJobBanner, setSubmittedJobBanner] = useState<SubmittedJobBanner | null>(null)
   const analyzeRunIdRef = useRef(0)
+
+  const [jobsList, setJobsList] = useState<PublicJob[]>([])
+  const [isJobsLoading, setIsJobsLoading] = useState(false)
+  const jobsPollingRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
   const [regressionCases, setRegressionCases] = useState<RegressionCaseListItem[]>([])
   const [captureOrderNo, setCaptureOrderNo] = useState('')
@@ -306,6 +325,9 @@ export function useOrderExceptionManagementPage() {
   const [isSavingWarehouseConfig, setIsSavingWarehouseConfig] = useState(false)
   const [isWarehouseConfigLoaded, setIsWarehouseConfigLoaded] = useState(false)
 
+  const [postFilterDraft, setPostFilterDraft] = useState<PostFilterConfig>(DEFAULT_POST_FILTER_CONFIG)
+  const [appliedPostFilter, setAppliedPostFilter] = useState<PostFilterConfig>(DEFAULT_POST_FILTER_CONFIG)
+
   useEffect(() => {
     try {
       localStorage.setItem(ANALYZE_AI_PROVIDER_KEY, analyzeAiProvider)
@@ -324,13 +346,29 @@ export function useOrderExceptionManagementPage() {
 
   useEffect(() => {
     void (async () => {
-      const stored = await loadWarehouseConfigFromIdb()
-      setWarehouseDraftConfig(stored)
-      setWarehouseSavedConfig(stored)
-      setSelectedWarehouseHubId(stored.profiles[0]?.hubId ?? null)
-      setIsWarehouseConfigLoaded(true)
+      try {
+        const remote = await fetchWarehouseConfig()
+        if (remote) {
+          setWarehouseDraftConfig(remote)
+          setWarehouseSavedConfig(remote)
+          setSelectedWarehouseHubId(remote.profiles[0]?.hubId ?? null)
+        }
+      } catch {
+        /* 加载失败静默回退到默认值 */
+      } finally {
+        setIsWarehouseConfigLoaded(true)
+      }
     })()
   }, [])
+
+  const runPostFilter = useCallback(() => {
+    setAppliedPostFilter(postFilterDraft)
+  }, [postFilterDraft])
+
+  const filteredAnalysisRows = useMemo(
+    () => applyPostFilter(analysisRows, appliedPostFilter),
+    [analysisRows, appliedPostFilter]
+  )
 
   const persistWarehouseConfig = useCallback(async () => {
     const issues = validateWarehouseConfig(warehouseDraftConfig)
@@ -340,7 +378,7 @@ export function useOrderExceptionManagementPage() {
     }
     setIsSavingWarehouseConfig(true)
     try {
-      await saveWarehouseConfigToIdb(warehouseDraftConfig)
+      await saveWarehouseConfigApi(warehouseDraftConfig)
       setWarehouseSavedConfig(warehouseDraftConfig)
       showToast('仓库配置已保存', 'success')
     } catch (e) {
@@ -381,6 +419,118 @@ export function useOrderExceptionManagementPage() {
     }
   }, [activeTab, loadRegressionCases])
 
+  const refreshJobs = useCallback(async (silent = false) => {
+    setIsJobsLoading(true)
+    try {
+      const { jobs } = await listJobsApi({ type: JOBS_LIST_TYPE, limit: 30 })
+      setJobsList(jobs)
+      const hasActive = jobs.some((j) => j.status === 'pending' || j.status === 'running')
+      if (!hasActive && jobsPollingRef.current) {
+        clearInterval(jobsPollingRef.current)
+        jobsPollingRef.current = null
+      }
+    } catch (e) {
+      if (!silent) showToast((e as Error).message || '任务列表加载失败', 'error')
+    } finally {
+      setIsJobsLoading(false)
+    }
+  }, [])
+
+  // 挂载时立即拉取一次，badge 和列表不依赖用户先切 Tab
+  useEffect(() => {
+    void refreshJobs(true)
+  }, [refreshJobs])
+
+  // 在任务队列 Tab 时开启轮询
+  useEffect(() => {
+    if (activeTab !== 'jobs') return
+    void refreshJobs(true)
+    jobsPollingRef.current = setInterval(() => void refreshJobs(true), JOBS_POLL_INTERVAL_MS)
+    return () => {
+      if (jobsPollingRef.current) clearInterval(jobsPollingRef.current)
+      jobsPollingRef.current = null
+    }
+  }, [activeTab, refreshJobs])
+
+  const loadJobResults = useCallback(async (jobId: string) => {
+    try {
+      const job = await getJobById(jobId)
+      if (!job) throw new Error('任务不存在')
+      if (job.status !== 'succeeded') throw new Error('任务尚未完成')
+      const artifact = await getJobArtifact(jobId)
+      const orderNos = Array.isArray(job.payload.orderNos) ? (job.payload.orderNos as string[]) : []
+      const rows = orderNos.map((orderNo) =>
+        mapAnalyzeHitToRow(
+          orderNo,
+          artifact.results.find((r) => r.orderNo === orderNo),
+          artifact.trackInfo,
+          artifact.interceptLogs,
+          artifact.orderInfo ?? {}
+        )
+      )
+      if (artifact.trackFacts) {
+        rows.forEach((row) => logOrderAnalysisFacts(row.orderNo, artifact.trackFacts![row.orderNo]))
+      }
+      setAnalysisRows(rows)
+      setAnalyzeTokenUsage(artifact.tokenUsage)
+      setAnalyzeProgress({
+        total: orderNos.length,
+        completed: orderNos.length,
+        succeeded: orderNos.length,
+        failed: 0,
+      })
+      setLastAnalyzeOrderCount(orderNos.length)
+      setSubmittedJobBanner(null)
+      setActiveTab('analyze')
+      showToast(`已加载 ${orderNos.length} 单分析结果`, 'success')
+    } catch (e) {
+      showToast((e as Error).message || '加载结果失败', 'error')
+    }
+  }, [])
+
+  const cancelJobById = useCallback(async (jobId: string) => {
+    try {
+      await cancelJobApi(jobId)
+      await refreshJobs()
+      showToast('任务已取消', 'success')
+    } catch (e) {
+      showToast((e as Error).message || '取消失败', 'error')
+    }
+  }, [refreshJobs])
+
+  const deleteJobById = useCallback(async (jobId: string) => {
+    try {
+      await deleteJobApi(jobId)
+      setJobsList((prev) => prev.filter((j) => j.id !== jobId))
+      showToast('已删除', 'success')
+    } catch (e) {
+      showToast((e as Error).message || '删除失败', 'error')
+    }
+  }, [])
+
+  const retryJob = useCallback(async (job: PublicJob) => {
+    const token = imileToken.trim()
+    if (!token) {
+      showToast('请先填写 iMile Bearer Token', 'error')
+      return
+    }
+    const orderNos = Array.isArray(job.payload.orderNos) ? (job.payload.orderNos as string[]) : []
+    const aiProvider = (job.payload.aiProvider as OrderAnalyzeAiProvider | undefined) ?? 'deepseek'
+    if (!orderNos.length) {
+      showToast('任务中未找到订单号', 'error')
+      return
+    }
+    try {
+      const { jobId } = await postOrderExceptionAnalyzeAsync({ imileToken: token, orderNos, aiProvider })
+      await refreshJobs()
+      showToast(`重新提交成功（${orderNos.length} 单），任务 ID: ${jobId.slice(0, 8)}…`, 'success')
+    } catch (e) {
+      showToast((e as Error).message || '重新提交失败', 'error')
+    }
+  }, [imileToken, refreshJobs])
+
+  const activeJobCount = jobsList.filter((j) => j.status === 'pending' || j.status === 'running').length
+
   const onAnalyze = useCallback(async () => {
     const token = ensureToken()
     if (!token) return
@@ -406,8 +556,6 @@ export function useOrderExceptionManagementPage() {
       showToast('仓库配置有未保存修改，本次分析将使用上次保存的版本', 'error')
     }
 
-    const warehouseConfig = warehouseSavedConfig
-
     const runId = analyzeRunIdRef.current + 1
     analyzeRunIdRef.current = runId
     const isStaleRun = () => analyzeRunIdRef.current !== runId
@@ -425,68 +573,27 @@ export function useOrderExceptionManagementPage() {
     let failed = 0
 
     if (batchAnalyze) {
-      setAnalysisRows((prev) =>
-        prev.map((row) => ({
-          ...row,
-          status: 'analyzing' as const,
-          reason: '批量分析中…',
-        }))
-      )
-
       try {
-        const { results, trackInfo, orderInfo, interceptLogs, tokenUsage, timing, trackFacts } =
-          await postOrderExceptionAnalyze({
+        const { jobId } = await postOrderExceptionAnalyzeAsync({
           imileToken: token,
           orderNos,
           aiProvider: analyzeAiProvider,
-          warehouseConfig,
         })
         if (isStaleRun()) return
-
-        const rows = orderNos.map((orderNo) =>
-          mapAnalyzeHitToRow(
-            orderNo,
-            results.find((r) => r.orderNo === orderNo),
-            trackInfo,
-            interceptLogs,
-            orderInfo ?? {}
-          )
-        )
-        if (trackFacts) {
-          rows.forEach((row) => logOrderAnalysisFacts(row.orderNo, trackFacts[row.orderNo]))
-        }
-        setAnalysisRows(rows)
-        setAnalyzeTokenUsage(tokenUsage)
-        if (timing) setAnalyzeApiTiming(timing)
-        succeeded = orderNos.length
-        setAnalyzeProgress({
-          total: orderNos.length,
-          completed: orderNos.length,
-          succeeded: orderNos.length,
-          failed: 0,
-        })
+        setSubmittedJobBanner({ jobId, orderCount: orderNos.length })
+        setAnalysisRows([])
+        setAnalyzeProgress(null)
+        // 乐观更新 jobs 列表（不等 tab 切换再刷新）
+        void refreshJobs()
+        showToast(`批量任务已提交（${orderNos.length} 单），在「任务队列」标签查看进度`, 'success')
       } catch (e) {
         if (isStaleRun()) return
-        const message = (e as Error).message || '分析失败'
-        setAnalysisRows((prev) =>
-          prev.map((r) => ({
-            ...r,
-            status: 'error' as const,
-            reason: message,
-            lossScope: '—',
-            categoryName: '—',
-            currentResponsibilityParty: '—',
-            confidence: '—',
-          }))
-        )
-        failed = orderNos.length
-        setAnalyzeProgress({
-          total: orderNos.length,
-          completed: orderNos.length,
-          succeeded: 0,
-          failed: orderNos.length,
-        })
+        showToast((e as Error).message || '提交失败', 'error')
+      } finally {
+        setIsAnalyzing(false)
+        setAnalyzeDurationMs(null)
       }
+      return
     } else {
       let accumulatedTokenUsage: OrderAnalyzeTokenUsage | null = null
       let accumulatedApiTiming: OrderAnalyzeApiTiming | null = null
@@ -508,7 +615,6 @@ export function useOrderExceptionManagementPage() {
             imileToken: token,
             orderNos: [orderNo],
             aiProvider: analyzeAiProvider,
-            warehouseConfig,
           })
           if (isStaleRun()) return
 
@@ -578,9 +684,11 @@ export function useOrderExceptionManagementPage() {
     ensureToken,
     importedAnalyzeOrders,
     isWarehouseConfigLoaded,
+    refreshJobs,
     warehouseDraftConfig,
     warehouseSavedConfig,
   ])
+  // Note: warehouseSavedConfig kept in deps to detect unsaved-changes warning only
 
   const onAnalyzeOrderFileUpload = useCallback(
     async (file: File) => {
@@ -706,10 +814,20 @@ export function useOrderExceptionManagementPage() {
     isAnalyzing,
     analysisRows,
     analyzeProgress,
+    submittedJobBanner,
+    dismissSubmittedJobBanner: () => setSubmittedJobBanner(null),
     analyzeTokenUsage,
     lastAnalyzeOrderCount,
     analyzeDurationMs,
     analyzeApiTiming,
+    jobsList,
+    isJobsLoading,
+    activeJobCount,
+    refreshJobs,
+    loadJobResults,
+    cancelJobById,
+    deleteJobById,
+    retryJob,
     regressionCases,
     captureOrderNo,
     setCaptureOrderNo,
@@ -737,5 +855,10 @@ export function useOrderExceptionManagementPage() {
     persistWarehouseConfig,
     resetWarehouseConfig,
     isSavingWarehouseConfig,
+    postFilterDraft,
+    setPostFilterDraft,
+    appliedPostFilter,
+    runPostFilter,
+    filteredAnalysisRows,
   }
 }

@@ -106,6 +106,45 @@ export const efficiencyAttendanceDailyRecords = pgTable(
   ],
 )
 
+export const orderExceptionPostFilterConfigs = pgTable(
+  'order_exception_post_filter_configs',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    configKey: varchar('config_key', { length: 64 }).notNull(),
+    payload: jsonb('payload').notNull(),
+    savedBy: uuid('saved_by').references(() => users.id, { onDelete: 'set null' }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    uniqueIndex('order_exception_post_filter_configs_key_unique').on(table.configKey),
+  ],
+)
+
+export const orderExceptionWarehouseConfigs = pgTable(
+  'order_exception_warehouse_configs',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    configKey: varchar('config_key', { length: 64 }).notNull(),
+    payload: jsonb('payload').notNull(),
+    savedBy: uuid('saved_by').references(() => users.id, { onDelete: 'set null' }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    uniqueIndex('order_exception_warehouse_configs_key_unique').on(table.configKey),
+  ],
+)
+
+/** 飞书效率推送快照：每个 region 保留最新一次手动推送的 sort_efficiency_v1 快照，供定时调度复用。 */
+export const feishuPushSnapshots = pgTable('feishu_push_snapshots', {
+  regionCode: varchar('region_code', { length: 16 }).primaryKey(),
+  periodLabel: varchar('period_label', { length: 255 }).notNull().default(''),
+  snapshot: jsonb('snapshot').notNull(),
+  pushedAt: timestamp('pushed_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+})
+
 export type User = typeof users.$inferSelect
 export type Region = typeof regions.$inferSelect
 export type Permission = typeof permissions.$inferSelect
@@ -113,3 +152,6 @@ export type Job = typeof jobs.$inferSelect
 export type NewJob = typeof jobs.$inferInsert
 export type EfficiencyAttendanceDailyRecord = typeof efficiencyAttendanceDailyRecords.$inferSelect
 export type NewEfficiencyAttendanceDailyRecord = typeof efficiencyAttendanceDailyRecords.$inferInsert
+export type OrderExceptionPostFilterConfig = typeof orderExceptionPostFilterConfigs.$inferSelect
+export type OrderExceptionWarehouseConfig = typeof orderExceptionWarehouseConfigs.$inferSelect
+export type FeishuPushSnapshot = typeof feishuPushSnapshots.$inferSelect

@@ -1,6 +1,7 @@
 import { Checkbox, Col, Collapse, Row } from 'antd'
 import { useMemo } from 'react'
 import type { PermissionDefinition } from '../../../api/adminUsersApi'
+import { getMenuGroupDefs } from '../../../components/Layout/sidebarMenu'
 
 type PermissionCheckboxGroupProps = {
   menuPermissions: PermissionDefinition[]
@@ -119,44 +120,65 @@ function PermissionCheckboxGrid({
   )
 }
 
-function PermissionSection({
-  title,
-  hint,
-  items,
+function MenuPermissionsGroupedSection({
+  menuPermissions,
   value,
   onChange,
   disabled,
 }: {
-  title: string
-  hint: string
-  items: PermissionDefinition[]
+  menuPermissions: PermissionDefinition[]
   value: string[]
   onChange?: (keys: string[]) => void
   disabled?: boolean
 }) {
-  const selectedCount = items.filter((item) => value.includes(item.key)).length
+  const groups = useMemo(() => {
+    const groupDefs = getMenuGroupDefs()
+    const permByKey = new Map(menuPermissions.map((p) => [p.key, p]))
+    return groupDefs
+      .map((def) => ({
+        ...def,
+        items: def.permissionKeys.flatMap((key) => {
+          const perm = permByKey.get(key)
+          return perm ? [perm] : []
+        }),
+      }))
+      .filter((g) => g.items.length > 0)
+  }, [menuPermissions])
+
+  const selectedCount = menuPermissions.filter((item) => value.includes(item.key)).length
 
   const selectAll = () => {
+    if (!onChange) return
+    onChange(Array.from(new Set([...value, ...menuPermissions.map((item) => item.key)])))
+  }
+
+  const clearAll = () => {
+    if (!onChange) return
+    const menuKeys = new Set(menuPermissions.map((item) => item.key))
+    onChange(value.filter((key) => !menuKeys.has(key)))
+  }
+
+  const selectGroup = (items: PermissionDefinition[]) => {
     if (!onChange) return
     onChange(Array.from(new Set([...value, ...items.map((item) => item.key)])))
   }
 
-  const clearSection = () => {
+  const clearGroup = (items: PermissionDefinition[]) => {
     if (!onChange) return
-    const sectionKeys = new Set(items.map((item) => item.key))
-    onChange(value.filter((key) => !sectionKeys.has(key)))
+    const groupKeys = new Set(items.map((item) => item.key))
+    onChange(value.filter((key) => !groupKeys.has(key)))
   }
 
   return (
     <section className="rounded-xl border border-slate-200/90 bg-slate-50/40">
       <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200/80 px-4 py-3">
         <div>
-          <div className="text-sm font-semibold text-slate-900">{title}</div>
-          <div className="mt-0.5 text-xs text-slate-500">{hint}</div>
+          <div className="text-sm font-semibold text-slate-900">菜单权限</div>
+          <div className="mt-0.5 text-xs text-slate-500">控制侧边栏可见模块，按一级分类展示</div>
         </div>
         <div className="flex items-center gap-2 text-xs">
           <span className="rounded-full bg-white px-2.5 py-1 font-medium text-slate-600 ring-1 ring-slate-200">
-            已选 {selectedCount}/{items.length}
+            已选 {selectedCount}/{menuPermissions.length}
           </span>
           <button
             type="button"
@@ -169,7 +191,7 @@ function PermissionSection({
           <button
             type="button"
             disabled={disabled}
-            onClick={clearSection}
+            onClick={clearAll}
             className="rounded-md px-2 py-1 font-medium text-slate-500 transition hover:bg-white hover:text-slate-700 disabled:opacity-40"
           >
             清空
@@ -177,8 +199,40 @@ function PermissionSection({
         </div>
       </div>
 
-      <div className="p-4">
-        <PermissionCheckboxGrid items={items} value={value} onChange={onChange} disabled={disabled} />
+      <div className="space-y-5 p-4">
+        {groups.map((group) => {
+          const groupSelectedCount = group.items.filter((item) => value.includes(item.key)).length
+          return (
+            <div key={group.id}>
+              <div className="mb-2.5 flex items-center gap-2">
+                <span className="shrink-0 text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-500">
+                  {group.label}
+                </span>
+                <div className="flex-1 border-t border-slate-200" />
+                <span className="shrink-0 text-[11px] text-slate-400">
+                  {groupSelectedCount}/{group.items.length}
+                </span>
+                <button
+                  type="button"
+                  disabled={disabled}
+                  onClick={() => selectGroup(group.items)}
+                  className="shrink-0 rounded px-1.5 py-0.5 text-[11px] font-medium text-[#1f6f68] transition hover:bg-[var(--admin-accent-soft)] disabled:opacity-40"
+                >
+                  全选
+                </button>
+                <button
+                  type="button"
+                  disabled={disabled}
+                  onClick={() => clearGroup(group.items)}
+                  className="shrink-0 rounded px-1.5 py-0.5 text-[11px] font-medium text-slate-500 transition hover:bg-white hover:text-slate-700 disabled:opacity-40"
+                >
+                  清空
+                </button>
+              </div>
+              <PermissionCheckboxGrid items={group.items} value={value} onChange={onChange} disabled={disabled} />
+            </div>
+          )
+        })}
       </div>
     </section>
   )
@@ -324,10 +378,8 @@ export default function PermissionCheckboxGroup({
 }: PermissionCheckboxGroupProps) {
   return (
     <div className="space-y-4">
-      <PermissionSection
-        title="菜单权限"
-        hint="控制侧边栏可见模块"
-        items={menuPermissions}
+      <MenuPermissionsGroupedSection
+        menuPermissions={menuPermissions}
         value={value}
         onChange={onChange}
         disabled={disabled}

@@ -1,22 +1,39 @@
-import { message } from 'antd'
-import type { ReactNode } from 'react'
+import { App } from 'antd'
+import type { MessageInstance } from 'antd/es/message/interface'
+import { useLayoutEffect, type ReactNode } from 'react'
 
 export type ToastType = 'success' | 'error' | 'info' | 'warning'
 
+let messageApi: MessageInstance | null = null
+
+export function registerMessageApi(api: MessageInstance) {
+  messageApi = api
+}
+
+/** 挂载于 `<App>` 内，将 context-aware message API 注入 showToast */
+export function ToastBridge() {
+  const { message } = App.useApp()
+  useLayoutEffect(() => {
+    registerMessageApi(message)
+  }, [message])
+  return null
+}
+
 function dispatch(type: ToastType, content: ReactNode, duration: number) {
+  if (!messageApi) return
   const opts = { content, duration }
   switch (type) {
     case 'success':
-      message.success(opts)
+      messageApi.success(opts)
       break
     case 'error':
-      message.error(opts)
+      messageApi.error(opts)
       break
     case 'warning':
-      message.warning(opts)
+      messageApi.warning(opts)
       break
     case 'info':
-      message.info(opts)
+      messageApi.info(opts)
       break
   }
 }

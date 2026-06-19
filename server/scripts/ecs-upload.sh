@@ -118,7 +118,7 @@ upload_via_tar() {
     --exclude '.env' \
     --exclude '.env.*' \
     -C "$ROOT" . \
-  | run_ssh "mkdir -p ${ECS_REMOTE_DIR} && tar xzf - --warning=no-unknown-keyword -C ${ECS_REMOTE_DIR} 2>/dev/null || tar xzf - -C ${ECS_REMOTE_DIR}"
+  | run_ssh "mkdir -p ${ECS_REMOTE_DIR} && tar xzf - -C ${ECS_REMOTE_DIR} 2>/dev/null"
 }
 
 echo "==> 目标: ${ECS_USER}@${ECS_HOST}:${ECS_REMOTE_DIR}"

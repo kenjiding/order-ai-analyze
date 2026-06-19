@@ -89,6 +89,8 @@ export function useScannerLevel1FeishuPush(
     | 'setScannerHourlyExpanded'
     | 'attendanceResult'
     | 'efficiencyDetailDimension'
+    | 'dailyCostPerTicketByDate'
+    | 'dailyTotalLaborCostByDate'
   >,
 ) {
   const {
@@ -97,6 +99,8 @@ export function useScannerLevel1FeishuPush(
     setScannerHourlyExpanded,
     attendanceResult,
     efficiencyDetailDimension,
+    dailyCostPerTicketByDate,
+    dailyTotalLaborCostByDate,
   } = vm
 
   // 四个独立捕获区域的 ref
@@ -153,6 +157,8 @@ export function useScannerLevel1FeishuPush(
         periodLabel: dateBracket,
         scannerResult,
         attendanceResult,
+        attendanceDailyCostPerTicket: dailyCostPerTicketByDate,
+        attendanceDailyTotalLaborCost: dailyTotalLaborCostByDate,
       })
 
       // 定义推送顺序及各图表的 headline 和是否携带 AI dataSnapshot
@@ -314,6 +320,8 @@ export function useScannerLevel1FeishuPush(
     scannerResult,
     selectedChartKeys,
     efficiencyDetailDimension,
+    dailyCostPerTicketByDate,
+    dailyTotalLaborCostByDate,
   ])
 
   return {

@@ -14,7 +14,7 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
-      start_period: 10s
+      start_period: 30s
 
   warehouse-server:
     build:
@@ -55,13 +55,15 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+      warehouse-server:
+        condition: service_healthy
     env_file:
       - .env
     environment:
       NODE_ENV: production
       DATABASE_URL: postgresql://${POSTGRES_USER:-warehouse}:${POSTGRES_PASSWORD:-warehouse}@postgres:5432/${POSTGRES_DB:-warehouse}
       JOB_ARTIFACT_DIR: /data/job-artifacts
-    command: ['sh', '-c', 'pnpm db:migrate && pnpm worker:start']
+    command: ['sh', '-c', 'pnpm worker:start']
     volumes:
       - job_artifacts:/data/job-artifacts
 

@@ -43,6 +43,27 @@
       "when": 1740500000000,
       "tag": "0005_efficiency_attendance_daily_records",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1740600000000,
+      "tag": "0006_order_exception_post_filter_configs",
+      "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1740700000000,
+      "tag": "0007_order_exception_warehouse_config",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1750000000000,
+      "tag": "0008_feishu_push_snapshots",
+      "breakpoints": true
     }
   ]
 }

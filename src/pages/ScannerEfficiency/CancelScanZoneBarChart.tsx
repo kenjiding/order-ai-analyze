@@ -81,11 +81,12 @@ export default function CancelScanZoneBarChart({
     chart.axis('y', {
       title: '运单数（票）',
       titleFill: '#64748b',
-      titleFontSize: 12,
+      titleFontSize: 13,
       grid: true,
       gridLineDash: [4, 4],
       gridStroke: '#e2e8f0',
       labelFill: '#64748b',
+      labelFontSize: 15,
     })
 
     chart.interaction('tooltip', true)
@@ -105,9 +106,9 @@ export default function CancelScanZoneBarChart({
         text: (d: CancelScanZoneChartRow) => (d.count > 0 ? String(d.count) : ''),
         position: 'top',
         fill: '#475569',
-        fontSize: 11,
+        fontSize: 15,
         fontWeight: 600,
-        dy: -4,
+        dy: -6,
       })
 
     chart.on('element:click', (event: { data?: { data?: CancelScanZoneChartRow } }) => {
@@ -145,7 +146,7 @@ export default function CancelScanZoneBarChart({
         ref={containerRef}
         className="cancel-scan-zone-chart__canvas min-h-[260px] w-full cursor-pointer"
         role="img"
-        aria-label="取消扫描大区运单数柱状图"
+        aria-label="细分错误率大区分布柱状图"
       />
     </div>
   )

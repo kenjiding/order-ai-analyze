@@ -194,6 +194,7 @@ export function useScannerEfficiencyPage() {
   const [loadingAllocationApi, setLoadingAllocationApi] = useState(false)
   const [loadingCancelScanAnalysis, setLoadingCancelScanAnalysis] = useState(false)
   const [cancelScanAnalysis, setCancelScanAnalysis] = useState<CancelScanAnalysisState | null>(null)
+  const [apiDateRange, setApiDateRange] = useState<[string, string] | null>(null)
   const [error, setError] = useState('')
   const [manualTab, setManualTab] = useState<TabKey>(TAB_KEYS.WAREHOUSE)
   const [scannerHourlyExpanded, setScannerHourlyExpanded] = useState(false)
@@ -286,11 +287,16 @@ export function useScannerEfficiencyPage() {
   const showPushTab = usePermission(PERMISSION_KEYS.btnPushNotificationsWarehouseEfficiency)
 
   const activeTab = useMemo((): TabKey => {
-    if (manualTab === TAB_KEYS.WEEKLY) return TAB_KEYS.WEEKLY
+    const hasAttendance = Boolean(attendanceEfficiencyBase)
+    if (manualTab === TAB_KEYS.WEEKLY) return hasAttendance ? TAB_KEYS.WEEKLY : TAB_KEYS.FRONT_DESK
     if (manualTab === TAB_KEYS.PUSH) {
-      return showPushTab ? TAB_KEYS.PUSH : TAB_KEYS.WAREHOUSE
+      if (!showPushTab || !hasAttendance) return TAB_KEYS.FRONT_DESK
+      return TAB_KEYS.PUSH
     }
     if (manualTab === TAB_KEYS.CANCEL_SCAN) return TAB_KEYS.CANCEL_SCAN
+    if (manualTab === TAB_KEYS.FRONT_DESK) return TAB_KEYS.FRONT_DESK
+    // WAREHOUSE / SCANNER
+    if (!hasAttendance) return TAB_KEYS.FRONT_DESK
     const coerced: TabKey | null =
       attendanceEfficiencyBase && !scannerResult
         ? TAB_KEYS.WAREHOUSE
@@ -610,6 +616,147 @@ export function useScannerEfficiencyPage() {
     }
   }
 
+  const performAllocationFetch = async (token: string, startDate: string, endDate: string) => {
+    setLoadingAllocationApi(true)
+    try {
+      const result = await fetchBoxAssignedList({
+        imileToken: token,
+        startDate,
+        endDate,
+        imilePortal,
+      })
+
+      console.group(`[ScannerEfficiency] iMile 前台分配 API 原始数据 ${startDate} ~ ${endDate}`)
+      console.log('records（resultObject.results，未裁剪）', result.records)
+      console.log('raw（完整分页 HTTP JSON）', result.raw)
+      console.groupEnd()
+
+      const sourceLabel = `iMile 前台分配 API（${startDate} ~ ${endDate}）`
+      const mapped = mapAssignedListRecordsToParsedAllocationRows(result.records, sourceLabel)
+      const prevRows = allocationRowsRef.current
+      const prevSource = allocationSourceInfoRef.current
+
+      console.info('[ScannerEfficiency] iMile 前台分配 API 拉取完成', {
+        dateRange: `${startDate} ~ ${endDate}`,
+        apiTotalResult: result.meta.totalResult,
+        apiFetched: result.records.length,
+        mappedRows: mapped.rows.length,
+        mappedDropped: mapped.droppedRows,
+      })
+
+      if (!mapped.rows.length) {
+        showToast(
+          prevRows.length
+            ? '本次前台分配 API 没有可统计记录，已有分配数据未改动。'
+            : '所选日期区间内没有可统计的前台分配记录。',
+          'warning',
+        )
+        return
+      }
+
+      const combinedRawRows = prevRows.length ? [...prevRows, ...mapped.rows] : mapped.rows
+      const { rows: deduped, duplicateDropped } = dedupeParsedAllocationRows(combinedRawRows)
+      if (!deduped.length) {
+        showToast('前台分配经去重后没有可统计记录。', 'warning')
+        return
+      }
+
+      setAllocationRows(deduped)
+      const mergedNames = prevRows.length
+        ? mergeOrderedUniqueFileNames(prevSource.fileNames, [sourceLabel])
+        : [sourceLabel]
+
+      setAllocationSourceInfo({
+        fileCount: mergedNames.length,
+        rowCount: deduped.length,
+        droppedRows: prevRows.length
+          ? prevSource.droppedRows + mapped.droppedRows
+          : mapped.droppedRows,
+        duplicateWaybillRows: duplicateDropped,
+        fileNames: mergedNames,
+      })
+
+      showToast(
+        `前台分配 API 已载入 ${formatInteger(deduped.length)} 条（${startDate} ~ ${endDate}）`,
+        'success',
+      )
+    } catch (currentError: unknown) {
+      const message =
+        currentError instanceof Error ? currentError.message : 'iMile 前台分配 API 拉取失败'
+      showToast(message, 'error')
+    } finally {
+      setLoadingAllocationApi(false)
+    }
+  }
+
+  const handleAllocationApiFetch = async () => {
+    const token = imileToken.trim()
+    if (!token) {
+      showToast('请先在全局设置中配置 iMile Token', 'error')
+      return
+    }
+    if (!apiDateRange) {
+      showToast('请先在"载入扫描记录"中选择日期区间', 'error')
+      return
+    }
+    void performAllocationFetch(token, apiDateRange[0], apiDateRange[1])
+  }
+
+  const performCancelScanFetch = async (token: string, startDate: string, endDate: string) => {
+    setLoadingCancelScanAnalysis(true)
+    try {
+      const result = await fetchCancelScanAnalysis({
+        imileToken: token,
+        startDate,
+        endDate,
+        imilePortal,
+      })
+
+      console.group(`[ScannerEfficiency] 细分错误率分析 API 原始数据 ${startDate} ~ ${endDate}`)
+      console.log('cancelScanRecords', result.cancelScanRecords)
+      console.log('waybillRecords', result.waybillRecords)
+      console.log('routeCodeDistribution', result.routeCodeDistribution)
+      console.log('raw', result.raw)
+      console.groupEnd()
+
+      setCancelScanAnalysis({
+        dateRange: `${startDate} ~ ${endDate}`,
+        routeCodeDistribution: result.routeCodeDistribution,
+        dailyRouteCodeCounts: result.dailyRouteCodeCounts,
+        meta: result.meta,
+      })
+
+      if (result.meta.cancelScanFetched === 0) {
+        showToast('所选日期区间内没有细分错误记录。', 'warning')
+        return
+      }
+
+      showToast(
+        `细分错误率分析完成：${formatInteger(result.meta.cancelScanFetched)} 条记录，${formatInteger(result.routeCodeDistribution.length)} 种路由码`,
+        'success',
+      )
+    } catch (currentError: unknown) {
+      const message =
+        currentError instanceof Error ? currentError.message : '细分错误率分析拉取失败'
+      showToast(message, 'error')
+    } finally {
+      setLoadingCancelScanAnalysis(false)
+    }
+  }
+
+  const handleCancelScanApiFetch = async () => {
+    const token = imileToken.trim()
+    if (!token) {
+      showToast('请先在全局设置中配置 iMile Token', 'error')
+      return
+    }
+    if (!apiDateRange) {
+      showToast('请先在"载入扫描记录"中选择日期区间', 'error')
+      return
+    }
+    void performCancelScanFetch(token, apiDateRange[0], apiDateRange[1])
+  }
+
   const handleScanApiFetch = async (startDate: string, endDate: string) => {
     const token = imileToken.trim()
     if (!token) {
@@ -626,122 +773,7 @@ export function useScannerEfficiencyPage() {
     setError('')
     await flushPaint()
 
-    const loadCancelScanAnalysisAsync = async () => {
-      setLoadingCancelScanAnalysis(true)
-      try {
-        const result = await fetchCancelScanAnalysis({
-          imileToken: token,
-          startDate,
-          endDate,
-          imilePortal,
-        })
-
-        console.group(`[ScannerEfficiency] 取消扫描分析 API 原始数据 ${startDate} ~ ${endDate}`)
-        console.log('cancelScanRecords', result.cancelScanRecords)
-        console.log('waybillRecords', result.waybillRecords)
-        console.log('routeCodeDistribution', result.routeCodeDistribution)
-        console.log('raw', result.raw)
-        console.groupEnd()
-
-        setCancelScanAnalysis({
-          dateRange: `${startDate} ~ ${endDate}`,
-          routeCodeDistribution: result.routeCodeDistribution,
-          dailyRouteCodeCounts: result.dailyRouteCodeCounts,
-          meta: result.meta,
-        })
-
-        if (result.meta.cancelScanFetched === 0) {
-          showToast('所选日期区间内没有取消扫描记录。', 'warning')
-          return
-        }
-
-        showToast(
-          `取消扫描分析完成：${formatInteger(result.meta.cancelScanFetched)} 条记录，${formatInteger(result.routeCodeDistribution.length)} 种路由码`,
-          'success',
-        )
-      } catch (currentError: unknown) {
-        const message =
-          currentError instanceof Error ? currentError.message : '取消扫描分析拉取失败'
-        showToast(message, 'error')
-      } finally {
-        setLoadingCancelScanAnalysis(false)
-      }
-    }
-
-    void loadCancelScanAnalysisAsync()
-
-    const loadBoxAssignedListAsync = async () => {
-      setLoadingAllocationApi(true)
-      try {
-        const result = await fetchBoxAssignedList({
-          imileToken: token,
-          startDate,
-          endDate,
-          imilePortal,
-        })
-
-        console.group(`[ScannerEfficiency] iMile 前台分配 API 原始数据 ${startDate} ~ ${endDate}`)
-        console.log('records（resultObject.results，未裁剪）', result.records)
-        console.log('raw（完整分页 HTTP JSON）', result.raw)
-        console.groupEnd()
-
-        const sourceLabel = `iMile 前台分配 API（${startDate} ~ ${endDate}）`
-        const mapped = mapAssignedListRecordsToParsedAllocationRows(result.records, sourceLabel)
-        const prevRows = allocationRowsRef.current
-        const prevSource = allocationSourceInfoRef.current
-
-        console.info('[ScannerEfficiency] iMile 前台分配 API 拉取完成', {
-          dateRange: `${startDate} ~ ${endDate}`,
-          apiTotalResult: result.meta.totalResult,
-          apiFetched: result.records.length,
-          mappedRows: mapped.rows.length,
-          mappedDropped: mapped.droppedRows,
-        })
-
-        if (!mapped.rows.length) {
-          showToast(
-            prevRows.length
-              ? '本次前台分配 API 没有可统计记录，已有分配数据未改动。'
-              : '所选日期区间内没有可统计的前台分配记录。',
-            'warning',
-          )
-          return
-        }
-
-        const combinedRawRows = prevRows.length ? [...prevRows, ...mapped.rows] : mapped.rows
-        const { rows: deduped, duplicateDropped } = dedupeParsedAllocationRows(combinedRawRows)
-        if (!deduped.length) {
-          showToast('前台分配经去重后没有可统计记录。', 'warning')
-          return
-        }
-
-        setAllocationRows(deduped)
-        const mergedNames = prevRows.length
-          ? mergeOrderedUniqueFileNames(prevSource.fileNames, [sourceLabel])
-          : [sourceLabel]
-
-        setAllocationSourceInfo({
-          fileCount: mergedNames.length,
-          rowCount: deduped.length,
-          droppedRows: prevRows.length
-            ? prevSource.droppedRows + mapped.droppedRows
-            : mapped.droppedRows,
-          duplicateWaybillRows: duplicateDropped,
-          fileNames: mergedNames,
-        })
-
-        showToast(
-          `前台分配 API 已载入 ${formatInteger(deduped.length)} 条（${startDate} ~ ${endDate}）`,
-          'success',
-        )
-      } catch (currentError: unknown) {
-        const message =
-          currentError instanceof Error ? currentError.message : 'iMile 前台分配 API 拉取失败'
-        showToast(message, 'error')
-      } finally {
-        setLoadingAllocationApi(false)
-      }
-    }
+    void performCancelScanFetch(token, startDate, endDate)
 
     try {
       const result = await fetchInboundScans({
@@ -813,7 +845,7 @@ export function useScannerEfficiencyPage() {
         fileNames: mergedNames,
       })
 
-      void loadBoxAssignedListAsync()
+      void performAllocationFetch(token, startDate, endDate)
     } catch (currentError: unknown) {
       setError(currentError instanceof Error ? currentError.message : 'iMile 到件 API 拉取失败')
     } finally {
@@ -1149,6 +1181,10 @@ export function useScannerEfficiencyPage() {
     handleSettingChange,
     handleScanFileChange,
     handleScanApiFetch,
+    handleCancelScanApiFetch,
+    handleAllocationApiFetch,
+    apiDateRange,
+    setApiDateRange,
     handleAttendanceFileChange,
     handleAllocationFileChange,
     clearAttendance,

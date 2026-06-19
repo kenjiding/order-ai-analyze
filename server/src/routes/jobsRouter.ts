@@ -7,7 +7,7 @@ import {
   sendJobAccessDenied,
 } from '../jobs/access'
 import { isArtifactExpired, readJobArtifactJson } from '../jobs/artifactStore'
-import { enqueueJob, cancelJob, getJobById, listJobs, JobQueueError } from '../jobs/queue'
+import { enqueueJob, cancelJob, deleteJob, getJobById, listJobs, JobQueueError } from '../jobs/queue'
 import { listRegisteredJobTypes } from '../jobs/registry'
 import { JOB_STATUSES, toPublicJob, type JobStatus } from '../jobs/types'
 
@@ -138,6 +138,24 @@ jobsRouter.get('/:id/artifact', async (req: AuthenticatedRequest, res: Response)
   } catch {
     res.status(404).json({ error: 'artifact 文件不存在' })
   }
+})
+
+jobsRouter.delete('/:id', async (req: AuthenticatedRequest, res: Response) => {
+  const job = await getJobById(String(req.params.id))
+  if (!job) {
+    res.status(404).json({ error: '任务不存在' })
+    return
+  }
+  if (!canAccessJob(req, job)) {
+    sendJobAccessDenied(res)
+    return
+  }
+  if (job.status === 'running') {
+    res.status(409).json({ error: '处理中的任务无法删除，请等待完成后再删除' })
+    return
+  }
+  await deleteJob(job.id)
+  res.status(204).end()
 })
 
 jobsRouter.post('/:id/cancel', async (req: AuthenticatedRequest, res: Response) => {

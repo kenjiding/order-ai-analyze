@@ -26,6 +26,9 @@ dependencies:
   jsonwebtoken:
     specifier: ^9.0.3
     version: 9.0.3
+  node-cron:
+    specifier: ^4.2.1
+    version: 4.2.1
   openai:
     specifier: ^6.37.0
     version: 6.39.0
@@ -55,6 +58,9 @@ devDependencies:
   '@types/node':
     specifier: ^24.12.2
     version: 24.12.4
+  '@types/node-cron':
+    specifier: ^3.0.11
+    version: 3.0.11
   drizzle-kit:
     specifier: ^0.31.10
     version: 0.31.10
@@ -789,6 +795,10 @@ packages:
     resolution: {integrity: sha512-GsCCIZDE/p3i96vtEqx+7dBUGXrc7zeSK3wwPHIaRThS+9OhWIXRqzs4d6k1SVU8g91DrNRWxWUGhp5KXQb2VA==}
     dev: true
 
+  /@types/node-cron@3.0.11:
+    resolution: {integrity: sha512-0ikrnug3/IyneSHqCBeslAhlK2aBfYek1fGo4bP4QnZPmiqSGRK+Oy7ZMisLWkesffJvQ1cqAcBnJC+8+nxIAg==}
+    dev: true
+
   /@types/node@24.12.4:
     resolution: {integrity: sha512-GUUEShf+PBCGW2KaXwcIt3Yk+e3pkKwWKb9GSyM9WQVE+ep2jzmHdGsHzu4wgcZy5fN9FBdVzjpBQsYlpfpgLA==}
     dependencies:
@@ -1466,6 +1476,11 @@ packages:
   /node-addon-api@8.8.0:
     resolution: {integrity: sha512-c5Ko1fZJIJmzhFIkhRN76WTq+fC6tWnGy9CXA0fA+XygsWZmEwG8vmbkNqxMyoaa0Tin4djul49NzdVcJJcjeA==}
     engines: {node: ^18 || ^20 || >= 21}
+    dev: false
+
+  /node-cron@4.2.1:
+    resolution: {integrity: sha512-lgimEHPE/QDgFlywTd8yTR61ptugX3Qer29efeyWw2rv259HtGBNn1vZVmp8lB9uo9wC0t/AT4iGqXxia+CJFg==}
+    engines: {node: '>=6.0.0'}
     dev: false
 
   /node-gyp-build@4.8.4:

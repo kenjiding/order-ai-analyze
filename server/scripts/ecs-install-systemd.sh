@@ -22,9 +22,20 @@ if [[ "$(loginctl show-user "$USER_NAME" -p Linger --value 2>/dev/null || echo n
   sudo loginctl enable-linger "$USER_NAME"
 fi
 
-COMPOSE_BIN="$(command -v podman-compose || true)"
-if [[ -z "$COMPOSE_BIN" ]]; then
-  echo "未找到 podman-compose" >&2
+# 查找 compose 命令（优先用 podman compose 插件，其次 podman-compose 独立包）
+PODMAN_BIN="$(command -v podman)"
+if "$PODMAN_BIN" compose version &>/dev/null 2>&1; then
+  COMPOSE_START="$PODMAN_BIN compose up -d"
+  COMPOSE_STOP="$PODMAN_BIN compose down"
+  echo "==> 使用 podman compose 插件：$PODMAN_BIN"
+elif command -v podman-compose &>/dev/null; then
+  PC_BIN="$(command -v podman-compose)"
+  COMPOSE_START="$PC_BIN up -d"
+  COMPOSE_STOP="$PC_BIN down"
+  echo "==> 使用 podman-compose：$PC_BIN"
+else
+  echo "未找到 podman compose 或 podman-compose" >&2
+  echo "请安装：sudo dnf install -y podman-compose" >&2
   exit 1
 fi
 
@@ -38,8 +49,8 @@ After=network-online.target
 Type=oneshot
 RemainAfterExit=yes
 WorkingDirectory=${ROOT}
-ExecStart=${COMPOSE_BIN} up -d
-ExecStop=${COMPOSE_BIN} down
+ExecStart=${COMPOSE_START}
+ExecStop=${COMPOSE_STOP}
 TimeoutStartSec=300
 TimeoutStopSec=120
 
@@ -50,11 +61,13 @@ EOF
 cat >"$UNIT_DIR/warehouse-watchdog.service" <<EOF
 [Unit]
 Description=Warehouse stack health watchdog
+After=warehouse-app.service
 
 [Service]
 Type=oneshot
 WorkingDirectory=${ROOT}
 ExecStart=${ROOT}/scripts/ecs-ensure-running.sh
+TimeoutStartSec=300
 EOF
 
 cat >"$UNIT_DIR/warehouse-watchdog.timer" <<EOF
@@ -62,7 +75,7 @@ cat >"$UNIT_DIR/warehouse-watchdog.timer" <<EOF
 Description=Run warehouse watchdog every 5 minutes
 
 [Timer]
-OnBootSec=2min
+OnBootSec=5min
 OnUnitActiveSec=5min
 Persistent=true
 

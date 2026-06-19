@@ -34,7 +34,6 @@ import { PERMISSION_KEYS, usePermission } from '../../../hooks/usePermission'
 import type { WarehouseCityId, WarehouseConfigDto, WarehouseProfileDto } from '../warehouseConfig/types'
 import { WAREHOUSE_CITY_OPTIONS } from '../warehouseConfig/types'
 import { validateWarehouseConfig } from '../warehouseConfig/validateWarehouseConfig'
-
 function WarehouseTreeLeafTitle({
   profile,
   onDelete,
@@ -107,7 +106,7 @@ function TagListEditor({
   return (
     <Form.Item
       label={
-        <span className="text-xs font-semibold uppercase tracking-[0.06em] text-slate-500">
+        <span className="inline-flex min-h-[2.5rem] items-end text-xs font-semibold uppercase tracking-[0.06em] text-slate-500">
           {label}
         </span>
       }
@@ -177,18 +176,20 @@ function GlobalRulesSection({
             className="space-y-5 border-t px-5 py-5"
             style={{ borderColor: 'var(--admin-line)', background: 'var(--admin-surface-soft)' }}
           >
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <Form layout="vertical">
+            <div className="flex flex-wrap items-end gap-4">
               <Form.Item
                 label={
                   <span className="text-xs font-semibold uppercase tracking-[0.06em] text-slate-500">
-                    默认库内/库外丢失超时（天）
+                    默认超时（天）
                   </span>
                 }
+                tooltip="库内/库外丢失超时，未配置仓库超时时使用此值"
                 className="mb-0"
               >
                 <InputNumber
                   min={1}
-                  className="w-full"
+                  className="w-28"
                   value={global.defaultLossTimeoutDays}
                   onChange={(value) =>
                     onChange({
@@ -208,7 +209,7 @@ function GlobalRulesSection({
               >
                 <InputNumber
                   min={1}
-                  className="w-full"
+                  className="w-28"
                   value={global.externalCarrierLossTimeoutDays}
                   onChange={(value) =>
                     onChange({
@@ -218,28 +219,33 @@ function GlobalRulesSection({
                   }
                 />
               </Form.Item>
+              <div className="min-w-[160px] flex-1">
+                <TagListEditor
+                  label="全局系统操作员"
+                  values={global.commonSystemOperators}
+                  onChange={(commonSystemOperators) => onChange({ ...global, commonSystemOperators })}
+                />
+              </div>
+              <div className="min-w-[160px] flex-1">
+                <TagListEditor
+                  label="全局非真实操作员"
+                  values={global.commonNonRealOperators}
+                  onChange={(commonNonRealOperators) => onChange({ ...global, commonNonRealOperators })}
+                />
+              </div>
+              <div className="min-w-[160px] flex-1">
+                <TagListEditor
+                  label="全局非真实操作员正则"
+                  hint="用于批量识别系统/虚拟操作员"
+                  values={global.commonNonRealOperatorPatterns}
+                  placeholder="例如 ^[A-Z]{2,5}\\s+OPS\\d+$"
+                  onChange={(commonNonRealOperatorPatterns) =>
+                    onChange({ ...global, commonNonRealOperatorPatterns })
+                  }
+                />
+              </div>
             </div>
-            <div className="grid grid-cols-1 gap-4 xl:grid-cols-3">
-              <TagListEditor
-                label="全局系统操作员"
-                values={global.commonSystemOperators}
-                onChange={(commonSystemOperators) => onChange({ ...global, commonSystemOperators })}
-              />
-              <TagListEditor
-                label="全局非真实操作员"
-                values={global.commonNonRealOperators}
-                onChange={(commonNonRealOperators) => onChange({ ...global, commonNonRealOperators })}
-              />
-              <TagListEditor
-                label="全局非真实操作员正则"
-                hint="用于批量识别系统/虚拟操作员"
-                values={global.commonNonRealOperatorPatterns}
-                placeholder="例如 ^[A-Z]{2,5}\\s+OPS\\d+$"
-                onChange={(commonNonRealOperatorPatterns) =>
-                  onChange({ ...global, commonNonRealOperatorPatterns })
-                }
-              />
-            </div>
+            </Form>
           </div>
         </div>
       </div>
@@ -297,7 +303,7 @@ function ProfileEditor({
             <Form.Item
               label={
                 <span className="text-xs font-semibold uppercase tracking-[0.06em] text-slate-500">
-                  仓库名
+                  仓库名（⚠️必须与轨迹内仓库名一致，用于区分是仓内,3PL承运商)
                 </span>
               }
               tooltip="须与轨迹【】内仓库名一致，分析据此匹配"

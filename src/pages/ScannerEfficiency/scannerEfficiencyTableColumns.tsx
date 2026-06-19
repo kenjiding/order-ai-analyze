@@ -135,9 +135,12 @@ function costPerTicketForHighlight(cost: number): number {
   return Math.round(cost * 100) / 100
 }
 
+const DAY_EFFICIENCY_CELL_CLASS = 'text-base tabular-nums'
+const COST_PER_TICKET_CELL_CLASS = 'text-base tabular-nums'
+
 function costPerTicketHighlightClass(cost: number): string {
   const normalized = costPerTicketForHighlight(cost)
-  const base = 'inline-block rounded px-1.5 py-0.5 font-semibold tabular-nums'
+  const base = `inline-block rounded px-1.5 py-0.5 font-semibold ${COST_PER_TICKET_CELL_CLASS}`
   if (normalized <= COST_PER_TICKET_GREEN_MAX) {
     return `${base} bg-green-100 text-green-700`
   }
@@ -149,11 +152,12 @@ function costPerTicketHighlightClass(cost: number): string {
 
 function attendanceMatchFooterCell(
   total: string,
-  accent?: { topClass?: string },
+  accent?: { topClass?: string; emphasized?: boolean },
 ) {
   const topClass = accent?.topClass ?? 'font-medium text-slate-900'
+  const sizeClass = accent?.emphasized ? 'text-base' : 'text-xs'
   return (
-    <span className={`text-xs leading-snug ${topClass}`}>总计 {total}</span>
+    <span className={`${sizeClass} leading-snug ${topClass}`}>总计 {total}</span>
   )
 }
 
@@ -312,14 +316,15 @@ export function buildAttendanceMatchColumns(options?: {
           const totalEff =
             s.efficiencyFromTotals == null ? '—' : formatNumber(s.efficiencyFromTotals, 2)
           return attendanceMatchFooterCell(totalEff, {
+            emphasized: true,
             topClass: isDayEfficiencyAtOrBelowAlert(s.efficiencyFromTotals)
-              ? 'font-semibold tabular-nums text-red-600'
-              : 'font-medium tabular-nums text-slate-900',
+              ? `font-semibold ${DAY_EFFICIENCY_CELL_CLASS} text-red-600`
+              : `font-medium ${DAY_EFFICIENCY_CELL_CLASS} text-slate-900`,
           })
         }
         if (row.isWeekGroupHeader) return '—'
         if (row.dayEfficiency == null) {
-          return <span className="tabular-nums text-slate-400">-</span>
+          return <span className={`${DAY_EFFICIENCY_CELL_CLASS} text-slate-400`}>-</span>
         }
         const eff = Number(row.dayEfficiency)
         const low = isDayEfficiencyAtOrBelowAlert(eff)
@@ -327,8 +332,8 @@ export function buildAttendanceMatchColumns(options?: {
           <span
             className={
               low
-                ? 'font-semibold tabular-nums text-red-600'
-                : 'tabular-nums text-slate-900'
+                ? `font-semibold ${DAY_EFFICIENCY_CELL_CLASS} text-red-600`
+                : `${DAY_EFFICIENCY_CELL_CLASS} text-slate-900`
             }
           >
             {formatNumber(eff, 2)}
@@ -348,10 +353,10 @@ export function buildAttendanceMatchColumns(options?: {
               ? '—'
               : `$${formatNumber(footerCost, 2)}`
           if (footerCost == null || !Number.isFinite(footerCost)) {
-            return attendanceMatchFooterCell(unit)
+            return attendanceMatchFooterCell(unit, { emphasized: true })
           }
           return (
-            <span className="text-xs leading-snug">
+            <span className="text-base leading-snug">
               <span className="font-medium text-slate-900">
                 总计 <span className={costPerTicketHighlightClass(footerCost)}>{unit}</span>
               </span>
@@ -361,7 +366,7 @@ export function buildAttendanceMatchColumns(options?: {
         if (row.isWeekGroupHeader) return '—'
         const c = row.attendanceCostPerTicket
         if (c == null || !Number.isFinite(Number(c))) {
-          return <span className="tabular-nums text-slate-400">-</span>
+          return <span className={`${COST_PER_TICKET_CELL_CLASS} text-slate-400`}>-</span>
         }
         const cost = Number(c)
         return (

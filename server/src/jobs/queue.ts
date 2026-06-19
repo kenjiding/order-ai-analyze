@@ -200,6 +200,12 @@ export async function cancelJob(jobId: string): Promise<Job | null> {
   return updated ?? null
 }
 
+export async function deleteJob(jobId: string): Promise<boolean> {
+  const db = getDb()
+  const result = await db.delete(jobs).where(eq(jobs.id, jobId)).returning({ id: jobs.id })
+  return result.length > 0
+}
+
 export async function recoverStaleRunningJobs(staleLockMinutes: number): Promise<number> {
   const db = getDb()
   const cutoff = new Date(Date.now() - staleLockMinutes * 60 * 1000)

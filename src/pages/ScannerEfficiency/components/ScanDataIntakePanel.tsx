@@ -33,6 +33,13 @@ export function ScanDataIntakePanel({ vm }: Props) {
   const scanFileInputRef = useRef<HTMLInputElement>(null)
   const attendanceFileInputRef = useRef<HTMLInputElement>(null)
 
+  const handleRangeChange = (values: [Dayjs, Dayjs] | null) => {
+    setRange(values)
+    vm.setApiDateRange(
+      values ? [values[0].format('YYYY-MM-DD'), values[1].format('YYYY-MM-DD')] : null,
+    )
+  }
+
   const handleFetch = () => {
     if (!range || readOnly) return
     void handleScanApiFetch(range[0].format('YYYY-MM-DD'), range[1].format('YYYY-MM-DD'))
@@ -120,7 +127,7 @@ export function ScanDataIntakePanel({ vm }: Props) {
               <div className="flex min-w-0 flex-wrap items-center gap-2">
                 <DatePicker.RangePicker
                   value={range}
-                  onChange={(values) => setRange(values as [Dayjs, Dayjs] | null)}
+                  onChange={(values) => handleRangeChange(values as [Dayjs, Dayjs] | null)}
                   allowClear
                   format="YYYY-MM-DD"
                   disabled={actionsDisabled}

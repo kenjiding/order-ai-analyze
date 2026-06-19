@@ -14,6 +14,7 @@ import {
   generateSortEfficiencyFeishuAnalysis,
   splitFeishuWebhookTextChunks,
 } from '../sortEfficiencyFeishuAnalysis'
+import { upsertFeishuPushSnapshot } from '../feishu/pushSnapshotRepository'
 
 export const feishuWebhookTestRouter = Router()
 
@@ -174,6 +175,65 @@ feishuWebhookTestRouter.post('/push-text', async (req: AuthenticatedRequest, res
   }
 })
 
+type PushCardBody = {
+  pushScope?: unknown
+  webhookUrl?: unknown
+  signingSecret?: unknown
+  /** 飞书交互式卡片 JSON（card 字段） */
+  card?: unknown
+}
+
+/** 推送飞书交互式卡片（富文本 / HTML 样式） */
+feishuWebhookTestRouter.post('/push-card', async (req: AuthenticatedRequest, res: Response) => {
+  if (!requirePushApiScope(req, res)) return
+
+  const body = req.body as PushCardBody
+  let webhookHref: string
+  try {
+    webhookHref = parseSafeWebhookUrl(body.webhookUrl).href
+  } catch {
+    res.status(400).json({
+      ok: false,
+      error: '仅允许访问飞书开放平台官方 webhook 地址（HTTPS，open.feishu.cn/open-apis/bot/v2/hook/…）。',
+    })
+    return
+  }
+
+  if (!body.card || typeof body.card !== 'object' || Array.isArray(body.card)) {
+    res.status(400).json({ ok: false, error: '缺少 card 卡片内容' })
+    return
+  }
+
+  const secretRaw = body.signingSecret
+  const secret =
+    typeof secretRaw === 'string' && secretRaw.trim() !== '' ? secretRaw.trim() : undefined
+
+  const payload: Record<string, unknown> = {
+    msg_type: 'interactive',
+    card: body.card,
+  }
+  if (secret) await appendWebhookSign(payload, secret)
+
+  try {
+    const r = await postWebhookJson(webhookHref, payload)
+    if (!r.ok) {
+      res.status(502).json({
+        ok: false,
+        error: '飞书 webhook 卡片消息发送失败。',
+        httpStatus: r.httpStatus,
+        feishu: r.feishu,
+      })
+      return
+    }
+    res.status(200).json({ ok: true, httpStatus: r.httpStatus, feishu: r.feishu })
+  } catch {
+    res.status(502).json({
+      ok: false,
+      error: '推送卡片时发生网络错误，请稍后重试。',
+    })
+  }
+})
+
 type PushImageBody = {
   pushScope?: unknown
   webhookUrl?: unknown
@@ -330,6 +390,15 @@ feishuWebhookTestRouter.post('/push-image', async (req: AuthenticatedRequest, re
 
   const snapRaw = body.dataSnapshot
   if (snapRaw !== undefined && snapRaw !== null && typeof snapRaw === 'object' && !Array.isArray(snapRaw)) {
+    // 将快照保存到服务端 DB，供定时调度器复用（失败不影响本次推送）
+    const regionCode = req.authUser?.regionCode?.trim() || 'global'
+    const periodLabel = typeof (snapRaw as { periodLabel?: string }).periodLabel === 'string'
+      ? (snapRaw as { periodLabel?: string }).periodLabel as string
+      : ''
+    upsertFeishuPushSnapshot(regionCode, periodLabel, snapRaw).catch((err) => {
+      console.error('[push-image] 快照保存失败（不影响推送）:', err)
+    })
+
     const gen = await generateSortEfficiencyFeishuAnalysis(snapRaw)
     if (gen.ok) {
       analysisChunksResolved = splitFeishuWebhookTextChunks(gen.text)
