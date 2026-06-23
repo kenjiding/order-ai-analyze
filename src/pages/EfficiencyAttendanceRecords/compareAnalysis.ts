@@ -1,7 +1,7 @@
 import type { EfficiencyAttendanceDayRecord } from '../ScannerEfficiency/dailyEfficiencyRecordSnapshot'
 
-/** 与 aggregates.ts 保持一致：菜鸟件难度折扣 = 1 - 0.75 */
-const CAINIAO_DIFFICULTY_DISCOUNT = 0.25
+/** 与 aggregates.ts 一致：菜鸟件仅需普通件约 75% 时间，占比越高当日效率天然偏高 */
+const CAINIAO_EASE_DISCOUNT = 0.25
 
 export type PersonnelRow = {
   sorterName: string
@@ -45,12 +45,17 @@ export type DayMetrics = {
   isWorst: boolean
 }
 
-export type RootCauseFactor = 'volume' | 'hoursPerPerson' | 'cainiaoShare' | 'personalEfficiency' | 'frontDeskRatio'
+export type RootCauseFactor = 'volume' | 'hoursPerPerson' | 'cainiaoShare' | 'personalEfficiency' | 'frontDeskRatio' | 'residual'
 
 export type RootCause = {
   factor: RootCauseFactor
   label: string
+  /** 贡献量（票/h），正 = 拉大差距（伤害最差日），负 = 弥补差距（帮助最差日） */
+  contributionAbs: number
+  /** 占总差距的绝对百分比（不带符号，仅用于进度条宽度） */
   contributionPct: number
+  /** 方向：hurt = 加剧差距，help = 弥补差距 */
+  direction: 'hurts' | 'helps' | 'neutral'
   detail: string
   isSignificant: boolean
 }
@@ -59,6 +64,12 @@ export type CompareAnalysisResult = {
   bestDate: string
   worstDate: string
   efficiencyGapPct: number
+  /** 最优日与最差日的效率差（票/h）= bestEff - worstEff */
+  efficiencyGapAbs: number
+  /** 最差日去除菜鸟结构后的纯运营效率（票/h） */
+  worstNormalizedEff: number
+  /** 最优日去除菜鸟结构后的纯运营效率（票/h） */
+  bestNormalizedEff: number
   dayMetrics: DayMetrics[]
   rootCauses: RootCause[]
   suggestions: string[]
@@ -171,100 +182,127 @@ export function computeCompareAnalysis(records: EfficiencyAttendanceDayRecord[])
   const hasMissingScanner = rawMetrics.some((d) => d.scanners.length === 0)
   const hasMissingPersonnel = rawMetrics.some((d) => d.personnel.length === 0)
 
-  // 五因素变异系数（新增前台工时比）
-  const volumes = rawMetrics.map((d) => d.volume)
-  const hoursPerPersons = rawMetrics.map((d) => d.hoursPerSorter)
-  const cainiaoImpacts = rawMetrics.map((d) => d.cainiaoShare * CAINIAO_DIFFICULTY_DISCOUNT)
-  const frontDeskRatios = rawMetrics.map((d) => d.frontDeskSharePct)
+  // ── 有向瀑布分解：最优日 vs 最差日 ────────────────────────────────────────────
+  // 正确的分析：逐因素计算对差距的有向贡献（正=拉大差距/伤害最差日，负=弥补差距/帮助最差日）
+  const bestM_raw = rawMetrics.find((d) => d.date === bestDate)!
+  const worstM_raw = rawMetrics.find((d) => d.date === worstDate)!
+  const E_B = getPrimaryEff(bestM_raw)
+  const E_W = getPrimaryEff(worstM_raw)
+  const totalGap = E_B - E_W  // 正数，最优减最差
+  const refEff = (E_B + E_W) / 2
+
+  // 1. 菜鸟结构效应
+  // 菜鸟件更快，占比越高效率天然偏高。若最差日菜鸟占比反而更高，则菜鸟帮助了最差日（弥补差距）。
+  // cainiaoBonus ≈ E × cainiaoShare × CAINIAO_EASE_DISCOUNT（一阶近似）
+  const cainiaoBonus_B = E_B * bestM_raw.cainiaoShare * CAINIAO_EASE_DISCOUNT
+  const cainiaoBonus_W = E_W * worstM_raw.cainiaoShare * CAINIAO_EASE_DISCOUNT
+  // 菜鸟对差距的贡献 = 最优日的菜鸟加成 - 最差日的菜鸟加成
+  // 若为负：最差日菜鸟加成更大 → 弥补了差距（帮助最差日）
+  const cainiaoContrib = cainiaoBonus_B - cainiaoBonus_W
+
+  // 纯运营效率（剥离菜鸟结构后）
+  const pureEff_B = E_B - cainiaoBonus_B
+  const pureEff_W = E_W - cainiaoBonus_W
+
+  // 2. 前台工时拖累
+  // 前台不产出扫描量，占比越高效率越低。若最差日前台占比更高，则对差距有正向贡献（加剧）。
+  const avgFrontDesk = (bestM_raw.frontDeskSharePct + worstM_raw.frontDeskSharePct) / 2
+  const frontDeskDivisor = Math.max(1 - avgFrontDesk, 0.3)
+  const frontDeskContrib = refEff * (worstM_raw.frontDeskSharePct - bestM_raw.frontDeskSharePct) / frontDeskDivisor
+
+  // 3. 货量规模效应
+  // 货量低但人数不变 → 效率低。只计算货量差异带来的直接影响。
+  const V_avg = (bestM_raw.volume + worstM_raw.volume) / 2
+  const sorterRatioAdj = bestM_raw.sorterCount > 0 && worstM_raw.sorterCount > 0
+    ? Math.min(1.2, bestM_raw.sorterCount / worstM_raw.sorterCount)
+    : 1
+  const volumeContrib = V_avg > 0
+    ? refEff * (bestM_raw.volume - worstM_raw.volume) / V_avg * sorterRatioAdj * 0.4
+    : 0
+
+  // 4. 人均工时效应
+  // 相同货量下工时越长效率越低（人员冗余或低效在岗）
+  const hppContrib = bestM_raw.hoursPerSorter > 0 && worstM_raw.hoursPerSorter > 0
+    ? refEff * (worstM_raw.hoursPerSorter / bestM_raw.hoursPerSorter - 1) * 0.35
+    : 0
+
+  // 5. 分拣员个人效率（来自扫描员数据，最直接的人员效率衡量）
   const scannerEfficiencies = rawMetrics.map((d) => d.scannerEfficiency).filter((v): v is number => v != null)
+  const scannerContrib = bestM_raw.scannerEfficiency != null && worstM_raw.scannerEfficiency != null
+    ? (bestM_raw.scannerEfficiency - worstM_raw.scannerEfficiency) * 0.3
+    : 0
 
-  const cvVolume = cv(volumes)
-  const cvHours = cv(hoursPerPersons)
-  const cvCainiao = cv(cainiaoImpacts)
-  const cvFrontDesk = cv(frontDeskRatios)
-  const cvScanner = scannerEfficiencies.length >= 2 ? cv(scannerEfficiencies) : 0
+  // 6. 残差（无法用以上结构因素解释的运营差距）
+  const explained = cainiaoContrib + frontDeskContrib + volumeContrib + hppContrib + scannerContrib
+  const residualContrib = totalGap - explained
 
-  const total = cvVolume + cvHours + cvCainiao + cvFrontDesk + cvScanner || 1
-  const pctVolume = (cvVolume / total) * 100
-  const pctHours = (cvHours / total) * 100
-  const pctCainiao = (cvCainiao / total) * 100
-  const pctFrontDesk = (cvFrontDesk / total) * 100
-  const pctScanner = (cvScanner / total) * 100
+  const absTotalForPct = Math.abs(cainiaoContrib) + Math.abs(frontDeskContrib) + Math.abs(volumeContrib) + Math.abs(hppContrib) + Math.abs(scannerContrib) + Math.abs(residualContrib) || 1
 
-  // Detail strings
-  const maxVol = Math.max(...volumes)
-  const minVol = Math.min(...volumes)
-  const maxHpp = Math.max(...hoursPerPersons)
-  const minHpp = Math.min(...hoursPerPersons)
-  const maxCainiao = Math.max(...rawMetrics.map((d) => d.cainiaoShare))
-  const minCainiao = Math.min(...rawMetrics.map((d) => d.cainiaoShare))
-  const maxFrontDesk = Math.max(...frontDeskRatios)
-  const minFrontDesk = Math.min(...frontDeskRatios)
+  function makeRootCause(
+    factor: RootCauseFactor,
+    label: string,
+    absContrib: number,
+    detail: string,
+  ): RootCause {
+    const direction: RootCause['direction'] = Math.abs(absContrib) < 0.5 ? 'neutral' : absContrib > 0 ? 'hurts' : 'helps'
+    return {
+      factor,
+      label,
+      contributionAbs: absContrib,
+      contributionPct: (Math.abs(absContrib) / absTotalForPct) * 100,
+      direction,
+      detail,
+      isSignificant: Math.abs(absContrib) >= 1.0 || (totalGap > 0 && Math.abs(absContrib / totalGap) >= 0.05),
+    }
+  }
 
-  const detailVolume =
-    minVol > 0
-      ? `最高日 ${maxVol} 票，最低日 ${minVol} 票（差 ${fmt1(((maxVol - minVol) / minVol) * 100)}%）`
-      : `最高日 ${maxVol} 票，最低日 ${minVol} 票`
+  // Detail 描述
+  const detailCainiao = worstM_raw.cainiaoShare > bestM_raw.cainiaoShare
+    ? `最差日菜鸟占比 ${fmt1(worstM_raw.cainiaoShare * 100)}%，高于最优日 ${fmt1(bestM_raw.cainiaoShare * 100)}%。菜鸟件处理更快，最差日因此获得 ${fmt1(cainiaoBonus_W)} 票/h 结构性加成（最优日仅 ${fmt1(cainiaoBonus_B)} 票/h），弥补了部分差距，但掩盖了更大的运营问题。`
+    : worstM_raw.cainiaoShare < bestM_raw.cainiaoShare
+    ? `最差日菜鸟占比 ${fmt1(worstM_raw.cainiaoShare * 100)}%，低于最优日 ${fmt1(bestM_raw.cainiaoShare * 100)}%。菜鸟占比低导致效率天然偏低，加剧了差距。`
+    : `两日菜鸟占比相近（${fmt1(worstM_raw.cainiaoShare * 100)}%），菜鸟结构对差距贡献有限。`
 
-  const detailHours =
-    minHpp > 0
-      ? `人均工时最高 ${fmt2(maxHpp)}h，最低 ${fmt2(minHpp)}h（差 ${fmt1(((maxHpp - minHpp) / minHpp) * 100)}%）`
-      : `人均工时 ${fmt2(maxHpp)}h vs ${fmt2(minHpp)}h`
+  const detailFrontDesk = `最差日前台工时占比 ${fmt1(worstM_raw.frontDeskSharePct * 100)}%，最优日 ${fmt1(bestM_raw.frontDeskSharePct * 100)}%（前台不产出扫描量，占比越高总效率越低）`
 
-  const detailCainiao =
-    `菜鸟占比最高 ${fmt1(maxCainiao * 100)}%，最低 ${fmt1(minCainiao * 100)}%` +
-    (maxCainiao - minCainiao > 0.05 ? '，日间波动较大' : '')
+  const detailVolume = bestM_raw.volume > 0
+    ? `最优日货量 ${bestM_raw.volume} 票，最差日 ${worstM_raw.volume} 票（差 ${fmt1(Math.abs((bestM_raw.volume - worstM_raw.volume) / bestM_raw.volume) * 100)}%）。货量不足时人员固定成本被摊薄，效率自然下降。`
+    : `货量对比：最优日 ${bestM_raw.volume} 票，最差日 ${worstM_raw.volume} 票`
 
-  const detailFrontDesk = `前台工时占比最高 ${fmt1(maxFrontDesk * 100)}%，最低 ${fmt1(minFrontDesk * 100)}%（前台不产出扫描量，占比越高总效率越低）`
+  const detailHpp = bestM_raw.hoursPerSorter > 0
+    ? `最优日人均工时 ${fmt2(bestM_raw.hoursPerSorter)}h，最差日 ${fmt2(worstM_raw.hoursPerSorter)}h（工时越长但产出未增加，说明低货量下人员在仓时间过长）`
+    : '人均工时数据不完整'
 
-  const detailScanner =
-    scannerEfficiencies.length >= 2
-      ? `整体效率最高日 ${fmt2(Math.max(...scannerEfficiencies))} 票/h，最低日 ${fmt2(Math.min(...scannerEfficiencies))} 票/h`
-      : '（部分日期无扫描员数据）'
+  const detailScanner = bestM_raw.scannerEfficiency != null && worstM_raw.scannerEfficiency != null
+    ? `最优日分拣员综合效率 ${fmt2(bestM_raw.scannerEfficiency)} 票/h，最差日 ${fmt2(worstM_raw.scannerEfficiency)} 票/h（菜鸟结构修正后的个人效率对比）`
+    : '部分日期无分拣员扫描数据，无法计算个人效率贡献'
+
+  const normalizedGap = pureEff_B - pureEff_W
+  const detailResidual = `去除以上可量化结构因素后，最差日仍有约 ${fmt1(Math.abs(residualContrib))} 票/h 的效率差距无法解释，可能源于人员状态、设备故障、流程混乱等即时运营因素。纯运营效率差（剥离菜鸟结构）：${fmt1(pureEff_B)} vs ${fmt1(pureEff_W)} = ${fmt1(normalizedGap)} 票/h。`
 
   const rootCauses: RootCause[] = [
-    {
-      factor: 'volume',
-      label: '货量规模',
-      contributionPct: pctVolume,
-      detail: detailVolume,
-      isSignificant: pctVolume >= 5,
-    },
-    {
-      factor: 'frontDeskRatio',
-      label: '前台工时占比',
-      contributionPct: pctFrontDesk,
-      detail: detailFrontDesk,
-      isSignificant: pctFrontDesk >= 5,
-    },
-    {
-      factor: 'hoursPerPerson',
-      label: '人均工时',
-      contributionPct: pctHours,
-      detail: detailHours,
-      isSignificant: pctHours >= 5,
-    },
-    {
-      factor: 'personalEfficiency',
-      label: '分拣员个人效率',
-      contributionPct: pctScanner,
-      detail: detailScanner,
-      isSignificant: pctScanner >= 5,
-    },
-    {
-      factor: 'cainiaoShare',
-      label: '菜鸟件难度',
-      contributionPct: pctCainiao,
-      detail: detailCainiao,
-      isSignificant: pctCainiao >= 5,
-    },
-  ].sort((a, b) => b.contributionPct - a.contributionPct)
+    makeRootCause('cainiaoShare', '菜鸟结构效应', cainiaoContrib, detailCainiao),
+    makeRootCause('frontDeskRatio', '前台工时拖累', frontDeskContrib, detailFrontDesk),
+    makeRootCause('volume', '货量规模差异', volumeContrib, detailVolume),
+    makeRootCause('hoursPerPerson', '人均工时冗余', hppContrib, detailHpp),
+    makeRootCause('personalEfficiency', '分拣员个人效率', scannerContrib, detailScanner),
+    makeRootCause('residual', '运营残差（未解释）', residualContrib, detailResidual),
+  ].sort((a, b) => Math.abs(b.contributionAbs) - Math.abs(a.contributionAbs))
 
   // 改善建议（规则驱动，带量化）
   const suggestions: string[] = []
   const worstM = dayMetrics.find((d) => d.date === worstDate)!
   const bestM = dayMetrics.find((d) => d.date === bestDate)!
   const topCause = rootCauses[0]!
+
+  // 从新根因结构中取各因素的显著性（替代已删除的 pct* 变量）
+  const frontDeskRC = rootCauses.find((c) => c.factor === 'frontDeskRatio')
+  const hoursRC = rootCauses.find((c) => c.factor === 'hoursPerPerson')
+  const cainiaoRC = rootCauses.find((c) => c.factor === 'cainiaoShare')
+  const scannerRC = rootCauses.find((c) => c.factor === 'personalEfficiency')
+
+  const maxCainiao = Math.max(...rawMetrics.map((d) => d.cainiaoShare))
+  const minCainiao = Math.min(...rawMetrics.map((d) => d.cainiaoShare))
 
   if (topCause.factor === 'volume' && topCause.isSignificant) {
     if (bestM.volume > 0) {
@@ -284,7 +322,7 @@ export function computeCompareAnalysis(records: EfficiencyAttendanceDayRecord[])
 
   if (
     (topCause.factor === 'frontDeskRatio' && topCause.isSignificant) ||
-    (suggestions.length === 0 && pctFrontDesk >= 5)
+    (suggestions.length === 0 && (frontDeskRC?.isSignificant ?? false))
   ) {
     const worstFD = worstM.frontDeskSharePct
     const bestFD = bestM.frontDeskSharePct
@@ -298,7 +336,7 @@ export function computeCompareAnalysis(records: EfficiencyAttendanceDayRecord[])
 
   if (
     (topCause.factor === 'hoursPerPerson' && topCause.isSignificant) ||
-    (suggestions.length === 0 && pctHours >= 5)
+    (suggestions.length === 0 && (hoursRC?.isSignificant ?? false))
   ) {
     if (worstM.hoursPerSorter > bestM.hoursPerSorter && worstM.hoursPerSorter > 0) {
       suggestions.push(
@@ -311,13 +349,25 @@ export function computeCompareAnalysis(records: EfficiencyAttendanceDayRecord[])
     }
   }
 
-  if (maxCainiao - minCainiao > 0.06 && pctCainiao >= 5) {
-    suggestions.push(
-      `菜鸟件占比波动 ${fmt1((maxCainiao - minCainiao) * 100)}%，菜鸟日分拣难度更高，建议对比时优先参考菜鸟修正效率，或在菜鸟占比高的日子安排更有经验的分拣员。`,
-    )
+  if (maxCainiao - minCainiao > 0.06 && (cainiaoRC?.isSignificant ?? false)) {
+    const worstCainiao = worstM.cainiaoShare
+    const bestCainiao = bestM.cainiaoShare
+    if (worstCainiao < bestCainiao - 0.03) {
+      suggestions.push(
+        `最差日菜鸟占比 ${fmt1(worstCainiao * 100)}%，低于最优日 ${fmt1(bestCainiao * 100)}%。菜鸟件处理更快，占比偏低会拉低整体效率，部分效率差距可由货量结构解释。`,
+      )
+    } else if (worstCainiao > bestCainiao + 0.03) {
+      suggestions.push(
+        `最差日菜鸟占比 ${fmt1(worstCainiao * 100)}% 反而高于最优日 ${fmt1(bestCainiao * 100)}%，说明效率差距主要不由菜鸟结构造成，应重点排查人手排班与前台工时等因素。`,
+      )
+    } else {
+      suggestions.push(
+        `各日菜鸟占比波动 ${fmt1((maxCainiao - minCainiao) * 100)}%，日间差异不大；菜鸟占比越高效率天然偏高，对比时宜结合货量结构解读。`,
+      )
+    }
   }
 
-  if (scannerEfficiencies.length >= 2 && pctScanner >= 5) {
+  if (scannerEfficiencies.length >= 2 && (scannerRC?.isSignificant ?? false)) {
     const maxE = Math.max(...scannerEfficiencies)
     const minE = Math.min(...scannerEfficiencies)
     suggestions.push(
@@ -333,6 +383,9 @@ export function computeCompareAnalysis(records: EfficiencyAttendanceDayRecord[])
     bestDate,
     worstDate,
     efficiencyGapPct,
+    efficiencyGapAbs: totalGap,
+    worstNormalizedEff: pureEff_W,
+    bestNormalizedEff: pureEff_B,
     dayMetrics,
     rootCauses,
     suggestions,

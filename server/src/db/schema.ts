@@ -145,6 +145,19 @@ export const feishuPushSnapshots = pgTable('feishu_push_snapshots', {
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 })
 
+export const vendorAnalysisPushConfigs = pgTable('vendor_analysis_push_configs', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  vendorCode: varchar('vendor_code', { length: 64 }).notNull(),
+  vendorName: varchar('vendor_name', { length: 255 }).notNull(),
+  webhookUrl: varchar('webhook_url', { length: 512 }).notNull(),
+  signingSecret: varchar('signing_secret', { length: 255 }),
+  pushDescription: varchar('push_description', { length: 512 }),
+  isDisabled: boolean('is_disabled').notNull().default(false),
+  createdBy: uuid('created_by').references(() => users.id, { onDelete: 'set null' }),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+})
+
 export type User = typeof users.$inferSelect
 export type Region = typeof regions.$inferSelect
 export type Permission = typeof permissions.$inferSelect
@@ -155,3 +168,5 @@ export type NewEfficiencyAttendanceDailyRecord = typeof efficiencyAttendanceDail
 export type OrderExceptionPostFilterConfig = typeof orderExceptionPostFilterConfigs.$inferSelect
 export type OrderExceptionWarehouseConfig = typeof orderExceptionWarehouseConfigs.$inferSelect
 export type FeishuPushSnapshot = typeof feishuPushSnapshots.$inferSelect
+export type VendorAnalysisPushConfig = typeof vendorAnalysisPushConfigs.$inferSelect
+export type NewVendorAnalysisPushConfig = typeof vendorAnalysisPushConfigs.$inferInsert

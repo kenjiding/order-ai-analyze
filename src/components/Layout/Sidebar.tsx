@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { NavLink, useLocation } from 'react-router-dom'
 import { ChevronDown, ChevronLeft, Warehouse, X } from 'lucide-react'
-import { useAuth } from '../../context/AuthContext'
+import { useAuthStore } from '../../stores/authStore'
 import { buildSidebarMenuGroups, matchesSidebarActive, type SidebarMenuGroup } from './sidebarMenu'
 
 export type SidebarProps = {
@@ -13,7 +13,7 @@ export type SidebarProps = {
 
 export default function Sidebar({ collapsed, onCollapsedChange, mobileOpen = false, onMobileOpenChange }: SidebarProps) {
   const location = useLocation()
-  const { hasPermission, isSuperAdmin } = useAuth()
+  const { hasPermission, isSuperAdmin } = useAuthStore()
 
   const menuGroups = useMemo(
     () => buildSidebarMenuGroups(hasPermission, isSuperAdmin),

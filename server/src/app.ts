@@ -8,10 +8,12 @@ import { authRouter } from './routes/authRouter'
 import { feishuWebhookTestRouter } from './routes/feishuWebhookTestRouter'
 import { newMerchantRouter } from './routes/newMerchantRouter'
 import { orderExceptionRouter } from './routes/orderExceptionRouter'
+import { problemPackageAuditRouter } from './routes/problemPackageAuditRouter'
 import { scannerEfficiencyRouter } from './routes/scannerEfficiencyRouter'
 import { weeklyReportInsightRouter } from './routes/weeklyReportInsightRouter'
 import { efficiencyInsightRouter } from './routes/efficiencyInsightRouter'
 import { jobsRouter } from './routes/jobsRouter'
+import { vendorAnalysisRouter } from './routes/vendorAnalysisRouter'
 
 const app = express()
 
@@ -50,6 +52,8 @@ app.use('/api/new-merchant', requireAuth, newMerchantRouter)
 app.use('/api/weekly-report-insight', requireAuth, weeklyReportInsightRouter)
 app.use('/api/efficiency-insight', requireAuth, efficiencyInsightRouter)
 app.use('/api/jobs', jobsRouter)
+app.use('/api/problem-audit', requireAuth, problemPackageAuditRouter)
+app.use('/api/vendor-analysis', requireAuth, vendorAnalysisRouter)
 app.use('/api/feishu-webhook', requireAuth, feishuWebhookTestRouter)
 
 export { app }

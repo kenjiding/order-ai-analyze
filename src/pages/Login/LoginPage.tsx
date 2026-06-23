@@ -1,7 +1,7 @@
 import { type FormEvent, useEffect, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { Warehouse } from 'lucide-react'
-import { useAuth } from '../../context/AuthContext'
+import { useAuthStore } from '../../stores/authStore'
 import { getDefaultRouteForPermissions, getDefaultRouteFromPermissionKeys } from '../../components/Layout/sidebarMenu'
 import { showToast } from '../../utils/toast'
 import { useLoginRive } from './useLoginRive'
@@ -13,7 +13,7 @@ const USERNAME_KEY = 'username'
 export default function LoginPage() {
   const navigate = useNavigate()
   const location = useLocation()
-  const { login, isAuthenticated, loading, hasPermission, isSuperAdmin } = useAuth()
+  const { login, isAuthenticated, loading, hasPermission, isSuperAdmin } = useAuthStore()
   const [submitting, setSubmitting] = useState(false)
   const {
     riveCanvasRef,

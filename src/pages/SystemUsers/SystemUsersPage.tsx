@@ -3,7 +3,7 @@ import type { ColumnsType } from 'antd/es/table'
 import { Navigate } from 'react-router-dom'
 import { Plus, Shield, UserCog, UserPlus, Users } from 'lucide-react'
 import { useMemo } from 'react'
-import { useAuth } from '../../context/AuthContext'
+import { useAuthStore } from '../../stores/authStore'
 import type { AdminUser } from '../../api/adminUsersApi'
 import UserFormModal from './components/UserFormModal'
 import { useSystemUsersPage } from './useSystemUsersPage'
@@ -16,7 +16,7 @@ function userInitial(username: string): string {
 }
 
 export default function SystemUsersPage() {
-  const { isSuperAdmin } = useAuth()
+  const { isSuperAdmin } = useAuthStore()
   const {
     users,
     regions,

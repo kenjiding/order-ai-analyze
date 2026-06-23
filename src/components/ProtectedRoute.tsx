@@ -1,9 +1,9 @@
 import { Navigate, Outlet, useLocation } from 'react-router-dom'
-import { useAuth } from '../context/AuthContext'
+import { useAuthStore } from '../stores/authStore'
 import { getDefaultRouteForPermissions, getMenuPermissionForPath } from '../components/Layout/sidebarMenu'
 
 export default function ProtectedRoute() {
-  const { loading, isAuthenticated, hasPermission, isSuperAdmin } = useAuth()
+  const { loading, isAuthenticated, hasPermission, isSuperAdmin } = useAuthStore()
   const location = useLocation()
 
   if (loading) {

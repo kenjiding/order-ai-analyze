@@ -198,3 +198,17 @@ export const IMILE_OC_INTERCEPT_PORTAL: ImilePortalDefaults = {
   origin: 'https://oc.imile.com',
   referer: 'https://oc.imile.com/',
 }
+
+/**
+ * globalcs.imile.com 客诉工单门户默认配置（placeholder）。
+ * resourceCode / sysName / sysPortal 须通过环境变量覆盖：
+ *   IMILE_GLOBALCS_RESOURCE_CODE, IMILE_GLOBALCS_SYS_NAME, IMILE_GLOBALCS_SYS_PORTAL
+ *   IMILE_GLOBALCS_COOKIE（若需要 Cookie 认证）
+ */
+export const IMILE_GLOBALCS_PORTAL: ImilePortalDefaults = {
+  resourceCode: 'ticketQuery',
+  sysName: 'CS',
+  sysPortal: 'CS',
+  origin: 'https://globalcs.imile.com',
+  referer: 'https://globalcs.imile.com/',
+}

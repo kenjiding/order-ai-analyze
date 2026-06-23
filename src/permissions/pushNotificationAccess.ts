@@ -2,7 +2,7 @@ import { PERMISSION_KEYS } from '../hooks/usePermission'
 import type { FeishuPushKind } from '../pages/PushNotifications/feishuPushTypes'
 
 /** 与 server/src/permissions/pushNotificationAccess.ts 的 PushApiScope 保持一致 */
-export type PushApiScope = 'warehouse-efficiency' | 'attendance-scheduling' | 'fleet-supplier' | 'order-exception'
+export type PushApiScope = 'warehouse-efficiency' | 'attendance-scheduling' | 'fleet-supplier' | 'order-exception' | 'vendor-analysis'
 
 export type PushPageTabKey = 'warehouse_efficiency' | 'attendance_scheduling' | 'fleet_supplier' | 'order_exception'
 

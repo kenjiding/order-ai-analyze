@@ -131,6 +131,7 @@ efficiencyInsightRouter.post('/', async (req: Request, res: Response) => {
     userPrompt = [
       `请深度分析以下多日效率对比数据，找出导致"总效率"差距（最大差距 ${efficiencyGapPct.toFixed(1)}%）的真实原因，输出 findings（4～6 条：必须结合具体人员名单、工时数字、扫描效率说明问题）和 suggestions（3～5 条：具体可执行的改善措施）。`,
       `效率最高日：${bestDate}，效率最低日：${worstDate}。`,
+      '业务口径：菜鸟件处理流程相对简单，菜鸟占比越高效率天然越高，菜鸟占比越低效率天然越低；菜鸟占比只用来解释效率差异成因，不单独判定好坏。',
       '',
       '按日详细数据（含人员构成和扫描员表现）：',
       JSON.stringify(

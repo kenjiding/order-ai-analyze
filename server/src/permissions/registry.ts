@@ -21,6 +21,8 @@ export const PERMISSION_REGISTRY: PermissionDefinition[] = [
   { key: 'menu:wage-salary', type: 'menu', label: '工资结算', description: '员工工资计算与管理', sortOrder: 20 },
   { key: 'menu:order-exception', type: 'menu', label: 'AI订单异常分析', description: '轨迹样本与异常分类分析', sortOrder: 30 },
   { key: 'menu:new-merchant-monitor', type: 'menu', label: '新商家数据监控', description: '新商家货量与签收指标看板', sortOrder: 35 },
+  { key: 'menu:problem-package-audit', type: 'menu', label: 'AI问题件审核', description: '问题件图片AI智能审核', sortOrder: 37 },
+  { key: 'menu:vendor-analysis', type: 'menu', label: '供应商数据分析', description: '供应商客诉率与工单数据推送', sortOrder: 38 },
   { key: 'menu:push-notifications', type: 'menu', label: '推送功能', description: '飞书群机器人推送配置', sortOrder: 40 },
   { key: 'menu:warehouse-safety', type: 'menu', label: '仓库安全日常检查', description: '安全自查表填写与导出', sortOrder: 50 },
   { key: 'menu:system-users', type: 'menu', label: '用户管理', description: '系统用户与权限管理', sortOrder: 60 },
@@ -79,6 +81,13 @@ export const PERMISSION_REGISTRY: PermissionDefinition[] = [
     label: '订单异常分析推送',
     menuKey: 'push-notifications',
     sortOrder: 413,
+  },
+  {
+    key: 'btn:vendor-analysis:push',
+    type: 'button',
+    label: '供应商数据推送',
+    menuKey: 'vendor-analysis',
+    sortOrder: 380,
   },
   {
     key: 'btn:warehouse-safety:export',

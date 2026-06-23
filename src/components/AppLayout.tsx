@@ -3,6 +3,7 @@ import { Outlet } from 'react-router-dom'
 import { Menu } from 'lucide-react'
 import Sidebar from './Layout/Sidebar'
 import UserAccountMenu from './Layout/UserAccountMenu'
+import { GlobalStationSelector } from './Layout/GlobalStationSelector'
 
 export default function AppLayout() {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
@@ -23,8 +24,8 @@ export default function AppLayout() {
         }`}
       >
         <header className="admin-topbar">
-          <div className="mx-auto flex max-w-[1680px] items-center justify-between gap-3">
-            <div className="flex items-center gap-3">
+          <div className="mx-auto flex max-w-[1680px] items-center gap-3">
+            <div className="flex shrink-0 items-center gap-3">
               {/* 移动端汉堡按钮 */}
               <button
                 type="button"
@@ -41,7 +42,11 @@ export default function AppLayout() {
               </div>
             </div>
 
-            <div className="flex flex-shrink-0 items-center">
+            <div className="hidden flex-1 items-center justify-end gap-4 pr-2 md:flex">
+              <GlobalStationSelector />
+            </div>
+
+            <div className="flex shrink-0 items-center">
               <UserAccountMenu />
             </div>
           </div>

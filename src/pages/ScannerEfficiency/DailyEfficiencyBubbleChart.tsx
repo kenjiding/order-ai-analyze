@@ -96,7 +96,7 @@ function buildDayTooltipHtml(date: string, day: DailyEfficiencyBubbleDatum | und
     row('菜鸟', `${formatInteger(cainiao)} 票`),
     row('其他', `${formatInteger(other)} 票`),
     row('菜鸟占比', formatCainiaoSharePercent(day.cainiaoShare)),
-    row('总工时', `${fmt1(day.totalHours)} h`),
+    row('分拣人数', `${formatInteger(day.sorterCount)} 人`),
     row('当天效率', `${fmt1(day.efficiency)} 票/h`),
   ]
   if (day.costPerTicket != null && Number.isFinite(day.costPerTicket)) {
@@ -199,7 +199,7 @@ function appendDailyComboLayers(
     .area()
     .data(data)
     .encode('x', 'date')
-    .encode('y', 'totalHours')
+    .encode('y', 'sorterCount')
     .encode('y1', 0)
     .scale('y', { independent: true, nice: true, domainMin: 0 })
     .axis('y', false)
@@ -212,7 +212,7 @@ function appendDailyComboLayers(
     .line()
     .data(data)
     .encode('x', 'date')
-    .encode('y', 'totalHours')
+    .encode('y', 'sorterCount')
     .scale('y', { independent: true, nice: true, domainMin: 0 })
     .axis('y', false)
     .style('stroke', AREA_HOURS_COLOR)
@@ -357,7 +357,7 @@ export default function DailyEfficiencyComboChart({
         data
           .map(
             (d) =>
-              `${d.date}\t${d.volume}\t${d.cainiaoVolume}\t${d.totalHours}\t${d.efficiency}\t${d.costPerTicket ?? ''}\t${d.cainiaoShare ?? ''}`,
+              `${d.date}\t${d.volume}\t${d.cainiaoVolume}\t${d.sorterCount}\t${d.efficiency}\t${d.costPerTicket ?? ''}\t${d.cainiaoShare ?? ''}`,
           )
           .join('|'),
       ].join('::'),
@@ -460,7 +460,7 @@ export default function DailyEfficiencyComboChart({
               style={{ background: AREA_HOURS_COLOR, borderBottom: `2px dashed ${AREA_HOURS_COLOR}` }}
               aria-hidden
             />
-            总工时
+            分拣人数
           </span>
           <span className="inline-flex items-center gap-1.5">
             <span className="h-0.5 w-5 rounded" style={{ background: LINE_EFF_COLOR }} aria-hidden />
@@ -509,8 +509,8 @@ export default function DailyEfficiencyComboChart({
           role="img"
           aria-label={
             isWeekMode
-              ? '效率综合图：日维度货量工时效率保持不变，背景色块区分自然周，上方标注各周总货量与总体效率'
-              : '按日效率综合图：左轴堆叠柱为菜鸟与其他货量，绿色面积总工时，橙线当天效率，悬停显示明细'
+              ? '效率综合图：日维度货量、分拣人数与效率保持不变，背景色块区分自然周，上方标注各周总货量与总体效率'
+              : '按日效率综合图：左轴堆叠柱为菜鸟与其他货量，绿色面积分拣人数，橙线当天效率，悬停显示明细'
           }
         />
       </div>

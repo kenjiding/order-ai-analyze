@@ -139,8 +139,8 @@ export function EfficiencyDailyDetailByDaySection({
     dimension === 'week'
       ? '表格每行汇总一周关键指标，点击周行可展开查看逐日明细。组合图保留日曲线，背景色块区分各周。'
       : useStackedLayout
-        ? '按日展示到件与考勤匹配明细；下方组合图含货量、工时与当天效率。'
-        : '按日展示到件与考勤匹配明细；右侧组合图含货量、工时与当天效率。'
+        ? '按日展示到件与考勤匹配明细；下方组合图含货量、分拣人数与当天效率。'
+        : '按日展示到件与考勤匹配明细；右侧组合图含货量、分拣人数与当天效率。'
 
   const dimensionLabel = dimension === 'week' ? '周维度' : '日维度'
 

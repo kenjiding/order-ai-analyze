@@ -1,9 +1,9 @@
 import { type ReactNode } from 'react'
 import { Tooltip } from 'antd'
-import { useAuth } from '../context/AuthContext'
+import { useAuthStore } from '../stores/authStore'
 
 export function usePermission(key: string): boolean {
-  const { hasPermission } = useAuth()
+  const hasPermission = useAuthStore((s) => s.hasPermission)
   return hasPermission(key)
 }
 
@@ -76,4 +76,6 @@ export const PERMISSION_KEYS = {
   btnPushNotificationsFleetSupplier: 'btn:push-notifications:fleet-supplier',
   btnPushNotificationsOrderException: 'btn:push-notifications:order-exception',
   btnWarehouseSafetyExport: 'btn:warehouse-safety:export',
+  menuVendorAnalysis: 'menu:vendor-analysis',
+  btnVendorAnalysisPush: 'btn:vendor-analysis:push',
 } as const

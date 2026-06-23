@@ -2,7 +2,7 @@ import { Button, Empty, Popconfirm, Table, Tabs, Tooltip, Typography } from 'ant
 import type { ColumnsType } from 'antd/es/table'
 import { Megaphone, PencilLine, Plus, Send, Trash2 } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { useAuth } from '../../context/AuthContext'
+import { useAuthStore } from '../../stores/authStore'
 import { AttendanceSchedulingPushTab } from './components/AttendanceSchedulingPushTab'
 import { PushEntryEditModal } from './components/PushEntryEditModal'
 import { FleetSupplierPushTab } from './components/FleetSupplierPushTab'
@@ -38,7 +38,7 @@ function isWarehousePushTabKey(key: PushPageTabKey): key is WarehousePushTabKey 
 
 export default function PushNotificationsPage() {
   const v = usePushNotificationsPage()
-  const { hasPermission } = useAuth()
+  const { hasPermission } = useAuthStore()
   const accessibleFeatures = useMemo(
     () => listAccessiblePushFeatures(hasPermission),
     [hasPermission],

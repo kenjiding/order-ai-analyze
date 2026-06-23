@@ -502,7 +502,7 @@ export default function ScannerEfficiencyBody({ vm, level1Push }: Props) {
             <SectionTitle
               eyebrow="Attendance Matching"
               title={`效率明细/天（组合图·${efficiencyDetailDimension === 'week' ? '周维度' : '日维度'}）`}
-              description="蓝色柱为总货量（左轴），绿色面积折线为总工时（独立比例尺），橙线为当天效率（右轴）。"
+              description="蓝色柱为总货量（左轴），绿色面积折线为分拣人数（独立比例尺），橙线为当天效率（右轴）。"
             />
             <div className="admin-panel overflow-hidden p-4 sm:p-5">
               <DailyEfficiencyComboChart

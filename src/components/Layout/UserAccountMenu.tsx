@@ -3,7 +3,7 @@ import { Dropdown } from 'antd'
 import { ChevronDown, LogOut, MapPin, Settings, Shield, User } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import type { AuthUser } from '../../api/authApi'
-import { useAuth } from '../../context/AuthContext'
+import { useAuthStore } from '../../stores/authStore'
 import { GlobalSettingsModal } from '../AppSettings/GlobalSettingsModal'
 
 function getInitials(user: AuthUser | null): string {
@@ -79,7 +79,7 @@ function MenuAction({ icon, label, onClick, disabled, tone = 'default' }: MenuAc
 
 export default function UserAccountMenu() {
   const navigate = useNavigate()
-  const { user, logout } = useAuth()
+  const { user, logout } = useAuthStore()
   const [open, setOpen] = useState(false)
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [loggingOut, setLoggingOut] = useState(false)
