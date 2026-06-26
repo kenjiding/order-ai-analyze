@@ -36,7 +36,7 @@ app.use(
   }),
 )
 app.use(cookieParser())
-app.use(express.json({ limit: '12mb' }))
+app.use(express.json({ limit: '50mb' }))
 
 app.get('/health', async (_req, res) => {
   const dbOk = await pingDatabase().catch(() => false)

@@ -45,8 +45,11 @@ export default function WageSalaryPage() {
         <div className="space-y-5">
           <UploadTabContent
             handleFileUpload={v.handleFileUpload}
+            handleZktApiFetch={v.handleZktApiFetch}
+            isLoadingZktAttendance={v.isLoadingZktAttendance}
+            wageApiDateRange={v.wageApiDateRange}
+            setWageApiDateRange={v.setWageApiDateRange}
             uploadedData={v.uploadedData}
-            uploadedSourceFileName={v.uploadedSourceFileName}
             handleSubmitUpload={v.handleSubmitUpload}
             isUploading={v.isUploading}
             handleClearUploadedData={v.handleClearUploadedData}

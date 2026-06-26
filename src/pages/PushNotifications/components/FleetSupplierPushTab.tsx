@@ -1,4 +1,4 @@
-import { Button, Image, Input, Modal, Radio, Table, Tooltip, Upload } from 'antd'
+import { Button, Image, Modal, Radio, Table, Tooltip, Upload } from 'antd'
 import type { UploadFile } from 'antd/es/upload/interface'
 import type { ColumnsType } from 'antd/es/table'
 import { Download, Image as ImageIcon, PencilLine, Plus, Send, Trash2, UploadCloud, X } from 'lucide-react'
@@ -8,7 +8,14 @@ import { aggregateFleetRowsForRoute } from '../fleetSupplierAggregate'
 import { captureFleetRouteReportPng } from '../fleetReportCapture'
 import { parseFleetRouteCodes } from '../fleetRouteCodeParse'
 import { parseFleetScanFiles } from '../fleetScanParse'
-import { postFeishuPushImage, postFeishuPushText, summarizeFeishuPushImageFailure, summarizeFeishuTestFailure } from '../feishuWebhookTestApi'
+import { summarizeFeishuTestFailure } from '../feishuWebhookTestApi'
+import {
+  hasEditorContent,
+  mergeEditorHtmlParts,
+  prepareFleetRichPayload,
+  stripEditorContentForPreview,
+} from '../feishuEditorContent'
+import { pushFleetRichMessage } from '../pushFleetRichMessage'
 import type { FleetSupplierConfig } from '../fleetSupplierPushTypes'
 import { createFleetSupplierId } from '../fleetSupplierStorage'
 import { loadFleetSuppliers, persistFleetSuppliers } from '../fleetSupplierRepository.idb'
@@ -23,6 +30,7 @@ import { showToast } from '../../../utils/toast'
 import { confirmDialog } from '../../../utils/confirmDialog'
 import { PERMISSION_KEYS, usePermission } from '../../../hooks/usePermission'
 import { FleetSupplierEditModal } from './FleetSupplierEditModal'
+import { FeishuLarkMdEditor } from './FeishuLarkMdEditor'
 import './fleetSupplierPushTab.css'
 
 function truncateMiddle(s: string, maxChars: number): string {
@@ -89,10 +97,9 @@ export function FleetSupplierPushTab({
   )
 
   const hasTypedContentForPush = useMemo(() => {
-    const g0 = globalPushText.trim()
-    if (g0.length > 0) return true
+    if (hasEditorContent(globalPushText)) return true
     const sel = new Set(effectiveSelectedKeys.map(String))
-    return suppliers.some((s) => sel.has(s.id) && s.pushContent.trim().length > 0)
+    return suppliers.some((s) => sel.has(s.id) && hasEditorContent(s.pushContent))
   }, [globalPushText, effectiveSelectedKeys, suppliers])
 
   const persist = useCallback(
@@ -226,28 +233,25 @@ export function FleetSupplierPushTab({
     pushImageInputRef.current?.click()
   }
 
-  const pushCustomImagesToWebhook = async (
+  const pushCustomImageDataUrls = useMemo(() => pushImages.map((img) => img.dataUrl), [pushImages])
+
+  const pushSupplierRichMessage = async (
     s: FleetSupplierConfig,
-  ): Promise<{ ok: true } | { ok: false; error: string }> => {
-    const failures: string[] = []
-    for (const img of pushImages) {
-      const res = await withRetry(() =>
-        postFeishuPushImage({
-          pushScope: 'fleet-supplier',
-          webhookUrl: s.webhookUrl,
-          signingSecret: s.signingSecret,
-          imageBase64: img.dataUrl,
-          headlineText: '',
-        }),
-      )
-      if (res.ok !== true) {
-        failures.push(summarizeFeishuPushImageFailure(res))
-      }
-    }
-    if (failures.length > 0) {
-      return { ok: false, error: failures.join('；') }
-    }
-    return { ok: true }
+    editorHtml: string,
+    extraImages: string[],
+    fallbackTitle?: string,
+  ) => {
+    let { content, images } = prepareFleetRichPayload(editorHtml, extraImages)
+    if (!content && fallbackTitle) content = fallbackTitle
+    return withRetry(() =>
+      pushFleetRichMessage({
+        pushScope: 'fleet-supplier',
+        webhookUrl: s.webhookUrl,
+        signingSecret: s.signingSecret,
+        content,
+        images,
+      }),
+    )
   }
 
   const handlePushAll = async () => {
@@ -255,7 +259,7 @@ export function FleetSupplierPushTab({
       showToast('无操作权限', 'error')
       return
     }
-    const g = globalPushText.trim()
+    const g = globalPushText
     if (scanParsing) {
       return
     }
@@ -272,7 +276,7 @@ export function FleetSupplierPushTab({
 
     const hasScan = scanRows.length > 0
     if (!hasScan && !hasPushImages) {
-      const canText = g.length > 0 || targets.some((s) => s.pushContent.trim().length > 0)
+      const canText = hasEditorContent(g) || targets.some((s) => hasEditorContent(s.pushContent))
       if (!canText) {
         showToast(
           '未上传扫描文件时，请先填写「推送内容」、所选供应商的「供应商推送内容」，或添加推送图片。',
@@ -290,47 +294,26 @@ export function FleetSupplierPushTab({
       for (const s of targets) {
         const supplierPart = s.pushContent.trim()
         const globalPart = g
-        const mergedHeadline = [supplierPart, globalPart].filter((x) => x.length > 0).join('\n\n')
-        const textBody = mergedHeadline.trim()
+        const mergedHtml = mergeEditorHtmlParts([supplierPart, globalPart])
+        const hasEditorContent = mergedHtml.trim().length > 0
         const headlineBase =
-          textBody || `「${s.supplierName || '供应商'}」货量统计报表`
+          hasEditorContent ? '' : `「${s.supplierName || '供应商'}」货量统计报表`
         if (!s.webhookUrl.trim()) {
           errors.push(`「${s.supplierName}」：未配置 webhook。`)
           continue
         }
 
         if (!hasScan) {
-          if (!textBody && !hasPushImages) {
+          if (!hasEditorContent && !hasPushImages) {
             errors.push(`「${s.supplierName}」：未填写可推送文案，也未添加推送图片。`)
             continue
           }
 
-          let supplierOk = true
-          if (textBody) {
-            const textRes = await withRetry(() =>
-              postFeishuPushText({
-                pushScope: 'fleet-supplier',
-                webhookUrl: s.webhookUrl,
-                signingSecret: s.signingSecret,
-                text: textBody,
-              }),
-            )
-            if (textRes.ok !== true) {
-              errors.push(`「${s.supplierName}」：${summarizeFeishuTestFailure(textRes)}`)
-              supplierOk = false
-            }
-          }
-
-          if (hasPushImages) {
-            const imgRes = await pushCustomImagesToWebhook(s)
-            if (imgRes.ok !== true) {
-              errors.push(`「${s.supplierName}」：${imgRes.error}`)
-              supplierOk = false
-            }
-          }
-
-          if (supplierOk) {
+          const res = await pushSupplierRichMessage(s, mergedHtml, pushCustomImageDataUrls, headlineBase)
+          if (res.ok === true) {
             oks.push(s.supplierName || s.routeCode)
+          } else {
+            errors.push(`「${s.supplierName}」：${summarizeFeishuTestFailure(res)}`)
           }
           continue
         }
@@ -361,59 +344,26 @@ export function FleetSupplierPushTab({
           continue
         }
 
-        let textSent = false
-        let hasPartialError = false
-        if (textBody) {
-          const textRes = await withRetry(() =>
-            postFeishuPushText({
-              pushScope: 'fleet-supplier',
-              webhookUrl: s.webhookUrl,
-              signingSecret: s.signingSecret,
-              text: textBody,
-            }),
-          )
-          if (textRes.ok !== true) {
-            errors.push(`「${s.supplierName}」：${summarizeFeishuTestFailure(textRes)}`)
-            hasPartialError = true
-          } else {
-            textSent = true
-          }
-        }
-
-        if (hasPushImages) {
-          const customRes = await pushCustomImagesToWebhook(s)
-          if (customRes.ok !== true) {
-            errors.push(`「${s.supplierName}」：${customRes.error}`)
-            hasPartialError = true
-          }
-        }
-
-        const reportHeadline = textSent ? '' : headlineBase
-        const res = await withRetry(() =>
-          postFeishuPushImage({
-            pushScope: 'fleet-supplier',
-            webhookUrl: s.webhookUrl,
-            signingSecret: s.signingSecret,
-            imageBase64: png,
-            headlineText: reportHeadline,
-          }),
+        const reportImages = [png, ...pushCustomImageDataUrls]
+        const res = await pushSupplierRichMessage(
+          s,
+          mergedHtml,
+          reportImages,
+          headlineBase || `「${s.supplierName || '供应商'}」货量统计报表`,
         )
 
         if (res.ok === true) {
-          if (!hasPartialError) {
-            oks.push(s.supplierName || s.routeCode)
-          }
+          oks.push(s.supplierName || s.routeCode)
         } else {
-          errors.push(`「${s.supplierName}」：${summarizeFeishuPushImageFailure(res)}`)
+          errors.push(`「${s.supplierName}」：${summarizeFeishuTestFailure(res)}`)
         }
       }
 
-      const imageHint = hasPushImages ? '图片、' : ''
       if (errors.length === 0) {
         showToast(
           hasScan
-            ? `已向 ${oks.length} 家供应商推送${imageHint}报表图与文案。`
-            : `已向 ${oks.length} 家供应商推送${hasPushImages ? '图片与' : ''}文案。`,
+            ? `已向 ${oks.length} 家供应商推送合并消息（文案与图片）。`
+            : `已向 ${oks.length} 家供应商推送合并消息。`,
           'success'
         )
       } else if (oks.length === 0) {
@@ -560,7 +510,7 @@ export function FleetSupplierPushTab({
         ellipsis: true,
         render: (t: string) =>
           t?.trim() ? (
-            t
+            stripEditorContentForPreview(t)
           ) : (
             <span className="text-slate-400" title="推送时仅拼接外层「推送内容」">
               （未填供应商段）
@@ -597,12 +547,11 @@ export function FleetSupplierPushTab({
         <div className="fs-card-body space-y-4">
           <div>
             <div className="mb-1.5 text-xs font-semibold text-[var(--admin-muted)]">推送内容</div>
-            <Input.TextArea
+            <FeishuLarkMdEditor
               rows={4}
               value={globalPushText}
-              onChange={(e) => setGlobalPushText(e.target.value)}
-              placeholder="通用段落；与各供应商「供应商推送内容」组合后推送。可不传扫描文件，仅推文字或图片。"
-              className="!text-sm"
+              onChange={setGlobalPushText}
+              placeholder="通用段落；与各供应商「供应商推送内容」组合后以富文本卡片推送。可不传扫描文件，仅推文字或图片。"
             />
           </div>
           <div className="fs-toolbar">

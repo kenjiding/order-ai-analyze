@@ -5,6 +5,7 @@ import { webhookFieldRules } from '../pushEntryFormValidators'
 import { parseFleetRouteCodes } from '../fleetRouteCodeParse'
 import type { FleetSupplierConfig } from '../fleetSupplierPushTypes'
 import { FEISHU_WEBHOOK_PREFIX } from '../feishuPushTypes'
+import { FeishuLarkMdEditor } from './FeishuLarkMdEditor'
 
 type FormValues = {
   supplierName: string
@@ -160,9 +161,9 @@ export function FleetSupplierEditModal({
         <Form.Item
           label="推送内容"
           name="pushContent"
-          extra="将先于图片推送至群内；与 Tab 顶部「推送内容」拼接为本条消息正文（本段在上、顶部段在下），任一段可留空。"
+          extra="将先于图片以富文本卡片推送至群内；与 Tab 顶部「推送内容」拼接为本条消息正文（本段在上、顶部段在下），任一段可留空。"
         >
-          <Input.TextArea rows={4} placeholder="例如：【货量日报】以下为按邮编/城市汇总单量。" />
+          <FeishuLarkMdEditor rows={5} placeholder="例如：【货量日报】以下为按邮编/城市汇总单量。" />
         </Form.Item>
       </Form>
     </Modal>

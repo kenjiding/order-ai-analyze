@@ -77,21 +77,11 @@ function dedupeAttendanceUploadRows(rows: Record<string, unknown>[]): Record<str
   return out
 }
 
-/** 按工资结算系统同一流程计算考勤工资（日配置由导入后自动推断，工资页可在预览中逐行调整）。 */
-export async function computeAttendancePayrollFromFiles(
-  files: File[],
+function buildAttendancePayrollResult(
+  jsonData: Record<string, unknown>[],
   employees: EmployeeLite[],
   rateSettings: RateSettings,
-): Promise<AttendancePayrollResult> {
-  if (!files.length) {
-    return { wageRows: [], totalWages: 0, wagesByDate: {}, validationErrors: [] }
-  }
-
-  const jsonData: Record<string, unknown>[] = []
-  for (const file of files) {
-    jsonData.push(...(await readSheetRowsFromFile(file)))
-  }
-
+): AttendancePayrollResult {
   const uploadedData = transformSheetRowsToUploadedData(
     dedupeAttendanceUploadRows(jsonData),
     employees,
@@ -118,6 +108,36 @@ export async function computeAttendancePayrollFromFiles(
   }
 
   return { wageRows, totalWages, wagesByDate, validationErrors }
+}
+
+/** 考勤表行（上传表 / ZKT API 映射）→ 工资结算同款口径 */
+export function computeAttendancePayrollFromSheetRows(
+  sheetRows: Record<string, unknown>[],
+  employees: EmployeeLite[],
+  rateSettings: RateSettings,
+): AttendancePayrollResult {
+  if (!sheetRows.length) {
+    return { wageRows: [], totalWages: 0, wagesByDate: {}, validationErrors: [] }
+  }
+  return buildAttendancePayrollResult(sheetRows, employees, rateSettings)
+}
+
+/** 按工资结算系统同一流程计算考勤工资（日配置由导入后自动推断，工资页可在预览中逐行调整）。 */
+export async function computeAttendancePayrollFromFiles(
+  files: File[],
+  employees: EmployeeLite[],
+  rateSettings: RateSettings,
+): Promise<AttendancePayrollResult> {
+  if (!files.length) {
+    return { wageRows: [], totalWages: 0, wagesByDate: {}, validationErrors: [] }
+  }
+
+  const jsonData: Record<string, unknown>[] = []
+  for (const file of files) {
+    jsonData.push(...(await readSheetRowsFromFile(file)))
+  }
+
+  return buildAttendancePayrollResult(jsonData, employees, rateSettings)
 }
 
 type DailyRowForLaborCost = {

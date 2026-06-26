@@ -79,7 +79,7 @@ export function CancelScanAnalysisSection({ analysis, loading, onFetch }: Props)
 
       {!loading && !analysis && !onFetch && (
         <div className="cancel-scan-panel__state">
-          尚未载入数据。请在上方选择日期区间并点击「获取数据」。
+          尚未载入数据。请先在上方选择日期区间，再点击「获取细分错误率」。
         </div>
       )}
 

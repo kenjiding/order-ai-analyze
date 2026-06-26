@@ -6,6 +6,13 @@ import {
   readStoredImilePortalSettings,
   type ImilePortalSettings,
 } from '../imile/imilePortalSettings'
+import {
+  DEFAULT_ZKT_ATTENDANCE_SETTINGS,
+  ZKT_ATTENDANCE_STORAGE_KEY,
+  normalizeZktAttendanceSettings,
+  readStoredZktAttendanceSettings,
+  type ZktAttendanceSettings,
+} from '../imile/zktAttendanceSettings'
 
 /* Context 模块同时导出 Provider 与 hooks，故关闭 react-refresh 的仅导出组件规则。 */
 /* eslint-disable react-refresh/only-export-components */
@@ -22,6 +29,8 @@ export type AppSettingsContextValue = {
   setRememberImileToken: (value: boolean) => void
   imilePortal: ImilePortalSettings
   setImilePortal: (value: ImilePortalSettings) => void
+  zktAttendance: ZktAttendanceSettings
+  setZktAttendance: (value: ZktAttendanceSettings) => void
 }
 
 const AppSettingsContext = createContext<AppSettingsContextValue | null>(null)
@@ -78,13 +87,28 @@ function readStoredImilePortal(): ImilePortalSettings {
   }
 }
 
+function readStoredZktAttendance(): ZktAttendanceSettings {
+  if (typeof localStorage === 'undefined') return { ...DEFAULT_ZKT_ATTENDANCE_SETTINGS }
+  try {
+    if (!readRememberFlag()) return { ...DEFAULT_ZKT_ATTENDANCE_SETTINGS }
+    return readStoredZktAttendanceSettings()
+  } catch {
+    return { ...DEFAULT_ZKT_ATTENDANCE_SETTINGS }
+  }
+}
+
 export function AppSettingsProvider({ children }: { children: React.ReactNode }) {
   const [imileToken, setImileToken] = useState(readStoredImileToken)
   const [rememberImileToken, setRememberImileToken] = useState(readRememberFlag)
   const [imilePortal, setImilePortalState] = useState(readStoredImilePortal)
+  const [zktAttendance, setZktAttendanceState] = useState(readStoredZktAttendance)
 
   const setImilePortal = (value: ImilePortalSettings) => {
     setImilePortalState(normalizeImilePortalSettings(value))
+  }
+
+  const setZktAttendance = (value: ZktAttendanceSettings) => {
+    setZktAttendanceState(normalizeZktAttendanceSettings(value))
   }
 
   useEffect(() => {
@@ -93,14 +117,19 @@ export function AppSettingsProvider({ children }: { children: React.ReactNode })
       if (rememberImileToken) {
         localStorage.setItem(GLOBAL_TOKEN_KEY, imileToken)
         localStorage.setItem(IMILE_PORTAL_STORAGE_KEY, JSON.stringify(normalizeImilePortalSettings(imilePortal)))
+        localStorage.setItem(
+          ZKT_ATTENDANCE_STORAGE_KEY,
+          JSON.stringify(normalizeZktAttendanceSettings(zktAttendance)),
+        )
       } else {
         localStorage.removeItem(GLOBAL_TOKEN_KEY)
         localStorage.removeItem(IMILE_PORTAL_STORAGE_KEY)
+        localStorage.removeItem(ZKT_ATTENDANCE_STORAGE_KEY)
       }
     } catch {
       /* ignore */
     }
-  }, [imileToken, rememberImileToken, imilePortal])
+  }, [imileToken, rememberImileToken, imilePortal, zktAttendance])
 
   const value = useMemo<AppSettingsContextValue>(
     () => ({
@@ -110,8 +139,10 @@ export function AppSettingsProvider({ children }: { children: React.ReactNode })
       setRememberImileToken,
       imilePortal,
       setImilePortal,
+      zktAttendance,
+      setZktAttendance,
     }),
-    [imileToken, rememberImileToken, imilePortal],
+    [imileToken, rememberImileToken, imilePortal, zktAttendance],
   )
 
   return <AppSettingsContext.Provider value={value}>{children}</AppSettingsContext.Provider>

@@ -1,13 +1,17 @@
 import { Button, DatePicker, Tag, Tooltip, Typography } from 'antd'
 import type { Dayjs } from 'dayjs'
 import { CalendarDays, CheckCircle2, DatabaseZap } from 'lucide-react'
+import type { FineBiConnectionConfig } from '../fineBiConnectionStorage'
 import type { FetchedData } from '../useVendorAnalysisPage'
+import { FineBiConnectionPanel } from './FineBiConnectionPanel'
 
 type Props = {
   dateRange: [Dayjs, Dayjs] | null
   onDateRangeChange: (range: [Dayjs, Dayjs] | null) => void
   complaintDateRange: [Dayjs, Dayjs] | null
   onComplaintDateRangeChange: (range: [Dayjs, Dayjs] | null) => void
+  fineBiConnections: FineBiConnectionConfig[]
+  onFineBiConnectionsChange: (next: FineBiConnectionConfig[]) => void
   fetchedData: FetchedData | null
   dataFetching: boolean
   onFetchData: () => void
@@ -18,6 +22,8 @@ export function VendorFilterPanel({
   onDateRangeChange,
   complaintDateRange,
   onComplaintDateRangeChange,
+  fineBiConnections,
+  onFineBiConnectionsChange,
   fetchedData,
   dataFetching,
   onFetchData,
@@ -83,6 +89,13 @@ export function VendorFilterPanel({
               {dataFetching ? '获取中…' : '获取数据'}
             </Button>
           </div>
+        </div>
+
+        <div className="mt-4 border-t border-[var(--admin-line)] pt-4">
+          <FineBiConnectionPanel
+            connections={fineBiConnections}
+            onChange={onFineBiConnectionsChange}
+          />
         </div>
 
         {fetchedData && (

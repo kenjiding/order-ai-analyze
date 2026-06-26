@@ -1,6 +1,7 @@
 import { getApiBaseUrl } from '../../utils/apiBaseUrl'
 import type { ImilePortalSettings } from '../../imile/imilePortalSettings'
 import { toImilePortalOverrides } from '../../imile/imilePortalSettings'
+export { fetchZktAttendance, type FetchZktAttendanceResult } from '../../api/zktAttendanceApi'
 
 const JSON_HEADERS = { 'Content-Type': 'application/json' } as const
 const scannerEfficiencyApi = `${getApiBaseUrl()}/api/scanner-efficiency`

@@ -77,20 +77,6 @@ export type CompareAnalysisResult = {
   hasMissingPersonnel: boolean
 }
 
-function stdDev(values: number[]): number {
-  if (values.length < 2) return 0
-  const mean = values.reduce((s, v) => s + v, 0) / values.length
-  const variance = values.reduce((s, v) => s + (v - mean) ** 2, 0) / values.length
-  return Math.sqrt(variance)
-}
-
-function cv(values: number[]): number {
-  if (!values.length) return 0
-  const mean = values.reduce((s, v) => s + v, 0) / values.length
-  if (mean === 0) return 0
-  return stdDev(values) / mean
-}
-
 function fmt1(n: number): string {
   return n.toFixed(1)
 }
@@ -142,11 +128,16 @@ export function computeCompareAnalysis(records: EfficiencyAttendanceDayRecord[])
       reliabilityWeight: r.reliabilityWeight,
     }))
 
+    const dayEfficiency = daily.dayEfficiency ?? null
+    const openEfficiency =
+      daily.isOpenDay && daily.totalHours > 0 ? daily.volume / daily.totalHours : dayEfficiency
+    const overallEfficiency = daily.totalHours > 0 ? daily.volume / daily.totalHours : dayEfficiency
+
     return {
       date: record.date,
-      dayEfficiency: daily.dayEfficiency ?? null,
-      openEfficiency: daily.openEfficiency ?? null,
-      overallEfficiency: daily.overallEfficiency ?? null,
+      dayEfficiency,
+      openEfficiency,
+      overallEfficiency,
       volume: daily.volume ?? 0,
       totalHours,
       sorterCount,

@@ -54,7 +54,7 @@ export function WageFileUploadBar({
         {description && <p className="text-xs text-slate-500 sm:hidden mt-0.5">{description}</p>}
       </div>
 
-      {sourceFileName && (
+      {sourceFileName ? (
         <div
           className="flex max-w-full items-center gap-1.5 rounded-md border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs text-slate-700"
           title={sourceFileName}
@@ -67,7 +67,11 @@ export function WageFileUploadBar({
             </span>
           )}
         </div>
-      )}
+      ) : recordCount != null && recordCount > 0 ? (
+        <span className="shrink-0 rounded-md border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs font-semibold text-slate-500 tabular-nums ring-1 ring-slate-200">
+          {recordCount} 条
+        </span>
+      ) : null}
 
       <div className="flex shrink-0 flex-wrap items-center gap-2">
         <label className="cursor-pointer">

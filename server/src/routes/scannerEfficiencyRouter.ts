@@ -7,6 +7,7 @@ import { queryImileBoxAssignedList } from '../imile/boxAssignedList'
 import { analyzeCancelScan } from '../imile/cancelScanAnalysis'
 import { queryImileInboundScans } from '../imile/inbound'
 import type { ImilePortalOverrides } from '../imile/portal'
+import { queryZktTimeCardReport } from '../zkt/timeCardReport'
 import { readImileTokenFromRequest } from './imileAuth'
 
 export const scannerEfficiencyRouter = Router()
@@ -376,6 +377,94 @@ scannerEfficiencyRouter.post('/box-assigned-list', async (req: Request, res: Res
     })
   } catch (e) {
     res.status(500).json({ error: (e as Error).message || '前台箱号分配拉取失败' })
+  }
+})
+
+scannerEfficiencyRouter.post('/zkt-attendance', async (req: Request, res: Response) => {
+  try {
+    const body = readJson<{
+      username?: string
+      password?: string
+      departmentId?: string
+      startDate?: string
+      endDate?: string
+      areas?: string
+      groups?: string
+      employees?: string
+    }>(req)
+    const username = String(body.username ?? '').trim()
+    const password = String(body.password ?? '')
+    const departmentId = String(body.departmentId ?? '').trim()
+    const startDate = parseDateKey(body.startDate)
+    const endDate = parseDateKey(body.endDate)
+
+    if (!username || !password) {
+      res.status(400).json({ error: '缺少 ZKT 考勤账号或密码，请在系统设置中配置' })
+      return
+    }
+    if (!departmentId) {
+      res.status(400).json({ error: '缺少 ZKT departments 参数，请在系统设置中配置' })
+      return
+    }
+    if (!startDate || !endDate) {
+      res.status(400).json({ error: '请提供有效的 startDate / endDate（YYYY-MM-DD）' })
+      return
+    }
+    if (startDate > endDate) {
+      res.status(400).json({ error: '开始日期不能晚于结束日期' })
+      return
+    }
+
+    const rangeDays = diffDaysInclusive(startDate, endDate)
+    if (rangeDays > MAX_RANGE_DAYS) {
+      res.status(400).json({ error: `日期区间不能超过 ${MAX_RANGE_DAYS} 天` })
+      return
+    }
+
+    const result = await queryZktTimeCardReport({
+      username,
+      password,
+      departmentId,
+      startDate,
+      endDate,
+      areas: String(body.areas ?? '').trim() || undefined,
+      groups: String(body.groups ?? '').trim() || undefined,
+      employees: String(body.employees ?? '').trim() || undefined,
+    })
+
+    if (!result.ok) {
+      res.status(502).json({
+        error: result.message,
+        status: result.status,
+        rawText: result.rawText,
+      })
+      return
+    }
+
+    res.json({
+      data: result.records,
+      count: result.totalCount,
+      records: result.records,
+      raw: result.raw,
+      meta: {
+        startDate,
+        endDate,
+        totalCount: result.totalCount,
+        fetched: result.fetched,
+        pageCount: result.pageCount,
+        query: {
+          start_date: startDate,
+          end_date: endDate,
+          departments: departmentId,
+          areas: String(body.areas ?? '-1').trim() || '-1',
+          groups: String(body.groups ?? '-1').trim() || '-1',
+          employees: String(body.employees ?? '-1').trim() || '-1',
+          page_size: 10_000,
+        },
+      },
+    })
+  } catch (e) {
+    res.status(500).json({ error: (e as Error).message || 'ZKT 考勤拉取失败' })
   }
 })
 

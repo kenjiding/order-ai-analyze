@@ -2,6 +2,7 @@ import { Button, DatePicker, Radio, Tooltip } from 'antd'
 import { CloudDownload, FileSpreadsheet, Save, Upload, Users } from 'lucide-react'
 import { useMemo, useRef, useState } from 'react'
 import type { Dayjs } from 'dayjs'
+import { dayjs } from '../dayjsSetup'
 import { formatInteger } from '../formatAndParse'
 import type { ScannerEfficiencyViewModel } from '../useScannerEfficiencyPage'
 
@@ -25,24 +26,35 @@ export function ScanDataIntakePanel({ vm }: Props) {
     scanSourceInfo,
     attendanceSourceInfo,
     snapshotRestore,
+    apiDateRange,
+    setApiDateRange,
   } = vm
 
   const readOnly = Boolean(snapshotRestore)
   const [mode, setMode] = useState<IntakeMode>('api')
-  const [range, setRange] = useState<[Dayjs, Dayjs] | null>(null)
   const scanFileInputRef = useRef<HTMLInputElement>(null)
   const attendanceFileInputRef = useRef<HTMLInputElement>(null)
 
+  const range = useMemo<[Dayjs, Dayjs] | null>(() => {
+    if (!apiDateRange) return null
+    const [start, end] = apiDateRange
+    const startDay = dayjs(start, 'YYYY-MM-DD', true)
+    const endDay = dayjs(end, 'YYYY-MM-DD', true)
+    if (!startDay.isValid() || !endDay.isValid()) return null
+    return [startDay, endDay]
+  }, [apiDateRange])
+
   const handleRangeChange = (values: [Dayjs, Dayjs] | null) => {
-    setRange(values)
-    vm.setApiDateRange(
-      values ? [values[0].format('YYYY-MM-DD'), values[1].format('YYYY-MM-DD')] : null,
-    )
+    if (!values?.[0] || !values[1]) {
+      setApiDateRange(null)
+      return
+    }
+    setApiDateRange([values[0].format('YYYY-MM-DD'), values[1].format('YYYY-MM-DD')])
   }
 
   const handleFetch = () => {
-    if (!range || readOnly) return
-    void handleScanApiFetch(range[0].format('YYYY-MM-DD'), range[1].format('YYYY-MM-DD'))
+    if (!apiDateRange || readOnly) return
+    void handleScanApiFetch(apiDateRange[0], apiDateRange[1])
   }
 
   const statusLine = useMemo(() => {
@@ -131,13 +143,13 @@ export function ScanDataIntakePanel({ vm }: Props) {
                   allowClear
                   format="YYYY-MM-DD"
                   disabled={actionsDisabled}
-                  className="min-w-0 flex-1"
+                  className="w-[17.5rem]"
                 />
                 <Button
                   type="primary"
                   icon={<CloudDownload className="h-4 w-4" aria-hidden />}
                   loading={loading}
-                  disabled={!range || readOnly}
+                  disabled={!apiDateRange || readOnly}
                   onClick={handleFetch}
                 >
                   获取数据
@@ -152,28 +164,36 @@ export function ScanDataIntakePanel({ vm }: Props) {
             考勤 <span>可选</span>
           </div>
           <div className="mt-2.5 flex min-w-0 flex-col gap-2">
-            <input
-              ref={attendanceFileInputRef}
-              type="file"
-              accept=".csv,.xlsx,.xls"
-              multiple
-              className="hidden"
-              disabled={actionsDisabled}
-              onChange={(event) => {
-                void handleAttendanceFileChange(event.target.files)
-                event.target.value = ''
-              }}
-            />
-            <Button
-              type="default"
-              block
-              icon={<Users className="h-4 w-4" aria-hidden />}
-              disabled={actionsDisabled}
-              onClick={() => attendanceFileInputRef.current?.click()}
-            >
-              上传考勤
-            </Button>
-            <p className="text-[11px] text-[var(--admin-muted)]">.csv / .xlsx / .xls</p>
+            {mode === 'upload' ? (
+              <>
+                <input
+                  ref={attendanceFileInputRef}
+                  type="file"
+                  accept=".csv,.xlsx,.xls"
+                  multiple
+                  className="hidden"
+                  disabled={actionsDisabled}
+                  onChange={(event) => {
+                    void handleAttendanceFileChange(event.target.files)
+                    event.target.value = ''
+                  }}
+                />
+                <Button
+                  type="default"
+                  block
+                  icon={<Users className="h-4 w-4" aria-hidden />}
+                  disabled={actionsDisabled}
+                  onClick={() => attendanceFileInputRef.current?.click()}
+                >
+                  上传考勤
+                </Button>
+                <p className="text-[11px] text-[var(--admin-muted)]">.csv / .xlsx / .xls</p>
+              </>
+            ) : (
+              <p className="rounded-md border border-dashed border-[var(--admin-line)] bg-slate-50/80 px-3 py-2.5 text-xs leading-relaxed text-[var(--admin-muted)]">
+                API 模式下点击左侧「获取数据」时，将同步从 ZKT 拉取考勤（账号在系统设置中配置）。
+              </p>
+            )}
           </div>
         </div>
       </div>

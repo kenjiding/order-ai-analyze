@@ -24,6 +24,27 @@ export function buildWageExportFileName(dateRangeLabel: string | null): string {
   return `工资数据_${period}.xlsx`
 }
 
+/** API 载入的有效考勤行 →「每日原始考勤记录」工作表（列名与考勤上传表一致） */
+export function buildDailyRawAttendanceExportRows(
+  uploadedData: Record<string, unknown>[],
+): Record<string, string>[] {
+  return uploadedData.map((record) => ({
+    人员编号: String(record.employeeId ?? ''),
+    姓名: String(record.name ?? ''),
+    姓氏: String(record.surname ?? ''),
+    昵称: String(record.nickname ?? ''),
+    职位名称: String(record.positionTitle ?? ''),
+    日期: String(record.date ?? ''),
+    工作日: String(record.workday ?? ''),
+    实际签到时间: String(record.firstClockIn ?? ''),
+    实际签退时间: String(record.lastClockOut ?? ''),
+    总时长: String(record.totalHours ?? ''),
+    工作时长: String(record.workHours ?? record.effectiveHours ?? ''),
+    扣减: String(record.deduction ?? ''),
+    奖励: String(record.reward ?? ''),
+  }))
+}
+
 /** 与「时薪标准设置」弹窗一致，供导出「时薪标准」工作表 */
 export function buildRateSettingsExportRows(
   rateSettings: RateSettings,

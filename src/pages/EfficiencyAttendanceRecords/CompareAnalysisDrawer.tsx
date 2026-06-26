@@ -30,7 +30,6 @@ import {
   buildDaySnapshots,
   computeCompareAnalysis,
   type CompareAnalysisResult,
-  type DayMetrics,
   type RootCauseFactor,
 } from './compareAnalysis'
 import type { EfficiencyAttendanceDayRecord } from '../ScannerEfficiency/dailyEfficiencyRecordSnapshot'
@@ -45,7 +44,6 @@ type Props = {
 const C_ACCENT = '#2f8f87'
 const C_ACCENT_SOFT = '#e1f5f1'
 const C_RED = '#ef4444'
-const C_RED_SOFT = '#fef2f2'
 const C_BLUE = '#3b82f6'
 const C_GRAY = '#94a3b8'
 const C_ORANGE = '#f59e0b'
@@ -875,10 +873,8 @@ function PersonnelCompareSection({ result }: { result: CompareAnalysisResult }) 
 // ─── 区块 F：AI 深度分析 ───────────────────────────────────────────────────────
 function AiAnalysisSection({
   result,
-  records,
 }: {
   result: CompareAnalysisResult
-  records: EfficiencyAttendanceDayRecord[]
 }) {
   const [aiProvider, setAiProvider] = useState<EfficiencyInsightAiProvider>('deepseek')
   const [loading, setLoading] = useState(false)
@@ -1084,7 +1080,7 @@ function CompareAnalysisContent({ records }: { records: EfficiencyAttendanceDayR
       {/* F AI 深度分析 */}
       <section>
         <SectionLabel icon={<Sparkles className="h-3.5 w-3.5" />}>AI 深度分析</SectionLabel>
-        <AiAnalysisSection result={result} records={records} />
+        <AiAnalysisSection result={result} />
       </section>
     </div>
   )

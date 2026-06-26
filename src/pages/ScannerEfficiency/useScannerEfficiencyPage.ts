@@ -5,8 +5,13 @@ import { PERMISSION_KEYS, usePermission } from '../../hooks/usePermission'
 import {
   buildDailyLaborCostFromPayrollByDate,
   computeAttendancePayrollFromFiles,
+  computeAttendancePayrollFromSheetRows,
   type AttendancePayrollResult,
 } from '../../payroll/attendancePayrollFromUpload'
+import {
+  filterZktAttendanceSheetRowsByDateRange,
+  mapZktTimeCardToAttendanceSheetRows,
+} from '../../payroll/zktTimeCardSheetMapping'
 import type { RateSettings } from '../../payroll/wageRateCalculation'
 import { DEFAULT_RATE_SETTINGS } from '../WageSalary/constants'
 import { loadEmployeesFromStorage, loadRateSettingsFromStorage } from '../WageSalary/storage'
@@ -39,8 +44,9 @@ import {
   dedupeParsedAllocationRows,
   mapAssignedListRecordsToParsedAllocationRows,
 } from './assignedListMapper'
-import { fetchBoxAssignedList, fetchCancelScanAnalysis, fetchInboundScans, saveDailyEfficiencyRecords } from './scannerEfficiencyApi'
+import { fetchBoxAssignedList, fetchCancelScanAnalysis, fetchInboundScans, fetchZktAttendance, saveDailyEfficiencyRecords } from './scannerEfficiencyApi'
 import { mapInboundRecordsToParsedScanRows } from './inboundScanMapper'
+import { mapZktTimeCardRecordsToParsedAttendanceRows } from './mapZktAttendanceRecords'
 import type { CancelScanAnalysisState } from './cancelScanAnalysisTypes'
 import { flushPaint } from './excelParseClient'
 import { buildAllocationDensity, buildFrontDeskClockOutDays } from './frontDeskSaturation'
@@ -110,7 +116,7 @@ function mergeOrderedUniqueFiles(prev: File[], next: File[]): File[] {
 /** 与工资页上传表默认一致：未勾选「分拣班次 / 公众假期」时的映射口径 */
 
 export function useScannerEfficiencyPage() {
-  const { imileToken, imilePortal } = useAppSettings()
+  const { imileToken, imilePortal, zktAttendance } = useAppSettings()
   const location = useLocation()
   const navigate = useNavigate()
   const [settings, setSettings] = useState<ScanSettings>(() => ({ ...DEFAULT_SETTINGS }))
@@ -130,17 +136,30 @@ export function useScannerEfficiencyPage() {
     })()
   }, [])
 
-  const refreshAttendancePayroll = useCallback(async (files: File[]) => {
-    if (!files.length) {
-      setAttendancePayroll(null)
+  const refreshAttendancePayroll = useCallback(async () => {
+    if (lastAttendanceFilesRef.current.length) {
+      const payroll = await computeAttendancePayrollFromFiles(
+        lastAttendanceFilesRef.current,
+        wageEmployees,
+        rateSettingsForLabor,
+      )
+      setAttendancePayroll(payroll)
       return
     }
-    const payroll = await computeAttendancePayrollFromFiles(files, wageEmployees, rateSettingsForLabor)
-    setAttendancePayroll(payroll)
+    if (lastZktSheetRowsRef.current.length) {
+      const payroll = computeAttendancePayrollFromSheetRows(
+        lastZktSheetRowsRef.current,
+        wageEmployees,
+        rateSettingsForLabor,
+      )
+      setAttendancePayroll(payroll)
+      return
+    }
+    setAttendancePayroll(null)
   }, [wageEmployees, rateSettingsForLabor])
 
   useEffect(() => {
-    void refreshAttendancePayroll(lastAttendanceFilesRef.current)
+    void refreshAttendancePayroll()
   }, [refreshAttendancePayroll])
 
   const [scanRows, setScanRows] = useState<ParsedScanRow[]>([])
@@ -162,6 +181,8 @@ export function useScannerEfficiencyPage() {
   /** 与工资结算「计算薪资」同款结果；总成本只看此对象 */
   const [attendancePayroll, setAttendancePayroll] = useState<AttendancePayrollResult | null>(null)
   const lastAttendanceFilesRef = useRef<File[]>([])
+  /** ZKT API 拉取的考勤表行，用于与上传文件互斥地重算总成本 */
+  const lastZktSheetRowsRef = useRef<Record<string, unknown>[]>([])
   const [attendanceSourceInfo, setAttendanceSourceInfo] = useState<SourceInfo>(EMPTY_SOURCE)
 
   const attendanceRowsRef = useRef(attendanceRows)
@@ -462,6 +483,7 @@ export function useScannerEfficiencyPage() {
     setAttendanceSourceInfo(EMPTY_SOURCE)
     setAttendancePayroll(null)
     lastAttendanceFilesRef.current = []
+    lastZktSheetRowsRef.current = []
     setAllocationRows([])
     setAllocationSourceInfo(EMPTY_SOURCE)
     setDailyHoursOverrides({})
@@ -488,6 +510,7 @@ export function useScannerEfficiencyPage() {
     setAllocationSourceInfo(restore.allocationSourceInfo)
     setAttendancePayroll(restore.attendancePayroll)
     lastAttendanceFilesRef.current = []
+    lastZktSheetRowsRef.current = []
     setLastInboundApiStats(null)
     setDailyHoursOverrides({})
     setError('')
@@ -757,6 +780,121 @@ export function useScannerEfficiencyPage() {
     void performCancelScanFetch(token, apiDateRange[0], apiDateRange[1])
   }
 
+  const performAttendanceApiFetch = async (
+    startDate: string,
+    endDate: string,
+    options?: { replaceExisting?: boolean },
+  ) => {
+    const settings = zktAttendance
+    if (!settings.username.trim() || !settings.password) {
+      showToast('请先在系统设置中配置 ZKT 考勤 API 账号与密码', 'warning')
+      return
+    }
+
+    setLoadingAttendance(true)
+    try {
+      const result = await fetchZktAttendance({
+        zktAttendance: settings,
+        startDate,
+        endDate,
+      })
+
+      if (result.count > 0 && result.meta.fetched < result.count) {
+        throw new Error(`ZKT 考勤数据不完整：count=${result.count}，实际拉取 ${result.meta.fetched} 条`)
+      }
+
+      const sourceLabel = `ZKT 考勤 API（${startDate} ~ ${endDate}）`
+      const mapped = mapZktTimeCardRecordsToParsedAttendanceRows(result.data, sourceLabel, {
+        startDate,
+        endDate,
+      })
+      const replaceExisting = options?.replaceExisting ?? false
+      const prevRows = replaceExisting ? [] : attendanceRowsRef.current
+      const prevSource = replaceExisting ? EMPTY_SOURCE : attendanceSourceInfoRef.current
+
+      console.info('[ScannerEfficiency] ZKT 考勤 API 拉取完成', {
+        dateRange: `${startDate} ~ ${endDate}`,
+        query: result.meta.query ?? {
+          start_date: startDate,
+          end_date: endDate,
+        },
+        count: result.count,
+        fetched: result.meta.fetched,
+        replaceExisting,
+        mappedRows: mapped.rows.length,
+        mappedDropped: mapped.droppedRows,
+      })
+
+      if (!mapped.rows.length) {
+        showToast(
+          !replaceExisting && attendanceRowsRef.current.length
+            ? `ZKT 考勤 API 返回 ${result.count} 条，但没有可解析的有效工作时长（worked_hrs），已有考勤数据未改动。`
+            : `ZKT 考勤 API 返回 ${result.count} 条，但没有可解析的有效工作时长（worked_hrs）。`,
+          'warning',
+        )
+        return
+      }
+
+      if (mapped.droppedRows > 0) {
+        showToast(
+          `ZKT 考勤已载入 ${mapped.rows.length} 条（count=${result.count}，${mapped.droppedRows} 条无有效 worked_hrs 已跳过）`,
+          mapped.droppedRows > mapped.rows.length ? 'warning' : 'success',
+        )
+      }
+
+      const combinedRawRows = prevRows.length ? [...prevRows, ...mapped.rows] : mapped.rows
+      const { rows: deduped, duplicateDropped } = dedupeParsedAttendanceRowsByPersonDay(combinedRawRows)
+      if (!deduped.length) {
+        showToast('考勤经同人同日去重后没有可统计记录。', 'warning')
+        return
+      }
+
+      setAttendanceRows(deduped)
+      const mergedNames = prevRows.length
+        ? mergeOrderedUniqueFileNames(prevSource.fileNames, [sourceLabel])
+        : [sourceLabel]
+
+      setAttendanceSourceInfo({
+        fileCount: mergedNames.length,
+        rowCount: deduped.length,
+        droppedRows: prevRows.length
+          ? prevSource.droppedRows + mapped.droppedRows
+          : mapped.droppedRows,
+        duplicateWaybillRows: duplicateDropped,
+        fileNames: mergedNames,
+      })
+
+      const fetchedSheetRows = filterZktAttendanceSheetRowsByDateRange(
+        mapZktTimeCardToAttendanceSheetRows(result.data),
+        startDate,
+        endDate,
+      )
+      const mergedSheetRows = replaceExisting
+        ? fetchedSheetRows
+        : [...lastZktSheetRowsRef.current, ...fetchedSheetRows]
+      lastZktSheetRowsRef.current = mergedSheetRows
+      lastAttendanceFilesRef.current = []
+
+      const payroll = computeAttendancePayrollFromSheetRows(
+        mergedSheetRows,
+        wageEmployees,
+        rateSettingsForLabor,
+      )
+      setAttendancePayroll(payroll)
+      if (payroll.validationErrors.length > 0) {
+        setError(
+          `考勤工资：${payroll.wageRows.length} 条有效记录已计入总成本；${payroll.validationErrors.length} 条未通过工资页同款校验（与工资结算上传提示一致）。`,
+        )
+      }
+    } catch (currentError: unknown) {
+      const message =
+        currentError instanceof Error ? currentError.message : 'ZKT 考勤 API 拉取失败'
+      showToast(message, 'error')
+    } finally {
+      setLoadingAttendance(false)
+    }
+  }
+
   const handleScanApiFetch = async (startDate: string, endDate: string) => {
     const token = imileToken.trim()
     if (!token) {
@@ -768,12 +906,13 @@ export function useScannerEfficiencyPage() {
       return
     }
 
+    setApiDateRange([startDate, endDate])
     clearSnapshotRestore()
     setLoadingScan(true)
     setError('')
     await flushPaint()
 
-    void performCancelScanFetch(token, startDate, endDate)
+    const attendancePromise = performAttendanceApiFetch(startDate, endDate, { replaceExisting: true })
 
     try {
       const result = await fetchInboundScans({
@@ -790,8 +929,6 @@ export function useScannerEfficiencyPage() {
 
       const sourceLabel = `iMile 到件 API（${startDate} ~ ${endDate}）`
       const mapped = mapInboundRecordsToParsedScanRows(result.records, sourceLabel)
-      const prevRows = scanRowsRef.current
-      const prevSource = scanSourceInfoRef.current
 
       console.info('[ScannerEfficiency] iMile 到件 API 拉取完成', {
         dateRange: `${startDate} ~ ${endDate}`,
@@ -803,15 +940,10 @@ export function useScannerEfficiencyPage() {
       })
 
       if (!mapped.rows.length) {
-        throw new Error(
-          prevRows.length
-            ? '本次 API 拉取没有可统计的到件记录，已有数据未改动。'
-            : '所选日期区间内没有可统计的到件记录。',
-        )
+        throw new Error('所选日期区间内没有可统计的到件记录。')
       }
 
-      const combinedRawRows = prevRows.length ? [...prevRows, ...mapped.rows] : mapped.rows
-      const { rows: deduped, duplicateDropped } = dedupeParsedScanRowsByWaybill(combinedRawRows)
+      const { rows: deduped, duplicateDropped } = dedupeParsedScanRowsByWaybill(mapped.rows)
       if (!deduped.length) {
         throw new Error('到件扫描经运单号去重后没有可统计记录。')
       }
@@ -831,25 +963,18 @@ export function useScannerEfficiencyPage() {
         parseDropped: mapped.droppedRows,
         afterDedupe: deduped.length,
       })
-      const mergedNames = prevRows.length
-        ? mergeOrderedUniqueFileNames(prevSource.fileNames, [sourceLabel])
-        : [sourceLabel]
-
       setScanSourceInfo({
-        fileCount: mergedNames.length,
+        fileCount: 1,
         rowCount: deduped.length,
-        droppedRows: prevRows.length
-          ? prevSource.droppedRows + mapped.droppedRows
-          : mapped.droppedRows,
+        droppedRows: mapped.droppedRows,
         duplicateWaybillRows: duplicateDropped,
-        fileNames: mergedNames,
+        fileNames: [sourceLabel],
       })
-
-      void performAllocationFetch(token, startDate, endDate)
     } catch (currentError: unknown) {
       setError(currentError instanceof Error ? currentError.message : 'iMile 到件 API 拉取失败')
     } finally {
       setLoadingScan(false)
+      await attendancePromise
     }
   }
 
@@ -899,6 +1024,7 @@ export function useScannerEfficiencyPage() {
       })
 
       lastAttendanceFilesRef.current = mergedFiles
+      lastZktSheetRowsRef.current = []
       const payroll = await computeAttendancePayrollFromFiles(
         mergedFiles,
         wageEmployees,
@@ -960,6 +1086,7 @@ export function useScannerEfficiencyPage() {
     setAttendanceSourceInfo(EMPTY_SOURCE)
     setAttendancePayroll(null)
     lastAttendanceFilesRef.current = []
+    lastZktSheetRowsRef.current = []
   }
 
   const clearAllocation = () => {
@@ -977,6 +1104,7 @@ export function useScannerEfficiencyPage() {
     setAttendanceSourceInfo(EMPTY_SOURCE)
     setAttendancePayroll(null)
     lastAttendanceFilesRef.current = []
+    lastZktSheetRowsRef.current = []
     setAllocationRows([])
     setAllocationSourceInfo(EMPTY_SOURCE)
     setCancelScanAnalysis(null)

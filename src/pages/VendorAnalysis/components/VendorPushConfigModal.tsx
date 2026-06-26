@@ -67,7 +67,7 @@ export function VendorPushConfigModal({
       onCancel={onCancel}
       onOk={() => void handleOk()}
       width={560}
-      destroyOnClose
+      destroyOnHidden
     >
       <Form form={form} layout="vertical" className="pt-2">
         <Form.Item

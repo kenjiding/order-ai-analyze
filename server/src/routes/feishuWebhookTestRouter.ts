@@ -14,6 +14,8 @@ import {
   generateSortEfficiencyFeishuAnalysis,
   splitFeishuWebhookTextChunks,
 } from '../sortEfficiencyFeishuAnalysis'
+import { buildFleetRichMessageCard } from '../feishu/buildFleetRichMessageCard'
+import { uploadFeishuImageFromBase64 } from '../feishu/feishuImageUpload'
 import { upsertFeishuPushSnapshot } from '../feishu/pushSnapshotRepository'
 import {
   buildOrderExceptionFeishuCard,
@@ -236,6 +238,111 @@ feishuWebhookTestRouter.post('/push-card', async (req: AuthenticatedRequest, res
     res.status(502).json({
       ok: false,
       error: '推送卡片时发生网络错误，请稍后重试。',
+    })
+  }
+})
+
+type PushRichMessageBody = {
+  pushScope?: unknown
+  webhookUrl?: unknown
+  signingSecret?: unknown
+  /** lark_md 富文本正文 */
+  content?: unknown
+  /** data URL 或纯 base64 图片列表 */
+  images?: unknown
+}
+
+/** 富文本 + 多图合并为一条交互式卡片消息 */
+feishuWebhookTestRouter.post('/push-rich-message', async (req: AuthenticatedRequest, res: Response) => {
+  if (!requirePushApiScope(req, res)) return
+
+  const body = req.body as PushRichMessageBody
+  let webhookHref: string
+  try {
+    webhookHref = parseSafeWebhookUrl(body.webhookUrl).href
+  } catch {
+    res.status(400).json({
+      ok: false,
+      error: '仅允许访问飞书开放平台官方 webhook 地址（HTTPS，open.feishu.cn/open-apis/bot/v2/hook/…）。',
+    })
+    return
+  }
+
+  const content = typeof body.content === 'string' ? body.content.trim() : ''
+  const imagesRaw = Array.isArray(body.images) ? body.images : []
+  const images = imagesRaw.filter((x): x is string => typeof x === 'string' && x.trim() !== '')
+
+  if (!content && images.length === 0) {
+    res.status(400).json({ ok: false, error: '缺少文案与图片，无法推送' })
+    return
+  }
+
+  const secretRaw = body.signingSecret
+  const secret =
+    typeof secretRaw === 'string' && secretRaw.trim() !== '' ? secretRaw.trim() : undefined
+
+  const imageKeys: string[] = []
+  if (images.length > 0) {
+    const tenantRes = await getFeishuTenantAccessToken()
+    if (!tenantRes.ok) {
+      if (tenantRes.reason === 'not_configured') {
+        res.status(400).json({
+          ok: false,
+          error:
+            '服务器未配置飞书开放接口凭证。请在运行后端的 .env 中设置 FEISHU_APP_ID 与 FEISHU_APP_SECRET（含图片上传权限）。',
+        })
+        return
+      }
+      res.status(502).json({
+        ok: false,
+        error: tenantRes.error || '获取 tenant_access_token 失败',
+        feishuAuth: tenantRes.feishuAuth,
+      })
+      return
+    }
+
+    for (let i = 0; i < images.length; i++) {
+      const upload = await uploadFeishuImageFromBase64(tenantRes.token, images[i]!)
+      if (!upload.ok) {
+        res.status(502).json({
+          ok: false,
+          error: `第 ${i + 1} 张图片上传失败：${upload.error}`,
+          feishuUpload: upload.feishu,
+          imageIndex: i,
+        })
+        return
+      }
+      imageKeys.push(upload.imageKey)
+    }
+  }
+
+  const card = buildFleetRichMessageCard({ content, imageKeys })
+  const payload: Record<string, unknown> = { msg_type: 'interactive', card }
+  if (secret) await appendWebhookSign(payload, secret)
+
+  try {
+    const r = await postWebhookJson(webhookHref, payload)
+    if (!r.ok) {
+      res.status(502).json({
+        ok: false,
+        error: '飞书 webhook 富文本卡片消息发送失败。',
+        httpStatus: r.httpStatus,
+        feishu: r.feishu,
+        imageUploadedCount: imageKeys.length,
+      })
+      return
+    }
+    res.status(200).json({
+      ok: true,
+      httpStatus: r.httpStatus,
+      feishu: r.feishu,
+      imageUploadedCount: imageKeys.length,
+    })
+  } catch {
+    res.status(502).json({
+      ok: false,
+      error: '推送富文本卡片时发生网络错误，请稍后重试。',
+      imageUploadedCount: imageKeys.length,
     })
   }
 })

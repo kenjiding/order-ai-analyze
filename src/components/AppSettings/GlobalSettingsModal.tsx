@@ -7,6 +7,11 @@ import {
   normalizeImilePortalSettings,
   type ImilePortalSettings,
 } from '../../imile/imilePortalSettings'
+import {
+  DEFAULT_ZKT_ATTENDANCE_SETTINGS,
+  normalizeZktAttendanceSettings,
+  type ZktAttendanceSettings,
+} from '../../imile/zktAttendanceSettings'
 import { showToast } from '../../utils/toast'
 import { confirmDialog } from '../../utils/confirmDialog'
 
@@ -21,6 +26,7 @@ type ImileSettingsDraft = {
   imileToken: string
   rememberImileToken: boolean
   imilePortal: ImilePortalSettings
+  zktAttendance: ZktAttendanceSettings
 }
 
 type Props = {
@@ -38,15 +44,27 @@ function portalDraftEqual(a: ImilePortalSettings, b: ImilePortalSettings): boole
   )
 }
 
+function zktDraftEqual(a: ZktAttendanceSettings, b: ZktAttendanceSettings): boolean {
+  const left = normalizeZktAttendanceSettings(a)
+  const right = normalizeZktAttendanceSettings(b)
+  return (
+    left.username === right.username &&
+    left.password === right.password &&
+    left.departmentId === right.departmentId
+  )
+}
+
 function buildDraftFromSettings(input: {
   imileToken: string
   rememberImileToken: boolean
   imilePortal: ImilePortalSettings
+  zktAttendance: ZktAttendanceSettings
 }): ImileSettingsDraft {
   return {
     imileToken: input.imileToken,
     rememberImileToken: input.rememberImileToken,
     imilePortal: normalizeImilePortalSettings(input.imilePortal),
+    zktAttendance: normalizeZktAttendanceSettings(input.zktAttendance),
   }
 }
 
@@ -58,30 +76,33 @@ export function GlobalSettingsModal({ isOpen, onClose }: Props) {
     setRememberImileToken,
     imilePortal,
     setImilePortal,
+    zktAttendance,
+    setZktAttendance,
   } = useAppSettings()
   const [activeSection, setActiveSection] = useState<SettingsSectionId>('imile')
   const [draft, setDraft] = useState<ImileSettingsDraft>(() =>
-    buildDraftFromSettings({ imileToken, rememberImileToken, imilePortal }),
+    buildDraftFromSettings({ imileToken, rememberImileToken, imilePortal, zktAttendance }),
   )
   const wasOpenRef = useRef(false)
 
   useEffect(() => {
     if (isOpen && !wasOpenRef.current) {
-      setDraft(buildDraftFromSettings({ imileToken, rememberImileToken, imilePortal }))
+      setDraft(buildDraftFromSettings({ imileToken, rememberImileToken, imilePortal, zktAttendance }))
       setActiveSection('imile')
     }
     wasOpenRef.current = isOpen
-  }, [isOpen, imileToken, rememberImileToken, imilePortal])
+  }, [isOpen, imileToken, rememberImileToken, imilePortal, zktAttendance])
 
   const savedDraft = useMemo(
-    () => buildDraftFromSettings({ imileToken, rememberImileToken, imilePortal }),
-    [imileToken, rememberImileToken, imilePortal],
+    () => buildDraftFromSettings({ imileToken, rememberImileToken, imilePortal, zktAttendance }),
+    [imileToken, rememberImileToken, imilePortal, zktAttendance],
   )
 
   const isDirty = useMemo(() => {
     if (draft.imileToken !== savedDraft.imileToken) return true
     if (draft.rememberImileToken !== savedDraft.rememberImileToken) return true
-    return !portalDraftEqual(draft.imilePortal, savedDraft.imilePortal)
+    if (!portalDraftEqual(draft.imilePortal, savedDraft.imilePortal)) return true
+    return !zktDraftEqual(draft.zktAttendance, savedDraft.zktAttendance)
   }, [draft, savedDraft])
 
   const handleRequestClose = async () => {
@@ -102,6 +123,7 @@ export function GlobalSettingsModal({ isOpen, onClose }: Props) {
     setImileToken(draft.imileToken)
     setRememberImileToken(draft.rememberImileToken)
     setImilePortal(draft.imilePortal)
+    setZktAttendance(draft.zktAttendance)
     showToast('设置已保存', 'success')
     onClose()
   }
@@ -187,8 +209,64 @@ export function GlobalSettingsModal({ isOpen, onClose }: Props) {
                     setDraft((prev) => ({ ...prev, rememberImileToken: e.target.checked }))
                   }
                 />
-                记住 Token 与门户配置（仅存本机 localStorage）
+                记住 Token、门户与考勤 API 配置（仅存本机 localStorage）
               </label>
+
+              <div className="border-t border-slate-200 pt-4">
+                <h4 className="text-base font-semibold text-slate-950">ZKT 考勤 API</h4>
+                <p className="mt-1 text-xs text-slate-500">
+                  仓库效率工作台 API 模式拉取考勤时使用；会话过期后由服务端自动重新登录。
+                </p>
+                <div className="mt-3 grid max-w-xl gap-3 sm:grid-cols-2">
+                  <label className="block text-sm font-medium text-slate-700">
+                    账号
+                    <input
+                      type="text"
+                      autoComplete="username"
+                      value={draft.zktAttendance.username}
+                      onChange={(e) =>
+                        setDraft((prev) => ({
+                          ...prev,
+                          zktAttendance: { ...prev.zktAttendance, username: e.target.value },
+                        }))
+                      }
+                      placeholder="如 AUS_ADL"
+                      className="mt-1.5 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm focus:border-[#2f8f87] focus:outline-none focus:ring-2 focus:ring-[#2f8f87]/25"
+                    />
+                  </label>
+                  <label className="block text-sm font-medium text-slate-700">
+                    密码
+                    <input
+                      type="password"
+                      autoComplete="current-password"
+                      value={draft.zktAttendance.password}
+                      onChange={(e) =>
+                        setDraft((prev) => ({
+                          ...prev,
+                          zktAttendance: { ...prev.zktAttendance, password: e.target.value },
+                        }))
+                      }
+                      className="mt-1.5 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm focus:border-[#2f8f87] focus:outline-none focus:ring-2 focus:ring-[#2f8f87]/25"
+                    />
+                  </label>
+                  <label className="block text-sm font-medium text-slate-700 sm:col-span-2">
+                    departments（部门 ID）
+                    <input
+                      type="text"
+                      autoComplete="off"
+                      value={draft.zktAttendance.departmentId}
+                      onChange={(e) =>
+                        setDraft((prev) => ({
+                          ...prev,
+                          zktAttendance: { ...prev.zktAttendance, departmentId: e.target.value },
+                        }))
+                      }
+                      placeholder={DEFAULT_ZKT_ATTENDANCE_SETTINGS.departmentId}
+                      className="mt-1.5 w-full rounded-md border border-slate-300 bg-white px-3 py-2 font-mono text-sm text-slate-900 shadow-sm focus:border-[#2f8f87] focus:outline-none focus:ring-2 focus:ring-[#2f8f87]/25"
+                    />
+                  </label>
+                </div>
+              </div>
 
               <div className="border-t border-slate-200 pt-4">
                 <h4 className="text-base font-semibold text-slate-950">iMile 门户上下文</h4>

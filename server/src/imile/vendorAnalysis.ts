@@ -273,8 +273,9 @@ export type WaybillParams = {
   endTime: string
 }
 
-const WAYBILL_PAGE_SIZE = 500
-const PAGE_DELAY_MS = 300
+const WAYBILL_PAGE_SIZE = 1000
+const WAYBILL_CONCURRENCY = 2
+const WAYBILL_PAGE_DELAY_MS = 400
 
 export async function fetchVendorWaybills(
   token: string,
@@ -287,7 +288,8 @@ export async function fetchVendorWaybills(
   const result = await fetchPaginatedResultRows({
     label: '供应商运单查询',
     pageShowCount: WAYBILL_PAGE_SIZE,
-    pageDelayMs: PAGE_DELAY_MS,
+    concurrency: WAYBILL_CONCURRENCY,
+    pageDelayMs: WAYBILL_PAGE_DELAY_MS,
     buildPageBody: ({ currentPage, showCount }) => ({
       actualReceiveStation: '',
       currentPage,

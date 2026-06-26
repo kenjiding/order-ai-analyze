@@ -54,6 +54,8 @@ export default function EfficiencyAttendanceRecordsPage() {
   const [batchDeleting, setBatchDeleting] = useState(false)
   const [selectedRowKeys, setSelectedRowKeys] = useState<string[]>([])
   const [compareOpen, setCompareOpen] = useState(false)
+  const [currentPage, setCurrentPage] = useState(1)
+  const [pageSize, setPageSize] = useState(20)
 
   const loadRecords = useCallback(async () => {
     setLoading(true)
@@ -408,9 +410,15 @@ export default function EfficiencyAttendanceRecordsPage() {
           dataSource={rows}
           rowSelection={rowSelection}
           pagination={{
-            pageSize: 20,
+            current: currentPage,
+            pageSize,
             showSizeChanger: true,
+            pageSizeOptions: [10, 20, 50, 100],
             showTotal: (total) => `共 ${total} 条`,
+            onChange: (page, size) => {
+              setCurrentPage(page)
+              setPageSize(size)
+            },
           }}
           locale={{ emptyText: '暂无效率考勤记录，请先在效率考勤页载入数据并保存。' }}
           scroll={{ x: 1080 }}

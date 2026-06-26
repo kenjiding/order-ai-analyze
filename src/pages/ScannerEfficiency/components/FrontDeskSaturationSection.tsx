@@ -281,7 +281,7 @@ export function FrontDeskSaturationSection({
   const allocationPanelSummary = readOnly
     ? '记录查看模式下不可修改分配表，请退出查看后重新载入'
     : loadingAllocationApi
-    ? '正在从 iMile API 异步拉取前台分配数据…'
+    ? '正在从 iMile API 拉取前台分配数据…'
     : allocationSourceInfo.rowCount > 0
       ? `已载入 ${formatInteger(allocationSourceInfo.rowCount)} 行${allocationSourceInfo.fileNames.length ? `（${allocationSourceInfo.fileNames.join('、')}）` : ''}`
       : '点击展开上传文件或查看载入状态'
@@ -361,7 +361,7 @@ export function FrontDeskSaturationSection({
               <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-cyan-700">可选</div>
               <div className="mt-1 text-base font-semibold text-slate-900">上传前台分配包裹表</div>
               <div className="mt-1 text-xs text-slate-500">
-                按“分配时间”统计箱号/派送员交接批次；载入扫描记录 API 拉取到件时会异步拉取前台分配数据
+                按“分配时间”统计箱号/派送员交接批次；可上传文件或点击上方「API 获取」
               </div>
               <input
                 type="file"
@@ -374,7 +374,7 @@ export function FrontDeskSaturationSection({
 
             {loadingAllocationApi && (
               <div className="rounded-lg border border-cyan-200 bg-cyan-50 px-3 py-2 text-xs leading-relaxed text-cyan-900">
-                正在从 iMile API 异步拉取前台分配数据…
+                正在从 iMile API 拉取前台分配数据…
               </div>
             )}
 

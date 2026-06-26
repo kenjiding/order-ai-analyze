@@ -155,6 +155,45 @@ export async function postFeishuPushCard(payload: {
   }
 }
 
+export async function postFeishuPushRichMessage(payload: {
+  pushScope: PushApiScope
+  webhookUrl: string
+  signingSecret?: string
+  content: string
+  images: string[]
+}): Promise<FeishuPushTestOk | FeishuPushTestFail> {
+  const url = `${getApiBaseUrl()}/api/feishu-webhook/push-rich-message`
+  try {
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        pushScope: payload.pushScope,
+        webhookUrl: payload.webhookUrl.trim(),
+        signingSecret: payload.signingSecret,
+        content: payload.content,
+        images: payload.images,
+      }),
+    })
+    type Wire = { ok?: boolean; httpStatus?: number; feishu?: unknown; error?: string; imageUploadedCount?: number }
+    const parsed = (await res.json()) as Wire
+    if (parsed && typeof parsed === 'object') {
+      if (parsed.ok === true) {
+        return { ok: true, httpStatus: parsed.httpStatus ?? res.status, feishu: parsed.feishu }
+      }
+      return {
+        ok: false,
+        httpStatus: parsed.httpStatus ?? res.status,
+        feishu: parsed.feishu,
+        error: typeof parsed.error === 'string' ? parsed.error : '富文本卡片推送失败。',
+      }
+    }
+    return { ok: false, httpStatus: res.status, error: '无法解析服务端响应。' }
+  } catch {
+    return { ok: false, error: `无法访问后端 (${url})。请确认已运行 server 或检查 VITE_API_BASE。` }
+  }
+}
+
 export function summarizeFeishuTestFailure(result: FeishuPushTestFail): string {
   if (result.error && !result.feishu) return result.error
   const fb = result.feishu as Record<string, unknown> | null | undefined

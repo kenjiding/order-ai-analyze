@@ -20,6 +20,7 @@ import {
   buildWageExportFileName,
   deriveAttendanceDateRangeLabel,
   buildWeeklyBillingSummaryRows,
+  buildDailyRawAttendanceExportRows,
 } from './wageExport'
 import { generateId } from '../../utils/generateId'
 import { showToast } from '../../utils/toast'
@@ -35,6 +36,9 @@ import {
   buildWageRowsFromNormalized,
 } from './uploadSubmit'
 import { parseFinanceLedgerRows } from '../../payroll/financeLedgerMapping'
+import { fetchZktAttendance } from '../../api/zktAttendanceApi'
+import { mapZktTimeCardToAttendanceSheetRows } from '../../payroll/zktTimeCardSheetMapping'
+import { useAppSettings } from '../../context/AppSettingsContext'
 import {
   reconcileFinanceWithWageRecords,
   buildReconciliationExportRows,
@@ -116,20 +120,26 @@ function appendOriginalWorkbookSheets(targetBook, sourceBook) {
 }
 
 export function useWageSalaryPage() {
+  const { zktAttendance } = useAppSettings()
   const [activeTab, setActiveTab] = useState('upload')
   const [employees, setEmployees] = useState([])
   const [wageRecords, setWageRecords] = useState([])
   const [uploadedData, setUploadedData] = useState([])
-  const [uploadedSourceFileName, setUploadedSourceFileName] = useState('')
   /** 当前选择文件对应的原始字节/文本；提交成功后复制到 committedImportRaw */
   const [pendingImportRaw, setPendingImportRaw] = useState<ImportRawSnapshot | null>(null)
   /** 最近一次「计算薪资」成功时对应的上传原文件，供导出时作为后续 Sheet 合并 */
   const [committedImportRaw, setCommittedImportRaw] = useState<ImportRawSnapshot | null>(null)
+  /** API 模式计算薪资成功后保留的有效考勤行，供导出「每日原始考勤记录」 */
+  const [committedApiAttendanceRows, setCommittedApiAttendanceRows] = useState<
+    Record<string, string>[]
+  >([])
 
   const [financeLedgerRows, setFinanceLedgerRows] = useState([])
   const [financeSourceFileName, setFinanceSourceFileName] = useState('')
 
   const [isUploading, setIsUploading] = useState(false)
+  const [isLoadingZktAttendance, setIsLoadingZktAttendance] = useState(false)
+  const [wageApiDateRange, setWageApiDateRange] = useState(null)
 
   const [editingEmployeeId, setEditingEmployeeId] = useState(null)
   const [tempRole, setTempRole] = useState('')
@@ -257,7 +267,6 @@ export function useWageSalaryPage() {
       const sortedData = transformSheetRowsToUploadedData(jsonData, employees)
 
       setUploadedData(sortedData)
-      setUploadedSourceFileName(file.name)
 
       const matchedCount = sortedData.filter((item) => employeeRoleMap[item.employeeId]).length
       const newCount = sortedData.length - matchedCount
@@ -274,7 +283,6 @@ export function useWageSalaryPage() {
       }
     } catch (error) {
       console.error('读取文件失败:', error)
-      setUploadedSourceFileName('')
       setPendingImportRaw(null)
       showToast('读取文件失败，请确保文件格式正确', 'error')
     }
@@ -282,9 +290,71 @@ export function useWageSalaryPage() {
     event.target.value = ''
   }
 
+  const handleZktApiFetch = async (startDate, endDate) => {
+    if (!startDate || !endDate) {
+      showToast('请选择有效的日期区间', 'error')
+      return
+    }
+    if (!zktAttendance.username.trim() || !zktAttendance.password) {
+      showToast('请先在系统设置中配置 ZKT 考勤 API 账号与密码', 'error')
+      return
+    }
+
+    setIsLoadingZktAttendance(true)
+    try {
+      const result = await fetchZktAttendance({
+        zktAttendance,
+        startDate,
+        endDate,
+      })
+
+      if (result.count > 0 && result.fetched < result.count) {
+        throw new Error(`ZKT 考勤数据不完整：count=${result.count}，实际拉取 ${result.fetched} 条`)
+      }
+
+      const sheetRows = mapZktTimeCardToAttendanceSheetRows(result.data)
+      const sortedData = transformSheetRowsToUploadedData(sheetRows, employees)
+
+      if (!sortedData.length) {
+        showToast(
+          `ZKT 返回 ${result.count} 条，但没有可计算薪资的有效工时（工作时长/总时长）记录`,
+          'warning',
+        )
+        return
+      }
+
+      setUploadedData(sortedData)
+      setPendingImportRaw(null)
+      setWageApiDateRange([startDate, endDate])
+
+      const employeeRoleMap = {}
+      employees.forEach((emp) => {
+        employeeRoleMap[emp.employeeId] = emp.role
+      })
+      const matchedCount = sortedData.filter((item) => employeeRoleMap[item.employeeId]).length
+      const newCount = sortedData.length - matchedCount
+
+      if (matchedCount > 0 && newCount > 0) {
+        showToast(
+          `已载入 ${sortedData.length} 条（count=${result.count}，${matchedCount} 条已匹配角色，${newCount} 条新员工）`,
+          'success',
+        )
+      } else if (matchedCount > 0) {
+        showToast(`已载入 ${sortedData.length} 条（count=${result.count}，全部已匹配角色）`, 'success')
+      } else {
+        showToast(`已载入 ${sortedData.length} 条（count=${result.count}，全部为新员工）`, 'success')
+      }
+    } catch (error) {
+      console.error('ZKT 考勤拉取失败:', error)
+      showToast(error?.message || 'ZKT 考勤拉取失败', 'error')
+    } finally {
+      setIsLoadingZktAttendance(false)
+    }
+  }
+
   const handleSubmitUpload = async () => {
     if (uploadedData.length === 0) {
-      showToast('请先上传文件', 'error')
+      showToast('请先上传文件或拉取考勤 API 数据', 'error')
       return
     }
 
@@ -341,10 +411,15 @@ export function useWageSalaryPage() {
 
       setWageRecords(computed)
       setCurrentPage(1)
-      setCommittedImportRaw(pendingImportRaw ? cloneImportRawSnapshot(pendingImportRaw) : null)
+      if (pendingImportRaw) {
+        setCommittedImportRaw(cloneImportRawSnapshot(pendingImportRaw))
+        setCommittedApiAttendanceRows([])
+      } else {
+        setCommittedImportRaw(null)
+        setCommittedApiAttendanceRows(buildDailyRawAttendanceExportRows(uploadedData))
+      }
       setPendingImportRaw(null)
       setUploadedData([])
-      setUploadedSourceFileName('')
       showToast(`计算完成：生成 ${computed.length} 条工资记录（不累加历史）。`, 'success')
     } catch (error) {
       console.error('上传失败:', error)
@@ -469,7 +544,6 @@ export function useWageSalaryPage() {
     setUploadedData((prev) => {
       const next = prev.filter((_, i) => i !== index)
       if (next.length === 0) {
-        setUploadedSourceFileName('')
         setPendingImportRaw(null)
       }
       return next
@@ -615,6 +689,14 @@ export function useWageSalaryPage() {
       '时薪标准',
     )
 
+    if (committedApiAttendanceRows.length > 0) {
+      XLSX.utils.book_append_sheet(
+        workbook,
+        XLSX.utils.json_to_sheet(committedApiAttendanceRows),
+        '每日原始考勤记录',
+      )
+    }
+
     if (committedImportRaw) {
       try {
         const sourceWb = parseImportWorkbook(committedImportRaw)
@@ -633,13 +715,21 @@ export function useWageSalaryPage() {
     const fileName = buildWageExportFileName(dateRangeLabel)
     saveAs(blob, fileName)
 
-    showToast(committedImportRaw ? '导出成功（已附带原始上传工作表）' : '导出成功', 'success')
+    const exportExtra =
+      committedImportRaw && committedApiAttendanceRows.length > 0
+        ? '（已附带原始上传工作表与每日原始考勤记录）'
+        : committedImportRaw
+          ? '（已附带原始上传工作表）'
+          : committedApiAttendanceRows.length > 0
+            ? '（已附带每日原始考勤记录）'
+            : ''
+    showToast(`导出成功${exportExtra}`, 'success')
   }
 
   const handleClearUploadedData = () => {
     setUploadedData([])
-    setUploadedSourceFileName('')
     setPendingImportRaw(null)
+    setWageApiDateRange(null)
   }
 
   const handleFinanceFileUpload = async (event) => {
@@ -721,7 +811,6 @@ export function useWageSalaryPage() {
     employees,
     wageRecords,
     uploadedData,
-    uploadedSourceFileName,
     isUploading,
     editingEmployeeId,
     setEditingEmployeeId,
@@ -758,6 +847,10 @@ export function useWageSalaryPage() {
     persistRateSettings,
     resetRateSettings,
     handleFileUpload,
+    handleZktApiFetch,
+    isLoadingZktAttendance,
+    wageApiDateRange,
+    setWageApiDateRange,
     handleSubmitUpload,
     startRowEditing,
     cancelRowEditing,

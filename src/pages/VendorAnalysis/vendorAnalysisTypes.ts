@@ -29,6 +29,24 @@ export type VendorMetrics = {
   complaintRate: number
 }
 
+export type FineBiVendorMetrics = {
+  inboundVolume: number
+  pickupVolume: number
+  pickupRate: number
+  onTimePickupVolume: number
+  /** 11点前出仓率（FineBI：准时提货率） */
+  before11ExitRate: number
+}
+
+export type FineBi24hDispatchMetrics = {
+  firstOfdCnt: number
+  in24hDldCnt: number
+  /** 24WH派签率（FineBI formatText） */
+  dispatchRate24hText: string
+  /** 24小时签收未达标 */
+  notMet24hSignCount: number
+}
+
 export type VendorMetricRow = {
   vendorCode: string
   vendorName: string
@@ -37,6 +55,12 @@ export type VendorMetricRow = {
   complaintRate: number
   unprocessedTicketCount: number
   longTailCount: number
+  /** 11点前出仓率，FineBI 未返回时为 null */
+  before11ExitRate: number | null
+  /** 24小时签派率（FineBI formatText），未返回时为 null */
+  dispatchRate24hText: string | null
+  /** 24小时签收未达标件数 */
+  notMet24hSignCount: number | null
   isDisabled: boolean
 }
 
@@ -86,4 +110,38 @@ export type WaybillRow = {
   courierVendorCode?: string
   courierCode?: string
   [key: string]: unknown
+}
+
+export type DriverWaybillRow = {
+  courier?: string
+  courierCode?: string
+  courierVendor?: string
+  courierVendorCode?: string
+  routeCode?: string
+  consigneeRouteCode?: string
+  signDate?: string
+  deliveryTime?: string
+  [key: string]: unknown
+}
+
+export type DriverReturnRawRow = {
+  driverName?: string
+  driverCode?: string
+  driverVendorName?: string
+  driverVendorCode?: string
+  ofdDate?: string
+  [key: string]: unknown
+}
+
+export type DriverPerformanceRow = {
+  courierCode: string
+  courierName: string
+  vendorCode: string
+  vendorName: string
+  routeCode: string
+  ofdCount: number
+  returnWarningCount: number
+  dispatch24hCount: number
+  totalDispatchCount: number
+  dispatchRate24h: number | null
 }

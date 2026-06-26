@@ -85,17 +85,20 @@ export default function VendorAnalysisPage() {
         onDateRangeChange={v.setDateRange}
         complaintDateRange={v.complaintDateRange}
         onComplaintDateRangeChange={v.setComplaintDateRange}
+        fineBiConnections={v.fineBiConnections}
+        onFineBiConnectionsChange={v.setFineBiConnections}
         fetchedData={v.fetchedData}
         dataFetching={v.dataFetching}
         onFetchData={() => void v.fetchData()}
       />
 
-      {/* 指标预览 */}
+      {/* 指标预览（含各供应商的司机派件表现） */}
       {v.fetchedData && (
         <VendorMetricsPreview
           metrics={v.vendorMetrics}
           fetchedData={v.fetchedData}
           hasStations={v.selectedStations.length > 0}
+          driverPerformanceByVendor={v.driverPerformanceByVendor}
         />
       )}
 
