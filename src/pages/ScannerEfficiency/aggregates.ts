@@ -15,10 +15,12 @@ const SCANNER_RELIABILITY_BASE_EFFECTIVE_HOURS = 2.35
 
 /**
  * 菜鸟件相对普通件的分拣难度比率（0~1）。
- * 0.75 表示菜鸟件仅需普通件 75% 的时间/精力，差值 0.25 即为"难度折扣幅度"。
+ * 0.72 表示菜鸟件仅需普通件 72% 的时间/精力，差值 0.28 即为"难度折扣幅度"。
+ * 推导依据：扛开箱（35s/箱，菜鸟40件/箱 vs 普通12件/箱）+ 单件分拣（5s）+ 换笼子（60s/次，菜鸟120件/笼 vs 普通50件/笼）
+ * 三项叠加每件耗时：菜鸟 6.375s vs 普通 9.117s，比值 ≈ 0.70；取 0.72 作为保守估计。
  * 该值用于按菜鸟占比对扫描员效率做难度归一化修正。
  */
-const CAINIAO_DIFFICULTY_RATIO = 0.75
+const CAINIAO_DIFFICULTY_RATIO = 0.72
 
 /** 自然小时区间标签，与 dayjs 本地时区一致；23 点为 23:00–24:00。 */
 export const scannerHourSlotLabel = (hour: number): string => {

@@ -690,7 +690,7 @@ export function AnalysisTabContent({
       </section>
 
       {showResultsSection ? (
-        <section className="admin-panel p-5">
+        <section className="admin-panel p-5 pr-0">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div className="flex items-center gap-3">
               <h3 className="text-sm font-semibold text-slate-950">分析结果</h3>

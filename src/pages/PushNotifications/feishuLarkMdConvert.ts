@@ -1,6 +1,103 @@
 import { FEISHU_AT_ALL_LARK, FEISHU_HR_MARKER } from './feishuLarkMdMarkers'
 
 const FEISHU_NAMED_COLORS = new Set(['red', 'orange', 'green', 'blue', 'grey', 'gray'])
+const INLINE_MARK_TAGS = new Set(['STRONG', 'B', 'EM', 'I', 'U', 'S', 'DEL', 'STRIKE'])
+
+function isWhitespaceOnlyText(text: string): boolean {
+  return text.replace(/\u00a0/g, ' ').trim().length === 0
+}
+
+/** 合并相邻同类行内标记、去掉仅空白的加粗/斜体等，避免推送后出现 ** ** 等无效语法 */
+function normalizeEditorHtmlForLarkMd(html: string): string {
+  if (!html.trim()) return html
+  const doc = new DOMParser().parseFromString(`<div>${html}</div>`, 'text/html')
+  const wrapper = doc.body.firstElementChild
+  if (!wrapper) return html
+
+  const normalizeParent = (parent: Element) => {
+    let index = 0
+    while (index < parent.childNodes.length) {
+      const node = parent.childNodes[index]
+      if (node.nodeType !== Node.ELEMENT_NODE) {
+        index += 1
+        continue
+      }
+
+      const el = node as HTMLElement
+      const tag = el.tagName
+
+      if (INLINE_MARK_TAGS.has(tag)) {
+        let nextIndex = index + 1
+        while (nextIndex < parent.childNodes.length) {
+          const between = parent.childNodes[nextIndex]
+          if (between.nodeType === Node.TEXT_NODE && isWhitespaceOnlyText(between.textContent ?? '')) {
+            el.appendChild(between.cloneNode(true))
+            parent.removeChild(between)
+            continue
+          }
+          if (between.nodeType === Node.ELEMENT_NODE && (between as Element).tagName === tag) {
+            const nextEl = between as HTMLElement
+            while (nextEl.firstChild) el.appendChild(nextEl.firstChild)
+            parent.removeChild(nextEl)
+            continue
+          }
+          break
+        }
+
+        const text = (el.textContent ?? '').replace(/\u00a0/g, ' ')
+        if (!text.trim()) {
+          el.replaceWith(doc.createTextNode(text))
+          continue
+        }
+
+        normalizeParent(el)
+        index += 1
+        continue
+      }
+
+      if (tag === 'SPAN') {
+        const fw = el.style.fontWeight
+        if (fw && /^(bold(er)?|[5-9]\d{2,})$/.test(fw) && el.childNodes.length > 0) {
+          const strong = doc.createElement('strong')
+          while (el.firstChild) strong.appendChild(el.firstChild)
+          el.replaceWith(strong)
+          normalizeParent(parent)
+          continue
+        }
+      }
+
+      normalizeParent(el)
+      index += 1
+    }
+  }
+
+  normalizeParent(wrapper)
+  return wrapper.innerHTML
+}
+
+function formatBoldLarkMd(inner: string): string {
+  if (!inner || !inner.trim()) return inner
+  // 千分位逗号、星号等用 __ 可避免飞书 lark_md 对 ** 的误解析
+  const delim = /[*_,]/.test(inner) ? '__' : '**'
+  return `${delim}${inner}${delim}`
+}
+
+function formatItalicLarkMd(inner: string): string {
+  if (!inner || !inner.trim()) return inner
+  return `_${inner}_`
+}
+
+function formatStrikeLarkMd(inner: string): string {
+  if (!inner || !inner.trim()) return inner
+  return `~${inner}~`
+}
+
+function cleanupLarkMd(md: string): string {
+  return md
+    .replace(/\*\*\s*\*\*/g, '')
+    .replace(/__\s*__/g, '')
+    .replace(/([^\n])\*\*\*\*([^\n])/g, '$1$2')
+}
 
 function escapeHtml(text: string): string {
   return text
@@ -157,6 +254,13 @@ function parseInlineLarkMd(input: string): string {
       continue
     }
 
+    const boldUnderscoreMatch = rest.match(/^__(.+?)__/)
+    if (boldUnderscoreMatch) {
+      parts.push(`<strong>${parseInlineLarkMd(boldUnderscoreMatch[1] ?? '')}</strong>`)
+      rest = rest.slice(boldUnderscoreMatch[0].length)
+      continue
+    }
+
     const strikeMatch = rest.match(/^~([^~]+)~/)
     if (strikeMatch) {
       parts.push(`<s>${parseInlineLarkMd(strikeMatch[1] ?? '')}</s>`)
@@ -241,16 +345,16 @@ function nodeToLarkMd(node: Node): string {
   switch (tag) {
     case 'STRONG':
     case 'B':
-      return `**${inner}**`
+      return formatBoldLarkMd(inner)
     case 'EM':
     case 'I':
-      return `_${inner}_`
+      return formatItalicLarkMd(inner)
     case 'U':
       return `<u>${inner}</u>`
     case 'S':
     case 'DEL':
     case 'STRIKE':
-      return `~${inner}~`
+      return formatStrikeLarkMd(inner)
     case 'A': {
       const href = el.getAttribute('href') ?? ''
       return `[${inner || href}](${href})`
@@ -281,7 +385,8 @@ function nodeToLarkMd(node: Node): string {
 /** contentEditable / TipTap HTML → lark_md（推送存储格式） */
 export function htmlToLarkMd(html: string): string {
   if (!html.trim()) return ''
-  const doc = new DOMParser().parseFromString(`<div>${html}</div>`, 'text/html')
+  const normalized = normalizeEditorHtmlForLarkMd(html)
+  const doc = new DOMParser().parseFromString(`<div>${normalized}</div>`, 'text/html')
   const root = doc.body.firstElementChild
   if (!root) return ''
 
@@ -297,5 +402,5 @@ export function htmlToLarkMd(html: string): string {
     if (md.length > 0) blocks.push(md)
   })
 
-  return blocks.join('\n\n').replace(/\n{3,}/g, '\n\n').trimEnd()
+  return cleanupLarkMd(blocks.join('\n\n').replace(/\n{3,}/g, '\n\n').trimEnd())
 }

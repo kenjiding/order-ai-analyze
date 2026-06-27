@@ -163,7 +163,7 @@ export type DailyEfficiencyRestoreState = EfficiencyAttendancePageRestore
 const SCANNER_RELIABILITY_BASE_SCAN_COUNT = 1100
 const SCANNER_RELIABILITY_BASE_EFFECTIVE_HOURS = 2.35
 /** 与 aggregates.ts 保持一致：菜鸟件相对普通件的分拣难度比率 */
-const CAINIAO_DIFFICULTY_RATIO = 0.75
+const CAINIAO_DIFFICULTY_RATIO = 0.7
 
 function round2(value: number): number {
   return Math.round(value * 100) / 100

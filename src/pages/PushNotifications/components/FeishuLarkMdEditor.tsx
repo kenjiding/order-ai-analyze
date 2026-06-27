@@ -176,6 +176,16 @@ export function FeishuLarkMdEditor({
     editor.chain().focus().clearNodes().unsetAllMarks().run()
   }
 
+  const toggleBold = () => {
+    if (!editor || disabled) return
+    const { from, to, empty } = editor.state.selection
+    if (!empty) {
+      const selected = editor.state.doc.textBetween(from, to)
+      if (!selected.trim()) return
+    }
+    editor.chain().focus().toggleBold().run()
+  }
+
   const openImagePicker = () => {
     if (disabled) return
     imageInputRef.current?.click()
@@ -231,7 +241,7 @@ export function FeishuLarkMdEditor({
             className={editor.isActive('bold') ? 'feishu-lark-md-editor-btn-active' : undefined}
             icon={<Bold className="h-4 w-4" />}
             onMouseDown={handleToolbarMouseDown}
-            onClick={() => editor.chain().focus().toggleBold().run()}
+            onClick={toggleBold}
           />
         </Tooltip>
         <Tooltip title="斜体">

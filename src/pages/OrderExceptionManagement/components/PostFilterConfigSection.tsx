@@ -116,11 +116,11 @@ export function PostFilterConfigSection({ draft, applied, onChange, onApply, max
 
   return (
     <aside
-      className="flex w-[280px] shrink-0 flex-col self-stretch border-l pl-5"
+      className="flex w-[280px] shrink-0 flex-col self-stretch border-l"
       style={panelStyle}
       aria-label="后置过滤"
     >
-      <div className="mb-1 flex shrink-0 items-center gap-2">
+      <div className="mb-1 flex shrink-0 items-center gap-2 px-5">
         <button
           type="button"
           onClick={() => setExpanded(false)}
@@ -140,7 +140,8 @@ export function PostFilterConfigSection({ draft, applied, onChange, onApply, max
         )}
       </div>
 
-      <div className="min-h-0 flex-1 overflow-y-auto pr-1">
+      <div className="min-h-0 flex-1 overflow-y-auto">
+        <div className="px-5">
         <p className="mb-3 text-[11px] leading-relaxed text-slate-400">
           仅过滤已完成分析的结果行，不影响 AI 分析过程。
         </p>
@@ -272,9 +273,10 @@ export function PostFilterConfigSection({ draft, applied, onChange, onApply, max
             <p className="text-[10px] leading-relaxed text-slate-400">基于最后一次轨迹事件距今天数</p>
           </FilterGroup>
         </div>
+        </div>
       </div>
 
-      <div className="mt-4 shrink-0 pt-3" style={{ borderTop: '1px solid var(--admin-line)' }}>
+      <div className="mt-4 shrink-0 px-5 pt-3" style={{ borderTop: '1px solid var(--admin-line)' }}>
         <Button type="primary" block icon={<Filter className="h-4 w-4" aria-hidden />} onClick={onApply}>
           过滤
         </Button>
