@@ -1,7 +1,7 @@
 import { FEISHU_AT_ALL_LARK, FEISHU_HR_MARKER } from './feishuLarkMdMarkers'
 
 const FEISHU_NAMED_COLORS = new Set(['red', 'orange', 'green', 'blue', 'grey', 'gray'])
-const INLINE_MARK_TAGS = new Set(['STRONG', 'B', 'EM', 'I', 'U', 'S', 'DEL', 'STRIKE'])
+const INLINE_MARK_TAGS = new Set(['STRONG', 'B', 'EM', 'I', 'S', 'DEL', 'STRIKE'])
 
 function isWhitespaceOnlyText(text: string): boolean {
   return text.replace(/\u00a0/g, ' ').trim().length === 0
@@ -89,13 +89,14 @@ function formatItalicLarkMd(inner: string): string {
 
 function formatStrikeLarkMd(inner: string): string {
   if (!inner || !inner.trim()) return inner
-  return `~${inner}~`
+  return `~~${inner}~~`
 }
 
 function cleanupLarkMd(md: string): string {
   return md
     .replace(/\*\*\s*\*\*/g, '')
     .replace(/__\s*__/g, '')
+    .replace(/~~~~\s*~~~~/g, '')
     .replace(/([^\n])\*\*\*\*([^\n])/g, '$1$2')
 }
 
@@ -261,6 +262,12 @@ function parseInlineLarkMd(input: string): string {
       continue
     }
 
+    const strikeDoubleMatch = rest.match(/^~~([^~]+)~~/)
+    if (strikeDoubleMatch) {
+      parts.push(`<s>${parseInlineLarkMd(strikeDoubleMatch[1] ?? '')}</s>`)
+      rest = rest.slice(strikeDoubleMatch[0].length)
+      continue
+    }
     const strikeMatch = rest.match(/^~([^~]+)~/)
     if (strikeMatch) {
       parts.push(`<s>${parseInlineLarkMd(strikeMatch[1] ?? '')}</s>`)
@@ -350,7 +357,7 @@ function nodeToLarkMd(node: Node): string {
     case 'I':
       return formatItalicLarkMd(inner)
     case 'U':
-      return `<u>${inner}</u>`
+      return inner
     case 'S':
     case 'DEL':
     case 'STRIKE':

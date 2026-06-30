@@ -1,6 +1,28 @@
 import type { AiLossScope, OrderAnalyzeResult, TrackFacts } from './types'
 import { EXTERNAL_CARRIER_LOSS_TIMEOUT_DAYS } from './warehouseProfiles'
 
+/**
+ * 判断商家处理方向指令（暂存/销毁/Abandon）是否应视为终态，豁免超时检测。
+ *
+ * 豁免规则：
+ * - 指令未激活 → 不适用（返回 false）
+ * - 指令后有真实物理扫描 → 有效（物理支撑存在，豁免超时）
+ * - 指令后无物理扫描 且 按最终责任点已构成库内/库外丢失 → 无效（不豁免，超时规则应接管）
+ * - 指令后无物理扫描 但 尚未构成丢失 → 有效（方向刚给出，尚未超时，豁免）
+ *
+ * 是否「已超时」统一复用 expectedScopeFromFinalResponsibility，与库内/库外丢失判定同源，
+ * 涵盖 15 天阈值以及「分配-取消循环（无出库）+ ≥5 天」两种充分条件，避免口径分裂。
+ *
+ * 不适用于 merchantReturnClosed（物理退返完成）：该状态永远有效。
+ */
+function isDirectionTerminalEffective(directionActive: boolean, facts: TrackFacts): boolean {
+  if (!directionActive) return false
+  if (facts.hasPhysicalActivityAfterDirectionFeedback) return true
+  const expectedScope = expectedScopeFromFinalResponsibility(facts)
+  if (expectedScope === '库内丢失' || expectedScope === '库外丢失') return false
+  return true
+}
+
 type DecisionRule = {
   id: string
   priority: number
@@ -171,7 +193,7 @@ function buildDeterministicBaseResult(input: {
       ),
     }
   }
-  if (facts.merchantDestroyConfirmed || facts.merchantAbandonActive) {
+  if (isDirectionTerminalEffective(facts.merchantDestroyConfirmed, facts) || isDirectionTerminalEffective(facts.merchantAbandonActive, facts)) {
     return {
       orderNo,
       lossScope: '暂无异常',
@@ -185,7 +207,7 @@ function buildDeterministicBaseResult(input: {
       ),
     }
   }
-  if (facts.merchantStorageActive) {
+  if (isDirectionTerminalEffective(facts.merchantStorageActive, facts)) {
     return {
       orderNo,
       lossScope: '暂无异常',
@@ -359,9 +381,9 @@ export const DECISION_RULES: readonly DecisionRule[] = [
   {
     id: 'merchant_destroy_terminal',
     priority: 10,
-    description: '商家已确认销毁时，终态闭环优先于所有丢失归责。',
+    description: '商家已确认销毁，且指令有效（有物理支撑或尚未超时）时，终态闭环优先于所有丢失归责。',
     match: ({ result, facts }) =>
-      facts.merchantDestroyConfirmed &&
+      isDirectionTerminalEffective(facts.merchantDestroyConfirmed, facts) &&
       (result.lossScope !== '暂无异常' || result.exceptionCategoryId !== 'Abandon销毁'),
     resolve: ({ result, facts }) => {
       const hit = `轨迹命中商家销毁终态（${facts.merchantDestroyConfirmTime ?? '-'}，${facts.merchantDestroyEvidence ?? '命中销毁关键词'}），该单已进入商家确认销毁闭环，不应归责为库内/库外/干线异常`
@@ -380,9 +402,9 @@ export const DECISION_RULES: readonly DecisionRule[] = [
   {
     id: 'merchant_abandon_terminal',
     priority: 10.5,
-    description: '商家已给出 Abandon 处理指令（退件处理意见[Abandon]）或退件已销毁，且为当前最新商家反馈时，判定为暂无异常并设置 Abandon销毁 子类型。',
+    description: '商家已给出 Abandon 处理指令，且指令有效（有物理支撑或尚未超时）时，判定为暂无异常并设置 Abandon销毁 子类型。',
     match: ({ result, facts }) =>
-      facts.merchantAbandonActive &&
+      isDirectionTerminalEffective(facts.merchantAbandonActive, facts) &&
       (result.lossScope !== '暂无异常' || result.exceptionCategoryId !== 'Abandon销毁'),
     resolve: ({ result, facts }) => {
       const closedNote = facts.merchantAbandonClosed
@@ -404,9 +426,9 @@ export const DECISION_RULES: readonly DecisionRule[] = [
   {
     id: 'merchant_storage_terminal',
     priority: 11,
-    description: '商家暂存且后续未预约派送时，暂存闭环不适用库内/库外超时逻辑。',
+    description: '商家暂存且后续未预约派送，且指令有效（有物理支撑或尚未超时）时，暂存不适用库内/库外超时逻辑。',
     match: ({ result, facts }) =>
-      facts.merchantStorageActive &&
+      isDirectionTerminalEffective(facts.merchantStorageActive, facts) &&
       (result.lossScope !== '暂无异常' || result.exceptionCategoryId !== '暂存'),
     resolve: ({ result, facts }) => {
       const hit = `轨迹命中商家暂存终态（${facts.merchantStorageConfirmTime ?? '-'}，${facts.merchantStorageEvidence ?? '命中暂存关键词'}），且后续未出现预约派送；暂存不适用库内/库外超时逻辑，后续盘点/退件轨迹不改变结论`
@@ -580,10 +602,10 @@ export const DECISION_RULES: readonly DecisionRule[] = [
       facts.activeResponsibilityOwner === 'company_warehouse' &&
       facts.activeSegmentStatus === 'in_warehouse' &&
       facts.activeWarehouseKnown &&
-      !facts.merchantDestroyConfirmed &&
-      !facts.merchantAbandonActive &&
+      !isDirectionTerminalEffective(facts.merchantDestroyConfirmed, facts) &&
+      !isDirectionTerminalEffective(facts.merchantAbandonActive, facts) &&
       !facts.merchantReturnClosed &&
-      !facts.merchantStorageActive &&
+      !isDirectionTerminalEffective(facts.merchantStorageActive, facts) &&
       !facts.hasRealOperatorScan &&
       !facts.inWarehouseStartTime &&
       !facts.lastDispatchedOutTime &&
@@ -610,10 +632,10 @@ export const DECISION_RULES: readonly DecisionRule[] = [
       facts.activeResponsibilityOwner === 'company_warehouse' &&
       facts.activeSegmentStatus === 'in_warehouse' &&
       facts.activeWarehouseKnown &&
-      !facts.merchantDestroyConfirmed &&
-      !facts.merchantAbandonActive &&
+      !isDirectionTerminalEffective(facts.merchantDestroyConfirmed, facts) &&
+      !isDirectionTerminalEffective(facts.merchantAbandonActive, facts) &&
       !facts.merchantReturnClosed &&
-      !facts.merchantStorageActive &&
+      !isDirectionTerminalEffective(facts.merchantStorageActive, facts) &&
       facts.hasRealOperatorScan &&
       facts.finalResponsibilityOwner === 'in_warehouse' &&
       !facts.hasDeliveryCompletion &&
@@ -737,10 +759,10 @@ export const DECISION_RULES: readonly DecisionRule[] = [
     match: ({ result, facts }) =>
       facts.activeResponsibilityOwner === 'company_warehouse' &&
       !facts.hasDeliveryCompletion &&
-      !facts.merchantDestroyConfirmed &&
-      !facts.merchantAbandonActive &&
+      !isDirectionTerminalEffective(facts.merchantDestroyConfirmed, facts) &&
+      !isDirectionTerminalEffective(facts.merchantAbandonActive, facts) &&
       !facts.merchantReturnClosed &&
-      !facts.merchantStorageActive &&
+      !isDirectionTerminalEffective(facts.merchantStorageActive, facts) &&
       facts.finalResponsibilityOwner !== null &&
       facts.finalResponsibilityStartTime !== null &&
       (() => {
@@ -803,10 +825,10 @@ export const DECISION_RULES: readonly DecisionRule[] = [
       facts.activeResponsibilityOwner === 'company_warehouse' &&
       facts.activeWarehouseKnown &&
       !facts.unknownWarehouseInActiveSegment &&
-      !facts.merchantDestroyConfirmed &&
-      !facts.merchantAbandonActive &&
+      !isDirectionTerminalEffective(facts.merchantDestroyConfirmed, facts) &&
+      !isDirectionTerminalEffective(facts.merchantAbandonActive, facts) &&
       !facts.merchantReturnClosed &&
-      !facts.merchantStorageActive &&
+      !isDirectionTerminalEffective(facts.merchantStorageActive, facts) &&
       facts.finalResponsibilityOwner !== null &&
       facts.finalResponsibilityStartTime !== null &&
       facts.finalResponsibilityDaysDiff >= 0 &&
@@ -981,11 +1003,12 @@ export const DECISION_RULES: readonly DecisionRule[] = [
 
 export function applyFactGuardrails(result: OrderAnalyzeResult, facts: TrackFacts): OrderAnalyzeResult {
   const normalizedRules = [...DECISION_RULES].sort((a, b) => a.priority - b.priority)
+  // 方向指令仅在有物理支撑或尚未超时时锁定终态；无物理支撑且已超时时放行超时检测规则
   const terminalScopeLocked =
     facts.latestOrderExceptionClosed ||
-    facts.merchantDestroyConfirmed ||
-    facts.merchantAbandonActive ||
-    facts.merchantStorageActive ||
+    isDirectionTerminalEffective(facts.merchantDestroyConfirmed, facts) ||
+    isDirectionTerminalEffective(facts.merchantAbandonActive, facts) ||
+    isDirectionTerminalEffective(facts.merchantStorageActive, facts) ||
     facts.merchantReturnClosed ||
     facts.hasDeliveryCompletion
 

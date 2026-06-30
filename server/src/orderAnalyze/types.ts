@@ -238,6 +238,17 @@ export type TrackFacts = {
   merchantReturnLatestProgressEvidence: string | null
   /** 退返处理已进入转运但尚未闭环；最终结论仍以当前责任段最终责任点为准 */
   merchantReturnTransferInProgress: boolean
+  /**
+   * 商家处理方向指令（暂存/销毁/Abandon/退返方向）后，是否存在真实物理扫描作为支撑。
+   * - merchantReturnClosed = true：物理退返完成，视为有物理支撑
+   * - merchantAbandonClosed = true（退件已销毁）：物理销毁完成，视为有物理支撑
+   * - 其他情况：检查方向事件时间之后是否有 allResponsibilityPoints 中的责任点
+   * - 无活跃方向时设为 false（字段无意义）
+   *
+   * 用于判断方向指令是否应豁免超时检测：只有指令后有物理支撑，才视为终态；
+   * 若方向指令是在包裹已超时后由系统 NDR 流程触发（无后续扫描），则不重置超时计数。
+   */
+  hasPhysicalActivityAfterDirectionFeedback: boolean
   latestEventKind: string
 }
 

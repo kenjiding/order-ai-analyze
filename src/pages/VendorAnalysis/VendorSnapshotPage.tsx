@@ -446,6 +446,9 @@ function VendorSection({ vendor, index, aiSummary }: { vendor: VendorSnapshotVen
           </div>
         </div>
       )}
+
+      {/* Metrics definition footer */}
+      <MetricsDefinitionFooter />
     </div>
   )
 }
@@ -523,6 +526,57 @@ function LegendItem({ tone, label }: { tone: ColorTone; label: string }) {
     <span className={`inline-flex items-center rounded-full border px-3 py-0.5 text-[11px] font-bold ${badge}`}>
       {label}
     </span>
+  )
+}
+
+// ── Metrics Legend ────────────────────────────────────────────────────
+
+const METRICS_DEFINITIONS = [
+  {
+    name: '准时提货率',
+    formula: '规定时间内完成提货单量 / 最新派件网点到件量',
+    accent: { text: 'text-blue-700', bg: 'bg-blue-50', border: 'border-blue-100', dot: 'bg-blue-400' },
+  },
+  {
+    name: '24H 派签率',
+    formula: '规定时间内签收成功单量 / 当天派件单量',
+    accent: { text: 'text-violet-700', bg: 'bg-violet-50', border: 'border-violet-100', dot: 'bg-violet-400' },
+  },
+  {
+    name: '客诉率',
+    formula: '责任客诉量 / 责任网点到件量',
+    accent: { text: 'text-rose-700', bg: 'bg-rose-50', border: 'border-rose-100', dot: 'bg-rose-400' },
+  },
+  {
+    name: '签收未收',
+    formula: '签收未收判定成立的工单数量 + POD合格但收件人未收到货的工单数量',
+    accent: { text: 'text-orange-700', bg: 'bg-orange-50', border: 'border-orange-100', dot: 'bg-orange-400' },
+  },
+] as const
+
+function MetricsDefinitionFooter() {
+  return (
+    <div className="border-t border-slate-100 bg-slate-50/60 px-4 pt-3 pb-3.5">
+      <div className="flex items-center gap-2 mb-2.5">
+        <div className="h-px flex-1 bg-slate-100" />
+        <span className="text-[9.5px] font-black uppercase tracking-[0.2em] text-slate-400">指标说明</span>
+        <div className="h-px flex-1 bg-slate-100" />
+      </div>
+      <div className="grid grid-cols-2 gap-2">
+        {METRICS_DEFINITIONS.map((item) => (
+          <div
+            key={item.name}
+            className={`rounded-lg border ${item.accent.border} ${item.accent.bg} px-3 py-2 flex gap-2.5 items-start`}
+          >
+            <div className={`mt-[5px] h-1.5 w-1.5 shrink-0 rounded-full ${item.accent.dot}`} />
+            <div className="min-w-0">
+              <span className={`text-[12px] font-black ${item.accent.text}`}>{item.name}</span>
+              <p className="mt-0.5 text-[11px] leading-snug text-slate-500">{item.formula}</p>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
   )
 }
 

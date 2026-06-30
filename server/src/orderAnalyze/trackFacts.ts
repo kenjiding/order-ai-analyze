@@ -944,6 +944,7 @@ function makeEmptyFacts(input: {
     merchantStorageSupersededByBusinessProgress: false,
     merchantStorageBusinessProgressTime: null,
     merchantStorageBusinessProgressEvidence: null,
+    hasPhysicalActivityAfterDirectionFeedback: false,
     merchantReturnClosed: false,
     merchantReturnClosedTime: null,
     merchantReturnClosedEvidence: null,
@@ -1198,6 +1199,20 @@ export function deriveTrackFacts(
   const merchantReturnClosed = latestMerchantDirection?.type === 'return_closed'
   const merchantReturnDirectionActive = merchantReturnClosed || latestMerchantDirection?.type === 'return_direction'
   const merchantReturnActive = merchantReturnDirectionActive || latestMerchantDirection?.type === 'other_return'
+
+  // 计算：方向指令后是否有真实物理活动支撑（责任点为证据）
+  // merchantReturnClosed / merchantAbandonClosed 本身即物理闭环证据，无需后续检查
+  const latestActiveDirectionTime: string | null = merchantReturnClosed
+    ? null
+    : latestMerchantDirection?.event.time ?? null
+  const hasPhysicalActivityAfterDirectionFeedback: boolean = merchantReturnClosed
+    ? true
+    : merchantAbandonActive && merchantAbandonClosedEvent !== null
+    ? true
+    : latestActiveDirectionTime === null
+    ? false
+    : allResponsibilityPoints.some((rp) => rp.time > latestActiveDirectionTime)
+
   const latestInterceptTime = latestIntercept?.gmtIntercept ?? null
 
   const normalResponsibilityOwner: LossResponsibilityOwner | null = latestTrackResponsibilityPoint?.owner ?? null
@@ -1313,6 +1328,7 @@ export function deriveTrackFacts(
     merchantStorageSupersededByBusinessProgress,
     merchantStorageBusinessProgressTime: storageBusinessProgressEvent?.time ?? null,
     merchantStorageBusinessProgressEvidence: storageBusinessProgressEvent?.content ?? null,
+    hasPhysicalActivityAfterDirectionFeedback,
     merchantReturnClosed,
     merchantReturnClosedTime: merchantReturnClosed ? merchantReturnEvent?.time ?? null : null,
     merchantReturnClosedEvidence: merchantReturnClosed ? merchantReturnClosedEvidence : null,

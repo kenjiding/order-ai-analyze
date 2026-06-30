@@ -1,7 +1,7 @@
 import { Button, Image, Modal, Radio, Table, Tooltip, Upload } from 'antd'
 import type { UploadFile } from 'antd/es/upload/interface'
 import type { ColumnsType } from 'antd/es/table'
-import { Download, Image as ImageIcon, PencilLine, Plus, Send, Trash2, UploadCloud, X } from 'lucide-react'
+import { AlertTriangle, Download, Image as ImageIcon, PencilLine, Plus, RefreshCw, Send, Trash2, UploadCloud, X } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent, type Key } from 'react'
 import { saveAs } from 'file-saver'
 import { aggregateFleetRowsForRoute } from '../fleetSupplierAggregate'
@@ -77,6 +77,9 @@ export function FleetSupplierPushTab({
   const secretsHidden = supplierSecretsVisibility === 'hidden'
   const [pushing, setPushing] = useState(false)
   const [scanParsing, setScanParsing] = useState(false)
+
+  type PushFailEntry = { supplierId: string; supplierName: string; errors: string[] }
+  const [lastPushFails, setLastPushFails] = useState<PushFailEntry[]>([])
   const [pushImagesLoading, setPushImagesLoading] = useState(false)
   const scanFileInputRef = useRef<HTMLInputElement>(null)
   const pushImageInputRef = useRef<HTMLInputElement>(null)
@@ -243,119 +246,116 @@ export function FleetSupplierPushTab({
     )
   }
 
-  const handlePushAll = async () => {
-    if (!canSend) {
-      showToast('无操作权限', 'error')
-      return
-    }
-    const g = globalPushText
-    if (scanParsing) {
-      return
-    }
-    if (!suppliers.length) {
-      showToast('请先添加至少一个供应商。', 'error')
-      return
+  const pushForSupplier = async (s: FleetSupplierConfig, globalText: string): Promise<string[]> => {
+    const supplierErrors: string[] = []
+    if (!s.webhookUrl.trim()) return ['未配置 webhook。']
+
+    const mergedHtml = mergeEditorHtmlParts([s.pushContent.trim(), globalText])
+    const hasRichText = hasEditorContent(mergedHtml)
+    const hasScan = scanRows.length > 0
+    const hasManualImages = pushCustomImageDataUrls.length > 0
+
+    if (!hasScan && !hasRichText && !hasManualImages) {
+      return ['未填写可推送文案，也未添加推送图片。']
     }
 
-    const targets = suppliers.filter((s) => effectiveSelectedKeys.includes(s.id))
-    if (!targets.length) {
-      showToast('请至少勾选一家需要推送的供应商。', 'error')
-      return
+    if (hasRichText) {
+      const res = await pushSupplierRichText(s, mergedHtml)
+      if (res.ok !== true) supplierErrors.push(`文案：${summarizeFeishuTestFailure(res)}`)
     }
+
+    if (hasScan) {
+      const routeCodes = parseFleetRouteCodes(s.routeCode)
+      if (!routeCodes.length) {
+        supplierErrors.push('未配置有效路由编码。')
+      } else {
+        const buckets = aggregateFleetRowsForRoute(scanRows, s.routeCode)
+        const total = buckets.reduce((sum, b) => sum + b.total, 0)
+        if (!total) {
+          supplierErrors.push(`路由「${routeCodes.join('、')}」无匹配数据，已跳过货量截图。`)
+        } else {
+          try {
+            const png = await captureFleetRouteReportPng({
+              title: `${s.supplierName || '供应商'} · 货量汇总`,
+              subtitle: '',
+              buckets,
+            })
+            const res = await pushSupplierSingleImage(s, png)
+            if (res.ok !== true) supplierErrors.push(`货量截图：${summarizeFeishuTestFailure(res)}`)
+          } catch (e) {
+            supplierErrors.push(`货量截图：${e instanceof Error ? e.message : '截图失败'}`)
+          }
+        }
+      }
+    }
+
+    for (let i = 0; i < pushCustomImageDataUrls.length; i++) {
+      const res = await pushSupplierSingleImage(s, pushCustomImageDataUrls[i]!)
+      if (res.ok !== true) {
+        const label = pushCustomImageDataUrls.length > 1 ? `推送图片 ${i + 1}` : '推送图片'
+        supplierErrors.push(`${label}：${summarizeFeishuTestFailure(res)}`)
+      }
+    }
+
+    return supplierErrors
+  }
+
+  const runPushForTargets = async (targets: FleetSupplierConfig[], globalText: string) => {
+    const fails: PushFailEntry[] = []
+    const oks: string[] = []
+    for (const s of targets) {
+      const errs = await pushForSupplier(s, globalText)
+      if (errs.length === 0) {
+        oks.push(s.supplierName || s.routeCode)
+      } else {
+        fails.push({ supplierId: s.id, supplierName: s.supplierName || s.routeCode, errors: errs })
+      }
+    }
+    setLastPushFails(fails)
+    if (fails.length === 0) {
+      showToast(`已向 ${oks.length} 家供应商完成推送。`, 'success')
+    } else if (oks.length === 0) {
+      showToast(`全部 ${fails.length} 家推送失败，请查看下方提示并重推。`, 'error')
+    } else {
+      showToast(`已推送 ${oks.length} 家，${fails.length} 家失败，请查看下方提示并重推。`, 'success')
+    }
+  }
+
+  const handlePushAll = async () => {
+    if (!canSend) { showToast('无操作权限', 'error'); return }
+    if (scanParsing) return
+    if (!suppliers.length) { showToast('请先添加至少一个供应商。', 'error'); return }
+
+    const targets = suppliers.filter((s) => effectiveSelectedKeys.includes(s.id))
+    if (!targets.length) { showToast('请至少勾选一家需要推送的供应商。', 'error'); return }
 
     const hasScan = scanRows.length > 0
     if (!hasScan && !hasPushImages) {
-      const canText = hasEditorContent(g) || targets.some((s) => hasEditorContent(s.pushContent))
+      const canText = hasEditorContent(globalPushText) || targets.some((s) => hasEditorContent(s.pushContent))
       if (!canText) {
-        showToast(
-          '未上传扫描文件时，请先填写「推送内容」、所选供应商的「供应商推送内容」，或添加推送图片。',
-          'error'
-        )
+        showToast('未上传扫描文件时，请先填写「推送内容」、所选供应商的「供应商推送内容」，或添加推送图片。', 'error')
         return
       }
     }
 
     setPushing(true)
-    const errors: string[] = []
-    const oks: string[] = []
-
+    setLastPushFails([])
     try {
-      for (const s of targets) {
-        const supplierPart = s.pushContent.trim()
-        const globalPart = g
-        const mergedHtml = mergeEditorHtmlParts([supplierPart, globalPart])
-        const hasRichText = hasEditorContent(mergedHtml)
-        const hasManualImages = pushCustomImageDataUrls.length > 0
+      await runPushForTargets(targets, globalPushText)
+    } finally {
+      setPushing(false)
+    }
+  }
 
-        if (!s.webhookUrl.trim()) {
-          errors.push(`「${s.supplierName}」：未配置 webhook。`)
-          continue
-        }
-
-        if (!hasScan && !hasRichText && !hasManualImages) {
-          errors.push(`「${s.supplierName}」：未填写可推送文案，也未添加推送图片。`)
-          continue
-        }
-
-        const supplierErrors: string[] = []
-
-        if (hasRichText) {
-          const res = await pushSupplierRichText(s, mergedHtml)
-          if (res.ok !== true) {
-            supplierErrors.push(`文案：${summarizeFeishuTestFailure(res)}`)
-          }
-        }
-
-        if (hasScan) {
-          const routeCodes = parseFleetRouteCodes(s.routeCode)
-          if (!routeCodes.length) {
-            supplierErrors.push('未配置有效路由编码。')
-          } else {
-            const buckets = aggregateFleetRowsForRoute(scanRows, s.routeCode)
-            const total = buckets.reduce((sum, b) => sum + b.total, 0)
-            if (!total) {
-              supplierErrors.push(`路由「${routeCodes.join('、')}」无匹配数据，已跳过货量截图。`)
-            } else {
-              try {
-                const png = await captureFleetRouteReportPng({
-                  title: `${s.supplierName || '供应商'} · 货量汇总`,
-                  subtitle: ``,
-                  buckets,
-                })
-                const res = await pushSupplierSingleImage(s, png)
-                if (res.ok !== true) {
-                  supplierErrors.push(`货量截图：${summarizeFeishuTestFailure(res)}`)
-                }
-              } catch (e) {
-                const msg = e instanceof Error ? e.message : '货量截图失败'
-                supplierErrors.push(`货量截图：${msg}`)
-              }
-            }
-          }
-        }
-
-        for (let i = 0; i < pushCustomImageDataUrls.length; i++) {
-          const res = await pushSupplierSingleImage(s, pushCustomImageDataUrls[i]!)
-          if (res.ok !== true) {
-            const label = pushCustomImageDataUrls.length > 1 ? `推送图片 ${i + 1}` : '推送图片'
-            supplierErrors.push(`${label}：${summarizeFeishuTestFailure(res)}`)
-          }
-        }
-
-        if (supplierErrors.length === 0) {
-          oks.push(s.supplierName || s.routeCode)
-        } else {
-          errors.push(`「${s.supplierName}」：${supplierErrors.join('；')}`)
-        }
-      }
-
-      if (errors.length === 0) {
-        showToast(`已向 ${oks.length} 家供应商完成推送。`, 'success')
-      } else if (oks.length === 0) {
-        showToast(errors.join(' '), 'error')
-      } else {
-        showToast(`已推送 ${oks.length} 家：${oks.join('、')}。失败：${errors.join(' ')}`, 'success')
-      }
+  const handleRetryFailed = async () => {
+    if (!canSend || pushing || !lastPushFails.length) return
+    const failedIds = new Set(lastPushFails.map((f) => f.supplierId))
+    const targets = suppliers.filter((s) => failedIds.has(s.id))
+    if (!targets.length) return
+    setPushing(true)
+    setLastPushFails([])
+    try {
+      await runPushForTargets(targets, globalPushText)
     } finally {
       setPushing(false)
     }
@@ -595,6 +595,32 @@ export function FleetSupplierPushTab({
               </div>
             ) : null}
           </div>
+          {lastPushFails.length > 0 && (
+            <div className="fs-push-fail-panel">
+              <div className="fs-push-fail-header">
+                <AlertTriangle className="h-4 w-4 shrink-0" />
+                <span>{lastPushFails.length} 家推送失败</span>
+                <Button
+                  type="primary"
+                  danger
+                  icon={<RefreshCw className="h-3.5 w-3.5" />}
+                  loading={pushing}
+                  onClick={() => void handleRetryFailed()}
+                >
+                  重推失败项
+                </Button>
+              </div>
+              <ul className="fs-push-fail-list">
+                {lastPushFails.map((f) => (
+                  <li key={f.supplierId} className="fs-push-fail-item">
+                    <span className="fs-push-fail-name">「{f.supplierName}」</span>
+                    <span className="fs-push-fail-errors">{f.errors.join('；')}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+
           {pushImages.length > 0 ? (
             <Image.PreviewGroup>
               <ul className="fs-push-images" aria-label="待推送图片预览">

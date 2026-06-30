@@ -316,6 +316,38 @@ feishuWebhookTestRouter.post('/push-rich-message', async (req: AuthenticatedRequ
     }
   }
 
+  // 纯图片（无文案）：每张图单独发 msg_type: 'image'，飞书会折叠为可点击的缩略图
+  if (!content && imageKeys.length > 0) {
+    try {
+      let lastFeishu: unknown
+      let lastHttp = 200
+      for (const key of imageKeys) {
+        const imgPayload: Record<string, unknown> = {
+          msg_type: 'image',
+          content: { image_key: key },
+        }
+        if (secret) await appendWebhookSign(imgPayload, secret)
+        const r = await postWebhookJson(webhookHref, imgPayload)
+        lastFeishu = r.feishu
+        lastHttp = r.httpStatus
+        if (!r.ok) {
+          res.status(502).json({
+            ok: false,
+            error: '飞书 webhook 图片消息发送失败。',
+            httpStatus: r.httpStatus,
+            feishu: r.feishu,
+            imageUploadedCount: imageKeys.length,
+          })
+          return
+        }
+      }
+      res.status(200).json({ ok: true, httpStatus: lastHttp, feishu: lastFeishu, imageUploadedCount: imageKeys.length })
+    } catch {
+      res.status(502).json({ ok: false, error: '推送图片时发生网络错误，请稍后重试。', imageUploadedCount: imageKeys.length })
+    }
+    return
+  }
+
   const card = buildFleetRichMessageCard({ content, imageKeys })
   const payload: Record<string, unknown> = { msg_type: 'interactive', card }
   if (secret) await appendWebhookSign(payload, secret)

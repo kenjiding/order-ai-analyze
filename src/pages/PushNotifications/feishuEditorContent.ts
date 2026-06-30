@@ -77,6 +77,7 @@ export function stripEditorContentForPreview(text: string, maxLen = 80): string 
     .replace(/<font[^>]*>([\s\S]*?)<\/font>/gi, '$1')
     .replace(/\*\*(.+?)\*\*/g, '$1')
     .replace(/_(.+?)_/g, '$1')
+    .replace(/~~(.+?)~~/g, '$1')
     .replace(/~(.+?)~/g, '$1')
     .replace(/<u>([\s\S]*?)<\/u>/gi, '$1')
     .replace(/<at id=all><\/at>/gi, '@所有人')

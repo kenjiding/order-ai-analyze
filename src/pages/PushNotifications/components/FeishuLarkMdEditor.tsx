@@ -3,7 +3,6 @@ import Image from '@tiptap/extension-image'
 import Link from '@tiptap/extension-link'
 import Placeholder from '@tiptap/extension-placeholder'
 import { TextStyle } from '@tiptap/extension-text-style'
-import Underline from '@tiptap/extension-underline'
 import { EditorContent, useEditor } from '@tiptap/react'
 import StarterKit from '@tiptap/starter-kit'
 import { Button, Input, Modal, Tooltip } from 'antd'
@@ -20,7 +19,6 @@ import {
   Redo2,
   RemoveFormatting,
   Strikethrough,
-  Underline as UnderlineIcon,
   Undo2,
 } from 'lucide-react'
 import { useEffect, useRef, useState, type ChangeEvent, type MouseEvent } from 'react'
@@ -81,9 +79,7 @@ export function FeishuLarkMdEditor({
         heading: false,
         codeBlock: false,
         link: false,
-        underline: false,
       }),
-      Underline,
       TextStyle,
       Color,
       Image.configure({
@@ -252,16 +248,6 @@ export function FeishuLarkMdEditor({
             icon={<Italic className="h-4 w-4" />}
             onMouseDown={handleToolbarMouseDown}
             onClick={() => editor.chain().focus().toggleItalic().run()}
-          />
-        </Tooltip>
-        <Tooltip title="下划线">
-          <Button
-            type="text"
-            disabled={disabled}
-            className={editor.isActive('underline') ? 'feishu-lark-md-editor-btn-active' : undefined}
-            icon={<UnderlineIcon className="h-4 w-4" />}
-            onMouseDown={handleToolbarMouseDown}
-            onClick={() => editor.chain().focus().toggleUnderline().run()}
           />
         </Tooltip>
         <Tooltip title="删除线">
