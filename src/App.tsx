@@ -19,6 +19,7 @@ import WarehouseSafetyInspectionPage from './pages/WarehouseSafetyInspection/War
 import SystemUsersPage from './pages/SystemUsers/SystemUsersPage'
 import LoginPage from './pages/Login/LoginPage'
 import VendorSnapshotPage from './pages/VendorAnalysis/VendorSnapshotPage'
+import ExitAlarmPage from './pages/ExitAlarm/ExitAlarmPage'
 import { getDefaultRouteForPermissions } from './components/Layout/sidebarMenu'
 import { useAuthStore } from './stores/authStore'
 import { ToastBridge } from './utils/toast'
@@ -110,6 +111,14 @@ function KeptSystemUsersPage() {
   )
 }
 
+function KeptExitAlarmPage() {
+  return (
+    <KeepAlive cacheKey="page-exit-alarm" name="exit-alarm" autoFreeze={false}>
+      <ExitAlarmPage />
+    </KeepAlive>
+  )
+}
+
 function KeptVendorAnalysisPage() {
   return (
     <KeepAlive cacheKey="page-vendor-analysis" name="vendor-analysis" autoFreeze={false}>
@@ -156,6 +165,7 @@ function AppRoutes() {
           <Route path="/new-merchant-monitor" element={<KeptNewMerchantMonitorPage />} />
           <Route path="/problem-package-audit" element={<KeptProblemPackageAuditPage />} />
           <Route path="/vendor-analysis" element={<KeptVendorAnalysisPage />} />
+          <Route path="/exit-alarm" element={<KeptExitAlarmPage />} />
           <Route path="/push-notifications" element={<KeptPushNotificationsPage />} />
           <Route path="/warehouse-safety" element={<KeptWarehouseSafetyInspectionPage />} />
           <Route path="/system/users" element={<KeptSystemUsersPage />} />

@@ -177,6 +177,39 @@ export const vendorAnalysisPushConfigs = pgTable('vendor_analysis_push_configs',
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 })
 
+/** 11点前出仓告警：供应商飞书推送配置 */
+export const exitAlarmPushConfigs = pgTable('exit_alarm_push_configs', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  vendorCode: varchar('vendor_code', { length: 64 }).notNull(),
+  vendorName: varchar('vendor_name', { length: 255 }).notNull(),
+  /** 路由码，多个用英文逗号分隔，用于过滤运单数据 */
+  routeCode: varchar('route_code', { length: 1024 }).notNull().default(''),
+  webhookUrl: varchar('webhook_url', { length: 512 }).notNull(),
+  signingSecret: varchar('signing_secret', { length: 255 }),
+  pushDescription: varchar('push_description', { length: 512 }),
+  isDisabled: boolean('is_disabled').notNull().default(false),
+  createdBy: uuid('created_by').references(() => users.id, { onDelete: 'set null' }),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+})
+
+/** 11点前出仓告警：定时推送配置（全局单条记录，取 createdAt 最早的那条） */
+export const exitAlarmSchedules = pgTable('exit_alarm_schedules', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  /** 推送星期，1=周一…7=周日，存为 JSONB 数组 */
+  weekdays: jsonb('weekdays').notNull().default([]),
+  /** 推送时间点列表 [{id, time}]，time 格式 HH:mm（阿德莱德时区） */
+  pushTimes: jsonb('push_times').notNull().default([]),
+  isEnabled: boolean('is_enabled').notNull().default(true),
+  /** 定时推送使用的站点编码（lastScanStationCode） */
+  stationCode: varchar('station_code', { length: 64 }).notNull().default(''),
+  /** 定时拉数使用的 iMile token（保存配置时从全局设置同步，不对外返回） */
+  imileToken: varchar('imile_token', { length: 2048 }),
+  updatedBy: uuid('updated_by').references(() => users.id, { onDelete: 'set null' }),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+})
+
 export type User = typeof users.$inferSelect
 export type Region = typeof regions.$inferSelect
 export type Permission = typeof permissions.$inferSelect
@@ -191,3 +224,7 @@ export type VendorAnalysisPushConfig = typeof vendorAnalysisPushConfigs.$inferSe
 export type NewVendorAnalysisPushConfig = typeof vendorAnalysisPushConfigs.$inferInsert
 export type FleetSupplierPushConfig = typeof fleetSupplierPushConfigs.$inferSelect
 export type NewFleetSupplierPushConfig = typeof fleetSupplierPushConfigs.$inferInsert
+export type ExitAlarmPushConfig = typeof exitAlarmPushConfigs.$inferSelect
+export type NewExitAlarmPushConfig = typeof exitAlarmPushConfigs.$inferInsert
+export type ExitAlarmSchedule = typeof exitAlarmSchedules.$inferSelect
+export type NewExitAlarmSchedule = typeof exitAlarmSchedules.$inferInsert

@@ -15,6 +15,7 @@ import { efficiencyInsightRouter } from './routes/efficiencyInsightRouter'
 import { jobsRouter } from './routes/jobsRouter'
 import { vendorAnalysisRouter } from './routes/vendorAnalysisRouter'
 import { fleetSupplierPushRouter } from './routes/fleetSupplierPushRouter'
+import { exitAlarmRouter } from './routes/exitAlarmRouter'
 
 const app = express()
 
@@ -57,5 +58,6 @@ app.use('/api/problem-audit', requireAuth, problemPackageAuditRouter)
 app.use('/api/vendor-analysis', requireAuth, vendorAnalysisRouter)
 app.use('/api/fleet-supplier-push', requireAuth, fleetSupplierPushRouter)
 app.use('/api/feishu-webhook', requireAuth, feishuWebhookTestRouter)
+app.use('/api/exit-alarm', requireAuth, exitAlarmRouter)
 
 export { app }

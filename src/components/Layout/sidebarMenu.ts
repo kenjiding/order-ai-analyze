@@ -1,4 +1,5 @@
 import {
+  AlarmClock,
   BarChart2,
   Calculator,
   ClipboardCheck,
@@ -109,6 +110,14 @@ const groups: SidebarMenuGroup[] = [
         label: '供应商数据分析',
         icon: BarChart2,
         description: '供应商客诉率与工单数据推送',
+      },
+      {
+        id: 'exit-alarm',
+        path: '/exit-alarm',
+        permissionKey: 'menu:exit-alarm',
+        label: '11点前出仓告警',
+        icon: AlarmClock,
+        description: '监控供应商11点前出仓率并定时推送告警',
       },
     ],
   },
