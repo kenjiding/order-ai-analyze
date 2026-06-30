@@ -18,6 +18,7 @@ import WageSalaryPage from './pages/WageSalary/WageSalaryPage'
 import WarehouseSafetyInspectionPage from './pages/WarehouseSafetyInspection/WarehouseSafetyInspectionPage'
 import SystemUsersPage from './pages/SystemUsers/SystemUsersPage'
 import LoginPage from './pages/Login/LoginPage'
+import VendorSnapshotPage from './pages/VendorAnalysis/VendorSnapshotPage'
 import { getDefaultRouteForPermissions } from './components/Layout/sidebarMenu'
 import { useAuthStore } from './stores/authStore'
 import { ToastBridge } from './utils/toast'
@@ -145,6 +146,7 @@ function AppRoutes() {
     <Routes>
       <Route path="/login" element={<LoginPage />} />
       <Route element={<ProtectedRoute />}>
+        <Route path="/vendor-snapshot" element={<VendorSnapshotPage />} />
         <Route element={<AuthenticatedShell />}>
           <Route path="/" element={<DefaultHomeRedirect />} />
           <Route path="/efficiency" element={<KeptScannerEfficiencyPage />} />

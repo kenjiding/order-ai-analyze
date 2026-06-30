@@ -29,22 +29,24 @@ export type VendorMetrics = {
   complaintRate: number
 }
 
-export type FineBiVendorMetrics = {
-  inboundVolume: number
-  pickupVolume: number
-  pickupRate: number
-  onTimePickupVolume: number
-  /** 11点前出仓率（FineBI：准时提货率） */
+export type Before11ExitRateResult = {
   before11ExitRate: number
+  before11ExitVolume: number
+  totalReceived: number
 }
 
-export type FineBi24hDispatchMetrics = {
-  firstOfdCnt: number
-  in24hDldCnt: number
-  /** 24WH派签率（FineBI formatText） */
-  dispatchRate24hText: string
-  /** 24小时签收未达标 */
-  notMet24hSignCount: number
+export type SlimPickupRow = {
+  waybillNo: string
+  courierCode: string
+  courierVendorCode: string
+  courier: string
+  consigneeRouteCode: string
+  before11Exit: boolean
+}
+
+export type Before11ExitRatesData = {
+  ratesByVendor: Record<string, Before11ExitRateResult>
+  pickupRows: SlimPickupRow[]
 }
 
 export type VendorMetricRow = {
@@ -55,12 +57,24 @@ export type VendorMetricRow = {
   complaintRate: number
   unprocessedTicketCount: number
   longTailCount: number
-  /** 11点前出仓率，FineBI 未返回时为 null */
+  /** 11点前出仓率，未返回时为 null */
   before11ExitRate: number | null
-  /** 24小时签派率（FineBI formatText），未返回时为 null */
+  before11ExitVolume: number | null
+  before11TotalReceived: number | null
+  /** 11点前未出仓单号列表（hover tooltip 用） */
+  before11UnmetWaybillNos: string[]
+  /** 24小时签派率文本，未返回时为 null */
   dispatchRate24hText: string | null
   /** 24小时签收未达标件数 */
   notMet24hSignCount: number | null
+  /** 24小时派签统计：总量 */
+  dispatch24hTotal: number | null
+  /** 24小时派签统计：达标量 */
+  dispatch24hCount: number | null
+  /** 24小时未达标单号列表（hover tooltip 用） */
+  dispatch24hUnmetWaybillNos: string[]
+  /** 客诉单号列表（hover tooltip 用） */
+  complaintOrderCodes: string[]
   isDisabled: boolean
 }
 
@@ -103,6 +117,7 @@ export type LongTailOrderRow = {
   driverVendorCode?: string
   driverName?: string
   driverCode?: string
+  waybillNo?: string
   [key: string]: unknown
 }
 
@@ -113,6 +128,7 @@ export type WaybillRow = {
 }
 
 export type DriverWaybillRow = {
+  waybillNo?: string
   courier?: string
   courierCode?: string
   courierVendor?: string
@@ -121,6 +137,10 @@ export type DriverWaybillRow = {
   consigneeRouteCode?: string
   signDate?: string
   deliveryTime?: string
+  lastScanSiteCode?: string
+  lastScanSiteName?: string
+  lastProblemDate?: string
+  before11Exit?: boolean
   [key: string]: unknown
 }
 
@@ -130,6 +150,7 @@ export type DriverReturnRawRow = {
   driverVendorName?: string
   driverVendorCode?: string
   ofdDate?: string
+  waybillNo?: string
   [key: string]: unknown
 }
 
@@ -140,8 +161,19 @@ export type DriverPerformanceRow = {
   vendorName: string
   routeCode: string
   ofdCount: number
+  ofdWaybillNos: string[]
+  before11OfdCount: number
+  /** 11点前未出仓单号列表（hover tooltip 用） */
+  before11UnmetWaybillNos: string[]
   returnWarningCount: number
+  /** 归班预警单号列表（hover tooltip 用） */
+  returnWarningWaybillNos: string[]
   dispatch24hCount: number
   totalDispatchCount: number
   dispatchRate24h: number | null
+  /** 24小时未达标单号列表（hover tooltip 用） */
+  dispatch24hUnmetWaybillNos: string[]
+  longTailCount: number
+  /** 长尾单单号列表（hover tooltip 用） */
+  longTailWaybillNos: string[]
 }

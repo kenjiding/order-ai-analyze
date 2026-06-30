@@ -24,11 +24,16 @@ export function buildFleetRichMessageCard(params: {
     segments.forEach((segment, index) => {
       const text = segment.trim()
       if (text) {
-        for (const chunk of splitFeishuWebhookTextChunks(text)) {
-          elements.push({
-            tag: 'div',
-            text: { tag: 'lark_md', content: chunk },
-          })
+        // 按段落（\n\n）拆分，每段单独一个 div 元素。
+        // 若整段放入同一 div 的 lark_md content，飞书卡片会忽略 \n\n 导致不换行。
+        const paras = text.split(/\n\n+/).map((p) => p.trim()).filter(Boolean)
+        for (const para of paras) {
+          for (const chunk of splitFeishuWebhookTextChunks(para)) {
+            elements.push({
+              tag: 'div',
+              text: { tag: 'lark_md', content: chunk },
+            })
+          }
         }
       }
       if (index < segments.length - 1) {

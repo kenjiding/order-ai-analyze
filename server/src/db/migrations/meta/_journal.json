@@ -71,6 +71,13 @@
       "when": 1781976547206,
       "tag": "0009_redundant_silver_samurai",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1782785779332,
+      "tag": "0010_charming_quasar",
+      "breakpoints": true
     }
   ]
 }

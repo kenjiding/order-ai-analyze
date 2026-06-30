@@ -1,19 +1,16 @@
 import { Button, Tooltip, Typography } from 'antd'
-import { BarChart2, Plus, SendHorizonal } from 'lucide-react'
+import { BarChart2, BrainCircuit, Camera, Plus, SendHorizonal } from 'lucide-react'
 import { useCallback, useState } from 'react'
-import { useAuthStore } from '../../stores/authStore'
-import { PERMISSION_KEYS } from '../../hooks/usePermission'
 import type { VendorPushConfig } from './vendorAnalysisTypes'
 import { VendorFilterPanel } from './components/VendorFilterPanel'
 import { VendorMetricsPreview } from './components/VendorMetricsPreview'
 import { VendorPushConfigModal } from './components/VendorPushConfigModal'
 import { VendorPushConfigTable } from './components/VendorPushConfigTable'
 import { useVendorAnalysisPage } from './useVendorAnalysisPage'
+import { buildVendorSnapshot, saveVendorSnapshot } from './vendorSnapshotStorage'
+import { fetchVendorAiSummaries } from './vendorAnalysisApi'
 
 export default function VendorAnalysisPage() {
-  const { hasPermission } = useAuthStore()
-  const canPush = hasPermission(PERMISSION_KEYS.btnVendorAnalysisPush)
-
   const v = useVendorAnalysisPage()
 
   const [modalOpen, setModalOpen] = useState(false)
@@ -42,18 +39,72 @@ export default function VendorAnalysisPage() {
     [editingConfig, v],
   )
 
-  const enabledCount = v.configs.filter((c) => !c.isDisabled && c.webhookUrl.trim()).length
-  const canTriggerPush = canPush && !!v.fetchedData && v.selectedStations.length > 0 && enabledCount > 0
+  const [aiLoading, setAiLoading] = useState(false)
 
-  const pushBtnTooltip = !canPush
-    ? '无操作权限'
-    : !v.fetchedData
-      ? '请先点击「获取数据」'
-      : v.selectedStations.length === 0
-        ? '请先选择责任站点'
-        : enabledCount === 0
-          ? '没有可用的推送配置'
-          : ''
+  const enabledCount = v.configs.filter((c) => !c.isDisabled && c.webhookUrl.trim()).length
+  const canTriggerPush = !!v.fetchedData && v.selectedStations.length > 0 && enabledCount > 0
+
+  const openSnapshot = useCallback(async (autoPush: boolean) => {
+    if (!v.fetchedData) return
+    setAiLoading(true)
+    let aiSummaries: Record<string, string> | undefined
+    try {
+      const inputs = v.vendorMetrics.map((m) => {
+        const dispatchRate24h = m.dispatchRate24hText ? parseFloat(m.dispatchRate24hText) / 100 : null
+        const rawDrivers = v.driverPerformanceByVendor[m.vendorCode] ?? []
+        // 按归班预警降序、再按派签率升序，取前 30 条，让模型聚焦最需关注的司机
+        const sortedDrivers = [...rawDrivers].sort(
+          (a, b) =>
+            b.returnWarningCount - a.returnWarningCount ||
+            (a.dispatchRate24h ?? 1) - (b.dispatchRate24h ?? 1),
+        ).slice(0, 30)
+        return {
+          vendorCode: m.vendorCode,
+          vendorName: m.vendorName,
+          before11ExitRate: m.before11ExitRate,
+          dispatchRate24h,
+          complaintRate: m.complaintRate,
+          complaintCount: m.complaintCount,
+          waybillCount: m.waybillCount,
+          unprocessedTicketCount: m.unprocessedTicketCount,
+          longTailCount: m.longTailCount,
+          drivers: sortedDrivers.map((d) => ({
+            courierName: d.courierName,
+            courierCode: d.courierCode,
+            routeCode: d.routeCode,
+            ofdCount: d.ofdCount,
+            before11ExitRate: d.ofdCount > 0 ? d.before11OfdCount / d.ofdCount : null,
+            dispatchRate24h: d.dispatchRate24h,
+            dispatch24hCount: d.dispatch24hCount,
+            totalDispatchCount: d.totalDispatchCount,
+            returnWarningCount: d.returnWarningCount,
+          })),
+        }
+      })
+      const result = await fetchVendorAiSummaries(inputs)
+      if (result.ok) aiSummaries = result.data
+    } finally {
+      setAiLoading(false)
+    }
+    const snapshot = buildVendorSnapshot({
+      fetchedData: v.fetchedData,
+      stations: v.selectedStations,
+      vendorMetrics: v.vendorMetrics,
+      driverPerformanceByVendor: v.driverPerformanceByVendor,
+      configs: v.configs,
+      aiSummaries,
+    })
+    saveVendorSnapshot(snapshot)
+    window.open(autoPush ? '/vendor-snapshot?autoPush=1' : '/vendor-snapshot', '_blank')
+  }, [v.fetchedData, v.selectedStations, v.vendorMetrics, v.driverPerformanceByVendor, v.configs])
+
+  const pushBtnTooltip = !v.fetchedData
+    ? '请先点击「获取数据」'
+    : v.selectedStations.length === 0
+      ? '请先选择责任站点'
+      : enabledCount === 0
+        ? '没有可用的推送配置'
+        : '截图后推送到各供应商飞书群'
 
   return (
     <div className="vendor-analysis-page admin-page space-y-5">
@@ -81,12 +132,10 @@ export default function VendorAnalysisPage() {
 
       {/* 筛选区 */}
       <VendorFilterPanel
-        dateRange={v.dateRange}
-        onDateRangeChange={v.setDateRange}
+        referenceDate={v.referenceDate}
+        onReferenceDateChange={v.setReferenceDate}
         complaintDateRange={v.complaintDateRange}
         onComplaintDateRangeChange={v.setComplaintDateRange}
-        fineBiConnections={v.fineBiConnections}
-        onFineBiConnectionsChange={v.setFineBiConnections}
         fetchedData={v.fetchedData}
         dataFetching={v.dataFetching}
         onFetchData={() => void v.fetchData()}
@@ -110,16 +159,28 @@ export default function VendorAnalysisPage() {
             <h3 className="admin-title mt-0.5 text-base">飞书推送配置</h3>
           </div>
           <div className="flex flex-wrap items-center gap-2">
-            <Tooltip title={pushBtnTooltip}>
+            <Tooltip title={!v.fetchedData ? '请先获取数据' : aiLoading ? 'AI 分析中...' : '预览截图落地页（不自动推送）'}>
+              <span>
+                <Button
+                  icon={aiLoading ? <BrainCircuit className="h-4 w-4 animate-pulse" /> : <Camera className="h-4 w-4" />}
+                  disabled={!v.fetchedData || aiLoading}
+                  loading={aiLoading}
+                  onClick={() => void openSnapshot(false)}
+                >
+                  {aiLoading ? 'AI 分析中...' : '预览快照'}
+                </Button>
+              </span>
+            </Tooltip>
+            <Tooltip title={aiLoading ? 'AI 分析中，请稍候' : pushBtnTooltip}>
               <span>
                 <Button
                   type="primary"
-                  icon={<SendHorizonal className="h-4 w-4" />}
-                  loading={v.isPushingAll}
-                  disabled={!canTriggerPush || v.isPushingAll}
-                  onClick={() => void v.pushAll()}
+                  icon={aiLoading ? <BrainCircuit className="h-4 w-4 animate-pulse" /> : <SendHorizonal className="h-4 w-4" />}
+                  disabled={!canTriggerPush || aiLoading}
+                  loading={aiLoading}
+                  onClick={() => void openSnapshot(true)}
                 >
-                  供应商数据分析推送
+                  {aiLoading ? 'AI 分析中...' : '截图并推送到飞书'}
                 </Button>
               </span>
             </Tooltip>
@@ -147,8 +208,8 @@ export default function VendorAnalysisPage() {
             loading={v.configsLoading}
             disabled={v.isPushingAll}
             onEdit={openEdit}
-            onDelete={(config) => void v.removeConfig(config.id, config.vendorName)}
-            onToggleDisabled={(id, next) => void v.toggleDisabled(id, next)}
+            onDelete={(config) => v.removeConfig(config.id, config.vendorName)}
+            onToggleDisabled={(id, next) => v.toggleDisabled(id, next)}
           />
         </div>
       </div>

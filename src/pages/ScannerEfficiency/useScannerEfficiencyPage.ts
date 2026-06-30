@@ -48,6 +48,7 @@ import { fetchBoxAssignedList, fetchCancelScanAnalysis, fetchInboundScans, fetch
 import { mapInboundRecordsToParsedScanRows } from './inboundScanMapper'
 import { mapZktTimeCardRecordsToParsedAttendanceRows } from './mapZktAttendanceRecords'
 import type { CancelScanAnalysisState } from './cancelScanAnalysisTypes'
+import { buildZoneInboundScanTotals } from './cancelScanRouteZoneTable'
 import { flushPaint } from './excelParseClient'
 import { buildAllocationDensity, buildFrontDeskClockOutDays } from './frontDeskSaturation'
 import {
@@ -1270,6 +1271,13 @@ export function useScannerEfficiencyPage() {
     [snapshotRestore?.cancelScanAnalysis, cancelScanAnalysis],
   )
 
+  const zoneInboundScanTotals = useMemo(() => {
+    if (!scanRows.length || !effectiveCancelScanAnalysis) return null
+    const { startDate, endDate } = effectiveCancelScanAnalysis.meta
+    const totals = buildZoneInboundScanTotals(scanRows, startDate, endDate)
+    return totals.size > 0 ? totals : null
+  }, [scanRows, effectiveCancelScanAnalysis])
+
   return {
     settings,
     scanSourceInfo,
@@ -1279,6 +1287,7 @@ export function useScannerEfficiencyPage() {
     loadingAllocationApi,
     loadingCancelScanAnalysis,
     cancelScanAnalysis: effectiveCancelScanAnalysis,
+    zoneInboundScanTotals,
     loading,
     error,
     scannerHourlyExpanded,

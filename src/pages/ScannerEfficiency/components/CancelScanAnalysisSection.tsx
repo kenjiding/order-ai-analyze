@@ -11,10 +11,11 @@ type Props = {
   analysis: CancelScanAnalysisState | null
   loading: boolean
   onFetch?: () => void
+  zoneInboundScanTotals?: ReadonlyMap<string, number> | null
 }
 
 
-export function CancelScanAnalysisSection({ analysis, loading, onFetch }: Props) {
+export function CancelScanAnalysisSection({ analysis, loading, onFetch, zoneInboundScanTotals }: Props) {
   const totalWaybills = analysis?.meta.waybillFetched ?? 0
 
   const zoneCount = useMemo(
@@ -100,6 +101,7 @@ export function CancelScanAnalysisSection({ analysis, loading, onFetch }: Props)
           routeCodeDistribution={analysis.routeCodeDistribution}
           dailyRouteCodeCounts={analysis.dailyRouteCodeCounts}
           totalWaybills={totalWaybills}
+          zoneInboundScanTotals={zoneInboundScanTotals}
         />
       )}
 

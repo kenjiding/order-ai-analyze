@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { Table } from 'antd'
 import type { ColumnsType } from 'antd/es/table'
 import { ChevronDown, Users } from 'lucide-react'
+import { WaybillListPopover } from '../../../components/WaybillPopover'
 import type { DriverPerformanceRow, VendorPushConfig } from '../vendorAnalysisTypes'
 
 type Props = {
@@ -22,34 +23,36 @@ function DispatchRateBadge({
   rate,
   count,
   total,
+  unmetWaybillNos = [],
 }: {
   rate: number | null
   count: number
   total: number
+  unmetWaybillNos?: string[]
 }) {
   if (rate == null) return <span className="text-sm text-slate-400">—</span>
   const pct = (rate * 100).toFixed(1)
   const colorCls =
-    rate >= 0.92
+    rate >= 0.95
       ? 'bg-emerald-50 border-emerald-200 text-emerald-700'
-      : rate >= 0.75
+      : rate >= 0.92
         ? 'bg-amber-50 border-amber-200 text-amber-700'
         : 'bg-red-50 border-red-200 text-red-700'
   return (
     <div>
-      <span className={`inline-flex items-center rounded-md border px-2 py-0.5 text-sm font-bold ${colorCls}`}>
-        {pct}%
-      </span>
+      <WaybillListPopover nos={unmetWaybillNos} title="24H未达标单号" placement="right">
+        <span className={`inline-flex items-center rounded-md border px-2 py-0.5 text-sm font-bold ${colorCls}${unmetWaybillNos.length > 0 ? ' cursor-help' : ''}`}>
+          {pct}%
+        </span>
+      </WaybillListPopover>
       {total > 0 && (
-        <div className="mt-0.5 text-[11px] text-slate-400">
-          {count}/{total} 件
-        </div>
+        <div className="mt-0.5 text-[11px] text-slate-400">{count}/{total} 件</div>
       )}
     </div>
   )
 }
 
-function WarningCount({ count }: { count: number }) {
+function WarningCount({ count, waybillNos = [] }: { count: number; waybillNos?: string[] }) {
   if (count === 0) {
     return (
       <span className="inline-flex min-w-[2.25rem] items-center justify-center rounded-full bg-emerald-50 px-2.5 py-0.5 text-sm font-semibold text-emerald-600">
@@ -57,10 +60,16 @@ function WarningCount({ count }: { count: number }) {
       </span>
     )
   }
-  return (
-    <span className="inline-flex min-w-[2.25rem] items-center justify-center rounded-full bg-red-50 px-2.5 py-0.5 text-sm font-semibold text-red-600">
+  const badge = (
+    <span className={`inline-flex min-w-[2.25rem] items-center justify-center rounded-full bg-red-50 px-2.5 py-0.5 text-sm font-semibold text-red-600${waybillNos.length > 0 ? ' cursor-help' : ''}`}>
       {count}
     </span>
+  )
+  if (waybillNos.length === 0) return badge
+  return (
+    <WaybillListPopover nos={waybillNos} title="归班预警记录" placement="right">
+      {badge}
+    </WaybillListPopover>
   )
 }
 
@@ -85,11 +94,19 @@ const columns: ColumnsType<DriverPerformanceRow> = [
   },
   {
     title: '今日取件',
-    dataIndex: 'ofdCount',
     key: 'ofdCount',
     width: 110,
     sorter: (a, b) => a.ofdCount - b.ofdCount,
-    render: (v: number) => <PickupChip count={v} />,
+    render: (_: unknown, row: DriverPerformanceRow) => (
+      <div className="flex items-center gap-1.5">
+        <PickupChip count={row.ofdCount} />
+        {row.before11OfdCount > 0 && (
+          <span className="text-[11px] text-slate-400">
+            · {row.before11OfdCount}
+          </span>
+        )}
+      </div>
+    ),
   },
   {
     title: '24H派签率',
@@ -101,6 +118,7 @@ const columns: ColumnsType<DriverPerformanceRow> = [
         rate={row.dispatchRate24h}
         count={row.dispatch24hCount}
         total={row.totalDispatchCount}
+        unmetWaybillNos={row.dispatch24hUnmetWaybillNos}
       />
     ),
   },
@@ -111,7 +129,28 @@ const columns: ColumnsType<DriverPerformanceRow> = [
     width: 110,
     defaultSortOrder: 'descend',
     sorter: (a, b) => a.returnWarningCount - b.returnWarningCount,
-    render: (v: number) => <WarningCount count={v} />,
+    render: (v: number, row) => <WarningCount count={v} waybillNos={row.returnWarningWaybillNos} />,
+  },
+  {
+    title: '长尾单',
+    dataIndex: 'longTailCount',
+    key: 'longTailCount',
+    width: 100,
+    sorter: (a, b) => a.longTailCount - b.longTailCount,
+    render: (v: number, row) => {
+      if (v === 0) return <span className="text-sm text-slate-400">0</span>
+      const badge = (
+        <span className="inline-flex min-w-[2.25rem] cursor-help items-center justify-center rounded-full bg-amber-50 px-2.5 py-0.5 text-sm font-semibold text-amber-600">
+          {v}
+        </span>
+      )
+      if (row.longTailWaybillNos.length === 0) return badge
+      return (
+        <WaybillListPopover nos={row.longTailWaybillNos} title="长尾单单号" placement="right">
+          {badge}
+        </WaybillListPopover>
+      )
+    },
   },
 ]
 

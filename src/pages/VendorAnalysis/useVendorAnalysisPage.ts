@@ -1,17 +1,16 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { Dayjs } from 'dayjs'
-import dayjs from 'dayjs'
 import { useAppSettings } from '../../context/AppSettingsContext'
 import { useGlobalFilterStore } from '../../stores/globalFilterStore'
 import { showToast } from '../../utils/toast'
 import { postFeishuPushCard } from '../PushNotifications/feishuWebhookTestApi'
 import type {
+  Before11ExitRatesData,
+  Before11ExitRateResult,
   ComplaintTicketRow,
   DriverPerformanceRow,
   DriverReturnRawRow,
   DriverWaybillRow,
-  FineBi24hDispatchMetrics,
-  FineBiVendorMetrics,
   HubUnprocessedTicketRow,
   LongTailOrderRow,
   NormalUnprocessedTicketRow,
@@ -25,11 +24,10 @@ import type {
 import {
   createConfig,
   deleteConfig,
+  fetchBefore11ExitRates,
   fetchComplaintTickets,
   fetchDriverWaybills,
   fetchDriverReturnWarning,
-  fetchFineBi24hDispatchMetrics,
-  fetchFineBiMetrics,
   fetchLongTailOrders,
   fetchUnprocessedTickets,
   fetchVendors,
@@ -37,26 +35,19 @@ import {
   loadConfigs,
   updateConfig,
 } from './vendorAnalysisApi'
-import {
-  dispatchRate24hColor,
-} from './fineBi24hMetricsDisplay'
-import {
-  FINEBI_METRIC_NOT_MET_24H_LABEL,
-  loadFineBiConnections,
-  pickActive24hDispatchConnection,
-  pickActivePickupConnection,
-  saveFineBiConnections,
-  toFineBiConnectionInput,
-  type FineBiConnectionConfig,
-} from './fineBiConnectionStorage'
+import { AUS_TZ, fromIMileTime, iMileTimeMs, nowIn } from '../../utils/ausTimezone'
+
+function normalizeVendorCode(code: string): string {
+  return code.trim()
+}
+
 
 export type FetchedData = {
   tickets: ComplaintTicketRow[]
   waybills: WaybillRow[]
   unprocessedTickets: UnprocessedTicketsData
   longTailOrders: LongTailOrderRow[]
-  fineBiMetricsByVendor: Record<string, FineBiVendorMetrics>
-  fineBi24hMetricsByVendor: Record<string, FineBi24hDispatchMetrics>
+  before11ExitRateByVendor: Record<string, Before11ExitRateResult>
   driverYesterdayWaybills: DriverWaybillRow[]
   driverDayBeforeWaybills: DriverWaybillRow[]
   driverReturnRows: DriverReturnRawRow[]
@@ -65,19 +56,25 @@ export type FetchedData = {
   endTime: string
   ticketStartTime: string
   ticketEndTime: string
-  /** FineBI 11点前出仓率：获取数据当天的昨天 */
-  fineBiPickupEndTime: string
-  /** FineBI 24小时签派率：获取数据当天的前天 */
-  fineBi24hStartTime: string
-  fineBi24hEndTime: string
+  /** 11点前出仓率：昨天 */
+  before11Date: string
+  /** 24小时签派率数据日期：参考日期的前天 */
+  dayBeforeDate: string
 }
 
 export function useVendorAnalysisPage() {
   const { imileToken } = useAppSettings()
   const { selectedStations } = useGlobalFilterStore()
 
-  const [dateRange, setDateRange] = useState<[Dayjs, Dayjs] | null>(null)
-  const [complaintDateRange, setComplaintDateRange] = useState<[Dayjs, Dayjs] | null>(null)
+  const [referenceDate, setReferenceDate] = useState<Dayjs | null>(() => nowIn(AUS_TZ.Adelaide))
+  const [complaintDateRange, setComplaintDateRange] = useState<[Dayjs, Dayjs] | null>(() => {
+    const today = nowIn(AUS_TZ.Adelaide)
+    const dow = today.day() // 0=Sun, 1=Mon, ..., 6=Sat
+    const daysFromMonday = dow === 0 ? 6 : dow - 1
+    const lastMonday = today.subtract(daysFromMonday + 7, 'day')
+    const lastSunday = today.subtract(daysFromMonday + 1, 'day')
+    return [lastMonday, lastSunday]
+  })
 
   const [vendors, setVendors] = useState<VendorOption[]>([])
   const [vendorsLoading, setVendorsLoading] = useState(false)
@@ -88,14 +85,6 @@ export function useVendorAnalysisPage() {
   const [fetchedData, setFetchedData] = useState<FetchedData | null>(null)
   const [dataFetching, setDataFetching] = useState(false)
   const [isPushingAll, setIsPushingAll] = useState(false)
-  const [fineBiConnections, setFineBiConnections] = useState<FineBiConnectionConfig[]>(() =>
-    loadFineBiConnections(),
-  )
-
-  const handleFineBiConnectionsChange = useCallback((next: FineBiConnectionConfig[]) => {
-    setFineBiConnections(next)
-    saveFineBiConnections(next)
-  }, [])
 
   const initRef = useRef(false)
 
@@ -118,12 +107,11 @@ export function useVendorAnalysisPage() {
     })
   }, [imileToken])
 
-  // 当时间范围变化时，清空已缓存数据，提示用户重新获取
-  const handleDateRangeChange = useCallback((range: [Dayjs, Dayjs] | null) => {
-    setDateRange(range)
+  const handleReferenceDateChange = useCallback((date: Dayjs | null) => {
+    setReferenceDate(date)
     if (fetchedData) {
       setFetchedData(null)
-      showToast('时间范围已变更，请重新获取数据', 'info')
+      showToast('参考日期已变更，请重新获取数据', 'info')
     }
   }, [fetchedData])
 
@@ -131,90 +119,60 @@ export function useVendorAnalysisPage() {
     setComplaintDateRange(range)
     if (fetchedData) {
       setFetchedData(null)
-      showToast('客诉成立量时间范围已变更，请重新获取数据', 'info')
+      showToast('客诉成立量时间已变更，请重新获取数据', 'info')
     }
   }, [fetchedData])
 
   const fetchAbortRef = useRef<AbortController | null>(null)
 
   const fetchData = useCallback(async () => {
-    if (!dateRange) { showToast('请先选择时间范围', 'error'); return }
-    if (selectedStations.length === 0) { showToast('请先选择责任站点（FineBI 指标需要）', 'error'); return }
+    if (!referenceDate) { showToast('请先选择数据参考日期', 'error'); return }
+    if (!complaintDateRange) { showToast('请先选择客诉成立量时间', 'error'); return }
+    if (selectedStations.length === 0) { showToast('请先选择责任站点', 'error'); return }
 
     fetchAbortRef.current?.abort()
     const controller = new AbortController()
     fetchAbortRef.current = controller
     const signal = controller.signal
 
-    const startTime = dateRange[0].format('YYYY-MM-DD 00:00:00')
-    const endTime = dateRange[1].format('YYYY-MM-DD 23:59:59')
+    // 客诉 & 揽收量：使用客诉成立量时间
+    const startTime = complaintDateRange[0].format('YYYY-MM-DD 00:00:00')
+    const endTime = complaintDateRange[1].format('YYYY-MM-DD 23:59:59')
+    const ticketStartTime = startTime
+    const ticketEndTime = endTime
 
-    const effectiveTicketRange = complaintDateRange ?? dateRange
-    const ticketStartTime = effectiveTicketRange[0].format('YYYY-MM-DD 00:00:00')
-    const ticketEndTime = effectiveTicketRange[1].format('YYYY-MM-DD 23:59:59')
-
-    const vendorCodes = [...new Set(configs.map((c) => c.vendorCode).filter(Boolean))]
-
-    const fineBiPickupConn = pickActivePickupConnection(fineBiConnections)
-    const fineBi24hConn = pickActive24hDispatchConnection(fineBiConnections)
-    if (vendorCodes.length > 0 && !fineBiPickupConn && !fineBi24hConn) {
-      showToast(
-        '请展开 FineBI 连接配置，至少为一组接口粘贴 widget/data 完整 URL',
-        'error',
-      )
-      return
-    }
+    const vendorCodes = [...new Set(configs.map((c) => normalizeVendorCode(c.vendorCode)).filter(Boolean))]
 
     setDataFetching(true)
     setFetchedData(null)
 
-    const yesterday = dayjs().subtract(1, 'day')
-    const dayBefore = dayjs().subtract(2, 'day')
+    // 参考日期作为"今天"，推导昨天、前天
+    const yesterday = referenceDate.subtract(1, 'day')
+    const dayBefore = referenceDate.subtract(2, 'day')
     const yesterdayStartTime = yesterday.format('YYYY-MM-DD 00:00:00')
     const yesterdayEndTime = yesterday.format('YYYY-MM-DD 23:59:59')
     const dayBeforeStartTime = dayBefore.format('YYYY-MM-DD 00:00:00')
     const dayBeforeEndTime = dayBefore.format('YYYY-MM-DD 23:59:59')
-    const fineBi24hStartDate = dayBefore.format('YYYY-MM-DD')
-    const fineBi24hEndDate = fineBi24hStartDate
-    // 未处理工单：上周周一 00:00:00 ~ 昨天 23:59:59
-    const lastMonday = dayjs().startOf('week').subtract(6, 'day')
+    // 未处理工单：参考日期上周周一 00:00:00 ~ 昨天 23:59:59
+    const lastMonday = referenceDate.startOf('week').subtract(6, 'day')
     const unprocessedStartTime = lastMonday.format('YYYY-MM-DD 00:00:00')
 
     let ticketsRes: Awaited<ReturnType<typeof fetchComplaintTickets>>
     let waybillsRes: Awaited<ReturnType<typeof fetchWaybills>>
     let unprocessedRes: Awaited<ReturnType<typeof fetchUnprocessedTickets>>
     let longTailRes: Awaited<ReturnType<typeof fetchLongTailOrders>>
-    let fineBiPickupRes: { ok: true; data: Record<string, FineBiVendorMetrics> } | { ok: false; error: string }
-    let fineBi24hRes: { ok: true; data: Record<string, FineBi24hDispatchMetrics> } | { ok: false; error: string }
-    let driverYesterdayRes: Awaited<ReturnType<typeof fetchDriverWaybills>>
+    let before11Res: { ok: true; data: Before11ExitRatesData } | { ok: false; error: string }
     let driverDayBeforeRes: Awaited<ReturnType<typeof fetchDriverWaybills>>
     let driverReturnRes: Awaited<ReturnType<typeof fetchDriverReturnWarning>>
 
     try {
-      ;[ticketsRes, waybillsRes, unprocessedRes, longTailRes, fineBiPickupRes, fineBi24hRes, driverYesterdayRes, driverDayBeforeRes, driverReturnRes] =
+      ;[ticketsRes, waybillsRes, unprocessedRes, longTailRes, before11Res, driverDayBeforeRes, driverReturnRes] =
         await Promise.all([
         fetchComplaintTickets(imileToken, { startTime: ticketStartTime, endTime: ticketEndTime }, signal),
         fetchWaybills(imileToken, { startTime, endTime }, signal),
         fetchUnprocessedTickets(imileToken, { startTime: unprocessedStartTime, endTime: yesterdayEndTime }, signal),
         fetchLongTailOrders(imileToken, { stationCodes: selectedStations }, signal),
-        vendorCodes.length > 0 && fineBiPickupConn
-          ? fetchFineBiMetrics({
-              endDate: yesterday.format('YYYY-MM-DD'),
-              vendorCodes,
-              stationCodes: selectedStations,
-              fineBiConnection: toFineBiConnectionInput(fineBiPickupConn),
-            }, signal)
-          : Promise.resolve({ ok: true as const, data: {} }),
-        vendorCodes.length > 0 && fineBi24hConn
-          ? fetchFineBi24hDispatchMetrics({
-              startDate: fineBi24hStartDate,
-              endDate: fineBi24hEndDate,
-              vendorCodes,
-              stationCodes: selectedStations,
-              fineBiConnection: toFineBiConnectionInput(fineBi24hConn),
-            }, signal)
-          : Promise.resolve({ ok: true as const, data: {} }),
-        fetchDriverWaybills(imileToken, { startTime: yesterdayStartTime, endTime: yesterdayEndTime }, signal),
+        fetchBefore11ExitRates(imileToken, { startTime: yesterdayStartTime, endTime: yesterdayEndTime, vendorCodes }, signal),
         fetchDriverWaybills(imileToken, { startTime: dayBeforeStartTime, endTime: dayBeforeEndTime }, signal),
         fetchDriverReturnWarning(imileToken, { stationCodes: selectedStations }, signal),
       ])
@@ -232,9 +190,7 @@ export function useVendorAnalysisPage() {
       !waybillsRes.ok ||
       !unprocessedRes.ok ||
       !longTailRes.ok ||
-      !fineBiPickupRes.ok ||
-      !fineBi24hRes.ok ||
-      !driverYesterdayRes.ok ||
+      !before11Res.ok ||
       !driverDayBeforeRes.ok ||
       !driverReturnRes.ok
     ) {
@@ -246,17 +202,13 @@ export function useVendorAnalysisPage() {
             ? unprocessedRes.error
             : !longTailRes.ok
               ? longTailRes.error
-              : !fineBiPickupRes.ok
-                ? fineBiPickupRes.error
-                : !fineBi24hRes.ok
-                  ? fineBi24hRes.error
-                  : !driverYesterdayRes.ok
-                    ? driverYesterdayRes.error
-                    : !driverDayBeforeRes.ok
-                      ? driverDayBeforeRes.error
-                      : !driverReturnRes.ok
-                        ? driverReturnRes.error
-                        : '未知错误'
+              : !before11Res.ok
+                ? before11Res.error
+                : !driverDayBeforeRes.ok
+                  ? driverDayBeforeRes.error
+                  : !driverReturnRes.ok
+                    ? driverReturnRes.error
+                    : '未知错误'
       showToast(`数据获取失败: ${errMsg}`, 'error')
       return
     }
@@ -271,9 +223,8 @@ export function useVendorAnalysisPage() {
       waybills: waybillsRes.data as WaybillRow[],
       unprocessedTickets: unprocessedRes.data,
       longTailOrders: longTailRes.data,
-      fineBiMetricsByVendor: fineBiPickupRes.data,
-      fineBi24hMetricsByVendor: fineBi24hRes.data,
-      driverYesterdayWaybills: driverYesterdayRes.data,
+      before11ExitRateByVendor: before11Res.data.ratesByVendor,
+      driverYesterdayWaybills: before11Res.data.pickupRows as DriverWaybillRow[],
       driverDayBeforeWaybills: driverDayBeforeRes.data,
       driverReturnRows: driverReturnRes.data,
       fetchedAt: new Date(),
@@ -281,17 +232,15 @@ export function useVendorAnalysisPage() {
       endTime,
       ticketStartTime,
       ticketEndTime,
-      fineBiPickupEndTime: yesterday.format('YYYY-MM-DD'),
-      fineBi24hStartTime: dayBeforeStartTime,
-      fineBi24hEndTime: dayBeforeEndTime,
+      before11Date: yesterday.format('YYYY-MM-DD'),
+      dayBeforeDate: dayBefore.format('YYYY-MM-DD'),
     })
-    const fineBiPickupCount = Object.keys(fineBiPickupRes.data).length
-    const fineBi24hCount = Object.keys(fineBi24hRes.data).length
+    const before11Count = Object.keys(before11Res.data.ratesByVendor).length
     showToast(
-      `数据获取成功：${waybillsRes.data.length} 条运单 · ${ticketsRes.data.length} 条客诉 · ${unprocessedTotal} 条未处理工单 · ${longTailRes.data.length} 条长尾单 · FineBI 出仓率 ${fineBiPickupCount} 家 · 24h签派率 ${fineBi24hCount} 家`,
+      `数据获取成功：${waybillsRes.data.length} 条运单 · ${ticketsRes.data.length} 条客诉 · ${unprocessedTotal} 条未处理工单 · ${longTailRes.data.length} 条长尾单 · 出仓率 ${before11Count} 家`,
       'success',
     )
-  }, [dateRange, complaintDateRange, imileToken, selectedStations, configs, fineBiConnections])
+  }, [referenceDate, complaintDateRange, imileToken, selectedStations, configs])
 
   const indexedData = useMemo(() => {
     if (!fetchedData) return null
@@ -337,7 +286,61 @@ export function useVendorAnalysisPage() {
       unprocessedCountByVendor.set(key, (unprocessedCountByVendor.get(key) ?? 0) + 1)
     }
 
-    return { waybillsByVendor, ticketsByVendor, longTailByVendor, unprocessedCountByVendor, stationSet }
+    // 24H 签派率：前天运单，按站点过滤后按供应商统计达标情况
+    const dispatch24hByVendor = new Map<string, { total: number; met: number; unmetNos: string[] }>()
+    for (const row of fetchedData.driverDayBeforeWaybills) {
+      const vendorCode = row.courierVendorCode ?? ''
+      if (!vendorCode) continue
+      // 按最新派件网点过滤：lastScanSiteCode 必须在选中站点内
+      if (stationSet.size > 0 && !stationSet.has(row.lastScanSiteCode ?? '')) continue
+      if (!row.deliveryTime) continue
+
+      const deliveryAdelaide = fromIMileTime(row.deliveryTime, AUS_TZ.Adelaide)
+      const deliveryMs = deliveryAdelaide.valueOf()
+      const signMs = row.signDate ? iMileTimeMs(row.signDate) : null
+      const problemMs = row.lastProblemDate ? iMileTimeMs(row.lastProblemDate) : null
+      const dow = deliveryAdelaide.day() // 0=Sun,1=Mon,...,6=Sat
+
+      let met = false
+      if (dow >= 1 && dow <= 4) {
+        // 周一~周四：signDate 或 lastProblemDate 距 deliveryTime <= 24h 之一达标即算
+        const within24h = (ms: number | null) => ms != null && ms - deliveryMs <= 24 * 60 * 60 * 1000
+        met = within24h(signMs) || within24h(problemMs)
+      } else {
+        // 周五(5)、周六(6)、周日(0)：下周一 23:59:59（阿德莱德）前签收达标
+        const daysToMonday = dow === 0 ? 1 : dow === 5 ? 3 : 2
+        const nextMondayMs = deliveryAdelaide
+          .add(daysToMonday, 'day')
+          .hour(23).minute(59).second(59).millisecond(0)
+          .valueOf()
+        met = signMs != null && signMs <= nextMondayMs
+      }
+
+      let stat = dispatch24hByVendor.get(vendorCode)
+      if (!stat) { stat = { total: 0, met: 0, unmetNos: [] }; dispatch24hByVendor.set(vendorCode, stat) }
+      stat.total += 1
+      if (met) {
+        stat.met += 1
+      } else {
+        const wbNo = row.waybillNo ?? ''
+        if (wbNo) stat.unmetNos.push(wbNo)
+      }
+    }
+
+    // 11点前未出仓单号：按供应商聚合（无站点过滤，与 before11ExitRate 口径一致）
+    const before11UnmetByVendor = new Map<string, string[]>()
+    for (const row of fetchedData.driverYesterdayWaybills) {
+      if (row.before11Exit) continue
+      const vendorCode = row.courierVendorCode ?? ''
+      if (!vendorCode) continue
+      const wbNo = row.waybillNo ?? ''
+      if (!wbNo) continue
+      let arr = before11UnmetByVendor.get(vendorCode)
+      if (!arr) { arr = []; before11UnmetByVendor.set(vendorCode, arr) }
+      arr.push(wbNo)
+    }
+
+    return { waybillsByVendor, ticketsByVendor, longTailByVendor, unprocessedCountByVendor, stationSet, dispatch24hByVendor, before11UnmetByVendor }
   }, [fetchedData, selectedStations])
 
   const pushAll = useCallback(async () => {
@@ -369,14 +372,18 @@ export function useVendorAnalysisPage() {
 
       const unprocessedTicketCount = unprocessedCountByVendor.get(config.vendorCode) ?? 0
       const longTailCount = longTailByVendor.get(config.vendorCode)?.length ?? 0
-      const fineBi = fetchedData.fineBiMetricsByVendor[config.vendorCode]
-      const fineBi24h = fetchedData.fineBi24hMetricsByVendor[config.vendorCode]
-      const before11ExitRate = fineBi?.before11ExitRate ?? null
+      const before11 = fetchedData.before11ExitRateByVendor[config.vendorCode]
+      const dispatch24h = indexedData.dispatch24hByVendor.get(config.vendorCode)
+      const before11ExitRate = before11?.before11ExitRate ?? null
       const before11ExitPercent = before11ExitRate != null
         ? (before11ExitRate * 100).toFixed(2)
         : '—'
-      const dispatchRate24hText = fineBi24h?.dispatchRate24hText ?? null
-      const notMet24hSignCount = fineBi24h?.notMet24hSignCount ?? null
+      const before11ExitVolume = before11?.before11ExitVolume ?? null
+      const before11TotalReceived = before11?.totalReceived ?? null
+      const dispatchRate24hText = dispatch24h && dispatch24h.total > 0
+        ? `${(dispatch24h.met / dispatch24h.total * 100).toFixed(2)}%`
+        : null
+      const notMet24hSignCount = dispatch24h ? dispatch24h.total - dispatch24h.met : null
 
       const card = buildVendorFeishuCard({
         vendorName: config.vendorName,
@@ -387,6 +394,8 @@ export function useVendorAnalysisPage() {
         waybillCount,
         ratePercent,
         before11ExitPercent,
+        before11ExitVolume,
+        before11TotalReceived,
         dispatchRate24hText,
         notMet24hSignCount,
         unprocessedTicketCount,
@@ -419,7 +428,7 @@ export function useVendorAnalysisPage() {
     } else {
       showToast(`推送完成：${successCount} 成功 · ${failCount} 失败`, 'warning')
     }
-  }, [fetchedData, indexedData, selectedStations, configs, dateRange])
+  }, [fetchedData, indexedData, selectedStations, configs])
 
   const addConfig = useCallback(async (draft: VendorPushConfigDraft) => {
     const res = await createConfig(draft)
@@ -463,16 +472,17 @@ export function useVendorAnalysisPage() {
   const driverPerformanceByVendor = useMemo<Record<string, DriverPerformanceRow[]>>(() => {
     if (!fetchedData) return {}
 
-    // ── 归班预警：当日14:00为基准，ofdDate距基准>=48h 则计入 ──
-    const cutoff = new Date()
-    cutoff.setHours(14, 0, 0, 0)
-    const cutoffMs = cutoff.getTime()
+    // ── 归班预警：以查询发起时刻为基准，ofdDate（墨尔本时间）转换后距基准>=48h 则计入 ──
+    const cutoffMs = nowIn(AUS_TZ.Adelaide).valueOf()
 
-    const returnWarningMap = new Map<string, number>()
+    const returnWarningMap = new Map<string, { count: number; waybillNos: string[] }>()
     for (const row of fetchedData.driverReturnRows) {
       if (!row.driverCode || !row.ofdDate) continue
-      if (cutoffMs - new Date(row.ofdDate).getTime() >= 48 * 60 * 60 * 1000) {
-        returnWarningMap.set(row.driverCode, (returnWarningMap.get(row.driverCode) ?? 0) + 1)
+      if (cutoffMs - iMileTimeMs(row.ofdDate) >= 48 * 60 * 60 * 1000) {
+        const entry = returnWarningMap.get(row.driverCode) ?? { count: 0, waybillNos: [] }
+        entry.count += 1
+        if (row.waybillNo) entry.waybillNos.push(row.waybillNo)
+        returnWarningMap.set(row.driverCode, entry)
       }
     }
 
@@ -480,52 +490,95 @@ export function useVendorAnalysisPage() {
 
     for (const config of configs) {
       // ── 今日取件量：昨日运单，按 courierVendorCode 匹配，按 courierCode 计数 ──
-      type PickupAgg = { courierName: string; routeCode: string; count: number }
+      type PickupAgg = { courierName: string; routeCode: string; count: number; before11Count: number; waybillNos: string[]; before11UnmetWaybillNos: string[] }
       const pickupMap = new Map<string, PickupAgg>()
       for (const row of fetchedData.driverYesterdayWaybills) {
         if (!row.courierCode || row.courierVendorCode !== config.vendorCode) continue
         const agg = pickupMap.get(row.courierCode)
+        const wbNo = row.waybillNo ?? ''
         if (agg) {
           agg.count += 1
+          if (row.before11Exit) {
+            agg.before11Count += 1
+          } else if (wbNo) {
+            agg.before11UnmetWaybillNos.push(wbNo)
+          }
+          if (wbNo) agg.waybillNos.push(wbNo)
         } else {
           pickupMap.set(row.courierCode, {
             courierName: row.courier ?? '',
             routeCode: row.consigneeRouteCode ?? '',
             count: 1,
+            before11Count: row.before11Exit ? 1 : 0,
+            waybillNos: wbNo ? [wbNo] : [],
+            before11UnmetWaybillNos: !row.before11Exit && wbNo ? [wbNo] : [],
           })
         }
       }
 
-      // ── 24H派签率：前天运单，按 courierVendorCode 匹配，按规则判断是否达标 ──
-      type DispatchAgg = { total: number; completed: number; routeCode: string }
+      // ── 24H派签率：前天运单，按站点+供应商过滤，按规则判断是否达标 ──
+      const stationSet = new Set(selectedStations)
+      type DispatchAgg = { total: number; completed: number; routeCode: string; unmetNos: string[] }
       const dispatchMap = new Map<string, DispatchAgg>()
       for (const row of fetchedData.driverDayBeforeWaybills) {
         if (!row.courierCode || row.courierVendorCode !== config.vendorCode) continue
         if (!row.deliveryTime) continue
+        // 按最新派件网点过滤（与供应商级指标保持一致）
+        if (stationSet.size > 0 && !stationSet.has(row.lastScanSiteCode ?? '')) continue
 
-        const deliveryMs = new Date(row.deliveryTime).getTime()
-        const signMs = row.signDate ? new Date(row.signDate).getTime() : null
-        const dow = new Date(row.deliveryTime).getDay() // 0=Sun,1=Mon,...,6=Sat
+        // iMile 时间为墨尔本本地时间，需先转为阿德莱德时间再判断星期和截止时间
+        const deliveryAdelaide = fromIMileTime(row.deliveryTime, AUS_TZ.Adelaide)
+        const deliveryMs = deliveryAdelaide.valueOf()
+        const signMs = row.signDate ? iMileTimeMs(row.signDate) : null
+        const problemMs = row.lastProblemDate ? iMileTimeMs(row.lastProblemDate) : null
+        const dow = deliveryAdelaide.day() // 0=Sun,1=Mon,...,6=Sat
 
         let completed = false
-        if (dow <= 4) {
-          // 周日~周四：签收时间 - 派件时间 <= 24h
-          completed = signMs != null && signMs - deliveryMs <= 24 * 60 * 60 * 1000
+        if (dow >= 1 && dow <= 4) {
+          // 周一~周四：signDate 或 lastProblemDate 距 deliveryTime <= 24h 之一达标即算
+          const within24h = (ms: number | null) => ms != null && ms - deliveryMs <= 24 * 60 * 60 * 1000
+          completed = within24h(signMs) || within24h(problemMs)
         } else {
-          // 周五、周六：下周一 23:59:59 前签收即达标
-          const daysToMonday = dow === 5 ? 3 : 2
-          const nextMonday = new Date(row.deliveryTime)
-          nextMonday.setDate(nextMonday.getDate() + daysToMonday)
-          nextMonday.setHours(23, 59, 59, 0)
-          completed = signMs != null && signMs <= nextMonday.getTime()
+          // 周五(5)、周六(6)、周日(0)：下周一 23:59:59（阿德莱德时间）前签收即达标
+          const daysToMonday = dow === 0 ? 1 : dow === 5 ? 3 : 2
+          const nextMondayMs = deliveryAdelaide
+            .add(daysToMonday, 'day')
+            .hour(23).minute(59).second(59).millisecond(0)
+            .valueOf()
+          completed = signMs != null && signMs <= nextMondayMs
         }
 
+        const wbNo = row.waybillNo ?? ''
         const agg = dispatchMap.get(row.courierCode)
         if (agg) {
           agg.total += 1
-          if (completed) agg.completed += 1
+          if (completed) {
+            agg.completed += 1
+          } else if (wbNo) {
+            agg.unmetNos.push(wbNo)
+          }
         } else {
-          dispatchMap.set(row.courierCode, { total: 1, completed: completed ? 1 : 0, routeCode: row.consigneeRouteCode ?? '' })
+          dispatchMap.set(row.courierCode, {
+            total: 1,
+            completed: completed ? 1 : 0,
+            routeCode: row.consigneeRouteCode ?? '',
+            unmetNos: !completed && wbNo ? [wbNo] : [],
+          })
+        }
+      }
+
+      // ── 长尾单：按司机 driverCode 聚合（与当前供应商匹配） ──
+      type LongTailAgg = { count: number; waybillNos: string[] }
+      const longTailByDriver = new Map<string, LongTailAgg>()
+      for (const order of fetchedData.longTailOrders) {
+        if (!order.driverCode || order.driverVendorCode !== config.vendorCode) continue
+        const waybillNo = typeof order.waybillNo === 'string' ? order.waybillNo : ''
+        const agg = longTailByDriver.get(order.driverCode)
+        if (agg) {
+          agg.count += 1
+          if (waybillNo) agg.waybillNos.push(waybillNo)
+        } else {
+          longTailByDriver.set(order.driverCode, { count: 1, waybillNos: waybillNo ? [waybillNo] : [] })
         }
       }
 
@@ -571,10 +624,17 @@ export function useVendorAnalysisPage() {
           vendorName: config.vendorName,
           routeCode: pickup?.routeCode || dispatch?.routeCode || '',
           ofdCount: pickup?.count ?? 0,
-          returnWarningCount: returnWarningMap.get(courierCode) ?? 0,
+          ofdWaybillNos: pickup?.waybillNos ?? [],
+          before11OfdCount: pickup?.before11Count ?? 0,
+          before11UnmetWaybillNos: pickup?.before11UnmetWaybillNos ?? [],
+          returnWarningCount: returnWarningMap.get(courierCode)?.count ?? 0,
+          returnWarningWaybillNos: returnWarningMap.get(courierCode)?.waybillNos ?? [],
           dispatch24hCount,
           totalDispatchCount: totalDispatch,
           dispatchRate24h,
+          dispatch24hUnmetWaybillNos: dispatch?.unmetNos ?? [],
+          longTailCount: longTailByDriver.get(courierCode)?.count ?? 0,
+          longTailWaybillNos: longTailByDriver.get(courierCode)?.waybillNos ?? [],
         })
       }
 
@@ -587,39 +647,53 @@ export function useVendorAnalysisPage() {
 
   const vendorMetrics = useMemo<VendorMetricRow[]>(() => {
     if (!fetchedData || !indexedData) return []
-    const { waybillsByVendor, ticketsByVendor, longTailByVendor, unprocessedCountByVendor } = indexedData
+    const { waybillsByVendor, ticketsByVendor, longTailByVendor, unprocessedCountByVendor, dispatch24hByVendor, before11UnmetByVendor } = indexedData
     return configs.map((config) => {
       const complaintCount = ticketsByVendor.get(config.vendorCode)?.length ?? 0
       const waybillCount = waybillsByVendor.get(config.vendorCode)?.length ?? 0
       const complaintRate = waybillCount > 0 ? complaintCount / waybillCount : 0
       const unprocessedTicketCount = unprocessedCountByVendor.get(config.vendorCode) ?? 0
       const longTailCount = longTailByVendor.get(config.vendorCode)?.length ?? 0
-      const fineBi = fetchedData.fineBiMetricsByVendor[config.vendorCode]
-      const fineBi24h = fetchedData.fineBi24hMetricsByVendor[config.vendorCode]
+      const vendorCode = normalizeVendorCode(config.vendorCode)
+      const before11 = fetchedData.before11ExitRateByVendor[vendorCode]
+      const dispatch24h = dispatch24hByVendor.get(vendorCode)
+      const dispatch24hTotal = dispatch24h?.total ?? null
+      const dispatch24hCount = dispatch24h?.met ?? null
+      const dispatchRate24hText = dispatch24h && dispatch24h.total > 0
+        ? `${(dispatch24h.met / dispatch24h.total * 100).toFixed(2)}%`
+        : null
+      const notMet24hSignCount = dispatch24h ? dispatch24h.total - dispatch24h.met : null
+      const complaintOrderCodes = ticketsByVendor.get(config.vendorCode)
+        ?.map((t) => String((t as Record<string, unknown>).orderCode ?? '')).filter(Boolean) ?? []
       return {
-        vendorCode: config.vendorCode,
+        vendorCode,
         vendorName: config.vendorName,
         complaintCount,
         waybillCount,
         complaintRate,
         unprocessedTicketCount,
         longTailCount,
-        before11ExitRate: fineBi?.before11ExitRate ?? null,
-        dispatchRate24hText: fineBi24h?.dispatchRate24hText ?? null,
-        notMet24hSignCount: fineBi24h?.notMet24hSignCount ?? null,
+        before11ExitRate: before11?.before11ExitRate ?? null,
+        before11ExitVolume: before11?.before11ExitVolume ?? null,
+        before11TotalReceived: before11?.totalReceived ?? null,
+        before11UnmetWaybillNos: before11UnmetByVendor.get(vendorCode) ?? [],
+        dispatchRate24hText,
+        notMet24hSignCount,
+        dispatch24hTotal,
+        dispatch24hCount,
+        dispatch24hUnmetWaybillNos: dispatch24h?.unmetNos ?? [],
+        complaintOrderCodes,
         isDisabled: config.isDisabled,
       }
     })
   }, [fetchedData, indexedData, configs])
 
   return {
-    dateRange,
-    setDateRange: handleDateRangeChange,
+    referenceDate,
+    setReferenceDate: handleReferenceDateChange,
     complaintDateRange,
     setComplaintDateRange: handleComplaintDateRangeChange,
     selectedStations,
-    fineBiConnections,
-    setFineBiConnections: handleFineBiConnectionsChange,
     vendors,
     vendorsLoading,
     configs,
@@ -656,6 +730,8 @@ function buildVendorFeishuCard(params: {
   waybillCount: number
   ratePercent: string
   before11ExitPercent: string
+  before11ExitVolume: number | null
+  before11TotalReceived: number | null
   dispatchRate24hText: string | null
   notMet24hSignCount: number | null
   unprocessedTicketCount: number
@@ -665,6 +741,7 @@ function buildVendorFeishuCard(params: {
   const {
     vendorName, dateLabel, ticketDateLabel, stationLabel,
     complaintCount, waybillCount, ratePercent, before11ExitPercent,
+    before11ExitVolume, before11TotalReceived,
     dispatchRate24hText, notMet24hSignCount,
     unprocessedTicketCount, longTailCount, pushDescription,
   } = params
@@ -680,7 +757,14 @@ function buildVendorFeishuCard(params: {
       : before11Num >= 95
         ? 'orange'
         : 'red'
-  const dispatch24hColor = dispatchRate24hColor(dispatchRate24hText)
+  const dispatch24hRateNum = dispatchRate24hText ? parseFloat(dispatchRate24hText) : null
+  const dispatch24hColor = dispatch24hRateNum == null
+    ? 'grey'
+    : dispatch24hRateNum >= 92
+      ? 'green'
+      : dispatch24hRateNum >= 75
+        ? 'orange'
+        : 'red'
   const dispatch24hDisplay = dispatchRate24hText ?? '—'
   const notMet24hDisplay = notMet24hSignCount == null ? '—' : String(notMet24hSignCount)
   const pendingColor = (n: number) => n > 0 ? 'orange' : 'green'
@@ -720,14 +804,14 @@ function buildVendorFeishuCard(params: {
             ),
             metricColumn(
               '11点前出仓率',
-              `<font color='${before11Color}'>**${before11ExitPercent}${before11ExitPercent === '—' ? '' : '%'}**</font>`,
+              `<font color='${before11Color}'>**${before11ExitPercent}${before11ExitPercent === '—' ? '' : '%'}**</font>${before11ExitVolume != null && before11TotalReceived != null ? `\n${before11ExitVolume} / ${before11TotalReceived} 件` : ''}`,
             ),
             metricColumn(
               '24小时签派率',
               `<font color='${dispatch24hColor}'>**${dispatch24hDisplay}**</font>`,
             ),
             metricColumn(
-              FINEBI_METRIC_NOT_MET_24H_LABEL,
+              '24小时签收未达标',
               `<font color='${notMet24hSignCount != null && notMet24hSignCount > 0 ? 'orange' : 'green'}'>**${notMet24hDisplay}**</font>${notMet24hSignCount != null ? ' 件' : ''}`,
             ),
           ],

@@ -2,8 +2,7 @@ import { Router, type Response } from 'express'
 import { eq } from 'drizzle-orm'
 import type { AuthenticatedRequest } from '../auth/middleware'
 import { getDb, schema } from '../db'
-import { fetchFineBi24hDispatchMetricsBatch } from '../imile/fineBi24hDispatchMetrics'
-import { fetchFineBiVendorMetricsBatch } from '../imile/fineBiVendorMetrics'
+import { createDeepSeekClient } from '../openaiClient'
 import {
   fetchVendorStations,
   fetchVendors,
@@ -11,14 +10,15 @@ import {
   fetchUnprocessedTickets,
   fetchLongTailOrders,
   fetchVendorWaybills,
+  fetchBefore11ExitRates,
 } from '../imile/vendorAnalysis'
 import { fetchDriverWaybills, fetchDriverReturnWarning } from '../imile/driverPerformance'
 import { readImileTokenFromRequest } from './imileAuth'
 import { getCachedWaybills, makeWaybillCacheKey, setCachedWaybills } from '../imile/waybillCache'
 import { Semaphore } from '../imile/semaphore'
 
-// 同一时刻只允许 1 个 driver-waybills 分页请求跑，防止两路并发触发 iMile 限流
-const driverWaybillSemaphore = new Semaphore(1)
+// 三个 searchWaybill 类接口共享此锁，同一时刻只允许 1 个在跑，防止触发 iMile 限流
+const waybillSearchSemaphore = new Semaphore(1)
 
 export const vendorAnalysisRouter = Router()
 
@@ -114,112 +114,30 @@ vendorAnalysisRouter.post('/long-tail-orders', async (req: AuthenticatedRequest,
   res.json({ ok: true, data: result.data })
 })
 
-vendorAnalysisRouter.post('/finebi-metrics', async (req: AuthenticatedRequest, res: Response) => {
-  const body = req.body as {
-    endDate?: string
-    vendorCodes?: unknown
-    stationCodes?: unknown
-    fineBiConnection?: {
-      reportId?: unknown
-      shareLink?: unknown
-      baseUrl?: unknown
-      authToken?: unknown
-      widgetDataUrl?: unknown
-    }
+vendorAnalysisRouter.post('/before11-exit-rate', async (req: AuthenticatedRequest, res: Response) => {
+  const token = readImileTokenFromRequest(req)
+  if (!token) {
+    res.status(400).json({ ok: false, error: '缺少 iMile token' })
+    return
   }
-  const endDate = typeof body.endDate === 'string' ? body.endDate.trim() : ''
-  if (!endDate) {
-    res.status(400).json({ ok: false, error: '缺少 endDate' })
+  const body = req.body as { startTime?: string; endTime?: string; vendorCodes?: unknown }
+  const startTime = typeof body.startTime === 'string' ? body.startTime.trim() : ''
+  const endTime = typeof body.endTime === 'string' ? body.endTime.trim() : ''
+  if (!startTime || !endTime) {
+    res.status(400).json({ ok: false, error: '缺少 startTime 或 endTime' })
     return
   }
   const vendorCodes = Array.isArray(body.vendorCodes)
     ? (body.vendorCodes as string[]).filter((s) => typeof s === 'string' && s.trim())
     : []
-  const stationCodes = Array.isArray(body.stationCodes)
-    ? (body.stationCodes as string[]).filter((s) => typeof s === 'string' && s.trim())
-    : []
-  if (!stationCodes.length) {
-    res.status(400).json({ ok: false, error: '缺少 stationCodes' })
-    return
-  }
 
-  const conn = body.fineBiConnection
-  if (!conn || typeof conn.reportId !== 'string' || typeof conn.shareLink !== 'string') {
-    res.status(400).json({ ok: false, error: '缺少 fineBiConnection（reportId、shareLink）' })
-    return
-  }
-
-  const result = await fetchFineBiVendorMetricsBatch({
-    endDate,
-    vendorCodes,
-    stationCodes,
-    connection: {
-      reportId: conn.reportId.trim(),
-      shareLink: conn.shareLink.trim(),
-      baseUrl: typeof conn.baseUrl === 'string' ? conn.baseUrl.trim() : undefined,
-      authToken: typeof conn.authToken === 'string' ? conn.authToken.trim() : undefined,
-      widgetDataUrl: typeof conn.widgetDataUrl === 'string' ? conn.widgetDataUrl.trim() : undefined,
-    },
-  })
-  if (!result.ok) {
-    res.status(502).json({ ok: false, error: result.message })
-    return
-  }
-  res.json({ ok: true, data: result.data })
-})
-
-vendorAnalysisRouter.post('/finebi-24h-dispatch-metrics', async (req: AuthenticatedRequest, res: Response) => {
-  const body = req.body as {
-    startDate?: string
-    endDate?: string
-    vendorCodes?: unknown
-    stationCodes?: unknown
-    country?: string
-    fineBiConnection?: {
-      reportId?: unknown
-      shareLink?: unknown
-      baseUrl?: unknown
-      authToken?: unknown
-      widgetDataUrl?: unknown
-    }
-  }
-  const startDate = typeof body.startDate === 'string' ? body.startDate.trim() : ''
-  const endDate = typeof body.endDate === 'string' ? body.endDate.trim() : ''
-  if (!startDate || !endDate) {
-    res.status(400).json({ ok: false, error: '缺少 startDate 或 endDate' })
-    return
-  }
-  const vendorCodes = Array.isArray(body.vendorCodes)
-    ? (body.vendorCodes as string[]).filter((s) => typeof s === 'string' && s.trim())
-    : []
-  const stationCodes = Array.isArray(body.stationCodes)
-    ? (body.stationCodes as string[]).filter((s) => typeof s === 'string' && s.trim())
-    : []
-  if (!stationCodes.length) {
-    res.status(400).json({ ok: false, error: '缺少 stationCodes' })
-    return
-  }
-
-  const conn = body.fineBiConnection
-  if (!conn || typeof conn.reportId !== 'string' || typeof conn.shareLink !== 'string') {
-    res.status(400).json({ ok: false, error: '缺少 fineBiConnection（reportId、shareLink）' })
-    return
-  }
-
-  const result = await fetchFineBi24hDispatchMetricsBatch({
-    startDate,
-    endDate,
-    vendorCodes,
-    stationCodes,
-    country: typeof body.country === 'string' ? body.country.trim() : undefined,
-    connection: {
-      reportId: conn.reportId.trim(),
-      shareLink: conn.shareLink.trim(),
-      baseUrl: typeof conn.baseUrl === 'string' ? conn.baseUrl.trim() : undefined,
-      authToken: typeof conn.authToken === 'string' ? conn.authToken.trim() : undefined,
-      widgetDataUrl: typeof conn.widgetDataUrl === 'string' ? conn.widgetDataUrl.trim() : undefined,
-    },
-  })
+  const result = await waybillSearchSemaphore.run(() =>
+    fetchBefore11ExitRates(token, {
+      startTime,
+      endTime,
+      vendorCodes,
+    }),
+  )
   if (!result.ok) {
     res.status(502).json({ ok: false, error: result.message })
     return
@@ -230,12 +148,16 @@ vendorAnalysisRouter.post('/finebi-24h-dispatch-metrics', async (req: Authentica
 function slimWaybill(row: unknown): Record<string, unknown> {
   const r = row as Record<string, unknown>
   return {
+    waybillNo: r.waybillNo,
     courierVendorCode: r.courierVendorCode,
     courierCode: r.courierCode,
     courier: r.courier,
     consigneeRouteCode: r.consigneeRouteCode,
     deliveryTime: r.deliveryTime,
     signDate: r.signDate,
+    lastScanSiteCode: r.lastScanSiteCode,
+    lastScanSiteName: r.lastScanSiteName,
+    lastProblemDate: r.lastProblemDate,
   }
 }
 
@@ -246,21 +168,22 @@ vendorAnalysisRouter.post('/waybills', async (req: AuthenticatedRequest, res: Re
     return
   }
   const body = req.body as { startTime?: string; endTime?: string }
-  if (!body.startTime || !body.endTime) {
+  const startTime = typeof body.startTime === 'string' ? body.startTime.trim() : ''
+  const endTime = typeof body.endTime === 'string' ? body.endTime.trim() : ''
+  if (!startTime || !endTime) {
     res.status(400).json({ ok: false, error: '缺少 startTime 或 endTime' })
     return
   }
-  const cacheKey = makeWaybillCacheKey(token, body.startTime, body.endTime)
+  const cacheKey = makeWaybillCacheKey(token, startTime, endTime)
   const cached = getCachedWaybills(cacheKey)
   if (cached) {
     res.json({ ok: true, data: cached })
     return
   }
 
-  const result = await fetchVendorWaybills(token, {
-    startTime: body.startTime,
-    endTime: body.endTime,
-  })
+  const result = await waybillSearchSemaphore.run(() =>
+    fetchVendorWaybills(token, { startTime, endTime }),
+  )
   if (!result.ok) {
     res.status(502).json({ ok: false, error: result.message })
     return
@@ -283,7 +206,7 @@ vendorAnalysisRouter.post('/driver-waybills', async (req: AuthenticatedRequest, 
     res.status(400).json({ ok: false, error: '缺少 startTime 或 endTime' })
     return
   }
-  const result = await driverWaybillSemaphore.run(() =>
+  const result = await waybillSearchSemaphore.run(() =>
     fetchDriverWaybills(token, { startTime, endTime }),
   )
   if (!result.ok) {
@@ -429,5 +352,98 @@ vendorAnalysisRouter.delete('/configs/:id', async (req: AuthenticatedRequest, re
     res.json({ ok: true })
   } catch {
     res.status(500).json({ ok: false, error: '删除配置失败' })
+  }
+})
+
+// ─── AI 供应商总结分析 ───────────────────────────────────────────────────────
+
+type VendorAiDriverInput = {
+  courierName: string
+  courierCode: string
+  routeCode: string
+  ofdCount: number
+  /** 11点前出仓率，fraction */
+  before11ExitRate: number | null
+  /** 24H派签率，fraction */
+  dispatchRate24h: number | null
+  dispatch24hCount: number
+  totalDispatchCount: number
+  returnWarningCount: number
+}
+
+type VendorAiInput = {
+  vendorCode: string
+  vendorName: string
+  /** 11点前出仓率，fraction */
+  before11ExitRate: number | null
+  /** 24H派签率，fraction */
+  dispatchRate24h: number | null
+  /** 客诉率，fraction */
+  complaintRate: number
+  complaintCount: number
+  waybillCount: number
+  unprocessedTicketCount: number
+  longTailCount: number
+  /** 按归班预警数降序、再按派签率升序排列，最多 30 条 */
+  drivers: VendorAiDriverInput[]
+}
+
+const VENDOR_AI_SYSTEM_PROMPT = `你是 iMile Australia 的资深运营分析师，负责向各快递供应商提供有深度、可执行的数据分析报告。
+
+【指标基准线】
+- 11点前出仓率：≥99% 达标，[95%,99%) 预警，<95% 异常
+- 24H派签率：≥95% 达标，[92%,95%) 预警，<92% 异常
+- 客诉率：≤0.025% 达标，(0.025%,0.03%) 预警，≥0.03% 异常
+
+【分析要求】针对每家供应商输出150~250字的专业中文分析，必须涵盖以下维度：
+1. 供应商整体表现总结（对照基准，指出哪些指标有问题、偏差幅度，不只是重复数字）
+2. 司机层面深入分析：
+   - 点名24H派签率最低的2~3名司机及其路由、具体数值
+   - 点名归班预警次数最多的司机，说明风险
+   - 若存在某条路由多名司机均表现差，判断可能是路线问题而非个人问题
+3. 问题归因推断（基于数据，不要凭空猜测）
+4. 具体可执行建议（涉及到人名或路由，而非"加强管理"之类的空话）
+
+【格式要求】
+- 流畅中文段落，不使用 markdown、分点符号、emoji
+- 150~250字，言之有物，不堆砌废话
+- 若某家供应商所有指标均达标，则以积极语气简要肯定（60~80字即可），并从司机数据中找出表现最优司机予以点名
+- 禁止出现：AI、大模型、自动生成、人工智能
+
+返回严格 JSON（UTF-8，无 markdown wrapper）：{"summaries":{"<vendorCode>":"<analysis>",...}}`
+
+vendorAnalysisRouter.post('/ai-summary', async (req: AuthenticatedRequest, res: Response) => {
+  const apiKey = process.env.DEEPSEEK_API_KEY?.trim()
+  if (!apiKey) {
+    res.status(503).json({ ok: false, error: '未配置 DEEPSEEK_API_KEY' })
+    return
+  }
+
+  const { vendors } = req.body as { vendors?: VendorAiInput[] }
+  if (!Array.isArray(vendors) || vendors.length === 0) {
+    res.status(400).json({ ok: false, error: '缺少 vendors 数据' })
+    return
+  }
+
+  const userPrompt = `以下是今日 ${vendors.length} 家供应商的运营数据，请逐一进行深度分析：\n${JSON.stringify(vendors, null, 2)}`
+
+  try {
+    const client = createDeepSeekClient(apiKey)
+    const model = process.env.DEEPSEEK_VENDOR_MODEL?.trim() ?? 'deepseek-chat'
+    const completion = await client.chat.completions.create({
+      model,
+      temperature: 0.4,
+      max_tokens: 3000,
+      response_format: { type: 'json_object' },
+      messages: [
+        { role: 'system', content: VENDOR_AI_SYSTEM_PROMPT },
+        { role: 'user', content: userPrompt },
+      ],
+    })
+    const raw = completion.choices[0]?.message.content ?? '{}'
+    const parsed = JSON.parse(raw) as { summaries?: Record<string, string> }
+    res.json({ ok: true, data: parsed.summaries ?? {} })
+  } catch (err) {
+    res.status(502).json({ ok: false, error: `AI 分析失败: ${err instanceof Error ? err.message : String(err)}` })
   }
 })

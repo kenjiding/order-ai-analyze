@@ -250,6 +250,13 @@
   font-variant-numeric: tabular-nums;
 }
 
+.cancel-scan-zone-tile__error-rate {
+  color: var(--zone-accent, var(--cs-accent));
+  font-size: 0.75rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
 .cancel-scan-zone-tile__meta {
   color: #94a3b8;
   font-size: 0.6875rem;

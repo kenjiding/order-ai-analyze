@@ -17,11 +17,15 @@ import {
 } from '../feishuEditorContent'
 import { pushFleetRichMessage } from '../pushFleetRichMessage'
 import type { FleetSupplierConfig } from '../fleetSupplierPushTypes'
-import { createFleetSupplierId } from '../fleetSupplierStorage'
-import { loadFleetSuppliers, persistFleetSuppliers } from '../fleetSupplierRepository.idb'
+import {
+  apiCreateFleetSupplier,
+  apiDeleteFleetSupplier,
+  apiImportFleetSuppliers,
+  apiLoadFleetSuppliers,
+  apiUpdateFleetSupplier,
+} from '../fleetSupplierApi'
 import {
   buildFleetSuppliersXlsxBlob,
-  mergeFleetSupplierImports,
   parseFleetSuppliersImportFile,
 } from '../fleetSupplierExportImport'
 import { readLocalPushImage, type LocalPushImage } from '../pushImageLocal'
@@ -54,6 +58,7 @@ export function FleetSupplierPushTab({
   const [globalPushText, setGlobalPushText] = useState('')
   const [pushImages, setPushImages] = useState<LocalPushImage[]>([])
   const [suppliers, setSuppliers] = useState<FleetSupplierConfig[]>([])
+  const [configsLoading, setConfigsLoading] = useState(true)
   const [selectedSupplierKeys, setSelectedSupplierKeys] = useState<Key[]>([])
 
   const [scanRowCount, setScanRowCount] = useState(0)
@@ -82,12 +87,15 @@ export function FleetSupplierPushTab({
   useEffect(() => {
     let cancelled = false
     void (async () => {
-      const list = await loadFleetSuppliers()
-      if (!cancelled) setSuppliers(list)
+      setConfigsLoading(true)
+      const res = await apiLoadFleetSuppliers()
+      if (!cancelled) {
+        if (res.ok) setSuppliers(res.data)
+        else showToast(`加载供应商配置失败：${res.error}`, 'error')
+        setConfigsLoading(false)
+      }
     })()
-    return () => {
-      cancelled = true
-    }
+    return () => { cancelled = true }
   }, [])
 
   const supplierIdSet = useMemo(() => new Set(suppliers.map((s) => s.id)), [suppliers])
@@ -101,26 +109,6 @@ export function FleetSupplierPushTab({
     const sel = new Set(effectiveSelectedKeys.map(String))
     return suppliers.some((s) => sel.has(s.id) && hasEditorContent(s.pushContent))
   }, [globalPushText, effectiveSelectedKeys, suppliers])
-
-  const persist = useCallback(
-    async (next: FleetSupplierConfig[]) => {
-      setSuppliers(next)
-      try {
-        await persistFleetSuppliers(next)
-      } catch (e) {
-        const msg = e instanceof Error ? e.message : '未知错误'
-        showToast(`供应商配置保存失败：${msg}`, 'error')
-        try {
-          const restored = await loadFleetSuppliers()
-          setSuppliers(restored)
-        } catch {
-          /* ignore */
-        }
-        throw e
-      }
-    },
-    [],
-  )
 
   const openCreate = () => {
     setEditing(null)
@@ -167,31 +155,26 @@ export function FleetSupplierPushTab({
   }
 
   const handleCommitted = async (values: Omit<FleetSupplierConfig, 'id'>) => {
-    try {
-      if (editing) {
-        const next = suppliers.map((s) =>
-          s.id === editing.id ? { ...editing, ...values, id: editing.id } : s,
-        )
-        await persist(next)
-        showToast(`已更新供应商「${values.supplierName || editing.supplierName}」。`, 'success')
-      } else {
-        await persist([...suppliers, { id: createFleetSupplierId(), ...values }])
-        showToast(`已添加供应商「${values.supplierName}」。`, 'success')
-      }
-      setModalOpen(false)
-      setEditing(null)
-    } catch {
-      /* persist 已提示 */
+    if (editing) {
+      const res = await apiUpdateFleetSupplier(editing.id, values)
+      if (!res.ok) { showToast(`更新失败：${res.error}`, 'error'); return }
+      setSuppliers((prev) => prev.map((s) => s.id === editing.id ? res.data : s))
+      showToast(`已更新供应商「${values.supplierName || editing.supplierName}」。`, 'success')
+    } else {
+      const res = await apiCreateFleetSupplier(values)
+      if (!res.ok) { showToast(`添加失败：${res.error}`, 'error'); return }
+      setSuppliers((prev) => [...prev, res.data])
+      showToast(`已添加供应商「${values.supplierName}」。`, 'success')
     }
+    setModalOpen(false)
+    setEditing(null)
   }
 
   const removeSupplier = async (row: FleetSupplierConfig) => {
-    try {
-      await persist(suppliers.filter((s) => s.id !== row.id))
-      showToast(`已移除「${row.supplierName}」。`, 'success')
-    } catch {
-      /* persist 已提示 */
-    }
+    const res = await apiDeleteFleetSupplier(row.id)
+    if (!res.ok) { showToast(`删除失败：${res.error}`, 'error'); return }
+    setSuppliers((prev) => prev.filter((s) => s.id !== row.id))
+    showToast(`已移除「${row.supplierName}」。`, 'success')
   }
 
   const removePushImage = (id: string) => {
@@ -235,14 +218,8 @@ export function FleetSupplierPushTab({
 
   const pushCustomImageDataUrls = useMemo(() => pushImages.map((img) => img.dataUrl), [pushImages])
 
-  const pushSupplierRichMessage = async (
-    s: FleetSupplierConfig,
-    editorHtml: string,
-    extraImages: string[],
-    fallbackTitle?: string,
-  ) => {
-    let { content, images } = prepareFleetRichPayload(editorHtml, extraImages)
-    if (!content && fallbackTitle) content = fallbackTitle
+  const pushSupplierRichText = async (s: FleetSupplierConfig, editorHtml: string) => {
+    const { content, images } = prepareFleetRichPayload(editorHtml, [])
     return withRetry(() =>
       pushFleetRichMessage({
         pushScope: 'fleet-supplier',
@@ -250,6 +227,18 @@ export function FleetSupplierPushTab({
         signingSecret: s.signingSecret,
         content,
         images,
+      }),
+    )
+  }
+
+  const pushSupplierSingleImage = async (s: FleetSupplierConfig, imageDataUrl: string) => {
+    return withRetry(() =>
+      pushFleetRichMessage({
+        pushScope: 'fleet-supplier',
+        webhookUrl: s.webhookUrl,
+        signingSecret: s.signingSecret,
+        content: '',
+        images: [imageDataUrl],
       }),
     )
   }
@@ -295,77 +284,73 @@ export function FleetSupplierPushTab({
         const supplierPart = s.pushContent.trim()
         const globalPart = g
         const mergedHtml = mergeEditorHtmlParts([supplierPart, globalPart])
-        const hasEditorContent = mergedHtml.trim().length > 0
-        const headlineBase =
-          hasEditorContent ? '' : `「${s.supplierName || '供应商'}」货量统计报表`
+        const hasRichText = hasEditorContent(mergedHtml)
+        const hasManualImages = pushCustomImageDataUrls.length > 0
+
         if (!s.webhookUrl.trim()) {
           errors.push(`「${s.supplierName}」：未配置 webhook。`)
           continue
         }
 
-        if (!hasScan) {
-          if (!hasEditorContent && !hasPushImages) {
-            errors.push(`「${s.supplierName}」：未填写可推送文案，也未添加推送图片。`)
-            continue
-          }
+        if (!hasScan && !hasRichText && !hasManualImages) {
+          errors.push(`「${s.supplierName}」：未填写可推送文案，也未添加推送图片。`)
+          continue
+        }
 
-          const res = await pushSupplierRichMessage(s, mergedHtml, pushCustomImageDataUrls, headlineBase)
-          if (res.ok === true) {
-            oks.push(s.supplierName || s.routeCode)
+        const supplierErrors: string[] = []
+
+        if (hasRichText) {
+          const res = await pushSupplierRichText(s, mergedHtml)
+          if (res.ok !== true) {
+            supplierErrors.push(`文案：${summarizeFeishuTestFailure(res)}`)
+          }
+        }
+
+        if (hasScan) {
+          const routeCodes = parseFleetRouteCodes(s.routeCode)
+          if (!routeCodes.length) {
+            supplierErrors.push('未配置有效路由编码。')
           } else {
-            errors.push(`「${s.supplierName}」：${summarizeFeishuTestFailure(res)}`)
+            const buckets = aggregateFleetRowsForRoute(scanRows, s.routeCode)
+            const total = buckets.reduce((sum, b) => sum + b.total, 0)
+            if (!total) {
+              supplierErrors.push(`路由「${routeCodes.join('、')}」无匹配数据，已跳过货量截图。`)
+            } else {
+              try {
+                const png = await captureFleetRouteReportPng({
+                  title: `${s.supplierName || '供应商'} · 货量汇总`,
+                  subtitle: ``,
+                  buckets,
+                })
+                const res = await pushSupplierSingleImage(s, png)
+                if (res.ok !== true) {
+                  supplierErrors.push(`货量截图：${summarizeFeishuTestFailure(res)}`)
+                }
+              } catch (e) {
+                const msg = e instanceof Error ? e.message : '货量截图失败'
+                supplierErrors.push(`货量截图：${msg}`)
+              }
+            }
           }
-          continue
         }
 
-        const routeCodes = parseFleetRouteCodes(s.routeCode)
-        if (!routeCodes.length) {
-          errors.push(`「${s.supplierName}」：未配置有效路由编码。`)
-          continue
+        for (let i = 0; i < pushCustomImageDataUrls.length; i++) {
+          const res = await pushSupplierSingleImage(s, pushCustomImageDataUrls[i]!)
+          if (res.ok !== true) {
+            const label = pushCustomImageDataUrls.length > 1 ? `推送图片 ${i + 1}` : '推送图片'
+            supplierErrors.push(`${label}：${summarizeFeishuTestFailure(res)}`)
+          }
         }
 
-        const buckets = aggregateFleetRowsForRoute(scanRows, s.routeCode)
-        const total = buckets.reduce((sum, b) => sum + b.total, 0)
-        if (!total) {
-          errors.push(`「${s.supplierName}」：路由「${routeCodes.join('、')}」无匹配数据，已跳过。`)
-          continue
-        }
-
-        let png: string
-        try {
-          png = await captureFleetRouteReportPng({
-            title: `${s.supplierName || '供应商'} · 货量汇总`,
-            subtitle: ``,
-            buckets,
-          })
-        } catch (e) {
-          const msg = e instanceof Error ? e.message : '截图失败'
-          errors.push(`「${s.supplierName}」：${msg}`)
-          continue
-        }
-
-        const reportImages = [png, ...pushCustomImageDataUrls]
-        const res = await pushSupplierRichMessage(
-          s,
-          mergedHtml,
-          reportImages,
-          headlineBase || `「${s.supplierName || '供应商'}」货量统计报表`,
-        )
-
-        if (res.ok === true) {
+        if (supplierErrors.length === 0) {
           oks.push(s.supplierName || s.routeCode)
         } else {
-          errors.push(`「${s.supplierName}」：${summarizeFeishuTestFailure(res)}`)
+          errors.push(`「${s.supplierName}」：${supplierErrors.join('；')}`)
         }
       }
 
       if (errors.length === 0) {
-        showToast(
-          hasScan
-            ? `已向 ${oks.length} 家供应商推送合并消息（文案与图片）。`
-            : `已向 ${oks.length} 家供应商推送合并消息。`,
-          'success'
-        )
+        showToast(`已向 ${oks.length} 家供应商完成推送。`, 'success')
       } else if (oks.length === 0) {
         showToast(errors.join(' '), 'error')
       } else {
@@ -419,42 +404,30 @@ export function FleetSupplierPushTab({
   const runImport = async () => {
     const raw = importFileList[0]?.originFileObj
     const file = raw instanceof File ? raw : undefined
-    if (!file) {
-      showToast('请先选择文件。', 'error')
-      return
-    }
+    if (!file) { showToast('请先选择文件。', 'error'); return }
     setImporting(true)
     try {
       const r = await parseFleetSuppliersImportFile(file)
-      if (!r.ok) {
-        showToast(r.error, 'error')
-        return
+      if (!r.ok) { showToast(r.error, 'error'); return }
+      if (!importMerge) {
+        const confirmed = await confirmDialog({
+          title: '确认替换全部供应商配置？',
+          content: `将删除当前 ${suppliers.length} 条配置，仅保留文件中的 ${r.suppliers.length} 条。`,
+          okText: '替换',
+          danger: true,
+        })
+        if (!confirmed) return
       }
-      if (importMerge) {
-        const next = mergeFleetSupplierImports(suppliers, r.suppliers)
-        try {
-          await persist(next)
-          closeImportModal()
-          showToast(`已合并导入 ${r.suppliers.length} 条（相同 id 以文件为准）。`, 'success')
-        } catch {
-          /* persist 已提示 */
-        }
-        return
-      }
-      const confirmed = await confirmDialog({
-        title: '确认替换全部本地供应商？',
-        content: `将删除当前 ${suppliers.length} 条配置，仅保留文件中的 ${r.suppliers.length} 条。`,
-        okText: '替换',
-        danger: true,
-      })
-      if (!confirmed) return
-      try {
-        await persist(r.suppliers)
-        closeImportModal()
-        showToast(`已导入并替换为 ${r.suppliers.length} 条供应商。`, 'success')
-      } catch {
-        /* persist 已提示 */
-      }
+      const res = await apiImportFleetSuppliers(importMerge ? 'merge' : 'replace', r.suppliers)
+      if (!res.ok) { showToast(`导入失败：${res.error}`, 'error'); return }
+      setSuppliers(res.data)
+      closeImportModal()
+      showToast(
+        importMerge
+          ? `已合并导入 ${r.suppliers.length} 条（相同 id 以文件为准）。`
+          : `已导入并替换为 ${r.suppliers.length} 条供应商。`,
+        'success',
+      )
     } finally {
       setImporting(false)
     }
@@ -551,7 +524,7 @@ export function FleetSupplierPushTab({
               rows={4}
               value={globalPushText}
               onChange={setGlobalPushText}
-              placeholder="通用段落；与各供应商「供应商推送内容」组合后以富文本卡片推送。可不传扫描文件，仅推文字或图片。"
+              placeholder="与各供应商「供应商推送内容」合并为一条富文本推送（含段落与编辑器内图片）。货量截图与「选择推送图片」各单独一条消息。"
             />
           </div>
           <div className="fs-toolbar">
@@ -679,6 +652,7 @@ export function FleetSupplierPushTab({
               rowKey="id"
               columns={columns}
               dataSource={suppliers}
+              loading={configsLoading}
               pagination={false}
               rowSelection={{
                 selectedRowKeys: effectiveSelectedKeys,

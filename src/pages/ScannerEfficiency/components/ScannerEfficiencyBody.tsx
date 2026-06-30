@@ -408,6 +408,7 @@ export default function ScannerEfficiencyBody({ vm, level1Push }: Props) {
               analysis={vm.cancelScanAnalysis}
               loading={vm.loadingCancelScanAnalysis}
               onFetch={vm.handleCancelScanApiFetch}
+              zoneInboundScanTotals={vm.zoneInboundScanTotals}
             />
           )}
 

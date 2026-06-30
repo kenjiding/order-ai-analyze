@@ -8,6 +8,7 @@ import {
   IMILE_DC_SCAN_QUERY_PORTAL,
 } from './portal'
 import { envFirstOr, normalizeImileToken } from './shared'
+import { AUS_TZ, iMileStrToMs, nextDayHourMs } from './ausTimezone'
 
 const DEFAULT_STATION_URL =
   'https://ds.imile.com/lm/express/base/v1/search/auth/permission/station'
@@ -23,6 +24,9 @@ const DEFAULT_WAYBILL_URL =
 
 const DEFAULT_LONG_TAIL_URL =
   'https://ds.imile.com/saastms/v1/report/stock/daWaybillInventory'
+
+const DEFAULT_DS_WAYBILL_URL =
+  'https://ds.imile.com/saastms/v1/biz/waybillInfo/searchWaybill'
 
 export type VendorAnalysisError = { ok: false; status: number; message: string; rawText?: string }
 export type VendorAnalysisSuccess<T> = { ok: true; data: T }
@@ -59,6 +63,15 @@ function makeDsSaasTmsHeaders(token: string): Record<string, string> {
     envPrefix: 'IMILE_VENDOR_LONG_TAIL',
     defaults: IMILE_DS_SAAS_TMS_PORTAL,
     sharedEnvPrefixes: ['IMILE_CANCEL_SCAN', 'IMILE_TRACK'],
+  })
+}
+
+function makeDsWaybillHeaders(token: string): Record<string, string> {
+  return buildImilePortalHeaders({
+    token,
+    envPrefix: 'IMILE_VENDOR_DS_WAYBILL',
+    defaults: IMILE_DS_SAAS_TMS_PORTAL,
+    sharedEnvPrefixes: ['IMILE_VENDOR_LONG_TAIL', 'IMILE_CANCEL_SCAN', 'IMILE_TRACK'],
   })
 }
 
@@ -274,8 +287,8 @@ export type WaybillParams = {
 }
 
 const WAYBILL_PAGE_SIZE = 1000
-const WAYBILL_CONCURRENCY = 2
-const WAYBILL_PAGE_DELAY_MS = 400
+const WAYBILL_CONCURRENCY = 1
+const WAYBILL_PAGE_DELAY_MS = 600
 
 export async function fetchVendorWaybills(
   token: string,
@@ -319,6 +332,108 @@ function sevenDaysAgo(): string {
   const d = new Date()
   d.setDate(d.getDate() - 7)
   return d.toISOString().slice(0, 10)
+}
+
+export type Before11ExitRateResult = {
+  before11ExitRate: number
+  before11ExitVolume: number
+  totalReceived: number
+}
+
+export type SlimPickupRow = {
+  waybillNo: string
+  courierCode: string
+  courierVendorCode: string
+  courier: string
+  consigneeRouteCode: string
+  before11Exit: boolean
+}
+
+export type Before11ExitRatesData = {
+  ratesByVendor: Record<string, Before11ExitRateResult>
+  pickupRows: SlimPickupRow[]
+}
+
+
+const BEFORE11_PAGE_SIZE = 1000
+const BEFORE11_PAGE_DELAY_MS = 500
+
+export async function fetchBefore11ExitRates(
+  token: string,
+  params: { startTime: string; endTime: string; vendorCodes: string[] },
+): Promise<VendorAnalysisSuccess<Before11ExitRatesData> | VendorAnalysisError> {
+  const normalizedToken = normalizeImileToken(token)
+  const url = envFirstOr(['IMILE_VENDOR_DS_WAYBILL_URL'], DEFAULT_DS_WAYBILL_URL)
+  const headers = makeDsWaybillHeaders(normalizedToken)
+
+  const paged = await fetchPaginatedResultRows({
+    label: '11点前出仓率运单查询',
+    pageShowCount: BEFORE11_PAGE_SIZE,
+    pageDelayMs: BEFORE11_PAGE_DELAY_MS,
+    buildPageBody: ({ currentPage, showCount }) => ({
+      actualReceiveStation: '',
+      currentPage,
+      dateSearchType: 'firstCountry',
+      endTime: params.endTime,
+      labelOrderCodes: [] as string[],
+      mainWaybillNos: [] as string[],
+      platformNos: [] as string[],
+      referenceNos: [] as string[],
+      showCount,
+      startTime: params.startTime,
+      waybillNos: [] as string[],
+    }),
+    requestPage: (body) =>
+      requestImileApi({ url, method: 'POST', headers, body, label: '11点前出仓率运单查询' }),
+  })
+
+  if (!paged.ok) return { ok: false, status: paged.status, message: paged.message }
+
+  const rows = paged.records as Record<string, unknown>[]
+
+  const vendorSet = new Set(params.vendorCodes)
+  const stats = new Map<string, { before11: number; total: number }>()
+  const pickupRows: SlimPickupRow[] = []
+
+  for (const row of rows) {
+    const courierCode = typeof row.courierCode === 'string' ? row.courierCode : ''
+    const courierVendorCode = typeof row.courierVendorCode === 'string' ? row.courierVendorCode : ''
+    const receiveTime = typeof row.receiveTime === 'string' ? row.receiveTime : null
+    const deliveryTime = typeof row.deliveryTime === 'string' ? row.deliveryTime : null
+
+    const before11Exit = !!(
+      receiveTime &&
+      deliveryTime &&
+      iMileStrToMs(deliveryTime) <= nextDayHourMs(receiveTime, AUS_TZ.Adelaide, 11)
+    )
+
+    pickupRows.push({
+      waybillNo: typeof row.waybillNo === 'string' ? row.waybillNo : '',
+      courierCode,
+      courierVendorCode,
+      courier: typeof row.courier === 'string' ? row.courier : '',
+      consigneeRouteCode: typeof row.consigneeRouteCode === 'string' ? row.consigneeRouteCode : '',
+      before11Exit,
+    })
+
+    if (!vendorSet.has(courierVendorCode) || !receiveTime) continue
+
+    let s = stats.get(courierVendorCode)
+    if (!s) { s = { before11: 0, total: 0 }; stats.set(courierVendorCode, s) }
+    s.total += 1
+    if (before11Exit) s.before11 += 1
+  }
+
+  const ratesByVendor: Record<string, Before11ExitRateResult> = {}
+  for (const [vendorCode, s] of stats.entries()) {
+    ratesByVendor[vendorCode] = {
+      before11ExitRate: s.total > 0 ? s.before11 / s.total : 0,
+      before11ExitVolume: s.before11,
+      totalReceived: s.total,
+    }
+  }
+
+  return { ok: true, data: { ratesByVendor, pickupRows } }
 }
 
 export async function fetchLongTailOrders(

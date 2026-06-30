@@ -1,29 +1,23 @@
-import { Button, DatePicker, Tag, Tooltip, Typography } from 'antd'
+import { Button, DatePicker, Tag } from 'antd'
 import type { Dayjs } from 'dayjs'
 import { CalendarDays, CheckCircle2, DatabaseZap } from 'lucide-react'
-import type { FineBiConnectionConfig } from '../fineBiConnectionStorage'
 import type { FetchedData } from '../useVendorAnalysisPage'
-import { FineBiConnectionPanel } from './FineBiConnectionPanel'
 
 type Props = {
-  dateRange: [Dayjs, Dayjs] | null
-  onDateRangeChange: (range: [Dayjs, Dayjs] | null) => void
+  referenceDate: Dayjs | null
+  onReferenceDateChange: (date: Dayjs | null) => void
   complaintDateRange: [Dayjs, Dayjs] | null
   onComplaintDateRangeChange: (range: [Dayjs, Dayjs] | null) => void
-  fineBiConnections: FineBiConnectionConfig[]
-  onFineBiConnectionsChange: (next: FineBiConnectionConfig[]) => void
   fetchedData: FetchedData | null
   dataFetching: boolean
   onFetchData: () => void
 }
 
 export function VendorFilterPanel({
-  dateRange,
-  onDateRangeChange,
+  referenceDate,
+  onReferenceDateChange,
   complaintDateRange,
   onComplaintDateRangeChange,
-  fineBiConnections,
-  onFineBiConnectionsChange,
   fetchedData,
   dataFetching,
   onFetchData,
@@ -44,26 +38,22 @@ export function VendorFilterPanel({
           <div className="flex flex-col gap-1.5">
             <label className="flex items-center gap-1.5 text-xs font-medium text-slate-500">
               <CalendarDays className="h-3.5 w-3.5" />
-              时间范围
+              数据参考日期
             </label>
-            <DatePicker.RangePicker
-              value={dateRange}
-              onChange={(v) => onDateRangeChange(v as [Dayjs, Dayjs] | null)}
+            <DatePicker
+              value={referenceDate}
+              onChange={(v) => onReferenceDateChange(v)}
               format="YYYY-MM-DD"
               allowClear
-              className="w-64"
+              className="w-40"
+              placeholder="选择参考日期"
             />
           </div>
 
           <div className="flex flex-col gap-1.5">
             <label className="flex items-center gap-1.5 text-xs font-medium text-slate-500">
               <CalendarDays className="h-3.5 w-3.5 text-amber-500" />
-              <Tooltip title="不填则使用上方「时间范围」">
-                <span className="cursor-help border-b border-dashed border-slate-400">
-                  客诉成立量时间
-                  <Typography.Text type="secondary" className="!text-xs ml-1">(可选)</Typography.Text>
-                </span>
-              </Tooltip>
+              客诉成立量时间
             </label>
             <DatePicker.RangePicker
               value={complaintDateRange}
@@ -83,7 +73,7 @@ export function VendorFilterPanel({
               type="primary"
               icon={<DatabaseZap className="h-4 w-4" />}
               loading={dataFetching}
-              disabled={!dateRange}
+              disabled={!referenceDate || !complaintDateRange}
               onClick={onFetchData}
             >
               {dataFetching ? '获取中…' : '获取数据'}
@@ -91,17 +81,16 @@ export function VendorFilterPanel({
           </div>
         </div>
 
-        <div className="mt-4 border-t border-[var(--admin-line)] pt-4">
-          <FineBiConnectionPanel
-            connections={fineBiConnections}
-            onChange={onFineBiConnectionsChange}
-          />
-        </div>
-
-        {fetchedData && (
+        {fetchedData && referenceDate && (
           <div className="mt-3 flex flex-wrap items-center gap-2">
             <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500" />
             <span className="text-xs text-slate-500">{fetchedTime} 获取成功：</span>
+            <Tag color="purple" className="text-xs">
+              参考日期 {referenceDate.format('YYYY-MM-DD')}
+              <span className="ml-1 text-slate-400">
+                （昨天 {fetchedData.before11Date}）
+              </span>
+            </Tag>
             <Tag color="blue" className="text-xs">
               运单 {fetchedData.waybills.length} 条
               <span className="ml-1 text-slate-400">
@@ -110,9 +99,6 @@ export function VendorFilterPanel({
             </Tag>
             <Tag color="orange" className="text-xs">
               客诉 {fetchedData.tickets.length} 条
-              <span className="ml-1 text-slate-400">
-                ({fetchedData.ticketStartTime.slice(0, 10)} ~ {fetchedData.ticketEndTime.slice(0, 10)})
-              </span>
             </Tag>
           </div>
         )}

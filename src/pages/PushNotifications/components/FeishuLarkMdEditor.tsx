@@ -384,7 +384,7 @@ export function FeishuLarkMdEditor({
       </div>
 
       <div className="feishu-lark-md-editor-hint">
-        富文本与图片合并为一条飞书消息；分隔线与 @所有人 按飞书卡片格式推送。
+        分隔线与 @所有人 按飞书卡片格式推送。
       </div>
 
       <Modal

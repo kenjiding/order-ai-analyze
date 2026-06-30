@@ -2,9 +2,9 @@ import { Alert, Table } from 'antd'
 import type { ColumnsType } from 'antd/es/table'
 import { TrendingUp, Users, ChevronDown } from 'lucide-react'
 import { useState } from 'react'
+import { WaybillListPopover } from '../../../components/WaybillPopover'
 import type { FetchedData } from '../useVendorAnalysisPage'
 import type { DriverPerformanceRow, VendorMetricRow } from '../vendorAnalysisTypes'
-import { dispatchRate24hColor } from '../fineBi24hMetricsDisplay'
 
 type Props = {
   metrics: VendorMetricRow[]
@@ -35,12 +35,22 @@ function KpiCard({
 
 // ── 司机表格单元格 ─────────────────────────────────────────────────
 
-function PickupChip({ count }: { count: number }) {
-  if (count === 0) return <span className="text-sm text-slate-400">0</span>
+function PickupChip({ count, waybillNos }: { count: number; waybillNos: string[] }) {
+  const chip =
+    count === 0 ? (
+      <span className="text-sm text-slate-400">0</span>
+    ) : (
+      <span className="inline-flex min-w-[2.25rem] cursor-default items-center justify-center rounded-full bg-blue-50 px-3 py-0.5 text-sm font-semibold text-blue-600">
+        {count}
+      </span>
+    )
+
+  if (waybillNos.length === 0) return chip
+
   return (
-    <span className="inline-flex min-w-[2.25rem] items-center justify-center rounded-full bg-blue-50 px-3 py-0.5 text-sm font-semibold text-blue-600">
-      {count}
-    </span>
+    <WaybillListPopover nos={waybillNos} title="运单号" placement="right">
+      {chip}
+    </WaybillListPopover>
   )
 }
 
@@ -48,24 +58,28 @@ function DispatchRateBadge({
   rate,
   count,
   total,
+  unmetWaybillNos = [],
 }: {
   rate: number | null
   count: number
   total: number
+  unmetWaybillNos?: string[]
 }) {
   if (rate == null) return <span className="text-sm text-slate-400">—</span>
   const pct = (rate * 100).toFixed(1)
   const colorCls =
-    rate >= 0.92
+    rate >= 0.95
       ? 'bg-emerald-50 border-emerald-200 text-emerald-700'
-      : rate >= 0.75
+      : rate >= 0.92
         ? 'bg-amber-50 border-amber-200 text-amber-700'
         : 'bg-red-50 border-red-200 text-red-700'
   return (
     <div>
-      <span className={`inline-flex items-center rounded-md border px-2 py-0.5 text-sm font-bold ${colorCls}`}>
-        {pct}%
-      </span>
+      <WaybillListPopover nos={unmetWaybillNos} title="24H未达标单号" placement="right">
+        <span className={`inline-flex items-center rounded-md border px-2 py-0.5 text-sm font-bold ${colorCls}${unmetWaybillNos.length > 0 ? ' cursor-help' : ''}`}>
+          {pct}%
+        </span>
+      </WaybillListPopover>
       {total > 0 && (
         <div className="mt-0.5 text-[11px] text-slate-400">{count}/{total} 件</div>
       )}
@@ -73,17 +87,53 @@ function DispatchRateBadge({
   )
 }
 
-function WarningCount({ count }: { count: number }) {
+function WarningCount({ count, waybillNos = [] }: { count: number; waybillNos?: string[] }) {
   if (count === 0)
     return (
       <span className="inline-flex min-w-[2.25rem] items-center justify-center rounded-full bg-emerald-50 px-2.5 py-0.5 text-sm font-semibold text-emerald-600">
         0
       </span>
     )
-  return (
-    <span className="inline-flex min-w-[2.25rem] items-center justify-center rounded-full bg-red-50 px-2.5 py-0.5 text-sm font-semibold text-red-600">
+  const badge = (
+    <span className={`inline-flex min-w-[2.25rem] items-center justify-center rounded-full bg-red-50 px-2.5 py-0.5 text-sm font-semibold text-red-600${waybillNos.length > 0 ? ' cursor-help' : ''}`}>
       {count}
     </span>
+  )
+  if (waybillNos.length === 0) return badge
+  return (
+    <WaybillListPopover nos={waybillNos} title="归班预警记录" placement="right">
+      {badge}
+    </WaybillListPopover>
+  )
+}
+
+function Before11ExitRateBadge({
+  count,
+  total,
+  unmetWaybillNos = [],
+}: {
+  count: number
+  total: number
+  unmetWaybillNos?: string[]
+}) {
+  if (total === 0) return <span className="text-sm text-slate-400">—</span>
+  const rate = count / total
+  const pct = (rate * 100).toFixed(1)
+  const colorCls =
+    rate >= 0.99
+      ? 'bg-emerald-50 border-emerald-200 text-emerald-700'
+      : rate >= 0.95
+        ? 'bg-amber-50 border-amber-200 text-amber-700'
+        : 'bg-red-50 border-red-200 text-red-700'
+  return (
+    <div>
+      <WaybillListPopover nos={unmetWaybillNos} title="未出仓单号" placement="right">
+        <span className={`inline-flex items-center rounded-md border px-2 py-0.5 text-sm font-bold ${colorCls}${unmetWaybillNos.length > 0 ? ' cursor-help' : ''}`}>
+          {pct}%
+        </span>
+      </WaybillListPopover>
+      <div className="mt-0.5 text-[11px] text-slate-400">{count}/{total} 件</div>
+    </div>
   )
 }
 
@@ -112,7 +162,24 @@ const driverColumns: ColumnsType<DriverPerformanceRow> = [
     key: 'ofdCount',
     width: 110,
     sorter: (a, b) => a.ofdCount - b.ofdCount,
-    render: (v: number) => <PickupChip count={v} />,
+    render: (v: number, row) => <PickupChip count={v} waybillNos={row.ofdWaybillNos} />,
+  },
+  {
+    title: '11点前出仓率',
+    key: 'before11ExitRate',
+    width: 130,
+    sorter: (a, b) => {
+      const ra = a.ofdCount > 0 ? a.before11OfdCount / a.ofdCount : -1
+      const rb = b.ofdCount > 0 ? b.before11OfdCount / b.ofdCount : -1
+      return ra - rb
+    },
+    render: (_, row) => (
+      <Before11ExitRateBadge
+        count={row.before11OfdCount}
+        total={row.ofdCount}
+        unmetWaybillNos={row.before11UnmetWaybillNos}
+      />
+    ),
   },
   {
     title: '24H派签率',
@@ -124,6 +191,7 @@ const driverColumns: ColumnsType<DriverPerformanceRow> = [
         rate={row.dispatchRate24h}
         count={row.dispatch24hCount}
         total={row.totalDispatchCount}
+        unmetWaybillNos={row.dispatch24hUnmetWaybillNos}
       />
     ),
   },
@@ -134,7 +202,28 @@ const driverColumns: ColumnsType<DriverPerformanceRow> = [
     width: 110,
     defaultSortOrder: 'descend',
     sorter: (a, b) => a.returnWarningCount - b.returnWarningCount,
-    render: (v: number) => <WarningCount count={v} />,
+    render: (v: number, row) => <WarningCount count={v} waybillNos={row.returnWarningWaybillNos} />,
+  },
+  {
+    title: '长尾单',
+    dataIndex: 'longTailCount',
+    key: 'longTailCount',
+    width: 100,
+    sorter: (a, b) => a.longTailCount - b.longTailCount,
+    render: (v: number, row) => {
+      if (v === 0) return <span className="text-sm text-slate-400">0</span>
+      const badge = (
+        <span className="inline-flex min-w-[2.25rem] cursor-help items-center justify-center rounded-full bg-amber-50 px-2.5 py-0.5 text-sm font-semibold text-amber-600">
+          {v}
+        </span>
+      )
+      if (row.longTailWaybillNos.length === 0) return badge
+      return (
+        <WaybillListPopover nos={row.longTailWaybillNos} title="长尾单单号" placement="right">
+          {badge}
+        </WaybillListPopover>
+      )
+    },
   },
 ]
 
@@ -156,27 +245,27 @@ function VendorCard({ row, fetchedData, drivers }: VendorCardProps) {
   const exitColor =
     exitRate == null
       ? 'text-slate-300'
-      : exitRate >= 0.98
+      : exitRate >= 0.99
         ? 'text-emerald-600'
         : exitRate >= 0.95
           ? 'text-amber-500'
           : 'text-red-600'
 
   // 24H签派率
-  const dispatchColor = dispatchRate24hColor(row.dispatchRate24hText)
+  const dispatchRateNum = row.dispatchRate24hText ? parseFloat(row.dispatchRate24hText) : null
   const dispatchTextColor =
-    dispatchColor === 'green'
-      ? 'text-emerald-600'
-      : dispatchColor === 'orange'
-        ? 'text-amber-500'
-        : dispatchColor === 'red'
-          ? 'text-red-600'
-          : 'text-slate-300'
+    dispatchRateNum == null
+      ? 'text-slate-300'
+      : dispatchRateNum >= 95
+        ? 'text-emerald-600'
+        : dispatchRateNum >= 92
+          ? 'text-amber-500'
+          : 'text-red-600'
 
   // 客诉率
   const cr = row.complaintRate
   const crColor =
-    cr >= 0.03 ? 'text-red-600' : cr >= 0.01 ? 'text-amber-500' : 'text-emerald-600'
+    cr >= 0.0003 ? 'text-red-600' : cr >= 0.00025 ? 'text-amber-500' : 'text-emerald-600'
 
   // 司机汇总
   const totalReturnWarning = drivers.reduce((s, d) => s + d.returnWarningCount, 0)
@@ -214,16 +303,31 @@ function VendorCard({ row, fetchedData, drivers }: VendorCardProps) {
           <div className="grid grid-cols-2 divide-x divide-y divide-[var(--admin-line)] border-b border-[var(--admin-line)] sm:grid-cols-5 sm:divide-y-0">
             <KpiCard
               value={
-                <span className={exitColor}>
-                  {exitRate != null ? `${(exitRate * 100).toFixed(1)}%` : '—'}
-                </span>
+                <WaybillListPopover nos={row.before11UnmetWaybillNos} title="11点前未出仓单号" placement="bottom">
+                  <span className={`${exitColor}${row.before11UnmetWaybillNos.length > 0 ? ' cursor-help' : ''}`}>
+                    {exitRate != null ? `${(exitRate * 100).toFixed(1)}%` : '—'}
+                  </span>
+                </WaybillListPopover>
               }
-              label={`11点前出仓率 · 截至 ${fmt(fetchedData.fineBiPickupEndTime)}`}
+              label={`11点前出仓率 · 截至 ${fmt(fetchedData.before11Date)}`}
+              sub={
+                row.before11ExitVolume != null && row.before11TotalReceived != null ? (
+                  <span className="text-[11px] text-slate-400">
+                    {row.before11ExitVolume} / {row.before11TotalReceived} 件
+                  </span>
+                ) : undefined
+              }
             />
 
             <KpiCard
-              value={<span className={dispatchTextColor}>{row.dispatchRate24hText ?? '—'}</span>}
-              label={`24H签派率 · ${fmt(fetchedData.fineBi24hStartTime)}`}
+              value={
+                <WaybillListPopover nos={row.dispatch24hUnmetWaybillNos} title="24H未达标单号" placement="bottom">
+                  <span className={`${dispatchTextColor}${row.dispatch24hUnmetWaybillNos.length > 0 ? ' cursor-help' : ''}`}>
+                    {row.dispatchRate24hText ?? '—'}
+                  </span>
+                </WaybillListPopover>
+              }
+              label={`24H签派率 · ${fetchedData.dayBeforeDate}`}
               sub={
                 row.notMet24hSignCount != null && row.notMet24hSignCount > 0 ? (
                   <span className="text-[11px] font-semibold text-red-500">
@@ -234,7 +338,13 @@ function VendorCard({ row, fetchedData, drivers }: VendorCardProps) {
             />
 
             <KpiCard
-              value={<span className={crColor}>{(cr * 100).toFixed(3)}%</span>}
+              value={
+                <WaybillListPopover nos={row.complaintOrderCodes} title="客诉单号" placement="bottom">
+                  <span className={`${crColor}${row.complaintOrderCodes.length > 0 ? ' cursor-help' : ''}`}>
+                    {(cr * 100).toFixed(3)}%
+                  </span>
+                </WaybillListPopover>
+              }
               label={`客诉率 · ${fmt(fetchedData.ticketStartTime)}~${fmt(fetchedData.ticketEndTime)}`}
               sub={
                 row.complaintCount > 0 ? (

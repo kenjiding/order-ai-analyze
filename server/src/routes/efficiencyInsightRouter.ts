@@ -188,7 +188,7 @@ efficiencyInsightRouter.post('/', async (req: Request, res: Response) => {
       '请分析以下分拣员个人效率数据，输出三个字段：',
       '① findings（3～5 条字符串：数据亮点或问题）',
       '② suggestions（2～4 条字符串：具体改进建议）',
-      '③ topPerformerReasons（恰好 3 条字符串，顺序与 topPerformerCandidates 一一对应：每条 1～2 句，须引用该员工的实际数字说明其在出勤天数、修正效率、总效率方面的具体表现，禁止泛泛而谈）',
+      '③ topPerformerReasons（恰好 5 条字符串，顺序与 topPerformerCandidates 一一对应：每条 1～2 句，须引用该员工的实际数字说明其在出勤天数、修正效率、总效率方面的具体表现，禁止泛泛而谈）',
       '',
       JSON.stringify({
         一级分拣整体效率_票每小时: payload.totalEfficiency,

@@ -71,7 +71,7 @@ export async function fetchDriverWaybills(
     buildPageBody: ({ currentPage, showCount }) => ({
       actualReceiveStation: '',
       currentPage,
-      dateSearchType: 'receive',
+      dateSearchType: 'firstCountry',
       endTime: params.endTime,
       labelOrderCodes: [] as string[],
       mainWaybillNos: [] as string[],

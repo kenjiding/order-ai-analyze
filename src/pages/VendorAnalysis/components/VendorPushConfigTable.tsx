@@ -1,6 +1,7 @@
 import { Button, Empty, Popconfirm, Table, Tooltip, Typography } from 'antd'
 import type { ColumnsType } from 'antd/es/table'
 import { PencilLine, Trash2 } from 'lucide-react'
+import { useState } from 'react'
 import type { VendorPushConfig } from '../vendorAnalysisTypes'
 
 function truncateMid(s: string, max: number): string {
@@ -9,16 +10,32 @@ function truncateMid(s: string, max: number): string {
   return `${s.slice(0, edge)}…${s.slice(s.length - edge)}`
 }
 
+type LoadingState = { id: string; action: 'toggle' | 'delete' } | null
+
 type Props = {
   configs: VendorPushConfig[]
   loading: boolean
   disabled: boolean
   onEdit: (config: VendorPushConfig) => void
-  onDelete: (config: VendorPushConfig) => void
-  onToggleDisabled: (id: string, nextDisabled: boolean) => void
+  onDelete: (config: VendorPushConfig) => Promise<void>
+  onToggleDisabled: (id: string, nextDisabled: boolean) => Promise<void>
 }
 
 export function VendorPushConfigTable({ configs, loading, disabled, onEdit, onDelete, onToggleDisabled }: Props) {
+  const [loadingState, setLoadingState] = useState<LoadingState>(null)
+
+  const handleToggle = async (id: string, nextDisabled: boolean) => {
+    setLoadingState({ id, action: 'toggle' })
+    try { await onToggleDisabled(id, nextDisabled) } finally { setLoadingState(null) }
+  }
+
+  const handleDelete = async (config: VendorPushConfig) => {
+    setLoadingState({ id: config.id, action: 'delete' })
+    try { await onDelete(config) } finally { setLoadingState(null) }
+  }
+
+  const isBusy = disabled || loadingState != null
+
   const columns: ColumnsType<VendorPushConfig> = [
     {
       title: '供应商（责任单位）',
@@ -79,44 +96,50 @@ export function VendorPushConfigTable({ configs, loading, disabled, onEdit, onDe
       width: 180,
       fixed: 'right',
       onCell: () => ({ style: { whiteSpace: 'nowrap' } }),
-      render: (_, record) => (
-        <div className="flex flex-nowrap items-center gap-0">
-          <Button
-            type="link"
-            className="!px-1"
-            disabled={disabled}
-            onClick={() => onToggleDisabled(record.id, !record.isDisabled)}
-          >
-            {record.isDisabled ? '启用' : '禁用'}
-          </Button>
-          <Button
-            type="link"
-            className="!px-1"
-            icon={<PencilLine className="h-3.5 w-3.5" />}
-            disabled={disabled}
-            onClick={() => onEdit(record)}
-          >
-            编辑
-          </Button>
-          <Popconfirm
-            title="确认删除这条推送配置？"
-            okText="删除"
-            cancelText="取消"
-            okButtonProps={{ danger: true }}
-            onConfirm={() => onDelete(record)}
-          >
+      render: (_, record) => {
+        const isRowToggling = loadingState?.id === record.id && loadingState.action === 'toggle'
+        const isRowDeleting = loadingState?.id === record.id && loadingState.action === 'delete'
+        return (
+          <div className="flex flex-nowrap items-center gap-0">
             <Button
               type="link"
               className="!px-1"
-              danger
-              icon={<Trash2 className="h-3.5 w-3.5" />}
-              disabled={disabled}
+              disabled={isBusy && !isRowToggling}
+              loading={isRowToggling}
+              onClick={() => void handleToggle(record.id, !record.isDisabled)}
             >
-              删除
+              {record.isDisabled ? '启用' : '禁用'}
             </Button>
-          </Popconfirm>
-        </div>
-      ),
+            <Button
+              type="link"
+              className="!px-1"
+              icon={<PencilLine className="h-3.5 w-3.5" />}
+              disabled={isBusy}
+              onClick={() => onEdit(record)}
+            >
+              编辑
+            </Button>
+            <Popconfirm
+              title="确认删除这条推送配置？"
+              okText="删除"
+              cancelText="取消"
+              okButtonProps={{ danger: true }}
+              onConfirm={() => void handleDelete(record)}
+            >
+              <Button
+                type="link"
+                className="!px-1"
+                danger
+                icon={<Trash2 className="h-3.5 w-3.5" />}
+                disabled={isBusy && !isRowDeleting}
+                loading={isRowDeleting}
+              >
+                删除
+              </Button>
+            </Popconfirm>
+          </div>
+        )
+      },
     },
   ]
 

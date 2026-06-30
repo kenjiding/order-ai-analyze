@@ -7,7 +7,7 @@ import {
   countHiddenRouteCodeFilterEntries,
   resolveFilteredRouteCodeDistribution,
 } from '../cancelScanRouteCodeDaily'
-import { buildRouteZoneGroups, buildRouteZoneGroupsFromDaily, type RouteZoneGroup } from '../cancelScanRouteZoneTable'
+import { buildRouteZoneGroups, buildRouteZoneGroupsFromDaily, attachZoneInboundScanTotals, type RouteZoneGroup } from '../cancelScanRouteZoneTable'
 import { getZoneColorTheme, zoneThemeStyle } from '../cancelScanZoneColors'
 import CancelScanZoneBarChart from '../CancelScanZoneBarChart'
 import './cancelScanAnalysis.css'
@@ -16,6 +16,7 @@ type Props = {
   routeCodeDistribution: RouteCodeDistributionItem[]
   dailyRouteCodeCounts?: DailyRouteCodeCount[]
   totalWaybills: number
+  zoneInboundScanTotals?: ReadonlyMap<string, number> | null
 }
 
 function formatShare(value: number): string {
@@ -43,25 +44,34 @@ function pickDefaultZone(groups: RouteZoneGroup[]): string | null {
   return groups.reduce((best, group) => (group.zoneTotal > best.zoneTotal ? group : best)).zone
 }
 
+function formatErrorRate(value: number | null | undefined): string | null {
+  if (value == null || !Number.isFinite(value)) return null
+  return `${formatNumber(value * 100, 2)}%`
+}
+
 export function RouteCodeZoneBoard({
   routeCodeDistribution,
   dailyRouteCodeCounts,
   totalWaybills,
+  zoneInboundScanTotals,
 }: Props) {
   const [selectedZone, setSelectedZone] = useState<string | null>(null)
   const [misallocationMaxCount, setMisallocationMaxCount] = useState<number | null>(null)
 
   const filteredGroups = useMemo(() => {
+    let groups: RouteZoneGroup[]
     if (dailyRouteCodeCounts?.length) {
-      return buildRouteZoneGroupsFromDaily(dailyRouteCodeCounts, misallocationMaxCount)
+      groups = buildRouteZoneGroupsFromDaily(dailyRouteCodeCounts, misallocationMaxCount)
+    } else {
+      const distribution = resolveFilteredRouteCodeDistribution({
+        dailyRouteCodeCounts,
+        routeCodeDistribution,
+        maxCount: misallocationMaxCount,
+      })
+      groups = buildRouteZoneGroups(distribution)
     }
-    const distribution = resolveFilteredRouteCodeDistribution({
-      dailyRouteCodeCounts,
-      routeCodeDistribution,
-      maxCount: misallocationMaxCount,
-    })
-    return buildRouteZoneGroups(distribution)
-  }, [dailyRouteCodeCounts, routeCodeDistribution, misallocationMaxCount])
+    return attachZoneInboundScanTotals(groups, zoneInboundScanTotals)
+  }, [dailyRouteCodeCounts, routeCodeDistribution, misallocationMaxCount, zoneInboundScanTotals])
 
   const hiddenRouteCodeCount = useMemo(
     () =>
@@ -85,6 +95,15 @@ export function RouteCodeZoneBoard({
     [filteredGroups],
   )
 
+  const hasInboundScanTotals = Boolean(zoneInboundScanTotals?.size)
+
+  const overallErrorRate = useMemo(() => {
+    if (!hasInboundScanTotals || !zoneInboundScanTotals) return null
+    const inboundTotal = [...zoneInboundScanTotals.values()].reduce((sum, count) => sum + count, 0)
+    if (inboundTotal <= 0) return null
+    return grandTotal / inboundTotal
+  }, [grandTotal, hasInboundScanTotals, zoneInboundScanTotals])
+
   const selectedGroup = useMemo(
     () => filteredGroups.find((group) => group.zone === selectedZone) ?? null,
     [filteredGroups, selectedZone],
@@ -104,6 +123,12 @@ export function RouteCodeZoneBoard({
           <h3 className="cancel-scan-zone-board__title">路由码分布</h3>
           <p className="cancel-scan-zone-board__subtitle">
             基于 {formatInteger(totalWaybills)} 条运单 · 首字母划分大区 · 点击方格查看路由码明细
+            {hasInboundScanTotals ? (
+              <>
+                {' '}
+                · 占比 = 细分错误票数 / 到件扫描票数（同区间同大区）
+              </>
+            ) : null}
             {hiddenRouteCodeCount > 0 ? (
               <>
                 {' '}
@@ -135,6 +160,12 @@ export function RouteCodeZoneBoard({
           <div className="cancel-scan-zone-board__summary">
             合计 <strong>{formatInteger(grandTotal)}</strong> 票 ·{' '}
             <strong>{formatInteger(filteredGroups.length)}</strong> 个大区
+            {overallErrorRate != null ? (
+              <>
+                {' '}
+                · 总占比 <strong>{formatErrorRate(overallErrorRate)}</strong>
+              </>
+            ) : null}
           </div>
         </div>
       </div>
@@ -155,6 +186,7 @@ export function RouteCodeZoneBoard({
             {filteredGroups.map((group) => {
               const active = group.zone === selectedZone
               const theme = getZoneColorTheme(group.zone)
+              const errorRateLabel = formatErrorRate(group.errorRate)
               return (
                 <button
                   key={group.zone}
@@ -171,9 +203,20 @@ export function RouteCodeZoneBoard({
                 >
                   <span className="cancel-scan-zone-tile__letter">{zoneLabel(group.zone)}</span>
                   <span className="cancel-scan-zone-tile__count">{formatInteger(group.zoneTotal)} 票</span>
-                  <span className="cancel-scan-zone-tile__share">全区 {formatShare(group.totalShare)}</span>
+                  {errorRateLabel ? (
+                    <span className="cancel-scan-zone-tile__error-rate">
+                      占比 {errorRateLabel}
+                      {group.inboundZoneTotal != null
+                        ? `（/${formatInteger(group.inboundZoneTotal)}）`
+                        : null}
+                    </span>
+                  ) : (
+                    <span className="cancel-scan-zone-tile__share">全区 {formatShare(group.totalShare)}</span>
+                  )}
                   <span className="cancel-scan-zone-tile__meta">
-                    {formatInteger(group.routeCodes.length)} 种路由码
+                    {errorRateLabel
+                      ? `全区 ${formatShare(group.totalShare)} · ${formatInteger(group.routeCodes.length)} 种路由码`
+                      : `${formatInteger(group.routeCodes.length)} 种路由码`}
                   </span>
                   <span
                     className="cancel-scan-zone-tile__meter"
@@ -206,6 +249,15 @@ export function RouteCodeZoneBoard({
                         {formatInteger(selectedGroup.zoneTotal)} 票 · 全区占比{' '}
                         {formatShare(selectedGroup.totalShare)} ·{' '}
                         {formatInteger(selectedGroup.routeCodes.length)} 种路由码
+                        {formatErrorRate(selectedGroup.errorRate) ? (
+                          <>
+                            {' '}
+                            · 占比 {formatErrorRate(selectedGroup.errorRate)}
+                            {selectedGroup.inboundZoneTotal != null
+                              ? `（/${formatInteger(selectedGroup.inboundZoneTotal)} 到件）`
+                              : null}
+                          </>
+                        ) : null}
                       </span>
                     </div>
                   </div>

@@ -189,7 +189,7 @@ export type TopPerformerCandidate = {
 export function selectTopPerformers(
   scannerTotalRows: ScannerEfficiencyResult['scannerTotalRows'],
   scannerTotalEfficiencyRows: ScannerTotalEfficiencyRow[],
-  topN = 3,
+  topN = 5,
 ): TopPerformerCandidate[] {
   const MIN_SCAN_COUNT = 300
 

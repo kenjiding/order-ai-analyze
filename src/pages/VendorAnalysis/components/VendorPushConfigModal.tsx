@@ -1,5 +1,5 @@
 import { Form, Input, Modal, Select } from 'antd'
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import type { VendorOption, VendorPushConfig, VendorPushConfigDraft } from '../vendorAnalysisTypes'
 
 type Props = {
@@ -27,6 +27,7 @@ export function VendorPushConfigModal({
   onCommit,
 }: Props) {
   const [form] = Form.useForm<FormValues>()
+  const [confirmLoading, setConfirmLoading] = useState(false)
 
   useEffect(() => {
     if (open) {
@@ -54,8 +55,13 @@ export function VendorPushConfigModal({
       pushDescription: values.pushDescription?.trim() || null,
       isDisabled: editing?.isDisabled ?? false,
     }
-    const ok = await onCommit(draft)
-    if (ok) form.resetFields()
+    setConfirmLoading(true)
+    try {
+      const ok = await onCommit(draft)
+      if (ok) form.resetFields()
+    } finally {
+      setConfirmLoading(false)
+    }
   }
 
   return (
@@ -66,6 +72,7 @@ export function VendorPushConfigModal({
       cancelText="取消"
       onCancel={onCancel}
       onOk={() => void handleOk()}
+      confirmLoading={confirmLoading}
       width={560}
       destroyOnHidden
     >

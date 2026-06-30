@@ -15,6 +15,7 @@ import { SKIP_FEISHU_CAPTURE_ATTR } from '../../ScannerEfficiency/feishuLevel1Sc
 import { useAttendanceSchedulingFeishuPush } from '../../ScannerEfficiency/useAttendanceSchedulingFeishuPush'
 import {
   applyPlanDatePrefixToCellTexts,
+  mergeCellTextsNonEmpty,
   mergeCellTextsWithBase,
   remapCellTextsToPlanDate,
   stripPlanDatePrefixFromCellTexts,
@@ -24,7 +25,22 @@ import {
   loadAttendanceSchedulingPushTemplate,
   persistAttendanceSchedulingPushTemplate,
 } from '../attendanceSchedulingPushTemplateRepository.idb'
+import {
+  buildSection2AutoFill,
+  loadMostRecentDaySnapshot,
+  saveDaySnapshot,
+} from '../attendanceSchedulingDaySnapshot'
 import { showToast } from '../../../utils/toast'
+
+// 切换日期时去掉旧日期带过来的 Section 2 数据（S2 内容与日期强绑定，不应跟随迁移）
+function stripSection2Cells(cellTexts: Record<string, string>, planDate: string): Record<string, string> {
+  const s2Prefix = `${planDate}:s2-`
+  const out: Record<string, string> = {}
+  for (const [key, value] of Object.entries(cellTexts)) {
+    if (!key.startsWith(s2Prefix)) out[key] = value
+  }
+  return out
+}
 
 function defaultPlanDate(): string {
   return dayjs().format('YYYY-MM-DD')
@@ -62,8 +78,16 @@ export function AttendanceSchedulingPushPanel() {
       if (cancelled) return
       templateRef.current = template
       if (template?.planDate) {
-        setPlanDate(template.planDate)
-        prevPlanDateRef.current = template.planDate
+        const today = dayjs().format('YYYY-MM-DD')
+        if (template.planDate >= today) {
+          // 模板日期是今天或未来：原样恢复
+          setPlanDate(template.planDate)
+          prevPlanDateRef.current = template.planDate
+        } else {
+          // 模板日期是过去（跨天场景）：保持今天为 planDate，
+          // Section 4 数据仍从模板读取，Section 2 由昨天快照回填
+          // prevPlanDateRef 不动（仍为初始的 today），init 时直接用 today 前缀
+        }
       }
       setTemplateLoaded(true)
     })()
@@ -76,12 +100,16 @@ export function AttendanceSchedulingPushPanel() {
     if (!templateLoaded) return
 
     const base = flattenPreviewCellTexts(preview)
+    const recentSnap = loadMostRecentDaySnapshot(planDate)
+    const s2AutoFill = recentSnap ? buildSection2AutoFill(planDate, recentSnap.cells) : {}
 
     if (!initializedRef.current) {
       initializedRef.current = true
       const template = templateRef.current
       const overlay = template?.cells ? applyPlanDatePrefixToCellTexts(template.cells, planDate) : {}
-      setCellTexts(recalculateEfficiencyAchievementRatios(mergeCellTextsWithBase(base, overlay)))
+      // 优先级：base < s2AutoFill < overlay（非空值才覆盖，防止模板空值清掉自动回填）
+      const merged = mergeCellTextsNonEmpty(mergeCellTextsWithBase(base, s2AutoFill), overlay)
+      setCellTexts(recalculateEfficiencyAchievementRatios(merged))
       prevPlanDateRef.current = planDate
       return
     }
@@ -89,8 +117,12 @@ export function AttendanceSchedulingPushPanel() {
     if (prevPlanDateRef.current !== planDate) {
       setCellTexts((prev) => {
         const remapped = remapCellTextsToPlanDate(prev, prevPlanDateRef.current, planDate)
-        const withTitle = syncPlanTitleForDateChange(remapped, prevPlanDateRef.current, planDate)
-        return recalculateEfficiencyAchievementRatios(mergeCellTextsWithBase(base, withTitle))
+        // 切换日期时，去掉旧日期带来的 S2 数据，改为从前一天快照回填
+        const withoutOldS2 = stripSection2Cells(remapped, planDate)
+        const withTitle = syncPlanTitleForDateChange(withoutOldS2, prevPlanDateRef.current, planDate)
+        // 优先级：base < s2AutoFill < withTitle（用户填写的非S2数据）
+        const merged = mergeCellTextsWithBase(mergeCellTextsWithBase(base, s2AutoFill), withTitle)
+        return recalculateEfficiencyAchievementRatios(merged)
       })
       prevPlanDateRef.current = planDate
     }
@@ -103,12 +135,11 @@ export function AttendanceSchedulingPushPanel() {
   const handleSaveTemplate = useCallback(async () => {
     setSavingTemplate(true)
     try {
-      const template: AttendanceSchedulingPushTemplate = {
-        planDate,
-        cells: stripPlanDatePrefixFromCellTexts(cellTexts, planDate),
-      }
+      const stripped = stripPlanDatePrefixFromCellTexts(cellTexts, planDate)
+      const template: AttendanceSchedulingPushTemplate = { planDate, cells: stripped }
       await persistAttendanceSchedulingPushTemplate(template)
       templateRef.current = template
+      saveDaySnapshot(planDate, stripped)
       showToast('已保存排班模版，下次进入将自动回填。', 'success')
     } catch {
       showToast('模版保存失败，请重试。', 'error')
@@ -155,6 +186,7 @@ export function AttendanceSchedulingPushPanel() {
                   showToast('无操作权限', 'error')
                   return
                 }
+                saveDaySnapshot(planDate, stripPlanDatePrefixFromCellTexts(cellTexts, planDate))
                 void pushSchedulingPlanPreviews([previewForPush])
               }}
             >

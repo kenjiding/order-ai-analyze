@@ -1,281 +1,271 @@
-/* 排班推送预览：按业务区块分卡片，截图友好 */
+/* ── 排班计划截图表 ── */
+.sp-plan {
+  /* ── 色彩系统：亮色调，Sky-Blue 主色 ── */
+  --sp-title-from:      #0369A1;   /* sky-700 */
+  --sp-title-to:        #0EA5E9;   /* sky-500 */
+  --sp-section-hd-bg:   #EFF8FF;   /* 极浅天蓝 */
+  --sp-section-hd-text: #0369A1;   /* sky-700，与标题呼应 */
+  --sp-section-hd-bd:   #BAE6FD;   /* sky-200，分隔线 */
+  --sp-th-bg:           #BAE6FD;   /* sky-200 */
+  --sp-th-text:         #0C4A6E;   /* sky-950 */
+  --sp-label-bg:        #F5FBFF;   /* 近白带蓝 */
+  --sp-label-text:      #1A4A6E;
+  --sp-desc-bg:         #FAFCFE;
+  --sp-desc-text:       #3D6275;
+  --sp-cell-bg:         #FFFFFF;
+  --sp-total-bg:        #E0F2FE;   /* sky-100 */
+  --sp-total-text:      #0369A1;
+  --sp-border:          #D1EAF9;   /* sky-100/200 中间 */
+  --sp-border-strong:   #7DD3FC;   /* sky-300 */
+  --sp-red:             #DC2626;
+  --sp-source-bg:       #EEF7FE;
 
-.attendance-plan-preview {
-  --ap-accent: #2f8f87;
-  --ap-accent-deep: #1f6f68;
-  --ap-sky: #eaf4ff;
-  --ap-sky-deep: #d2e8f8;
-  --ap-border: #c5d8e6;
-  --ap-border-strong: #8fafc4;
-  --ap-text: #223247;
-  --ap-muted: #5a7088;
-  --ap-metric-red: #c62828;
-  --ap-metric-red-bg: #fff1f1;
-  --ap-metric-green: #1b7a3a;
-  --ap-metric-green-bg: #ecf8f0;
-  --ap-title-bg: linear-gradient(135deg, #1f6f68 0%, #2f8f87 48%, #3a9e96 100%);
-
-  display: flex;
-  flex-direction: column;
-  gap: 14px;
-  background: transparent;
-  color: var(--ap-text);
+  font-family: system-ui, -apple-system, 'PingFang SC', 'Microsoft YaHei', sans-serif;
   font-size: 12px;
-  line-height: 1.4;
-  min-width: fit-content;
-}
-
-.attendance-plan-preview__title-wrap {
-  border-radius: 12px;
+  line-height: 1.45;
+  color: #0F2030;
+  background: #ffffff;
+  border: 1.5px solid var(--sp-border-strong);
+  border-radius: 6px;
   overflow: hidden;
-  box-shadow: 0 6px 20px rgba(31, 111, 104, 0.18);
+  min-width: 960px;
+  width: 100%;
 }
 
-.attendance-plan-preview__title-wrap .attendance-plan-preview__table {
-  margin: 0;
+/* ── Title bar ── */
+.sp-title-bar {
+  background: linear-gradient(135deg, var(--sp-title-from) 0%, var(--sp-title-to) 100%);
 }
 
-.attendance-plan-preview__title-wrap .attendance-plan-preview__cell {
-  border: none;
-}
-
-.attendance-plan-preview__block {
-  --ap-block-accent: #2b6cb8;
-  --ap-block-accent-deep: #1e4f8a;
-  --ap-block-tint: #f2f7fd;
-  --ap-block-header: linear-gradient(90deg, #dce9f8 0%, #f5f9fe 100%);
-  --ap-block-border: #b8cfe8;
-
-  border-radius: 12px;
-  border: 1px solid var(--ap-block-border);
-  border-left: 4px solid var(--ap-block-accent);
-  background: #fff;
-  box-shadow: 0 6px 22px rgba(34, 50, 71, 0.07);
-  overflow: clip;
-  min-width: fit-content;
-}
-
-.attendance-plan-preview__block-label {
-  padding: 9px 14px;
-  font-size: 13px;
-  font-weight: 750;
-  letter-spacing: 0.02em;
+.sp-title-text {
+  padding: 14px 20px 10px;
+  font-size: 18px;
+  font-weight: 800;
+  letter-spacing: 0.05em;
   text-align: center;
-  color: var(--ap-block-accent-deep);
-  background: var(--ap-block-header);
-  border-bottom: 1px solid var(--ap-block-border);
+  color: #ffffff;
+  outline: none;
+  cursor: text;
+  min-height: 24px;
 }
 
-.attendance-plan-preview__block-body {
-  padding: 10px 12px 12px;
-  background: var(--ap-block-tint);
+.sp-title-text:focus {
+  background: rgba(255,255,255,0.10);
 }
 
-.attendance-plan-preview__block-body .attendance-plan-preview__table {
-  border-radius: 8px;
-  overflow: hidden;
-  box-shadow: 0 0 0 1px var(--ap-block-border);
+.sp-subtitle {
+  padding: 6px 20px 8px;
+  font-size: 11.5px;
+  font-weight: 500;
+  text-align: center;
+  color: rgba(255,255,255,0.85);
+  letter-spacing: 0.03em;
+  border-top: 1px solid rgba(255,255,255,0.20);
 }
 
-.attendance-plan-preview__table {
+/* ── Section wrapper ── */
+.sp-section {
+  border-top: 1px solid var(--sp-border);
+}
+
+/* 亮色区块标题 */
+.sp-section-hd {
+  padding: 7px 14px;
+  font-size: 12.5px;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  color: var(--sp-section-hd-text);
+  background: var(--sp-section-hd-bg);
+  border-bottom: 1px solid var(--sp-section-hd-bd);
+}
+
+/* ── 各区块标题色块 ── */
+.sp-section-hd--s1  { background: #DBEAFE; color: #1D4ED8; border-bottom-color: #BFDBFE; } /* 蓝  — 总体情况     */
+.sp-section-hd--s2  { background: #FEF3C7; color: #92400E; border-bottom-color: #FDE68A; } /* 琥珀 — 上一日复盘  */
+.sp-section-hd--s3a { background: #D1FAE5; color: #065F46; border-bottom-color: #A7F3D0; } /* 翠绿 — 工时结构    */
+.sp-section-hd--s3b { background: #EDE9FE; color: #5B21B6; border-bottom-color: #DDD6FE; } /* 紫   — 按工序小计  */
+.sp-section-hd--s4  { background: #FFE4E6; color: #9F1239; border-bottom-color: #FECDD3; } /* 玫红 — 次日出勤    */
+
+/* ── Sections 3A / 3B horizontal split ── */
+.sp-row-3 {
+  display: flex;
+  align-items: stretch;
+  gap: 10px;
+  border-top: 1px solid var(--sp-border);
+}
+
+.sp-section--3a {
+  flex: 58;
+  border-top: none;
+}
+
+.sp-section--3b {
+  flex: 42;
+  border-top: none;
+  border-left: 1px solid var(--sp-border);
+}
+
+/* ── Table base ── */
+.sp-table {
   width: 100%;
   border-collapse: collapse;
   table-layout: fixed;
 }
 
-.attendance-plan-preview__table--7 {
-  min-width: 720px;
-}
-
-.attendance-plan-preview__table--10 {
-  min-width: 960px;
-}
-
-.attendance-plan-preview__cell {
-  border: 1px solid var(--ap-border);
-  padding: 8px 10px;
+/* ── Column headers ── */
+.sp-table thead th {
+  padding: 8px 6px;
+  font-size: 11.5px;
+  font-weight: 700;
+  text-align: center;
+  color: var(--sp-th-text);
+  background: var(--sp-th-bg);
+  border: 1px solid #93D1F0;
+  white-space: normal;
+  line-height: 1.3;
   vertical-align: middle;
+}
+
+/* ── Body cells ── */
+.sp-cell {
+  padding: 7px 6px;
+  vertical-align: middle;
+  text-align: center;
+  background: var(--sp-cell-bg);
+  border: 1px solid var(--sp-border);
+  font-size: 12px;
   word-break: break-word;
   white-space: pre-wrap;
-  transition: background-color 0.12s ease;
-}
-
-.attendance-plan-preview__cell--title {
-  padding: 14px 16px;
-  font-size: 17px;
-  font-weight: 750;
-  letter-spacing: 0.03em;
-  text-align: center;
-  color: #fff;
-  background: var(--ap-title-bg);
-  border-color: var(--ap-accent-deep);
-  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.12);
-}
-
-.attendance-plan-preview__cell--title.attendance-plan-preview__cell--editable {
-  cursor: text;
-}
-
-.attendance-plan-preview__cell--title.attendance-plan-preview__cell--editable:focus {
-  box-shadow: inset 0 0 0 2px rgba(255, 255, 255, 0.65);
-  background: linear-gradient(135deg, #247a72 0%, #2f8f87 48%, #359a92 100%) !important;
-}
-
-.attendance-plan-preview__cell--section {
-  padding: 10px 12px;
-  font-size: 14px;
-  font-weight: 800;
-  text-align: center;
-  color: var(--ap-accent-deep);
-  background: linear-gradient(90deg, #e8f4fc 0%, #f4f9fd 100%);
-  border-color: var(--ap-border);
-}
-
-.attendance-plan-preview__cell--header {
-  padding: 10px 8px;
-  font-size: 13px;
-  font-weight: 800;
-  text-align: center;
-  color: #1e4f8a;
-  background: linear-gradient(180deg, #e8f1fb 0%, #d4e4f6 100%);
-  border-color: #a8c4e0;
-}
-
-.attendance-plan-preview__cell--body {
-  background: #fff;
-  text-align: center;
-  color: var(--ap-text);
-}
-
-.attendance-plan-preview__cell--center {
-  text-align: center;
-}
-
-.attendance-plan-preview__cell--label {
-  background: #edf3fb;
-  color: var(--ap-muted);
-  font-weight: 600;
-  font-size: 11px;
-}
-
-.attendance-plan-preview__cell--note {
-  background: #fff8d6;
-  color: #7a5c00;
-  font-size: 12px;
-  font-weight: 650;
-  line-height: 1.5;
-  box-shadow: inset 3px 0 0 #f5c842;
-}
-
-.attendance-plan-preview__cell--feedback {
-  font-size: 14px;
-  font-weight: 700;
-  line-height: 1.45;
-}
-
-.attendance-plan-preview__cell--feedback.attendance-plan-preview__cell--red {
-  font-size: 14px;
-  font-weight: 700;
-}
-
-.attendance-plan-preview__cell--metric {
-  background: #fff;
-  font-size: 16px;
-  font-weight: 750;
-  letter-spacing: 0.02em;
-  color: var(--ap-text);
-}
-
-.attendance-plan-preview__cell--metric.attendance-plan-preview__cell--red {
-  color: var(--ap-metric-red);
-  background: var(--ap-metric-red-bg);
-}
-
-.attendance-plan-preview__cell--ratio {
-  background: #fff;
-  font-size: 18px;
-  font-weight: 800;
-  letter-spacing: 0.02em;
-}
-
-.attendance-plan-preview__cell--ratio.attendance-plan-preview__cell--red {
-  color: var(--ap-metric-red);
-  background: var(--ap-metric-red-bg);
-}
-
-.attendance-plan-preview__cell--ratio.attendance-plan-preview__cell--green {
-  color: var(--ap-metric-green);
-  background: var(--ap-metric-green-bg);
-}
-
-.attendance-plan-preview__ratio-pill {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-width: 4rem;
-  padding: 4px 12px;
-  border-radius: 999px;
-  font-size: 17px;
-  font-weight: 800;
-  line-height: 1.2;
-}
-
-.attendance-plan-preview__cell--ratio.attendance-plan-preview__cell--red .attendance-plan-preview__ratio-pill {
-  color: var(--ap-metric-red);
-  background: rgba(198, 40, 40, 0.12);
-  border: 1px solid rgba(198, 40, 40, 0.28);
-}
-
-.attendance-plan-preview__cell--ratio.attendance-plan-preview__cell--green .attendance-plan-preview__ratio-pill {
-  color: var(--ap-metric-green);
-  background: rgba(27, 122, 58, 0.12);
-  border: 1px solid rgba(27, 122, 58, 0.28);
-}
-
-.attendance-plan-preview__cell--left {
-  text-align: left;
-}
-
-.attendance-plan-preview__cell--red:not(.attendance-plan-preview__cell--metric):not(.attendance-plan-preview__cell--ratio):not(.attendance-plan-preview__cell--feedback) {
-  color: var(--ap-metric-red);
-  background: #fff8f8;
-  font-weight: 600;
-}
-
-.attendance-plan-preview__cell--green {
-  color: var(--ap-metric-green);
-  background: var(--ap-metric-green-bg);
-  font-weight: 700;
-}
-
-.attendance-plan-preview__cell--editable {
+  transition: background 0.1s;
   min-height: 28px;
+}
+
+/* editable cells */
+.sp-cell[contenteditable='true'],
+.sp-cell[contenteditable] {
   outline: none;
   cursor: text;
 }
 
-.attendance-plan-preview__cell--editable:focus {
-  box-shadow: inset 0 0 0 2px rgba(43, 108, 184, 0.45);
-  background: #f8fbff !important;
-  z-index: 1;
+.sp-cell[contenteditable='true']:focus,
+.sp-cell[contenteditable]:focus {
+  background: #EFF8FF !important;
+  box-shadow: inset 0 0 0 2px #0EA5E9;
   position: relative;
+  z-index: 1;
 }
 
-.attendance-plan-preview__table--10 tbody tr:nth-child(n + 2):nth-child(even) .attendance-plan-preview__cell--body {
-  background: #f8fbfe;
+/* label cells (first column) */
+.sp-cell--label {
+  background: var(--sp-label-bg);
+  color: var(--sp-label-text);
+  font-weight: 650;
+  font-size: 11.5px;
+  text-align: center;
 }
 
-.attendance-plan-preview__table--10 tbody tr:nth-child(n + 2):nth-child(even) .attendance-plan-preview__cell--label {
-  background: #e5eef8;
+/* description / static info cells */
+.sp-cell--desc {
+  background: var(--sp-desc-bg);
+  color: var(--sp-desc-text);
+  font-size: 11px;
+  text-align: center;
 }
 
-.attendance-plan-preview__table--10 tbody tr:nth-child(n + 2):nth-child(even) .attendance-plan-preview__cell--metric {
-  background: #f3f8fc;
+/* numeric metric cells */
+.sp-cell--num {
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
 }
 
-.attendance-plan-preview__spacer {
-  height: 10px;
-  border: none !important;
-  background: transparent !important;
-  padding: 0 !important;
+/* Section 1 large metric values */
+.sp-cell--s1-value {
+  font-size: 20px;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  color: var(--sp-red);
+  padding: 12px 6px;
+  font-variant-numeric: tabular-nums;
+}
+
+/* 工时列淡黄背景 */
+.sp-cell--hours {
+  background: #FEFCE8;
+  border-color: #FDE047;
+}
+
+/* achievement rate */
+.sp-cell--rate {
+  font-weight: 750;
+  font-variant-numeric: tabular-nums;
+}
+
+/* verdict cells */
+.sp-cell--verdict {
+  font-weight: 700;
+}
+
+/* left-aligned text */
+.sp-cell--text-left {
+  text-align: left;
+  font-size: 11.5px;
+  line-height: 1.5;
+}
+
+/* source tag cells */
+.sp-cell--source {
+  background: var(--sp-source-bg);
+  color: var(--sp-label-text);
+  font-size: 11px;
+  font-weight: 650;
+}
+
+/* ── Total rows ── */
+.sp-row--total .sp-cell,
+.sp-row--total .sp-cell--total-num,
+.sp-row--total .sp-cell--total-label {
+  background: var(--sp-total-bg);
+  border-color: var(--sp-border-strong);
+}
+
+.sp-cell--total-label {
+  color: var(--sp-total-text);
+  font-weight: 800;
+  font-size: 12.5px;
+  text-align: center;
+  background: var(--sp-total-bg);
+  border-color: var(--sp-border-strong);
+}
+
+.sp-cell--total-num {
+  font-size: 13px;
+  font-weight: 800;
+  color: var(--sp-total-text);
+  font-variant-numeric: tabular-nums;
+  background: var(--sp-total-bg);
+  border-color: var(--sp-border-strong);
+}
+
+/* ── Computed / read-only cells ── */
+.sp-cell--computed {
+  background: #F0FDF4 !important;  /* 浅薄荷绿，区分只读 */
+  color: #166534;
+  font-weight: 650;
+  cursor: default;
+}
+
+.sp-cell--computed:focus {
+  box-shadow: none !important;
+  background: #F0FDF4 !important;
+}
+
+/* 总效率 cell – 暖琥珀，突显特殊指标 */
+.sp-cell--eff {
+  background: #FEFCE8 !important;
+  color: #713F12;
+}
+
+/* ── Zebra striping ── */
+.sp-table tbody tr:nth-child(even) .sp-cell--num:not(.sp-cell--computed) {
+  background: #F8FBFE;
 }

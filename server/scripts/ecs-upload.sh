@@ -65,6 +65,27 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
+# --deploy 时检测 schema.ts 与 migrations/ 是否有未提交变更
+if $DEPLOY; then
+  schema_dirty=$(git -C "$ROOT" diff HEAD -- src/db/schema.ts 2>/dev/null)
+  migrations_dirty=$(git -C "$ROOT" status --porcelain src/db/migrations/ 2>/dev/null)
+  if [[ -n "$schema_dirty" || -n "$migrations_dirty" ]]; then
+    echo "" >&2
+    echo "❌ 部署中止：数据库文件有未提交的变更。" >&2
+    echo "" >&2
+    [[ -n "$schema_dirty" ]]     && echo "  • schema.ts 有未提交的改动" >&2
+    [[ -n "$migrations_dirty" ]] && echo "  • migrations/ 有未提交的文件" >&2
+    echo "" >&2
+    echo "请先执行：" >&2
+    echo "  cd server && npm run db:generate   # 如果改了 schema.ts" >&2
+    echo "  git add src/db/                    # 暂存迁移文件" >&2
+    echo "  git commit -m 'feat: 迁移说明'" >&2
+    echo "  pnpm ecs:deploy" >&2
+    echo "" >&2
+    exit 1
+  fi
+fi
+
 SSH_BASE_OPTS=(
   -p "$ECS_SSH_PORT"
   -o StrictHostKeyChecking=accept-new

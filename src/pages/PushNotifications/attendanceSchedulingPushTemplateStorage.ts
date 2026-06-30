@@ -93,3 +93,16 @@ export function mergeCellTextsWithBase(
 ): Record<string, string> {
   return { ...base, ...overlay }
 }
+
+// 与 mergeCellTextsWithBase 相同，但 overlay 的空字符串值不覆盖 base 已有的值。
+// 用于把已保存模板叠加到自动回填层上，防止模板里的空值清掉自动填充结果。
+export function mergeCellTextsNonEmpty(
+  base: Record<string, string>,
+  overlay: Record<string, string>,
+): Record<string, string> {
+  const out = { ...base }
+  for (const [key, value] of Object.entries(overlay)) {
+    if (value !== '') out[key] = value
+  }
+  return out
+}

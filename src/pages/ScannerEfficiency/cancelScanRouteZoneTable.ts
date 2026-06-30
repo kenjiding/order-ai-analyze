@@ -1,6 +1,8 @@
+import type { ParsedScanRow } from './aggregates'
 import type { RouteCodeDistributionItem } from './scannerEfficiencyApi'
 import type { DailyRouteCodeCount } from './cancelScanAnalysisTypes'
 import { filterDailyRouteCodeCounts } from './cancelScanRouteCodeDaily'
+import { formatDateKey } from './formatAndParse'
 
 export type RouteCodeDailyCount = {
   date: string
@@ -20,6 +22,10 @@ export type RouteZoneGroup = {
   zone: string
   zoneTotal: number
   totalShare: number
+  /** 同区间到件扫描大区总量（有到件数据时才有值） */
+  inboundZoneTotal?: number
+  /** 细分错误 / 到件扫描（同大区、同区间） */
+  errorRate?: number | null
   routeCodes: RouteZoneRouteItem[]
 }
 
@@ -112,4 +118,44 @@ function buildRouteZoneGroupsInternal(
 export function countRouteZones(distribution: RouteCodeDistributionItem[]): number {
   const zones = new Set(distribution.map((item) => extractRouteZone(item.routeCode)))
   return zones.size
+}
+
+/** 按路由码首字母汇总到件扫描大区票数（可选按 YYYY-MM-DD 区间过滤） */
+export function buildZoneInboundScanTotals(
+  rows: ParsedScanRow[],
+  startDate?: string,
+  endDate?: string,
+): Map<string, number> {
+  const totals = new Map<string, number>()
+
+  for (const row of rows) {
+    const dateKey = formatDateKey(row.scanTime)
+    if (startDate && dateKey < startDate) continue
+    if (endDate && dateKey > endDate) continue
+    const zone = extractRouteZone(row.routeCode)
+    totals.set(zone, (totals.get(zone) ?? 0) + 1)
+  }
+
+  return totals
+}
+
+export function computeZoneErrorRate(cancelCount: number, inboundTotal: number | undefined): number | null {
+  if (inboundTotal == null || inboundTotal <= 0) return null
+  return cancelCount / inboundTotal
+}
+
+export function attachZoneInboundScanTotals(
+  groups: RouteZoneGroup[],
+  zoneInboundScanTotals: ReadonlyMap<string, number> | null | undefined,
+): RouteZoneGroup[] {
+  if (!zoneInboundScanTotals?.size) return groups
+
+  return groups.map((group) => {
+    const inboundZoneTotal = zoneInboundScanTotals.get(group.zone)
+    return {
+      ...group,
+      inboundZoneTotal,
+      errorRate: computeZoneErrorRate(group.zoneTotal, inboundZoneTotal),
+    }
+  })
 }

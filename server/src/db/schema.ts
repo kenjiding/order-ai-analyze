@@ -5,6 +5,7 @@ import {
   jsonb,
   pgTable,
   primaryKey,
+  text,
   timestamp,
   uniqueIndex,
   uuid,
@@ -145,6 +146,24 @@ export const feishuPushSnapshots = pgTable('feishu_push_snapshots', {
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 })
 
+export const fleetSupplierPushConfigs = pgTable(
+  'fleet_supplier_push_configs',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    supplierName: varchar('supplier_name', { length: 255 }).notNull(),
+    routeCode: varchar('route_code', { length: 1024 }).notNull().default(''),
+    webhookUrl: varchar('webhook_url', { length: 512 }).notNull().default(''),
+    signingSecret: varchar('signing_secret', { length: 255 }),
+    pushContent: text('push_content').notNull().default(''),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [index('fleet_supplier_push_configs_user_idx').on(table.userId)],
+)
+
 export const vendorAnalysisPushConfigs = pgTable('vendor_analysis_push_configs', {
   id: uuid('id').primaryKey().defaultRandom(),
   vendorCode: varchar('vendor_code', { length: 64 }).notNull(),
@@ -170,3 +189,5 @@ export type OrderExceptionWarehouseConfig = typeof orderExceptionWarehouseConfig
 export type FeishuPushSnapshot = typeof feishuPushSnapshots.$inferSelect
 export type VendorAnalysisPushConfig = typeof vendorAnalysisPushConfigs.$inferSelect
 export type NewVendorAnalysisPushConfig = typeof vendorAnalysisPushConfigs.$inferInsert
+export type FleetSupplierPushConfig = typeof fleetSupplierPushConfigs.$inferSelect
+export type NewFleetSupplierPushConfig = typeof fleetSupplierPushConfigs.$inferInsert

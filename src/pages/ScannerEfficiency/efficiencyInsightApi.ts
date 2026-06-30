@@ -69,8 +69,8 @@ export async function generateScannerInsight(
 ): Promise<EfficiencyAiAnalysis> {
   const s = scannerResult.summary
 
-  // 前端用确定性算法选出 Top 3，AI 只负责写推荐文案
-  const top3 = selectTopPerformers(
+  // 前端用确定性算法选出 Top 5，AI 只负责写推荐文案
+  const top5 = selectTopPerformers(
     scannerResult.scannerTotalRows,
     scannerTotalEfficiencyRows ?? [],
   )
@@ -95,8 +95,8 @@ export async function generateScannerInsight(
         rawEfficiency: r.efficiency,
         cainiaoAdjustedEfficiency: r.cainiaoAdjustedEfficiency ?? r.adjustedEfficiency,
       })),
-      // 已由代码确定的 Top 3，AI 只需为每人生成推荐依据
-      topPerformerCandidates: top3.map((c) => ({
+      // 已由代码确定的 Top 5，AI 只需为每人生成推荐依据
+      topPerformerCandidates: top5.map((c) => ({
         scanner: c.scanner,
         scanCount: c.scanCount,
         activeDays: c.activeDays,
@@ -117,9 +117,9 @@ export async function generateScannerInsight(
   const data = (await response.json()) as { analysis?: unknown }
   const analysis = (data?.analysis ?? {}) as Record<string, unknown>
 
-  // AI 只返回 reason 字符串（按 top3 顺序），前端用已确定的扫描员姓名拼合
+  // AI 只返回 reason 字符串（按 top5 顺序），前端用已确定的扫描员姓名拼合
   const reasons = asStringArray(analysis.topPerformerReasons)
-  const topPerformers: TopPerformer[] = top3.map((c, i) => ({
+  const topPerformers: TopPerformer[] = top5.map((c, i) => ({
     scanner: c.scanner,
     reason: reasons[i] ?? '',
   }))

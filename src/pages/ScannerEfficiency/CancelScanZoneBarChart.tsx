@@ -9,6 +9,7 @@ export type CancelScanZoneChartRow = {
   count: number
   fill: string
   selected: boolean
+  errorRateLabel?: string | null
 }
 
 type Props = {
@@ -29,6 +30,10 @@ function buildChartRows(groups: RouteZoneGroup[], selectedZone: string | null): 
     count: group.zoneTotal,
     fill: getZoneColorTheme(group.zone).accent,
     selected: group.zone === selectedZone,
+    errorRateLabel:
+      group.errorRate != null && Number.isFinite(group.errorRate)
+        ? `${(group.errorRate * 100).toFixed(2)}%`
+        : null,
   }))
 }
 
@@ -103,10 +108,14 @@ export default function CancelScanZoneBarChart({
       .style('radiusTopLeft', 6)
       .style('radiusTopRight', 6)
       .label({
-        text: (d: CancelScanZoneChartRow) => (d.count > 0 ? String(d.count) : ''),
+        text: (d: CancelScanZoneChartRow) => {
+          if (d.count <= 0) return ''
+          if (d.errorRateLabel) return `${d.count}\n${d.errorRateLabel}`
+          return String(d.count)
+        },
         position: 'top',
         fill: '#475569',
-        fontSize: 15,
+        fontSize: 13,
         fontWeight: 600,
         dy: -6,
       })
@@ -140,7 +149,10 @@ export default function CancelScanZoneBarChart({
     <div className={['cancel-scan-zone-chart', className ?? ''].join(' ')}>
       <div className="cancel-scan-zone-chart__caption">
         <span className="cancel-scan-zone-chart__title">大区运单数分布</span>
-        <span className="cancel-scan-zone-chart__hint">点击柱形切换下方大区明细</span>
+        <span className="cancel-scan-zone-chart__hint">
+          点击柱形切换下方大区明细
+          {rows.some((row) => row.errorRateLabel) ? ' · 柱顶第二行为占比' : ''}
+        </span>
       </div>
       <div
         ref={containerRef}

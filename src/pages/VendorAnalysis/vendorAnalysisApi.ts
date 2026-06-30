@@ -1,9 +1,8 @@
 import { getApiBaseUrl } from '../../utils/apiBaseUrl'
 import type {
+  Before11ExitRatesData,
   DriverWaybillRow,
   DriverReturnRawRow,
-  FineBi24hDispatchMetrics,
-  FineBiVendorMetrics,
   LongTailOrderRow,
   StationOption,
   UnprocessedTicketsData,
@@ -90,48 +89,17 @@ export async function fetchLongTailOrders(
   })
 }
 
-type FineBiConnectionPayload = {
-  reportId: string
-  shareLink: string
-  baseUrl?: string
-  authToken?: string
-  widgetDataUrl?: string
-}
-
-export async function fetchFineBiMetrics(
-  params: {
-    endDate: string
-    vendorCodes: string[]
-    stationCodes: string[]
-    fineBiConnection: FineBiConnectionPayload
-  },
+export async function fetchBefore11ExitRates(
+  imileToken: string,
+  params: { startTime: string; endTime: string; vendorCodes: string[] },
   signal?: AbortSignal,
-): Promise<{ ok: true; data: Record<string, FineBiVendorMetrics> } | { ok: false; error: string }> {
-  return apiFetch<Record<string, FineBiVendorMetrics>>('/api/vendor-analysis/finebi-metrics', {
+): Promise<{ ok: true; data: Before11ExitRatesData } | { ok: false; error: string }> {
+  return apiFetch<Before11ExitRatesData>('/api/vendor-analysis/before11-exit-rate', {
     method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${imileToken}` },
     body: JSON.stringify(params),
     signal,
   })
-}
-
-export async function fetchFineBi24hDispatchMetrics(
-  params: {
-    startDate: string
-    endDate: string
-    vendorCodes: string[]
-    stationCodes: string[]
-    fineBiConnection: FineBiConnectionPayload
-  },
-  signal?: AbortSignal,
-): Promise<{ ok: true; data: Record<string, FineBi24hDispatchMetrics> } | { ok: false; error: string }> {
-  return apiFetch<Record<string, FineBi24hDispatchMetrics>>(
-    '/api/vendor-analysis/finebi-24h-dispatch-metrics',
-    {
-      method: 'POST',
-      body: JSON.stringify(params),
-      signal,
-    },
-  )
 }
 
 export async function fetchWaybills(
@@ -200,4 +168,38 @@ export async function updateConfig(
 
 export async function deleteConfig(id: string): Promise<{ ok: true } | { ok: false; error: string }> {
   return apiFetch<undefined>(`/api/vendor-analysis/configs/${id}`, { method: 'DELETE' })
+}
+
+export type VendorAiDriverInput = {
+  courierName: string
+  courierCode: string
+  routeCode: string
+  ofdCount: number
+  before11ExitRate: number | null
+  dispatchRate24h: number | null
+  dispatch24hCount: number
+  totalDispatchCount: number
+  returnWarningCount: number
+}
+
+export type VendorAiInput = {
+  vendorCode: string
+  vendorName: string
+  before11ExitRate: number | null
+  dispatchRate24h: number | null
+  complaintRate: number
+  complaintCount: number
+  waybillCount: number
+  unprocessedTicketCount: number
+  longTailCount: number
+  drivers: VendorAiDriverInput[]
+}
+
+export async function fetchVendorAiSummaries(
+  vendors: VendorAiInput[],
+): Promise<{ ok: true; data: Record<string, string> } | { ok: false; error: string }> {
+  return apiFetch<Record<string, string>>('/api/vendor-analysis/ai-summary', {
+    method: 'POST',
+    body: JSON.stringify({ vendors }),
+  })
 }

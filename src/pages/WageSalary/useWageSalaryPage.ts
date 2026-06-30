@@ -21,6 +21,7 @@ import {
   deriveAttendanceDateRangeLabel,
   buildWeeklyBillingSummaryRows,
   buildDailyRawAttendanceExportRows,
+  buildEmployeeAttendanceDetailExportRows,
 } from './wageExport'
 import { generateId } from '../../utils/generateId'
 import { showToast } from '../../utils/toast'
@@ -689,6 +690,18 @@ export function useWageSalaryPage() {
       '时薪标准',
     )
 
+    const attendanceDetailSource =
+      committedApiAttendanceRows.length > 0 ? committedApiAttendanceRows : filteredWageRecords
+    const employeeAttendanceDetailRows =
+      buildEmployeeAttendanceDetailExportRows(attendanceDetailSource)
+    if (employeeAttendanceDetailRows.length > 0) {
+      XLSX.utils.book_append_sheet(
+        workbook,
+        XLSX.utils.json_to_sheet(employeeAttendanceDetailRows),
+        '员工考勤详情',
+      )
+    }
+
     if (committedApiAttendanceRows.length > 0) {
       XLSX.utils.book_append_sheet(
         workbook,
@@ -715,14 +728,14 @@ export function useWageSalaryPage() {
     const fileName = buildWageExportFileName(dateRangeLabel)
     saveAs(blob, fileName)
 
-    const exportExtra =
-      committedImportRaw && committedApiAttendanceRows.length > 0
-        ? '（已附带原始上传工作表与每日原始考勤记录）'
-        : committedImportRaw
-          ? '（已附带原始上传工作表）'
-          : committedApiAttendanceRows.length > 0
-            ? '（已附带每日原始考勤记录）'
-            : ''
+    const attendanceExtras: string[] = []
+    if (employeeAttendanceDetailRows.length > 0) attendanceExtras.push('员工考勤详情')
+    if (committedApiAttendanceRows.length > 0) attendanceExtras.push('每日原始考勤记录')
+    const exportParts = [
+      committedImportRaw ? '原始上传工作表' : '',
+      ...attendanceExtras,
+    ].filter(Boolean)
+    const exportExtra = exportParts.length > 0 ? `（已附带${exportParts.join('与')}）` : ''
     showToast(`导出成功${exportExtra}`, 'success')
   }
 

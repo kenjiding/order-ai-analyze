@@ -14,6 +14,7 @@ import { weeklyReportInsightRouter } from './routes/weeklyReportInsightRouter'
 import { efficiencyInsightRouter } from './routes/efficiencyInsightRouter'
 import { jobsRouter } from './routes/jobsRouter'
 import { vendorAnalysisRouter } from './routes/vendorAnalysisRouter'
+import { fleetSupplierPushRouter } from './routes/fleetSupplierPushRouter'
 
 const app = express()
 
@@ -54,6 +55,7 @@ app.use('/api/efficiency-insight', requireAuth, efficiencyInsightRouter)
 app.use('/api/jobs', jobsRouter)
 app.use('/api/problem-audit', requireAuth, problemPackageAuditRouter)
 app.use('/api/vendor-analysis', requireAuth, vendorAnalysisRouter)
+app.use('/api/fleet-supplier-push', requireAuth, fleetSupplierPushRouter)
 app.use('/api/feishu-webhook', requireAuth, feishuWebhookTestRouter)
 
 export { app }

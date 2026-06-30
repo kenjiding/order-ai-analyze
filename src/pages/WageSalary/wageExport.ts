@@ -1,5 +1,6 @@
 import { endOfWeek, format, startOfWeek } from 'date-fns'
 import type { RateSettings } from '../../payroll/wageRateCalculation'
+import { calculateDecimalHours } from './calculations'
 import { summarizeBillingVsActualPayout } from './calculations'
 import { parseDate } from './dateUtils'
 
@@ -43,6 +44,108 @@ export function buildDailyRawAttendanceExportRows(
     扣减: String(record.deduction ?? ''),
     奖励: String(record.reward ?? ''),
   }))
+}
+
+type EmployeeAttendanceDetailRow = {
+  employeeId: string
+  name: string
+  nickname: string
+  date: string
+  firstClockIn: string
+  lastClockOut: string
+  workHoursDecimal: number
+  reward: string
+}
+
+function employeeAttendanceGroupKey(row: EmployeeAttendanceDetailRow): string {
+  const nick = row.nickname.trim()
+  return nick ? `${row.employeeId}_${nick}` : `${row.employeeId}_${row.name.trim()}`
+}
+
+function employeeAttendanceSortKey(row: EmployeeAttendanceDetailRow): string {
+  const nick = row.nickname.trim().toLowerCase()
+  const name = row.name.trim().toLowerCase()
+  return nick || name || row.employeeId
+}
+
+/** 每日原始考勤 / 工资记录 →「员工考勤详情」工作表（按员工分组，含合计工时） */
+export function buildEmployeeAttendanceDetailExportRows(
+  sourceRows: Record<string, unknown>[],
+): Record<string, string | number>[] {
+  const normalized: EmployeeAttendanceDetailRow[] = []
+
+  for (const row of sourceRows) {
+    const workHoursSource =
+      row.工作时长 ?? row.workHours ?? row.effectiveHours ?? row.totalHoursDecimal
+    const workHoursDecimal = calculateDecimalHours(workHoursSource as string | number)
+    if (!Number.isFinite(workHoursDecimal) || workHoursDecimal <= 0) continue
+
+    const dateRaw = String(row.日期 ?? row.date ?? '').trim()
+    const date = dateRaw.slice(0, 10)
+    if (!date) continue
+
+    normalized.push({
+      employeeId: String(row.人员编号 ?? row.employeeId ?? ''),
+      name: String(row.姓名 ?? row.name ?? ''),
+      nickname: String(row.昵称 ?? row.nickname ?? ''),
+      date,
+      firstClockIn: String(row.实际签到时间 ?? row.firstClockIn ?? ''),
+      lastClockOut: String(row.实际签退时间 ?? row.lastClockOut ?? ''),
+      workHoursDecimal,
+      reward: String(row.奖励 ?? row.reward ?? ''),
+    })
+  }
+
+  const groupMap = new Map<string, EmployeeAttendanceDetailRow[]>()
+  for (const row of normalized) {
+    const key = employeeAttendanceGroupKey(row)
+    const bucket = groupMap.get(key)
+    if (bucket) {
+      bucket.push(row)
+    } else {
+      groupMap.set(key, [row])
+    }
+  }
+
+  const sortedGroups = Array.from(groupMap.entries()).sort(([, leftRows], [, rightRows]) =>
+    employeeAttendanceSortKey(leftRows[0]).localeCompare(
+      employeeAttendanceSortKey(rightRows[0]),
+      'zh-CN',
+    ),
+  )
+
+  const exportRows: Record<string, string | number>[] = []
+
+  for (const [, dailyRows] of sortedGroups) {
+    dailyRows.sort((a, b) => a.date.localeCompare(b.date))
+
+    let totalHours = 0
+    for (const row of dailyRows) {
+      totalHours += row.workHoursDecimal
+      exportRows.push({
+        姓名: row.name,
+        昵称: row.nickname,
+        日期: row.date,
+        实际签到时间: row.firstClockIn,
+        实际签退时间: row.lastClockOut,
+        奖励: row.reward,
+        工作时长: Number(row.workHoursDecimal.toFixed(2)),
+      })
+    }
+
+    const head = dailyRows[0]
+    exportRows.push({
+      姓名: head.name,
+      昵称: head.nickname,
+      日期: '合计',
+      实际签到时间: '',
+      实际签退时间: '',
+      奖励: '',
+      工作时长: Number(totalHours.toFixed(2)),
+    })
+  }
+
+  return exportRows
 }
 
 /** 与「时薪标准设置」弹窗一致，供导出「时薪标准」工作表 */

@@ -144,7 +144,7 @@ export function isRetryableUnauthorizedFailure(failure: ImileBusinessFailure): b
 
 export function isRetryableBusyFailure(failure: ImileBusinessFailure): boolean {
   if (failure.code === '44882') return true
-  return /system is busy/i.test(failure.message)
+  return /system is busy/i.test(failure.message) || /系统繁忙/.test(failure.message)
 }
 
 export function sleep(ms: number): Promise<void> {
