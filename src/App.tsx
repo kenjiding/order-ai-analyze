@@ -1,10 +1,14 @@
 import { useEffect, type ReactNode } from 'react'
 import { App as AntdApp, ConfigProvider } from 'antd'
+import enUS from 'antd/locale/en_US'
+import zhCN from 'antd/locale/zh_CN'
 import { AliveScope, KeepAlive } from 'react-activation'
 import { ThemeProvider, createTheme } from '@mui/material/styles'
+import { useTranslation } from 'react-i18next'
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom'
 import { antdTheme } from './theme/antdTheme'
 import { AppSettingsProvider } from './context/AppSettingsContext'
+import { I18nProvider } from './i18n/I18nProvider'
 import AppLayout from './components/AppLayout'
 import ProtectedRoute from './components/ProtectedRoute'
 import NewMerchantMonitorPage from './pages/NewMerchantMonitor/NewMerchantMonitorPage'
@@ -42,6 +46,16 @@ const muiTheme = createTheme({
     },
   },
 })
+
+function AntdLocaleBridge({ children }: { children: ReactNode }) {
+  const { i18n } = useTranslation()
+  const antdLocale = i18n.language === 'en' ? enUS : zhCN
+  return (
+    <ConfigProvider locale={antdLocale} theme={antdTheme}>
+      {children}
+    </ConfigProvider>
+  )
+}
 
 function KeptScannerEfficiencyPage() {
   return (
@@ -137,10 +151,11 @@ function AuthenticatedShell() {
 
 function DefaultHomeRedirect() {
   const { hasPermission, isSuperAdmin, loading, isAuthenticated } = useAuthStore()
+  const { t } = useTranslation()
   if (loading) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-slate-50 text-sm text-slate-600">
-        正在验证登录状态…
+        {t('loadingAuth')}
       </div>
     )
   }
@@ -178,19 +193,21 @@ function AppRoutes() {
 
 export default function App() {
   return (
-    <ConfigProvider theme={antdTheme}>
-      <AntdApp>
-        <ToastBridge />
-        <ThemeProvider theme={muiTheme}>
-          <AuthBootstrap>
-            <AppSettingsProvider>
-              <BrowserRouter>
-                <AppRoutes />
-              </BrowserRouter>
-            </AppSettingsProvider>
-          </AuthBootstrap>
-        </ThemeProvider>
-      </AntdApp>
-    </ConfigProvider>
+    <I18nProvider>
+      <AntdLocaleBridge>
+        <AntdApp>
+          <ToastBridge />
+          <ThemeProvider theme={muiTheme}>
+            <AuthBootstrap>
+              <AppSettingsProvider>
+                <BrowserRouter>
+                  <AppRoutes />
+                </BrowserRouter>
+              </AppSettingsProvider>
+            </AuthBootstrap>
+          </ThemeProvider>
+        </AntdApp>
+      </AntdLocaleBridge>
+    </I18nProvider>
   )
 }

@@ -24,3 +24,5 @@
 - **Page structure**: Page-scoped code lives under `src/pages/<PageName>/`. Shared shell under `src/components/`.
 
 - **UI libraries**: Prefer Ant Design (themed in `src/theme/antdTheme.ts`); use MUI only where already established (e.g. Tabs, Tooltip in ScannerEfficiency).
+
+- **Permissions (mandatory)**: every new page must be wired into the permission system — no route/menu without a matching permission. Register `menu:<page-id>` in `server/src/permissions/registry.ts`, add the constant in `src/hooks/usePermission.tsx`'s `PERMISSION_KEYS`, and set `permissionKey` on its `src/components/Layout/sidebarMenu.ts` entry — this makes it assignable from "用户管理" and auto-enforced by `ProtectedRoute`. Full flow: `AGENTS.md` §权限接入.

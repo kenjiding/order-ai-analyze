@@ -7,11 +7,14 @@ import { VendorMetricsPreview } from './components/VendorMetricsPreview'
 import { VendorPushConfigModal } from './components/VendorPushConfigModal'
 import { VendorPushConfigTable } from './components/VendorPushConfigTable'
 import { useVendorAnalysisPage } from './useVendorAnalysisPage'
-import { buildVendorSnapshot, saveVendorSnapshot } from './vendorSnapshotStorage'
+import { buildVendorSnapshot, saveVendorSnapshot, type VendorSnapshotAiSummaries } from './vendorSnapshotStorage'
+import { mergeAiSummariesForLocale } from './vendorSnapshotAi'
 import { fetchVendorAiSummaries } from './vendorAnalysisApi'
+import { useAppLocale } from '../../i18n/hooks'
 
 export default function VendorAnalysisPage() {
   const v = useVendorAnalysisPage()
+  const { locale } = useAppLocale()
 
   const [modalOpen, setModalOpen] = useState(false)
   const [editingConfig, setEditingConfig] = useState<VendorPushConfig | null>(null)
@@ -47,7 +50,7 @@ export default function VendorAnalysisPage() {
   const openSnapshot = useCallback(async (autoPush: boolean) => {
     if (!v.fetchedData) return
     setAiLoading(true)
-    let aiSummaries: Record<string, string> | undefined
+    let aiSummaries: VendorSnapshotAiSummaries | undefined
     try {
       const inputs = v.vendorMetrics.map((m) => {
         const dispatchRate24h = m.dispatchRate24hText ? parseFloat(m.dispatchRate24hText) / 100 : null
@@ -73,16 +76,18 @@ export default function VendorAnalysisPage() {
             courierCode: d.courierCode,
             routeCode: d.routeCode,
             ofdCount: d.ofdCount,
-            before11ExitRate: d.ofdCount > 0 ? d.before11OfdCount / d.ofdCount : null,
             dispatchRate24h: d.dispatchRate24h,
             dispatch24hCount: d.dispatch24hCount,
             totalDispatchCount: d.totalDispatchCount,
             returnWarningCount: d.returnWarningCount,
+            longTailCount: d.longTailCount,
           })),
         }
       })
-      const result = await fetchVendorAiSummaries(inputs)
-      if (result.ok) aiSummaries = result.data
+      const result = await fetchVendorAiSummaries(inputs, locale)
+      if (result.ok) {
+        aiSummaries = mergeAiSummariesForLocale(undefined, locale, result.data)
+      }
     } finally {
       setAiLoading(false)
     }
@@ -96,7 +101,7 @@ export default function VendorAnalysisPage() {
     })
     saveVendorSnapshot(snapshot)
     window.open(autoPush ? '/vendor-snapshot?autoPush=1' : '/vendor-snapshot', '_blank')
-  }, [v.fetchedData, v.selectedStations, v.vendorMetrics, v.driverPerformanceByVendor, v.configs])
+  }, [v.fetchedData, v.selectedStations, v.vendorMetrics, v.driverPerformanceByVendor, v.configs, locale])
 
   const pushBtnTooltip = !v.fetchedData
     ? '请先点击「获取数据」'

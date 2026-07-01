@@ -362,13 +362,13 @@ type VendorAiDriverInput = {
   courierCode: string
   routeCode: string
   ofdCount: number
-  /** 11点前出仓率，fraction */
-  before11ExitRate: number | null
   /** 24H派签率，fraction */
   dispatchRate24h: number | null
   dispatch24hCount: number
   totalDispatchCount: number
   returnWarningCount: number
+  /** 长尾单件数 */
+  longTailCount: number
 }
 
 type VendorAiInput = {
@@ -388,7 +388,8 @@ type VendorAiInput = {
   drivers: VendorAiDriverInput[]
 }
 
-const VENDOR_AI_SYSTEM_PROMPT = `你是 iMile Australia 的资深运营分析师，负责向各快递供应商提供有深度、可执行的数据分析报告。
+const VENDOR_AI_SYSTEM_PROMPTS: Record<'zh-CN' | 'en', string> = {
+  'zh-CN': `你是 iMile Australia 的资深运营分析师，负责向各快递供应商提供有深度、可执行的数据分析报告。
 
 【指标基准线】
 - 11点前出仓率：≥99% 达标，[95%,99%) 预警，<95% 异常
@@ -400,6 +401,7 @@ const VENDOR_AI_SYSTEM_PROMPT = `你是 iMile Australia 的资深运营分析师
 2. 司机层面深入分析：
    - 点名24H派签率最低的2~3名司机及其路由、具体数值
    - 点名归班预警次数最多的司机，说明风险
+   - 若存在长尾单较多的司机，说明待跟进件量及潜在风险
    - 若存在某条路由多名司机均表现差，判断可能是路线问题而非个人问题
 3. 问题归因推断（基于数据，不要凭空猜测）
 4. 具体可执行建议（涉及到人名或路由，而非"加强管理"之类的空话）
@@ -410,7 +412,41 @@ const VENDOR_AI_SYSTEM_PROMPT = `你是 iMile Australia 的资深运营分析师
 - 若某家供应商所有指标均达标，则以积极语气简要肯定（60~80字即可），并从司机数据中找出表现最优司机予以点名
 - 禁止出现：AI、大模型、自动生成、人工智能
 
-返回严格 JSON（UTF-8，无 markdown wrapper）：{"summaries":{"<vendorCode>":"<analysis>",...}}`
+返回严格 JSON（UTF-8，无 markdown wrapper）：{"summaries":{"<vendorCode>":"<analysis>",...}}`,
+  en: `You are a senior operations analyst at iMile Australia, producing in-depth, actionable performance reports for courier vendors.
+
+[Metric baselines]
+- Exit rate by 11:00: ≥99% on target, [95%,99%) warning, <95% critical
+- 24h dispatch/sign-off rate: ≥95% on target, [92%,95%) warning, <92% critical
+- Complaint rate: ≤0.025% on target, (0.025%,0.03%) warning, ≥0.03% critical
+
+[Requirements] For each vendor, write a professional English analysis of 150–250 words covering:
+1. Overall vendor performance vs baselines (which metrics miss target and by how much—not just repeating numbers)
+2. Courier-level analysis:
+   - Name the 2–3 couriers with the lowest 24h dispatch rates, their routes, and figures
+   - Name couriers with the most return alerts and explain risk
+   - If couriers have high long-tail counts, note follow-up volume and risk
+   - If multiple couriers on the same route underperform, consider a route issue rather than individuals
+3. Root-cause inference grounded in data (no speculation)
+4. Concrete, actionable recommendations (name couriers or routes—avoid vague "improve management")
+
+[Format]
+- Fluent English paragraphs only; no markdown, bullet lists, or emoji
+- 150–250 words; substantive, not filler
+- If all metrics are on target, give brief positive feedback (60–80 words) and name top-performing couriers
+- Do not mention: AI, LLM, auto-generated, artificial intelligence
+
+Return strict JSON (UTF-8, no markdown wrapper): {"summaries":{"<vendorCode>":"<analysis>",...}}`,
+}
+
+const VENDOR_AI_USER_PROMPTS: Record<'zh-CN' | 'en', (count: number) => string> = {
+  'zh-CN': (count) => `以下是今日 ${count} 家供应商的运营数据，请逐一进行深度分析：`,
+  en: (count) => `Below is today's operational data for ${count} vendor(s). Analyze each in depth:`,
+}
+
+function resolveVendorAiLocale(raw: unknown): 'zh-CN' | 'en' {
+  return raw === 'en' ? 'en' : 'zh-CN'
+}
 
 vendorAnalysisRouter.post('/ai-summary', async (req: AuthenticatedRequest, res: Response) => {
   const apiKey = process.env.DEEPSEEK_API_KEY?.trim()
@@ -419,13 +455,14 @@ vendorAnalysisRouter.post('/ai-summary', async (req: AuthenticatedRequest, res: 
     return
   }
 
-  const { vendors } = req.body as { vendors?: VendorAiInput[] }
+  const { vendors, locale: rawLocale } = req.body as { vendors?: VendorAiInput[]; locale?: unknown }
   if (!Array.isArray(vendors) || vendors.length === 0) {
     res.status(400).json({ ok: false, error: '缺少 vendors 数据' })
     return
   }
 
-  const userPrompt = `以下是今日 ${vendors.length} 家供应商的运营数据，请逐一进行深度分析：\n${JSON.stringify(vendors, null, 2)}`
+  const locale = resolveVendorAiLocale(rawLocale)
+  const userPrompt = `${VENDOR_AI_USER_PROMPTS[locale](vendors.length)}\n${JSON.stringify(vendors, null, 2)}`
 
   try {
     const client = createDeepSeekClient(apiKey)
@@ -436,7 +473,7 @@ vendorAnalysisRouter.post('/ai-summary', async (req: AuthenticatedRequest, res: 
       max_tokens: 3000,
       response_format: { type: 'json_object' },
       messages: [
-        { role: 'system', content: VENDOR_AI_SYSTEM_PROMPT },
+        { role: 'system', content: VENDOR_AI_SYSTEM_PROMPTS[locale] },
         { role: 'user', content: userPrompt },
       ],
     })

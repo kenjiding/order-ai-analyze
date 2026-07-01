@@ -1,14 +1,16 @@
-import { Button, Image, Modal, Radio, Table, Tooltip, Upload } from 'antd'
+import { Button, Image, Modal, Radio, Select, Switch, Table, Tooltip, Upload } from 'antd'
 import type { UploadFile } from 'antd/es/upload/interface'
 import type { ColumnsType } from 'antd/es/table'
-import { AlertTriangle, Download, Image as ImageIcon, PencilLine, Plus, RefreshCw, Send, Trash2, UploadCloud, X } from 'lucide-react'
+import { AlertTriangle, CloudRain, Download, Image as ImageIcon, PencilLine, Plus, RefreshCw, Send, Trash2, UploadCloud, X } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent, type Key } from 'react'
 import { saveAs } from 'file-saver'
 import { aggregateFleetRowsForRoute } from '../fleetSupplierAggregate'
 import { captureFleetRouteReportPng } from '../fleetReportCapture'
 import { parseFleetRouteCodes } from '../fleetRouteCodeParse'
 import { parseFleetScanFiles } from '../fleetScanParse'
-import { summarizeFeishuTestFailure } from '../feishuWebhookTestApi'
+import { fetchDeliveryWeatherLarkMd, summarizeFeishuTestFailure } from '../feishuWebhookTestApi'
+import { WEATHER_LOCATION_PRESETS } from '../weatherLocations'
+import { readWeatherPushSettings, writeWeatherPushSettings } from '../weatherPushSettings'
 import {
   hasEditorContent,
   mergeEditorHtmlParts,
@@ -56,6 +58,13 @@ export function FleetSupplierPushTab({
 }: Props) {
   const canSend = usePermission(PERMISSION_KEYS.btnPushNotificationsFleetSupplier)
   const [globalPushText, setGlobalPushText] = useState('')
+  // 天气预报开关与城市：从 localStorage 恢复，设置一次后长期保留
+  const [weatherEnabled, setWeatherEnabled] = useState(() => readWeatherPushSettings().enabled)
+  const [weatherCity, setWeatherCity] = useState(() => readWeatherPushSettings().city)
+
+  useEffect(() => {
+    writeWeatherPushSettings({ enabled: weatherEnabled, city: weatherCity })
+  }, [weatherEnabled, weatherCity])
   const [pushImages, setPushImages] = useState<LocalPushImage[]>([])
   const [suppliers, setSuppliers] = useState<FleetSupplierConfig[]>([])
   const [configsLoading, setConfigsLoading] = useState(true)
@@ -246,11 +255,16 @@ export function FleetSupplierPushTab({
     )
   }
 
-  const pushForSupplier = async (s: FleetSupplierConfig, globalText: string): Promise<string[]> => {
+  const pushForSupplier = async (
+    s: FleetSupplierConfig,
+    globalText: string,
+    weatherLarkMd: string,
+  ): Promise<string[]> => {
     const supplierErrors: string[] = []
     if (!s.webhookUrl.trim()) return ['未配置 webhook。']
 
-    const mergedHtml = mergeEditorHtmlParts([s.pushContent.trim(), globalText])
+    // 天气块置于推送内容末尾（供应商专属文案 + 顶栏推送内容之后）
+    const mergedHtml = mergeEditorHtmlParts([s.pushContent.trim(), globalText, weatherLarkMd])
     const hasRichText = hasEditorContent(mergedHtml)
     const hasScan = scanRows.length > 0
     const hasManualImages = pushCustomImageDataUrls.length > 0
@@ -300,11 +314,28 @@ export function FleetSupplierPushTab({
     return supplierErrors
   }
 
-  const runPushForTargets = async (targets: FleetSupplierConfig[], globalText: string) => {
+  /** 若开启天气且选了城市，拉取一次 BOM 天气 lark_md；失败返回 '' 并提示，不阻断推送 */
+  const resolveWeatherLarkMd = async (): Promise<string> => {
+    if (!weatherEnabled) return ''
+    const loc = WEATHER_LOCATION_PRESETS.find((l) => l.label === weatherCity)
+    if (!loc) return ''
+    const res = await fetchDeliveryWeatherLarkMd({ lat: loc.lat, lng: loc.lng, label: loc.label })
+    if (!res.ok) {
+      showToast(`天气预报获取失败，本次推送不含天气：${res.error}`, 'error')
+      return ''
+    }
+    return res.larkMd
+  }
+
+  const runPushForTargets = async (
+    targets: FleetSupplierConfig[],
+    globalText: string,
+    weatherLarkMd: string,
+  ) => {
     const fails: PushFailEntry[] = []
     const oks: string[] = []
     for (const s of targets) {
-      const errs = await pushForSupplier(s, globalText)
+      const errs = await pushForSupplier(s, globalText, weatherLarkMd)
       if (errs.length === 0) {
         oks.push(s.supplierName || s.routeCode)
       } else {
@@ -329,8 +360,9 @@ export function FleetSupplierPushTab({
     const targets = suppliers.filter((s) => effectiveSelectedKeys.includes(s.id))
     if (!targets.length) { showToast('请至少勾选一家需要推送的供应商。', 'error'); return }
 
+    const weatherOn = weatherEnabled && WEATHER_LOCATION_PRESETS.some((l) => l.label === weatherCity)
     const hasScan = scanRows.length > 0
-    if (!hasScan && !hasPushImages) {
+    if (!hasScan && !hasPushImages && !weatherOn) {
       const canText = hasEditorContent(globalPushText) || targets.some((s) => hasEditorContent(s.pushContent))
       if (!canText) {
         showToast('未上传扫描文件时，请先填写「推送内容」、所选供应商的「供应商推送内容」，或添加推送图片。', 'error')
@@ -341,7 +373,8 @@ export function FleetSupplierPushTab({
     setPushing(true)
     setLastPushFails([])
     try {
-      await runPushForTargets(targets, globalPushText)
+      const weatherLarkMd = await resolveWeatherLarkMd()
+      await runPushForTargets(targets, globalPushText, weatherLarkMd)
     } finally {
       setPushing(false)
     }
@@ -355,7 +388,8 @@ export function FleetSupplierPushTab({
     setPushing(true)
     setLastPushFails([])
     try {
-      await runPushForTargets(targets, globalPushText)
+      const weatherLarkMd = await resolveWeatherLarkMd()
+      await runPushForTargets(targets, globalPushText, weatherLarkMd)
     } finally {
       setPushing(false)
     }
@@ -576,9 +610,26 @@ export function FleetSupplierPushTab({
                 推送所选供应商
               </Button>
             </Tooltip>
-            <Button type="dashed" icon={<Plus className="h-4 w-4" />} onClick={openCreate}>
-              添加供应商
-            </Button>
+            <div className="fs-toolbar-weather">
+              <span className="flex items-center gap-1.5 text-xs font-semibold text-[var(--admin-muted)]">
+                <CloudRain className="h-3.5 w-3.5 text-[var(--admin-accent)]" aria-hidden />
+                天气预报
+              </span>
+              <Switch
+                checked={weatherEnabled}
+                onChange={setWeatherEnabled}
+                checkedChildren="开"
+                unCheckedChildren="关"
+              />
+              <Select
+                value={weatherCity || undefined}
+                onChange={setWeatherCity}
+                disabled={!weatherEnabled}
+                placeholder="选择城市"
+                className="!w-44"
+                options={WEATHER_LOCATION_PRESETS.map((l) => ({ label: l.label, value: l.label }))}
+              />
+            </div>
             {scanParsing ? (
               <span className="text-xs text-[var(--admin-muted)]">正在读取并解析表格…</span>
             ) : null}
@@ -595,6 +646,7 @@ export function FleetSupplierPushTab({
               </div>
             ) : null}
           </div>
+
           {lastPushFails.length > 0 && (
             <div className="fs-push-fail-panel">
               <div className="fs-push-fail-header">
@@ -659,6 +711,9 @@ export function FleetSupplierPushTab({
         <div className="fs-card-head">
           <div className="fs-card-head-title">供应商配置</div>
           <div className="flex flex-wrap items-center gap-2">
+            <Button type="dashed" icon={<Plus className="h-3.5 w-3.5" />} onClick={openCreate}>
+              添加供应商
+            </Button>
             {!secretsHidden ? (
               <Button type="default" icon={<Download className="h-3.5 w-3.5" />} onClick={handleExportSuppliers}>
                 导出配置

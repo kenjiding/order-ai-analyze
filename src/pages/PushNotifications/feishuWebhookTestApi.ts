@@ -194,6 +194,29 @@ export async function postFeishuPushRichMessage(payload: {
   }
 }
 
+export async function fetchDeliveryWeatherLarkMd(params: {
+  lat: number
+  lng: number
+  label: string
+}): Promise<{ ok: true; larkMd: string } | { ok: false; error: string }> {
+  const qs = new URLSearchParams({
+    lat: String(params.lat),
+    lng: String(params.lng),
+    label: params.label,
+  })
+  const url = `${getApiBaseUrl()}/api/feishu-webhook/delivery-weather?${qs.toString()}`
+  try {
+    const res = await fetch(url, { credentials: 'include' })
+    const parsed = (await res.json()) as { ok?: boolean; data?: { larkMd?: string }; error?: string }
+    if (parsed?.ok === true && typeof parsed.data?.larkMd === 'string') {
+      return { ok: true, larkMd: parsed.data.larkMd }
+    }
+    return { ok: false, error: typeof parsed?.error === 'string' ? parsed.error : '获取天气预报失败。' }
+  } catch {
+    return { ok: false, error: `无法访问后端 (${url})。` }
+  }
+}
+
 export function summarizeFeishuTestFailure(result: FeishuPushTestFail): string {
   if (result.error && !result.feishu) return result.error
   const fb = result.feishu as Record<string, unknown> | null | undefined

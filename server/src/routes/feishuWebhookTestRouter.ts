@@ -23,8 +23,41 @@ import {
   generateOrderExceptionFeishuSummary,
   type OrderExceptionPushRow,
 } from '../orderExceptionFeishuAnalysis'
+import { fetchBomDailyForecast } from '../weather/bomWeatherClient'
+import { buildDeliveryWeather, renderDeliveryWeatherLarkMd } from '../weather/deliveryWeatherSummary'
+import { generateDeliveryWeatherText } from '../weather/deliveryWeatherAi'
 
 export const feishuWebhookTestRouter = Router()
+
+/**
+ * 派送天气预报（明天/后天）——供「车队供应商推送」附加恶劣天气提示。
+ * 返回 BOM 官方预报渲染的 lark_md 文本，供前端合并进富文本推送。
+ */
+feishuWebhookTestRouter.get('/delivery-weather', async (req: AuthenticatedRequest, res: Response) => {
+  const lat = Number(req.query.lat)
+  const lng = Number(req.query.lng)
+  const label = typeof req.query.label === 'string' && req.query.label.trim() ? req.query.label.trim() : '派送区域'
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
+    res.status(400).json({ ok: false, error: '缺少或非法的经纬度参数 lat/lng' })
+    return
+  }
+  const forecast = await fetchBomDailyForecast(lat, lng)
+  if (!forecast) {
+    res.status(502).json({ ok: false, error: '获取 BOM 天气预报失败，请稍后重试' })
+    return
+  }
+  const block = buildDeliveryWeather(forecast, label)
+  if (!block) {
+    res.status(502).json({ ok: false, error: '预报数据不足，无法生成明天/后天天气' })
+    return
+  }
+  // 优先用 AI 结合预报数据生成播报文案，失败则回退机械渲染
+  const aiText = await generateDeliveryWeatherText(block)
+  const larkMd = aiText
+    ? `🌦️ **${block.locationLabel} Weather Forecast**\n${aiText}`
+    : renderDeliveryWeatherLarkMd(block)
+  res.json({ ok: true, data: { block, larkMd } })
+})
 
 type TestBody = {
   webhookUrl?: unknown

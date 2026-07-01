@@ -78,4 +78,5 @@ export const PERMISSION_KEYS = {
   btnWarehouseSafetyExport: 'btn:warehouse-safety:export',
   menuVendorAnalysis: 'menu:vendor-analysis',
   btnVendorAnalysisPush: 'btn:vendor-analysis:push',
+  menuExitAlarm: 'menu:exit-alarm',
 } as const

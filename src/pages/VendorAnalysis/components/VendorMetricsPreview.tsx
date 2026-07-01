@@ -54,6 +54,39 @@ function PickupChip({ count, waybillNos }: { count: number; waybillNos: string[]
   )
 }
 
+function Before11RateBadge({
+  rate,
+  count,
+  total,
+  unmetWaybillNos = [],
+}: {
+  rate: number | null
+  count: number
+  total: number
+  unmetWaybillNos?: string[]
+}) {
+  if (rate == null) return <span className="text-sm text-slate-400">—</span>
+  const pct = (rate * 100).toFixed(1)
+  const colorCls =
+    rate >= 0.99
+      ? 'bg-emerald-50 border-emerald-200 text-emerald-700'
+      : rate >= 0.95
+        ? 'bg-amber-50 border-amber-200 text-amber-700'
+        : 'bg-red-50 border-red-200 text-red-700'
+  return (
+    <div>
+      <WaybillListPopover nos={unmetWaybillNos} title="11点前未出仓单号" placement="right">
+        <span className={`inline-flex items-center rounded-md border px-2 py-0.5 text-sm font-bold ${colorCls}${unmetWaybillNos.length > 0 ? ' cursor-help' : ''}`}>
+          {pct}%
+        </span>
+      </WaybillListPopover>
+      {total > 0 && (
+        <div className="mt-0.5 text-[11px] text-slate-400">{count}/{total} 件</div>
+      )}
+    </div>
+  )
+}
+
 function DispatchRateBadge({
   rate,
   count,
@@ -107,54 +140,27 @@ function WarningCount({ count, waybillNos = [] }: { count: number; waybillNos?: 
   )
 }
 
-function Before11ExitRateBadge({
-  count,
-  total,
-  unmetWaybillNos = [],
-}: {
-  count: number
-  total: number
-  unmetWaybillNos?: string[]
-}) {
-  if (total === 0) return <span className="text-sm text-slate-400">—</span>
-  const rate = count / total
-  const pct = (rate * 100).toFixed(1)
-  const colorCls =
-    rate >= 0.99
-      ? 'bg-emerald-50 border-emerald-200 text-emerald-700'
-      : rate >= 0.95
-        ? 'bg-amber-50 border-amber-200 text-amber-700'
-        : 'bg-red-50 border-red-200 text-red-700'
-  return (
-    <div>
-      <WaybillListPopover nos={unmetWaybillNos} title="未出仓单号" placement="right">
-        <span className={`inline-flex items-center rounded-md border px-2 py-0.5 text-sm font-bold ${colorCls}${unmetWaybillNos.length > 0 ? ' cursor-help' : ''}`}>
-          {pct}%
-        </span>
-      </WaybillListPopover>
-      <div className="mt-0.5 text-[11px] text-slate-400">{count}/{total} 件</div>
-    </div>
-  )
-}
-
 const driverColumns: ColumnsType<DriverPerformanceRow> = [
   {
     title: '司机',
     key: 'courier',
-    width: 150,
+    width: 190,
     render: (_, row) => (
       <div>
         <div className="font-medium text-slate-800">{row.courierName || '—'}</div>
-        <div className="text-xs text-slate-400">{row.courierCode}</div>
+        <div className="mt-0.5 flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-xs">
+          <span className="font-mono text-slate-400">{row.courierCode}</span>
+          {row.routeCode ? (
+            <>
+              <span className="text-slate-300" aria-hidden>
+                ·
+              </span>
+              <span className="font-medium text-indigo-600">{row.routeCode}</span>
+            </>
+          ) : null}
+        </div>
       </div>
     ),
-  },
-  {
-    title: '路由码',
-    dataIndex: 'routeCode',
-    key: 'routeCode',
-    width: 130,
-    render: (v: string) => <span className="text-xs text-slate-500">{v || '—'}</span>,
   },
   {
     title: '今日取件',
@@ -166,15 +172,14 @@ const driverColumns: ColumnsType<DriverPerformanceRow> = [
   },
   {
     title: '11点前出仓率',
-    key: 'before11ExitRate',
-    width: 130,
-    sorter: (a, b) => {
-      const ra = a.ofdCount > 0 ? a.before11OfdCount / a.ofdCount : -1
-      const rb = b.ofdCount > 0 ? b.before11OfdCount / b.ofdCount : -1
-      return ra - rb
-    },
+    key: 'before11Rate',
+    width: 140,
+    sorter: (a, b) =>
+      (a.ofdCount > 0 ? a.before11OfdCount / a.ofdCount : -1) -
+      (b.ofdCount > 0 ? b.before11OfdCount / b.ofdCount : -1),
     render: (_, row) => (
-      <Before11ExitRateBadge
+      <Before11RateBadge
+        rate={row.ofdCount > 0 ? row.before11OfdCount / row.ofdCount : null}
         count={row.before11OfdCount}
         total={row.ofdCount}
         unmetWaybillNos={row.before11UnmetWaybillNos}
@@ -251,7 +256,7 @@ function VendorCard({ row, fetchedData, drivers }: VendorCardProps) {
           ? 'text-amber-500'
           : 'text-red-600'
 
-  // 24H签派率
+  // 24H派签率
   const dispatchRateNum = row.dispatchRate24hText ? parseFloat(row.dispatchRate24hText) : null
   const dispatchTextColor =
     dispatchRateNum == null
@@ -327,7 +332,7 @@ function VendorCard({ row, fetchedData, drivers }: VendorCardProps) {
                   </span>
                 </WaybillListPopover>
               }
-              label={`24H签派率 · ${fetchedData.dayBeforeDate}`}
+              label={`24H派签率 · ${fetchedData.dayBeforeDate}`}
               sub={
                 row.notMet24hSignCount != null && row.notMet24hSignCount > 0 ? (
                   <span className="text-[11px] font-semibold text-red-500">
@@ -452,7 +457,7 @@ function VendorCard({ row, fetchedData, drivers }: VendorCardProps) {
                       columns={driverColumns}
                       dataSource={drivers}
                       pagination={false}
-                      scroll={{ x: 680 }}
+                      scroll={{ x: 690 }}
                     />
                   )}
                 </div>

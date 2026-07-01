@@ -58,7 +58,7 @@ export type FetchedData = {
   ticketEndTime: string
   /** 11点前出仓率：昨天 */
   before11Date: string
-  /** 24小时签派率数据日期：参考日期的前天 */
+  /** 24小时派签率数据日期：参考日期的前天 */
   dayBeforeDate: string
 }
 
@@ -286,7 +286,7 @@ export function useVendorAnalysisPage() {
       unprocessedCountByVendor.set(key, (unprocessedCountByVendor.get(key) ?? 0) + 1)
     }
 
-    // 24H 签派率：前天运单，按站点过滤后按供应商统计达标情况
+    // 24H 派签率：前天运单，按站点过滤后按供应商统计达标情况
     const dispatch24hByVendor = new Map<string, { total: number; met: number; unmetNos: string[] }>()
     for (const row of fetchedData.driverDayBeforeWaybills) {
       const vendorCode = row.courierVendorCode ?? ''
@@ -582,10 +582,11 @@ export function useVendorAnalysisPage() {
         }
       }
 
-      // ── 合并所有司机（取件量 + 24H派签 + 归班预警 三个来源） ──
+      // ── 合并所有司机（取件量 + 24H派签 + 归班预警 + 长尾单 四个来源） ──
       const allCourierCodes = new Set([
         ...pickupMap.keys(),
         ...dispatchMap.keys(),
+        ...longTailByDriver.keys(),
         ...[...returnWarningMap.keys()].filter((code) => {
           const returnRow = fetchedData.driverReturnRows.find(
             (r) => r.driverCode === code && r.driverVendorCode === config.vendorCode,
@@ -610,7 +611,13 @@ export function useVendorAnalysisPage() {
           const returnRow = fetchedData.driverReturnRows.find(
             (r) => r.driverCode === courierCode && r.driverVendorCode === config.vendorCode,
           )
-          courierName = returnRow?.driverName ?? courierCode
+          courierName = returnRow?.driverName ?? ''
+        }
+        if (!courierName) {
+          const longTailRow = fetchedData.longTailOrders.find(
+            (o) => o.driverCode === courierCode && o.driverVendorCode === config.vendorCode,
+          )
+          courierName = longTailRow?.driverName ?? courierCode
         }
 
         const totalDispatch = dispatch?.total ?? 0
@@ -807,7 +814,7 @@ function buildVendorFeishuCard(params: {
               `<font color='${before11Color}'>**${before11ExitPercent}${before11ExitPercent === '—' ? '' : '%'}**</font>${before11ExitVolume != null && before11TotalReceived != null ? `\n${before11ExitVolume} / ${before11TotalReceived} 件` : ''}`,
             ),
             metricColumn(
-              '24小时签派率',
+              '24小时派签率',
               `<font color='${dispatch24hColor}'>**${dispatch24hDisplay}**</font>`,
             ),
             metricColumn(

@@ -2,7 +2,7 @@
 
 .fleet-pivot-report-view {
   box-sizing: border-box;
-  width: 760px;
+  width: 900px;
   padding: 26px 28px 24px;
   border-radius: 20px;
   border: 1px solid #1f3f7a;
@@ -95,7 +95,7 @@
   width: 100%;
   table-layout: fixed;
   border-collapse: collapse;
-  font-size: 14px;
+  font-size: 30px;
   border: 1px solid #90b1d8;
   border-radius: 14px;
   overflow: hidden;
@@ -151,7 +151,7 @@
 
 .fleet-pivot-report-view .fpr-tr--footer td {
   padding: 11px 10px 9px;
-  font-size: 15px;
+  font-size: 32px;
   font-weight: 800;
   color: #0d2348;
   border-top: 2px solid #7ea7da;

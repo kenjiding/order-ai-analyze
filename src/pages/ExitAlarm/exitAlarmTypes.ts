@@ -27,7 +27,7 @@ export type WaybillSearchItem = {
   courier?: string
   courierCode?: string
   courierVendorCode?: string
-  routeCode?: string
+  consigneeRouteCode?: string
   lastScanStationCode?: string
   lastScanStationName?: string
   [key: string]: unknown

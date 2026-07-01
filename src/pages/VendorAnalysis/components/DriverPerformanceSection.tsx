@@ -77,36 +77,30 @@ const columns: ColumnsType<DriverPerformanceRow> = [
   {
     title: '司机',
     key: 'courier',
-    width: 150,
+    width: 190,
     render: (_, row) => (
       <div>
         <div className="font-medium text-slate-800">{row.courierName || '—'}</div>
-        <div className="text-xs text-slate-400">{row.courierCode}</div>
+        <div className="mt-0.5 flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-xs">
+          <span className="font-mono text-slate-400">{row.courierCode}</span>
+          {row.routeCode ? (
+            <>
+              <span className="text-slate-300" aria-hidden>
+                ·
+              </span>
+              <span className="font-medium text-indigo-600">{row.routeCode}</span>
+            </>
+          ) : null}
+        </div>
       </div>
     ),
-  },
-  {
-    title: '路由码',
-    dataIndex: 'routeCode',
-    key: 'routeCode',
-    width: 130,
-    render: (v: string) => <span className="text-xs text-slate-500">{v || '—'}</span>,
   },
   {
     title: '今日取件',
     key: 'ofdCount',
     width: 110,
     sorter: (a, b) => a.ofdCount - b.ofdCount,
-    render: (_: unknown, row: DriverPerformanceRow) => (
-      <div className="flex items-center gap-1.5">
-        <PickupChip count={row.ofdCount} />
-        {row.before11OfdCount > 0 && (
-          <span className="text-[11px] text-slate-400">
-            · {row.before11OfdCount}
-          </span>
-        )}
-      </div>
-    ),
+    render: (_: unknown, row: DriverPerformanceRow) => <PickupChip count={row.ofdCount} />,
   },
   {
     title: '24H派签率',
@@ -261,7 +255,7 @@ function VendorBlock({ config, drivers }: VendorBlockProps) {
                 columns={columns}
                 dataSource={drivers}
                 pagination={false}
-                scroll={{ x: 680 }}
+                scroll={{ x: 550 }}
               />
             )}
           </div>
@@ -303,7 +297,7 @@ export function DriverPerformanceSection({ configs, driverPerformanceByVendor }:
             </span>
           )}
           <span className="text-xs text-slate-500">
-            取件量（昨日）· 24H派签率（前日）· 归班预警（当日14:00起超48h）
+            取件量（昨日）· 24H派签率（前日）· 归班预警（当日14:00起超48h）· 长尾单
           </span>
         </div>
       </div>

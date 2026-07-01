@@ -48,9 +48,9 @@ function zoneTile(
   const lines = [
     `**${routeCode}**`,
     pending === 0
-      ? colored('✅ 已全部出仓', 'green')
-      : colored(`**还有 ${pending} 单未出仓**`, pendingColor),
-    colored(`已出 ${exited} / 共 ${total} 单 · ${rate}%`, 'grey'),
+      ? colored('✅ All dispatched', 'green')
+      : colored(`**${pending} awaiting dispatch**`, pendingColor),
+    colored(`Dispatched ${exited} / ${total} total · ${rate}%`, 'grey'),
   ]
   return {
     tag: 'column',
@@ -102,8 +102,8 @@ export function buildExitAlarmCard(params: {
   elements.push(
     div(
       [
-        `📦 **责任单位：${vendorName}**`,
-        colored(`站点：${stationCode} · ${date} ${pushTime} (Adelaide)`, 'grey'),
+        `📦 **Responsible vendor: ${vendorName}**`,
+        colored(`Station: ${stationCode} · ${date} ${pushTime} (Adelaide)`, 'grey'),
         pushDescription ? colored(pushDescription, 'grey') : '',
       ]
         .filter(Boolean)
@@ -118,47 +118,37 @@ export function buildExitAlarmCard(params: {
   elements.push(
     columnSet([
       summaryTile(
-        '待出仓运单（合计）',
-        `${totalPending} 单`,
-        `本时段共 ${totalWaybills} 单`,
+        'Awaiting dispatch',
+        `${totalPending}`,
+        `${totalWaybills} waybills total`,
         totalPending > 0 ? 'red' : 'green',
       ),
-      summaryTile('当前出仓率', `${exitRate}%`, `已出仓 ${exited} 单`, rateColor),
+      summaryTile('Dispatch rate', `${exitRate}%`, `${exited} dispatched`, rateColor),
     ]),
   )
 
   elements.push(hr())
 
-  // 各路由码明细磁贴
-  const allZones = Object.entries(zoneBreakdown).sort((a, b) => b[1].pending - a[1].pending)
+  // 各路由码明细磁贴：出仓率高于 90% 视为达标，不展示
+  const COMPLIANT_RATE = 90
+  const pendingZones = Object.entries(zoneBreakdown)
+    .filter(([, s]) => s.pending > 0 && (s.total > 0 ? ((s.total - s.pending) / s.total) * 100 : 0) <= COMPLIANT_RATE)
+    .sort((a, b) => b[1].pending - a[1].pending)
 
-  if (allZones.length === 0) {
-    elements.push(div(colored('✅ 暂无运单数据', 'grey')))
+  if (pendingZones.length === 0) {
+    elements.push(div(colored('✅ All routes meet dispatch rate target', 'green')))
   } else {
-    const pendingCount = allZones.filter(([, s]) => s.pending > 0).length
-    elements.push(
-      div(
-        pendingCount > 0
-          ? `🚨 **各路由码出仓情况** — 还有 ${pendingCount} 条路由未完成，请立即通知司机！`
-          : `✅ **各路由码出仓情况** — 全部已完成！`,
-      ),
-    )
-
-    // 每两个路由码一行
-    for (let i = 0; i < allZones.length; i += 2) {
-      const pair = allZones.slice(i, i + 2)
-      const cols = pair.map(([code, { pending, total }]) => {
-        const bg: BgStyle =
-          pending === 0 ? 'green' : pending >= 10 ? 'red' : pending >= 5 ? 'orange' : 'grey'
-        return zoneTile(code, pending, total, bg)
-      })
+    elements.push(div(`🚨 **Routes awaiting dispatch (${pendingZones.length})** — Notify drivers now!`))
+    for (let i = 0; i < pendingZones.length; i += 2) {
+      const pair = pendingZones.slice(i, i + 2)
+      const cols = pair.map(([code, { pending, total }]) => zoneTile(code, pending, total, 'default'))
       if (cols.length === 1) cols.push(emptyCol())
       elements.push(columnSet(cols, 'bisect'))
     }
   }
 
   elements.push(hr())
-  elements.push(note(`${date} ${pushTime} · 11点前出仓监控 · iMile 仓库管理系统`))
+  elements.push(note(`${date} ${pushTime} · Pre-11am dispatch monitoring · iMile Warehouse Management System`))
 
   const isUrgent = totalPending > 0
   return {
@@ -167,7 +157,7 @@ export function buildExitAlarmCard(params: {
       template: isUrgent ? 'red' : 'green',
       title: {
         tag: 'plain_text',
-        content: isUrgent ? `🚨 出仓告警 - ${vendorName}` : `✅ 出仓正常 - ${vendorName}`,
+        content: isUrgent ? `🚨 Dispatch alert - ${vendorName}` : `✅ Dispatch on track - ${vendorName}`,
       },
     },
     elements,

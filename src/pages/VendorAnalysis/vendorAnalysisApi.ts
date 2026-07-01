@@ -175,11 +175,11 @@ export type VendorAiDriverInput = {
   courierCode: string
   routeCode: string
   ofdCount: number
-  before11ExitRate: number | null
   dispatchRate24h: number | null
   dispatch24hCount: number
   totalDispatchCount: number
   returnWarningCount: number
+  longTailCount: number
 }
 
 export type VendorAiInput = {
@@ -195,11 +195,14 @@ export type VendorAiInput = {
   drivers: VendorAiDriverInput[]
 }
 
+import type { AppLocale } from '../../i18n/types'
+
 export async function fetchVendorAiSummaries(
   vendors: VendorAiInput[],
+  locale: AppLocale = 'zh-CN',
 ): Promise<{ ok: true; data: Record<string, string> } | { ok: false; error: string }> {
   return apiFetch<Record<string, string>>('/api/vendor-analysis/ai-summary', {
     method: 'POST',
-    body: JSON.stringify({ vendors }),
+    body: JSON.stringify({ vendors, locale }),
   })
 }

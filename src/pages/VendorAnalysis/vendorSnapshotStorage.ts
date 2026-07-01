@@ -1,5 +1,8 @@
 import type { DriverPerformanceRow, VendorMetricRow, VendorPushConfig } from './vendorAnalysisTypes'
 import type { FetchedData } from './useVendorAnalysisPage'
+import type { AppLocale } from '../../i18n/types'
+
+export type VendorSnapshotAiSummaries = Record<string, Partial<Record<AppLocale, string>>>
 
 export type VendorSnapshotDriver = {
   courierCode: string
@@ -11,6 +14,7 @@ export type VendorSnapshotDriver = {
   dispatch24hCount: number
   totalDispatchCount: number
   dispatchRate24h: number | null
+  longTailCount: number
 }
 
 export type VendorSnapshotVendor = {
@@ -47,10 +51,30 @@ export type VendorSnapshotData = {
   vendors: VendorSnapshotVendor[]
   webhookConfigs: VendorSnapshotPushConfig[]
   generatedAt: string
-  aiSummaries?: Record<string, string>
+  aiSummaries?: VendorSnapshotAiSummaries
 }
 
 const STORAGE_KEY = 'vendorSnapshotData'
+
+/** 兼容旧版 Record<vendorCode, string>（视为 zh-CN） */
+export function normalizeAiSummaries(raw: unknown): VendorSnapshotAiSummaries | undefined {
+  if (!raw || typeof raw !== 'object') return undefined
+  const out: VendorSnapshotAiSummaries = {}
+  for (const [code, val] of Object.entries(raw as Record<string, unknown>)) {
+    if (typeof val === 'string' && val.trim()) {
+      out[code] = { 'zh-CN': val }
+    } else if (val && typeof val === 'object') {
+      const entry = val as Partial<Record<AppLocale, string>>
+      const cleaned: Partial<Record<AppLocale, string>> = {}
+      for (const locale of ['zh-CN', 'en'] as const) {
+        const text = entry[locale]
+        if (typeof text === 'string' && text.trim()) cleaned[locale] = text
+      }
+      if (Object.keys(cleaned).length) out[code] = cleaned
+    }
+  }
+  return Object.keys(out).length ? out : undefined
+}
 
 export function saveVendorSnapshot(data: VendorSnapshotData): void {
   try {
@@ -64,7 +88,11 @@ export function loadVendorSnapshot(): VendorSnapshotData | null {
   try {
     const raw = localStorage.getItem(STORAGE_KEY)
     if (!raw) return null
-    return JSON.parse(raw) as VendorSnapshotData
+    const parsed = JSON.parse(raw) as VendorSnapshotData
+    return {
+      ...parsed,
+      aiSummaries: normalizeAiSummaries(parsed.aiSummaries),
+    }
   } catch {
     return null
   }
@@ -76,7 +104,7 @@ export function buildVendorSnapshot(params: {
   vendorMetrics: VendorMetricRow[]
   driverPerformanceByVendor: Record<string, DriverPerformanceRow[]>
   configs: VendorPushConfig[]
-  aiSummaries?: Record<string, string>
+  aiSummaries?: VendorSnapshotAiSummaries
 }): VendorSnapshotData {
   const { fetchedData, stations, vendorMetrics, driverPerformanceByVendor, configs, aiSummaries } = params
   const fmt = (s: string) => s.slice(5, 10).replace('-', '/')
@@ -120,6 +148,7 @@ export function buildVendorSnapshot(params: {
         dispatch24hCount: d.dispatch24hCount,
         totalDispatchCount: d.totalDispatchCount,
         dispatchRate24h: d.dispatchRate24h,
+        longTailCount: d.longTailCount,
       })),
     })),
   }

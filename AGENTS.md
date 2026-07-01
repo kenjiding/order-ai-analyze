@@ -89,6 +89,15 @@
 - **引用关系**：页面目录内优先使用相对路径（`./`、`./components/…`）；引用共享组件时使用 `../../components/…` 等指向全局层的路径。新增页面时同步更新路由入口（如 `App.tsx`）及针对单文件的 eslint 等配置路径（若有）。
 - **示例**：`ScannerEfficiency/` 汇聚扫描效率页及其解析、导出、周报面板等；`WageSalary/` 汇聚工资页及其计算与存储模块。新页面沿用同一模式。
 
+### 权限接入（本仓库约定，强制）
+
+**每个新增业务页面必须接入权限系统**，禁止只加路由和菜单而不配权限。流程（参考 `menu:vendor-analysis` / `menu:push-notifications` 的已有实现）：
+
+1. 后端：在 `server/src/permissions/registry.ts` 的 `PERMISSION_REGISTRY` 中新增 `menu:<page-id>` 权限项（`key`/`type`/`label`/`description`/`sortOrder`）。服务重启时 `syncPermissionRegistry`（`server/src/db/seed.ts`）会自动写入 `permissions` 表，并出现在"用户管理"（`menu:system-users`）的可分配权限列表中。
+2. 前端：在 `src/hooks/usePermission.tsx` 的 `PERMISSION_KEYS` 中补充对应常量；在 `src/components/Layout/sidebarMenu.ts` 对应菜单项上设置 `permissionKey: 'menu:<page-id>'`。路由级校验由 `ProtectedRoute`（`src/components/ProtectedRoute.tsx`）+ `getMenuPermissionForPath` 自动完成，无需在 `App.tsx` 额外处理。
+3. 若页面内有需要单独控权的操作按钮（导出、推送等），追加 `btn:<page-id>:<action>` 权限项，并用 `PermissionGate` / `PermissionButton`（`src/hooks/usePermission.tsx`）包裹该操作入口。
+4. 后端路由本身沿用仓库现状：只挂 `requireAuth`（登录态），不额外挂路由级 `requirePermission` 中间件——菜单可见性即权限边界，与 `vendorAnalysisRouter` 保持一致。
+
 ## 后端工程规范
 
 - 路由 / 控制器层只处理协议适配、参数解析和响应组装。

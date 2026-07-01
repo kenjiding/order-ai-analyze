@@ -65,6 +65,17 @@
   gap: 10px;
 }
 
+.fleet-supplier-push-tab .fs-toolbar-weather {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--admin-line);
+  background: var(--admin-surface-soft);
+}
+
 .fleet-supplier-push-tab .fs-push-images {
   display: flex;
   flex-wrap: wrap;

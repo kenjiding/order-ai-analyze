@@ -9,7 +9,7 @@ import { buildImilePortalHeaders, IMILE_DS_SAAS_TMS_PORTAL } from '../imile/port
 import { requestImileApi } from '../imile/client'
 import { fetchPaginatedResultRows } from '../imile/paginatedQuery'
 import { buildExitAlarmCard } from '../feishu/buildExitAlarmCard'
-import { hasExitAlarmImileToken } from '../feishu/exitAlarmScheduledPush'
+import { hasExitAlarmImileToken, parseRouteCodes } from '../feishu/exitAlarmScheduledPush'
 import { computeFeishuWebhookSign, parseSafeWebhookUrl } from '../feishuWebhookHelpers'
 
 export const exitAlarmRouter = Router()
@@ -357,7 +357,7 @@ exitAlarmRouter.post('/push-now', async (req: AuthenticatedRequest, res: Respons
 
   type WaybillRow = {
     deliveryTime?: string | null
-    routeCode?: string | null
+    consigneeRouteCode?: string | null
     [key: string]: unknown
   }
   const waybills = result.records as WaybillRow[]
@@ -367,20 +367,17 @@ exitAlarmRouter.post('/push-now', async (req: AuthenticatedRequest, res: Respons
   const errors: string[] = []
 
   for (const config of configs) {
-    const routeCodes = config.routeCode
-      .split(',')
-      .map((r) => r.trim())
-      .filter(Boolean)
+    const routeCodes = parseRouteCodes(config.routeCode)
 
     const vendorWaybills =
       routeCodes.length > 0
-        ? waybills.filter((w) => routeCodes.includes((w.routeCode ?? '').trim()))
+        ? waybills.filter((w) => routeCodes.includes((w.consigneeRouteCode ?? '').trim()))
         : waybills
 
-    // 按 routeCode 分区统计
+    // 按 routeCode 分区统计：deliveryTime 为空 = 不达标
     const zoneBreakdown: Record<string, { pending: number; total: number }> = {}
     for (const w of vendorWaybills) {
-      const zone = (w.routeCode ?? '').trim() || '未知路由'
+      const zone = (w.consigneeRouteCode ?? '').trim() || 'Unknown route'
       if (!zoneBreakdown[zone]) zoneBreakdown[zone] = { pending: 0, total: 0 }
       zoneBreakdown[zone].total++
       if (!w.deliveryTime) zoneBreakdown[zone].pending++

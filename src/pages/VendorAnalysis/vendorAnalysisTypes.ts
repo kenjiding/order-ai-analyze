@@ -63,7 +63,7 @@ export type VendorMetricRow = {
   before11TotalReceived: number | null
   /** 11点前未出仓单号列表（hover tooltip 用） */
   before11UnmetWaybillNos: string[]
-  /** 24小时签派率文本，未返回时为 null */
+  /** 24小时派签率文本，未返回时为 null */
   dispatchRate24hText: string | null
   /** 24小时签收未达标件数 */
   notMet24hSignCount: number | null

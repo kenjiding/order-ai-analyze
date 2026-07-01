@@ -22,6 +22,14 @@ export function hasExitAlarmImileToken(schedule?: Pick<ExitAlarmSchedule, 'imile
   return readExitAlarmImileToken(schedule).length > 0
 }
 
+/** 解析路由码字符串：支持空格、换行、英文逗号、中文逗号分隔 */
+export function parseRouteCodes(raw: string): string[] {
+  return raw
+    .split(/[\s,，]+/)
+    .map((r) => r.trim())
+    .filter(Boolean)
+}
+
 /** worker 启动时检查定时推送前置条件，便于排查「配置了但不执行」 */
 export async function logExitAlarmSchedulerReadiness(): Promise<void> {
   const label = '[exit-alarm/scheduler]'
@@ -254,25 +262,22 @@ export async function runExitAlarmScheduledPush(): Promise<void> {
     return
   }
 
-  type WaybillRow = { deliveryTime?: string | null; routeCode?: string | null; [k: string]: unknown }
+  type WaybillRow = { deliveryTime?: string | null; consigneeRouteCode?: string | null; [k: string]: unknown }
   const waybills = result.records as WaybillRow[]
 
   // 5. 逐供应商统计并推送
   let pushedCount = 0
   for (const config of configs) {
-    const routeCodes = config.routeCode
-      .split(',')
-      .map((r) => r.trim())
-      .filter(Boolean)
+    const routeCodes = parseRouteCodes(config.routeCode)
 
     const vendorWaybills =
       routeCodes.length > 0
-        ? waybills.filter((w) => routeCodes.includes((w.routeCode ?? '').trim()))
+        ? waybills.filter((w) => routeCodes.includes((w.consigneeRouteCode ?? '').trim()))
         : waybills
 
     const zoneBreakdown: Record<string, { pending: number; total: number }> = {}
     for (const w of vendorWaybills) {
-      const zone = (w.routeCode ?? '').trim() || '未知路由'
+      const zone = (w.consigneeRouteCode ?? '').trim() || 'Unknown route'
       if (!zoneBreakdown[zone]) zoneBreakdown[zone] = { pending: 0, total: 0 }
       zoneBreakdown[zone].total++
       if (!w.deliveryTime) zoneBreakdown[zone].pending++

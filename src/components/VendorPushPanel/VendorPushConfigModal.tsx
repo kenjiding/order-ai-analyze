@@ -103,9 +103,12 @@ export function VendorPushConfigModal({
           name="routeCode"
           label="路由码"
           rules={[{ required: true, message: '请填写路由码' }]}
-          extra="多个路由码用英文逗号分隔，如 R001,R002。运单数据将按此路由码过滤后统计出仓率。"
+          extra="多个路由码可用空格、换行、英文逗号或中文逗号分隔。运单数据将按此路由码过滤后统计出仓率。"
         >
-          <Input placeholder="例：R001 或 R001,R002,R003" />
+          <Input.TextArea
+            rows={3}
+            placeholder="例：R001 R002 R003，或每行一个"
+          />
         </Form.Item>
 
         <Form.Item
