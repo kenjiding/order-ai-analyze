@@ -146,34 +146,37 @@ export const feishuPushSnapshots = pgTable('feishu_push_snapshots', {
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 })
 
+/**
+ * 统一供应商推送配置：车队推送 / 出仓告警 / 供应商数据分析共用。
+ * 按 regionCode 隔离：同一个州的账号共用一份；历史数据未回填州归属，
+ * 统一存为 'global'，不属于任何一个州，全部州可见且可编辑/删除；
+ * 新建的配置固定落到创建者所属州（详见 fleetSupplierPushRouter.ts）。
+ */
 export const fleetSupplierPushConfigs = pgTable(
   'fleet_supplier_push_configs',
   {
     id: uuid('id').primaryKey().defaultRandom(),
-    userId: uuid('user_id')
-      .notNull()
-      .references(() => users.id, { onDelete: 'cascade' }),
-    supplierName: varchar('supplier_name', { length: 255 }).notNull(),
+    vendorCode: varchar('vendor_code', { length: 64 }).notNull().default(''),
+    vendorName: varchar('vendor_name', { length: 255 }).notNull().default(''),
+    /** 推送展示用昵称，可与 iMile 供应商名称不同 */
+    supplierNickname: varchar('supplier_nickname', { length: 255 }).notNull().default(''),
     routeCode: varchar('route_code', { length: 1024 }).notNull().default(''),
     webhookUrl: varchar('webhook_url', { length: 512 }).notNull().default(''),
     signingSecret: varchar('signing_secret', { length: 255 }),
+    pushDescription: varchar('push_description', { length: 512 }),
     pushContent: text('push_content').notNull().default(''),
+    regionCode: varchar('region_code', { length: 16 }).notNull().default('global'),
+    createdBy: uuid('created_by').references(() => users.id, { onDelete: 'set null' }),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
-  (table) => [index('fleet_supplier_push_configs_user_idx').on(table.userId)],
+  (table) => [index('fleet_supplier_push_configs_region_idx').on(table.regionCode)],
 )
 
-export const vendorAnalysisPushConfigs = pgTable('vendor_analysis_push_configs', {
-  id: uuid('id').primaryKey().defaultRandom(),
-  vendorCode: varchar('vendor_code', { length: 64 }).notNull(),
-  vendorName: varchar('vendor_name', { length: 255 }).notNull(),
-  webhookUrl: varchar('webhook_url', { length: 512 }).notNull(),
-  signingSecret: varchar('signing_secret', { length: 255 }),
-  pushDescription: varchar('push_description', { length: 512 }),
-  isDisabled: boolean('is_disabled').notNull().default(false),
-  createdBy: uuid('created_by').references(() => users.id, { onDelete: 'set null' }),
-  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+/** 各业务独立的供应商 config 启用列表（与 catalog 解耦） */
+export const supplierConfigScopeBindings = pgTable('supplier_config_scope_bindings', {
+  scopeKey: varchar('scope_key', { length: 64 }).primaryKey(),
+  enabledConfigIds: jsonb('enabled_config_ids').notNull().default([]),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 })
 
@@ -229,43 +232,48 @@ export const vendorShareLinks = pgTable(
   ],
 )
 
-/** 11点前出仓告警：供应商飞书推送配置 */
-export const exitAlarmPushConfigs = pgTable('exit_alarm_push_configs', {
-  id: uuid('id').primaryKey().defaultRandom(),
-  vendorCode: varchar('vendor_code', { length: 64 }).notNull(),
-  vendorName: varchar('vendor_name', { length: 255 }).notNull(),
-  /** 路由码，多个用英文逗号分隔，用于过滤运单数据 */
-  routeCode: varchar('route_code', { length: 1024 }).notNull().default(''),
-  webhookUrl: varchar('webhook_url', { length: 512 }).notNull(),
-  signingSecret: varchar('signing_secret', { length: 255 }),
-  pushDescription: varchar('push_description', { length: 512 }),
-  isDisabled: boolean('is_disabled').notNull().default(false),
-  createdBy: uuid('created_by').references(() => users.id, { onDelete: 'set null' }),
-  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
-  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
-})
+/** 11点前出仓告警：定时推送配置（每个账号最多一条，userId 唯一） */
+export const exitAlarmSchedules = pgTable(
+  'exit_alarm_schedules',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    /** 拥有该配置的账号；时区按该账号的 regionCode 判断，未设置兜底阿德莱德 */
+    userId: uuid('user_id').references(() => users.id, { onDelete: 'cascade' }),
+    /** 推送星期，1=周一…7=周日，存为 JSONB 数组 */
+    weekdays: jsonb('weekdays').notNull().default([]),
+    /** 推送时间点列表 [{id, time}]，time 格式 HH:mm（按拥有者账号所属州本地时间） */
+    pushTimes: jsonb('push_times').notNull().default([]),
+    isEnabled: boolean('is_enabled').notNull().default(true),
+    /** 定时推送使用的站点编码（lastScanStationCode） */
+    stationCode: varchar('station_code', { length: 64 }).notNull().default(''),
+    /** 定时拉数使用的 iMile token（保存配置时从全局设置同步，不对外返回） */
+    imileToken: varchar('imile_token', { length: 2048 }),
+    updatedBy: uuid('updated_by').references(() => users.id, { onDelete: 'set null' }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [uniqueIndex('exit_alarm_schedules_user_id_unique').on(table.userId)],
+)
 
-/** 11点前出仓告警：定时推送配置（全局单条记录，取 createdAt 最早的那条） */
-export const exitAlarmSchedules = pgTable('exit_alarm_schedules', {
-  id: uuid('id').primaryKey().defaultRandom(),
-  /** 推送星期，1=周一…7=周日，存为 JSONB 数组 */
-  weekdays: jsonb('weekdays').notNull().default([]),
-  /** 推送时间点列表 [{id, time}]，time 格式 HH:mm（阿德莱德时区） */
-  pushTimes: jsonb('push_times').notNull().default([]),
-  isEnabled: boolean('is_enabled').notNull().default(true),
-  /** 定时推送使用的站点编码（lastScanStationCode） */
-  stationCode: varchar('station_code', { length: 64 }).notNull().default(''),
-  /** 定时拉数使用的 iMile token（保存配置时从全局设置同步，不对外返回） */
-  imileToken: varchar('imile_token', { length: 2048 }),
-  /** 到件预取缓存对应的业务日期（YYYY-MM-DD，阿德莱德） */
-  inboundCacheDate: varchar('inbound_cache_date', { length: 10 }),
-  /** 到件预取得到的 waybillNo 列表 */
-  inboundWaybillNos: jsonb('inbound_waybill_nos'),
-  inboundCachedAt: timestamp('inbound_cached_at', { withTimezone: true }),
-  updatedBy: uuid('updated_by').references(() => users.id, { onDelete: 'set null' }),
-  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
-  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
-})
+/**
+ * 站点日到件 waybillNo 索引（inbound/query 预取，供出仓告警、供应商分析等共享）。
+ * 主键 (station_code, data_date)；单站单日约 1.5万–6万 条，jsonb 存字符串数组。
+ */
+export const stationInboundWaybillIndex = pgTable(
+  'station_inbound_waybill_index',
+  {
+    stationCode: varchar('station_code', { length: 64 }).notNull(),
+    /** 业务日期 YYYY-MM-DD（阿德莱德） */
+    dataDate: varchar('data_date', { length: 10 }).notNull(),
+    waybillNos: jsonb('waybill_nos').notNull().default([]),
+    waybillCount: integer('waybill_count').notNull().default(0),
+    fetchedAt: timestamp('fetched_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    uniqueIndex('station_inbound_waybill_index_station_date').on(table.stationCode, table.dataDate),
+  ],
+)
 
 export type User = typeof users.$inferSelect
 export type Region = typeof regions.$inferSelect
@@ -277,8 +285,6 @@ export type NewEfficiencyAttendanceDailyRecord = typeof efficiencyAttendanceDail
 export type OrderExceptionPostFilterConfig = typeof orderExceptionPostFilterConfigs.$inferSelect
 export type OrderExceptionWarehouseConfig = typeof orderExceptionWarehouseConfigs.$inferSelect
 export type FeishuPushSnapshot = typeof feishuPushSnapshots.$inferSelect
-export type VendorAnalysisPushConfig = typeof vendorAnalysisPushConfigs.$inferSelect
-export type NewVendorAnalysisPushConfig = typeof vendorAnalysisPushConfigs.$inferInsert
 export type VendorAnalysisSnapshot = typeof vendorAnalysisSnapshots.$inferSelect
 export type NewVendorAnalysisSnapshot = typeof vendorAnalysisSnapshots.$inferInsert
 export type VendorDailyReport = typeof vendorDailyReports.$inferSelect
@@ -287,7 +293,7 @@ export type VendorShareLink = typeof vendorShareLinks.$inferSelect
 export type NewVendorShareLink = typeof vendorShareLinks.$inferInsert
 export type FleetSupplierPushConfig = typeof fleetSupplierPushConfigs.$inferSelect
 export type NewFleetSupplierPushConfig = typeof fleetSupplierPushConfigs.$inferInsert
-export type ExitAlarmPushConfig = typeof exitAlarmPushConfigs.$inferSelect
-export type NewExitAlarmPushConfig = typeof exitAlarmPushConfigs.$inferInsert
 export type ExitAlarmSchedule = typeof exitAlarmSchedules.$inferSelect
 export type NewExitAlarmSchedule = typeof exitAlarmSchedules.$inferInsert
+export type StationInboundWaybillIndex = typeof stationInboundWaybillIndex.$inferSelect
+export type NewStationInboundWaybillIndex = typeof stationInboundWaybillIndex.$inferInsert

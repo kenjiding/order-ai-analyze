@@ -1,124 +1,21 @@
 import { Router, type Response } from 'express'
-import { eq, asc } from 'drizzle-orm'
+import { eq } from 'drizzle-orm'
 import type { AuthenticatedRequest } from '../auth/middleware'
 import { getDb, schema } from '../db'
 import type { ExitAlarmSchedule } from '../db/schema'
 import { readImileTokenFromRequest } from './imileAuth'
 import { normalizeImileToken } from '../imile/shared'
-import { fetchExitAlarmWaybills } from '../imile/exitAlarmWaybills'
+import { fetchWaybillDetailsByInboundIndex } from '../imile/inboundWaybillIndex'
+import { resolveRegionTz } from '../imile/ausTimezone'
 import { buildExitAlarmCard } from '../feishu/buildExitAlarmCard'
 import { hasExitAlarmImileToken, parseRouteCodes } from '../feishu/exitAlarmScheduledPush'
 import { computeFeishuWebhookSign, parseSafeWebhookUrl } from '../feishuWebhookHelpers'
+import { listPushableSupplierPushConfigsByIds, parsePushConfigIds, supplierDisplayName } from '../supplierPushConfigs'
+import { exitAlarmScheduledScope } from '../supplierConfigScopes/exitAlarmScheduled'
 
 export const exitAlarmRouter = Router()
 
-// ─── 供应商推送配置 CRUD ──────────────────────────────────────────────────────
-
-exitAlarmRouter.get('/vendor-configs', async (_req: AuthenticatedRequest, res: Response) => {
-  try {
-    const db = getDb()
-    const rows = await db
-      .select()
-      .from(schema.exitAlarmPushConfigs)
-      .orderBy(asc(schema.exitAlarmPushConfigs.createdAt))
-    res.json({ ok: true, data: rows })
-  } catch {
-    res.status(500).json({ ok: false, error: '读取推送配置失败' })
-  }
-})
-
-type ConfigBody = {
-  vendorCode?: unknown
-  vendorName?: unknown
-  routeCode?: unknown
-  webhookUrl?: unknown
-  signingSecret?: unknown
-  pushDescription?: unknown
-  isDisabled?: unknown
-}
-
-exitAlarmRouter.post('/vendor-configs', async (req: AuthenticatedRequest, res: Response) => {
-  const body = req.body as ConfigBody
-  if (
-    typeof body.vendorCode !== 'string' || !body.vendorCode.trim() ||
-    typeof body.vendorName !== 'string' || !body.vendorName.trim() ||
-    typeof body.routeCode !== 'string' || !body.routeCode.trim() ||
-    typeof body.webhookUrl !== 'string' || !body.webhookUrl.trim()
-  ) {
-    res.status(400).json({ ok: false, error: '缺少必填字段: vendorCode, vendorName, routeCode, webhookUrl' })
-    return
-  }
-  try {
-    const db = getDb()
-    const [row] = await db
-      .insert(schema.exitAlarmPushConfigs)
-      .values({
-        vendorCode: body.vendorCode.trim(),
-        vendorName: body.vendorName.trim(),
-        routeCode: body.routeCode.trim(),
-        webhookUrl: body.webhookUrl.trim(),
-        signingSecret: typeof body.signingSecret === 'string' && body.signingSecret.trim() ? body.signingSecret.trim() : null,
-        pushDescription: typeof body.pushDescription === 'string' && body.pushDescription.trim() ? body.pushDescription.trim() : null,
-        isDisabled: body.isDisabled === true,
-        createdBy: req.authUser?.id ?? null,
-      })
-      .returning()
-    res.status(201).json({ ok: true, data: row })
-  } catch {
-    res.status(500).json({ ok: false, error: '创建推送配置失败' })
-  }
-})
-
-exitAlarmRouter.put('/vendor-configs/:id', async (req: AuthenticatedRequest, res: Response) => {
-  const id = String(req.params.id ?? '').trim()
-  const body = req.body as ConfigBody
-  if (
-    typeof body.vendorCode !== 'string' || !body.vendorCode.trim() ||
-    typeof body.vendorName !== 'string' || !body.vendorName.trim() ||
-    typeof body.routeCode !== 'string' ||
-    typeof body.webhookUrl !== 'string' || !body.webhookUrl.trim()
-  ) {
-    res.status(400).json({ ok: false, error: '缺少必填字段: vendorCode, vendorName, webhookUrl' })
-    return
-  }
-  try {
-    const db = getDb()
-    const [row] = await db
-      .update(schema.exitAlarmPushConfigs)
-      .set({
-        vendorCode: body.vendorCode.trim(),
-        vendorName: body.vendorName.trim(),
-        routeCode: body.routeCode.trim(),
-        webhookUrl: body.webhookUrl.trim(),
-        signingSecret: typeof body.signingSecret === 'string' && body.signingSecret.trim() ? body.signingSecret.trim() : null,
-        pushDescription: typeof body.pushDescription === 'string' && body.pushDescription.trim() ? body.pushDescription.trim() : null,
-        isDisabled: body.isDisabled === true,
-        updatedAt: new Date(),
-      })
-      .where(eq(schema.exitAlarmPushConfigs.id, id))
-      .returning()
-    if (!row) {
-      res.status(404).json({ ok: false, error: '配置不存在' })
-      return
-    }
-    res.json({ ok: true, data: row })
-  } catch {
-    res.status(500).json({ ok: false, error: '更新推送配置失败' })
-  }
-})
-
-exitAlarmRouter.delete('/vendor-configs/:id', async (req: AuthenticatedRequest, res: Response) => {
-  const id = String(req.params.id ?? '').trim()
-  try {
-    const db = getDb()
-    await db.delete(schema.exitAlarmPushConfigs).where(eq(schema.exitAlarmPushConfigs.id, id))
-    res.json({ ok: true })
-  } catch {
-    res.status(500).json({ ok: false, error: '删除推送配置失败' })
-  }
-})
-
-// ─── 定时推送配置（全局单条） ─────────────────────────────────────────────────
+// ─── 定时推送配置（按账号隔离，每个账号最多一条） ────────────────────────────────
 
 type ScheduleBody = {
   weekdays?: unknown
@@ -134,37 +31,61 @@ type PublicExitAlarmSchedule = {
   pushTimes: ExitAlarmSchedule['pushTimes']
   isEnabled: boolean
   stationCode: string
+  /** 拥有该配置的账号所属州/区域，决定 pushTimes/weekdays 按哪个时区判断；只读，随账号信息变化 */
+  regionCode: string | null
+  pushConfigIds: string[]
   updatedAt: Date
   hasImileToken: boolean
 }
 
-function toPublicSchedule(row: ExitAlarmSchedule): PublicExitAlarmSchedule {
+async function toPublicSchedule(row: ExitAlarmSchedule, regionCode: string | null): Promise<PublicExitAlarmSchedule> {
+  const pushConfigIds = await exitAlarmScheduledScope.loadEnabledConfigIds()
   return {
     id: row.id,
     weekdays: row.weekdays,
     pushTimes: row.pushTimes,
     isEnabled: row.isEnabled,
     stationCode: row.stationCode,
+    regionCode,
+    pushConfigIds,
     updatedAt: row.updatedAt,
     hasImileToken: hasExitAlarmImileToken(row),
   }
 }
 
-exitAlarmRouter.get('/schedule', async (_req: AuthenticatedRequest, res: Response) => {
+async function loadOwnScheduleRow(
+  db: ReturnType<typeof getDb>,
+  userId: string,
+): Promise<ExitAlarmSchedule | null> {
+  const rows = await db
+    .select()
+    .from(schema.exitAlarmSchedules)
+    .where(eq(schema.exitAlarmSchedules.userId, userId))
+    .limit(1)
+  return rows[0] ?? null
+}
+
+exitAlarmRouter.get('/schedule', async (req: AuthenticatedRequest, res: Response) => {
+  const userId = req.authUser?.id
+  if (!userId) {
+    res.status(401).json({ ok: false, error: '未登录' })
+    return
+  }
   try {
     const db = getDb()
-    const rows = await db
-      .select()
-      .from(schema.exitAlarmSchedules)
-      .orderBy(asc(schema.exitAlarmSchedules.createdAt))
-      .limit(1)
-    res.json({ ok: true, data: rows[0] ? toPublicSchedule(rows[0]) : null })
+    const row = await loadOwnScheduleRow(db, userId)
+    res.json({ ok: true, data: row ? await toPublicSchedule(row, req.authUser?.regionCode ?? null) : null })
   } catch {
     res.status(500).json({ ok: false, error: '读取定时配置失败' })
   }
 })
 
 exitAlarmRouter.put('/schedule', async (req: AuthenticatedRequest, res: Response) => {
+  const userId = req.authUser?.id
+  if (!userId) {
+    res.status(401).json({ ok: false, error: '未登录' })
+    return
+  }
   const body = req.body as ScheduleBody
   if (!Array.isArray(body.weekdays) || !Array.isArray(body.pushTimes)) {
     res.status(400).json({ ok: false, error: '缺少必填字段: weekdays, pushTimes' })
@@ -172,11 +93,7 @@ exitAlarmRouter.put('/schedule', async (req: AuthenticatedRequest, res: Response
   }
   try {
     const db = getDb()
-    const existing = await db
-      .select()
-      .from(schema.exitAlarmSchedules)
-      .orderBy(asc(schema.exitAlarmSchedules.createdAt))
-      .limit(1)
+    const existing = await loadOwnScheduleRow(db, userId)
 
     const stationCode = typeof body.stationCode === 'string' ? body.stationCode.trim() : ''
     const tokenFromBody = typeof body.imileToken === 'string' ? body.imileToken.trim() : ''
@@ -185,8 +102,8 @@ exitAlarmRouter.put('/schedule', async (req: AuthenticatedRequest, res: Response
 
     const isEnabled = body.isEnabled !== false
     const willEnable = isEnabled && body.pushTimes.length > 0 && body.weekdays.length > 0
-    const existingToken = existing[0]?.imileToken?.trim() ?? ''
-    if (willEnable && !nextImileToken && !existingToken && !hasExitAlarmImileToken(existing[0])) {
+    const existingToken = existing?.imileToken?.trim() ?? ''
+    if (willEnable && !nextImileToken && !existingToken && !hasExitAlarmImileToken(existing)) {
       res.status(400).json({
         ok: false,
         error: '启用定时推送需要 iMile token，请在全局设置中配置后重新保存',
@@ -195,7 +112,7 @@ exitAlarmRouter.put('/schedule', async (req: AuthenticatedRequest, res: Response
     }
 
     let row: ExitAlarmSchedule
-    if (existing.length > 0) {
+    if (existing) {
       const [updated] = await db
         .update(schema.exitAlarmSchedules)
         .set({
@@ -204,29 +121,52 @@ exitAlarmRouter.put('/schedule', async (req: AuthenticatedRequest, res: Response
           isEnabled,
           stationCode,
           ...(nextImileToken ? { imileToken: normalizeImileToken(nextImileToken) } : {}),
-          updatedBy: req.authUser?.id ?? null,
+          updatedBy: userId,
           updatedAt: new Date(),
         })
-        .where(eq(schema.exitAlarmSchedules.id, existing[0].id))
+        .where(eq(schema.exitAlarmSchedules.id, existing.id))
         .returning()
       row = updated
     } else {
       const [created] = await db
         .insert(schema.exitAlarmSchedules)
         .values({
+          userId,
           weekdays: body.weekdays,
           pushTimes: body.pushTimes,
           isEnabled,
           stationCode,
           imileToken: nextImileToken ? normalizeImileToken(nextImileToken) : null,
-          updatedBy: req.authUser?.id ?? null,
+          updatedBy: userId,
         })
         .returning()
       row = created
     }
-    res.json({ ok: true, data: toPublicSchedule(row) })
+    res.json({ ok: true, data: await toPublicSchedule(row, req.authUser?.regionCode ?? null) })
   } catch {
     res.status(500).json({ ok: false, error: '保存定时配置失败' })
+  }
+})
+
+exitAlarmRouter.put('/schedule/push-config-ids', async (req: AuthenticatedRequest, res: Response) => {
+  const userId = req.authUser?.id
+  if (!userId) {
+    res.status(401).json({ ok: false, error: '未登录' })
+    return
+  }
+  const body = req.body as { pushConfigIds?: unknown }
+  const pushConfigIds = parsePushConfigIds(body.pushConfigIds)
+  try {
+    await exitAlarmScheduledScope.saveEnabledConfigIds(pushConfigIds)
+    const db = getDb()
+    const row = await loadOwnScheduleRow(db, userId)
+    if (!row) {
+      res.status(500).json({ ok: false, error: '保存定时推送供应商失败' })
+      return
+    }
+    res.json({ ok: true, data: await toPublicSchedule(row, req.authUser?.regionCode ?? null) })
+  } catch {
+    res.status(500).json({ ok: false, error: '保存定时推送供应商失败' })
   }
 })
 
@@ -239,7 +179,7 @@ exitAlarmRouter.post('/push-now', async (req: AuthenticatedRequest, res: Respons
     return
   }
 
-  type PushNowBody = { stationCode?: unknown; date?: unknown; pushTime?: unknown }
+  type PushNowBody = { stationCode?: unknown; date?: unknown; pushTime?: unknown; configIds?: unknown }
   const body = req.body as PushNowBody
 
   if (typeof body.stationCode !== 'string' || !body.stationCode.trim()) {
@@ -251,28 +191,33 @@ exitAlarmRouter.post('/push-now', async (req: AuthenticatedRequest, res: Respons
     return
   }
 
+  const configIds = Array.isArray(body.configIds)
+    ? body.configIds
+        .filter((id): id is string => typeof id === 'string' && id.trim().length > 0)
+        .map((id) => id.trim())
+    : []
+  if (configIds.length === 0) {
+    res.status(400).json({ ok: false, error: '请至少选择一个供应商配置' })
+    return
+  }
+
   const stationCode = body.stationCode.trim()
   const date = body.date.trim()
   const pushTime = typeof body.pushTime === 'string' && body.pushTime.trim() ? body.pushTime.trim() : '11:00'
 
-  // 获取已启用的推送配置
-  const db = getDb()
-  const configs = await db
-    .select()
-    .from(schema.exitAlarmPushConfigs)
-    .where(eq(schema.exitAlarmPushConfigs.isDisabled, false))
-    .orderBy(asc(schema.exitAlarmPushConfigs.createdAt))
+  const configs = await listPushableSupplierPushConfigsByIds(configIds)
 
   if (configs.length === 0) {
-    res.json({ ok: true, data: { pushedCount: 0, totalConfigs: 0, errors: [] } })
+    res.status(400).json({ ok: false, error: '所选供应商均不可用（未配置 Webhook）' })
     return
   }
 
   // 获取运单数据（先到件取 waybillNo，再分批 searchWaybill）
-  const result = await fetchExitAlarmWaybills({
+  const result = await fetchWaybillDetailsByInboundIndex({
     token,
     stationCode,
     dateStr: date,
+    tz: resolveRegionTz(req.authUser?.regionCode),
     label: '出仓告警立即推送',
   })
 
@@ -314,7 +259,7 @@ exitAlarmRouter.post('/push-now', async (req: AuthenticatedRequest, res: Respons
 
     // 无运单也推送（告知已全部正常或无数据）
     const card = buildExitAlarmCard({
-      vendorName: config.vendorName,
+      vendorName: supplierDisplayName(config),
       stationCode,
       date,
       pushTime,
@@ -342,10 +287,10 @@ exitAlarmRouter.post('/push-now', async (req: AuthenticatedRequest, res: Respons
       if (upstream.ok && typeof code === 'number' && code === 0) {
         pushedCount++
       } else {
-        errors.push(`${config.vendorName}: 飞书返回 code=${String(code)}`)
+        errors.push(`${supplierDisplayName(config)}: 飞书返回 code=${String(code)}`)
       }
     } catch {
-      errors.push(`${config.vendorName}: 网络错误`)
+      errors.push(`${supplierDisplayName(config)}: 网络错误`)
     }
   }
 
@@ -391,10 +336,11 @@ exitAlarmRouter.post('/search-waybills', async (req: AuthenticatedRequest, res: 
   }
 
   try {
-    const result = await fetchExitAlarmWaybills({
+    const result = await fetchWaybillDetailsByInboundIndex({
       token,
       stationCode,
       dateStr,
+      tz: resolveRegionTz(req.authUser?.regionCode),
       label: '出仓告警运单查询',
     })
 

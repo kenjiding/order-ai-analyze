@@ -111,11 +111,14 @@ export const vendorAnalyzeHandler: JobHandler = {
     if (!longTailRes.ok) throw new Error(`长尾单获取失败: ${longTailRes.message}`)
 
     await ctx.reportProgress({ phase: 'before11', message: '获取11点前出仓率', percent: 42, step: 4, totalSteps: 7 })
+    const before11StationCode = params.stationCodes[0]?.trim()
+    if (!before11StationCode) throw new Error('缺少责任站点 stationCode')
     const before11Res = await waybillSearchSemaphore.run(() =>
       fetchBefore11ExitRates(imileToken, {
-        startTime: params.yesterdayStartTime,
-        endTime: params.yesterdayEndTime,
+        stationCode: before11StationCode,
+        dateStr: params.before11Date,
         vendorCodes: params.vendorCodes,
+        regionCode: ctx.job.regionCode,
       }),
     )
     if (!before11Res.ok) throw new Error(`11点前出仓率获取失败: ${before11Res.message}`)

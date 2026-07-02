@@ -9,6 +9,7 @@ import { readImileTokenFromRequest } from './imileAuth'
 import { enqueueJob, getJobById } from '../jobs/queue'
 import { VENDOR_ANALYZE_JOB_TYPE } from '../jobs/handlers'
 import { canAccessJob, resolveEnqueueRegionCode, sendJobAccessDenied } from '../jobs/access'
+import { listSupplierPushConfigs } from '../supplierPushConfigs'
 
 export const vendorAnalysisRouter = Router()
 
@@ -126,9 +127,10 @@ vendorAnalysisRouter.post('/analyze-async', async (req: AuthenticatedRequest, re
     return
   }
 
-  // vendorCodes 由服务端直接查配置表得出，不信任前端传入，避免过期/错误的列表让本应复用的任务被判定为"不同"
+  // vendorCodes 由服务端直接查统一供应商配置表得出；按分析目标州过滤，与车队配置的按州隔离保持一致
+  // （超管未指定具体州时 regionResult 为 null，此时不限州，覆盖全部供应商配置）
   const db = getDb()
-  const configRows = await db.select().from(schema.vendorAnalysisPushConfigs)
+  const configRows = await listSupplierPushConfigs(regionResult ?? undefined)
   const vendorCodes = [...new Set(configRows.map((c) => normalizeVendorAnalyzeCode(c.vendorCode)).filter(Boolean))]
 
   const force = body.force === true
@@ -223,127 +225,6 @@ vendorAnalysisRouter.get('/analyze-jobs/:jobId/snapshot', async (req: Authentica
     return
   }
   res.json({ ok: true, data: snapshot.payload })
-})
-
-// ─── 推送配置 CRUD ────────────────────────────────────────────────────────
-
-vendorAnalysisRouter.get('/configs', async (_req: AuthenticatedRequest, res: Response) => {
-  try {
-    const db = getDb()
-    const rows = await db
-      .select()
-      .from(schema.vendorAnalysisPushConfigs)
-      .orderBy(schema.vendorAnalysisPushConfigs.createdAt)
-    res.json({ ok: true, data: rows })
-  } catch {
-    res.status(500).json({ ok: false, error: '读取配置失败' })
-  }
-})
-
-type ConfigBody = {
-  vendorCode?: unknown
-  vendorName?: unknown
-  webhookUrl?: unknown
-  signingSecret?: unknown
-  pushDescription?: unknown
-  isDisabled?: unknown
-}
-
-vendorAnalysisRouter.post('/configs', async (req: AuthenticatedRequest, res: Response) => {
-  const body = req.body as ConfigBody
-  if (
-    typeof body.vendorCode !== 'string' ||
-    !body.vendorCode.trim() ||
-    typeof body.vendorName !== 'string' ||
-    !body.vendorName.trim() ||
-    typeof body.webhookUrl !== 'string' ||
-    !body.webhookUrl.trim()
-  ) {
-    res.status(400).json({ ok: false, error: '缺少必填字段: vendorCode, vendorName, webhookUrl' })
-    return
-  }
-  try {
-    const db = getDb()
-    const [row] = await db
-      .insert(schema.vendorAnalysisPushConfigs)
-      .values({
-        vendorCode: body.vendorCode.trim(),
-        vendorName: body.vendorName.trim(),
-        webhookUrl: body.webhookUrl.trim(),
-        signingSecret:
-          typeof body.signingSecret === 'string' && body.signingSecret.trim()
-            ? body.signingSecret.trim()
-            : null,
-        pushDescription:
-          typeof body.pushDescription === 'string' && body.pushDescription.trim()
-            ? body.pushDescription.trim()
-            : null,
-        isDisabled: body.isDisabled === true,
-        createdBy: req.authUser?.id ?? null,
-      })
-      .returning()
-    res.status(201).json({ ok: true, data: row })
-  } catch {
-    res.status(500).json({ ok: false, error: '创建配置失败' })
-  }
-})
-
-vendorAnalysisRouter.put('/configs/:id', async (req: AuthenticatedRequest, res: Response) => {
-  const id = String(req.params.id ?? '').trim()
-  const body = req.body as ConfigBody
-  if (
-    typeof body.vendorCode !== 'string' ||
-    !body.vendorCode.trim() ||
-    typeof body.vendorName !== 'string' ||
-    !body.vendorName.trim() ||
-    typeof body.webhookUrl !== 'string' ||
-    !body.webhookUrl.trim()
-  ) {
-    res.status(400).json({ ok: false, error: '缺少必填字段: vendorCode, vendorName, webhookUrl' })
-    return
-  }
-  try {
-    const db = getDb()
-    const [row] = await db
-      .update(schema.vendorAnalysisPushConfigs)
-      .set({
-        vendorCode: body.vendorCode.trim(),
-        vendorName: body.vendorName.trim(),
-        webhookUrl: body.webhookUrl.trim(),
-        signingSecret:
-          typeof body.signingSecret === 'string' && body.signingSecret.trim()
-            ? body.signingSecret.trim()
-            : null,
-        pushDescription:
-          typeof body.pushDescription === 'string' && body.pushDescription.trim()
-            ? body.pushDescription.trim()
-            : null,
-        isDisabled: body.isDisabled === true,
-        updatedAt: new Date(),
-      })
-      .where(eq(schema.vendorAnalysisPushConfigs.id, id))
-      .returning()
-    if (!row) {
-      res.status(404).json({ ok: false, error: '配置不存在' })
-      return
-    }
-    res.json({ ok: true, data: row })
-  } catch {
-    res.status(500).json({ ok: false, error: '更新配置失败' })
-  }
-})
-
-vendorAnalysisRouter.delete('/configs/:id', async (req: AuthenticatedRequest, res: Response) => {
-  const id = String(req.params.id ?? '').trim()
-  try {
-    const db = getDb()
-    await db
-      .delete(schema.vendorAnalysisPushConfigs)
-      .where(eq(schema.vendorAnalysisPushConfigs.id, id))
-    res.json({ ok: true })
-  } catch {
-    res.status(500).json({ ok: false, error: '删除配置失败' })
-  }
 })
 
 // ─── 日报发布（供外部分享链接读取） ────────────────────────────────────────────

@@ -1,10 +1,10 @@
 /**
- * 11点前出仓告警运单拉取：先到件 inbound/query 取 waybillNo，再分批 searchWaybill。
+ * 站点日到件 waybillNo 索引：inbound/query 预取 + DB 缓存 + 分批 searchWaybill。
+ * 供出仓告警、供应商/司机 11 点前出仓率等场景共享。
  */
 
-import { eq } from 'drizzle-orm'
+import { and, eq, lt } from 'drizzle-orm'
 import { getDb, schema } from '../db'
-import type { ExitAlarmSchedule } from '../db/schema'
 import { requestImileApi } from './client'
 import { fetchPaginatedResultRows } from './paginatedQuery'
 import {
@@ -13,19 +13,22 @@ import {
   IMILE_DS_SAAS_TMS_PORTAL,
 } from './portal'
 import { envFirstOr, isRecord, normalizeImileToken, sleep } from './shared'
+import { AUS_TZ, type AusTz } from './ausTimezone'
 
 const DEFAULT_DS_WAYBILL_URL = 'https://ds.imile.com/saastms/v1/biz/waybillInfo/searchWaybill'
 const DEFAULT_INBOUND_URL = 'https://dc.imile.com/lm/express/ops/v1/biz/inbound/query'
 
-export const EXIT_ALARM_ADELAIDE_TZ = 'Australia/Adelaide'
-export const EXIT_ALARM_MELBOURNE_TZ = 'Australia/Melbourne'
-export const EXIT_ALARM_INBOUND_PREFETCH_TIME = '06:00'
+export const INBOUND_INDEX_ADELAIDE_TZ = 'Australia/Adelaide'
+export const INBOUND_INDEX_MELBOURNE_TZ = 'Australia/Melbourne'
+/** 索引保留天数（仅 waybillNo 列表，不含 searchWaybill 明细） */
+export const INBOUND_INDEX_RETENTION_DAYS = 14
 
 const INBOUND_PAGE_SHOW_COUNT = 1000
 const INBOUND_PAGE_DELAY_MS = 400
 const WAYBILL_PAGE_SHOW_COUNT = 1000
 const WAYBILL_PAGE_DELAY_MS = 300
-const WAYBILL_BATCH_SIZE = 1000
+/** iMile 硬限制：查询单号不能超过 1000 条 */
+export const SEARCH_WAYBILL_BATCH_SIZE = 1000
 const WAYBILL_BATCH_DELAY_MS = 300
 
 const INBOUND_QUERY_DEFAULTS = {
@@ -37,19 +40,24 @@ const INBOUND_QUERY_DEFAULTS = {
   vehicleUuid: '',
 }
 
-export type ExitAlarmWaybillRow = {
+export type InboundWaybillRow = {
   deliveryTime?: string | null
   consigneeRouteCode?: string | null
+  receiveTime?: string | null
+  waybillNo?: string | null
+  courierCode?: string | null
+  courierVendorCode?: string | null
+  courier?: string | null
   [key: string]: unknown
 }
 
-export type ExitAlarmWaybillFetchSuccess = {
+export type InboundWaybillFetchSuccess = {
   ok: true
-  records: ExitAlarmWaybillRow[]
+  records: InboundWaybillRow[]
   waybillNos: string[]
 }
 
-export type ExitAlarmWaybillFetchError = {
+export type InboundWaybillFetchError = {
   ok: false
   status?: number
   message: string
@@ -95,6 +103,11 @@ function extractWaybillNos(records: unknown[]): string[] {
   return [...nos]
 }
 
+function normalizeWaybillNos(raw: unknown): string[] | null {
+  if (!Array.isArray(raw)) return null
+  return raw.filter((no): no is string => typeof no === 'string' && no.trim().length > 0)
+}
+
 export function tzOffsetMs(utcDate: Date, tz: string): number {
   const fmt = new Intl.DateTimeFormat('en-AU', {
     timeZone: tz,
@@ -138,8 +151,7 @@ export function utcMsToLocalStr(ms: number, tz: string): string {
   return `${g('year')}-${g('month')}-${g('day')} ${hour}:${g('minute')}:${g('second')}`
 }
 
-/** 获取当前阿德莱德时间信息 */
-export function getAdelaideNow(): {
+export function getRegionNow(tz: AusTz = AUS_TZ.Adelaide): {
   weekday: number
   timeHHmm: string
   dateStr: string
@@ -147,7 +159,7 @@ export function getAdelaideNow(): {
 } {
   const now = new Date()
   const parts = new Intl.DateTimeFormat('en-CA', {
-    timeZone: EXIT_ALARM_ADELAIDE_TZ,
+    timeZone: tz,
     year: 'numeric',
     month: '2-digit',
     day: '2-digit',
@@ -168,43 +180,85 @@ export function getAdelaideNow(): {
   const hour = g('hour') === '24' ? '00' : g('hour')
   const timeHHmm = `${hour}:${g('minute')}`
 
-  const todayStartMs = localToUtcMs(`${dateStr} 00:00:00`, EXIT_ALARM_ADELAIDE_TZ)
-  const prevDateStr = utcMsToLocalStr(todayStartMs - 60_000, EXIT_ALARM_ADELAIDE_TZ).slice(0, 10)
+  const todayStartMs = localToUtcMs(`${dateStr} 00:00:00`, tz)
+  const prevDateStr = utcMsToLocalStr(todayStartMs - 60_000, tz).slice(0, 10)
 
   return { weekday, timeHHmm, dateStr, prevDateStr }
 }
 
-export function adelaideDateToMelbourneRange(dateStr: string): { startTime: string; endTime: string } {
+export function regionDateToMelbourneRange(
+  dateStr: string,
+  tz: AusTz = AUS_TZ.Adelaide,
+): { startTime: string; endTime: string } {
   return {
-    startTime: utcMsToLocalStr(localToUtcMs(`${dateStr} 00:00:00`, EXIT_ALARM_ADELAIDE_TZ), EXIT_ALARM_MELBOURNE_TZ),
-    endTime: utcMsToLocalStr(localToUtcMs(`${dateStr} 23:59:59`, EXIT_ALARM_ADELAIDE_TZ), EXIT_ALARM_MELBOURNE_TZ),
+    startTime: utcMsToLocalStr(localToUtcMs(`${dateStr} 00:00:00`, tz), INBOUND_INDEX_MELBOURNE_TZ),
+    endTime: utcMsToLocalStr(localToUtcMs(`${dateStr} 23:59:59`, tz), INBOUND_INDEX_MELBOURNE_TZ),
   }
 }
 
-export function readCachedInboundWaybillNos(
-  schedule: Pick<ExitAlarmSchedule, 'inboundCacheDate' | 'inboundWaybillNos'>,
-  dateStr: string,
-): string[] | null {
-  if (schedule.inboundCacheDate !== dateStr) return null
-  if (!Array.isArray(schedule.inboundWaybillNos)) return null
-  return schedule.inboundWaybillNos.filter((no): no is string => typeof no === 'string' && no.trim().length > 0)
+export async function loadInboundWaybillIndex(
+  stationCode: string,
+  dataDate: string,
+): Promise<string[] | null> {
+  const db = getDb()
+  const rows = await db
+    .select({ waybillNos: schema.stationInboundWaybillIndex.waybillNos })
+    .from(schema.stationInboundWaybillIndex)
+    .where(
+      and(
+        eq(schema.stationInboundWaybillIndex.stationCode, stationCode),
+        eq(schema.stationInboundWaybillIndex.dataDate, dataDate),
+      ),
+    )
+    .limit(1)
+  return normalizeWaybillNos(rows[0]?.waybillNos)
 }
 
-export async function saveInboundWaybillCache(input: {
-  scheduleId: string
-  dateStr: string
+export async function saveInboundWaybillIndex(input: {
+  stationCode: string
+  dataDate: string
   waybillNos: string[]
 }): Promise<void> {
   const db = getDb()
+  const now = new Date()
   await db
-    .update(schema.exitAlarmSchedules)
-    .set({
-      inboundCacheDate: input.dateStr,
-      inboundWaybillNos: input.waybillNos,
-      inboundCachedAt: new Date(),
-      updatedAt: new Date(),
+    .insert(schema.stationInboundWaybillIndex)
+    .values({
+      stationCode: input.stationCode,
+      dataDate: input.dataDate,
+      waybillNos: input.waybillNos,
+      waybillCount: input.waybillNos.length,
+      fetchedAt: now,
+      updatedAt: now,
     })
-    .where(eq(schema.exitAlarmSchedules.id, input.scheduleId))
+    .onConflictDoUpdate({
+      target: [
+        schema.stationInboundWaybillIndex.stationCode,
+        schema.stationInboundWaybillIndex.dataDate,
+      ],
+      set: {
+        waybillNos: input.waybillNos,
+        waybillCount: input.waybillNos.length,
+        fetchedAt: now,
+        updatedAt: now,
+      },
+    })
+
+  await purgeOldInboundWaybillIndex(INBOUND_INDEX_RETENTION_DAYS)
+}
+
+export async function purgeOldInboundWaybillIndex(keepDays = INBOUND_INDEX_RETENTION_DAYS): Promise<number> {
+  const cutoff = new Date()
+  cutoff.setDate(cutoff.getDate() - keepDays)
+  const cutoffDate = utcMsToLocalStr(cutoff.getTime(), INBOUND_INDEX_ADELAIDE_TZ).slice(0, 10)
+
+  const db = getDb()
+  const deleted = await db
+    .delete(schema.stationInboundWaybillIndex)
+    .where(lt(schema.stationInboundWaybillIndex.dataDate, cutoffDate))
+    .returning({ stationCode: schema.stationInboundWaybillIndex.stationCode })
+
+  return deleted.length
 }
 
 /** 到件扫描 inbound/query，提取 waybillNo 列表 */
@@ -213,11 +267,11 @@ export async function fetchInboundWaybillNos(input: {
   stationCode: string
   dateStr: string
   label?: string
-}): Promise<{ ok: true; waybillNos: string[] } | ExitAlarmWaybillFetchError> {
+}): Promise<{ ok: true; waybillNos: string[] } | InboundWaybillFetchError> {
   const normalizedToken = normalizeImileToken(input.token)
   const url = envFirstOr(['IMILE_INBOUND_URL'], DEFAULT_INBOUND_URL)
   const headers = makeInboundHeaders(normalizedToken, input.stationCode)
-  const label = input.label ?? '出仓告警到件预取'
+  const label = input.label ?? '到件waybillNo索引'
 
   const result = await fetchPaginatedResultRows({
     label,
@@ -241,13 +295,52 @@ export async function fetchInboundWaybillNos(input: {
   return { ok: true, waybillNos: extractWaybillNos(result.records) }
 }
 
-async function fetchSearchWaybillByNos(input: {
+/**
+ * 读 DB 索引；缺失时 inbound 拉取并可选写回。
+ * forceRefresh=true 时忽略缓存重新拉到件。
+ */
+export async function getOrFetchInboundWaybillNos(input: {
+  token: string
+  stationCode: string
+  dateStr: string
+  label?: string
+  persist?: boolean
+  forceRefresh?: boolean
+}): Promise<{ ok: true; waybillNos: string[]; fromCache: boolean } | InboundWaybillFetchError> {
+  if (!input.forceRefresh) {
+    const cached = await loadInboundWaybillIndex(input.stationCode, input.dateStr)
+    if (cached) {
+      return { ok: true, waybillNos: cached, fromCache: true }
+    }
+  }
+
+  const inbound = await fetchInboundWaybillNos({
+    token: input.token,
+    stationCode: input.stationCode,
+    dateStr: input.dateStr,
+    label: input.label,
+  })
+  if (!inbound.ok) return inbound
+
+  if (input.persist !== false) {
+    await saveInboundWaybillIndex({
+      stationCode: input.stationCode,
+      dataDate: input.dateStr,
+      waybillNos: inbound.waybillNos,
+    })
+  }
+
+  return { ok: true, waybillNos: inbound.waybillNos, fromCache: false }
+}
+
+export async function fetchSearchWaybillByNos(input: {
   token: string
   stationCode: string
   dateStr: string
   waybillNos: string[]
   label: string
-}): Promise<ExitAlarmWaybillFetchSuccess | ExitAlarmWaybillFetchError> {
+  tz?: AusTz
+}): Promise<InboundWaybillFetchSuccess | InboundWaybillFetchError> {
   if (input.waybillNos.length === 0) {
     return { ok: true, records: [], waybillNos: [] }
   }
@@ -255,9 +348,9 @@ async function fetchSearchWaybillByNos(input: {
   const normalizedToken = normalizeImileToken(input.token)
   const url = envFirstOr(['IMILE_VENDOR_DS_WAYBILL_URL'], DEFAULT_DS_WAYBILL_URL)
   const headers = makeWaybillHeaders(normalizedToken, input.stationCode)
-  const { startTime, endTime } = adelaideDateToMelbourneRange(input.dateStr)
-  const batches = chunkArray(input.waybillNos, WAYBILL_BATCH_SIZE)
-  const allRecords: ExitAlarmWaybillRow[] = []
+  const { startTime, endTime } = regionDateToMelbourneRange(input.dateStr, input.tz)
+  const batches = chunkArray(input.waybillNos, SEARCH_WAYBILL_BATCH_SIZE)
+  const allRecords: InboundWaybillRow[] = []
 
   for (let i = 0; i < batches.length; i += 1) {
     const batch = batches[i]
@@ -287,49 +380,35 @@ async function fetchSearchWaybillByNos(input: {
       return { ok: false, status: result.status, message: result.message }
     }
 
-    allRecords.push(...(result.records as ExitAlarmWaybillRow[]))
+    allRecords.push(...(result.records as InboundWaybillRow[]))
     if (i < batches.length - 1) await sleep(WAYBILL_BATCH_DELAY_MS)
   }
 
   return { ok: true, records: allRecords, waybillNos: input.waybillNos }
 }
 
-/** 优先使用缓存 waybillNo；缺失时现拉到件并可选写回缓存 */
-export async function fetchExitAlarmWaybills(input: {
+/** 索引 + 分批 searchWaybill；索引优先读 DB 缓存，缺失时现场 inbound 拉取并写回（不再依赖 06:00 定时任务先跑过） */
+export async function fetchWaybillDetailsByInboundIndex(input: {
   token: string
   stationCode: string
   dateStr: string
   label: string
-  cachedWaybillNos?: string[] | null
-  scheduleId?: string
-  persistInboundCache?: boolean
-}): Promise<ExitAlarmWaybillFetchSuccess | ExitAlarmWaybillFetchError> {
-  let waybillNos = input.cachedWaybillNos ?? null
-
-  if (!waybillNos) {
-    const inbound = await fetchInboundWaybillNos({
-      token: input.token,
-      stationCode: input.stationCode,
-      dateStr: input.dateStr,
-      label: `${input.label}-到件`,
-    })
-    if (!inbound.ok) return inbound
-    waybillNos = inbound.waybillNos
-
-    if (input.persistInboundCache && input.scheduleId) {
-      await saveInboundWaybillCache({
-        scheduleId: input.scheduleId,
-        dateStr: input.dateStr,
-        waybillNos,
-      })
-    }
-  }
+  tz?: AusTz
+}): Promise<InboundWaybillFetchSuccess | InboundWaybillFetchError> {
+  const indexResult = await getOrFetchInboundWaybillNos({
+    token: input.token,
+    stationCode: input.stationCode,
+    dateStr: input.dateStr,
+    label: `${input.label} 到件索引`,
+  })
+  if (!indexResult.ok) return indexResult
 
   return fetchSearchWaybillByNos({
     token: input.token,
     stationCode: input.stationCode,
     dateStr: input.dateStr,
-    waybillNos,
+    waybillNos: indexResult.waybillNos,
     label: input.label,
+    tz: input.tz,
   })
 }
