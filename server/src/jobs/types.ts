@@ -6,7 +6,8 @@ export type JobStatus = (typeof JOB_STATUSES)[number]
 export type JobProgress = Record<string, unknown>
 
 export type JobHandlerResult = {
-  artifactRelPath: string
+  /** 省略表示该任务的结果不落文件，比如结果已由 handler 自行持久化到专属数据表 */
+  artifactRelPath?: string
 }
 
 export type ArtifactWriter = {

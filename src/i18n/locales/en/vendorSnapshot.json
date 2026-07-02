@@ -96,5 +96,10 @@
   "footer": "iMile Operations Analytics",
   "aiSummary": {
     "loading": "Generating AI analysis…"
+  },
+  "portal": {
+    "loading": "Loading daily report…",
+    "invalidTitle": "Link invalid or expired",
+    "invalidHint": "This share link does not exist, has been disabled, or has no report data yet. Please contact your iMile representative for the latest link."
   }
 }

@@ -138,7 +138,7 @@ export async function updateJobProgress(jobId: string, progress: JobProgress): P
     .where(eq(jobs.id, jobId))
 }
 
-export async function completeJob(jobId: string, artifactRelPath: string): Promise<Job | null> {
+export async function completeJob(jobId: string, artifactRelPath: string | null): Promise<Job | null> {
   const db = getDb()
   const now = new Date()
   const [updated] = await db
@@ -146,7 +146,7 @@ export async function completeJob(jobId: string, artifactRelPath: string): Promi
     .set({
       status: 'succeeded',
       artifactPath: artifactRelPath,
-      artifactExpiresAt: computeArtifactExpiresAt(now),
+      artifactExpiresAt: artifactRelPath ? computeArtifactExpiresAt(now) : null,
       finishedAt: now,
       updatedAt: now,
       lockedBy: null,

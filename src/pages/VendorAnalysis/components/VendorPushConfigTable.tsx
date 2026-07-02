@@ -1,7 +1,15 @@
-import { Button, Empty, Popconfirm, Table, Tooltip, Typography } from 'antd'
+import { App as AntdApp, Button, Empty, Popconfirm, Table, Tooltip, Typography } from 'antd'
 import type { ColumnsType } from 'antd/es/table'
-import { PencilLine, Trash2 } from 'lucide-react'
-import { useState } from 'react'
+import { Copy, Link2, PencilLine, RotateCcw, Trash2 } from 'lucide-react'
+import { useEffect, useState } from 'react'
+import { PERMISSION_KEYS, usePermission } from '../../../hooks/usePermission'
+import {
+  createShareLink,
+  listShareLinks,
+  resetShareLink,
+  updateShareLink,
+  type VendorShareLink,
+} from '../vendorAnalysisApi'
 import type { VendorPushConfig } from '../vendorAnalysisTypes'
 
 function truncateMid(s: string, max: number): string {
@@ -21,8 +29,72 @@ type Props = {
   onToggleDisabled: (id: string, nextDisabled: boolean) => Promise<void>
 }
 
+function buildShareUrl(token: string): string {
+  return `${window.location.origin}/vendor-daily/${token}`
+}
+
+/** 外部分享链接管理：按 vendorCode 维护，与推送配置行对齐展示 */
+function useShareLinks(enabled: boolean) {
+  const { message } = AntdApp.useApp()
+  const [links, setLinks] = useState<Record<string, VendorShareLink>>({})
+  const [busyVendor, setBusyVendor] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (!enabled) return
+    void listShareLinks().then((result) => {
+      if (result.ok) {
+        setLinks(Object.fromEntries(result.data.map((l) => [l.vendorCode, l])))
+      }
+    })
+  }, [enabled])
+
+  const putLink = (link: VendorShareLink) => setLinks((prev) => ({ ...prev, [link.vendorCode]: link }))
+
+  const run = async (vendorCode: string, action: () => Promise<void>) => {
+    setBusyVendor(vendorCode)
+    try { await action() } finally { setBusyVendor(null) }
+  }
+
+  const generate = (vendorCode: string, vendorName: string) =>
+    run(vendorCode, async () => {
+      const result = await createShareLink(vendorCode, vendorName)
+      if (!result.ok) { message.error(`生成分享链接失败：${result.error}`); return }
+      putLink(result.data)
+      message.success('分享链接已生成')
+    })
+
+  const copy = async (link: VendorShareLink) => {
+    try {
+      await navigator.clipboard.writeText(buildShareUrl(link.token))
+      message.success('分享链接已复制')
+    } catch {
+      message.error('复制失败，请手动复制')
+    }
+  }
+
+  const reset = (link: VendorShareLink) =>
+    run(link.vendorCode, async () => {
+      const result = await resetShareLink(link.id)
+      if (!result.ok) { message.error(`重置失败：${result.error}`); return }
+      putLink(result.data)
+      message.success('链接已重置，旧链接立即失效')
+    })
+
+  const toggle = (link: VendorShareLink) =>
+    run(link.vendorCode, async () => {
+      const result = await updateShareLink(link.id, !link.isDisabled)
+      if (!result.ok) { message.error(`更新失败：${result.error}`); return }
+      putLink(result.data)
+      message.success(result.data.isDisabled ? '链接已禁用' : '链接已启用')
+    })
+
+  return { links, busyVendor, generate, copy, reset, toggle }
+}
+
 export function VendorPushConfigTable({ configs, loading, disabled, onEdit, onDelete, onToggleDisabled }: Props) {
   const [loadingState, setLoadingState] = useState<LoadingState>(null)
+  const canShare = usePermission(PERMISSION_KEYS.btnVendorAnalysisShare)
+  const share = useShareLinks(canShare)
 
   const handleToggle = async (id: string, nextDisabled: boolean) => {
     setLoadingState({ id, action: 'toggle' })
@@ -90,6 +162,76 @@ export function VendorPushConfigTable({ configs, loading, disabled, onEdit, onDe
           <span className="text-emerald-600">已启用</span>
         ),
     },
+    ...(canShare
+      ? ([
+          {
+            title: '分享链接',
+            key: 'shareLink',
+            width: 240,
+            onCell: () => ({ style: { whiteSpace: 'nowrap' } }),
+            render: (_, record) => {
+              const link = share.links[record.vendorCode]
+              const isRowBusy = share.busyVendor === record.vendorCode
+              if (!link) {
+                return (
+                  <Button
+                    type="link"
+                    className="!px-1"
+                    icon={<Link2 className="h-3.5 w-3.5" />}
+                    loading={isRowBusy}
+                    disabled={share.busyVendor != null && !isRowBusy}
+                    onClick={() => void share.generate(record.vendorCode, record.vendorName)}
+                  >
+                    生成链接
+                  </Button>
+                )
+              }
+              return (
+                <div className="flex flex-nowrap items-center gap-0">
+                  <Tooltip title={buildShareUrl(link.token)}>
+                    <Button
+                      type="link"
+                      className="!px-1"
+                      icon={<Copy className="h-3.5 w-3.5" />}
+                      disabled={isRowBusy}
+                      onClick={() => void share.copy(link)}
+                    >
+                      复制
+                    </Button>
+                  </Tooltip>
+                  <Popconfirm
+                    title="确认重置分享链接？旧链接将立即失效。"
+                    okText="重置"
+                    cancelText="取消"
+                    okButtonProps={{ danger: true }}
+                    onConfirm={() => void share.reset(link)}
+                  >
+                    <Button
+                      type="link"
+                      className="!px-1"
+                      icon={<RotateCcw className="h-3.5 w-3.5" />}
+                      loading={isRowBusy}
+                      disabled={share.busyVendor != null && !isRowBusy}
+                    >
+                      重置
+                    </Button>
+                  </Popconfirm>
+                  <Button
+                    type="link"
+                    className="!px-1"
+                    danger={!link.isDisabled}
+                    disabled={share.busyVendor != null && !isRowBusy}
+                    onClick={() => void share.toggle(link)}
+                  >
+                    {link.isDisabled ? '启用' : '禁用'}
+                  </Button>
+                  {link.isDisabled && <span className="text-xs text-amber-600">已禁用</span>}
+                </div>
+              )
+            },
+          },
+        ] satisfies ColumnsType<VendorPushConfig>)
+      : []),
     {
       title: '操作',
       key: 'actions',
@@ -150,7 +292,7 @@ export function VendorPushConfigTable({ configs, loading, disabled, onEdit, onDe
       dataSource={configs}
       loading={loading}
       pagination={false}
-      scroll={{ x: 860 }}
+      scroll={{ x: canShare ? 1100 : 860 }}
       locale={{
         emptyText: (
           <Empty

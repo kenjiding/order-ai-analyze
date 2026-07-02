@@ -14,6 +14,7 @@ import { weeklyReportInsightRouter } from './routes/weeklyReportInsightRouter'
 import { efficiencyInsightRouter } from './routes/efficiencyInsightRouter'
 import { jobsRouter } from './routes/jobsRouter'
 import { vendorAnalysisRouter } from './routes/vendorAnalysisRouter'
+import { vendorPortalRouter } from './routes/vendorPortalRouter'
 import { fleetSupplierPushRouter } from './routes/fleetSupplierPushRouter'
 import { exitAlarmRouter } from './routes/exitAlarmRouter'
 
@@ -56,6 +57,8 @@ app.use('/api/efficiency-insight', requireAuth, efficiencyInsightRouter)
 app.use('/api/jobs', jobsRouter)
 app.use('/api/problem-audit', requireAuth, problemPackageAuditRouter)
 app.use('/api/vendor-analysis', requireAuth, vendorAnalysisRouter)
+// 供应商日报外部门户：凭分享 token 访问，不走登录鉴权
+app.use('/api/vendor-portal', vendorPortalRouter)
 app.use('/api/fleet-supplier-push', requireAuth, fleetSupplierPushRouter)
 app.use('/api/feishu-webhook', requireAuth, feishuWebhookTestRouter)
 app.use('/api/exit-alarm', requireAuth, exitAlarmRouter)

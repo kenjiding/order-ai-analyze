@@ -1,7 +1,7 @@
 import { Button, DatePicker, Tag } from 'antd'
 import type { Dayjs } from 'dayjs'
-import { CalendarDays, CheckCircle2, DatabaseZap } from 'lucide-react'
-import type { FetchedData } from '../useVendorAnalysisPage'
+import { AlertTriangle, CalendarDays, CheckCircle2, DatabaseZap, RotateCw } from 'lucide-react'
+import type { FetchedData, VendorAnalyzeJobProgress } from '../useVendorAnalysisPage'
 
 type Props = {
   referenceDate: Dayjs | null
@@ -11,6 +11,61 @@ type Props = {
   fetchedData: FetchedData | null
   dataFetching: boolean
   onFetchData: () => void
+  jobProgress: VendorAnalyzeJobProgress | null
+  jobError: string | null
+  jobReused: boolean
+}
+
+function ProgressStrip({ progress, reused }: { progress: VendorAnalyzeJobProgress | null; reused: boolean }) {
+  const totalSteps = progress?.totalSteps ?? 7
+  const step = progress?.step ?? 0
+  const message = progress?.message ?? '正在提交任务'
+
+  return (
+    <div
+      className="mt-3 rounded-md border px-3 py-2.5"
+      style={{ borderColor: 'var(--admin-line)', background: 'var(--admin-surface-soft)' }}
+      role="progressbar"
+      aria-valuemin={0}
+      aria-valuemax={totalSteps}
+      aria-valuenow={step}
+    >
+      <div className="mb-1.5 flex items-center justify-between gap-3">
+        <span className="text-xs font-medium text-slate-600">
+          {reused ? `沿用了已有任务的进度 · ${message}` : message}
+        </span>
+        <span className="shrink-0 text-[11px] font-medium tabular-nums text-slate-400">
+          {step > 0 ? `${step} / ${totalSteps}` : '排队中'}
+        </span>
+      </div>
+      <div className="flex gap-1">
+        {Array.from({ length: totalSteps }).map((_, i) => (
+          <div
+            key={i}
+            className="h-1.5 flex-1 rounded-full transition-colors duration-500"
+            style={{
+              background:
+                i < step ? 'var(--admin-accent)' : i === step ? 'var(--admin-accent-soft)' : 'var(--admin-line)',
+            }}
+          />
+        ))}
+      </div>
+    </div>
+  )
+}
+
+function ErrorBanner({ error, onRetry }: { error: string; onRetry: () => void }) {
+  return (
+    <div className="mt-3 flex items-center justify-between gap-3 rounded-md border border-red-100 bg-red-50/60 px-3 py-2.5">
+      <div className="flex items-center gap-1.5 text-xs font-medium text-red-700">
+        <AlertTriangle className="h-3.5 w-3.5 shrink-0" aria-hidden />
+        <span>数据获取失败：{error}</span>
+      </div>
+      <Button type="text" icon={<RotateCw className="h-3.5 w-3.5" />} onClick={onRetry} className="text-red-600 hover:!text-red-700">
+        重新获取
+      </Button>
+    </div>
+  )
 }
 
 export function VendorFilterPanel({
@@ -21,10 +76,14 @@ export function VendorFilterPanel({
   fetchedData,
   dataFetching,
   onFetchData,
+  jobProgress,
+  jobError,
+  jobReused,
 }: Props) {
   const fetchedTime = fetchedData
     ? `${fetchedData.fetchedAt.getHours().toString().padStart(2, '0')}:${fetchedData.fetchedAt.getMinutes().toString().padStart(2, '0')}`
     : null
+  const filtersReady = !!referenceDate && !!complaintDateRange
 
   return (
     <div className="admin-panel">
@@ -73,7 +132,7 @@ export function VendorFilterPanel({
               type="primary"
               icon={<DatabaseZap className="h-4 w-4" />}
               loading={dataFetching}
-              disabled={!referenceDate || !complaintDateRange}
+              disabled={!filtersReady}
               onClick={onFetchData}
             >
               {dataFetching ? '获取中…' : '获取数据'}
@@ -81,7 +140,11 @@ export function VendorFilterPanel({
           </div>
         </div>
 
-        {fetchedData && referenceDate && (
+        {dataFetching && <ProgressStrip progress={jobProgress} reused={jobReused} />}
+
+        {!dataFetching && jobError && <ErrorBanner error={jobError} onRetry={onFetchData} />}
+
+        {!dataFetching && !jobError && fetchedData && referenceDate && (
           <div className="mt-3 flex flex-wrap items-center gap-2">
             <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500" />
             <span className="text-xs text-slate-500">{fetchedTime} 获取成功：</span>

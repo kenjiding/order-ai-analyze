@@ -1,0 +1,202 @@
+import { Router, type Request, type Response, type NextFunction } from 'express'
+import { desc, eq } from 'drizzle-orm'
+import { getDb, schema } from '../db'
+
+/**
+ * 供应商日报外部门户（无登录鉴权，仅凭高熵分享 token 访问）。
+ * 安全约束：
+ * - 数据切片在服务端完成，响应为显式白名单构造，绝不透传完整日报 payload
+ * - 链接不存在 / 已禁用 / 无日报 / 供应商不在最新日报中，统一返回同一 404，防止枚举
+ * - token 不写入任何日志
+ */
+export const vendorPortalRouter = Router()
+
+const SHARE_TOKEN_PATTERN = /^[0-9a-f]{64}$/
+
+// ─── 极简内存限流：60 次/分钟/IP（代码库无现成 rate-limit 中间件） ──────────────
+const RATE_LIMIT_MAX = 60
+const RATE_LIMIT_WINDOW_MS = 60_000
+const rateBuckets = new Map<string, { count: number; resetAt: number }>()
+
+function rateLimit(req: Request, res: Response, next: NextFunction): void {
+  const now = Date.now()
+  const ip = req.ip ?? 'unknown'
+  const bucket = rateBuckets.get(ip)
+  if (!bucket || bucket.resetAt <= now) {
+    // 顺带清理过期桶，避免 Map 无限增长
+    if (rateBuckets.size > 10_000) {
+      for (const [key, value] of rateBuckets) {
+        if (value.resetAt <= now) rateBuckets.delete(key)
+      }
+    }
+    rateBuckets.set(ip, { count: 1, resetAt: now + RATE_LIMIT_WINDOW_MS })
+    next()
+    return
+  }
+  bucket.count += 1
+  if (bucket.count > RATE_LIMIT_MAX) {
+    res.status(429).json({ ok: false, error: 'Too many requests' })
+    return
+  }
+  next()
+}
+
+function sendNotFound(res: Response): void {
+  res.status(404).json({ ok: false, error: 'not_found' })
+}
+
+// ─── 日报 payload 中与本路由相关的最小类型（与前端 vendorSnapshotStorage.ts 的 VendorSnapshotData 对应） ───
+
+type ReportDriver = {
+  courierCode?: unknown
+  courierName?: unknown
+  routeCode?: unknown
+  ofdCount?: unknown
+  before11OfdCount?: unknown
+  returnWarningCount?: unknown
+  dispatch24hCount?: unknown
+  totalDispatchCount?: unknown
+  dispatchRate24h?: unknown
+  longTailCount?: unknown
+}
+
+type ReportVendor = {
+  vendorCode?: unknown
+  vendorName?: unknown
+  complaintRate?: unknown
+  complaintCount?: unknown
+  waybillCount?: unknown
+  before11ExitRate?: unknown
+  before11ExitVolume?: unknown
+  before11TotalReceived?: unknown
+  dispatchRate24hText?: unknown
+  notMet24hSignCount?: unknown
+  unprocessedTicketCount?: unknown
+  longTailCount?: unknown
+  drivers?: unknown
+}
+
+type ReportPayload = {
+  reportDate?: unknown
+  complaintDateRange?: unknown
+  before11Date?: unknown
+  dispatch24hDate?: unknown
+  generatedAt?: unknown
+  vendors?: unknown
+  aiSummaries?: Record<string, unknown>
+}
+
+const num = (v: unknown): number => (typeof v === 'number' && Number.isFinite(v) ? v : 0)
+const numOrNull = (v: unknown): number | null => (typeof v === 'number' && Number.isFinite(v) ? v : null)
+const str = (v: unknown): string => (typeof v === 'string' ? v : '')
+const strOrNull = (v: unknown): string | null => (typeof v === 'string' ? v : null)
+
+/** 显式白名单构造司机行，防止 payload 中的多余字段泄漏 */
+function pickDriver(raw: ReportDriver) {
+  return {
+    courierCode: str(raw.courierCode),
+    courierName: str(raw.courierName),
+    routeCode: str(raw.routeCode),
+    ofdCount: num(raw.ofdCount),
+    before11OfdCount: num(raw.before11OfdCount),
+    returnWarningCount: num(raw.returnWarningCount),
+    dispatch24hCount: num(raw.dispatch24hCount),
+    totalDispatchCount: num(raw.totalDispatchCount),
+    dispatchRate24h: numOrNull(raw.dispatchRate24h),
+    longTailCount: num(raw.longTailCount),
+  }
+}
+
+/** 显式白名单构造供应商切片 */
+function pickVendor(raw: ReportVendor) {
+  const drivers = Array.isArray(raw.drivers) ? (raw.drivers as ReportDriver[]).map(pickDriver) : []
+  return {
+    vendorCode: str(raw.vendorCode),
+    vendorName: str(raw.vendorName),
+    complaintRate: num(raw.complaintRate),
+    complaintCount: num(raw.complaintCount),
+    waybillCount: num(raw.waybillCount),
+    before11ExitRate: numOrNull(raw.before11ExitRate),
+    before11ExitVolume: numOrNull(raw.before11ExitVolume),
+    before11TotalReceived: numOrNull(raw.before11TotalReceived),
+    dispatchRate24hText: strOrNull(raw.dispatchRate24hText),
+    notMet24hSignCount: numOrNull(raw.notMet24hSignCount),
+    unprocessedTicketCount: num(raw.unprocessedTicketCount),
+    longTailCount: num(raw.longTailCount),
+    // 内部推送启用状态不对外暴露，固定 false（前端类型要求该字段存在）
+    isDisabled: false,
+    drivers,
+  }
+}
+
+function pickAiSummary(raw: unknown): Partial<Record<'zh-CN' | 'en', string>> | null {
+  if (!raw || typeof raw !== 'object') return null
+  const entry = raw as Record<string, unknown>
+  const out: Partial<Record<'zh-CN' | 'en', string>> = {}
+  for (const locale of ['zh-CN', 'en'] as const) {
+    const text = entry[locale]
+    if (typeof text === 'string' && text.trim()) out[locale] = text
+  }
+  return Object.keys(out).length ? out : null
+}
+
+vendorPortalRouter.get('/daily/:token', rateLimit, async (req: Request, res: Response) => {
+  const token = String(req.params.token ?? '')
+  if (!SHARE_TOKEN_PATTERN.test(token)) {
+    sendNotFound(res)
+    return
+  }
+
+  try {
+    const db = getDb()
+    const [link] = await db
+      .select()
+      .from(schema.vendorShareLinks)
+      .where(eq(schema.vendorShareLinks.token, token))
+      .limit(1)
+    if (!link || link.isDisabled) {
+      sendNotFound(res)
+      return
+    }
+
+    const [report] = await db
+      .select({ payload: schema.vendorDailyReports.payload, createdAt: schema.vendorDailyReports.createdAt })
+      .from(schema.vendorDailyReports)
+      .orderBy(desc(schema.vendorDailyReports.createdAt))
+      .limit(1)
+    if (!report) {
+      sendNotFound(res)
+      return
+    }
+
+    const payload = report.payload as ReportPayload
+    const vendors = Array.isArray(payload.vendors) ? (payload.vendors as ReportVendor[]) : []
+    const vendorRaw = vendors.find((v) => v.vendorCode === link.vendorCode)
+    if (!vendorRaw) {
+      sendNotFound(res)
+      return
+    }
+
+    // 访问时间异步更新，不阻塞响应，失败不影响本次请求
+    void db
+      .update(schema.vendorShareLinks)
+      .set({ lastAccessedAt: new Date() })
+      .where(eq(schema.vendorShareLinks.id, link.id))
+      .catch(() => {})
+
+    res.json({
+      ok: true,
+      data: {
+        reportDate: str(payload.reportDate),
+        complaintDateRange: str(payload.complaintDateRange),
+        before11Date: str(payload.before11Date),
+        dispatch24hDate: str(payload.dispatch24hDate),
+        generatedAt: str(payload.generatedAt),
+        vendor: pickVendor(vendorRaw),
+        aiSummary: pickAiSummary(payload.aiSummaries?.[link.vendorCode]),
+      },
+    })
+  } catch {
+    res.status(500).json({ ok: false, error: 'internal_error' })
+  }
+})

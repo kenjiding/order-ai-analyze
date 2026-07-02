@@ -96,5 +96,10 @@
   "footer": "iMile Operations Analytics",
   "aiSummary": {
     "loading": "正在生成 AI 分析…"
+  },
+  "portal": {
+    "loading": "正在加载日报数据…",
+    "invalidTitle": "链接无效或已失效",
+    "invalidHint": "该分享链接不存在、已被禁用或暂无日报数据，请联系 iMile 对接人获取最新链接。"
   }
 }

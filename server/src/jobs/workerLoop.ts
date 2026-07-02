@@ -34,7 +34,7 @@ async function executeJob(job: Job): Promise<void> {
       artifact: createArtifactWriter(job),
     })
 
-    const completed = await completeJob(job.id, result.artifactRelPath)
+    const completed = await completeJob(job.id, result.artifactRelPath ?? null)
     if (!completed) {
       console.warn(`[worker] job ${job.id} complete ignored (not running)`)
     }

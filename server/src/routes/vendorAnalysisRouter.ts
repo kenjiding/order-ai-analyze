@@ -1,24 +1,14 @@
+import crypto from 'node:crypto'
 import { Router, type Response } from 'express'
 import { eq } from 'drizzle-orm'
-import type { AuthenticatedRequest } from '../auth/middleware'
+import { requirePermission, type AuthenticatedRequest } from '../auth/middleware'
 import { getDb, schema } from '../db'
 import { createDeepSeekClient } from '../openaiClient'
-import {
-  fetchVendorStations,
-  fetchVendors,
-  fetchComplaintTickets,
-  fetchUnprocessedTickets,
-  fetchLongTailOrders,
-  fetchVendorWaybills,
-  fetchBefore11ExitRates,
-} from '../imile/vendorAnalysis'
-import { fetchDriverWaybills, fetchDriverReturnWarning } from '../imile/driverPerformance'
+import { fetchVendorStations, fetchVendors } from '../imile/vendorAnalysis'
 import { readImileTokenFromRequest } from './imileAuth'
-import { getCachedWaybills, makeWaybillCacheKey, setCachedWaybills } from '../imile/waybillCache'
-import { Semaphore } from '../imile/semaphore'
-
-// 三个 searchWaybill 类接口共享此锁，同一时刻只允许 1 个在跑，防止触发 iMile 限流
-const waybillSearchSemaphore = new Semaphore(1)
+import { enqueueJob, getJobById } from '../jobs/queue'
+import { VENDOR_ANALYZE_JOB_TYPE } from '../jobs/handlers'
+import { canAccessJob, resolveEnqueueRegionCode, sendJobAccessDenied } from '../jobs/access'
 
 export const vendorAnalysisRouter = Router()
 
@@ -52,186 +42,187 @@ vendorAnalysisRouter.post('/vendors', async (req: AuthenticatedRequest, res: Res
   res.json({ ok: true, data: result.data })
 })
 
-vendorAnalysisRouter.post('/complaint-tickets', async (req: AuthenticatedRequest, res: Response) => {
-  const token = readImileTokenFromRequest(req)
-  if (!token) {
-    res.status(400).json({ ok: false, error: '缺少 iMile token' })
-    return
-  }
-  const body = req.body as { startTime?: string; endTime?: string }
-  if (!body.startTime || !body.endTime) {
-    res.status(400).json({ ok: false, error: '缺少 startTime 或 endTime' })
-    return
-  }
-  const result = await fetchComplaintTickets(token, {
-    startTime: body.startTime,
-    endTime: body.endTime,
-  })
-  if (!result.ok) {
-    res.status(502).json({ ok: false, error: result.message })
-    return
-  }
-  res.json({ ok: true, data: result.data })
-})
-
-vendorAnalysisRouter.post('/unprocessed-tickets', async (req: AuthenticatedRequest, res: Response) => {
-  const token = readImileTokenFromRequest(req)
-  if (!token) {
-    res.status(400).json({ ok: false, error: '缺少 iMile token' })
-    return
-  }
-  const body = req.body as { startTime?: string; endTime?: string }
-  if (!body.startTime || !body.endTime) {
-    res.status(400).json({ ok: false, error: '缺少 startTime 或 endTime' })
-    return
-  }
-  const result = await fetchUnprocessedTickets(token, {
-    startTime: body.startTime,
-    endTime: body.endTime,
-  })
-  if (!result.ok) {
-    res.status(502).json({ ok: false, error: result.message })
-    return
-  }
-  res.json({ ok: true, data: result.data })
-})
-
-vendorAnalysisRouter.post('/long-tail-orders', async (req: AuthenticatedRequest, res: Response) => {
-  const token = readImileTokenFromRequest(req)
-  if (!token) {
-    res.status(400).json({ ok: false, error: '缺少 iMile token' })
-    return
-  }
-  const body = req.body as { stationCodes?: unknown }
-  const stationCodes = Array.isArray(body.stationCodes)
-    ? (body.stationCodes as string[]).filter((s) => typeof s === 'string')
-    : []
-  const result = await fetchLongTailOrders(token, { stationCodes })
-  if (!result.ok) {
-    res.status(502).json({ ok: false, error: result.message })
-    return
-  }
-  res.json({ ok: true, data: result.data })
-})
-
-vendorAnalysisRouter.post('/before11-exit-rate', async (req: AuthenticatedRequest, res: Response) => {
-  const token = readImileTokenFromRequest(req)
-  if (!token) {
-    res.status(400).json({ ok: false, error: '缺少 iMile token' })
-    return
-  }
-  const body = req.body as { startTime?: string; endTime?: string; vendorCodes?: unknown }
-  const startTime = typeof body.startTime === 'string' ? body.startTime.trim() : ''
-  const endTime = typeof body.endTime === 'string' ? body.endTime.trim() : ''
-  if (!startTime || !endTime) {
-    res.status(400).json({ ok: false, error: '缺少 startTime 或 endTime' })
-    return
-  }
-  const vendorCodes = Array.isArray(body.vendorCodes)
-    ? (body.vendorCodes as string[]).filter((s) => typeof s === 'string' && s.trim())
-    : []
-
-  const result = await waybillSearchSemaphore.run(() =>
-    fetchBefore11ExitRates(token, {
-      startTime,
-      endTime,
-      vendorCodes,
-    }),
-  )
-  if (!result.ok) {
-    res.status(502).json({ ok: false, error: result.message })
-    return
-  }
-  res.json({ ok: true, data: result.data })
-})
-
-function slimWaybill(row: unknown): Record<string, unknown> {
-  const r = row as Record<string, unknown>
-  return {
-    waybillNo: r.waybillNo,
-    courierVendorCode: r.courierVendorCode,
-    courierCode: r.courierCode,
-    courier: r.courier,
-    consigneeRouteCode: r.consigneeRouteCode,
-    deliveryTime: r.deliveryTime,
-    signDate: r.signDate,
-    lastScanSiteCode: r.lastScanSiteCode,
-    lastScanSiteName: r.lastScanSiteName,
-    lastProblemDate: r.lastProblemDate,
-  }
+function normalizeVendorAnalyzeCode(code: string): string {
+  return code.trim()
 }
 
-vendorAnalysisRouter.post('/waybills', async (req: AuthenticatedRequest, res: Response) => {
+/** 相同筛选条件（region + 站点 + 日期 + 供应商）在此内生成同一个 key，命中 enqueueJob 的幂等去重 */
+function buildVendorAnalyzeIdempotencyKey(input: {
+  regionCode: string | null
+  stationCodes: string[]
+  referenceDate: string
+  complaintStart: string
+  complaintEnd: string
+  vendorCodes: string[]
+}): string {
+  const region = input.regionCode ?? '_global_'
+  const stations = [...new Set(input.stationCodes.map((s) => s.trim()).filter(Boolean))].sort().join(',')
+  const vendors = [...new Set(input.vendorCodes.map((s) => s.trim()).filter(Boolean))].sort().join(',')
+  return [
+    'vendor.analyze:v1',
+    region,
+    stations,
+    input.referenceDate,
+    `${input.complaintStart}~${input.complaintEnd}`,
+    vendors,
+  ].join('|')
+}
+
+type AnalyzeAsyncBody = {
+  stationCodes?: unknown
+  referenceDate?: unknown
+  complaintStart?: unknown
+  complaintEnd?: unknown
+  startTime?: unknown
+  endTime?: unknown
+  ticketStartTime?: unknown
+  ticketEndTime?: unknown
+  yesterdayStartTime?: unknown
+  yesterdayEndTime?: unknown
+  dayBeforeStartTime?: unknown
+  dayBeforeEndTime?: unknown
+  unprocessedStartTime?: unknown
+  before11Date?: unknown
+  dayBeforeDate?: unknown
+  regionCode?: unknown
+  force?: unknown
+}
+
+const ANALYZE_ASYNC_REQUIRED_STRING_FIELDS = [
+  'referenceDate', 'complaintStart', 'complaintEnd',
+  'startTime', 'endTime', 'ticketStartTime', 'ticketEndTime',
+  'yesterdayStartTime', 'yesterdayEndTime', 'dayBeforeStartTime', 'dayBeforeEndTime',
+  'unprocessedStartTime', 'before11Date', 'dayBeforeDate',
+] as const
+
+vendorAnalysisRouter.post('/analyze-async', async (req: AuthenticatedRequest, res: Response) => {
   const token = readImileTokenFromRequest(req)
   if (!token) {
     res.status(400).json({ ok: false, error: '缺少 iMile token' })
     return
   }
-  const body = req.body as { startTime?: string; endTime?: string }
-  const startTime = typeof body.startTime === 'string' ? body.startTime.trim() : ''
-  const endTime = typeof body.endTime === 'string' ? body.endTime.trim() : ''
-  if (!startTime || !endTime) {
-    res.status(400).json({ ok: false, error: '缺少 startTime 或 endTime' })
-    return
-  }
-  const cacheKey = makeWaybillCacheKey(token, startTime, endTime)
-  const cached = getCachedWaybills(cacheKey)
-  if (cached) {
-    res.json({ ok: true, data: cached })
-    return
+
+  const body = req.body as AnalyzeAsyncBody
+
+  for (const field of ANALYZE_ASYNC_REQUIRED_STRING_FIELDS) {
+    if (typeof body[field] !== 'string' || !(body[field] as string).trim()) {
+      res.status(400).json({ ok: false, error: `缺少 ${field}` })
+      return
+    }
   }
 
-  const result = await waybillSearchSemaphore.run(() =>
-    fetchVendorWaybills(token, { startTime, endTime }),
-  )
-  if (!result.ok) {
-    res.status(502).json({ ok: false, error: result.message })
-    return
-  }
-  const slimmed = result.data.map(slimWaybill)
-  setCachedWaybills(cacheKey, slimmed)
-  res.json({ ok: true, data: slimmed })
-})
-
-vendorAnalysisRouter.post('/driver-waybills', async (req: AuthenticatedRequest, res: Response) => {
-  const token = readImileTokenFromRequest(req)
-  if (!token) {
-    res.status(400).json({ ok: false, error: '缺少 iMile token' })
-    return
-  }
-  const body = req.body as { startTime?: string; endTime?: string }
-  const startTime = typeof body.startTime === 'string' ? body.startTime.trim() : ''
-  const endTime = typeof body.endTime === 'string' ? body.endTime.trim() : ''
-  if (!startTime || !endTime) {
-    res.status(400).json({ ok: false, error: '缺少 startTime 或 endTime' })
-    return
-  }
-  const result = await waybillSearchSemaphore.run(() =>
-    fetchDriverWaybills(token, { startTime, endTime }),
-  )
-  if (!result.ok) {
-    res.status(502).json({ ok: false, error: result.message })
-    return
-  }
-  res.json({ ok: true, data: result.data })
-})
-
-vendorAnalysisRouter.post('/driver-return-warning', async (req: AuthenticatedRequest, res: Response) => {
-  const token = readImileTokenFromRequest(req)
-  if (!token) {
-    res.status(400).json({ ok: false, error: '缺少 iMile token' })
-    return
-  }
-  const body = req.body as { stationCodes?: unknown }
   const stationCodes = Array.isArray(body.stationCodes)
     ? (body.stationCodes as string[]).filter((s) => typeof s === 'string' && s.trim())
     : []
-  const result = await fetchDriverReturnWarning(token, { stationCodes })
-  if (!result.ok) {
-    res.status(502).json({ ok: false, error: result.message })
+  if (stationCodes.length === 0) {
+    res.status(400).json({ ok: false, error: '缺少 stationCodes' })
     return
   }
-  res.json({ ok: true, data: result.data })
+
+  const regionResult = resolveEnqueueRegionCode(req, body.regionCode)
+  if (regionResult === 'forbidden') { sendJobAccessDenied(res); return }
+  if (regionResult === 'invalid') {
+    res.status(400).json({ ok: false, error: '无效的 regionCode' })
+    return
+  }
+
+  // vendorCodes 由服务端直接查配置表得出，不信任前端传入，避免过期/错误的列表让本应复用的任务被判定为"不同"
+  const db = getDb()
+  const configRows = await db.select().from(schema.vendorAnalysisPushConfigs)
+  const vendorCodes = [...new Set(configRows.map((c) => normalizeVendorAnalyzeCode(c.vendorCode)).filter(Boolean))]
+
+  const force = body.force === true
+  const idempotencyKey = force
+    ? null
+    : buildVendorAnalyzeIdempotencyKey({
+        regionCode: regionResult,
+        stationCodes,
+        referenceDate: body.referenceDate as string,
+        complaintStart: body.complaintStart as string,
+        complaintEnd: body.complaintEnd as string,
+        vendorCodes,
+      })
+
+  const enqueuePayload = {
+    imileToken: token,
+    stationCodes,
+    vendorCodes,
+    referenceDate: body.referenceDate,
+    startTime: body.startTime,
+    endTime: body.endTime,
+    ticketStartTime: body.ticketStartTime,
+    ticketEndTime: body.ticketEndTime,
+    yesterdayStartTime: body.yesterdayStartTime,
+    yesterdayEndTime: body.yesterdayEndTime,
+    dayBeforeStartTime: body.dayBeforeStartTime,
+    dayBeforeEndTime: body.dayBeforeEndTime,
+    unprocessedStartTime: body.unprocessedStartTime,
+    before11Date: body.before11Date,
+    dayBeforeDate: body.dayBeforeDate,
+  }
+
+  let job = await enqueueJob({
+    type: VENDOR_ANALYZE_JOB_TYPE,
+    payload: enqueuePayload,
+    regionCode: regionResult,
+    idempotencyKey,
+    createdBy: req.authUser?.id ?? null,
+    maxAttempts: 2,
+  })
+
+  // 幂等命中的任务可能是本次 vendor_analysis_snapshots 上线之前跑完的旧任务（只有文件 artifact，已被 TTL 清理），
+  // 这种"已完成但取不到数据"的僵尸记录如果不处理，会因为 idempotencyKey 一直被命中、永远无法重新拉取
+  if (job.status === 'succeeded' && idempotencyKey) {
+    const [snapshot] = await db
+      .select({ id: schema.vendorAnalysisSnapshots.id })
+      .from(schema.vendorAnalysisSnapshots)
+      .where(eq(schema.vendorAnalysisSnapshots.jobId, job.id))
+      .limit(1)
+    if (!snapshot) {
+      await db.update(schema.jobs).set({ idempotencyKey: null }).where(eq(schema.jobs.id, job.id))
+      job = await enqueueJob({
+        type: VENDOR_ANALYZE_JOB_TYPE,
+        payload: enqueuePayload,
+        regionCode: regionResult,
+        idempotencyKey,
+        createdBy: req.authUser?.id ?? null,
+        maxAttempts: 2,
+      })
+    }
+  }
+
+  res.status(202).json({ ok: true, data: { jobId: job.id, status: job.status } })
+})
+
+// analyze-async 任务的完整分析结果长期存于 vendor_analysis_snapshots，不走 jobs 表的文件 artifact（会被 TTL 清理）
+vendorAnalysisRouter.get('/analyze-jobs/:jobId/snapshot', async (req: AuthenticatedRequest, res: Response) => {
+  const jobId = String(req.params.jobId ?? '').trim()
+  const job = await getJobById(jobId)
+  if (!job) {
+    res.status(404).json({ ok: false, error: '任务不存在' })
+    return
+  }
+  if (!canAccessJob(req, job)) {
+    sendJobAccessDenied(res)
+    return
+  }
+  if (job.type !== VENDOR_ANALYZE_JOB_TYPE) {
+    res.status(400).json({ ok: false, error: '任务类型不匹配' })
+    return
+  }
+
+  const db = getDb()
+  const [snapshot] = await db
+    .select({ payload: schema.vendorAnalysisSnapshots.payload })
+    .from(schema.vendorAnalysisSnapshots)
+    .where(eq(schema.vendorAnalysisSnapshots.jobId, jobId))
+    .orderBy(schema.vendorAnalysisSnapshots.createdAt)
+    .limit(1)
+  if (!snapshot) {
+    res.status(404).json({ ok: false, error: '该任务暂无已保存的分析数据' })
+    return
+  }
+  res.json({ ok: true, data: snapshot.payload })
 })
 
 // ─── 推送配置 CRUD ────────────────────────────────────────────────────────
@@ -352,6 +343,160 @@ vendorAnalysisRouter.delete('/configs/:id', async (req: AuthenticatedRequest, re
     res.json({ ok: true })
   } catch {
     res.status(500).json({ ok: false, error: '删除配置失败' })
+  }
+})
+
+// ─── 日报发布（供外部分享链接读取） ────────────────────────────────────────────
+
+type DailyReportBody = {
+  reportDate?: unknown
+  stations?: unknown
+  complaintDateRange?: unknown
+  before11Date?: unknown
+  dispatch24hDate?: unknown
+  generatedAt?: unknown
+  vendors?: unknown
+  aiSummaries?: unknown
+}
+
+/**
+ * 保存 openSnapshot 生成的日报快照（VendorSnapshotData 去掉 webhookConfigs）。
+ * 只透传白名单字段入库，webhook 地址与签名密钥永不落到该表。
+ */
+vendorAnalysisRouter.post('/daily-reports', async (req: AuthenticatedRequest, res: Response) => {
+  const body = req.body as DailyReportBody
+  if (typeof body.reportDate !== 'string' || !body.reportDate.trim()) {
+    res.status(400).json({ ok: false, error: '缺少 reportDate' })
+    return
+  }
+  if (!Array.isArray(body.vendors) || body.vendors.length === 0) {
+    res.status(400).json({ ok: false, error: '缺少 vendors 数据' })
+    return
+  }
+  const payload = {
+    reportDate: body.reportDate.trim(),
+    stations: Array.isArray(body.stations) ? body.stations : [],
+    complaintDateRange: typeof body.complaintDateRange === 'string' ? body.complaintDateRange : '',
+    before11Date: typeof body.before11Date === 'string' ? body.before11Date : '',
+    dispatch24hDate: typeof body.dispatch24hDate === 'string' ? body.dispatch24hDate : '',
+    generatedAt: typeof body.generatedAt === 'string' ? body.generatedAt : new Date().toISOString(),
+    vendors: body.vendors,
+    aiSummaries: body.aiSummaries && typeof body.aiSummaries === 'object' ? body.aiSummaries : undefined,
+  }
+  try {
+    const db = getDb()
+    const [row] = await db
+      .insert(schema.vendorDailyReports)
+      .values({
+        reportDate: payload.reportDate,
+        payload,
+        createdBy: req.authUser?.id ?? null,
+      })
+      .returning({ id: schema.vendorDailyReports.id, createdAt: schema.vendorDailyReports.createdAt })
+    res.status(201).json({ ok: true, data: row })
+  } catch {
+    res.status(500).json({ ok: false, error: '日报保存失败' })
+  }
+})
+
+// ─── 供应商分享链接管理 ───────────────────────────────────────────────────────
+
+const requireShare = requirePermission('btn:vendor-analysis:share')
+
+function generateShareToken(): string {
+  return crypto.randomBytes(32).toString('hex')
+}
+
+vendorAnalysisRouter.get('/share-links', requireShare, async (_req: AuthenticatedRequest, res: Response) => {
+  try {
+    const db = getDb()
+    const rows = await db.select().from(schema.vendorShareLinks).orderBy(schema.vendorShareLinks.createdAt)
+    res.json({ ok: true, data: rows })
+  } catch {
+    res.status(500).json({ ok: false, error: '读取分享链接失败' })
+  }
+})
+
+vendorAnalysisRouter.post('/share-links', requireShare, async (req: AuthenticatedRequest, res: Response) => {
+  const body = req.body as { vendorCode?: unknown; vendorName?: unknown }
+  if (
+    typeof body.vendorCode !== 'string' ||
+    !body.vendorCode.trim() ||
+    typeof body.vendorName !== 'string' ||
+    !body.vendorName.trim()
+  ) {
+    res.status(400).json({ ok: false, error: '缺少必填字段: vendorCode, vendorName' })
+    return
+  }
+  const vendorCode = body.vendorCode.trim()
+  try {
+    const db = getDb()
+    // vendorCode 唯一：已存在则直接返回现有链接（保持"长期固定"语义），仅同步供应商名称
+    const [existing] = await db
+      .select()
+      .from(schema.vendorShareLinks)
+      .where(eq(schema.vendorShareLinks.vendorCode, vendorCode))
+      .limit(1)
+    if (existing) {
+      res.json({ ok: true, data: existing })
+      return
+    }
+    const [row] = await db
+      .insert(schema.vendorShareLinks)
+      .values({
+        vendorCode,
+        vendorName: body.vendorName.trim(),
+        token: generateShareToken(),
+        createdBy: req.authUser?.id ?? null,
+      })
+      .returning()
+    res.status(201).json({ ok: true, data: row })
+  } catch {
+    res.status(500).json({ ok: false, error: '生成分享链接失败' })
+  }
+})
+
+/** 重置 token：旧链接立即失效 */
+vendorAnalysisRouter.post('/share-links/:id/reset', requireShare, async (req: AuthenticatedRequest, res: Response) => {
+  const id = String(req.params.id ?? '').trim()
+  try {
+    const db = getDb()
+    const [row] = await db
+      .update(schema.vendorShareLinks)
+      .set({ token: generateShareToken(), updatedAt: new Date() })
+      .where(eq(schema.vendorShareLinks.id, id))
+      .returning()
+    if (!row) {
+      res.status(404).json({ ok: false, error: '分享链接不存在' })
+      return
+    }
+    res.json({ ok: true, data: row })
+  } catch {
+    res.status(500).json({ ok: false, error: '重置分享链接失败' })
+  }
+})
+
+vendorAnalysisRouter.put('/share-links/:id', requireShare, async (req: AuthenticatedRequest, res: Response) => {
+  const id = String(req.params.id ?? '').trim()
+  const body = req.body as { isDisabled?: unknown }
+  if (typeof body.isDisabled !== 'boolean') {
+    res.status(400).json({ ok: false, error: '缺少 isDisabled' })
+    return
+  }
+  try {
+    const db = getDb()
+    const [row] = await db
+      .update(schema.vendorShareLinks)
+      .set({ isDisabled: body.isDisabled, updatedAt: new Date() })
+      .where(eq(schema.vendorShareLinks.id, id))
+      .returning()
+    if (!row) {
+      res.status(404).json({ ok: false, error: '分享链接不存在' })
+      return
+    }
+    res.json({ ok: true, data: row })
+  } catch {
+    res.status(500).json({ ok: false, error: '更新分享链接失败' })
   }
 })
 

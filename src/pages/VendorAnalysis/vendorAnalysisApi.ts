@@ -1,6 +1,15 @@
 import { getApiBaseUrl } from '../../utils/apiBaseUrl'
+import {
+  cancelJobApi,
+  deleteJobApi,
+  getJobById,
+  listJobs,
+  type JobStatus,
+  type PublicJob,
+} from '../../api/jobsClient'
 import type {
-  Before11ExitRatesData,
+  Before11ExitRateResult,
+  ComplaintTicketRow,
   DriverWaybillRow,
   DriverReturnRawRow,
   LongTailOrderRow,
@@ -9,7 +18,11 @@ import type {
   VendorOption,
   VendorPushConfig,
   VendorPushConfigDraft,
+  WaybillRow,
 } from './vendorAnalysisTypes'
+
+export { getJobById, listJobs, cancelJobApi, deleteJobApi }
+export type { JobStatus, PublicJob }
 
 async function apiFetch<T>(
   path: string,
@@ -50,94 +63,61 @@ export async function fetchVendors(
   })
 }
 
-export async function fetchComplaintTickets(
+export type VendorAnalyzeArtifact = {
+  referenceDate: string
+  tickets: ComplaintTicketRow[]
+  waybills: WaybillRow[]
+  unprocessedTickets: UnprocessedTicketsData
+  longTailOrders: LongTailOrderRow[]
+  before11ExitRateByVendor: Record<string, Before11ExitRateResult>
+  driverYesterdayWaybills: DriverWaybillRow[]
+  driverDayBeforeWaybills: DriverWaybillRow[]
+  driverReturnRows: DriverReturnRawRow[]
+  startTime: string
+  endTime: string
+  ticketStartTime: string
+  ticketEndTime: string
+  before11Date: string
+  dayBeforeDate: string
+}
+
+export type VendorAnalyzeAsyncParams = {
+  stationCodes: string[]
+  referenceDate: string
+  complaintStart: string
+  complaintEnd: string
+  startTime: string
+  endTime: string
+  ticketStartTime: string
+  ticketEndTime: string
+  yesterdayStartTime: string
+  yesterdayEndTime: string
+  dayBeforeStartTime: string
+  dayBeforeEndTime: string
+  unprocessedStartTime: string
+  before11Date: string
+  dayBeforeDate: string
+  force?: boolean
+}
+
+/** 提交/复用一次供应商数据分析任务；立即返回 jobId，通过 getJobById 轮询状态。 */
+export async function postVendorAnalyzeAsync(
   imileToken: string,
-  params: { startTime: string; endTime: string },
-  signal?: AbortSignal,
-): Promise<{ ok: true; data: unknown[] } | { ok: false; error: string }> {
-  return apiFetch<unknown[]>('/api/vendor-analysis/complaint-tickets', {
+  params: VendorAnalyzeAsyncParams,
+): Promise<{ ok: true; data: { jobId: string; status: JobStatus } } | { ok: false; error: string }> {
+  return apiFetch<{ jobId: string; status: JobStatus }>('/api/vendor-analysis/analyze-async', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${imileToken}` },
     body: JSON.stringify(params),
-    signal,
   })
 }
 
-export async function fetchUnprocessedTickets(
-  imileToken: string,
-  params: { startTime: string; endTime: string },
-  signal?: AbortSignal,
-): Promise<{ ok: true; data: UnprocessedTicketsData } | { ok: false; error: string }> {
-  return apiFetch<UnprocessedTicketsData>('/api/vendor-analysis/unprocessed-tickets', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${imileToken}` },
-    body: JSON.stringify(params),
-    signal,
-  })
-}
-
-export async function fetchLongTailOrders(
-  imileToken: string,
-  params: { stationCodes: string[] },
-  signal?: AbortSignal,
-): Promise<{ ok: true; data: LongTailOrderRow[] } | { ok: false; error: string }> {
-  return apiFetch<LongTailOrderRow[]>('/api/vendor-analysis/long-tail-orders', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${imileToken}` },
-    body: JSON.stringify(params),
-    signal,
-  })
-}
-
-export async function fetchBefore11ExitRates(
-  imileToken: string,
-  params: { startTime: string; endTime: string; vendorCodes: string[] },
-  signal?: AbortSignal,
-): Promise<{ ok: true; data: Before11ExitRatesData } | { ok: false; error: string }> {
-  return apiFetch<Before11ExitRatesData>('/api/vendor-analysis/before11-exit-rate', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${imileToken}` },
-    body: JSON.stringify(params),
-    signal,
-  })
-}
-
-export async function fetchWaybills(
-  imileToken: string,
-  params: { startTime: string; endTime: string },
-  signal?: AbortSignal,
-): Promise<{ ok: true; data: unknown[] } | { ok: false; error: string }> {
-  return apiFetch<unknown[]>('/api/vendor-analysis/waybills', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${imileToken}` },
-    body: JSON.stringify(params),
-    signal,
-  })
-}
-
-export async function fetchDriverWaybills(
-  imileToken: string,
-  params: { startTime: string; endTime: string },
-  signal?: AbortSignal,
-): Promise<{ ok: true; data: DriverWaybillRow[] } | { ok: false; error: string }> {
-  return apiFetch<DriverWaybillRow[]>('/api/vendor-analysis/driver-waybills', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${imileToken}` },
-    body: JSON.stringify(params),
-    signal,
-  })
-}
-
-export async function fetchDriverReturnWarning(
-  imileToken: string,
-  params: { stationCodes: string[] },
-  signal?: AbortSignal,
-): Promise<{ ok: true; data: DriverReturnRawRow[] } | { ok: false; error: string }> {
-  return apiFetch<DriverReturnRawRow[]>('/api/vendor-analysis/driver-return-warning', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${imileToken}` },
-    body: JSON.stringify(params),
-    signal,
+/** 从数据库长期读取某个任务的完整分析结果（不受 jobs 表文件 artifact 的 TTL 清理影响）。 */
+export async function getVendorAnalyzeSnapshot(
+  jobId: string,
+): Promise<{ ok: true; data: VendorAnalyzeArtifact } | { ok: false; error: string }> {
+  return apiFetch<VendorAnalyzeArtifact>(`/api/vendor-analysis/analyze-jobs/${encodeURIComponent(jobId)}/snapshot`, {
+    method: 'GET',
   })
 }
 
@@ -196,6 +176,7 @@ export type VendorAiInput = {
 }
 
 import type { AppLocale } from '../../i18n/types'
+import type { VendorSnapshotData, VendorSnapshotVendor, VendorSnapshotAiSummaries } from './vendorSnapshotStorage'
 
 export async function fetchVendorAiSummaries(
   vendors: VendorAiInput[],
@@ -204,5 +185,94 @@ export async function fetchVendorAiSummaries(
   return apiFetch<Record<string, string>>('/api/vendor-analysis/ai-summary', {
     method: 'POST',
     body: JSON.stringify({ vendors, locale }),
+  })
+}
+
+// ─── 日报发布与分享链接 ───────────────────────────────────────────────────────
+
+/** 发布日报到服务端供外部分享链接读取；剔除 webhookConfigs，webhook 地址与密钥不落库 */
+export async function postDailyReport(
+  snapshot: VendorSnapshotData,
+): Promise<{ ok: true; data: { id: string; createdAt: string } } | { ok: false; error: string }> {
+  // 白名单构造，确保 webhookConfigs（含 webhook 地址与签名密钥）不上传
+  const payload = {
+    reportDate: snapshot.reportDate,
+    stations: snapshot.stations,
+    complaintDateRange: snapshot.complaintDateRange,
+    before11Date: snapshot.before11Date,
+    dispatch24hDate: snapshot.dispatch24hDate,
+    generatedAt: snapshot.generatedAt,
+    vendors: snapshot.vendors,
+    aiSummaries: snapshot.aiSummaries,
+  }
+  return apiFetch<{ id: string; createdAt: string }>('/api/vendor-analysis/daily-reports', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  })
+}
+
+export type VendorShareLink = {
+  id: string
+  vendorCode: string
+  vendorName: string
+  token: string
+  isDisabled: boolean
+  createdAt: string
+  updatedAt: string
+  lastAccessedAt: string | null
+}
+
+export async function listShareLinks(): Promise<
+  { ok: true; data: VendorShareLink[] } | { ok: false; error: string }
+> {
+  return apiFetch<VendorShareLink[]>('/api/vendor-analysis/share-links', { method: 'GET' })
+}
+
+export async function createShareLink(
+  vendorCode: string,
+  vendorName: string,
+): Promise<{ ok: true; data: VendorShareLink } | { ok: false; error: string }> {
+  return apiFetch<VendorShareLink>('/api/vendor-analysis/share-links', {
+    method: 'POST',
+    body: JSON.stringify({ vendorCode, vendorName }),
+  })
+}
+
+/** 重置 token：旧链接立即失效 */
+export async function resetShareLink(
+  id: string,
+): Promise<{ ok: true; data: VendorShareLink } | { ok: false; error: string }> {
+  return apiFetch<VendorShareLink>(`/api/vendor-analysis/share-links/${encodeURIComponent(id)}/reset`, {
+    method: 'POST',
+  })
+}
+
+export async function updateShareLink(
+  id: string,
+  isDisabled: boolean,
+): Promise<{ ok: true; data: VendorShareLink } | { ok: false; error: string }> {
+  return apiFetch<VendorShareLink>(`/api/vendor-analysis/share-links/${encodeURIComponent(id)}`, {
+    method: 'PUT',
+    body: JSON.stringify({ isDisabled }),
+  })
+}
+
+// ─── 外部门户（无登录态，凭 token） ────────────────────────────────────────────
+
+export type VendorPortalDaily = {
+  reportDate: string
+  complaintDateRange: string
+  before11Date: string
+  dispatch24hDate: string
+  generatedAt: string
+  vendor: VendorSnapshotVendor
+  aiSummary: VendorSnapshotAiSummaries[string] | null
+}
+
+export async function fetchVendorPortalDaily(
+  token: string,
+): Promise<{ ok: true; data: VendorPortalDaily } | { ok: false; error: string }> {
+  return apiFetch<VendorPortalDaily>(`/api/vendor-portal/daily/${encodeURIComponent(token)}`, {
+    method: 'GET',
   })
 }

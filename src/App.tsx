@@ -23,6 +23,7 @@ import WarehouseSafetyInspectionPage from './pages/WarehouseSafetyInspection/War
 import SystemUsersPage from './pages/SystemUsers/SystemUsersPage'
 import LoginPage from './pages/Login/LoginPage'
 import VendorSnapshotPage from './pages/VendorAnalysis/VendorSnapshotPage'
+import VendorPortalPage from './pages/VendorPortal/VendorPortalPage'
 import ExitAlarmPage from './pages/ExitAlarm/ExitAlarmPage'
 import { getDefaultRouteForPermissions } from './components/Layout/sidebarMenu'
 import { useAuthStore } from './stores/authStore'
@@ -169,6 +170,8 @@ function AppRoutes() {
   return (
     <Routes>
       <Route path="/login" element={<LoginPage />} />
+      {/* 供应商日报外部分享页：凭链接 token 访问，无需登录 */}
+      <Route path="/vendor-daily/:token" element={<VendorPortalPage />} />
       <Route element={<ProtectedRoute />}>
         <Route path="/vendor-snapshot" element={<VendorSnapshotPage />} />
         <Route element={<AuthenticatedShell />}>

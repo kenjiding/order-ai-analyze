@@ -91,6 +91,14 @@ export const PERMISSION_REGISTRY: PermissionDefinition[] = [
     sortOrder: 380,
   },
   {
+    key: 'btn:vendor-analysis:share',
+    type: 'button',
+    label: '供应商分享链接管理',
+    description: '生成/重置/禁用供应商日报外部分享链接',
+    menuKey: 'vendor-analysis',
+    sortOrder: 381,
+  },
+  {
     key: 'btn:warehouse-safety:export',
     type: 'button',
     label: '导出检查表',

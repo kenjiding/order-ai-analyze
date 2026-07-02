@@ -177,6 +177,58 @@ export const vendorAnalysisPushConfigs = pgTable('vendor_analysis_push_configs',
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 })
 
+/** 供应商数据分析任务的完整分析结果，长期保存在数据库中，不受 jobs.artifactPath 文件 TTL 清理影响 */
+export const vendorAnalysisSnapshots = pgTable(
+  'vendor_analysis_snapshots',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    jobId: uuid('job_id').references(() => jobs.id, { onDelete: 'set null' }),
+    regionCode: varchar('region_code', { length: 16 }),
+    referenceDate: varchar('reference_date', { length: 10 }).notNull(),
+    stationCodes: jsonb('station_codes').notNull().default([]),
+    payload: jsonb('payload').notNull(),
+    createdBy: uuid('created_by').references(() => users.id, { onDelete: 'set null' }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    index('vendor_analysis_snapshots_job_id_idx').on(table.jobId),
+    index('vendor_analysis_snapshots_reference_date_idx').on(table.referenceDate, table.createdAt),
+  ],
+)
+
+/** 供应商数据日报发布记录：openSnapshot 生成的最终指标+司机表现+AI 总结（不含 webhook 配置），供外部分享链接读取 */
+export const vendorDailyReports = pgTable(
+  'vendor_daily_reports',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    reportDate: varchar('report_date', { length: 10 }).notNull(),
+    payload: jsonb('payload').notNull(),
+    createdBy: uuid('created_by').references(() => users.id, { onDelete: 'set null' }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [index('vendor_daily_reports_created_at_idx').on(table.createdAt)],
+)
+
+/** 供应商数据日报分享链接：每个供应商一条长期固定链接，可禁用/重置 */
+export const vendorShareLinks = pgTable(
+  'vendor_share_links',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    vendorCode: varchar('vendor_code', { length: 64 }).notNull(),
+    vendorName: varchar('vendor_name', { length: 255 }).notNull(),
+    token: varchar('token', { length: 128 }).notNull(),
+    isDisabled: boolean('is_disabled').notNull().default(false),
+    createdBy: uuid('created_by').references(() => users.id, { onDelete: 'set null' }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+    lastAccessedAt: timestamp('last_accessed_at', { withTimezone: true }),
+  },
+  (table) => [
+    uniqueIndex('vendor_share_links_vendor_code_unique').on(table.vendorCode),
+    uniqueIndex('vendor_share_links_token_unique').on(table.token),
+  ],
+)
+
 /** 11点前出仓告警：供应商飞书推送配置 */
 export const exitAlarmPushConfigs = pgTable('exit_alarm_push_configs', {
   id: uuid('id').primaryKey().defaultRandom(),
@@ -205,6 +257,11 @@ export const exitAlarmSchedules = pgTable('exit_alarm_schedules', {
   stationCode: varchar('station_code', { length: 64 }).notNull().default(''),
   /** 定时拉数使用的 iMile token（保存配置时从全局设置同步，不对外返回） */
   imileToken: varchar('imile_token', { length: 2048 }),
+  /** 到件预取缓存对应的业务日期（YYYY-MM-DD，阿德莱德） */
+  inboundCacheDate: varchar('inbound_cache_date', { length: 10 }),
+  /** 到件预取得到的 waybillNo 列表 */
+  inboundWaybillNos: jsonb('inbound_waybill_nos'),
+  inboundCachedAt: timestamp('inbound_cached_at', { withTimezone: true }),
   updatedBy: uuid('updated_by').references(() => users.id, { onDelete: 'set null' }),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
@@ -222,6 +279,12 @@ export type OrderExceptionWarehouseConfig = typeof orderExceptionWarehouseConfig
 export type FeishuPushSnapshot = typeof feishuPushSnapshots.$inferSelect
 export type VendorAnalysisPushConfig = typeof vendorAnalysisPushConfigs.$inferSelect
 export type NewVendorAnalysisPushConfig = typeof vendorAnalysisPushConfigs.$inferInsert
+export type VendorAnalysisSnapshot = typeof vendorAnalysisSnapshots.$inferSelect
+export type NewVendorAnalysisSnapshot = typeof vendorAnalysisSnapshots.$inferInsert
+export type VendorDailyReport = typeof vendorDailyReports.$inferSelect
+export type NewVendorDailyReport = typeof vendorDailyReports.$inferInsert
+export type VendorShareLink = typeof vendorShareLinks.$inferSelect
+export type NewVendorShareLink = typeof vendorShareLinks.$inferInsert
 export type FleetSupplierPushConfig = typeof fleetSupplierPushConfigs.$inferSelect
 export type NewFleetSupplierPushConfig = typeof fleetSupplierPushConfigs.$inferInsert
 export type ExitAlarmPushConfig = typeof exitAlarmPushConfigs.$inferSelect

@@ -1,11 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import type { Dayjs } from 'dayjs'
+import dayjs, { type Dayjs } from 'dayjs'
 import { useAppSettings } from '../../context/AppSettingsContext'
 import { useGlobalFilterStore } from '../../stores/globalFilterStore'
 import { showToast } from '../../utils/toast'
 import { postFeishuPushCard } from '../PushNotifications/feishuWebhookTestApi'
 import type {
-  Before11ExitRatesData,
   Before11ExitRateResult,
   ComplaintTicketRow,
   DriverPerformanceRow,
@@ -22,23 +21,71 @@ import type {
   WaybillRow,
 } from './vendorAnalysisTypes'
 import {
+  cancelJobApi,
   createConfig,
   deleteConfig,
-  fetchBefore11ExitRates,
-  fetchComplaintTickets,
-  fetchDriverWaybills,
-  fetchDriverReturnWarning,
-  fetchLongTailOrders,
-  fetchUnprocessedTickets,
+  deleteJobApi,
   fetchVendors,
-  fetchWaybills,
+  getJobById,
+  getVendorAnalyzeSnapshot,
+  listJobs,
   loadConfigs,
+  postVendorAnalyzeAsync,
   updateConfig,
+  type PublicJob,
+  type VendorAnalyzeArtifact,
+  type VendorAnalyzeAsyncParams,
 } from './vendorAnalysisApi'
 import { AUS_TZ, fromIMileTime, iMileTimeMs, nowIn } from '../../utils/ausTimezone'
 
+/** 任务轮询间隔，与 OrderExceptionManagement 里的既有节奏保持一致 */
+const JOB_POLL_INTERVAL_MS = 3000
+/** 供应商分析任务在通用 jobs 队列里的 type，与 server/src/jobs/handlers/vendorAnalyzeHandler.ts 的 VENDOR_ANALYZE_JOB_TYPE 保持一致 */
+const JOBS_LIST_TYPE = 'vendor.analyze'
+
+export type TabId = 'analyze' | 'jobs'
+
+export type VendorAnalyzeJobProgress = {
+  phase?: string
+  message?: string
+  percent?: number
+  step?: number
+  totalSteps?: number
+}
+
 function normalizeVendorCode(code: string): string {
   return code.trim()
+}
+
+/** 从任务 payload 反推出重新提交所需的筛选参数（complaintStart/complaintEnd 未落库，从 startTime/endTime 反推）。 */
+function deriveAnalyzeParamsFromPayload(payload: Record<string, unknown>): VendorAnalyzeAsyncParams | null {
+  const str = (key: string): string => (typeof payload[key] === 'string' ? (payload[key] as string) : '')
+  const stationCodes = Array.isArray(payload.stationCodes)
+    ? (payload.stationCodes as unknown[]).filter((s): s is string => typeof s === 'string' && s.trim().length > 0)
+    : []
+  const referenceDate = str('referenceDate')
+  const startTime = str('startTime')
+  const endTime = str('endTime')
+  const before11Date = str('before11Date')
+  if (!referenceDate || !startTime || !endTime || !before11Date || stationCodes.length === 0) return null
+
+  return {
+    stationCodes,
+    referenceDate,
+    complaintStart: startTime.slice(0, 10),
+    complaintEnd: endTime.slice(0, 10),
+    startTime,
+    endTime,
+    ticketStartTime: str('ticketStartTime'),
+    ticketEndTime: str('ticketEndTime'),
+    yesterdayStartTime: str('yesterdayStartTime'),
+    yesterdayEndTime: str('yesterdayEndTime'),
+    dayBeforeStartTime: str('dayBeforeStartTime'),
+    dayBeforeEndTime: str('dayBeforeEndTime'),
+    unprocessedStartTime: str('unprocessedStartTime'),
+    before11Date,
+    dayBeforeDate: str('dayBeforeDate'),
+  }
 }
 
 
@@ -84,7 +131,18 @@ export function useVendorAnalysisPage() {
 
   const [fetchedData, setFetchedData] = useState<FetchedData | null>(null)
   const [dataFetching, setDataFetching] = useState(false)
+  const [jobProgress, setJobProgress] = useState<VendorAnalyzeJobProgress | null>(null)
+  const [jobError, setJobError] = useState<string | null>(null)
+  /** 点击「获取数据」时命中了别处（同筛选条件跨用户共享）已经在跑/已完成的任务，而非本次全新创建 */
+  const [jobReused, setJobReused] = useState(false)
   const [isPushingAll, setIsPushingAll] = useState(false)
+
+  const [activeTab, setActiveTab] = useState<TabId>('analyze')
+  const [jobsList, setJobsList] = useState<PublicJob[]>([])
+  const [isJobsLoading, setIsJobsLoading] = useState(false)
+  /** 任务队列里点击「查看数据」时，正在加载哪个任务的完整结果（结果体积可能很大，需要明确的加载中反馈） */
+  const [loadingJobId, setLoadingJobId] = useState<string | null>(null)
+  const jobsPollingRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
   const initRef = useRef(false)
 
@@ -123,124 +181,252 @@ export function useVendorAnalysisPage() {
     }
   }, [fetchedData])
 
-  const fetchAbortRef = useRef<AbortController | null>(null)
+  const pollTimerRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
-  const fetchData = useCallback(async () => {
-    if (!referenceDate) { showToast('请先选择数据参考日期', 'error'); return }
-    if (!complaintDateRange) { showToast('请先选择客诉成立量时间', 'error'); return }
-    if (selectedStations.length === 0) { showToast('请先选择责任站点', 'error'); return }
+  const stopPolling = useCallback(() => {
+    if (pollTimerRef.current) {
+      clearInterval(pollTimerRef.current)
+      pollTimerRef.current = null
+    }
+  }, [])
 
-    fetchAbortRef.current?.abort()
-    const controller = new AbortController()
-    fetchAbortRef.current = controller
-    const signal = controller.signal
+  useEffect(() => stopPolling, [stopPolling])
+
+  const applyArtifact = useCallback((artifact: VendorAnalyzeArtifact) => {
+    setFetchedData({ ...artifact, fetchedAt: new Date() })
+  }, [])
+
+  const buildEnqueueParams = useCallback(() => {
+    if (!referenceDate || !complaintDateRange) return null
 
     // 客诉 & 揽收量：使用客诉成立量时间
     const startTime = complaintDateRange[0].format('YYYY-MM-DD 00:00:00')
     const endTime = complaintDateRange[1].format('YYYY-MM-DD 23:59:59')
-    const ticketStartTime = startTime
-    const ticketEndTime = endTime
-
-    const vendorCodes = [...new Set(configs.map((c) => normalizeVendorCode(c.vendorCode)).filter(Boolean))]
-
-    setDataFetching(true)
-    setFetchedData(null)
 
     // 参考日期作为"今天"，推导昨天、前天
     const yesterday = referenceDate.subtract(1, 'day')
     const dayBefore = referenceDate.subtract(2, 'day')
-    const yesterdayStartTime = yesterday.format('YYYY-MM-DD 00:00:00')
-    const yesterdayEndTime = yesterday.format('YYYY-MM-DD 23:59:59')
-    const dayBeforeStartTime = dayBefore.format('YYYY-MM-DD 00:00:00')
-    const dayBeforeEndTime = dayBefore.format('YYYY-MM-DD 23:59:59')
     // 未处理工单：参考日期上周周一 00:00:00 ~ 昨天 23:59:59
     const lastMonday = referenceDate.startOf('week').subtract(6, 'day')
-    const unprocessedStartTime = lastMonday.format('YYYY-MM-DD 00:00:00')
 
-    let ticketsRes: Awaited<ReturnType<typeof fetchComplaintTickets>>
-    let waybillsRes: Awaited<ReturnType<typeof fetchWaybills>>
-    let unprocessedRes: Awaited<ReturnType<typeof fetchUnprocessedTickets>>
-    let longTailRes: Awaited<ReturnType<typeof fetchLongTailOrders>>
-    let before11Res: { ok: true; data: Before11ExitRatesData } | { ok: false; error: string }
-    let driverDayBeforeRes: Awaited<ReturnType<typeof fetchDriverWaybills>>
-    let driverReturnRes: Awaited<ReturnType<typeof fetchDriverReturnWarning>>
-
-    try {
-      ;[ticketsRes, waybillsRes, unprocessedRes, longTailRes, before11Res, driverDayBeforeRes, driverReturnRes] =
-        await Promise.all([
-        fetchComplaintTickets(imileToken, { startTime: ticketStartTime, endTime: ticketEndTime }, signal),
-        fetchWaybills(imileToken, { startTime, endTime }, signal),
-        fetchUnprocessedTickets(imileToken, { startTime: unprocessedStartTime, endTime: yesterdayEndTime }, signal),
-        fetchLongTailOrders(imileToken, { stationCodes: selectedStations }, signal),
-        fetchBefore11ExitRates(imileToken, { startTime: yesterdayStartTime, endTime: yesterdayEndTime, vendorCodes }, signal),
-        fetchDriverWaybills(imileToken, { startTime: dayBeforeStartTime, endTime: dayBeforeEndTime }, signal),
-        fetchDriverReturnWarning(imileToken, { stationCodes: selectedStations }, signal),
-      ])
-    } catch (err) {
-      setDataFetching(false)
-      if (err instanceof Error && err.name === 'AbortError') return
-      showToast('数据获取失败，请重试', 'error')
-      return
-    }
-
-    setDataFetching(false)
-
-    if (
-      !ticketsRes.ok ||
-      !waybillsRes.ok ||
-      !unprocessedRes.ok ||
-      !longTailRes.ok ||
-      !before11Res.ok ||
-      !driverDayBeforeRes.ok ||
-      !driverReturnRes.ok
-    ) {
-      const errMsg = !ticketsRes.ok
-        ? ticketsRes.error
-        : !waybillsRes.ok
-          ? waybillsRes.error
-          : !unprocessedRes.ok
-            ? unprocessedRes.error
-            : !longTailRes.ok
-              ? longTailRes.error
-              : !before11Res.ok
-                ? before11Res.error
-                : !driverDayBeforeRes.ok
-                  ? driverDayBeforeRes.error
-                  : !driverReturnRes.ok
-                    ? driverReturnRes.error
-                    : '未知错误'
-      showToast(`数据获取失败: ${errMsg}`, 'error')
-      return
-    }
-
-    const unprocessedTotal =
-      unprocessedRes.data.normalTickets.length +
-      unprocessedRes.data.complaintTickets.length +
-      unprocessedRes.data.arbitrationTickets.length
-
-    setFetchedData({
-      tickets: ticketsRes.data as ComplaintTicketRow[],
-      waybills: waybillsRes.data as WaybillRow[],
-      unprocessedTickets: unprocessedRes.data,
-      longTailOrders: longTailRes.data,
-      before11ExitRateByVendor: before11Res.data.ratesByVendor,
-      driverYesterdayWaybills: before11Res.data.pickupRows as DriverWaybillRow[],
-      driverDayBeforeWaybills: driverDayBeforeRes.data,
-      driverReturnRows: driverReturnRes.data,
-      fetchedAt: new Date(),
+    return {
+      stationCodes: selectedStations,
+      referenceDate: referenceDate.format('YYYY-MM-DD'),
+      complaintStart: complaintDateRange[0].format('YYYY-MM-DD'),
+      complaintEnd: complaintDateRange[1].format('YYYY-MM-DD'),
       startTime,
       endTime,
-      ticketStartTime,
-      ticketEndTime,
+      ticketStartTime: startTime,
+      ticketEndTime: endTime,
+      yesterdayStartTime: yesterday.format('YYYY-MM-DD 00:00:00'),
+      yesterdayEndTime: yesterday.format('YYYY-MM-DD 23:59:59'),
+      dayBeforeStartTime: dayBefore.format('YYYY-MM-DD 00:00:00'),
+      dayBeforeEndTime: dayBefore.format('YYYY-MM-DD 23:59:59'),
+      unprocessedStartTime: lastMonday.format('YYYY-MM-DD 00:00:00'),
       before11Date: yesterday.format('YYYY-MM-DD'),
       dayBeforeDate: dayBefore.format('YYYY-MM-DD'),
-    })
-    const before11Count = Object.keys(before11Res.data.ratesByVendor).length
-    showToast(
-      `数据获取成功：${waybillsRes.data.length} 条运单 · ${ticketsRes.data.length} 条客诉 · ${unprocessedTotal} 条未处理工单 · ${longTailRes.data.length} 条长尾单 · 出仓率 ${before11Count} 家`,
-      'success',
-    )
-  }, [referenceDate, complaintDateRange, imileToken, selectedStations, configs])
+    }
+  }, [referenceDate, complaintDateRange, selectedStations])
+
+  const pollJob = useCallback((jobId: string) => {
+    stopPolling()
+    pollTimerRef.current = setInterval(async () => {
+      try {
+        const job = await getJobById(jobId)
+        setJobProgress(job.progress as VendorAnalyzeJobProgress)
+        if (job.status === 'succeeded') {
+          stopPolling()
+          const snapshotRes = await getVendorAnalyzeSnapshot(jobId)
+          if (!snapshotRes.ok) {
+            setDataFetching(false)
+            setJobError(snapshotRes.error)
+            showToast(`数据获取失败: ${snapshotRes.error}`, 'error')
+            return
+          }
+          applyArtifact(snapshotRes.data)
+          setDataFetching(false)
+          showToast('数据获取成功', 'success')
+        } else if (job.status === 'failed' || job.status === 'cancelled') {
+          stopPolling()
+          setDataFetching(false)
+          setJobError(job.error ?? '任务失败')
+          showToast(`数据获取失败: ${job.error ?? '未知错误'}`, 'error')
+        }
+        // pending / running：继续轮询
+      } catch (err) {
+        // 单次轮询失败不中断整体流程，等待下一次重试
+        console.warn('[vendor-analysis] 轮询任务状态失败', err)
+      }
+    }, JOB_POLL_INTERVAL_MS)
+  }, [stopPolling, applyArtifact])
+
+  const enqueueAndAttach = useCallback(async () => {
+    if (!referenceDate) { showToast('请先选择数据参考日期', 'error'); return }
+    if (!complaintDateRange) { showToast('请先选择客诉成立量时间', 'error'); return }
+    if (selectedStations.length === 0) { showToast('请先选择责任站点', 'error'); return }
+
+    const params = buildEnqueueParams()
+    if (!params) return
+
+    // 让状态更新发生在微任务中，避免在 effect 里同步触发级联渲染
+    await Promise.resolve()
+
+    setDataFetching(true)
+    setJobError(null)
+    setJobProgress(null)
+    setJobReused(false)
+
+    try {
+      let res = await postVendorAnalyzeAsync(imileToken, { ...params, force: false })
+      if (!res.ok) {
+        setDataFetching(false)
+        showToast(`任务提交失败: ${res.error}`, 'error')
+        return
+      }
+
+      // 幂等命中的是一个已失败/取消的旧任务：静默重新提交一次，换成一个可用的新任务
+      if (res.data.status === 'failed' || res.data.status === 'cancelled') {
+        res = await postVendorAnalyzeAsync(imileToken, { ...params, force: true })
+        if (!res.ok) {
+          setDataFetching(false)
+          showToast(`任务提交失败: ${res.error}`, 'error')
+          return
+        }
+      }
+
+      // 返回时已经是 running/succeeded，说明命中了别处（同筛选条件 / 其他用户）已经在跑的任务，而非本次全新创建
+      setJobReused(res.data.status === 'running' || res.data.status === 'succeeded')
+
+      if (res.data.status === 'succeeded') {
+        // 幂等命中一个此前已完成的任务：直接取 snapshot，无需轮询
+        const snapshotRes = await getVendorAnalyzeSnapshot(res.data.jobId)
+        if (!snapshotRes.ok) {
+          setDataFetching(false)
+          showToast(`数据获取失败: ${snapshotRes.error}`, 'error')
+          return
+        }
+        applyArtifact(snapshotRes.data)
+        setDataFetching(false)
+        showToast('已获取此前完成的数据', 'success')
+        return
+      }
+
+      pollJob(res.data.jobId)
+    } catch {
+      setDataFetching(false)
+      showToast('任务提交失败，请重试', 'error')
+    }
+  }, [referenceDate, complaintDateRange, selectedStations, imileToken, buildEnqueueParams, applyArtifact, pollJob])
+
+  const fetchData = enqueueAndAttach
+
+  const stopJobsPolling = useCallback(() => {
+    if (jobsPollingRef.current) {
+      clearInterval(jobsPollingRef.current)
+      jobsPollingRef.current = null
+    }
+  }, [])
+
+  useEffect(() => stopJobsPolling, [stopJobsPolling])
+
+  const refreshJobs = useCallback(async (silent = false) => {
+    setIsJobsLoading(true)
+    try {
+      const { jobs } = await listJobs({ type: JOBS_LIST_TYPE, limit: 30 })
+      setJobsList(jobs)
+      const hasActive = jobs.some((j) => j.status === 'pending' || j.status === 'running')
+      if (!hasActive) stopJobsPolling()
+    } catch (e) {
+      if (!silent) showToast((e as Error).message || '任务列表加载失败', 'error')
+    } finally {
+      setIsJobsLoading(false)
+    }
+  }, [stopJobsPolling])
+
+  // 挂载时立即拉取一次，任务队列 Tab 的角标不依赖用户先切过去；用 setTimeout 让 setState 脱离 effect 的同步提交阶段
+  useEffect(() => {
+    const timer = setTimeout(() => void refreshJobs(true), 0)
+    return () => clearTimeout(timer)
+  }, [refreshJobs])
+
+  // 停留在任务队列 Tab 时开启轮询，离开后自动停止
+  useEffect(() => {
+    if (activeTab !== 'jobs') return
+    const timer = setTimeout(() => void refreshJobs(true), 0)
+    jobsPollingRef.current = setInterval(() => void refreshJobs(true), JOB_POLL_INTERVAL_MS)
+    return () => {
+      clearTimeout(timer)
+      stopJobsPolling()
+    }
+  }, [activeTab, refreshJobs, stopJobsPolling])
+
+  const loadJobResults = useCallback(async (jobId: string) => {
+    setLoadingJobId(jobId)
+    try {
+      const job = await getJobById(jobId)
+      if (job.status !== 'succeeded') throw new Error('任务尚未完成')
+      const snapshotRes = await getVendorAnalyzeSnapshot(jobId)
+      if (!snapshotRes.ok) throw new Error(snapshotRes.error)
+      const artifact = snapshotRes.data
+
+      setReferenceDate(dayjs(artifact.referenceDate))
+      setComplaintDateRange([dayjs(artifact.startTime.slice(0, 10)), dayjs(artifact.endTime.slice(0, 10))])
+      applyArtifact(artifact)
+      setJobError(null)
+      setJobReused(false)
+      setActiveTab('analyze')
+
+      const jobStations = Array.isArray(job.payload.stationCodes)
+        ? (job.payload.stationCodes as unknown[]).filter((s): s is string => typeof s === 'string')
+        : []
+      const stationsMatch = jobStations.length === selectedStations.length
+        && jobStations.every((s) => selectedStations.includes(s))
+      if (!stationsMatch) {
+        showToast(`已加载该任务的分析数据（该任务基于站点「${jobStations.join('、') || '—'}」统计，与当前已选站点不同，指标会按当前站点重新过滤）`, 'info')
+      } else {
+        showToast('已加载该任务的分析数据', 'success')
+      }
+    } catch (e) {
+      showToast((e as Error).message || '加载结果失败', 'error')
+    } finally {
+      setLoadingJobId(null)
+    }
+  }, [applyArtifact, selectedStations])
+
+  const cancelJobById = useCallback(async (jobId: string) => {
+    try {
+      await cancelJobApi(jobId)
+      await refreshJobs()
+      showToast('任务已取消', 'success')
+    } catch (e) {
+      showToast((e as Error).message || '取消失败', 'error')
+    }
+  }, [refreshJobs])
+
+  const deleteJobById = useCallback(async (jobId: string) => {
+    try {
+      await deleteJobApi(jobId)
+      setJobsList((prev) => prev.filter((j) => j.id !== jobId))
+      showToast('已删除', 'success')
+    } catch (e) {
+      showToast((e as Error).message || '删除失败', 'error')
+    }
+  }, [])
+
+  const retryJob = useCallback(async (job: PublicJob) => {
+    const params = deriveAnalyzeParamsFromPayload(job.payload)
+    if (!params) { showToast('任务参数不完整，无法重新提交', 'error'); return }
+    try {
+      const res = await postVendorAnalyzeAsync(imileToken, { ...params, force: true })
+      if (!res.ok) { showToast(`重新提交失败: ${res.error}`, 'error'); return }
+      await refreshJobs()
+      showToast('重新提交成功', 'success')
+    } catch (e) {
+      showToast((e as Error).message || '重新提交失败', 'error')
+    }
+  }, [imileToken, refreshJobs])
+
+  const activeJobCount = jobsList.filter((j) => j.status === 'pending' || j.status === 'running').length
 
   const indexedData = useMemo(() => {
     if (!fetchedData) return null
@@ -707,6 +893,9 @@ export function useVendorAnalysisPage() {
     configsLoading,
     fetchedData,
     dataFetching,
+    jobProgress,
+    jobError,
+    jobReused,
     fetchData,
     isPushingAll,
     pushAll,
@@ -716,6 +905,17 @@ export function useVendorAnalysisPage() {
     toggleDisabled,
     vendorMetrics,
     driverPerformanceByVendor,
+    activeTab,
+    setActiveTab,
+    jobsList,
+    isJobsLoading,
+    loadingJobId,
+    activeJobCount,
+    refreshJobs,
+    loadJobResults,
+    cancelJobById,
+    deleteJobById,
+    retryJob,
   }
 }
 

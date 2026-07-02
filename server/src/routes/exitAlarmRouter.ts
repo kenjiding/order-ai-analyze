@@ -4,26 +4,13 @@ import type { AuthenticatedRequest } from '../auth/middleware'
 import { getDb, schema } from '../db'
 import type { ExitAlarmSchedule } from '../db/schema'
 import { readImileTokenFromRequest } from './imileAuth'
-import { envFirstOr, normalizeImileToken } from '../imile/shared'
-import { buildImilePortalHeaders, IMILE_DS_SAAS_TMS_PORTAL } from '../imile/portal'
-import { requestImileApi } from '../imile/client'
-import { fetchPaginatedResultRows } from '../imile/paginatedQuery'
+import { normalizeImileToken } from '../imile/shared'
+import { fetchExitAlarmWaybills } from '../imile/exitAlarmWaybills'
 import { buildExitAlarmCard } from '../feishu/buildExitAlarmCard'
 import { hasExitAlarmImileToken, parseRouteCodes } from '../feishu/exitAlarmScheduledPush'
 import { computeFeishuWebhookSign, parseSafeWebhookUrl } from '../feishuWebhookHelpers'
 
 export const exitAlarmRouter = Router()
-
-const DEFAULT_DS_WAYBILL_URL = 'https://ds.imile.com/saastms/v1/biz/waybillInfo/searchWaybill'
-
-function makeWaybillHeaders(token: string): Record<string, string> {
-  return buildImilePortalHeaders({
-    token,
-    envPrefix: 'IMILE_VENDOR_DS_WAYBILL',
-    defaults: IMILE_DS_SAAS_TMS_PORTAL,
-    sharedEnvPrefixes: ['IMILE_VENDOR_LONG_TAIL', 'IMILE_CANCEL_SCAN', 'IMILE_TRACK'],
-  })
-}
 
 // ─── 供应商推送配置 CRUD ──────────────────────────────────────────────────────
 
@@ -243,44 +230,6 @@ exitAlarmRouter.put('/schedule', async (req: AuthenticatedRequest, res: Response
   }
 })
 
-// ─── 时区工具（Adelaide → Melbourne 时间字符串） ─────────────────────────────
-
-const ADELAIDE_TZ = 'Australia/Adelaide'
-const MELBOURNE_TZ = 'Australia/Melbourne'
-
-function tzOffsetMs(utcDate: Date, tz: string): number {
-  const fmt = new Intl.DateTimeFormat('en-AU', {
-    timeZone: tz,
-    year: 'numeric', month: '2-digit', day: '2-digit',
-    hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false,
-  })
-  const parts = fmt.formatToParts(utcDate)
-  const g = (t: string) => {
-    const v = parseInt(parts.find((p) => p.type === t)?.value ?? '0')
-    return t === 'hour' && v === 24 ? 0 : v
-  }
-  return Date.UTC(g('year'), g('month') - 1, g('day'), g('hour'), g('minute'), g('second')) - utcDate.getTime()
-}
-
-function localToUtcMs(str: string, tz: string): number {
-  const [datePart, timePart = '00:00:00'] = str.split(' ')
-  const [yr, mo, dy] = datePart.split('-').map(Number)
-  const [h = 0, m = 0, s = 0] = timePart.split(':').map(Number)
-  const probe = Date.UTC(yr, mo - 1, dy, h, m, s)
-  return probe - tzOffsetMs(new Date(probe), tz)
-}
-
-function utcMsToLocalStr(ms: number, tz: string): string {
-  const parts = new Intl.DateTimeFormat('en-CA', {
-    timeZone: tz,
-    year: 'numeric', month: '2-digit', day: '2-digit',
-    hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false,
-  }).formatToParts(new Date(ms))
-  const g = (t: string) => (parts.find((p) => p.type === t)?.value ?? '00')
-  const hour = g('hour') === '24' ? '00' : g('hour')
-  return `${g('year')}-${g('month')}-${g('day')} ${hour}:${g('minute')}:${g('second')}`
-}
-
 // ─── 立即推送出仓告警 ─────────────────────────────────────────────────────────
 
 exitAlarmRouter.post('/push-now', async (req: AuthenticatedRequest, res: Response) => {
@@ -319,35 +268,12 @@ exitAlarmRouter.post('/push-now', async (req: AuthenticatedRequest, res: Respons
     return
   }
 
-  // Adelaide 日期 → iMile Melbourne 时间字符串（整日 00:00:00–23:59:59）
-  const startTime = utcMsToLocalStr(localToUtcMs(`${date} 00:00:00`, ADELAIDE_TZ), MELBOURNE_TZ)
-  const endTime = utcMsToLocalStr(localToUtcMs(`${date} 23:59:59`, ADELAIDE_TZ), MELBOURNE_TZ)
-
-  // 获取运单数据
-  const normalizedToken = normalizeImileToken(token)
-  const url = envFirstOr(['IMILE_VENDOR_DS_WAYBILL_URL'], DEFAULT_DS_WAYBILL_URL)
-  const headers = makeWaybillHeaders(normalizedToken)
-
-  const result = await fetchPaginatedResultRows({
+  // 获取运单数据（先到件取 waybillNo，再分批 searchWaybill）
+  const result = await fetchExitAlarmWaybills({
+    token,
+    stationCode,
+    dateStr: date,
     label: '出仓告警立即推送',
-    pageShowCount: 1000,
-    pageDelayMs: 300,
-    buildPageBody: ({ currentPage, showCount }) => ({
-      actualReceiveStation: '',
-      currentPage,
-      dateSearchType: 'firstCountry',
-      startTime,
-      endTime,
-      lastScanStationCode: stationCode,
-      labelOrderCodes: [] as string[],
-      mainWaybillNos: [] as string[],
-      platformNos: [] as string[],
-      referenceNos: [] as string[],
-      showCount,
-      waybillNos: [] as string[],
-    }),
-    requestPage: (pageBody) =>
-      requestImileApi({ url, method: 'POST', headers, body: pageBody, label: '出仓告警立即推送' }),
   })
 
   if (!result.ok) {
@@ -453,31 +379,23 @@ exitAlarmRouter.post('/search-waybills', async (req: AuthenticatedRequest, res: 
   }
 
   const stationCode = typeof body.lastScanStationCode === 'string' ? body.lastScanStationCode.trim() : ''
-  const normalizedToken = normalizeImileToken(token)
-  const url = envFirstOr(['IMILE_VENDOR_DS_WAYBILL_URL'], DEFAULT_DS_WAYBILL_URL)
-  const headers = makeWaybillHeaders(normalizedToken)
+  if (!stationCode) {
+    res.status(400).json({ ok: false, error: '缺少必填字段: lastScanStationCode' })
+    return
+  }
+
+  const dateStr = body.startTime.trim().slice(0, 10)
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) {
+    res.status(400).json({ ok: false, error: 'startTime 日期格式无效' })
+    return
+  }
 
   try {
-    const result = await fetchPaginatedResultRows({
+    const result = await fetchExitAlarmWaybills({
+      token,
+      stationCode,
+      dateStr,
       label: '出仓告警运单查询',
-      pageShowCount: 1000,
-      pageDelayMs: 300,
-      buildPageBody: ({ currentPage, showCount }) => ({
-        actualReceiveStation: '',
-        currentPage,
-        dateSearchType: 'firstCountry',
-        startTime: body.startTime as string,
-        endTime: body.endTime as string,
-        lastScanStationCode: stationCode,
-        labelOrderCodes: [] as string[],
-        mainWaybillNos: [] as string[],
-        platformNos: [] as string[],
-        referenceNos: [] as string[],
-        showCount,
-        waybillNos: [] as string[],
-      }),
-      requestPage: (pageBody) =>
-        requestImileApi({ url, method: 'POST', headers, body: pageBody, label: '出仓告警运单查询' }),
     })
 
     if (!result.ok) {
