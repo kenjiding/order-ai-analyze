@@ -1,13 +1,14 @@
 import { App as AntdApp, Button, Tooltip, Typography } from 'antd'
-import { BarChart2, BrainCircuit, Camera, Layers, Plus, SendHorizonal } from 'lucide-react'
+import { BarChart2, BrainCircuit, Camera, ExternalLink, Layers, SendHorizonal } from 'lucide-react'
 import { useCallback, useState } from 'react'
-import type { VendorPushConfig } from './vendorAnalysisTypes'
+import { Link } from 'react-router-dom'
 import { PageSectionTabs, type PageSectionTabItem } from '../../components/PageSectionTabs'
+import { SupplierPushConfigPanel } from '../../shared/supplierPushConfig'
+import { PERMISSION_KEYS, usePermission } from '../../hooks/usePermission'
 import { VendorFilterPanel } from './components/VendorFilterPanel'
 import { VendorJobsTabContent } from './components/VendorJobsTabContent'
 import { VendorMetricsPreview } from './components/VendorMetricsPreview'
-import { VendorPushConfigModal } from './components/VendorPushConfigModal'
-import { VendorPushConfigTable } from './components/VendorPushConfigTable'
+import { useVendorShareLinks, buildVendorShareLinkColumn } from './components/VendorShareLinkColumn'
 import { useVendorAnalysisPage, type TabId } from './useVendorAnalysisPage'
 import { buildVendorSnapshot, saveVendorSnapshot, type VendorSnapshotAiSummaries } from './vendorSnapshotStorage'
 import { mergeAiSummariesForLocale } from './vendorSnapshotAi'
@@ -19,39 +20,20 @@ export default function VendorAnalysisPage() {
   const { locale } = useAppLocale()
   const { message } = AntdApp.useApp()
 
-  const [modalOpen, setModalOpen] = useState(false)
-  const [editingConfig, setEditingConfig] = useState<VendorPushConfig | null>(null)
-
-  const openCreate = useCallback(() => {
-    setEditingConfig(null)
-    setModalOpen(true)
-  }, [])
-
-  const openEdit = useCallback((config: VendorPushConfig) => {
-    setEditingConfig(config)
-    setModalOpen(true)
-  }, [])
-
-  const closeModal = useCallback(() => {
-    setModalOpen(false)
-    setEditingConfig(null)
-  }, [])
-
-  const handleCommit = useCallback(
-    async (draft: Parameters<typeof v.addConfig>[0]) => {
-      if (editingConfig) return v.editConfig(editingConfig.id, draft)
-      return v.addConfig(draft)
-    },
-    [editingConfig, v],
-  )
-
   const [aiLoading, setAiLoading] = useState(false)
+  const canShare = usePermission(PERMISSION_KEYS.btnVendorAnalysisShare)
+  const shareLinks = useVendorShareLinks(canShare, v.fetchedData?.before11Date ?? null)
+  const { refetch: refetchShareLinks } = shareLinks
 
-  const enabledCount = v.configs.filter((c) => !c.isDisabled && c.webhookUrl.trim()).length
-  const canTriggerPush = !!v.fetchedData && v.selectedStations.length > 0 && enabledCount > 0
+  const selectedPushCount = v.selectedPushConfigs.length
+  const canTriggerPush = !!v.fetchedData && v.selectedStations.length > 0 && selectedPushCount > 0
 
   const openSnapshot = useCallback(async (autoPush: boolean) => {
     if (!v.fetchedData) return
+    if (autoPush && selectedPushCount === 0) {
+      message.warning('请先在下方启用要推送的供应商')
+      return
+    }
     setAiLoading(true)
     let aiSummaries: VendorSnapshotAiSummaries | undefined
     try {
@@ -99,7 +81,7 @@ export default function VendorAnalysisPage() {
       stations: v.selectedStations,
       vendorMetrics: v.vendorMetrics,
       driverPerformanceByVendor: v.driverPerformanceByVendor,
-      configs: v.configs,
+      configs: v.selectedPushConfigs,
       aiSummaries,
     })
     saveVendorSnapshot(snapshot)
@@ -107,18 +89,20 @@ export default function VendorAnalysisPage() {
     void postDailyReport(snapshot).then((result) => {
       if (!result.ok) {
         message.warning(`日报发布失败，外部分享链接数据未更新：${result.error}`)
+        return
       }
+      refetchShareLinks()
     })
     window.open(autoPush ? '/vendor-snapshot?autoPush=1' : '/vendor-snapshot', '_blank')
-  }, [v.fetchedData, v.selectedStations, v.vendorMetrics, v.driverPerformanceByVendor, v.configs, locale, message])
+  }, [v.fetchedData, v.selectedStations, v.vendorMetrics, v.driverPerformanceByVendor, v.selectedPushConfigs, selectedPushCount, locale, message, refetchShareLinks])
 
   const pushBtnTooltip = !v.fetchedData
     ? '请先点击「获取数据」'
     : v.selectedStations.length === 0
       ? '请先选择责任站点'
-      : enabledCount === 0
-        ? '没有可用的推送配置'
-        : '截图后推送到各供应商飞书群'
+      : selectedPushCount === 0
+        ? '请先在下方启用要推送的供应商'
+        : '截图后推送到已启用的供应商飞书群'
 
   const tabItems: PageSectionTabItem[] = [
     { id: 'analyze', label: '供应商数据分析', icon: BarChart2 },
@@ -204,9 +188,15 @@ export default function VendorAnalysisPage() {
             <div className="admin-section-title flex flex-wrap items-center justify-between gap-3 bg-[var(--admin-surface-soft)]">
               <div>
                 <div className="admin-eyebrow">Push Configs</div>
-                <h3 className="admin-title mt-0.5 text-base">飞书推送配置</h3>
+                <h3 className="admin-title mt-0.5 text-base">供应商配置</h3>
+                <p className="mt-1 text-xs text-slate-500">
+                  统一在「飞书推送 → 车队供应商推送」维护 Webhook；本页「启用/禁用」控制是否参与数据分析推送。
+                </p>
               </div>
               <div className="flex flex-wrap items-center gap-2">
+                <span className="text-xs tabular-nums text-slate-500">
+                  已启用 {selectedPushCount} / {v.configs.length}
+                </span>
                 <Tooltip title={!v.fetchedData ? '请先获取数据' : aiLoading ? 'AI 分析中...' : '预览截图落地页（不自动推送）'}>
                   <span>
                     <Button
@@ -232,13 +222,9 @@ export default function VendorAnalysisPage() {
                     </Button>
                   </span>
                 </Tooltip>
-                <Button
-                  icon={<Plus className="h-4 w-4" />}
-                  onClick={openCreate}
-                  disabled={v.isPushingAll}
-                >
-                  新增推送配置
-                </Button>
+                <Link to="/push-notifications">
+                  <Button icon={<ExternalLink className="h-4 w-4" />}>维护供应商配置</Button>
+                </Link>
               </div>
             </div>
 
@@ -251,27 +237,24 @@ export default function VendorAnalysisPage() {
             )}
 
             <div className="px-5 py-4">
-              <VendorPushConfigTable
-                configs={v.configs}
-                loading={v.configsLoading}
-                disabled={v.isPushingAll}
-                onEdit={openEdit}
-                onDelete={(config) => v.removeConfig(config.id, config.vendorName)}
-                onToggleDisabled={(id, next) => v.toggleDisabled(id, next)}
+              <SupplierPushConfigPanel
+                embedded
+                configs={v.catalog.configs}
+                loading={v.catalog.loading || v.scopeBinding.loading}
+                scopeBinding={{
+                  scopeKey: 'vendor-analysis.push',
+                  enabledIds: v.scopeBinding.enabledIds,
+                  onToggle: v.scopeBinding.toggle,
+                  togglingId: v.scopeBinding.togglingId,
+                  saving: v.scopeBinding.saving,
+                }}
+                extraColumns={canShare ? buildVendorShareLinkColumn(shareLinks) : []}
+                scrollX={canShare ? 1200 : 960}
               />
             </div>
           </div>
         </>
       )}
-
-      <VendorPushConfigModal
-        open={modalOpen}
-        editing={editingConfig}
-        vendors={v.vendors}
-        vendorsLoading={v.vendorsLoading}
-        onCancel={closeModal}
-        onCommit={handleCommit}
-      />
     </div>
   )
 }

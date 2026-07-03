@@ -10,6 +10,7 @@ import { enqueueJob, getJobById } from '../jobs/queue'
 import { VENDOR_ANALYZE_JOB_TYPE } from '../jobs/handlers'
 import { canAccessJob, resolveEnqueueRegionCode, sendJobAccessDenied } from '../jobs/access'
 import { listSupplierPushConfigs } from '../supplierPushConfigs'
+import { purgeOldVendorDailyData } from '../vendorAnalysis/retention'
 
 export const vendorAnalysisRouter = Router()
 
@@ -273,7 +274,39 @@ vendorAnalysisRouter.post('/daily-reports', async (req: AuthenticatedRequest, re
         payload,
         createdBy: req.authUser?.id ?? null,
       })
+      .onConflictDoUpdate({
+        target: schema.vendorDailyReports.reportDate,
+        set: { payload, createdBy: req.authUser?.id ?? null, createdAt: new Date() },
+      })
       .returning({ id: schema.vendorDailyReports.id, createdAt: schema.vendorDailyReports.createdAt })
+
+    // 按 (vendorCode, reportDate) 自动开通分享链接：已存在则跳过，不轮换 token（同一天重复发布不能让已发给供应商的链接失效）
+    try {
+      for (const vendor of payload.vendors as Array<{ vendorCode?: unknown; vendorName?: unknown }>) {
+        const vendorCode = typeof vendor.vendorCode === 'string' ? vendor.vendorCode.trim() : ''
+        const vendorName = typeof vendor.vendorName === 'string' ? vendor.vendorName.trim() : ''
+        if (!vendorCode) continue
+        await db
+          .insert(schema.vendorShareLinks)
+          .values({
+            vendorCode,
+            vendorName,
+            reportDate: payload.reportDate,
+            token: generateShareToken(),
+            createdBy: req.authUser?.id ?? null,
+          })
+          .onConflictDoNothing({
+            target: [schema.vendorShareLinks.vendorCode, schema.vendorShareLinks.reportDate],
+          })
+      }
+    } catch (err) {
+      console.error('[vendor-analysis] 自动开通分享链接失败', err)
+    }
+
+    void purgeOldVendorDailyData().catch((err) => {
+      console.error('[vendor-analysis] 清理过期日报/分享链接失败', err)
+    })
+
     res.status(201).json({ ok: true, data: row })
   } catch {
     res.status(500).json({ ok: false, error: '日报保存失败' })
@@ -281,6 +314,7 @@ vendorAnalysisRouter.post('/daily-reports', async (req: AuthenticatedRequest, re
 })
 
 // ─── 供应商分享链接管理 ───────────────────────────────────────────────────────
+// 链接按 (vendorCode, reportDate) 绑定，发布日报时自动开通；本节仅负责查询/重置/禁用。
 
 const requireShare = requirePermission('btn:vendor-analysis:share')
 
@@ -288,52 +322,22 @@ function generateShareToken(): string {
   return crypto.randomBytes(32).toString('hex')
 }
 
-vendorAnalysisRouter.get('/share-links', requireShare, async (_req: AuthenticatedRequest, res: Response) => {
+vendorAnalysisRouter.get('/share-links', requireShare, async (req: AuthenticatedRequest, res: Response) => {
+  const reportDate = typeof req.query.reportDate === 'string' ? req.query.reportDate.trim() : ''
+  if (!reportDate) {
+    res.status(400).json({ ok: false, error: '缺少 reportDate' })
+    return
+  }
   try {
     const db = getDb()
-    const rows = await db.select().from(schema.vendorShareLinks).orderBy(schema.vendorShareLinks.createdAt)
+    const rows = await db
+      .select()
+      .from(schema.vendorShareLinks)
+      .where(eq(schema.vendorShareLinks.reportDate, reportDate))
+      .orderBy(schema.vendorShareLinks.vendorName)
     res.json({ ok: true, data: rows })
   } catch {
     res.status(500).json({ ok: false, error: '读取分享链接失败' })
-  }
-})
-
-vendorAnalysisRouter.post('/share-links', requireShare, async (req: AuthenticatedRequest, res: Response) => {
-  const body = req.body as { vendorCode?: unknown; vendorName?: unknown }
-  if (
-    typeof body.vendorCode !== 'string' ||
-    !body.vendorCode.trim() ||
-    typeof body.vendorName !== 'string' ||
-    !body.vendorName.trim()
-  ) {
-    res.status(400).json({ ok: false, error: '缺少必填字段: vendorCode, vendorName' })
-    return
-  }
-  const vendorCode = body.vendorCode.trim()
-  try {
-    const db = getDb()
-    // vendorCode 唯一：已存在则直接返回现有链接（保持"长期固定"语义），仅同步供应商名称
-    const [existing] = await db
-      .select()
-      .from(schema.vendorShareLinks)
-      .where(eq(schema.vendorShareLinks.vendorCode, vendorCode))
-      .limit(1)
-    if (existing) {
-      res.json({ ok: true, data: existing })
-      return
-    }
-    const [row] = await db
-      .insert(schema.vendorShareLinks)
-      .values({
-        vendorCode,
-        vendorName: body.vendorName.trim(),
-        token: generateShareToken(),
-        createdBy: req.authUser?.id ?? null,
-      })
-      .returning()
-    res.status(201).json({ ok: true, data: row })
-  } catch {
-    res.status(500).json({ ok: false, error: '生成分享链接失败' })
   }
 })
 

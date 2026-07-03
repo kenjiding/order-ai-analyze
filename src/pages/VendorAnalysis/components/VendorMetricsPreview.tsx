@@ -280,18 +280,15 @@ function VendorCard({ row, fetchedData, drivers }: VendorCardProps) {
   const warningDriver = lowDispatchDrivers[0] ?? null
 
   return (
-    <div className={row.isDisabled ? 'opacity-60' : ''}>
+    <div>
       {/* ── 供应商标题行（点击展开/折叠整张卡片） ── */}
       <button
         type="button"
         onClick={() => setExpanded((v) => !v)}
         className="flex w-full items-center gap-2.5 bg-[var(--admin-surface-soft)] px-5 py-2.5 text-left transition-colors hover:bg-slate-100"
       >
-        <span className="text-sm font-semibold text-slate-800">{row.vendorName}</span>
-        <span className="text-xs text-slate-400">{row.vendorCode}</span>
-        {row.isDisabled && (
-          <span className="ml-1 text-xs text-slate-400">（推送已禁用）</span>
-        )}
+        <span className="text-sm font-semibold text-slate-800">{row.supplierNickname || row.vendorName}</span>
+        <span className="text-xs text-slate-400">{row.vendorName} · {row.vendorCode}</span>
         <span className="ml-auto text-[11px] font-medium uppercase tracking-wide text-slate-400">
           数据概览
         </span>
@@ -507,7 +504,7 @@ export function VendorMetricsPreview({
       <div className="divide-y divide-[var(--admin-line)]">
         {metrics.map((row) => (
           <VendorCard
-            key={row.vendorCode}
+            key={row.id}
             row={row}
             fetchedData={fetchedData}
             drivers={driverPerformanceByVendor[row.vendorCode] ?? []}

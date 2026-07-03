@@ -1,5 +1,4 @@
 import { getApiBaseUrl } from '../../utils/apiBaseUrl'
-import type { VendorPushEntry, VendorPushEntryDraft } from '../../components/VendorPushPanel/vendorPushTypes'
 import type { ExitAlarmSchedule, ExitAlarmScheduleDraft, WaybillSearchItem } from './exitAlarmTypes'
 
 async function apiFetch<T>(
@@ -22,38 +21,6 @@ async function apiFetch<T>(
   }
 }
 
-// 供应商推送配置 CRUD
-export async function loadExitAlarmVendorConfigs(): Promise<
-  { ok: true; data: VendorPushEntry[] } | { ok: false; error: string }
-> {
-  return apiFetch<VendorPushEntry[]>('/api/exit-alarm/vendor-configs', { method: 'GET' })
-}
-
-export async function createExitAlarmVendorConfig(
-  draft: VendorPushEntryDraft,
-): Promise<{ ok: true; data: VendorPushEntry } | { ok: false; error: string }> {
-  return apiFetch<VendorPushEntry>('/api/exit-alarm/vendor-configs', {
-    method: 'POST',
-    body: JSON.stringify(draft),
-  })
-}
-
-export async function updateExitAlarmVendorConfig(
-  id: string,
-  draft: VendorPushEntryDraft,
-): Promise<{ ok: true; data: VendorPushEntry } | { ok: false; error: string }> {
-  return apiFetch<VendorPushEntry>(`/api/exit-alarm/vendor-configs/${id}`, {
-    method: 'PUT',
-    body: JSON.stringify(draft),
-  })
-}
-
-export async function deleteExitAlarmVendorConfig(
-  id: string,
-): Promise<{ ok: true } | { ok: false; error: string }> {
-  return apiFetch<undefined>(`/api/exit-alarm/vendor-configs/${id}`, { method: 'DELETE' })
-}
-
 // 定时推送配置
 export async function loadExitAlarmSchedule(): Promise<
   { ok: true; data: ExitAlarmSchedule | null } | { ok: false; error: string }
@@ -74,6 +41,15 @@ export async function saveExitAlarmSchedule(
           Authorization: `Bearer ${imileToken}`,
         }
       : { 'Content-Type': 'application/json' },
+  })
+}
+
+export async function saveExitAlarmScheduledPushConfigIds(
+  pushConfigIds: string[],
+): Promise<{ ok: true; data: ExitAlarmSchedule } | { ok: false; error: string }> {
+  return apiFetch<ExitAlarmSchedule>('/api/exit-alarm/schedule/push-config-ids', {
+    method: 'PUT',
+    body: JSON.stringify({ pushConfigIds }),
   })
 }
 
@@ -111,6 +87,7 @@ export async function triggerExitAlarmPushNow(
     stationCode: string
     pushTime: string // "HH:mm"
     date: string    // "YYYY-MM-DD" 阿德莱德时区
+    configIds: string[]
   },
   signal?: AbortSignal,
 ): Promise<{ ok: true; data: ExitAlarmPushNowResult } | { ok: false; error: string }> {

@@ -132,7 +132,11 @@ export const vendorAnalyzeHandler: JobHandler = {
 
     await ctx.reportProgress({ phase: 'driverWaybills', message: '获取司机运单(24H派签)', percent: 70, step: 6, totalSteps: 7 })
     const driverDayBeforeRes = await waybillSearchSemaphore.run(() =>
-      fetchDriverWaybills(imileToken, { startTime: params.dayBeforeStartTime, endTime: params.dayBeforeEndTime }),
+      fetchDriverWaybills(imileToken, {
+        stationCode: before11StationCode,
+        dateStr: params.dayBeforeDate,
+        regionCode: ctx.job.regionCode,
+      }),
     )
     if (!driverDayBeforeRes.ok) throw new Error(`司机运单获取失败: ${driverDayBeforeRes.message}`)
 

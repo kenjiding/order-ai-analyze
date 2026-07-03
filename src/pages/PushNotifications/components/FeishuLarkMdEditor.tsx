@@ -381,7 +381,7 @@ export function FeishuLarkMdEditor({
         onOk={applyLink}
         onCancel={() => setLinkModalOpen(false)}
         destroyOnHidden
-        focusTriggerAfterClose={false}
+        focusable={{ focusTriggerAfterClose: false }}
       >
         <div className="space-y-2 pt-1">
           <div className="text-xs text-[var(--admin-muted)]">先选中文字再点链接按钮；未选中时将在光标处插入链接。</div>

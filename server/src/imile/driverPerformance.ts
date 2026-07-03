@@ -1,26 +1,11 @@
 import { requestImileApi } from './client'
-import { fetchPaginatedResultRows } from './paginatedQuery'
-import {
-  buildImilePortalHeaders,
-  IMILE_DS_SAAS_TMS_PORTAL,
-  IMILE_OC_INTERCEPT_PORTAL,
-} from './portal'
+import { buildImilePortalHeaders, IMILE_OC_INTERCEPT_PORTAL } from './portal'
 import { envFirstOr, normalizeImileToken } from './shared'
-
-const DEFAULT_DRIVER_WAYBILL_URL =
-  'https://ds.imile.com/saastms/v1/biz/waybillInfo/searchWaybill'
+import { resolveRegionTz } from './ausTimezone'
+import { fetchWaybillDetailsByInboundIndex } from './inboundWaybillIndex'
 
 const DEFAULT_RETURN_WARNING_URL =
   'https://oc.imile.com/saastms/v1/report/stock/daWaybillInventory'
-
-function makeDriverWaybillHeaders(token: string): Record<string, string> {
-  return buildImilePortalHeaders({
-    token,
-    envPrefix: 'IMILE_DRIVER_WAYBILL',
-    defaults: IMILE_DS_SAAS_TMS_PORTAL,
-    sharedEnvPrefixes: ['IMILE_CANCEL_SCAN', 'IMILE_TRACK'],
-  })
-}
 
 function makeDriverReturnHeaders(token: string): Record<string, string> {
   return buildImilePortalHeaders({
@@ -53,39 +38,19 @@ export type DriverReturnRow = {
 
 type ApiError = { ok: false; status: number; message: string; rawText?: string }
 
-const DRIVER_WAYBILL_PAGE_SIZE = 1000
-const PAGE_DELAY_MS = 500
-
+/** 24小时派签率运单查询：与 11 点前出仓率一致，先取到件 waybillNo 索引，再分批 searchWaybill */
 export async function fetchDriverWaybills(
   token: string,
-  params: { startTime: string; endTime: string },
+  params: { stationCode: string; dateStr: string; regionCode?: string | null },
 ): Promise<{ ok: true; data: DriverWaybillRow[] } | ApiError> {
-  const normalizedToken = normalizeImileToken(token)
-  const url = envFirstOr(['IMILE_DRIVER_WAYBILL_URL'], DEFAULT_DRIVER_WAYBILL_URL)
-  const headers = makeDriverWaybillHeaders(normalizedToken)
-
-  const result = await fetchPaginatedResultRows({
-    label: '司机运单查询',
-    pageShowCount: DRIVER_WAYBILL_PAGE_SIZE,
-    pageDelayMs: PAGE_DELAY_MS,
-    buildPageBody: ({ currentPage, showCount }) => ({
-      actualReceiveStation: '',
-      currentPage,
-      dateSearchType: 'firstCountry',
-      endTime: params.endTime,
-      labelOrderCodes: [] as string[],
-      mainWaybillNos: [] as string[],
-      platformNos: [] as string[],
-      referenceNos: [] as string[],
-      showCount,
-      startTime: params.startTime,
-      waybillNos: [] as string[],
-    }),
-    requestPage: (body) =>
-      requestImileApi({ url, method: 'POST', headers, body, label: '司机运单查询' }),
+  const result = await fetchWaybillDetailsByInboundIndex({
+    token,
+    stationCode: params.stationCode,
+    dateStr: params.dateStr,
+    label: '24H派签率运单查询',
+    tz: resolveRegionTz(params.regionCode),
   })
-
-  if (!result.ok) return { ok: false, status: result.status, message: result.message }
+  if (!result.ok) return { ok: false, status: result.status ?? 502, message: result.message }
   return { ok: true, data: result.records as DriverWaybillRow[] }
 }
 

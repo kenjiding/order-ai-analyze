@@ -12,12 +12,31 @@ export const AUS_TZ = {
   Perth: 'Australia/Perth',
   Brisbane: 'Australia/Brisbane',
   Canberra: 'Australia/ACT',
+  Darwin: 'Australia/Darwin',
+  Hobart: 'Australia/Hobart',
 } as const
 
 export type AusTz = (typeof AUS_TZ)[keyof typeof AUS_TZ]
 
 // iMile API 返回的时间均为墨尔本本地时间
 const IMILE_TZ = AUS_TZ.Melbourne
+
+/** 账号「州/区域」代码 → 对应时区。未知/未设置州（如超管）兜底阿德莱德 */
+const REGION_TZ: Record<string, AusTz> = {
+  NSW: AUS_TZ.Sydney,
+  VIC: AUS_TZ.Melbourne,
+  QLD: AUS_TZ.Brisbane,
+  SA: AUS_TZ.Adelaide,
+  WA: AUS_TZ.Perth,
+  TAS: AUS_TZ.Hobart,
+  ACT: AUS_TZ.Canberra,
+  NT: AUS_TZ.Darwin,
+}
+
+export function resolveRegionTz(regionCode: string | null | undefined): AusTz {
+  if (!regionCode) return AUS_TZ.Adelaide
+  return REGION_TZ[regionCode] ?? AUS_TZ.Adelaide
+}
 
 /**
  * 把 iMile 返回的时间字符串（墨尔本本地时间，无时区信息）解析为指定时区的 dayjs 对象。

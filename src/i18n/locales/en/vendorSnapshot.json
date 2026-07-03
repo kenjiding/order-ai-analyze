@@ -71,7 +71,14 @@
     "before11ExitRate": "Exit by 11:00",
     "dispatch24h": "24h dispatch",
     "returnWarning": "Return alert",
-    "longTail": "Long-tail"
+    "longTail": "Long-tail",
+    "tooltip": {
+      "pickup": "Waybill numbers",
+      "before11Unmet": "Not exited by 11:00",
+      "dispatch24hUnmet": "Below 24h dispatch target",
+      "returnWarning": "Return alert records",
+      "longTail": "Long-tail waybill numbers"
+    }
   },
   "metrics": {
     "sectionTitle": "Metric definitions",

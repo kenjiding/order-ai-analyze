@@ -59,10 +59,10 @@ const MOCK_DATA: VendorSnapshotData = {
       longTailCount: 2,
       isDisabled: false,
       drivers: [
-        { courierCode: 'D001', courierName: 'Zhang Wei', routeCode: 'ADL-01-A', ofdCount: 48, before11OfdCount: 47, returnWarningCount: 0, dispatch24hCount: 44, totalDispatchCount: 45, dispatchRate24h: 0.978, longTailCount: 0 },
-        { courierCode: 'D002', courierName: 'Li Ming', routeCode: 'ADL-01-B', ofdCount: 52, before11OfdCount: 49, returnWarningCount: 0, dispatch24hCount: 48, totalDispatchCount: 52, dispatchRate24h: 0.923, longTailCount: 1 },
-        { courierCode: 'D003', courierName: 'Wang Fang', routeCode: 'ADL-02-A', ofdCount: 41, before11OfdCount: 36, returnWarningCount: 1, dispatch24hCount: 35, totalDispatchCount: 42, dispatchRate24h: 0.833, longTailCount: 1 },
-        { courierCode: 'D004', courierName: 'Chen Jing', routeCode: 'ADL-02-B', ofdCount: 39, before11OfdCount: 39, returnWarningCount: 0, dispatch24hCount: 37, totalDispatchCount: 39, dispatchRate24h: 0.949, longTailCount: 0 },
+        { courierCode: 'D001', courierName: 'Zhang Wei', routeCode: 'ADL-01-A', ofdCount: 48, ofdWaybillNos: [], before11OfdCount: 47, before11UnmetWaybillNos: [], returnWarningCount: 0, returnWarningWaybillNos: [], dispatch24hCount: 44, totalDispatchCount: 45, dispatchRate24h: 0.978, dispatch24hUnmetWaybillNos: [], longTailCount: 0, longTailWaybillNos: [] },
+        { courierCode: 'D002', courierName: 'Li Ming', routeCode: 'ADL-01-B', ofdCount: 52, ofdWaybillNos: [], before11OfdCount: 49, before11UnmetWaybillNos: [], returnWarningCount: 0, returnWarningWaybillNos: [], dispatch24hCount: 48, totalDispatchCount: 52, dispatchRate24h: 0.923, dispatch24hUnmetWaybillNos: [], longTailCount: 1, longTailWaybillNos: [] },
+        { courierCode: 'D003', courierName: 'Wang Fang', routeCode: 'ADL-02-A', ofdCount: 41, ofdWaybillNos: [], before11OfdCount: 36, before11UnmetWaybillNos: [], returnWarningCount: 1, returnWarningWaybillNos: [], dispatch24hCount: 35, totalDispatchCount: 42, dispatchRate24h: 0.833, dispatch24hUnmetWaybillNos: [], longTailCount: 1, longTailWaybillNos: [] },
+        { courierCode: 'D004', courierName: 'Chen Jing', routeCode: 'ADL-02-B', ofdCount: 39, ofdWaybillNos: [], before11OfdCount: 39, before11UnmetWaybillNos: [], returnWarningCount: 0, returnWarningWaybillNos: [], dispatch24hCount: 37, totalDispatchCount: 39, dispatchRate24h: 0.949, dispatch24hUnmetWaybillNos: [], longTailCount: 0, longTailWaybillNos: [] },
       ],
     },
     {
@@ -80,9 +80,9 @@ const MOCK_DATA: VendorSnapshotData = {
       longTailCount: 7,
       isDisabled: false,
       drivers: [
-        { courierCode: 'D011', courierName: 'Zhao Lei', routeCode: 'ADL-03-A', ofdCount: 55, before11OfdCount: 46, returnWarningCount: 2, dispatch24hCount: 38, totalDispatchCount: 48, dispatchRate24h: 0.792, longTailCount: 3 },
-        { courierCode: 'D012', courierName: 'Sun Hui', routeCode: 'ADL-03-B', ofdCount: 47, before11OfdCount: 44, returnWarningCount: 0, dispatch24hCount: 42, totalDispatchCount: 47, dispatchRate24h: 0.894, longTailCount: 2 },
-        { courierCode: 'D013', courierName: 'Liu Yang', routeCode: 'ADL-01-C', ofdCount: 38, before11OfdCount: 30, returnWarningCount: 1, dispatch24hCount: 26, totalDispatchCount: 36, dispatchRate24h: 0.722, longTailCount: 2 },
+        { courierCode: 'D011', courierName: 'Zhao Lei', routeCode: 'ADL-03-A', ofdCount: 55, ofdWaybillNos: [], before11OfdCount: 46, before11UnmetWaybillNos: [], returnWarningCount: 2, returnWarningWaybillNos: [], dispatch24hCount: 38, totalDispatchCount: 48, dispatchRate24h: 0.792, dispatch24hUnmetWaybillNos: [], longTailCount: 3, longTailWaybillNos: [] },
+        { courierCode: 'D012', courierName: 'Sun Hui', routeCode: 'ADL-03-B', ofdCount: 47, ofdWaybillNos: [], before11OfdCount: 44, before11UnmetWaybillNos: [], returnWarningCount: 0, returnWarningWaybillNos: [], dispatch24hCount: 42, totalDispatchCount: 47, dispatchRate24h: 0.894, dispatch24hUnmetWaybillNos: [], longTailCount: 2, longTailWaybillNos: [] },
+        { courierCode: 'D013', courierName: 'Liu Yang', routeCode: 'ADL-01-C', ofdCount: 38, ofdWaybillNos: [], before11OfdCount: 30, before11UnmetWaybillNos: [], returnWarningCount: 1, returnWarningWaybillNos: [], dispatch24hCount: 26, totalDispatchCount: 36, dispatchRate24h: 0.722, dispatch24hUnmetWaybillNos: [], longTailCount: 2, longTailWaybillNos: [] },
       ],
     },
   ],

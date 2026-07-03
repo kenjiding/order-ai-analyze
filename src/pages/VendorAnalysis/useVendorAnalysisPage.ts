@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import dayjs, { type Dayjs } from 'dayjs'
 import { useAppSettings } from '../../context/AppSettingsContext'
+import { useAuthStore } from '../../stores/authStore'
 import { useGlobalFilterStore } from '../../stores/globalFilterStore'
 import { showToast } from '../../utils/toast'
 import { postFeishuPushCard } from '../PushNotifications/feishuWebhookTestApi'
@@ -16,27 +17,28 @@ import type {
   UnprocessedTicketsData,
   VendorMetricRow,
   VendorOption,
-  VendorPushConfig,
-  VendorPushConfigDraft,
   WaybillRow,
 } from './vendorAnalysisTypes'
 import {
   cancelJobApi,
-  createConfig,
-  deleteConfig,
   deleteJobApi,
   fetchVendors,
   getJobById,
   getVendorAnalyzeSnapshot,
   listJobs,
-  loadConfigs,
   postVendorAnalyzeAsync,
-  updateConfig,
   type PublicJob,
   type VendorAnalyzeArtifact,
   type VendorAnalyzeAsyncParams,
 } from './vendorAnalysisApi'
-import { AUS_TZ, fromIMileTime, iMileTimeMs, nowIn } from '../../utils/ausTimezone'
+import {
+  useSupplierConfigScopeBinding,
+  useSupplierPushCatalog,
+} from '../../shared/supplierPushConfig'
+import { fleetConfigsToVendorPushConfigs } from '../PushNotifications/supplierConfigAdapter'
+
+const VENDOR_ANALYSIS_PUSH_SCOPE = 'vendor-analysis.push' as const
+import { fromIMileTime, iMileTimeMs, nowIn, resolveRegionTz } from '../../utils/ausTimezone'
 
 /** 任务轮询间隔，与 OrderExceptionManagement 里的既有节奏保持一致 */
 const JOB_POLL_INTERVAL_MS = 3000
@@ -112,10 +114,12 @@ export type FetchedData = {
 export function useVendorAnalysisPage() {
   const { imileToken } = useAppSettings()
   const { selectedStations } = useGlobalFilterStore()
+  const regionCode = useAuthStore((s) => s.user?.regionCode ?? null)
+  const targetTz = useMemo(() => resolveRegionTz(regionCode), [regionCode])
 
-  const [referenceDate, setReferenceDate] = useState<Dayjs | null>(() => nowIn(AUS_TZ.Adelaide))
+  const [referenceDate, setReferenceDate] = useState<Dayjs | null>(() => nowIn(targetTz))
   const [complaintDateRange, setComplaintDateRange] = useState<[Dayjs, Dayjs] | null>(() => {
-    const today = nowIn(AUS_TZ.Adelaide)
+    const today = nowIn(targetTz)
     const dow = today.day() // 0=Sun, 1=Mon, ..., 6=Sat
     const daysFromMonday = dow === 0 ? 6 : dow - 1
     const lastMonday = today.subtract(daysFromMonday + 7, 'day')
@@ -126,8 +130,17 @@ export function useVendorAnalysisPage() {
   const [vendors, setVendors] = useState<VendorOption[]>([])
   const [vendorsLoading, setVendorsLoading] = useState(false)
 
-  const [configs, setConfigs] = useState<VendorPushConfig[]>([])
-  const [configsLoading, setConfigsLoading] = useState(false)
+  const catalog = useSupplierPushCatalog()
+  const configs = useMemo(
+    () => fleetConfigsToVendorPushConfigs(catalog.configs),
+    [catalog.configs],
+  )
+  const configsLoading = catalog.loading
+  const scopeBinding = useSupplierConfigScopeBinding(VENDOR_ANALYSIS_PUSH_SCOPE, catalog.configs)
+  const selectedPushConfigs = useMemo(
+    () => fleetConfigsToVendorPushConfigs(scopeBinding.enabledPushable),
+    [scopeBinding.enabledPushable],
+  )
 
   const [fetchedData, setFetchedData] = useState<FetchedData | null>(null)
   const [dataFetching, setDataFetching] = useState(false)
@@ -155,13 +168,6 @@ export function useVendorAnalysisPage() {
       setVendorsLoading(false)
       if (res.ok) setVendors(res.data)
       else showToast(`供应商加载失败: ${res.error}`, 'error')
-    })
-
-    setConfigsLoading(true)
-    void loadConfigs().then((res) => {
-      setConfigsLoading(false)
-      if (res.ok) setConfigs(res.data)
-      else showToast(`推送配置加载失败: ${res.error}`, 'error')
     })
   }, [imileToken])
 
@@ -481,11 +487,11 @@ export function useVendorAnalysisPage() {
       if (stationSet.size > 0 && !stationSet.has(row.lastScanSiteCode ?? '')) continue
       if (!row.deliveryTime) continue
 
-      const deliveryAdelaide = fromIMileTime(row.deliveryTime, AUS_TZ.Adelaide)
-      const deliveryMs = deliveryAdelaide.valueOf()
+      const deliveryLocal = fromIMileTime(row.deliveryTime, targetTz)
+      const deliveryMs = deliveryLocal.valueOf()
       const signMs = row.signDate ? iMileTimeMs(row.signDate) : null
       const problemMs = row.lastProblemDate ? iMileTimeMs(row.lastProblemDate) : null
-      const dow = deliveryAdelaide.day() // 0=Sun,1=Mon,...,6=Sat
+      const dow = deliveryLocal.day() // 0=Sun,1=Mon,...,6=Sat
 
       let met = false
       if (dow >= 1 && dow <= 4) {
@@ -493,9 +499,9 @@ export function useVendorAnalysisPage() {
         const within24h = (ms: number | null) => ms != null && ms - deliveryMs <= 24 * 60 * 60 * 1000
         met = within24h(signMs) || within24h(problemMs)
       } else {
-        // 周五(5)、周六(6)、周日(0)：下周一 23:59:59（阿德莱德）前签收达标
+        // 周五(5)、周六(6)、周日(0)：下周一 23:59:59（账号所属州本地时间）前签收达标
         const daysToMonday = dow === 0 ? 1 : dow === 5 ? 3 : 2
-        const nextMondayMs = deliveryAdelaide
+        const nextMondayMs = deliveryLocal
           .add(daysToMonday, 'day')
           .hour(23).minute(59).second(59).millisecond(0)
           .valueOf()
@@ -527,15 +533,15 @@ export function useVendorAnalysisPage() {
     }
 
     return { waybillsByVendor, ticketsByVendor, longTailByVendor, unprocessedCountByVendor, stationSet, dispatch24hByVendor, before11UnmetByVendor }
-  }, [fetchedData, selectedStations])
+  }, [fetchedData, selectedStations, targetTz])
 
   const pushAll = useCallback(async () => {
     if (!fetchedData || !indexedData) { showToast('请先点击「获取数据」', 'error'); return }
     if (selectedStations.length === 0) { showToast('请先选择责任站点', 'error'); return }
 
-    const enabledConfigs = configs.filter((c) => !c.isDisabled && c.webhookUrl.trim())
+    const enabledConfigs = selectedPushConfigs
     if (enabledConfigs.length === 0) {
-      showToast('没有可用的推送配置（已全部禁用或缺少 Webhook 地址）', 'error')
+      showToast('请先在下方启用要推送的供应商（须已配置 Webhook）', 'error')
       return
     }
 
@@ -614,52 +620,13 @@ export function useVendorAnalysisPage() {
     } else {
       showToast(`推送完成：${successCount} 成功 · ${failCount} 失败`, 'warning')
     }
-  }, [fetchedData, indexedData, selectedStations, configs])
-
-  const addConfig = useCallback(async (draft: VendorPushConfigDraft) => {
-    const res = await createConfig(draft)
-    if (!res.ok) { showToast(`新增失败: ${res.error}`, 'error'); return false }
-    setConfigs((prev) => [...prev, res.data])
-    showToast(`已添加「${res.data.vendorName}」推送配置`, 'success')
-    return true
-  }, [])
-
-  const editConfig = useCallback(async (id: string, draft: VendorPushConfigDraft) => {
-    const res = await updateConfig(id, draft)
-    if (!res.ok) { showToast(`更新失败: ${res.error}`, 'error'); return false }
-    setConfigs((prev) => prev.map((c) => (c.id === id ? res.data : c)))
-    showToast(`已更新「${res.data.vendorName}」推送配置`, 'success')
-    return true
-  }, [])
-
-  const removeConfig = useCallback(async (id: string, vendorName: string) => {
-    const res = await deleteConfig(id)
-    if (!res.ok) { showToast(`删除失败: ${res.error}`, 'error'); return }
-    setConfigs((prev) => prev.filter((c) => c.id !== id))
-    showToast(`已删除「${vendorName}」推送配置`, 'success')
-  }, [])
-
-  const toggleDisabled = useCallback(async (id: string, nextDisabled: boolean) => {
-    const config = configs.find((c) => c.id === id)
-    if (!config) return
-    const res = await updateConfig(id, {
-      vendorCode: config.vendorCode,
-      vendorName: config.vendorName,
-      webhookUrl: config.webhookUrl,
-      signingSecret: config.signingSecret,
-      pushDescription: config.pushDescription,
-      isDisabled: nextDisabled,
-    })
-    if (!res.ok) { showToast(`操作失败: ${res.error}`, 'error'); return }
-    setConfigs((prev) => prev.map((c) => (c.id === id ? res.data : c)))
-    showToast(`已${nextDisabled ? '禁用' : '启用'}「${config.vendorName}」推送配置`, 'success')
-  }, [configs])
+  }, [fetchedData, indexedData, selectedStations, selectedPushConfigs])
 
   const driverPerformanceByVendor = useMemo<Record<string, DriverPerformanceRow[]>>(() => {
     if (!fetchedData) return {}
 
     // ── 归班预警：以查询发起时刻为基准，ofdDate（墨尔本时间）转换后距基准>=48h 则计入 ──
-    const cutoffMs = nowIn(AUS_TZ.Adelaide).valueOf()
+    const cutoffMs = nowIn(targetTz).valueOf()
 
     const returnWarningMap = new Map<string, { count: number; waybillNos: string[] }>()
     for (const row of fetchedData.driverReturnRows) {
@@ -712,12 +679,12 @@ export function useVendorAnalysisPage() {
         // 按最新派件网点过滤（与供应商级指标保持一致）
         if (stationSet.size > 0 && !stationSet.has(row.lastScanSiteCode ?? '')) continue
 
-        // iMile 时间为墨尔本本地时间，需先转为阿德莱德时间再判断星期和截止时间
-        const deliveryAdelaide = fromIMileTime(row.deliveryTime, AUS_TZ.Adelaide)
-        const deliveryMs = deliveryAdelaide.valueOf()
+        // iMile 时间为墨尔本本地时间，需先转为账号所属州本地时间再判断星期和截止时间
+        const deliveryLocal = fromIMileTime(row.deliveryTime, targetTz)
+        const deliveryMs = deliveryLocal.valueOf()
         const signMs = row.signDate ? iMileTimeMs(row.signDate) : null
         const problemMs = row.lastProblemDate ? iMileTimeMs(row.lastProblemDate) : null
-        const dow = deliveryAdelaide.day() // 0=Sun,1=Mon,...,6=Sat
+        const dow = deliveryLocal.day() // 0=Sun,1=Mon,...,6=Sat
 
         let completed = false
         if (dow >= 1 && dow <= 4) {
@@ -725,9 +692,9 @@ export function useVendorAnalysisPage() {
           const within24h = (ms: number | null) => ms != null && ms - deliveryMs <= 24 * 60 * 60 * 1000
           completed = within24h(signMs) || within24h(problemMs)
         } else {
-          // 周五(5)、周六(6)、周日(0)：下周一 23:59:59（阿德莱德时间）前签收即达标
+          // 周五(5)、周六(6)、周日(0)：下周一 23:59:59（账号所属州本地时间）前签收即达标
           const daysToMonday = dow === 0 ? 1 : dow === 5 ? 3 : 2
-          const nextMondayMs = deliveryAdelaide
+          const nextMondayMs = deliveryLocal
             .add(daysToMonday, 'day')
             .hour(23).minute(59).second(59).millisecond(0)
             .valueOf()
@@ -836,7 +803,7 @@ export function useVendorAnalysisPage() {
     }
 
     return result
-  }, [fetchedData, configs])
+  }, [fetchedData, configs, selectedStations, targetTz])
 
   const vendorMetrics = useMemo<VendorMetricRow[]>(() => {
     if (!fetchedData || !indexedData) return []
@@ -859,8 +826,10 @@ export function useVendorAnalysisPage() {
       const complaintOrderCodes = ticketsByVendor.get(config.vendorCode)
         ?.map((t) => String((t as Record<string, unknown>).orderCode ?? '')).filter(Boolean) ?? []
       return {
+        id: config.id,
         vendorCode,
         vendorName: config.vendorName,
+        supplierNickname: config.supplierNickname,
         complaintCount,
         waybillCount,
         complaintRate,
@@ -876,7 +845,6 @@ export function useVendorAnalysisPage() {
         dispatch24hCount,
         dispatch24hUnmetWaybillNos: dispatch24h?.unmetNos ?? [],
         complaintOrderCodes,
-        isDisabled: config.isDisabled,
       }
     })
   }, [fetchedData, indexedData, configs])
@@ -889,8 +857,11 @@ export function useVendorAnalysisPage() {
     selectedStations,
     vendors,
     vendorsLoading,
+    catalog,
     configs,
     configsLoading,
+    scopeBinding,
+    selectedPushConfigs,
     fetchedData,
     dataFetching,
     jobProgress,
@@ -899,10 +870,6 @@ export function useVendorAnalysisPage() {
     fetchData,
     isPushingAll,
     pushAll,
-    addConfig,
-    editConfig,
-    removeConfig,
-    toggleDisabled,
     vendorMetrics,
     driverPerformanceByVendor,
     activeTab,

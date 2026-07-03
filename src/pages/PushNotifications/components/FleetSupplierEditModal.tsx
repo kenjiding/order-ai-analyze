@@ -1,14 +1,20 @@
 import type { ModalProps } from 'antd'
-import { Form, Input, Modal } from 'antd'
+import { Col, Form, Input, Modal, Row, Select } from 'antd'
 import { useEffect } from 'react'
 import { webhookFieldRules } from '../pushEntryFormValidators'
 import { parseFleetRouteCodes } from '../fleetRouteCodeParse'
-import type { FleetSupplierConfig } from '../fleetSupplierPushTypes'
+import type { FleetSupplierConfig, FleetSupplierConfigDraft } from '../fleetSupplierPushTypes'
 import { FEISHU_WEBHOOK_PREFIX } from '../feishuPushTypes'
 import { FeishuLarkMdEditor } from './FeishuLarkMdEditor'
 
+type VendorOption = {
+  vendorCode: string
+  vendorNameEn: string
+}
+
 type FormValues = {
-  supplierName: string
+  vendorCode: string
+  supplierNickname: string
   routeCode: string
   webhookUrl: string
   signingSecret?: string
@@ -18,8 +24,10 @@ type FormValues = {
 type Props = Omit<ModalProps, 'onOk' | 'onCancel'> & {
   open: boolean
   editing: FleetSupplierConfig | null
+  vendors: VendorOption[]
+  vendorsLoading: boolean
   onCancel: () => void
-  onCommitted: (values: Omit<FleetSupplierConfig, 'id'>) => void | Promise<void>
+  onCommitted: (values: FleetSupplierConfigDraft) => void | Promise<void>
   /** 独立入口页：不展示、不编辑 webhook 与密钥 */
   secretsVisibility?: 'full' | 'hidden'
 }
@@ -27,6 +35,8 @@ type Props = Omit<ModalProps, 'onOk' | 'onCancel'> & {
 export function FleetSupplierEditModal({
   open,
   editing,
+  vendors,
+  vendorsLoading,
   onCancel,
   onCommitted,
   secretsVisibility = 'full',
@@ -37,24 +47,25 @@ export function FleetSupplierEditModal({
   useEffect(() => {
     if (!open) return
     if (editing) {
+      const base = {
+        vendorCode: editing.vendorCode,
+        supplierNickname: editing.supplierNickname,
+        routeCode: editing.routeCode,
+        pushContent: editing.pushContent,
+      }
       if (secretsVisibility === 'full') {
         form.setFieldsValue({
-          supplierName: editing.supplierName,
-          routeCode: editing.routeCode,
+          ...base,
           webhookUrl: editing.webhookUrl,
           signingSecret: editing.signingSecret,
-          pushContent: editing.pushContent,
         })
       } else {
-        form.setFieldsValue({
-          supplierName: editing.supplierName,
-          routeCode: editing.routeCode,
-          pushContent: editing.pushContent,
-        })
+        form.setFieldsValue(base)
       }
     } else if (secretsVisibility === 'full') {
       form.setFieldsValue({
-        supplierName: '',
+        vendorCode: undefined,
+        supplierNickname: '',
         routeCode: '',
         webhookUrl: '',
         signingSecret: '',
@@ -62,7 +73,8 @@ export function FleetSupplierEditModal({
       })
     } else {
       form.setFieldsValue({
-        supplierName: '',
+        vendorCode: undefined,
+        supplierNickname: '',
         routeCode: '',
         pushContent: '',
       })
@@ -72,19 +84,19 @@ export function FleetSupplierEditModal({
   const handleOk = async () => {
     try {
       const values = await form.validateFields()
-      const base = {
-        supplierName: values.supplierName.trim(),
+      const selectedVendor = vendors.find((v) => v.vendorCode === values.vendorCode)
+      const base: FleetSupplierConfigDraft = {
+        vendorCode: values.vendorCode,
+        vendorName: selectedVendor?.vendorNameEn ?? values.vendorCode,
+        supplierNickname: values.supplierNickname.trim(),
         routeCode: typeof values.routeCode === 'string' ? values.routeCode.trim() : '',
+        pushDescription: editing?.pushDescription ?? null,
         pushContent: typeof values.pushContent === 'string' ? values.pushContent : '',
+        webhookUrl: editing?.webhookUrl?.trim() ?? '',
+        signingSecret: editing?.signingSecret,
       }
       if (secretsVisibility === 'hidden') {
-        await Promise.resolve(
-          onCommitted({
-            ...base,
-            webhookUrl: editing?.webhookUrl?.trim() ?? '',
-            signingSecret: editing?.signingSecret,
-          }),
-        )
+        await Promise.resolve(onCommitted(base))
         return
       }
       await Promise.resolve(
@@ -115,13 +127,38 @@ export function FleetSupplierEditModal({
       {...rest}
     >
       <Form form={form} layout="vertical" requiredMark={false} className="pt-2">
-        <Form.Item
-          label="供应商名称"
-          name="supplierName"
-          rules={[{ required: true, message: '请填写供应商名称' }]}
-        >
-          <Input placeholder="例如：华南承运商 A" allowClear />
-        </Form.Item>
+        <Row gutter={16}>
+          <Col xs={24} sm={12}>
+            <Form.Item
+              label="供应商"
+              name="vendorCode"
+              rules={[{ required: true, message: '请选择供应商' }]}
+            >
+              <Select
+                showSearch
+                loading={vendorsLoading}
+                placeholder="搜索并选择供应商"
+                filterOption={(input, opt) =>
+                  (opt?.label ?? '').toLowerCase().includes(input.toLowerCase())
+                }
+                options={vendors.map((v) => ({
+                  label: `${v.vendorNameEn} (${v.vendorCode})`,
+                  value: v.vendorCode,
+                }))}
+              />
+            </Form.Item>
+          </Col>
+          <Col xs={24} sm={12}>
+            <Form.Item
+              label="供应商昵称"
+              name="supplierNickname"
+              rules={[{ required: true, message: '请填写供应商昵称' }]}
+              tooltip="推送消息中展示的称呼，可与 iMile 供应商名称不同"
+            >
+              <Input placeholder="例如：华南承运商 A" allowClear />
+            </Form.Item>
+          </Col>
+        </Row>
 
         <Form.Item
           label="路由编码"
@@ -159,7 +196,7 @@ export function FleetSupplierEditModal({
         ) : null}
 
         <Form.Item
-          label="推送内容"
+          label="供应商推送内容"
           name="pushContent"
           extra="将先于图片以富文本卡片推送至群内；与 Tab 顶部「推送内容」拼接为本条消息正文（本段在上、顶部段在下），任一段可留空。"
         >

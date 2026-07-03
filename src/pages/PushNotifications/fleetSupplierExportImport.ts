@@ -1,5 +1,5 @@
 import * as XLSX from 'xlsx'
-import type { FleetSupplierConfig } from './fleetSupplierPushTypes'
+import type { FleetSupplierConfig, FleetSupplierImportRow } from './fleetSupplierPushTypes'
 import { createFleetSupplierId, sanitizeFleetSupplier } from './fleetSupplierStorage'
 
 export const FLEET_SUPPLIER_EXPORT_SHEET_NAME = '供应商配置'
@@ -24,8 +24,10 @@ export function fleetSupplierRowFromSheetRecord(row: Record<string, unknown>): R
   }
   return {
     id: pick('id', 'ID'),
-    supplierName: pick('supplierName', '供应商名称'),
-    routeCode: pick('routeCode', '路由编码'),
+    vendorCode: pick('vendorCode', '供应商编码', 'vendor_code'),
+    vendorName: pick('vendorName', '供应商名称', 'vendor_name'),
+    supplierNickname: pick('supplierNickname', '供应商昵称', 'supplier_nickname', 'supplierName', '供应商名称'),
+    routeCode: pick('routeCode', '路由编码', '路由码'),
     webhookUrl: pick('webhookUrl', '飞书 webhook', 'webhook'),
     signingSecret: pick('signingSecret', '密钥', '飞书 webhook 密钥', 'signing_secret'),
     pushContent: pick('pushContent', '供应商推送内容', '推送内容'),
@@ -39,7 +41,9 @@ export function fleetSuppliersToExportRows(
   return list.map((s) => {
     const base: Record<string, string> = {
       id: s.id,
-      supplierName: s.supplierName,
+      vendorCode: s.vendorCode,
+      vendorName: s.vendorName,
+      supplierNickname: s.supplierNickname,
       routeCode: s.routeCode,
       pushContent: s.pushContent,
     }
@@ -66,7 +70,7 @@ export function buildFleetSuppliersXlsxBlob(
 }
 
 export type FleetSupplierImportParseResult =
-  | { ok: true; suppliers: FleetSupplierConfig[] }
+  | { ok: true; suppliers: FleetSupplierImportRow[] }
   | { ok: false; error: string }
 
 function parseJsonArray(text: string): FleetSupplierImportParseResult {
@@ -79,7 +83,7 @@ function parseJsonArray(text: string): FleetSupplierImportParseResult {
   if (!Array.isArray(parsed)) {
     return { ok: false, error: 'JSON 根节点须为数组' }
   }
-  const out: FleetSupplierConfig[] = []
+  const out: FleetSupplierImportRow[] = []
   const gen = () => createFleetSupplierId()
   for (const item of parsed) {
     const s = sanitizeFleetSupplier(item, { generateId: gen })
@@ -92,7 +96,7 @@ function parseJsonArray(text: string): FleetSupplierImportParseResult {
 function parseSheetRows(rows: Record<string, unknown>[]): FleetSupplierImportParseResult {
   if (!rows.length) return { ok: false, error: '表格无数据行' }
 
-  const out: FleetSupplierConfig[] = []
+  const out: FleetSupplierImportRow[] = []
   const gen = () => createFleetSupplierId()
 
   for (const raw of rows) {
@@ -100,13 +104,17 @@ function parseSheetRows(rows: Record<string, unknown>[]): FleetSupplierImportPar
     const normalized = {
       ...mapped,
       id: cellToStr(mapped.id),
-      supplierName: cellToStr(mapped.supplierName),
+      vendorCode: cellToStr(mapped.vendorCode),
+      vendorName: cellToStr(mapped.vendorName),
+      supplierNickname: cellToStr(mapped.supplierNickname),
       routeCode: cellToStr(mapped.routeCode),
       webhookUrl: cellToStr(mapped.webhookUrl),
       signingSecret: cellToStr(mapped.signingSecret),
       pushContent: cellToStr(mapped.pushContent),
     }
-    if (!normalized.supplierName && !normalized.routeCode && !normalized.webhookUrl) continue
+    if (!normalized.vendorCode && !normalized.supplierNickname && !normalized.routeCode && !normalized.webhookUrl) {
+      continue
+    }
     const signingSecret =
       normalized.signingSecret.trim() !== '' ? normalized.signingSecret.trim() : undefined
     const s = sanitizeFleetSupplier(

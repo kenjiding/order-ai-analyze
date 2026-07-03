@@ -13,6 +13,7 @@ import {
   type LucideIcon,
 } from 'lucide-react'
 import { useVendorSnapshotTranslation } from '../../../i18n/hooks'
+import { WaybillListPopover } from '../../../components/WaybillPopover'
 import type { VendorSnapshotDriver, VendorSnapshotVendor } from '../vendorSnapshotStorage'
 
 /* eslint-disable react-refresh/only-export-components -- 组件与 vendorSectionId/toneClasses 工具需同文件导出 */
@@ -169,36 +170,56 @@ function DriverMobileCard({ driver }: { driver: VendorSnapshotDriver }) {
         ) : null}
       </div>
       <div className="mt-3 grid grid-cols-2 gap-2">
-        <DriverStatCell
-          label={t('driverTable.todayPickup')}
-          value={String(driver.ofdCount)}
-          tone="muted"
-        />
-        <DriverStatCell
-          label={t('driverTable.before11ExitRate')}
-          value={before11Rate != null ? `${(before11Rate * 100).toFixed(1)}%` : '-'}
-          sub={driver.ofdCount > 0 ? `${driver.before11OfdCount}/${driver.ofdCount}` : undefined}
-          tone={b11Tone}
-        />
-        <DriverStatCell
-          label={t('driverTable.dispatch24h')}
-          value={
-            driver.dispatchRate24h != null
-              ? `${(driver.dispatchRate24h * 100).toFixed(1)}%`
-              : '-'
-          }
-          sub={
-            driver.totalDispatchCount > 0
-              ? `${driver.dispatch24hCount}/${driver.totalDispatchCount}`
-              : undefined
-          }
-          tone={dTone}
-        />
-        <DriverStatCell
-          label={`${t('driverTable.returnWarning')} / ${t('driverTable.longTail')}`}
-          value={`${driver.returnWarningCount} / ${driver.longTailCount}`}
-          tone={driver.returnWarningCount > 0 || driver.longTailCount > 0 ? 'amber' : 'muted'}
-        />
+        <WaybillListPopover nos={driver.ofdWaybillNos} title={t('driverTable.tooltip.pickup')} placement="top">
+          <div className={driver.ofdWaybillNos.length > 0 ? 'cursor-help' : undefined}>
+            <DriverStatCell
+              label={t('driverTable.todayPickup')}
+              value={String(driver.ofdCount)}
+              tone="muted"
+            />
+          </div>
+        </WaybillListPopover>
+        <WaybillListPopover nos={driver.before11UnmetWaybillNos} title={t('driverTable.tooltip.before11Unmet')} placement="top">
+          <div className={driver.before11UnmetWaybillNos.length > 0 ? 'cursor-help' : undefined}>
+            <DriverStatCell
+              label={t('driverTable.before11ExitRate')}
+              value={before11Rate != null ? `${(before11Rate * 100).toFixed(1)}%` : '-'}
+              sub={driver.ofdCount > 0 ? `${driver.before11OfdCount}/${driver.ofdCount}` : undefined}
+              tone={b11Tone}
+            />
+          </div>
+        </WaybillListPopover>
+        <WaybillListPopover nos={driver.dispatch24hUnmetWaybillNos} title={t('driverTable.tooltip.dispatch24hUnmet')} placement="top">
+          <div className={driver.dispatch24hUnmetWaybillNos.length > 0 ? 'cursor-help' : undefined}>
+            <DriverStatCell
+              label={t('driverTable.dispatch24h')}
+              value={
+                driver.dispatchRate24h != null
+                  ? `${(driver.dispatchRate24h * 100).toFixed(1)}%`
+                  : '-'
+              }
+              sub={
+                driver.totalDispatchCount > 0
+                  ? `${driver.dispatch24hCount}/${driver.totalDispatchCount}`
+                  : undefined
+              }
+              tone={dTone}
+            />
+          </div>
+        </WaybillListPopover>
+        <WaybillListPopover
+          nos={[...driver.returnWarningWaybillNos, ...driver.longTailWaybillNos]}
+          title={`${t('driverTable.tooltip.returnWarning')} / ${t('driverTable.tooltip.longTail')}`}
+          placement="top"
+        >
+          <div className={driver.returnWarningWaybillNos.length + driver.longTailWaybillNos.length > 0 ? 'cursor-help' : undefined}>
+            <DriverStatCell
+              label={`${t('driverTable.returnWarning')} / ${t('driverTable.longTail')}`}
+              value={`${driver.returnWarningCount} / ${driver.longTailCount}`}
+              tone={driver.returnWarningCount > 0 || driver.longTailCount > 0 ? 'amber' : 'muted'}
+            />
+          </div>
+        </WaybillListPopover>
       </div>
     </div>
   )
@@ -207,6 +228,7 @@ function DriverMobileCard({ driver }: { driver: VendorSnapshotDriver }) {
 // ── Driver Table (md+) ────────────────────────────────────────────────
 
 function DriverRow({ driver, isOdd }: { driver: VendorSnapshotDriver; isOdd: boolean }) {
+  const { t } = useVendorSnapshotTranslation()
   const dTone = driverDispatchTone(driver.dispatchRate24h)
   const { value: dClass } = toneClasses(dTone)
   const before11Rate = driver.ofdCount > 0 ? driver.before11OfdCount / driver.ofdCount : null
@@ -233,14 +255,20 @@ function DriverRow({ driver, isOdd }: { driver: VendorSnapshotDriver; isOdd: boo
         </div>
       </td>
       <td className="px-4 py-3.5 text-center border-b border-slate-100">
-        <span className="text-[18px] font-bold tabular-nums text-slate-700">{driver.ofdCount}</span>
+        <WaybillListPopover nos={driver.ofdWaybillNos} title={t('driverTable.tooltip.pickup')}>
+          <span className={`text-[18px] font-bold tabular-nums text-slate-700${driver.ofdWaybillNos.length > 0 ? ' cursor-help' : ''}`}>
+            {driver.ofdCount}
+          </span>
+        </WaybillListPopover>
       </td>
       <td className="px-4 py-3.5 text-center border-b border-slate-100">
         {driver.ofdCount > 0 ? (
           <div>
-            <span className={`text-[18px] font-black tabular-nums ${b11Class}`}>
-              {before11Rate != null ? `${(before11Rate * 100).toFixed(1)}%` : '-'}
-            </span>
+            <WaybillListPopover nos={driver.before11UnmetWaybillNos} title={t('driverTable.tooltip.before11Unmet')}>
+              <span className={`text-[18px] font-black tabular-nums ${b11Class}${driver.before11UnmetWaybillNos.length > 0 ? ' cursor-help' : ''}`}>
+                {before11Rate != null ? `${(before11Rate * 100).toFixed(1)}%` : '-'}
+              </span>
+            </WaybillListPopover>
             <div className="text-[13px] text-slate-400 mt-0.5 tabular-nums">
               {driver.before11OfdCount}/{driver.ofdCount}
             </div>
@@ -252,11 +280,13 @@ function DriverRow({ driver, isOdd }: { driver: VendorSnapshotDriver; isOdd: boo
       <td className="px-4 py-3.5 text-center border-b border-slate-100">
         {driver.totalDispatchCount > 0 ? (
           <div>
-            <span className={`text-[18px] font-black tabular-nums ${dClass}`}>
-              {driver.dispatchRate24h != null
-                ? `${(driver.dispatchRate24h * 100).toFixed(1)}%`
-                : '-'}
-            </span>
+            <WaybillListPopover nos={driver.dispatch24hUnmetWaybillNos} title={t('driverTable.tooltip.dispatch24hUnmet')}>
+              <span className={`text-[18px] font-black tabular-nums ${dClass}${driver.dispatch24hUnmetWaybillNos.length > 0 ? ' cursor-help' : ''}`}>
+                {driver.dispatchRate24h != null
+                  ? `${(driver.dispatchRate24h * 100).toFixed(1)}%`
+                  : '-'}
+              </span>
+            </WaybillListPopover>
             <div className="text-[13px] text-slate-400 mt-0.5 tabular-nums">
               {driver.dispatch24hCount}/{driver.totalDispatchCount}
             </div>
@@ -267,9 +297,11 @@ function DriverRow({ driver, isOdd }: { driver: VendorSnapshotDriver; isOdd: boo
       </td>
       <td className="px-4 py-3.5 text-center border-b border-slate-100">
         {driver.returnWarningCount > 0 ? (
-          <span className="inline-flex items-center justify-center rounded-full border border-rose-200 bg-rose-50 px-3 py-1 text-[15px] font-black text-rose-600">
-            {driver.returnWarningCount}
-          </span>
+          <WaybillListPopover nos={driver.returnWarningWaybillNos} title={t('driverTable.tooltip.returnWarning')}>
+            <span className={`inline-flex items-center justify-center rounded-full border border-rose-200 bg-rose-50 px-3 py-1 text-[15px] font-black text-rose-600${driver.returnWarningWaybillNos.length > 0 ? ' cursor-help' : ''}`}>
+              {driver.returnWarningCount}
+            </span>
+          </WaybillListPopover>
         ) : (
           <span className="inline-flex items-center justify-center rounded-full border border-slate-100 bg-slate-50 px-3 py-1 text-[15px] font-semibold text-slate-400">
             0
@@ -278,9 +310,11 @@ function DriverRow({ driver, isOdd }: { driver: VendorSnapshotDriver; isOdd: boo
       </td>
       <td className="px-4 py-3.5 text-center border-b border-slate-100">
         {driver.longTailCount > 0 ? (
-          <span className="inline-flex items-center justify-center rounded-full border border-amber-200 bg-amber-50 px-3 py-1 text-[15px] font-black text-amber-600">
-            {driver.longTailCount}
-          </span>
+          <WaybillListPopover nos={driver.longTailWaybillNos} title={t('driverTable.tooltip.longTail')}>
+            <span className={`inline-flex items-center justify-center rounded-full border border-amber-200 bg-amber-50 px-3 py-1 text-[15px] font-black text-amber-600${driver.longTailWaybillNos.length > 0 ? ' cursor-help' : ''}`}>
+              {driver.longTailCount}
+            </span>
+          </WaybillListPopover>
         ) : (
           <span className="inline-flex items-center justify-center rounded-full border border-slate-100 bg-slate-50 px-3 py-1 text-[15px] font-semibold text-slate-400">
             0

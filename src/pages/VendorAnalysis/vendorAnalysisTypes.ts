@@ -12,16 +12,14 @@ export type VendorPushConfig = {
   id: string
   vendorCode: string
   vendorName: string
+  supplierNickname: string
   webhookUrl: string
   signingSecret: string | null
   pushDescription: string | null
-  isDisabled: boolean
   createdBy: string | null
   createdAt: string
   updatedAt: string
 }
-
-export type VendorPushConfigDraft = Omit<VendorPushConfig, 'id' | 'createdBy' | 'createdAt' | 'updatedAt'>
 
 export type VendorMetrics = {
   complaintCount: number
@@ -50,8 +48,11 @@ export type Before11ExitRatesData = {
 }
 
 export type VendorMetricRow = {
+  /** 推送配置行 id：用于列表渲染 key（vendorCode 在同一供应商配多条推送时可能重复，不能作为唯一键） */
+  id: string
   vendorCode: string
   vendorName: string
+  supplierNickname: string
   complaintCount: number
   waybillCount: number
   complaintRate: number
@@ -75,7 +76,6 @@ export type VendorMetricRow = {
   dispatch24hUnmetWaybillNos: string[]
   /** 客诉单号列表（hover tooltip 用） */
   complaintOrderCodes: string[]
-  isDisabled: boolean
 }
 
 export type ComplaintTicketRow = {

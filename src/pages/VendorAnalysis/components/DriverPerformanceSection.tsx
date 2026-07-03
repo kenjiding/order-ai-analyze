@@ -197,9 +197,6 @@ function VendorBlock({ config, drivers }: VendorBlockProps) {
       >
         <span className="text-sm font-semibold text-slate-800">{config.vendorName}</span>
         <span className="text-xs text-slate-400">{config.vendorCode}</span>
-        {config.isDisabled && (
-          <span className="text-xs text-slate-400">（推送已禁用）</span>
-        )}
 
         <div className="ml-auto flex flex-wrap items-center gap-1.5">
           <SummaryChip variant="amber">⚠ 全员汇总</SummaryChip>

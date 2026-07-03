@@ -176,6 +176,13 @@
       "when": 1783700000000,
       "tag": "0024_fleet_supplier_push_configs_region",
       "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "7",
+      "when": 1783800000000,
+      "tag": "0025_vendor_share_links_report_date",
+      "breakpoints": true
     }
   ]
 }

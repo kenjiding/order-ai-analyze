@@ -35,6 +35,10 @@ function getDateRangeLabel(job: PublicJob): string {
   return start && end ? `${start} ~ ${end}` : '—'
 }
 
+function getReferenceDate(job: PublicJob): string {
+  return typeof job.payload.referenceDate === 'string' && job.payload.referenceDate ? job.payload.referenceDate : '—'
+}
+
 function getProgress(job: PublicJob): string {
   const p = job.progress
   const phase = typeof p.phase === 'string' ? p.phase : ''
@@ -80,6 +84,12 @@ function buildColumns(
       dataIndex: 'createdAt',
       width: 120,
       render: (createdAt: string) => <span className="text-slate-500">{formatRelativeTime(createdAt)}</span>,
+    },
+    {
+      title: '数据参考日期',
+      key: 'referenceDate',
+      width: 120,
+      render: (_, job) => <span className="text-slate-600">{getReferenceDate(job)}</span>,
     },
     {
       title: '站点',
@@ -239,7 +249,7 @@ export function VendorJobsTabContent({ jobs, isLoading, loadingJobId, onRefresh,
             showTotal: (total) => `共 ${total} 条`,
           }}
           locale={{ emptyText: '暂无数据获取任务' }}
-          scroll={{ x: 1000 }}
+          scroll={{ x: 1120 }}
         />
       </div>
     </div>

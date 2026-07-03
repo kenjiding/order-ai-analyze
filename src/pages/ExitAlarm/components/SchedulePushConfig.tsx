@@ -2,7 +2,7 @@ import { Button, Checkbox, TimePicker } from 'antd'
 import { Clock, Plus, Save, X } from 'lucide-react'
 import { useCallback, useEffect, useState } from 'react'
 import dayjs from 'dayjs'
-import type { ExitAlarmSchedule, ExitAlarmScheduleDraft, PushTimeSlot, WeekdayNum } from '../exitAlarmTypes'
+import { AU_REGIONS, type ExitAlarmSchedule, type ExitAlarmScheduleDraft, type PushTimeSlot, type WeekdayNum } from '../exitAlarmTypes'
 
 const WEEKDAYS: { value: WeekdayNum; label: string }[] = [
   { value: 1, label: '周一' },
@@ -57,6 +57,7 @@ export function SchedulePushConfig({ schedule, saving, stationCode, onSave }: Pr
 
   const summaryWeekdays = WEEKDAYS.filter((d) => weekdays.includes(d.value)).map((d) => d.label)
   const summaryTimes = [...pushTimes].sort((a, b) => a.time.localeCompare(b.time)).map((t) => t.time)
+  const regionLabel = AU_REGIONS.find((r) => r.code === schedule?.regionCode)?.name ?? '阿德莱德（默认）'
 
   return (
     <div className="admin-panel overflow-hidden">
@@ -64,7 +65,7 @@ export function SchedulePushConfig({ schedule, saving, stationCode, onSave }: Pr
         <h3 className="admin-title flex items-center gap-1.5 text-base">
           <Clock className="h-4 w-4 text-[var(--admin-accent)]" aria-hidden />
           定时推送配置
-          <span className="ml-1 text-xs font-normal text-slate-400">Adelaide 时区</span>
+          <span className="ml-1 text-xs font-normal text-slate-400">{regionLabel} 时区（跟随本账号州/区域）</span>
         </h3>
         <Button
           type="primary"

@@ -71,7 +71,14 @@
     "before11ExitRate": "11点前出仓率",
     "dispatch24h": "24H 派签",
     "returnWarning": "归班预警",
-    "longTail": "长尾单"
+    "longTail": "长尾单",
+    "tooltip": {
+      "pickup": "运单号",
+      "before11Unmet": "11点前未出仓单号",
+      "dispatch24hUnmet": "24H未达标单号",
+      "returnWarning": "归班预警记录",
+      "longTail": "长尾单单号"
+    }
   },
   "metrics": {
     "sectionTitle": "指标说明",

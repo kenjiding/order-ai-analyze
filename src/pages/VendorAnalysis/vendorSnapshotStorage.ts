@@ -9,12 +9,17 @@ export type VendorSnapshotDriver = {
   courierName: string
   routeCode: string
   ofdCount: number
+  ofdWaybillNos: string[]
   before11OfdCount: number
+  before11UnmetWaybillNos: string[]
   returnWarningCount: number
+  returnWarningWaybillNos: string[]
   dispatch24hCount: number
   totalDispatchCount: number
   dispatchRate24h: number | null
+  dispatch24hUnmetWaybillNos: string[]
   longTailCount: number
+  longTailWaybillNos: string[]
 }
 
 export type VendorSnapshotVendor = {
@@ -108,6 +113,8 @@ export function buildVendorSnapshot(params: {
 }): VendorSnapshotData {
   const { fetchedData, stations, vendorMetrics, driverPerformanceByVendor, configs, aiSummaries } = params
   const fmt = (s: string) => s.slice(5, 10).replace('-', '/')
+  // configs 已经是「本次推送范围（scope 已启用）」的供应商配置；不在其中的即视为未启用
+  const enabledVendorCodes = new Set(configs.map((c) => c.vendorCode))
 
   return {
     reportDate: fetchedData.before11Date,
@@ -122,7 +129,7 @@ export function buildVendorSnapshot(params: {
       vendorName: c.vendorName,
       webhookUrl: c.webhookUrl,
       signingSecret: c.signingSecret,
-      isDisabled: c.isDisabled,
+      isDisabled: false,
     })),
     vendors: vendorMetrics.map((m) => ({
       vendorCode: m.vendorCode,
@@ -137,18 +144,23 @@ export function buildVendorSnapshot(params: {
       notMet24hSignCount: m.notMet24hSignCount,
       unprocessedTicketCount: m.unprocessedTicketCount,
       longTailCount: m.longTailCount,
-      isDisabled: m.isDisabled,
+      isDisabled: !enabledVendorCodes.has(m.vendorCode),
       drivers: (driverPerformanceByVendor[m.vendorCode] ?? []).map((d) => ({
         courierCode: d.courierCode,
         courierName: d.courierName,
         routeCode: d.routeCode,
         ofdCount: d.ofdCount,
+        ofdWaybillNos: d.ofdWaybillNos,
         before11OfdCount: d.before11OfdCount,
+        before11UnmetWaybillNos: d.before11UnmetWaybillNos,
         returnWarningCount: d.returnWarningCount,
+        returnWarningWaybillNos: d.returnWarningWaybillNos,
         dispatch24hCount: d.dispatch24hCount,
         totalDispatchCount: d.totalDispatchCount,
         dispatchRate24h: d.dispatchRate24h,
+        dispatch24hUnmetWaybillNos: d.dispatch24hUnmetWaybillNos,
         longTailCount: d.longTailCount,
+        longTailWaybillNos: d.longTailWaybillNos,
       })),
     })),
   }

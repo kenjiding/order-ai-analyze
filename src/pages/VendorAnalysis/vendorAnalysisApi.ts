@@ -16,8 +16,6 @@ import type {
   StationOption,
   UnprocessedTicketsData,
   VendorOption,
-  VendorPushConfig,
-  VendorPushConfigDraft,
   WaybillRow,
 } from './vendorAnalysisTypes'
 
@@ -121,34 +119,6 @@ export async function getVendorAnalyzeSnapshot(
   })
 }
 
-export async function loadConfigs(): Promise<
-  { ok: true; data: VendorPushConfig[] } | { ok: false; error: string }
-> {
-  return apiFetch<VendorPushConfig[]>('/api/vendor-analysis/configs', { method: 'GET' })
-}
-
-export async function createConfig(
-  draft: VendorPushConfigDraft,
-): Promise<{ ok: true; data: VendorPushConfig } | { ok: false; error: string }> {
-  return apiFetch<VendorPushConfig>('/api/vendor-analysis/configs', {
-    method: 'POST',
-    body: JSON.stringify(draft),
-  })
-}
-
-export async function updateConfig(
-  id: string,
-  draft: VendorPushConfigDraft,
-): Promise<{ ok: true; data: VendorPushConfig } | { ok: false; error: string }> {
-  return apiFetch<VendorPushConfig>(`/api/vendor-analysis/configs/${id}`, {
-    method: 'PUT',
-    body: JSON.stringify(draft),
-  })
-}
-
-export async function deleteConfig(id: string): Promise<{ ok: true } | { ok: false; error: string }> {
-  return apiFetch<undefined>(`/api/vendor-analysis/configs/${id}`, { method: 'DELETE' })
-}
 
 export type VendorAiDriverInput = {
   courierName: string
@@ -215,6 +185,7 @@ export type VendorShareLink = {
   id: string
   vendorCode: string
   vendorName: string
+  reportDate: string
   token: string
   isDisabled: boolean
   createdAt: string
@@ -222,20 +193,14 @@ export type VendorShareLink = {
   lastAccessedAt: string | null
 }
 
-export async function listShareLinks(): Promise<
-  { ok: true; data: VendorShareLink[] } | { ok: false; error: string }
-> {
-  return apiFetch<VendorShareLink[]>('/api/vendor-analysis/share-links', { method: 'GET' })
-}
-
-export async function createShareLink(
-  vendorCode: string,
-  vendorName: string,
-): Promise<{ ok: true; data: VendorShareLink } | { ok: false; error: string }> {
-  return apiFetch<VendorShareLink>('/api/vendor-analysis/share-links', {
-    method: 'POST',
-    body: JSON.stringify({ vendorCode, vendorName }),
-  })
+/** 分享链接按 (vendorCode, reportDate) 绑定，发布日报时自动开通；这里只查某一天的 */
+export async function listShareLinks(
+  reportDate: string,
+): Promise<{ ok: true; data: VendorShareLink[] } | { ok: false; error: string }> {
+  return apiFetch<VendorShareLink[]>(
+    `/api/vendor-analysis/share-links?reportDate=${encodeURIComponent(reportDate)}`,
+    { method: 'GET' },
+  )
 }
 
 /** 重置 token：旧链接立即失效 */

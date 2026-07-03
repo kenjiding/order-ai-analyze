@@ -1,5 +1,5 @@
 import { Router, type Request, type Response, type NextFunction } from 'express'
-import { desc, eq } from 'drizzle-orm'
+import { eq } from 'drizzle-orm'
 import { getDb, schema } from '../db'
 
 /**
@@ -52,12 +52,17 @@ type ReportDriver = {
   courierName?: unknown
   routeCode?: unknown
   ofdCount?: unknown
+  ofdWaybillNos?: unknown
   before11OfdCount?: unknown
+  before11UnmetWaybillNos?: unknown
   returnWarningCount?: unknown
+  returnWarningWaybillNos?: unknown
   dispatch24hCount?: unknown
   totalDispatchCount?: unknown
   dispatchRate24h?: unknown
+  dispatch24hUnmetWaybillNos?: unknown
   longTailCount?: unknown
+  longTailWaybillNos?: unknown
 }
 
 type ReportVendor = {
@@ -90,6 +95,7 @@ const num = (v: unknown): number => (typeof v === 'number' && Number.isFinite(v)
 const numOrNull = (v: unknown): number | null => (typeof v === 'number' && Number.isFinite(v) ? v : null)
 const str = (v: unknown): string => (typeof v === 'string' ? v : '')
 const strOrNull = (v: unknown): string | null => (typeof v === 'string' ? v : null)
+const strArr = (v: unknown): string[] => (Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string') : [])
 
 /** 显式白名单构造司机行，防止 payload 中的多余字段泄漏 */
 function pickDriver(raw: ReportDriver) {
@@ -98,12 +104,17 @@ function pickDriver(raw: ReportDriver) {
     courierName: str(raw.courierName),
     routeCode: str(raw.routeCode),
     ofdCount: num(raw.ofdCount),
+    ofdWaybillNos: strArr(raw.ofdWaybillNos),
     before11OfdCount: num(raw.before11OfdCount),
+    before11UnmetWaybillNos: strArr(raw.before11UnmetWaybillNos),
     returnWarningCount: num(raw.returnWarningCount),
+    returnWarningWaybillNos: strArr(raw.returnWarningWaybillNos),
     dispatch24hCount: num(raw.dispatch24hCount),
     totalDispatchCount: num(raw.totalDispatchCount),
     dispatchRate24h: numOrNull(raw.dispatchRate24h),
+    dispatch24hUnmetWaybillNos: strArr(raw.dispatch24hUnmetWaybillNos),
     longTailCount: num(raw.longTailCount),
+    longTailWaybillNos: strArr(raw.longTailWaybillNos),
   }
 }
 
@@ -160,9 +171,9 @@ vendorPortalRouter.get('/daily/:token', rateLimit, async (req: Request, res: Res
     }
 
     const [report] = await db
-      .select({ payload: schema.vendorDailyReports.payload, createdAt: schema.vendorDailyReports.createdAt })
+      .select({ payload: schema.vendorDailyReports.payload })
       .from(schema.vendorDailyReports)
-      .orderBy(desc(schema.vendorDailyReports.createdAt))
+      .where(eq(schema.vendorDailyReports.reportDate, link.reportDate))
       .limit(1)
     if (!report) {
       sendNotFound(res)

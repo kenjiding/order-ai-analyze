@@ -18,7 +18,8 @@ import {
   stripEditorContentForPreview,
 } from '../feishuEditorContent'
 import { pushFleetRichMessage } from '../pushFleetRichMessage'
-import type { FleetSupplierConfig } from '../fleetSupplierPushTypes'
+import type { FleetSupplierConfig, FleetSupplierConfigDraft } from '../fleetSupplierPushTypes'
+import { LEGACY_GLOBAL_SUPPLIER_REGION_CODE, supplierDisplayName } from '../fleetSupplierPushTypes'
 import {
   apiCreateFleetSupplier,
   apiDeleteFleetSupplier,
@@ -35,6 +36,8 @@ import { withRetry } from '../feishuPushRetry'
 import { showToast } from '../../../utils/toast'
 import { confirmDialog } from '../../../utils/confirmDialog'
 import { PERMISSION_KEYS, usePermission } from '../../../hooks/usePermission'
+import { useAppSettings } from '../../../context/AppSettingsContext'
+import { fetchVendors } from '../../VendorAnalysis/vendorAnalysisApi'
 import { FleetSupplierEditModal } from './FleetSupplierEditModal'
 import { FeishuLarkMdEditor } from './FeishuLarkMdEditor'
 import './fleetSupplierPushTab.css'
@@ -56,6 +59,7 @@ type Props = {
 export function FleetSupplierPushTab({
   supplierSecretsVisibility = 'full',
 }: Props) {
+  const { imileToken } = useAppSettings()
   const canSend = usePermission(PERMISSION_KEYS.btnPushNotificationsFleetSupplier)
   const [globalPushText, setGlobalPushText] = useState('')
   // 天气预报开关与城市：从 localStorage 恢复，设置一次后长期保留
@@ -67,6 +71,8 @@ export function FleetSupplierPushTab({
   }, [weatherEnabled, weatherCity])
   const [pushImages, setPushImages] = useState<LocalPushImage[]>([])
   const [suppliers, setSuppliers] = useState<FleetSupplierConfig[]>([])
+  const [vendors, setVendors] = useState<Array<{ vendorCode: string; vendorNameEn: string }>>([])
+  const [vendorsLoading, setVendorsLoading] = useState(false)
   const [configsLoading, setConfigsLoading] = useState(true)
   const [selectedSupplierKeys, setSelectedSupplierKeys] = useState<Key[]>([])
 
@@ -87,7 +93,7 @@ export function FleetSupplierPushTab({
   const [pushing, setPushing] = useState(false)
   const [scanParsing, setScanParsing] = useState(false)
 
-  type PushFailEntry = { supplierId: string; supplierName: string; errors: string[] }
+  type PushFailEntry = { supplierId: string; supplierLabel: string; errors: string[] }
   const [lastPushFails, setLastPushFails] = useState<PushFailEntry[]>([])
   const [pushImagesLoading, setPushImagesLoading] = useState(false)
   const scanFileInputRef = useRef<HTMLInputElement>(null)
@@ -109,6 +115,19 @@ export function FleetSupplierPushTab({
     })()
     return () => { cancelled = true }
   }, [])
+
+  useEffect(() => {
+    let cancelled = false
+    setVendorsLoading(true)
+    void fetchVendors(imileToken).then((res) => {
+      if (cancelled) return
+      setVendorsLoading(false)
+      if (res.ok) {
+        setVendors(res.data.map((v) => ({ vendorCode: v.vendorCode, vendorNameEn: v.vendorNameEn })))
+      }
+    })
+    return () => { cancelled = true }
+  }, [imileToken])
 
   const supplierIdSet = useMemo(() => new Set(suppliers.map((s) => s.id)), [suppliers])
   const effectiveSelectedKeys = useMemo(
@@ -166,17 +185,17 @@ export function FleetSupplierPushTab({
     }
   }
 
-  const handleCommitted = async (values: Omit<FleetSupplierConfig, 'id'>) => {
+  const handleCommitted = async (values: FleetSupplierConfigDraft) => {
     if (editing) {
       const res = await apiUpdateFleetSupplier(editing.id, values)
       if (!res.ok) { showToast(`更新失败：${res.error}`, 'error'); return }
       setSuppliers((prev) => prev.map((s) => s.id === editing.id ? res.data : s))
-      showToast(`已更新供应商「${values.supplierName || editing.supplierName}」。`, 'success')
+      showToast(`已更新供应商「${values.supplierNickname || editing.supplierNickname}」。`, 'success')
     } else {
       const res = await apiCreateFleetSupplier(values)
       if (!res.ok) { showToast(`添加失败：${res.error}`, 'error'); return }
       setSuppliers((prev) => [...prev, res.data])
-      showToast(`已添加供应商「${values.supplierName}」。`, 'success')
+      showToast(`已添加供应商「${values.supplierNickname}」。`, 'success')
     }
     setModalOpen(false)
     setEditing(null)
@@ -186,7 +205,7 @@ export function FleetSupplierPushTab({
     const res = await apiDeleteFleetSupplier(row.id)
     if (!res.ok) { showToast(`删除失败：${res.error}`, 'error'); return }
     setSuppliers((prev) => prev.filter((s) => s.id !== row.id))
-    showToast(`已移除「${row.supplierName}」。`, 'success')
+    showToast(`已移除「${supplierDisplayName(row)}」。`, 'success')
   }
 
   const removePushImage = (id: string) => {
@@ -290,7 +309,7 @@ export function FleetSupplierPushTab({
         } else {
           try {
             const png = await captureFleetRouteReportPng({
-              title: `${s.supplierName || '供应商'} · 货量汇总`,
+              title: `${supplierDisplayName(s)} · 货量汇总`,
               subtitle: '',
               buckets,
             })
@@ -337,9 +356,9 @@ export function FleetSupplierPushTab({
     for (const s of targets) {
       const errs = await pushForSupplier(s, globalText, weatherLarkMd)
       if (errs.length === 0) {
-        oks.push(s.supplierName || s.routeCode)
+        oks.push(supplierDisplayName(s))
       } else {
-        fails.push({ supplierId: s.id, supplierName: s.supplierName || s.routeCode, errors: errs })
+        fails.push({ supplierId: s.id, supplierLabel: supplierDisplayName(s), errors: errs })
       }
     }
     setLastPushFails(fails)
@@ -496,11 +515,22 @@ export function FleetSupplierPushTab({
 
     return [
       {
-        title: '供应商名称',
-        dataIndex: 'supplierName',
-        key: 'supplierName',
-        width: 160,
-        ellipsis: true,
+        title: '供应商',
+        key: 'vendor',
+        width: 200,
+        render: (_, row) => (
+          <div>
+            <div className="flex items-center gap-1.5">
+              <span className="font-medium text-slate-800">{supplierDisplayName(row)}</span>
+              {row.regionCode === LEGACY_GLOBAL_SUPPLIER_REGION_CODE ? (
+                <Tooltip title="迁移前的历史配置，不属于某个州，全部州共享可见、可编辑">
+                  <span className="rounded bg-slate-100 px-1.5 py-0.5 text-[10px] text-slate-500">历史·全部州</span>
+                </Tooltip>
+              ) : null}
+            </div>
+            <div className="text-xs text-slate-400">{row.vendorCode || '—'}</div>
+          </div>
+        ),
       },
       {
         title: '路由编码',
@@ -527,7 +557,7 @@ export function FleetSupplierPushTab({
       {
         title: '操作',
         key: 'actions',
-        width: 150,
+        width: 140,
         fixed: 'right',
         render: (_, row) => (
           <div className="flex flex-nowrap items-center gap-0">
@@ -665,7 +695,7 @@ export function FleetSupplierPushTab({
               <ul className="fs-push-fail-list">
                 {lastPushFails.map((f) => (
                   <li key={f.supplierId} className="fs-push-fail-item">
-                    <span className="fs-push-fail-name">「{f.supplierName}」</span>
+                    <span className="fs-push-fail-name">「{f.supplierLabel}」</span>
                     <span className="fs-push-fail-errors">{f.errors.join('；')}</span>
                   </li>
                 ))}
@@ -739,6 +769,9 @@ export function FleetSupplierPushTab({
                 selectedRowKeys: effectiveSelectedKeys,
                 onChange: setSelectedSupplierKeys,
                 columnWidth: 44,
+                getCheckboxProps: (row) => ({
+                  disabled: !row.webhookUrl.trim(),
+                }),
               }}
               locale={{
                 emptyText: secretsHidden
@@ -754,6 +787,8 @@ export function FleetSupplierPushTab({
       <FleetSupplierEditModal
         open={modalOpen}
         editing={editing}
+        vendors={vendors}
+        vendorsLoading={vendorsLoading}
         secretsVisibility={secretsHidden ? 'hidden' : 'full'}
         onCancel={() => {
           setModalOpen(false)

@@ -199,7 +199,7 @@ export const vendorAnalysisSnapshots = pgTable(
   ],
 )
 
-/** 供应商数据日报发布记录：openSnapshot 生成的最终指标+司机表现+AI 总结（不含 webhook 配置），供外部分享链接读取 */
+/** 供应商数据日报发布记录：每个 reportDate 一行（重复发布覆盖），供外部分享链接读取 */
 export const vendorDailyReports = pgTable(
   'vendor_daily_reports',
   {
@@ -209,16 +209,20 @@ export const vendorDailyReports = pgTable(
     createdBy: uuid('created_by').references(() => users.id, { onDelete: 'set null' }),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
-  (table) => [index('vendor_daily_reports_created_at_idx').on(table.createdAt)],
+  (table) => [
+    uniqueIndex('vendor_daily_reports_report_date_unique').on(table.reportDate),
+    index('vendor_daily_reports_created_at_idx').on(table.createdAt),
+  ],
 )
 
-/** 供应商数据日报分享链接：每个供应商一条长期固定链接，可禁用/重置 */
+/** 供应商数据日报分享链接：每个供应商每天一条，日报发布时自动开通，可禁用/重置；仅保留最近 7 天 */
 export const vendorShareLinks = pgTable(
   'vendor_share_links',
   {
     id: uuid('id').primaryKey().defaultRandom(),
     vendorCode: varchar('vendor_code', { length: 64 }).notNull(),
     vendorName: varchar('vendor_name', { length: 255 }).notNull(),
+    reportDate: varchar('report_date', { length: 10 }).notNull(),
     token: varchar('token', { length: 128 }).notNull(),
     isDisabled: boolean('is_disabled').notNull().default(false),
     createdBy: uuid('created_by').references(() => users.id, { onDelete: 'set null' }),
@@ -227,8 +231,9 @@ export const vendorShareLinks = pgTable(
     lastAccessedAt: timestamp('last_accessed_at', { withTimezone: true }),
   },
   (table) => [
-    uniqueIndex('vendor_share_links_vendor_code_unique').on(table.vendorCode),
+    uniqueIndex('vendor_share_links_vendor_date_unique').on(table.vendorCode, table.reportDate),
     uniqueIndex('vendor_share_links_token_unique').on(table.token),
+    index('vendor_share_links_report_date_idx').on(table.reportDate),
   ],
 )
 

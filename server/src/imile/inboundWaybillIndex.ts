@@ -156,6 +156,7 @@ export function getRegionNow(tz: AusTz = AUS_TZ.Adelaide): {
   timeHHmm: string
   dateStr: string
   prevDateStr: string
+  dayBeforeDateStr: string
 } {
   const now = new Date()
   const parts = new Intl.DateTimeFormat('en-CA', {
@@ -182,8 +183,9 @@ export function getRegionNow(tz: AusTz = AUS_TZ.Adelaide): {
 
   const todayStartMs = localToUtcMs(`${dateStr} 00:00:00`, tz)
   const prevDateStr = utcMsToLocalStr(todayStartMs - 60_000, tz).slice(0, 10)
+  const dayBeforeDateStr = utcMsToLocalStr(todayStartMs - 24 * 60 * 60 * 1000 - 60_000, tz).slice(0, 10)
 
-  return { weekday, timeHHmm, dateStr, prevDateStr }
+  return { weekday, timeHHmm, dateStr, prevDateStr, dayBeforeDateStr }
 }
 
 export function regionDateToMelbourneRange(
@@ -299,6 +301,19 @@ export async function fetchInboundWaybillNos(input: {
  * 读 DB 索引；缺失时 inbound 拉取并可选写回。
  * forceRefresh=true 时忽略缓存重新拉到件。
  */
+function logInboundIndexPrefetch(input: {
+  label?: string
+  stationCode: string
+  dateStr: string
+  count: number
+  fromCache: boolean
+}): void {
+  const tag = input.label?.trim() ? ` ${input.label.trim()}` : ''
+  console.log(
+    `[inbound-index/pre]${tag} station=${input.stationCode} date=${input.dateStr} count=${input.count} source=${input.fromCache ? 'cache' : 'inbound/query'}`,
+  )
+}
+
 export async function getOrFetchInboundWaybillNos(input: {
   token: string
   stationCode: string
@@ -310,6 +325,13 @@ export async function getOrFetchInboundWaybillNos(input: {
   if (!input.forceRefresh) {
     const cached = await loadInboundWaybillIndex(input.stationCode, input.dateStr)
     if (cached) {
+      logInboundIndexPrefetch({
+        label: input.label,
+        stationCode: input.stationCode,
+        dateStr: input.dateStr,
+        count: cached.length,
+        fromCache: true,
+      })
       return { ok: true, waybillNos: cached, fromCache: true }
     }
   }
@@ -329,6 +351,14 @@ export async function getOrFetchInboundWaybillNos(input: {
       waybillNos: inbound.waybillNos,
     })
   }
+
+  logInboundIndexPrefetch({
+    label: input.label,
+    stationCode: input.stationCode,
+    dateStr: input.dateStr,
+    count: inbound.waybillNos.length,
+    fromCache: false,
+  })
 
   return { ok: true, waybillNos: inbound.waybillNos, fromCache: false }
 }

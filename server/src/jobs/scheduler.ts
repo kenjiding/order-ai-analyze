@@ -6,6 +6,7 @@ import {
   runDailyInboundWaybillIndexPrefetch,
 } from '../imile/inboundWaybillIndexScheduler'
 import { INBOUND_INDEX_ADELAIDE_TZ } from '../imile/inboundWaybillIndex'
+import { purgeOldVendorDailyData } from '../vendorAnalysis/retention'
 import { readJobSchedulerEnabled } from './config'
 
 export function startJobScheduler(): { stop: () => void } {
@@ -77,6 +78,33 @@ export function startJobScheduler(): { stop: () => void } {
     `[scheduler] 已启动到件索引预取任务 cron="${inboundIndexCronValid}" timezone="${INBOUND_INDEX_ADELAIDE_TZ}"`,
   )
   void logInboundIndexSchedulerReadiness()
+
+  // 供应商日报/分享链接保留期清理：每日 06:30 阿德莱德，删除超过 7 天的旧数据
+  const vendorReportRetentionCron = process.env.VENDOR_REPORT_RETENTION_CRON?.trim() || '30 6 * * *'
+  const vendorReportRetentionCronValid = cron.validate(vendorReportRetentionCron)
+    ? vendorReportRetentionCron
+    : '30 6 * * *'
+  if (!cron.validate(vendorReportRetentionCron)) {
+    console.error(
+      `[scheduler] VENDOR_REPORT_RETENTION_CRON 表达式无效: "${vendorReportRetentionCron}"，使用默认值 "30 6 * * *"`,
+    )
+  }
+  const vendorReportRetentionTask = cron.schedule(
+    vendorReportRetentionCronValid,
+    async () => {
+      try {
+        const { reports, links } = await purgeOldVendorDailyData()
+        console.log(`[scheduler/vendor-report-retention] 已清理 ${reports} 条日报 / ${links} 条分享链接`)
+      } catch (err) {
+        console.error('[scheduler/vendor-report-retention] 清理异常:', err)
+      }
+    },
+    { timezone: INBOUND_INDEX_ADELAIDE_TZ },
+  )
+  tasks.push(vendorReportRetentionTask)
+  console.log(
+    `[scheduler] 已启动供应商日报保留期清理任务 cron="${vendorReportRetentionCronValid}" timezone="${INBOUND_INDEX_ADELAIDE_TZ}"`,
+  )
 
   return {
     stop: () => {
