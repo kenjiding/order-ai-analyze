@@ -1,6 +1,7 @@
 import { Router, type Request, type Response } from 'express'
 import { eq } from 'drizzle-orm'
 import { runOrderAnalyzePipeline } from '../orderAnalyze/pipeline'
+import { reclassifyOutWarehouseLossWithCancelScan } from '../orderAnalyze/cancelScanReclassify'
 import { parseWarehouseConfigInput } from '../orderAnalyze/warehouseProfiles'
 import type { AnalyzeTarget } from '../openaiOrderAnalyze'
 import {
@@ -288,6 +289,7 @@ orderExceptionRouter.post('/analyze', async (req: Request, res: Response) => {
       orderNos?: string[]
       aiProvider?: string
       enableAiExplain?: boolean
+      scanStationCode?: string
     }>(req)
     const token = readImileToken(req, body.imileToken)
     const orderNos = Array.isArray(body.orderNos)
@@ -338,13 +340,20 @@ orderExceptionRouter.post('/analyze', async (req: Request, res: Response) => {
 
     const aiStartedAt = performance.now()
     const warehouseConfig = parseWarehouseConfigInput(warehouseConfigPayload)
-    const { results, tokenUsage, trackFacts } = await runOrderAnalyzePipeline({
+    const { results: pipelineResults, tokenUsage, trackFacts } = await runOrderAnalyzePipeline({
       targets,
       aiProvider,
       enableAiExplain,
       warehouseConfig,
     })
     const aiMs = Math.round(performance.now() - aiStartedAt)
+
+    const { results, meta: cancelScanRecheck } = await reclassifyOutWarehouseLossWithCancelScan({
+      results: pipelineResults,
+      trackFacts,
+      imileToken: token,
+      scanStationCode: body.scanStationCode,
+    })
 
     res.json({
       results,
@@ -354,6 +363,7 @@ orderExceptionRouter.post('/analyze', async (req: Request, res: Response) => {
       tokenUsage,
       timing: { imileMs, aiMs },
       trackFacts,
+      cancelScanRecheck,
     })
   } catch (e) {
     res.status(500).json({ error: (e as Error).message || '分析失败' })
@@ -368,6 +378,7 @@ orderExceptionRouter.post('/analyze-async', async (req: Request, res: Response) 
       orderNos?: string[]
       aiProvider?: string
       enableAiExplain?: boolean
+      scanStationCode?: string
     }>(req)
     const token = readImileToken(req, body.imileToken)
     const orderNos = Array.isArray(body.orderNos)
@@ -388,11 +399,12 @@ orderExceptionRouter.post('/analyze-async', async (req: Request, res: Response) 
 
     const aiProvider = String(body.aiProvider ?? 'deepseek').trim().toLowerCase() === 'openai' ? 'openai' : 'deepseek'
     const enableAiExplain = body.enableAiExplain === true
+    const scanStationCode = String(body.scanStationCode ?? '').trim() || undefined
     const authReq = req as AuthenticatedRequest
 
     const job = await enqueueJob({
       type: ORDER_ANALYZE_JOB_TYPE,
-      payload: { imileToken: token, orderNos, aiProvider, enableAiExplain },
+      payload: { imileToken: token, orderNos, aiProvider, enableAiExplain, scanStationCode },
       regionCode: authReq.authUser?.regionCode ?? null,
       createdBy: authReq.authUser?.id ?? null,
       maxAttempts: 2,

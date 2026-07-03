@@ -21,7 +21,6 @@ export function ScanDataIntakePanel({ vm }: Props) {
     handleSaveDailyRecords,
     canSaveDailyRecords,
     savingDailyRecords,
-    clearAttendance,
     clearAll,
     scanSourceInfo,
     attendanceSourceInfo,
@@ -104,103 +103,77 @@ export function ScanDataIntakePanel({ vm }: Props) {
         </Radio.Group>
       </div>
 
-      <div className="grid gap-3 sm:grid-cols-2">
-        <div className="se-intake-lane min-w-0">
-          <div className="se-intake-lane-label">
-            到件 <span>必传</span>
-          </div>
-          <div className="mt-2.5 flex min-w-0 flex-col gap-2">
-            {mode === 'upload' ? (
-              <>
-                <input
-                  ref={scanFileInputRef}
-                  type="file"
-                  accept=".xlsx,.xls"
-                  multiple
-                  className="hidden"
-                  disabled={actionsDisabled}
-                  onChange={(event) => {
-                    void handleScanFileChange(event.target.files)
-                    event.target.value = ''
-                  }}
-                />
-                <Button
-                  type="default"
-                  block
-                  icon={<Upload className="h-4 w-4" aria-hidden />}
-                  disabled={actionsDisabled}
-                  onClick={() => scanFileInputRef.current?.click()}
-                >
-                  上传到件扫描
-                </Button>
-                <p className="text-[11px] text-[var(--admin-muted)]">.xlsx / .xls，可多选</p>
-              </>
-            ) : (
-              <div className="flex min-w-0 flex-wrap items-center gap-2">
-                <DatePicker.RangePicker
-                  value={range}
-                  onChange={(values) => handleRangeChange(values as [Dayjs, Dayjs] | null)}
-                  allowClear
-                  format="YYYY-MM-DD"
-                  disabled={actionsDisabled}
-                  className="w-[17.5rem]"
-                />
-                <Button
-                  type="primary"
-                  icon={<CloudDownload className="h-4 w-4" aria-hidden />}
-                  loading={loading}
-                  disabled={!apiDateRange || readOnly}
-                  onClick={handleFetch}
-                >
-                  获取数据
-                </Button>
-              </div>
-            )}
-          </div>
-        </div>
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+        {mode === 'upload' ? (
+          <>
+            <input
+              ref={scanFileInputRef}
+              type="file"
+              accept=".xlsx,.xls"
+              multiple
+              className="hidden"
+              disabled={actionsDisabled}
+              onChange={(event) => {
+                void handleScanFileChange(event.target.files)
+                event.target.value = ''
+              }}
+            />
+            <Button
+              type="default"
+              icon={<Upload className="h-4 w-4" aria-hidden />}
+              disabled={actionsDisabled}
+              onClick={() => scanFileInputRef.current?.click()}
+            >
+              上传到件扫描
+            </Button>
+          </>
+        ) : (
+          <>
+            <DatePicker.RangePicker
+              value={range}
+              onChange={(values) => handleRangeChange(values as [Dayjs, Dayjs] | null)}
+              allowClear
+              format="YYYY-MM-DD"
+              disabled={actionsDisabled}
+            />
+            <Button
+              type="primary"
+              icon={<CloudDownload className="h-4 w-4" aria-hidden />}
+              loading={loading}
+              disabled={!apiDateRange || readOnly}
+              onClick={handleFetch}
+            >
+              获取数据
+            </Button>
+          </>
+        )}
 
-        <div className="se-intake-lane min-w-0">
-          <div className="se-intake-lane-label">
-            考勤 <span>可选</span>
-          </div>
-          <div className="mt-2.5 flex min-w-0 flex-col gap-2">
-            {mode === 'upload' ? (
-              <>
-                <input
-                  ref={attendanceFileInputRef}
-                  type="file"
-                  accept=".csv,.xlsx,.xls"
-                  multiple
-                  className="hidden"
-                  disabled={actionsDisabled}
-                  onChange={(event) => {
-                    void handleAttendanceFileChange(event.target.files)
-                    event.target.value = ''
-                  }}
-                />
-                <Button
-                  type="default"
-                  block
-                  icon={<Users className="h-4 w-4" aria-hidden />}
-                  disabled={actionsDisabled}
-                  onClick={() => attendanceFileInputRef.current?.click()}
-                >
-                  上传考勤
-                </Button>
-                <p className="text-[11px] text-[var(--admin-muted)]">.csv / .xlsx / .xls</p>
-              </>
-            ) : (
-              <p className="rounded-md border border-dashed border-[var(--admin-line)] bg-slate-50/80 px-3 py-2.5 text-xs leading-relaxed text-[var(--admin-muted)]">
-                API 模式下点击左侧「获取数据」时，将同步从 ZKT 拉取考勤（账号在系统设置中配置）。
-              </p>
-            )}
-          </div>
-        </div>
-      </div>
+        {mode === 'upload' ? (
+          <>
+            <input
+              ref={attendanceFileInputRef}
+              type="file"
+              accept=".csv,.xlsx,.xls"
+              multiple
+              className="hidden"
+              disabled={actionsDisabled}
+              onChange={(event) => {
+                void handleAttendanceFileChange(event.target.files)
+                event.target.value = ''
+              }}
+            />
+            <Button
+              type="default"
+              icon={<Users className="h-4 w-4" aria-hidden />}
+              disabled={actionsDisabled}
+              onClick={() => attendanceFileInputRef.current?.click()}
+            >
+              上传考勤
+            </Button>
+          </>
+        ) : null}
 
-      <div className="flex flex-col gap-2 border-t border-[var(--admin-line)] pt-3 sm:flex-row sm:items-center sm:justify-between">
-        <p className="min-w-0 text-xs leading-relaxed text-[var(--admin-muted)] tabular-nums">{statusLine}</p>
-        <div className="flex flex-wrap items-center gap-1.5 sm:justify-end">
+        <div className="flex items-center gap-1.5">
           <Tooltip
             title={
               canSaveDailyRecords
@@ -218,16 +191,15 @@ export function ScanDataIntakePanel({ vm }: Props) {
               保存
             </Button>
           </Tooltip>
-          <Tooltip title="仅清除考勤数据，保留到件扫描">
-            <Button type="default" danger disabled={actionsDisabled} onClick={clearAttendance}>
-              清空考勤
-            </Button>
-          </Tooltip>
-          <Button type="default" disabled={actionsDisabled} onClick={clearAll}>
+          <Button type="default" danger disabled={actionsDisabled} onClick={clearAll}>
             清空全部
           </Button>
         </div>
       </div>
+
+      <p className="min-w-0 border-t border-[var(--admin-line)] pt-3 text-xs leading-relaxed text-[var(--admin-muted)] tabular-nums">
+        {statusLine}
+      </p>
     </div>
   )
 }

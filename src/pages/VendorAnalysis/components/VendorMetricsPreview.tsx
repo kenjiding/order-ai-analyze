@@ -359,9 +359,11 @@ function VendorCard({ row, fetchedData, drivers }: VendorCardProps) {
 
             <KpiCard
               value={
-                <span className={row.unprocessedTicketCount > 0 ? 'text-red-600' : 'text-slate-400'}>
-                  {row.unprocessedTicketCount}
-                </span>
+                <WaybillListPopover nos={row.unprocessedTicketOrderCodes} title="未处理工单单号" placement="bottom">
+                  <span className={`${row.unprocessedTicketCount > 0 ? 'text-red-600' : 'text-slate-400'}${row.unprocessedTicketOrderCodes.length > 0 ? ' cursor-help' : ''}`}>
+                    {row.unprocessedTicketCount}
+                  </span>
+                </WaybillListPopover>
               }
               label="未处理工单（件）"
               sub={

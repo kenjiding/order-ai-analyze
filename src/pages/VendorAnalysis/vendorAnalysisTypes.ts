@@ -57,6 +57,8 @@ export type VendorMetricRow = {
   waybillCount: number
   complaintRate: number
   unprocessedTicketCount: number
+  /** 未处理工单单号列表（hover tooltip 用） */
+  unprocessedTicketOrderCodes: string[]
   longTailCount: number
   /** 11点前出仓率，未返回时为 null */
   before11ExitRate: number | null

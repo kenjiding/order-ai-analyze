@@ -163,6 +163,14 @@ function renderReasonCell(r: Row): ReactNode {
       </span>
     )
   }
+  if (reason.startsWith('[取消扫描核验纠正]')) {
+    return (
+      <span>
+        <span className="font-semibold text-amber-600">[取消扫描核验纠正]</span>
+        <span className="text-slate-700">{reason.slice('[取消扫描核验纠正]'.length)}</span>
+      </span>
+    )
+  }
   return <span className="text-slate-700">{reason}</span>
 }
 

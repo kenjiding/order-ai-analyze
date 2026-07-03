@@ -464,18 +464,25 @@ export function useVendorAnalysisPage() {
     }
 
     const unprocessedCountByVendor = new Map<string, number>()
+    const unprocessedOrderCodesByVendor = new Map<string, string[]>()
+    const addUnprocessed = (key: string, orderCode: unknown) => {
+      unprocessedCountByVendor.set(key, (unprocessedCountByVendor.get(key) ?? 0) + 1)
+      const code = typeof orderCode === 'string' ? orderCode : ''
+      if (!code) return
+      let arr = unprocessedOrderCodesByVendor.get(key)
+      if (!arr) { arr = []; unprocessedOrderCodesByVendor.set(key, arr) }
+      arr.push(code)
+    }
     const { normalTickets, complaintTickets, arbitrationTickets } = fetchedData.unprocessedTickets
     for (const t of normalTickets) {
       const row = t as NormalUnprocessedTicketRow
       if (stationSet.size > 0 && !stationSet.has(row.currentHandleStationCode ?? '')) continue
-      const key = row.currentHandleCode ?? ''
-      unprocessedCountByVendor.set(key, (unprocessedCountByVendor.get(key) ?? 0) + 1)
+      addUnprocessed(row.currentHandleCode ?? '', row.orderCode)
     }
     for (const t of [...complaintTickets, ...arbitrationTickets]) {
       const row = t as HubUnprocessedTicketRow
       if (stationSet.size > 0 && !stationSet.has(row.relatedResponsibleHubCode ?? '')) continue
-      const key = row.responsibleDeptCode ?? ''
-      unprocessedCountByVendor.set(key, (unprocessedCountByVendor.get(key) ?? 0) + 1)
+      addUnprocessed(row.responsibleDeptCode ?? '', row.orderCode)
     }
 
     // 24H 派签率：前天运单，按站点过滤后按供应商统计达标情况
@@ -532,7 +539,7 @@ export function useVendorAnalysisPage() {
       arr.push(wbNo)
     }
 
-    return { waybillsByVendor, ticketsByVendor, longTailByVendor, unprocessedCountByVendor, stationSet, dispatch24hByVendor, before11UnmetByVendor }
+    return { waybillsByVendor, ticketsByVendor, longTailByVendor, unprocessedCountByVendor, unprocessedOrderCodesByVendor, stationSet, dispatch24hByVendor, before11UnmetByVendor }
   }, [fetchedData, selectedStations, targetTz])
 
   const pushAll = useCallback(async () => {
@@ -807,12 +814,13 @@ export function useVendorAnalysisPage() {
 
   const vendorMetrics = useMemo<VendorMetricRow[]>(() => {
     if (!fetchedData || !indexedData) return []
-    const { waybillsByVendor, ticketsByVendor, longTailByVendor, unprocessedCountByVendor, dispatch24hByVendor, before11UnmetByVendor } = indexedData
+    const { waybillsByVendor, ticketsByVendor, longTailByVendor, unprocessedCountByVendor, unprocessedOrderCodesByVendor, dispatch24hByVendor, before11UnmetByVendor } = indexedData
     return configs.map((config) => {
       const complaintCount = ticketsByVendor.get(config.vendorCode)?.length ?? 0
       const waybillCount = waybillsByVendor.get(config.vendorCode)?.length ?? 0
       const complaintRate = waybillCount > 0 ? complaintCount / waybillCount : 0
       const unprocessedTicketCount = unprocessedCountByVendor.get(config.vendorCode) ?? 0
+      const unprocessedTicketOrderCodes = unprocessedOrderCodesByVendor.get(config.vendorCode) ?? []
       const longTailCount = longTailByVendor.get(config.vendorCode)?.length ?? 0
       const vendorCode = normalizeVendorCode(config.vendorCode)
       const before11 = fetchedData.before11ExitRateByVendor[vendorCode]
@@ -834,6 +842,7 @@ export function useVendorAnalysisPage() {
         waybillCount,
         complaintRate,
         unprocessedTicketCount,
+        unprocessedTicketOrderCodes,
         longTailCount,
         before11ExitRate: before11?.before11ExitRate ?? null,
         before11ExitVolume: before11?.before11ExitVolume ?? null,

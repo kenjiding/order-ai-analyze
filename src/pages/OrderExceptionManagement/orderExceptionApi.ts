@@ -273,10 +273,18 @@ export type OrderTrackFacts = {
   unknownWarehouseInActiveSegment: boolean
 }
 
+/** 「库外丢失」经取消扫描接口二次核验后的改判统计；error 存在时表示本次未完成核验，结果维持原判。 */
+export type CancelScanRecheckMeta = {
+  checkedOrderNos: string[]
+  reclassifiedOrderNos: string[]
+  error?: string
+}
+
 export async function postOrderExceptionAnalyze(payload: {
   imileToken: string
   orderNos: string[]
   aiProvider?: OrderAnalyzeAiProvider
+  scanStationCode?: string
 }): Promise<{
   results: OrderAnalyzeResultItem[]
   trackInfo: Record<string, TrackEvent[]>
@@ -285,6 +293,7 @@ export async function postOrderExceptionAnalyze(payload: {
   tokenUsage: OrderAnalyzeTokenUsage
   timing?: OrderAnalyzeApiTiming
   trackFacts?: Record<string, OrderTrackFacts>
+  cancelScanRecheck?: CancelScanRecheckMeta
 }> {
   const res = await fetch(`${orderExceptionApi}/analyze`, {
     method: 'POST',
@@ -305,6 +314,8 @@ export async function postOrderExceptionAnalyze(payload: {
     interceptLogs: Record<string, OrderAnalyzeInterceptLog[]>
     tokenUsage: OrderAnalyzeTokenUsage
     timing?: OrderAnalyzeApiTiming
+    trackFacts?: Record<string, OrderTrackFacts>
+    cancelScanRecheck?: CancelScanRecheckMeta
   }
 }
 
@@ -376,6 +387,7 @@ export type AnalyzeJobArtifact = {
   interceptLogs: Record<string, OrderAnalyzeInterceptLog[]>
   tokenUsage: OrderAnalyzeTokenUsage
   trackFacts?: Record<string, OrderTrackFacts>
+  cancelScanRecheck?: CancelScanRecheckMeta
 }
 
 /** 提交批量异步分析任务；立即返回 jobId，通过 getJobById 轮询状态。 */
@@ -384,6 +396,7 @@ export async function postOrderExceptionAnalyzeAsync(payload: {
   orderNos: string[]
   aiProvider?: OrderAnalyzeAiProvider
   enableAiExplain?: boolean
+  scanStationCode?: string
 }): Promise<{ jobId: string; status: JobStatus; orderCount: number }> {
   const res = await fetch(`${orderExceptionApi}/analyze-async`, {
     method: 'POST',

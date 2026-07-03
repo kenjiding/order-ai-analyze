@@ -114,8 +114,8 @@ export default function CancelScanZoneBarChart({
           return String(d.count)
         },
         position: 'top',
-        fill: '#475569',
-        fontSize: 13,
+        fill: 'black',
+        fontSize: 18,
         fontWeight: 600,
         dy: -6,
       })

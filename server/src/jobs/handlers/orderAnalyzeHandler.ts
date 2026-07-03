@@ -2,6 +2,7 @@ import { eq } from 'drizzle-orm'
 import { getDb } from '../../db'
 import { orderExceptionWarehouseConfigs } from '../../db/schema'
 import type { AnalyzeTarget } from '../../openaiOrderAnalyze'
+import { reclassifyOutWarehouseLossWithCancelScan } from '../../orderAnalyze/cancelScanReclassify'
 import { runOrderAnalyzePipeline } from '../../orderAnalyze/pipeline'
 import { DEFAULT_WAREHOUSE_CONFIG, parseWarehouseConfigInput } from '../../orderAnalyze/warehouseProfiles'
 import { fetchOrderExceptionSourcesForAnalyze } from '../../routes/orderExceptionData'
@@ -14,6 +15,7 @@ type OrderAnalyzePayload = {
   orderNos: string[]
   aiProvider: 'openai' | 'deepseek'
   enableAiExplain: boolean
+  scanStationCode?: string
 }
 
 function parsePayload(raw: Record<string, unknown>): OrderAnalyzePayload | null {
@@ -23,8 +25,9 @@ function parsePayload(raw: Record<string, unknown>): OrderAnalyzePayload | null 
     : []
   const aiProvider = String(raw.aiProvider ?? 'deepseek').toLowerCase() === 'openai' ? 'openai' : 'deepseek'
   const enableAiExplain = raw.enableAiExplain === true
+  const scanStationCode = typeof raw.scanStationCode === 'string' ? raw.scanStationCode.trim() || undefined : undefined
   if (!imileToken || !orderNos.length) return null
-  return { imileToken, orderNos, aiProvider, enableAiExplain }
+  return { imileToken, orderNos, aiProvider, enableAiExplain, scanStationCode }
 }
 
 export const orderAnalyzeHandler: JobHandler = {
@@ -33,7 +36,7 @@ export const orderAnalyzeHandler: JobHandler = {
     const params = parsePayload(ctx.job.payload as Record<string, unknown>)
     if (!params) throw new Error('无效的任务参数: 缺少 imileToken 或 orderNos')
 
-    const { imileToken, orderNos, aiProvider, enableAiExplain } = params
+    const { imileToken, orderNos, aiProvider, enableAiExplain, scanStationCode } = params
 
     await ctx.reportProgress({ phase: 'fetching', message: `获取 ${orderNos.length} 个订单数据`, percent: 0 })
 
@@ -56,11 +59,18 @@ export const orderAnalyzeHandler: JobHandler = {
       interceptLogs: sourceResult.interceptLogs[no] ?? [],
     }))
 
-    const { results, tokenUsage, trackFacts } = await runOrderAnalyzePipeline({
+    const { results: pipelineResults, tokenUsage, trackFacts } = await runOrderAnalyzePipeline({
       targets,
       aiProvider,
       enableAiExplain,
       warehouseConfig,
+    })
+
+    const { results, meta: cancelScanRecheck } = await reclassifyOutWarehouseLossWithCancelScan({
+      results: pipelineResults,
+      trackFacts,
+      imileToken,
+      scanStationCode,
     })
 
     await ctx.reportProgress({ phase: 'writing', message: '写入结果', percent: 95 })
@@ -72,6 +82,7 @@ export const orderAnalyzeHandler: JobHandler = {
       interceptLogs: sourceResult.interceptLogs,
       tokenUsage,
       trackFacts,
+      cancelScanRecheck,
     })
 
     await ctx.reportProgress({ phase: 'done', percent: 100 })

@@ -77,6 +77,24 @@ function buildCancelScanBody(input: {
   }
 }
 
+/** 按订单号（scanNumbers）精确查询取消扫描记录，不限定 scanType，用于订单异常复核。 */
+function buildCancelScanByScanNumbersBody(input: {
+  scanNumbers: string[]
+  scanStationCode: string
+  currentPage: number
+  showCount: number
+}): Record<string, unknown> {
+  return {
+    cancelReason: '',
+    currentPage: input.currentPage,
+    operateUserCode: '',
+    scanNumbers: input.scanNumbers,
+    scanStationCode: input.scanStationCode,
+    scanType: '',
+    showCount: input.showCount,
+  }
+}
+
 function buildSearchWaybillBody(input: {
   startTime: string
   endTime: string
@@ -230,6 +248,87 @@ async function fetchWaybillsByNos(input: {
           headers: input.headers,
           body,
           label: '运单信息查询',
+        }),
+    })
+
+    if (!result.ok) {
+      return {
+        ok: false,
+        status: result.status,
+        message: result.message,
+        rawText: result.rawText,
+      }
+    }
+
+    raws.push(result.raw)
+    allRecords.push(...result.records)
+
+    if (i < batches.length - 1) await sleep(BATCH_DELAY_MS)
+  }
+
+  return {
+    ok: true,
+    records: allRecords,
+    raw: mergeBatchRaw(raws),
+  }
+}
+
+export type CancelScanRecordsByScanNumbersSuccess = {
+  ok: true
+  records: unknown[]
+  raw: unknown
+}
+
+export type CancelScanRecordsByScanNumbersError = CancelScanAnalysisError
+
+/**
+ * 按订单号（scanNumbers）批量查询取消扫描记录，用于订单异常「库外丢失」二次核验：
+ * 若库内真实扫描员在责任转出库外之后又执行了「取消司机取件限制」，说明包裹实际仍由库内处理。
+ */
+export async function queryCancelScanRecordsByScanNumbers(input: {
+  imileToken: string
+  scanNumbers: string[]
+  scanStationCode?: string
+  portal?: ImilePortalOverrides
+}): Promise<CancelScanRecordsByScanNumbersSuccess | CancelScanRecordsByScanNumbersError> {
+  const token = normalizeImileToken(input.imileToken)
+  const cancelScanUrl = envFirstOr(['IMILE_CANCEL_SCAN_URL'], DEFAULT_CANCEL_SCAN_URL)
+  const headers = makeSaasTmsHeaders(token, input.portal)
+  const scanStationCode =
+    input.scanStationCode?.trim() ||
+    envFirstOr(['IMILE_CANCEL_SCAN_STATION_CODE'], IMILE_DEFAULT_HUBCODE)
+
+  const uniqueScanNumbers = Array.from(
+    new Set(input.scanNumbers.map((no) => String(no).trim()).filter(Boolean))
+  )
+  if (!uniqueScanNumbers.length) {
+    return { ok: true, records: [], raw: null }
+  }
+
+  const batches = chunkArray(uniqueScanNumbers, WAYBILL_BATCH_SIZE)
+  const allRecords: unknown[] = []
+  const raws: unknown[] = []
+
+  for (let i = 0; i < batches.length; i += 1) {
+    const batch = batches[i]
+    const result = await fetchPaginatedResultRows({
+      label: '取消扫描查询（按订单号）',
+      pageShowCount: CANCEL_SCAN_PAGE_SHOW_COUNT,
+      pageDelayMs: PAGE_DELAY_MS,
+      buildPageBody: ({ currentPage, showCount }) =>
+        buildCancelScanByScanNumbersBody({
+          scanNumbers: batch,
+          scanStationCode,
+          currentPage,
+          showCount,
+        }),
+      requestPage: (body) =>
+        requestImileApi({
+          url: cancelScanUrl,
+          method: 'POST',
+          headers,
+          body,
+          label: '取消扫描查询（按订单号）',
         }),
     })
 

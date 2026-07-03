@@ -321,11 +321,7 @@
 }
 
 .scanner-efficiency-page .se-intake-lane {
-  border-radius: 0.5rem;
-  border: 1px solid var(--admin-line);
-  background: var(--admin-surface);
-  padding: 0.875rem 1rem;
-  transition: border-color 180ms ease, box-shadow 180ms ease;
+  min-width: 0;
 }
 
 .scanner-efficiency-page .se-intake-lane-label {

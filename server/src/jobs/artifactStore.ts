@@ -31,7 +31,7 @@ export async function writeJobArtifactJson(job: Pick<Job, 'id' | 'type' | 'regio
   const relPath = buildArtifactRelPath(job)
   const absPath = resolveArtifactAbsPath(relPath)
   await mkdir(path.dirname(absPath), { recursive: true })
-  await writeFile(absPath, `${JSON.stringify(data, null, 2)}\n`, 'utf8')
+  await writeFile(absPath, `${JSON.stringify(data)}\n`, 'utf8')
   return relPath
 }
 

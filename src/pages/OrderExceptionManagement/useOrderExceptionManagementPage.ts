@@ -27,6 +27,7 @@ import {
 } from './orderExceptionApi'
 import type { TrackEvent } from './types'
 import { useAppSettings } from '../../context/AppSettingsContext'
+import { useGlobalFilterStore } from '../../stores/globalFilterStore'
 import { parseOrderNumbersFromFile } from './parseOrderNumbersFromFile'
 import { parseOrderNumbersUnique } from '../../utils/orderNoInput'
 import { showToast } from '../../utils/toast'
@@ -269,6 +270,7 @@ function mapAnalyzeHitToRow(
 
 export function useOrderExceptionManagementPage() {
   const { imileToken } = useAppSettings()
+  const scanStationCode = useGlobalFilterStore((state) => state.selectedStations[0])
   const [activeTab, setActiveTab] = useState<TabId>('analyze')
 
   const [analyzeOrderText, setAnalyzeOrderText] = useState('')
@@ -483,6 +485,9 @@ export function useOrderExceptionManagementPage() {
       setSubmittedJobBanner(null)
       setActiveTab('analyze')
       showToast(`已加载 ${orderNos.length} 单分析结果`, 'success')
+      if (artifact.cancelScanRecheck?.error) {
+        showToast(`库外丢失取消扫描核验未完成：${artifact.cancelScanRecheck.error}`, 'error')
+      }
     } catch (e) {
       showToast((e as Error).message || '加载结果失败', 'error')
     }
@@ -521,13 +526,13 @@ export function useOrderExceptionManagementPage() {
       return
     }
     try {
-      const { jobId } = await postOrderExceptionAnalyzeAsync({ imileToken: token, orderNos, aiProvider })
+      const { jobId } = await postOrderExceptionAnalyzeAsync({ imileToken: token, orderNos, aiProvider, scanStationCode })
       await refreshJobs()
       showToast(`重新提交成功（${orderNos.length} 单），任务 ID: ${jobId.slice(0, 8)}…`, 'success')
     } catch (e) {
       showToast((e as Error).message || '重新提交失败', 'error')
     }
-  }, [imileToken, refreshJobs])
+  }, [imileToken, refreshJobs, scanStationCode])
 
   const activeJobCount = jobsList.filter((j) => j.status === 'pending' || j.status === 'running').length
 
@@ -578,6 +583,7 @@ export function useOrderExceptionManagementPage() {
           imileToken: token,
           orderNos,
           aiProvider: analyzeAiProvider,
+          scanStationCode,
         })
         if (isStaleRun()) return
         setSubmittedJobBanner({ jobId, orderCount: orderNos.length })
@@ -597,6 +603,7 @@ export function useOrderExceptionManagementPage() {
     } else {
       let accumulatedTokenUsage: OrderAnalyzeTokenUsage | null = null
       let accumulatedApiTiming: OrderAnalyzeApiTiming | null = null
+      let cancelScanRecheckWarned = false
 
       for (const orderNo of orderNos) {
         if (isStaleRun()) return
@@ -610,11 +617,12 @@ export function useOrderExceptionManagementPage() {
         )
 
         try {
-          const { results, trackInfo, orderInfo, interceptLogs, tokenUsage, timing, trackFacts } =
+          const { results, trackInfo, orderInfo, interceptLogs, tokenUsage, timing, trackFacts, cancelScanRecheck } =
             await postOrderExceptionAnalyze({
             imileToken: token,
             orderNos: [orderNo],
             aiProvider: analyzeAiProvider,
+            scanStationCode,
           })
           if (isStaleRun()) return
 
@@ -629,6 +637,10 @@ export function useOrderExceptionManagementPage() {
           setAnalysisRows((prev) => prev.map((r) => (r.orderNo === orderNo ? row : r)))
           accumulatedTokenUsage = mergeAnalyzeTokenUsage(accumulatedTokenUsage, tokenUsage)
           setAnalyzeTokenUsage(accumulatedTokenUsage)
+          if (cancelScanRecheck?.error && !cancelScanRecheckWarned) {
+            cancelScanRecheckWarned = true
+            showToast(`库外丢失取消扫描核验未完成：${cancelScanRecheck.error}`, 'error')
+          }
           if (timing) {
             accumulatedApiTiming = mergeAnalyzeApiTiming(accumulatedApiTiming, timing)
             setAnalyzeApiTiming(accumulatedApiTiming)
@@ -685,6 +697,7 @@ export function useOrderExceptionManagementPage() {
     importedAnalyzeOrders,
     isWarehouseConfigLoaded,
     refreshJobs,
+    scanStationCode,
     warehouseDraftConfig,
     warehouseSavedConfig,
   ])

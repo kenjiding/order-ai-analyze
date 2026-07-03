@@ -17,10 +17,6 @@ export default function ExitAlarmPage() {
               <AlarmClock className="h-5 w-5 text-[var(--admin-accent)]" aria-hidden />
               11点前出仓告警
             </h2>
-            <p className="mt-1 text-xs text-slate-500">
-              监控各供应商11点前出仓率，在选定时间点自动获取昨日运单数据并推送飞书告警。
-              以下为当前账号的定时配置，数据筛选以 Header 责任站点为准，时区跟随当前账号的州/区域（未设置默认阿德莱德 ACST/ACDT）。
-            </p>
           </div>
           <div className="flex flex-col items-end gap-1 text-right">
             <div className="text-xs text-slate-500">定时已启用 / 可推送</div>
