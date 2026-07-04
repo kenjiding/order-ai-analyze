@@ -1,5 +1,6 @@
 import { Button, DatePicker, Tag } from 'antd'
 import type { Dayjs } from 'dayjs'
+import type { ReactNode } from 'react'
 import { AlertTriangle, CalendarDays, CheckCircle2, DatabaseZap, RotateCw } from 'lucide-react'
 import type { FetchedData, VendorAnalyzeJobProgress } from '../useVendorAnalysisPage'
 
@@ -14,6 +15,10 @@ type Props = {
   jobProgress: VendorAnalyzeJobProgress | null
   jobError: string | null
   jobReused: boolean
+  /** 渲染在「获取数据」按钮同行末尾的附加控件（指标配置入口） */
+  extra?: ReactNode
+  /** 已获取数据后新勾选、但缺少数据源的指标名称，非空时提示重新获取 */
+  missingMetricLabels?: string[]
 }
 
 function ProgressStrip({ progress, reused }: { progress: VendorAnalyzeJobProgress | null; reused: boolean }) {
@@ -79,6 +84,8 @@ export function VendorFilterPanel({
   jobProgress,
   jobError,
   jobReused,
+  extra,
+  missingMetricLabels = [],
 }: Props) {
   const fetchedTime = fetchedData
     ? `${fetchedData.fetchedAt.getHours().toString().padStart(2, '0')}:${fetchedData.fetchedAt.getMinutes().toString().padStart(2, '0')}`
@@ -138,7 +145,25 @@ export function VendorFilterPanel({
               {dataFetching ? '获取中…' : '获取数据'}
             </Button>
           </div>
+
+          {extra && (
+            <div className="flex flex-col gap-1.5">
+              <label className="flex items-center gap-1 text-xs font-medium text-transparent select-none">
+                &nbsp;
+              </label>
+              {extra}
+            </div>
+          )}
         </div>
+
+        {!dataFetching && missingMetricLabels.length > 0 && (
+          <div className="mt-3 flex items-center gap-1.5 rounded-md border border-amber-200 bg-amber-50/60 px-3 py-2.5 text-xs font-medium text-amber-700">
+            <AlertTriangle className="h-3.5 w-3.5 shrink-0" aria-hidden />
+            <span>
+              新勾选的指标（{missingMetricLabels.join('、')}）缺少数据，请重新点击「获取数据」。
+            </span>
+          </div>
+        )}
 
         {dataFetching && <ProgressStrip progress={jobProgress} reused={jobReused} />}
 

@@ -1,7 +1,7 @@
 import { Alert, Table } from 'antd'
 import type { ColumnsType } from 'antd/es/table'
 import { TrendingUp, Users, ChevronDown } from 'lucide-react'
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { WaybillListPopover } from '../../../components/WaybillPopover'
 import type { FetchedData } from '../useVendorAnalysisPage'
 import type { DriverPerformanceRow, VendorMetricRow } from '../vendorAnalysisTypes'
@@ -11,6 +11,17 @@ type Props = {
   fetchedData: FetchedData
   hasStations: boolean
   driverPerformanceByVendor: Record<string, DriverPerformanceRow[]>
+  /** 生效的指标 key（metricsRegistry），未包含的 KPI 卡/司机列不渲染 */
+  enabledMetricKeys: ReadonlySet<string>
+}
+
+/** Tailwind 不能拼接动态类名，KPI 卡数量 → 桌面端列数用静态映射；所有指标可自由取消，数量可低至 0 */
+const KPI_GRID_COLS: Record<number, string> = {
+  1: 'sm:grid-cols-1',
+  2: 'sm:grid-cols-2',
+  3: 'sm:grid-cols-3',
+  4: 'sm:grid-cols-4',
+  5: 'sm:grid-cols-5',
 }
 
 // ── 数据概览 KPI 卡片 ──────────────────────────────────────────────
@@ -140,97 +151,127 @@ function WarningCount({ count, waybillNos = [] }: { count: number; waybillNos?: 
   )
 }
 
-const driverColumns: ColumnsType<DriverPerformanceRow> = [
-  {
-    title: '司机',
-    key: 'courier',
-    width: 190,
-    render: (_, row) => (
-      <div>
-        <div className="font-medium text-slate-800">{row.courierName || '—'}</div>
-        <div className="mt-0.5 flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-xs">
-          <span className="font-mono text-slate-400">{row.courierCode}</span>
-          {row.routeCode ? (
-            <>
-              <span className="text-slate-300" aria-hidden>
-                ·
-              </span>
-              <span className="font-medium text-indigo-600">{row.routeCode}</span>
-            </>
-          ) : null}
+/** 司机表格列按勾选过滤；「司机」为身份列恒显示，其余均可自由取消 */
+function buildDriverColumns(enabled: ReadonlySet<string>): ColumnsType<DriverPerformanceRow> {
+  const todayPickupEnabled = enabled.has('driver.todayPickup')
+  const dispatch24hEnabled = enabled.has('driver.dispatch24h')
+  const returnWarningEnabled = enabled.has('driver.returnWarning')
+  // 默认排序列优先级：归班预警 > 今日取件 > 24H派签率；都被取消则不设默认排序
+  const defaultSortKey = returnWarningEnabled ? null : todayPickupEnabled ? 'ofdCount' : dispatch24hEnabled ? 'dispatchRate24h' : null
+  return [
+    {
+      title: '司机',
+      key: 'courier',
+      width: 190,
+      render: (_, row) => (
+        <div>
+          <div className="font-medium text-slate-800">{row.courierName || '—'}</div>
+          <div className="mt-0.5 flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-xs">
+            <span className="font-mono text-slate-400">{row.courierCode}</span>
+            {row.routeCode ? (
+              <>
+                <span className="text-slate-300" aria-hidden>
+                  ·
+                </span>
+                <span className="font-medium text-indigo-600">{row.routeCode}</span>
+              </>
+            ) : null}
+          </div>
         </div>
-      </div>
-    ),
-  },
-  {
-    title: '今日取件',
-    dataIndex: 'ofdCount',
-    key: 'ofdCount',
-    width: 110,
-    sorter: (a, b) => a.ofdCount - b.ofdCount,
-    render: (v: number, row) => <PickupChip count={v} waybillNos={row.ofdWaybillNos} />,
-  },
-  {
-    title: '11点前出仓率',
-    key: 'before11Rate',
-    width: 140,
-    sorter: (a, b) =>
-      (a.ofdCount > 0 ? a.before11OfdCount / a.ofdCount : -1) -
-      (b.ofdCount > 0 ? b.before11OfdCount / b.ofdCount : -1),
-    render: (_, row) => (
-      <Before11RateBadge
-        rate={row.ofdCount > 0 ? row.before11OfdCount / row.ofdCount : null}
-        count={row.before11OfdCount}
-        total={row.ofdCount}
-        unmetWaybillNos={row.before11UnmetWaybillNos}
-      />
-    ),
-  },
-  {
-    title: '24H派签率',
-    key: 'dispatchRate24h',
-    width: 140,
-    sorter: (a, b) => (a.dispatchRate24h ?? -1) - (b.dispatchRate24h ?? -1),
-    render: (_, row) => (
-      <DispatchRateBadge
-        rate={row.dispatchRate24h}
-        count={row.dispatch24hCount}
-        total={row.totalDispatchCount}
-        unmetWaybillNos={row.dispatch24hUnmetWaybillNos}
-      />
-    ),
-  },
-  {
-    title: '归班预警',
-    dataIndex: 'returnWarningCount',
-    key: 'returnWarningCount',
-    width: 110,
-    defaultSortOrder: 'descend',
-    sorter: (a, b) => a.returnWarningCount - b.returnWarningCount,
-    render: (v: number, row) => <WarningCount count={v} waybillNos={row.returnWarningWaybillNos} />,
-  },
-  {
-    title: '长尾单',
-    dataIndex: 'longTailCount',
-    key: 'longTailCount',
-    width: 100,
-    sorter: (a, b) => a.longTailCount - b.longTailCount,
-    render: (v: number, row) => {
-      if (v === 0) return <span className="text-sm text-slate-400">0</span>
-      const badge = (
-        <span className="inline-flex min-w-[2.25rem] cursor-help items-center justify-center rounded-full bg-amber-50 px-2.5 py-0.5 text-sm font-semibold text-amber-600">
-          {v}
-        </span>
-      )
-      if (row.longTailWaybillNos.length === 0) return badge
-      return (
-        <WaybillListPopover nos={row.longTailWaybillNos} title="长尾单单号" placement="right">
-          {badge}
-        </WaybillListPopover>
-      )
+      ),
     },
-  },
-]
+    ...(todayPickupEnabled
+      ? ([
+          {
+            title: '今日取件',
+            dataIndex: 'ofdCount',
+            key: 'ofdCount',
+            width: 110,
+            ...(defaultSortKey === 'ofdCount' ? { defaultSortOrder: 'descend' as const } : {}),
+            sorter: (a, b) => a.ofdCount - b.ofdCount,
+            render: (v: number, row) => <PickupChip count={v} waybillNos={row.ofdWaybillNos} />,
+          },
+        ] satisfies ColumnsType<DriverPerformanceRow>)
+      : []),
+    ...(enabled.has('driver.before11ExitRate')
+      ? ([
+          {
+            title: '11点前出仓率',
+            key: 'before11Rate',
+            width: 140,
+            sorter: (a, b) =>
+              (a.ofdCount > 0 ? a.before11OfdCount / a.ofdCount : -1) -
+              (b.ofdCount > 0 ? b.before11OfdCount / b.ofdCount : -1),
+            render: (_, row) => (
+              <Before11RateBadge
+                rate={row.ofdCount > 0 ? row.before11OfdCount / row.ofdCount : null}
+                count={row.before11OfdCount}
+                total={row.ofdCount}
+                unmetWaybillNos={row.before11UnmetWaybillNos}
+              />
+            ),
+          },
+        ] satisfies ColumnsType<DriverPerformanceRow>)
+      : []),
+    ...(dispatch24hEnabled
+      ? ([
+          {
+            title: '24H派签率',
+            key: 'dispatchRate24h',
+            width: 140,
+            ...(defaultSortKey === 'dispatchRate24h' ? { defaultSortOrder: 'descend' as const } : {}),
+            sorter: (a, b) => (a.dispatchRate24h ?? -1) - (b.dispatchRate24h ?? -1),
+            render: (_, row) => (
+              <DispatchRateBadge
+                rate={row.dispatchRate24h}
+                count={row.dispatch24hCount}
+                total={row.totalDispatchCount}
+                unmetWaybillNos={row.dispatch24hUnmetWaybillNos}
+              />
+            ),
+          },
+        ] satisfies ColumnsType<DriverPerformanceRow>)
+      : []),
+    ...(returnWarningEnabled
+      ? ([
+          {
+            title: '归班预警',
+            dataIndex: 'returnWarningCount',
+            key: 'returnWarningCount',
+            width: 110,
+            defaultSortOrder: 'descend' as const,
+            sorter: (a, b) => a.returnWarningCount - b.returnWarningCount,
+            render: (v: number, row) => <WarningCount count={v} waybillNos={row.returnWarningWaybillNos} />,
+          },
+        ] satisfies ColumnsType<DriverPerformanceRow>)
+      : []),
+    ...(enabled.has('driver.longTail')
+      ? ([
+          {
+            title: '长尾单',
+            dataIndex: 'longTailCount',
+            key: 'longTailCount',
+            width: 100,
+            sorter: (a, b) => a.longTailCount - b.longTailCount,
+            render: (v: number, row) => {
+              if (v === 0) return <span className="text-sm text-slate-400">0</span>
+              const badge = (
+                <span className="inline-flex min-w-[2.25rem] cursor-help items-center justify-center rounded-full bg-amber-50 px-2.5 py-0.5 text-sm font-semibold text-amber-600">
+                  {v}
+                </span>
+              )
+              if (row.longTailWaybillNos.length === 0) return badge
+              return (
+                <WaybillListPopover nos={row.longTailWaybillNos} title="长尾单单号" placement="right">
+                  {badge}
+                </WaybillListPopover>
+              )
+            },
+          },
+        ] satisfies ColumnsType<DriverPerformanceRow>)
+      : []),
+  ]
+}
 
 // ── 单个供应商卡片 ─────────────────────────────────────────────────
 
@@ -238,9 +279,11 @@ type VendorCardProps = {
   row: VendorMetricRow
   fetchedData: FetchedData
   drivers: DriverPerformanceRow[]
+  enabledMetricKeys: ReadonlySet<string>
+  driverColumns: ColumnsType<DriverPerformanceRow>
 }
 
-function VendorCard({ row, fetchedData, drivers }: VendorCardProps) {
+function VendorCard({ row, fetchedData, drivers, enabledMetricKeys, driverColumns }: VendorCardProps) {
   const [expanded, setExpanded] = useState(false)
   const [driversExpanded, setDriversExpanded] = useState(true)
   const fmt = (s: string) => s.slice(0, 10)
@@ -272,7 +315,18 @@ function VendorCard({ row, fetchedData, drivers }: VendorCardProps) {
   const crColor =
     cr >= 0.0003 ? 'text-red-600' : cr >= 0.00025 ? 'text-amber-500' : 'text-emerald-600'
 
-  // 司机汇总
+  const showBefore11 = enabledMetricKeys.has('vendor.before11ExitRate')
+  const showDispatch24h = enabledMetricKeys.has('vendor.dispatch24h')
+  const showComplaintRate = enabledMetricKeys.has('vendor.complaintRate')
+  const showUnprocessed = enabledMetricKeys.has('vendor.unprocessedTickets')
+  const showVendorLongTail = enabledMetricKeys.has('vendor.longTail')
+  const showReturnWarning = enabledMetricKeys.has('driver.returnWarning')
+  const kpiCount =
+    (showBefore11 ? 1 : 0) +
+    (showDispatch24h ? 1 : 0) +
+    (showComplaintRate ? 1 : 0) +
+    (showUnprocessed ? 1 : 0) +
+    (showVendorLongTail ? 1 : 0)
   const totalReturnWarning = drivers.reduce((s, d) => s + d.returnWarningCount, 0)
   const lowDispatchDrivers = drivers
     .filter((d) => d.dispatchRate24h != null && d.dispatchRate24h < 0.92)
@@ -301,87 +355,101 @@ function VendorCard({ row, fetchedData, drivers }: VendorCardProps) {
 
       {expanded && (
         <>
-          {/* ── 数据概览：KPI 卡片行 ── */}
-          <div className="grid grid-cols-2 divide-x divide-y divide-[var(--admin-line)] border-b border-[var(--admin-line)] sm:grid-cols-5 sm:divide-y-0">
-            <KpiCard
-              value={
-                <WaybillListPopover nos={row.before11UnmetWaybillNos} title="11点前未出仓单号" placement="bottom">
-                  <span className={`${exitColor}${row.before11UnmetWaybillNos.length > 0 ? ' cursor-help' : ''}`}>
-                    {exitRate != null ? `${(exitRate * 100).toFixed(1)}%` : '—'}
-                  </span>
-                </WaybillListPopover>
-              }
-              label={`11点前出仓率 · 截至 ${fmt(fetchedData.before11Date)}`}
-              sub={
-                row.before11ExitVolume != null && row.before11TotalReceived != null ? (
-                  <span className="text-[11px] text-slate-400">
-                    {row.before11ExitVolume} / {row.before11TotalReceived} 件
-                  </span>
-                ) : undefined
-              }
-            />
+          {/* ── 数据概览：KPI 卡片行（所有指标均可取消，全部取消时不渲染） ── */}
+          {kpiCount > 0 && (
+            <div
+              className={`grid grid-cols-2 divide-x divide-y divide-[var(--admin-line)] border-b border-[var(--admin-line)] ${KPI_GRID_COLS[kpiCount]} sm:divide-y-0`}
+            >
+            {showBefore11 && (
+              <KpiCard
+                value={
+                  <WaybillListPopover nos={row.before11UnmetWaybillNos} title="11点前未出仓单号" placement="bottom">
+                    <span className={`${exitColor}${row.before11UnmetWaybillNos.length > 0 ? ' cursor-help' : ''}`}>
+                      {exitRate != null ? `${(exitRate * 100).toFixed(1)}%` : '—'}
+                    </span>
+                  </WaybillListPopover>
+                }
+                label={`11点前出仓率 · 截至 ${fmt(fetchedData.before11Date)}`}
+                sub={
+                  row.before11ExitVolume != null && row.before11TotalReceived != null ? (
+                    <span className="text-[11px] text-slate-400">
+                      {row.before11ExitVolume} / {row.before11TotalReceived} 件
+                    </span>
+                  ) : undefined
+                }
+              />
+            )}
 
-            <KpiCard
-              value={
-                <WaybillListPopover nos={row.dispatch24hUnmetWaybillNos} title="24H未达标单号" placement="bottom">
-                  <span className={`${dispatchTextColor}${row.dispatch24hUnmetWaybillNos.length > 0 ? ' cursor-help' : ''}`}>
-                    {row.dispatchRate24hText ?? '—'}
-                  </span>
-                </WaybillListPopover>
-              }
-              label={`24H派签率 · ${fetchedData.dayBeforeDate}`}
-              sub={
-                row.notMet24hSignCount != null && row.notMet24hSignCount > 0 ? (
-                  <span className="text-[11px] font-semibold text-red-500">
-                    {row.notMet24hSignCount} 票未达标
-                  </span>
-                ) : undefined
-              }
-            />
+            {showDispatch24h && (
+              <KpiCard
+                value={
+                  <WaybillListPopover nos={row.dispatch24hUnmetWaybillNos} title="24H未达标单号" placement="bottom">
+                    <span className={`${dispatchTextColor}${row.dispatch24hUnmetWaybillNos.length > 0 ? ' cursor-help' : ''}`}>
+                      {row.dispatchRate24hText ?? '—'}
+                    </span>
+                  </WaybillListPopover>
+                }
+                label={`24H派签率 · ${fetchedData.dayBeforeDate}`}
+                sub={
+                  row.notMet24hSignCount != null && row.notMet24hSignCount > 0 ? (
+                    <span className="text-[11px] font-semibold text-red-500">
+                      {row.notMet24hSignCount} 票未达标
+                    </span>
+                  ) : undefined
+                }
+              />
+            )}
 
-            <KpiCard
-              value={
-                <WaybillListPopover nos={row.complaintOrderCodes} title="客诉单号" placement="bottom">
-                  <span className={`${crColor}${row.complaintOrderCodes.length > 0 ? ' cursor-help' : ''}`}>
-                    {(cr * 100).toFixed(3)}%
-                  </span>
-                </WaybillListPopover>
-              }
-              label={`客诉率 · ${fmt(fetchedData.ticketStartTime)}~${fmt(fetchedData.ticketEndTime)}`}
-              sub={
-                row.complaintCount > 0 ? (
-                  <span className="text-[11px] text-slate-400">
-                    {row.complaintCount} 件 · 揽收 {row.waybillCount} 件
-                  </span>
-                ) : undefined
-              }
-            />
+            {showComplaintRate && (
+              <KpiCard
+                value={
+                  <WaybillListPopover nos={row.complaintOrderCodes} title="客诉单号" placement="bottom">
+                    <span className={`${crColor}${row.complaintOrderCodes.length > 0 ? ' cursor-help' : ''}`}>
+                      {(cr * 100).toFixed(3)}%
+                    </span>
+                  </WaybillListPopover>
+                }
+                label={`客诉率 · ${fmt(fetchedData.ticketStartTime)}~${fmt(fetchedData.ticketEndTime)}`}
+                sub={
+                  row.complaintCount > 0 ? (
+                    <span className="text-[11px] text-slate-400">
+                      {row.complaintCount} 件 · 揽收 {row.waybillCount} 件
+                    </span>
+                  ) : undefined
+                }
+              />
+            )}
 
-            <KpiCard
-              value={
-                <WaybillListPopover nos={row.unprocessedTicketOrderCodes} title="未处理工单单号" placement="bottom">
-                  <span className={`${row.unprocessedTicketCount > 0 ? 'text-red-600' : 'text-slate-400'}${row.unprocessedTicketOrderCodes.length > 0 ? ' cursor-help' : ''}`}>
-                    {row.unprocessedTicketCount}
-                  </span>
-                </WaybillListPopover>
-              }
-              label="未处理工单（件）"
-              sub={
-                row.unprocessedTicketCount > 0 ? (
-                  <span className="text-[11px] font-semibold text-red-500">需及时处理</span>
-                ) : undefined
-              }
-            />
+            {showUnprocessed && (
+              <KpiCard
+                value={
+                  <WaybillListPopover nos={row.unprocessedTicketOrderCodes} title="未处理工单单号" placement="bottom">
+                    <span className={`${row.unprocessedTicketCount > 0 ? 'text-red-600' : 'text-slate-400'}${row.unprocessedTicketOrderCodes.length > 0 ? ' cursor-help' : ''}`}>
+                      {row.unprocessedTicketCount}
+                    </span>
+                  </WaybillListPopover>
+                }
+                label="未处理工单（件）"
+                sub={
+                  row.unprocessedTicketCount > 0 ? (
+                    <span className="text-[11px] font-semibold text-red-500">需及时处理</span>
+                  ) : undefined
+                }
+              />
+            )}
 
-            <KpiCard
-              value={
-                <span className={row.longTailCount > 0 ? 'text-amber-500' : 'text-slate-400'}>
-                  {row.longTailCount}
-                </span>
-              }
-              label="长尾单（件）"
-            />
-          </div>
+            {showVendorLongTail && (
+              <KpiCard
+                value={
+                  <span className={row.longTailCount > 0 ? 'text-amber-500' : 'text-slate-400'}>
+                    {row.longTailCount}
+                  </span>
+                }
+                label="长尾单（件）"
+              />
+            )}
+            </div>
+          )}
 
           {/* ── 司机派件表现 ── */}
           <div>
@@ -400,7 +468,7 @@ function VendorCard({ row, fetchedData, drivers }: VendorCardProps) {
                 <span className="inline-flex items-center rounded-full border border-amber-200 bg-amber-50 px-2.5 py-0.5 text-xs font-semibold text-amber-700">
                   ⚠ 全员汇总
                 </span>
-                {totalReturnWarning > 0 && (
+                {showReturnWarning && totalReturnWarning > 0 && (
                   <span className="inline-flex items-center rounded-full border border-red-200 bg-red-50 px-2.5 py-0.5 text-xs font-semibold text-red-700">
                     归班预警 {totalReturnWarning}
                   </span>
@@ -476,7 +544,9 @@ export function VendorMetricsPreview({
   fetchedData,
   hasStations,
   driverPerformanceByVendor,
+  enabledMetricKeys,
 }: Props) {
+  const driverColumns = useMemo(() => buildDriverColumns(enabledMetricKeys), [enabledMetricKeys])
   return (
     <div className="admin-panel overflow-hidden">
       <div className="admin-section-title flex flex-wrap items-center gap-3 bg-[var(--admin-surface-soft)]">
@@ -510,6 +580,8 @@ export function VendorMetricsPreview({
             row={row}
             fetchedData={fetchedData}
             drivers={driverPerformanceByVendor[row.vendorCode] ?? []}
+            enabledMetricKeys={enabledMetricKeys}
+            driverColumns={driverColumns}
           />
         ))}
         {metrics.length === 0 && (

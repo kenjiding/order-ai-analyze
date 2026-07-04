@@ -82,6 +82,49 @@ function driverDispatchTone(rate: number | null): ColorTone {
   return 'red'
 }
 
+// ── Metric visibility ─────────────────────────────────────────────────
+
+/**
+ * 可选指标的显隐开关（key 对应 metricsRegistry）。所有指标均可自由取消，没有强制常开项。
+ * enabledMetricKeys 未传 → 全部渲染：老快照 / 老日报（无勾选集合字段）保持改造前的完整版式。
+ */
+type MetricFlags = {
+  vendorBefore11: boolean
+  vendorDispatch24h: boolean
+  vendorComplaintRate: boolean
+  unprocessed: boolean
+  vendorLongTail: boolean
+  driverTodayPickup: boolean
+  driverDispatch24h: boolean
+  driverBefore11: boolean
+  returnWarning: boolean
+  driverLongTail: boolean
+}
+
+function resolveMetricFlags(enabled?: ReadonlySet<string>): MetricFlags {
+  return {
+    vendorBefore11: enabled?.has('vendor.before11ExitRate') ?? true,
+    vendorDispatch24h: enabled?.has('vendor.dispatch24h') ?? true,
+    vendorComplaintRate: enabled?.has('vendor.complaintRate') ?? true,
+    unprocessed: enabled?.has('vendor.unprocessedTickets') ?? true,
+    vendorLongTail: enabled?.has('vendor.longTail') ?? true,
+    driverTodayPickup: enabled?.has('driver.todayPickup') ?? true,
+    driverDispatch24h: enabled?.has('driver.dispatch24h') ?? true,
+    driverBefore11: enabled?.has('driver.before11ExitRate') ?? true,
+    returnWarning: enabled?.has('driver.returnWarning') ?? true,
+    driverLongTail: enabled?.has('driver.longTail') ?? true,
+  }
+}
+
+/** Tailwind 不能拼接动态类名，KPI 卡数量 → 桌面端列数用静态映射；所有指标可自由取消，数量可低至 0 */
+const KPI_GRID_COLS: Record<number, string> = {
+  1: 'lg:grid-cols-1',
+  2: 'lg:grid-cols-2',
+  3: 'lg:grid-cols-3',
+  4: 'lg:grid-cols-4',
+  5: 'lg:grid-cols-5',
+}
+
 // ── KPI Card ──────────────────────────────────────────────────────────
 
 type MetricAccent = 'blue' | 'violet' | 'rose' | 'orange' | 'teal'
@@ -149,11 +192,32 @@ function DriverStatCell({ label, value, sub, tone }: { label: string; value: str
   )
 }
 
-function DriverMobileCard({ driver }: { driver: VendorSnapshotDriver }) {
+function DriverMobileCard({ driver, flags }: { driver: VendorSnapshotDriver; flags: MetricFlags }) {
   const { t } = useVendorSnapshotTranslation()
   const dTone = driverDispatchTone(driver.dispatchRate24h)
   const before11Rate = driver.ofdCount > 0 ? driver.before11OfdCount / driver.ofdCount : null
   const b11Tone = before11Tone(before11Rate)
+
+  // 归班预警 / 长尾单共用一格：两者都启用时合并展示，只启用一个时单独展示
+  const warnLabel = [
+    flags.returnWarning ? t('driverTable.returnWarning') : null,
+    flags.driverLongTail ? t('driverTable.longTail') : null,
+  ].filter(Boolean).join(' / ')
+  const warnValue = [
+    flags.returnWarning ? String(driver.returnWarningCount) : null,
+    flags.driverLongTail ? String(driver.longTailCount) : null,
+  ].filter(Boolean).join(' / ')
+  const warnTooltip = [
+    flags.returnWarning ? t('driverTable.tooltip.returnWarning') : null,
+    flags.driverLongTail ? t('driverTable.tooltip.longTail') : null,
+  ].filter(Boolean).join(' / ')
+  const warnNos = [
+    ...(flags.returnWarning ? driver.returnWarningWaybillNos : []),
+    ...(flags.driverLongTail ? driver.longTailWaybillNos : []),
+  ]
+  const warnActive =
+    (flags.returnWarning && driver.returnWarningCount > 0) ||
+    (flags.driverLongTail && driver.longTailCount > 0)
 
   return (
     <div className="vs-driver-card px-4 py-3.5">
@@ -170,56 +234,60 @@ function DriverMobileCard({ driver }: { driver: VendorSnapshotDriver }) {
         ) : null}
       </div>
       <div className="mt-3 grid grid-cols-2 gap-2">
-        <WaybillListPopover nos={driver.ofdWaybillNos} title={t('driverTable.tooltip.pickup')} placement="top">
-          <div className={driver.ofdWaybillNos.length > 0 ? 'cursor-help' : undefined}>
-            <DriverStatCell
-              label={t('driverTable.todayPickup')}
-              value={String(driver.ofdCount)}
-              tone="muted"
-            />
-          </div>
-        </WaybillListPopover>
-        <WaybillListPopover nos={driver.before11UnmetWaybillNos} title={t('driverTable.tooltip.before11Unmet')} placement="top">
-          <div className={driver.before11UnmetWaybillNos.length > 0 ? 'cursor-help' : undefined}>
-            <DriverStatCell
-              label={t('driverTable.before11ExitRate')}
-              value={before11Rate != null ? `${(before11Rate * 100).toFixed(1)}%` : '-'}
-              sub={driver.ofdCount > 0 ? `${driver.before11OfdCount}/${driver.ofdCount}` : undefined}
-              tone={b11Tone}
-            />
-          </div>
-        </WaybillListPopover>
-        <WaybillListPopover nos={driver.dispatch24hUnmetWaybillNos} title={t('driverTable.tooltip.dispatch24hUnmet')} placement="top">
-          <div className={driver.dispatch24hUnmetWaybillNos.length > 0 ? 'cursor-help' : undefined}>
-            <DriverStatCell
-              label={t('driverTable.dispatch24h')}
-              value={
-                driver.dispatchRate24h != null
-                  ? `${(driver.dispatchRate24h * 100).toFixed(1)}%`
-                  : '-'
-              }
-              sub={
-                driver.totalDispatchCount > 0
-                  ? `${driver.dispatch24hCount}/${driver.totalDispatchCount}`
-                  : undefined
-              }
-              tone={dTone}
-            />
-          </div>
-        </WaybillListPopover>
-        <WaybillListPopover
-          nos={[...driver.returnWarningWaybillNos, ...driver.longTailWaybillNos]}
-          title={`${t('driverTable.tooltip.returnWarning')} / ${t('driverTable.tooltip.longTail')}`}
-          placement="top"
-        >
-          <div className={driver.returnWarningWaybillNos.length + driver.longTailWaybillNos.length > 0 ? 'cursor-help' : undefined}>
-            <DriverStatCell
-              label={`${t('driverTable.returnWarning')} / ${t('driverTable.longTail')}`}
-              value={`${driver.returnWarningCount} / ${driver.longTailCount}`}
-              tone={driver.returnWarningCount > 0 || driver.longTailCount > 0 ? 'amber' : 'muted'}
-            />
-          </div>
-        </WaybillListPopover>
+        {flags.driverTodayPickup && (
+          <WaybillListPopover nos={driver.ofdWaybillNos} title={t('driverTable.tooltip.pickup')} placement="top">
+            <div className={driver.ofdWaybillNos.length > 0 ? 'cursor-help' : undefined}>
+              <DriverStatCell
+                label={t('driverTable.todayPickup')}
+                value={String(driver.ofdCount)}
+                tone="muted"
+              />
+            </div>
+          </WaybillListPopover>
+        )}
+        {flags.driverBefore11 && (
+          <WaybillListPopover nos={driver.before11UnmetWaybillNos} title={t('driverTable.tooltip.before11Unmet')} placement="top">
+            <div className={driver.before11UnmetWaybillNos.length > 0 ? 'cursor-help' : undefined}>
+              <DriverStatCell
+                label={t('driverTable.before11ExitRate')}
+                value={before11Rate != null ? `${(before11Rate * 100).toFixed(1)}%` : '-'}
+                sub={driver.ofdCount > 0 ? `${driver.before11OfdCount}/${driver.ofdCount}` : undefined}
+                tone={b11Tone}
+              />
+            </div>
+          </WaybillListPopover>
+        )}
+        {flags.driverDispatch24h && (
+          <WaybillListPopover nos={driver.dispatch24hUnmetWaybillNos} title={t('driverTable.tooltip.dispatch24hUnmet')} placement="top">
+            <div className={driver.dispatch24hUnmetWaybillNos.length > 0 ? 'cursor-help' : undefined}>
+              <DriverStatCell
+                label={t('driverTable.dispatch24h')}
+                value={
+                  driver.dispatchRate24h != null
+                    ? `${(driver.dispatchRate24h * 100).toFixed(1)}%`
+                    : '-'
+                }
+                sub={
+                  driver.totalDispatchCount > 0
+                    ? `${driver.dispatch24hCount}/${driver.totalDispatchCount}`
+                    : undefined
+                }
+                tone={dTone}
+              />
+            </div>
+          </WaybillListPopover>
+        )}
+        {(flags.returnWarning || flags.driverLongTail) && (
+          <WaybillListPopover nos={warnNos} title={warnTooltip} placement="top">
+            <div className={warnNos.length > 0 ? 'cursor-help' : undefined}>
+              <DriverStatCell
+                label={warnLabel}
+                value={warnValue}
+                tone={warnActive ? 'amber' : 'muted'}
+              />
+            </div>
+          </WaybillListPopover>
+        )}
       </div>
     </div>
   )
@@ -227,7 +295,7 @@ function DriverMobileCard({ driver }: { driver: VendorSnapshotDriver }) {
 
 // ── Driver Table (md+) ────────────────────────────────────────────────
 
-function DriverRow({ driver, isOdd }: { driver: VendorSnapshotDriver; isOdd: boolean }) {
+function DriverRow({ driver, isOdd, flags }: { driver: VendorSnapshotDriver; isOdd: boolean; flags: MetricFlags }) {
   const { t } = useVendorSnapshotTranslation()
   const dTone = driverDispatchTone(driver.dispatchRate24h)
   const { value: dClass } = toneClasses(dTone)
@@ -254,73 +322,83 @@ function DriverRow({ driver, isOdd }: { driver: VendorSnapshotDriver; isOdd: boo
           ) : null}
         </div>
       </td>
-      <td className="px-4 py-3.5 text-center border-b border-slate-100">
-        <WaybillListPopover nos={driver.ofdWaybillNos} title={t('driverTable.tooltip.pickup')}>
-          <span className={`text-[18px] font-bold tabular-nums text-slate-700${driver.ofdWaybillNos.length > 0 ? ' cursor-help' : ''}`}>
-            {driver.ofdCount}
-          </span>
-        </WaybillListPopover>
-      </td>
-      <td className="px-4 py-3.5 text-center border-b border-slate-100">
-        {driver.ofdCount > 0 ? (
-          <div>
-            <WaybillListPopover nos={driver.before11UnmetWaybillNos} title={t('driverTable.tooltip.before11Unmet')}>
-              <span className={`text-[18px] font-black tabular-nums ${b11Class}${driver.before11UnmetWaybillNos.length > 0 ? ' cursor-help' : ''}`}>
-                {before11Rate != null ? `${(before11Rate * 100).toFixed(1)}%` : '-'}
-              </span>
-            </WaybillListPopover>
-            <div className="text-[13px] text-slate-400 mt-0.5 tabular-nums">
-              {driver.before11OfdCount}/{driver.ofdCount}
-            </div>
-          </div>
-        ) : (
-          <span className="text-[18px] text-slate-300">-</span>
-        )}
-      </td>
-      <td className="px-4 py-3.5 text-center border-b border-slate-100">
-        {driver.totalDispatchCount > 0 ? (
-          <div>
-            <WaybillListPopover nos={driver.dispatch24hUnmetWaybillNos} title={t('driverTable.tooltip.dispatch24hUnmet')}>
-              <span className={`text-[18px] font-black tabular-nums ${dClass}${driver.dispatch24hUnmetWaybillNos.length > 0 ? ' cursor-help' : ''}`}>
-                {driver.dispatchRate24h != null
-                  ? `${(driver.dispatchRate24h * 100).toFixed(1)}%`
-                  : '-'}
-              </span>
-            </WaybillListPopover>
-            <div className="text-[13px] text-slate-400 mt-0.5 tabular-nums">
-              {driver.dispatch24hCount}/{driver.totalDispatchCount}
-            </div>
-          </div>
-        ) : (
-          <span className="text-[18px] text-slate-300">-</span>
-        )}
-      </td>
-      <td className="px-4 py-3.5 text-center border-b border-slate-100">
-        {driver.returnWarningCount > 0 ? (
-          <WaybillListPopover nos={driver.returnWarningWaybillNos} title={t('driverTable.tooltip.returnWarning')}>
-            <span className={`inline-flex items-center justify-center rounded-full border border-rose-200 bg-rose-50 px-3 py-1 text-[15px] font-black text-rose-600${driver.returnWarningWaybillNos.length > 0 ? ' cursor-help' : ''}`}>
-              {driver.returnWarningCount}
+      {flags.driverTodayPickup && (
+        <td className="px-4 py-3.5 text-center border-b border-slate-100">
+          <WaybillListPopover nos={driver.ofdWaybillNos} title={t('driverTable.tooltip.pickup')}>
+            <span className={`text-[18px] font-bold tabular-nums text-slate-700${driver.ofdWaybillNos.length > 0 ? ' cursor-help' : ''}`}>
+              {driver.ofdCount}
             </span>
           </WaybillListPopover>
-        ) : (
-          <span className="inline-flex items-center justify-center rounded-full border border-slate-100 bg-slate-50 px-3 py-1 text-[15px] font-semibold text-slate-400">
-            0
-          </span>
-        )}
-      </td>
-      <td className="px-4 py-3.5 text-center border-b border-slate-100">
-        {driver.longTailCount > 0 ? (
-          <WaybillListPopover nos={driver.longTailWaybillNos} title={t('driverTable.tooltip.longTail')}>
-            <span className={`inline-flex items-center justify-center rounded-full border border-amber-200 bg-amber-50 px-3 py-1 text-[15px] font-black text-amber-600${driver.longTailWaybillNos.length > 0 ? ' cursor-help' : ''}`}>
-              {driver.longTailCount}
+        </td>
+      )}
+      {flags.driverBefore11 && (
+        <td className="px-4 py-3.5 text-center border-b border-slate-100">
+          {driver.ofdCount > 0 ? (
+            <div>
+              <WaybillListPopover nos={driver.before11UnmetWaybillNos} title={t('driverTable.tooltip.before11Unmet')}>
+                <span className={`text-[18px] font-black tabular-nums ${b11Class}${driver.before11UnmetWaybillNos.length > 0 ? ' cursor-help' : ''}`}>
+                  {before11Rate != null ? `${(before11Rate * 100).toFixed(1)}%` : '-'}
+                </span>
+              </WaybillListPopover>
+              <div className="text-[13px] text-slate-400 mt-0.5 tabular-nums">
+                {driver.before11OfdCount}/{driver.ofdCount}
+              </div>
+            </div>
+          ) : (
+            <span className="text-[18px] text-slate-300">-</span>
+          )}
+        </td>
+      )}
+      {flags.driverDispatch24h && (
+        <td className="px-4 py-3.5 text-center border-b border-slate-100">
+          {driver.totalDispatchCount > 0 ? (
+            <div>
+              <WaybillListPopover nos={driver.dispatch24hUnmetWaybillNos} title={t('driverTable.tooltip.dispatch24hUnmet')}>
+                <span className={`text-[18px] font-black tabular-nums ${dClass}${driver.dispatch24hUnmetWaybillNos.length > 0 ? ' cursor-help' : ''}`}>
+                  {driver.dispatchRate24h != null
+                    ? `${(driver.dispatchRate24h * 100).toFixed(1)}%`
+                    : '-'}
+                </span>
+              </WaybillListPopover>
+              <div className="text-[13px] text-slate-400 mt-0.5 tabular-nums">
+                {driver.dispatch24hCount}/{driver.totalDispatchCount}
+              </div>
+            </div>
+          ) : (
+            <span className="text-[18px] text-slate-300">-</span>
+          )}
+        </td>
+      )}
+      {flags.returnWarning && (
+        <td className="px-4 py-3.5 text-center border-b border-slate-100">
+          {driver.returnWarningCount > 0 ? (
+            <WaybillListPopover nos={driver.returnWarningWaybillNos} title={t('driverTable.tooltip.returnWarning')}>
+              <span className={`inline-flex items-center justify-center rounded-full border border-rose-200 bg-rose-50 px-3 py-1 text-[15px] font-black text-rose-600${driver.returnWarningWaybillNos.length > 0 ? ' cursor-help' : ''}`}>
+                {driver.returnWarningCount}
+              </span>
+            </WaybillListPopover>
+          ) : (
+            <span className="inline-flex items-center justify-center rounded-full border border-slate-100 bg-slate-50 px-3 py-1 text-[15px] font-semibold text-slate-400">
+              0
             </span>
-          </WaybillListPopover>
-        ) : (
-          <span className="inline-flex items-center justify-center rounded-full border border-slate-100 bg-slate-50 px-3 py-1 text-[15px] font-semibold text-slate-400">
-            0
-          </span>
-        )}
-      </td>
+          )}
+        </td>
+      )}
+      {flags.driverLongTail && (
+        <td className="px-4 py-3.5 text-center border-b border-slate-100">
+          {driver.longTailCount > 0 ? (
+            <WaybillListPopover nos={driver.longTailWaybillNos} title={t('driverTable.tooltip.longTail')}>
+              <span className={`inline-flex items-center justify-center rounded-full border border-amber-200 bg-amber-50 px-3 py-1 text-[15px] font-black text-amber-600${driver.longTailWaybillNos.length > 0 ? ' cursor-help' : ''}`}>
+                {driver.longTailCount}
+              </span>
+            </WaybillListPopover>
+          ) : (
+            <span className="inline-flex items-center justify-center rounded-full border border-slate-100 bg-slate-50 px-3 py-1 text-[15px] font-semibold text-slate-400">
+              0
+            </span>
+          )}
+        </td>
+      )}
     </tr>
   )
 }
@@ -359,6 +437,7 @@ export function VendorSection({
   before11Date,
   dispatch24hDate,
   complaintDateRange,
+  enabledMetricKeys,
 }: {
   vendor: VendorSnapshotVendor
   index: number
@@ -368,8 +447,17 @@ export function VendorSection({
   before11Date: string
   dispatch24hDate: string
   complaintDateRange: string
+  /** 指标勾选集合；未传（老快照/老日报）→ 全量渲染 */
+  enabledMetricKeys?: ReadonlySet<string>
 }) {
   const { t } = useVendorSnapshotTranslation()
+  const flags = resolveMetricFlags(enabledMetricKeys)
+  const kpiCount =
+    (flags.vendorBefore11 ? 1 : 0) +
+    (flags.vendorDispatch24h ? 1 : 0) +
+    (flags.vendorComplaintRate ? 1 : 0) +
+    (flags.unprocessed ? 1 : 0) +
+    (flags.vendorLongTail ? 1 : 0)
   const crTone = complaintTone(vendor.complaintRate)
   const b11Tone = before11Tone(vendor.before11ExitRate)
   const d24Tone = dispatch24hTone(vendor.dispatchRate24hText)
@@ -402,7 +490,7 @@ export function VendorSection({
           </div>
         </div>
         <div className="flex flex-wrap items-center gap-2 sm:justify-end">
-          {totalReturnWarning > 0 && (
+          {flags.returnWarning && totalReturnWarning > 0 && (
             <span className="inline-flex items-center gap-1.5 rounded-full border border-rose-200 bg-rose-50 px-3 py-1 text-[11px] font-bold text-rose-600">
               <AlertTriangle className="h-3 w-3 shrink-0" aria-hidden />
               {t('vendor.returnWarning', { count: totalReturnWarning })}
@@ -414,7 +502,7 @@ export function VendorSection({
               {t('vendor.lowDispatch', { count: lowDispatchCount })}
             </span>
           )}
-          {vendor.unprocessedTicketCount > 0 && (
+          {flags.unprocessed && vendor.unprocessedTicketCount > 0 && (
             <span className="inline-flex items-center gap-1.5 rounded-full border border-rose-200 bg-rose-50 px-3 py-1 text-[11px] font-bold text-rose-600">
               <Package className="h-3 w-3 shrink-0" aria-hidden />
               {t('vendor.unprocessedTickets', { count: vendor.unprocessedTicketCount })}
@@ -428,67 +516,81 @@ export function VendorSection({
         </div>
       </div>
 
-      {/* KPI grid */}
-      <div className="grid grid-cols-1 min-[420px]:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-2.5 sm:gap-3 p-3 sm:p-4">
-        <KpiCard
-          label={t('kpi.before11ExitRate')}
-          dateNote={t('kpi.asOfDate', { date: fmtShortDate(before11Date) })}
-          accent="blue"
-          icon={Clock}
-          value={vendor.before11ExitRate != null ? `${(vendor.before11ExitRate * 100).toFixed(1)}%` : '-'}
-          tone={b11Tone}
-          sub={
-            vendor.before11ExitVolume != null && vendor.before11TotalReceived != null
-              ? t('kpi.pieces', { done: vendor.before11ExitVolume, total: vendor.before11TotalReceived })
-              : undefined
-          }
-          subTone="muted"
-        />
-        <KpiCard
-          label={t('kpi.dispatch24h')}
-          dateNote={fmtShortDate(dispatch24hDate)}
-          accent="violet"
-          icon={Zap}
-          value={vendor.dispatchRate24hText ?? '-'}
-          tone={d24Tone}
-          sub={
-            vendor.notMet24hSignCount != null
-              ? vendor.notMet24hSignCount > 0
-                ? t('kpi.ticketsNotMet', { count: vendor.notMet24hSignCount })
-                : t('kpi.allMet')
-              : undefined
-          }
-          subTone={vendor.notMet24hSignCount != null ? (vendor.notMet24hSignCount > 0 ? 'warn' : 'ok') : 'muted'}
-        />
-        <KpiCard
-          label={t('kpi.complaintRate')}
-          dateNote={complaintDateRange}
-          accent="rose"
-          icon={MessageSquare}
-          value={`${(vendor.complaintRate * 100).toFixed(3)}%`}
-          tone={crTone}
-          sub={t('kpi.complaintSub', { complaints: vendor.complaintCount, waybills: vendor.waybillCount })}
-          subTone="muted"
-        />
-        <KpiCard
-          label={t('kpi.unprocessedTickets')}
-          accent="orange"
-          icon={Inbox}
-          value={String(vendor.unprocessedTicketCount)}
-          tone={utTone}
-          sub={vendor.unprocessedTicketCount > 0 ? t('kpi.needsAction') : t('kpi.noPending')}
-          subTone={vendor.unprocessedTicketCount > 0 ? 'warn' : 'ok'}
-        />
-        <KpiCard
-          label={t('kpi.longTail')}
-          accent="teal"
-          icon={Timer}
-          value={String(vendor.longTailCount)}
-          tone={ltTone}
-          sub={vendor.longTailCount > 0 ? t('kpi.longTailFollowUp', { count: vendor.longTailCount }) : t('kpi.noLongTailItems')}
-          subTone={vendor.longTailCount > 0 ? 'warn' : 'ok'}
-        />
-      </div>
+      {/* KPI grid（所有指标均可取消，全部取消时不渲染） */}
+      {kpiCount > 0 && (
+        <div
+          className={`grid grid-cols-1 min-[420px]:grid-cols-2 md:grid-cols-3 ${KPI_GRID_COLS[kpiCount]} gap-2.5 sm:gap-3 p-3 sm:p-4`}
+        >
+          {flags.vendorBefore11 && (
+            <KpiCard
+              label={t('kpi.before11ExitRate')}
+              dateNote={t('kpi.asOfDate', { date: fmtShortDate(before11Date) })}
+              accent="blue"
+              icon={Clock}
+              value={vendor.before11ExitRate != null ? `${(vendor.before11ExitRate * 100).toFixed(1)}%` : '-'}
+              tone={b11Tone}
+              sub={
+                vendor.before11ExitVolume != null && vendor.before11TotalReceived != null
+                  ? t('kpi.pieces', { done: vendor.before11ExitVolume, total: vendor.before11TotalReceived })
+                  : undefined
+              }
+              subTone="muted"
+            />
+          )}
+          {flags.vendorDispatch24h && (
+            <KpiCard
+              label={t('kpi.dispatch24h')}
+              dateNote={fmtShortDate(dispatch24hDate)}
+              accent="violet"
+              icon={Zap}
+              value={vendor.dispatchRate24hText ?? '-'}
+              tone={d24Tone}
+              sub={
+                vendor.notMet24hSignCount != null
+                  ? vendor.notMet24hSignCount > 0
+                    ? t('kpi.ticketsNotMet', { count: vendor.notMet24hSignCount })
+                    : t('kpi.allMet')
+                  : undefined
+              }
+              subTone={vendor.notMet24hSignCount != null ? (vendor.notMet24hSignCount > 0 ? 'warn' : 'ok') : 'muted'}
+            />
+          )}
+          {flags.vendorComplaintRate && (
+            <KpiCard
+              label={t('kpi.complaintRate')}
+              dateNote={complaintDateRange}
+              accent="rose"
+              icon={MessageSquare}
+              value={`${(vendor.complaintRate * 100).toFixed(3)}%`}
+              tone={crTone}
+              sub={t('kpi.complaintSub', { complaints: vendor.complaintCount, waybills: vendor.waybillCount })}
+              subTone="muted"
+            />
+          )}
+          {flags.unprocessed && (
+            <KpiCard
+              label={t('kpi.unprocessedTickets')}
+              accent="orange"
+              icon={Inbox}
+              value={String(vendor.unprocessedTicketCount)}
+              tone={utTone}
+              sub={vendor.unprocessedTicketCount > 0 ? t('kpi.needsAction') : t('kpi.noPending')}
+              subTone={vendor.unprocessedTicketCount > 0 ? 'warn' : 'ok'}
+            />
+          )}
+          {flags.vendorLongTail && (
+            <KpiCard
+              label={t('kpi.longTail')}
+              accent="teal"
+              icon={Timer}
+              value={String(vendor.longTailCount)}
+              tone={ltTone}
+              sub={vendor.longTailCount > 0 ? t('kpi.longTailFollowUp', { count: vendor.longTailCount }) : t('kpi.noLongTailItems')}
+              subTone={vendor.longTailCount > 0 ? 'warn' : 'ok'}
+            />
+          )}
+        </div>
+      )}
 
       {/* AI summary */}
       <AiSummaryBlock summary={aiSummary} loading={aiSummaryLoading} loadingLabel={aiSummaryLoadingLabel} />
@@ -507,7 +609,7 @@ export function VendorSection({
           {/* Mobile: card list */}
           <div className="md:hidden divide-y divide-slate-100">
             {vendor.drivers.map((driver) => (
-              <DriverMobileCard key={driver.courierCode} driver={driver} />
+              <DriverMobileCard key={driver.courierCode} driver={driver} flags={flags} />
             ))}
           </div>
 
@@ -519,26 +621,36 @@ export function VendorSection({
                   <th className="px-4 py-3 text-left text-[14px] font-bold text-slate-500 border-b border-slate-100 whitespace-nowrap">
                     {t('driverTable.courier')}
                   </th>
-                  <th className="px-5 py-3 text-center text-[14px] font-bold text-slate-500 border-b border-slate-100 whitespace-nowrap">
-                    {t('driverTable.todayPickup')}
-                  </th>
-                  <th className="px-5 py-3 text-center text-[14px] font-bold text-slate-500 border-b border-slate-100 whitespace-nowrap">
-                    {t('driverTable.before11ExitRate')}
-                  </th>
-                  <th className="px-5 py-3 text-center text-[14px] font-bold text-slate-500 border-b border-slate-100 whitespace-nowrap">
-                    {t('driverTable.dispatch24h')}
-                  </th>
-                  <th className="px-5 py-3 text-center text-[14px] font-bold text-slate-500 border-b border-slate-100 whitespace-nowrap">
-                    {t('driverTable.returnWarning')}
-                  </th>
-                  <th className="px-5 py-3 text-center text-[14px] font-bold text-slate-500 border-b border-slate-100 whitespace-nowrap">
-                    {t('driverTable.longTail')}
-                  </th>
+                  {flags.driverTodayPickup && (
+                    <th className="px-5 py-3 text-center text-[14px] font-bold text-slate-500 border-b border-slate-100 whitespace-nowrap">
+                      {t('driverTable.todayPickup')}
+                    </th>
+                  )}
+                  {flags.driverBefore11 && (
+                    <th className="px-5 py-3 text-center text-[14px] font-bold text-slate-500 border-b border-slate-100 whitespace-nowrap">
+                      {t('driverTable.before11ExitRate')}
+                    </th>
+                  )}
+                  {flags.driverDispatch24h && (
+                    <th className="px-5 py-3 text-center text-[14px] font-bold text-slate-500 border-b border-slate-100 whitespace-nowrap">
+                      {t('driverTable.dispatch24h')}
+                    </th>
+                  )}
+                  {flags.returnWarning && (
+                    <th className="px-5 py-3 text-center text-[14px] font-bold text-slate-500 border-b border-slate-100 whitespace-nowrap">
+                      {t('driverTable.returnWarning')}
+                    </th>
+                  )}
+                  {flags.driverLongTail && (
+                    <th className="px-5 py-3 text-center text-[14px] font-bold text-slate-500 border-b border-slate-100 whitespace-nowrap">
+                      {t('driverTable.longTail')}
+                    </th>
+                  )}
                 </tr>
               </thead>
               <tbody>
                 {vendor.drivers.map((driver, i) => (
-                  <DriverRow key={driver.courierCode} driver={driver} isOdd={i % 2 === 1} />
+                  <DriverRow key={driver.courierCode} driver={driver} isOdd={i % 2 === 1} flags={flags} />
                 ))}
               </tbody>
             </table>

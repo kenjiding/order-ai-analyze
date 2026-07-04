@@ -57,6 +57,10 @@ export type VendorSnapshotData = {
   webhookConfigs: VendorSnapshotPushConfig[]
   generatedAt: string
   aiSummaries?: VendorSnapshotAiSummaries
+  /** 生成时的指标勾选集合；老快照无该字段 → 全量渲染 */
+  enabledMetricKeys?: string[]
+  /** AI 分析总结开关；false 时快照页不展示 AI 块、切换语言也不补拉 */
+  aiSummaryEnabled?: boolean
 }
 
 const STORAGE_KEY = 'vendorSnapshotData'
@@ -110,8 +114,10 @@ export function buildVendorSnapshot(params: {
   driverPerformanceByVendor: Record<string, DriverPerformanceRow[]>
   configs: VendorPushConfig[]
   aiSummaries?: VendorSnapshotAiSummaries
+  enabledMetricKeys?: string[]
+  aiSummaryEnabled?: boolean
 }): VendorSnapshotData {
-  const { fetchedData, stations, vendorMetrics, driverPerformanceByVendor, configs, aiSummaries } = params
+  const { fetchedData, stations, vendorMetrics, driverPerformanceByVendor, configs, aiSummaries, enabledMetricKeys, aiSummaryEnabled } = params
   const fmt = (s: string) => s.slice(5, 10).replace('-', '/')
   // configs 已经是「本次推送范围（scope 已启用）」的供应商配置；不在其中的即视为未启用
   const enabledVendorCodes = new Set(configs.map((c) => c.vendorCode))
@@ -124,6 +130,8 @@ export function buildVendorSnapshot(params: {
     dispatch24hDate: fetchedData.dayBeforeDate,
     generatedAt: new Date().toISOString(),
     aiSummaries,
+    enabledMetricKeys,
+    aiSummaryEnabled,
     webhookConfigs: configs.map((c) => ({
       vendorCode: c.vendorCode,
       vendorName: c.vendorName,

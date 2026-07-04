@@ -36,6 +36,15 @@ import {
   useSupplierPushCatalog,
 } from '../../shared/supplierPushConfig'
 import { fleetConfigsToVendorPushConfigs } from '../PushNotifications/supplierConfigAdapter'
+import {
+  VENDOR_ANALYSIS_DATA_SOURCES,
+  VENDOR_ANALYSIS_METRICS,
+  buildOverridesFromEnabledKeys,
+  resolveDataSources,
+  resolveFetchableEnabledKeys,
+} from './metricsRegistry'
+import { useMetricPreferences } from './useMetricPreferences'
+import { mergeFetchedArtifact } from './mergeFetchedArtifact'
 
 const VENDOR_ANALYSIS_PUSH_SCOPE = 'vendor-analysis.push' as const
 import { fromIMileTime, iMileTimeMs, nowIn, resolveRegionTz } from '../../utils/ausTimezone'
@@ -59,7 +68,10 @@ function normalizeVendorCode(code: string): string {
   return code.trim()
 }
 
-/** 从任务 payload 反推出重新提交所需的筛选参数（complaintStart/complaintEnd 未落库，从 startTime/endTime 反推）。 */
+/**
+ * 从任务 payload 反推出重新提交所需的筛选参数（complaintStart/complaintEnd 未落库，从 startTime/endTime 反推）。
+ * 不带 metricKeys：payload 里的 dataSources 无法唯一反推回指标勾选集合，重试统一按全量抓取（更安全的简化取舍）。
+ */
 function deriveAnalyzeParamsFromPayload(payload: Record<string, unknown>): VendorAnalyzeAsyncParams | null {
   const str = (key: string): string => (typeof payload[key] === 'string' ? (payload[key] as string) : '')
   const stationCodes = Array.isArray(payload.stationCodes)
@@ -92,6 +104,8 @@ function deriveAnalyzeParamsFromPayload(payload: Record<string, unknown>): Vendo
 
 
 export type FetchedData = {
+  /** 本次任务实际抓取的数据源；老任务的 artifact 无该字段（视为全量） */
+  dataSources?: string[]
   tickets: ComplaintTicketRow[]
   waybills: WaybillRow[]
   unprocessedTickets: UnprocessedTicketsData
@@ -142,6 +156,8 @@ export function useVendorAnalysisPage() {
     [scopeBinding.enabledPushable],
   )
 
+  const metricPrefs = useMetricPreferences()
+
   const [fetchedData, setFetchedData] = useState<FetchedData | null>(null)
   const [dataFetching, setDataFetching] = useState(false)
   const [jobProgress, setJobProgress] = useState<VendorAnalyzeJobProgress | null>(null)
@@ -156,6 +172,25 @@ export function useVendorAnalysisPage() {
   /** 任务队列里点击「查看数据」时，正在加载哪个任务的完整结果（结果体积可能很大，需要明确的加载中反馈） */
   const [loadingJobId, setLoadingJobId] = useState<string | null>(null)
   const jobsPollingRef = useRef<ReturnType<typeof setInterval> | null>(null)
+
+  // 「11点前出仓率」「24H派签率」反映的是抓取那一刻的实时状态，只有参考日期=当天时重新抓取才有意义；
+  // 按日历日字符串比较，避免 DatePicker 返回的 dayjs 与 nowIn(targetTz) 时区对象不一致导致误判
+  const isReferenceDateToday = useMemo(
+    () => !!referenceDate && referenceDate.format('YYYY-MM-DD') === nowIn(targetTz).format('YYYY-MM-DD'),
+    [referenceDate, targetTz],
+  )
+  // 本次实际可用于抓取范围计算的勾选指标：非当天时过滤掉日期敏感指标（即便仍勾选，也不当作「新增」去补拉）
+  const fetchableEnabledKeys = useMemo(
+    () => resolveFetchableEnabledKeys(metricPrefs.enabledKeys, isReferenceDateToday),
+    [metricPrefs.enabledKeys, isReferenceDateToday],
+  )
+
+  // 当前勾选指标需要、但尚未抓取到的数据源；用于「获取数据」增量拉取判断，以及提示缺失指标
+  const missingSources = useMemo(() => {
+    if (!fetchedData) return []
+    const have = new Set(fetchedData.dataSources ?? VENDOR_ANALYSIS_DATA_SOURCES)
+    return resolveDataSources(fetchableEnabledKeys).filter((s) => !have.has(s))
+  }, [fetchedData, fetchableEnabledKeys])
 
   const initRef = useRef(false)
 
@@ -187,6 +222,20 @@ export function useVendorAnalysisPage() {
     }
   }, [fetchedData])
 
+  // 责任站点来自全局筛选（非本 hook 内的 setState），只能用 effect 侦测变化；
+  // 部分数据源（长尾单/11点前出仓/司机运单/归班预警）按站点抓取，站点变了缓存数据必须整体失效，
+  // 否则增量合并会把旧站点的数据当成新站点的结果混用。
+  const prevStationsRef = useRef<string[]>(selectedStations)
+  useEffect(() => {
+    const prevStations = prevStationsRef.current
+    prevStationsRef.current = selectedStations
+    const changed = prevStations.length !== selectedStations.length
+      || prevStations.some((s) => !selectedStations.includes(s))
+    if (!changed || !fetchedData) return
+    setFetchedData(null)
+    showToast('责任站点已变更，请重新获取数据', 'info')
+  }, [selectedStations, fetchedData])
+
   const pollTimerRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
   const stopPolling = useCallback(() => {
@@ -198,8 +247,17 @@ export function useVendorAnalysisPage() {
 
   useEffect(() => stopPolling, [stopPolling])
 
-  const applyArtifact = useCallback((artifact: VendorAnalyzeArtifact) => {
-    setFetchedData({ ...artifact, fetchedAt: new Date() })
+  /**
+   * 应用一次 analyze 任务的结果。
+   * 默认走增量合并（新勾选指标补拉时只覆盖新抓到的数据源，其余保留）；
+   * replace=true 用于「任务队列」里加载某个历史任务的完整结果，语义是切换到另一份独立快照，不应与当前数据合并。
+   */
+  const applyArtifact = useCallback((artifact: VendorAnalyzeArtifact, options?: { replace?: boolean }) => {
+    if (options?.replace) {
+      setFetchedData({ ...artifact, fetchedAt: new Date() })
+      return
+    }
+    setFetchedData((prev) => mergeFetchedArtifact(prev, artifact))
   }, [])
 
   const buildEnqueueParams = useCallback(() => {
@@ -231,8 +289,11 @@ export function useVendorAnalysisPage() {
       unprocessedStartTime: lastMonday.format('YYYY-MM-DD 00:00:00'),
       before11Date: yesterday.format('YYYY-MM-DD'),
       dayBeforeDate: dayBefore.format('YYYY-MM-DD'),
+      // 勾选的指标决定后端抓取哪些数据源；未勾选的不请求。日期敏感指标（11点前出仓率/24H派签率）
+      // 在参考日期非当天时被排除，避免抓取「以当前时刻状态回填历史日期」这种没有意义的数据
+      metricKeys: fetchableEnabledKeys,
     }
-  }, [referenceDate, complaintDateRange, selectedStations])
+  }, [referenceDate, complaintDateRange, selectedStations, fetchableEnabledKeys])
 
   const pollJob = useCallback((jobId: string) => {
     stopPolling()
@@ -274,6 +335,11 @@ export function useVendorAnalysisPage() {
     const params = buildEnqueueParams()
     if (!params) return
 
+    // 已有数据时，只请求当前缺失的数据源（增量拉取）；首次拉取或没有缺失则走全量（原有行为不变）
+    const requestParams = fetchedData && missingSources.length > 0
+      ? { ...params, dataSources: missingSources }
+      : params
+
     // 让状态更新发生在微任务中，避免在 effect 里同步触发级联渲染
     await Promise.resolve()
 
@@ -283,7 +349,7 @@ export function useVendorAnalysisPage() {
     setJobReused(false)
 
     try {
-      let res = await postVendorAnalyzeAsync(imileToken, { ...params, force: false })
+      let res = await postVendorAnalyzeAsync(imileToken, { ...requestParams, force: false })
       if (!res.ok) {
         setDataFetching(false)
         showToast(`任务提交失败: ${res.error}`, 'error')
@@ -292,7 +358,7 @@ export function useVendorAnalysisPage() {
 
       // 幂等命中的是一个已失败/取消的旧任务：静默重新提交一次，换成一个可用的新任务
       if (res.data.status === 'failed' || res.data.status === 'cancelled') {
-        res = await postVendorAnalyzeAsync(imileToken, { ...params, force: true })
+        res = await postVendorAnalyzeAsync(imileToken, { ...requestParams, force: true })
         if (!res.ok) {
           setDataFetching(false)
           showToast(`任务提交失败: ${res.error}`, 'error')
@@ -322,7 +388,7 @@ export function useVendorAnalysisPage() {
       setDataFetching(false)
       showToast('任务提交失败，请重试', 'error')
     }
-  }, [referenceDate, complaintDateRange, selectedStations, imileToken, buildEnqueueParams, applyArtifact, pollJob])
+  }, [referenceDate, complaintDateRange, selectedStations, imileToken, buildEnqueueParams, applyArtifact, pollJob, fetchedData, missingSources])
 
   const fetchData = enqueueAndAttach
 
@@ -377,27 +443,41 @@ export function useVendorAnalysisPage() {
 
       setReferenceDate(dayjs(artifact.referenceDate))
       setComplaintDateRange([dayjs(artifact.startTime.slice(0, 10)), dayjs(artifact.endTime.slice(0, 10))])
-      applyArtifact(artifact)
+      applyArtifact(artifact, { replace: true })
       setJobError(null)
       setJobReused(false)
       setActiveTab('analyze')
+
+      // 还原该任务提交时的指标勾选状态（仅本地生效，不覆盖用户已保存的偏好），
+      // 老任务未落 metricKeys（迁移前提交的）则保持当前指标配置不变
+      const jobMetricKeys = Array.isArray(job.payload.metricKeys)
+        ? (job.payload.metricKeys as unknown[]).filter((k): k is string => typeof k === 'string')
+        : null
+      if (jobMetricKeys) {
+        metricPrefs.applyLocal({
+          v: 1,
+          overrides: buildOverridesFromEnabledKeys(jobMetricKeys),
+          aiSummaryEnabled: metricPrefs.value.aiSummaryEnabled,
+        })
+      }
 
       const jobStations = Array.isArray(job.payload.stationCodes)
         ? (job.payload.stationCodes as unknown[]).filter((s): s is string => typeof s === 'string')
         : []
       const stationsMatch = jobStations.length === selectedStations.length
         && jobStations.every((s) => selectedStations.includes(s))
+      const metricsNote = jobMetricKeys ? '，指标配置已还原为该任务当时的选择' : ''
       if (!stationsMatch) {
-        showToast(`已加载该任务的分析数据（该任务基于站点「${jobStations.join('、') || '—'}」统计，与当前已选站点不同，指标会按当前站点重新过滤）`, 'info')
+        showToast(`已加载该任务的分析数据（该任务基于站点「${jobStations.join('、') || '—'}」统计，与当前已选站点不同，指标会按当前站点重新过滤）${metricsNote}`, 'info')
       } else {
-        showToast('已加载该任务的分析数据', 'success')
+        showToast(`已加载该任务的分析数据${metricsNote}`, 'success')
       }
     } catch (e) {
       showToast((e as Error).message || '加载结果失败', 'error')
     } finally {
       setLoadingJobId(null)
     }
-  }, [applyArtifact, selectedStations])
+  }, [applyArtifact, selectedStations, metricPrefs])
 
   const cancelJobById = useCallback(async (jobId: string) => {
     try {
@@ -858,6 +938,18 @@ export function useVendorAnalysisPage() {
     })
   }, [fetchedData, indexedData, configs])
 
+  // 数据获取后新勾选的指标若缺数据源，列出其名称提示用户重新获取（重新获取时只会增量补拉这些缺失的数据源）
+  const missingMetricLabels = useMemo(() => {
+    if (missingSources.length === 0) return []
+    const missing = new Set(missingSources)
+    const fetchableSet = new Set(fetchableEnabledKeys)
+    return VENDOR_ANALYSIS_METRICS.filter(
+      // 用可抓取集合而非原始勾选集合过滤：日期敏感指标非当天时即使仍勾选也不提示「请重新获取」，
+      // 因为重新点击并不会真的去补拉它（避免误导用户点了也没用）
+      (m) => fetchableSet.has(m.key) && m.dataSources.some((s) => missing.has(s)),
+    ).map((m) => `${m.category === 'vendor' ? '供应商' : '司机'}·${m.label}`)
+  }, [missingSources, fetchableEnabledKeys])
+
   return {
     referenceDate,
     setReferenceDate: handleReferenceDateChange,
@@ -881,6 +973,9 @@ export function useVendorAnalysisPage() {
     pushAll,
     vendorMetrics,
     driverPerformanceByVendor,
+    metricPrefs,
+    missingMetricLabels,
+    isReferenceDateToday,
     activeTab,
     setActiveTab,
     jobsList,

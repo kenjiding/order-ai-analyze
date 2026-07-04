@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   Calendar,
   MapPin,
@@ -90,8 +90,24 @@ const MOCK_DATA: VendorSnapshotData = {
 
 // ── Summary strip ─────────────────────────────────────────────────────
 
-function SummaryStrip({ vendors }: { vendors: VendorSnapshotVendor[] }) {
+/** Tailwind 不能拼接动态类名，汇总 tile 数量 → 桌面端列数用静态映射 */
+const SUMMARY_GRID_COLS: Record<number, string> = {
+  2: 'md:grid-cols-2',
+  3: 'md:grid-cols-3',
+  4: 'md:grid-cols-4',
+}
+
+function SummaryStrip({
+  vendors,
+  enabledMetricKeys,
+}: {
+  vendors: VendorSnapshotVendor[]
+  enabledMetricKeys?: ReadonlySet<string>
+}) {
   const { t } = useVendorSnapshotTranslation()
+  const showUnprocessed = enabledMetricKeys?.has('vendor.unprocessedTickets') ?? true
+  const showLongTail = enabledMetricKeys?.has('vendor.longTail') ?? true
+  const tileCount = 2 + (showUnprocessed ? 1 : 0) + (showLongTail ? 1 : 0)
   const activeVendors = vendors.filter((v) => !v.isDisabled)
   const totalUnprocessed = vendors.reduce((s, v) => s + v.unprocessedTicketCount, 0)
   const totalLongTail = vendors.reduce((s, v) => s + v.longTailCount, 0)
@@ -103,30 +119,34 @@ function SummaryStrip({ vendors }: { vendors: VendorSnapshotVendor[] }) {
   ).length
 
   return (
-    <div className="grid grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4 mb-6 sm:mb-8">
+    <div className={`grid grid-cols-2 ${SUMMARY_GRID_COLS[tileCount]} gap-3 sm:gap-4 mb-6 sm:mb-8`}>
       <div className="rounded-xl sm:rounded-2xl border border-slate-100 bg-white px-4 py-4 sm:px-6 sm:py-5 shadow-sm min-w-0">
         <div className="text-xs font-bold text-slate-500 leading-snug mb-2 sm:mb-3">{t('summary.vendorCount')}</div>
         <div className="text-3xl sm:text-5xl font-black tabular-nums text-slate-800">{vendors.length}</div>
         <div className="mt-2 text-xs text-slate-400">{t('summary.pushEnabled', { count: activeVendors.length })}</div>
       </div>
-      <div className="rounded-xl sm:rounded-2xl border border-slate-100 bg-white px-4 py-4 sm:px-6 sm:py-5 shadow-sm min-w-0">
-        <div className="text-xs font-bold text-slate-500 leading-snug mb-2 sm:mb-3">{t('summary.unprocessedTickets')}</div>
-        <div className={`text-3xl sm:text-5xl font-black tabular-nums ${totalUnprocessed > 0 ? 'text-rose-500' : 'text-emerald-500'}`}>
-          {totalUnprocessed}
+      {showUnprocessed && (
+        <div className="rounded-xl sm:rounded-2xl border border-slate-100 bg-white px-4 py-4 sm:px-6 sm:py-5 shadow-sm min-w-0">
+          <div className="text-xs font-bold text-slate-500 leading-snug mb-2 sm:mb-3">{t('summary.unprocessedTickets')}</div>
+          <div className={`text-3xl sm:text-5xl font-black tabular-nums ${totalUnprocessed > 0 ? 'text-rose-500' : 'text-emerald-500'}`}>
+            {totalUnprocessed}
+          </div>
+          <div className={`mt-2 text-xs font-medium ${totalUnprocessed > 0 ? 'text-rose-500' : 'text-emerald-600'}`}>
+            {totalUnprocessed > 0 ? t('summary.pendingAction') : t('summary.allClear')}
+          </div>
         </div>
-        <div className={`mt-2 text-xs font-medium ${totalUnprocessed > 0 ? 'text-rose-500' : 'text-emerald-600'}`}>
-          {totalUnprocessed > 0 ? t('summary.pendingAction') : t('summary.allClear')}
+      )}
+      {showLongTail && (
+        <div className="rounded-xl sm:rounded-2xl border border-slate-100 bg-white px-4 py-4 sm:px-6 sm:py-5 shadow-sm min-w-0">
+          <div className="text-xs font-bold text-slate-500 leading-snug mb-2 sm:mb-3">{t('summary.longTailTotal')}</div>
+          <div className={`text-3xl sm:text-5xl font-black tabular-nums ${totalLongTail > 0 ? 'text-amber-500' : 'text-emerald-500'}`}>
+            {totalLongTail}
+          </div>
+          <div className={`mt-2 text-xs font-medium ${totalLongTail > 0 ? 'text-amber-500' : 'text-emerald-600'}`}>
+            {totalLongTail > 0 ? t('summary.itemsToFollowUp') : t('summary.noLongTail')}
+          </div>
         </div>
-      </div>
-      <div className="rounded-xl sm:rounded-2xl border border-slate-100 bg-white px-4 py-4 sm:px-6 sm:py-5 shadow-sm min-w-0">
-        <div className="text-xs font-bold text-slate-500 leading-snug mb-2 sm:mb-3">{t('summary.longTailTotal')}</div>
-        <div className={`text-3xl sm:text-5xl font-black tabular-nums ${totalLongTail > 0 ? 'text-amber-500' : 'text-emerald-500'}`}>
-          {totalLongTail}
-        </div>
-        <div className={`mt-2 text-xs font-medium ${totalLongTail > 0 ? 'text-amber-500' : 'text-emerald-600'}`}>
-          {totalLongTail > 0 ? t('summary.itemsToFollowUp') : t('summary.noLongTail')}
-        </div>
-      </div>
+      )}
       <div className="rounded-xl sm:rounded-2xl border border-slate-100 bg-white px-4 py-4 sm:px-6 sm:py-5 shadow-sm min-w-0">
         <div className="text-xs font-bold text-slate-500 leading-snug mb-2 sm:mb-3">{t('summary.alertVendors')}</div>
         <div className={`text-3xl sm:text-5xl font-black tabular-nums ${vendorsWithIssues > 0 ? 'text-rose-500' : 'text-emerald-500'}`}>
@@ -195,6 +215,12 @@ export default function VendorSnapshotPage() {
   const pushingRef = useRef(false)
   const autoPushFiredRef = useRef(false)
 
+  // 老快照无 enabledMetricKeys → undefined → 全量渲染
+  const enabledSet = useMemo(
+    () => (data?.enabledMetricKeys ? new Set(data.enabledMetricKeys) : undefined),
+    [data],
+  )
+
   useEffect(() => {
     const loaded = loadVendorSnapshot()
     if (loaded) {
@@ -209,6 +235,8 @@ export default function VendorSnapshotPage() {
   // 切换语言时按需拉取对应语言的 AI 分析（已缓存则直接展示）
   useEffect(() => {
     if (!data || isMock || !data.vendors.length) return
+    // AI 总开关关闭的快照：不展示 AI 块，切换语言也不补拉
+    if (data.aiSummaryEnabled === false) return
     if (hasAiSummariesForLocale(data.aiSummaries, data.vendors, locale)) {
       setAiSummaryLoading(false)
       return
@@ -218,8 +246,9 @@ export default function VendorSnapshotPage() {
     setAiSummaryLoading(true)
     void (async () => {
       const result = await fetchVendorAiSummaries(
-        buildVendorAiInputsFromSnapshot(data.vendors),
+        buildVendorAiInputsFromSnapshot(data.vendors, enabledSet),
         locale,
+        data.enabledMetricKeys,
       )
       if (cancelled) return
       if (result.ok) {
@@ -237,7 +266,7 @@ export default function VendorSnapshotPage() {
     return () => {
       cancelled = true
     }
-  }, [data, isMock, locale])
+  }, [data, isMock, locale, enabledSet])
 
   const handlePushAll = useCallback(async () => {
     if (!data || pushingRef.current) return
@@ -416,7 +445,7 @@ export default function VendorSnapshotPage() {
         </div>
 
         {/* Summary strip */}
-        <SummaryStrip vendors={data.vendors} />
+        <SummaryStrip vendors={data.vendors} enabledMetricKeys={enabledSet} />
 
         {/* Color legend */}
         <Legend />
@@ -439,6 +468,7 @@ export default function VendorSnapshotPage() {
                   before11Date={data.before11Date}
                   dispatch24hDate={data.dispatch24hDate}
                   complaintDateRange={data.complaintDateRange}
+                  enabledMetricKeys={enabledSet}
                 />
                 {ps && <VendorPushBadge status={ps.status} error={ps.error} />}
               </div>

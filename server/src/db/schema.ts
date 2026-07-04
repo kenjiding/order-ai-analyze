@@ -180,6 +180,20 @@ export const supplierConfigScopeBindings = pgTable('supplier_config_scope_bindin
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 })
 
+/** 通用用户偏好：按 (userId, prefKey) 一行，value 为业务自定义 jsonb（如供应商分析的指标勾选） */
+export const userPreferences = pgTable(
+  'user_preferences',
+  {
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    prefKey: varchar('pref_key', { length: 128 }).notNull(),
+    value: jsonb('value').notNull(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [primaryKey({ columns: [table.userId, table.prefKey] })],
+)
+
 /** 供应商数据分析任务的完整分析结果，长期保存在数据库中，不受 jobs.artifactPath 文件 TTL 清理影响 */
 export const vendorAnalysisSnapshots = pgTable(
   'vendor_analysis_snapshots',

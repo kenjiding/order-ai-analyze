@@ -4,11 +4,20 @@ import {
   fetchLongTailOrders,
   fetchUnprocessedTickets,
   fetchVendorWaybills,
+  type Before11ExitRateResult,
+  type SlimPickupRow,
+  type UnprocessedTicketsResult,
 } from '../../imile/vendorAnalysis'
-import { fetchDriverReturnWarning, fetchDriverWaybills } from '../../imile/driverPerformance'
+import {
+  fetchDriverReturnWarning,
+  fetchDriverWaybills,
+  type DriverReturnRow,
+  type DriverWaybillRow,
+} from '../../imile/driverPerformance'
 import { Semaphore } from '../../imile/semaphore'
 import { getDb, schema } from '../../db'
 import type { JobHandler } from '../types'
+import { VENDOR_ANALYSIS_DATA_SOURCES, type VendorAnalysisDataSource } from '../../vendorAnalysis/metricsCatalog'
 
 export const VENDOR_ANALYZE_JOB_TYPE = 'vendor.analyze'
 
@@ -31,10 +40,18 @@ type VendorAnalyzePayload = {
   unprocessedStartTime: string
   before11Date: string
   dayBeforeDate: string
+  dataSources: VendorAnalysisDataSource[]
 }
 
 function asStringArray(raw: unknown): string[] {
   return Array.isArray(raw) ? raw.filter((s): s is string => typeof s === 'string' && s.trim().length > 0) : []
+}
+
+/** 老任务 payload 无 dataSources 字段 → 全量抓取（改造前行为） */
+function parseDataSources(raw: unknown): VendorAnalysisDataSource[] {
+  const valid = new Set<string>(VENDOR_ANALYSIS_DATA_SOURCES)
+  const parsed = asStringArray(raw).filter((s): s is VendorAnalysisDataSource => valid.has(s))
+  return parsed.length > 0 ? parsed : [...VENDOR_ANALYSIS_DATA_SOURCES]
 }
 
 function parsePayload(raw: Record<string, unknown>): VendorAnalyzePayload | null {
@@ -66,6 +83,7 @@ function parsePayload(raw: Record<string, unknown>): VendorAnalyzePayload | null
     unprocessedStartTime: raw.unprocessedStartTime as string,
     before11Date: raw.before11Date as string,
     dayBeforeDate: raw.dayBeforeDate as string,
+    dataSources: parseDataSources(raw.dataSources),
   }
 }
 
@@ -91,71 +109,158 @@ export const vendorAnalyzeHandler: JobHandler = {
     const params = parsePayload(ctx.job.payload as Record<string, unknown>)
     if (!params) throw new Error('无效的任务参数')
     const { imileToken } = params
+    const enabledSources = new Set<VendorAnalysisDataSource>(params.dataSources)
 
-    await ctx.reportProgress({ phase: 'tickets', message: '获取客诉工单', percent: 0, step: 1, totalSteps: 7 })
-    const ticketsRes = await fetchComplaintTickets(imileToken, {
-      startTime: params.ticketStartTime,
-      endTime: params.ticketEndTime,
+    // 跳过的数据源保持空值：前端聚合对空数组/空 map 天然产出 0 或 null，未勾选指标由渲染层过滤
+    let tickets: unknown[] = []
+    let unprocessedTickets: UnprocessedTicketsResult = { normalTickets: [], complaintTickets: [], arbitrationTickets: [] }
+    let longTailOrders: unknown[] = []
+    let before11ExitRateByVendor: Record<string, Before11ExitRateResult> = {}
+    let driverYesterdayWaybills: SlimPickupRow[] = []
+    let slimmedWaybills: Record<string, unknown>[] = []
+    let driverDayBeforeWaybills: DriverWaybillRow[] = []
+    let driverReturnRows: DriverReturnRow[] = []
+
+    function requireBefore11StationCode(): string {
+      const code = params!.stationCodes[0]?.trim()
+      if (!code) throw new Error('缺少责任站点 stationCode')
+      return code
+    }
+
+    // 与 metricsCatalog 的 dataSource key 一一对应；按勾选指标解析出的并集过滤后顺序执行
+    const stages: Array<{
+      source: VendorAnalysisDataSource
+      phase: string
+      message: string
+      run: () => Promise<void>
+    }> = [
+      {
+        source: 'tickets',
+        phase: 'tickets',
+        message: '获取客诉工单',
+        run: async () => {
+          const res = await fetchComplaintTickets(imileToken, {
+            startTime: params.ticketStartTime,
+            endTime: params.ticketEndTime,
+          })
+          if (!res.ok) throw new Error(`客诉工单获取失败: ${res.message}`)
+          tickets = res.data
+        },
+      },
+      {
+        source: 'unprocessed',
+        phase: 'unprocessed',
+        message: '获取未处理工单',
+        run: async () => {
+          const res = await fetchUnprocessedTickets(imileToken, {
+            startTime: params.unprocessedStartTime,
+            endTime: params.yesterdayEndTime,
+          })
+          if (!res.ok) throw new Error(`未处理工单获取失败: ${res.message}`)
+          unprocessedTickets = res.data
+        },
+      },
+      {
+        source: 'longTail',
+        phase: 'longTail',
+        message: '获取长尾单',
+        run: async () => {
+          const res = await fetchLongTailOrders(imileToken, { stationCodes: params.stationCodes })
+          if (!res.ok) throw new Error(`长尾单获取失败: ${res.message}`)
+          longTailOrders = res.data
+        },
+      },
+      {
+        source: 'before11',
+        phase: 'before11',
+        // 该数据源同时服务「11点前出仓率」「今日取件」「司机11点前出率」3 个指标，进度文案不能只提其中一个
+        message: '获取出仓/取件数据',
+        run: async () => {
+          const res = await waybillSearchSemaphore.run(() =>
+            fetchBefore11ExitRates(imileToken, {
+              stationCode: requireBefore11StationCode(),
+              dateStr: params.before11Date,
+              vendorCodes: params.vendorCodes,
+              regionCode: ctx.job.regionCode,
+            }),
+          )
+          if (!res.ok) throw new Error(`11点前出仓率获取失败: ${res.message}`)
+          before11ExitRateByVendor = res.data.ratesByVendor
+          driverYesterdayWaybills = res.data.pickupRows
+        },
+      },
+      {
+        source: 'waybills',
+        phase: 'waybills',
+        message: '获取运单数据',
+        run: async () => {
+          const res = await waybillSearchSemaphore.run(() =>
+            fetchVendorWaybills(imileToken, { startTime: params.startTime, endTime: params.endTime }),
+          )
+          if (!res.ok) throw new Error(`运单获取失败: ${res.message}`)
+          slimmedWaybills = res.data.map(slimWaybill)
+        },
+      },
+      {
+        source: 'driverWaybills',
+        phase: 'driverWaybills',
+        message: '获取司机运单(24H派签)',
+        run: async () => {
+          const res = await waybillSearchSemaphore.run(() =>
+            fetchDriverWaybills(imileToken, {
+              stationCode: requireBefore11StationCode(),
+              dateStr: params.dayBeforeDate,
+              regionCode: ctx.job.regionCode,
+            }),
+          )
+          if (!res.ok) throw new Error(`司机运单获取失败: ${res.message}`)
+          driverDayBeforeWaybills = res.data
+        },
+      },
+      {
+        source: 'driverReturn',
+        phase: 'driverReturn',
+        message: '获取司机归班预警',
+        run: async () => {
+          const res = await fetchDriverReturnWarning(imileToken, { stationCodes: params.stationCodes })
+          if (!res.ok) throw new Error(`司机归班预警获取失败: ${res.message}`)
+          driverReturnRows = res.data
+        },
+      },
+    ]
+
+    const enabledStages = stages.filter((stage) => enabledSources.has(stage.source))
+    for (const [index, stage] of enabledStages.entries()) {
+      await ctx.reportProgress({
+        phase: stage.phase,
+        message: stage.message,
+        percent: Math.round((index / enabledStages.length) * 95),
+        step: index + 1,
+        totalSteps: enabledStages.length,
+      })
+      await stage.run()
+    }
+
+    await ctx.reportProgress({
+      phase: 'writing',
+      message: '写入结果',
+      percent: 95,
+      step: enabledStages.length,
+      totalSteps: enabledStages.length,
     })
-    if (!ticketsRes.ok) throw new Error(`客诉工单获取失败: ${ticketsRes.message}`)
-
-    await ctx.reportProgress({ phase: 'unprocessed', message: '获取未处理工单', percent: 14, step: 2, totalSteps: 7 })
-    const unprocessedRes = await fetchUnprocessedTickets(imileToken, {
-      startTime: params.unprocessedStartTime,
-      endTime: params.yesterdayEndTime,
-    })
-    if (!unprocessedRes.ok) throw new Error(`未处理工单获取失败: ${unprocessedRes.message}`)
-
-    await ctx.reportProgress({ phase: 'longTail', message: '获取长尾单', percent: 28, step: 3, totalSteps: 7 })
-    const longTailRes = await fetchLongTailOrders(imileToken, { stationCodes: params.stationCodes })
-    if (!longTailRes.ok) throw new Error(`长尾单获取失败: ${longTailRes.message}`)
-
-    await ctx.reportProgress({ phase: 'before11', message: '获取11点前出仓率', percent: 42, step: 4, totalSteps: 7 })
-    const before11StationCode = params.stationCodes[0]?.trim()
-    if (!before11StationCode) throw new Error('缺少责任站点 stationCode')
-    const before11Res = await waybillSearchSemaphore.run(() =>
-      fetchBefore11ExitRates(imileToken, {
-        stationCode: before11StationCode,
-        dateStr: params.before11Date,
-        vendorCodes: params.vendorCodes,
-        regionCode: ctx.job.regionCode,
-      }),
-    )
-    if (!before11Res.ok) throw new Error(`11点前出仓率获取失败: ${before11Res.message}`)
-
-    await ctx.reportProgress({ phase: 'waybills', message: '获取运单数据', percent: 56, step: 5, totalSteps: 7 })
-    const waybillsRes = await waybillSearchSemaphore.run(() =>
-      fetchVendorWaybills(imileToken, { startTime: params.startTime, endTime: params.endTime }),
-    )
-    if (!waybillsRes.ok) throw new Error(`运单获取失败: ${waybillsRes.message}`)
-    const slimmedWaybills = waybillsRes.data.map(slimWaybill)
-
-    await ctx.reportProgress({ phase: 'driverWaybills', message: '获取司机运单(24H派签)', percent: 70, step: 6, totalSteps: 7 })
-    const driverDayBeforeRes = await waybillSearchSemaphore.run(() =>
-      fetchDriverWaybills(imileToken, {
-        stationCode: before11StationCode,
-        dateStr: params.dayBeforeDate,
-        regionCode: ctx.job.regionCode,
-      }),
-    )
-    if (!driverDayBeforeRes.ok) throw new Error(`司机运单获取失败: ${driverDayBeforeRes.message}`)
-
-    await ctx.reportProgress({ phase: 'driverReturn', message: '获取司机归班预警', percent: 84, step: 7, totalSteps: 7 })
-    const driverReturnRes = await fetchDriverReturnWarning(imileToken, { stationCodes: params.stationCodes })
-    if (!driverReturnRes.ok) throw new Error(`司机归班预警获取失败: ${driverReturnRes.message}`)
-
-    await ctx.reportProgress({ phase: 'writing', message: '写入结果', percent: 95, step: 7, totalSteps: 7 })
 
     const artifactData = {
       referenceDate: params.referenceDate,
-      tickets: ticketsRes.data,
+      // 本次实际抓取的数据源；前端据此判断新勾选指标是否需要重新获取数据
+      dataSources: [...enabledSources].sort(),
+      tickets,
       waybills: slimmedWaybills,
-      unprocessedTickets: unprocessedRes.data,
-      longTailOrders: longTailRes.data,
-      before11ExitRateByVendor: before11Res.data.ratesByVendor,
-      driverYesterdayWaybills: before11Res.data.pickupRows,
-      driverDayBeforeWaybills: driverDayBeforeRes.data,
-      driverReturnRows: driverReturnRes.data,
+      unprocessedTickets,
+      longTailOrders,
+      before11ExitRateByVendor,
+      driverYesterdayWaybills,
+      driverDayBeforeWaybills,
+      driverReturnRows,
       startTime: params.startTime,
       endTime: params.endTime,
       ticketStartTime: params.ticketStartTime,
@@ -175,7 +280,13 @@ export const vendorAnalyzeHandler: JobHandler = {
       createdBy: ctx.job.createdBy,
     })
 
-    await ctx.reportProgress({ phase: 'done', message: '完成', percent: 100, step: 7, totalSteps: 7 })
+    await ctx.reportProgress({
+      phase: 'done',
+      message: '完成',
+      percent: 100,
+      step: enabledStages.length,
+      totalSteps: enabledStages.length,
+    })
     return {}
   },
 }

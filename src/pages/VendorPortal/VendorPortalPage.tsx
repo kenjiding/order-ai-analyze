@@ -71,6 +71,8 @@ export default function VendorPortalPage() {
   })
   // 优先当前语言，缺失时回退另一语言（外部页面不触发按需生成）
   const aiSummary = data.aiSummary?.[locale] ?? data.aiSummary?.['zh-CN'] ?? data.aiSummary?.en
+  // 发布日报时的指标勾选集合；老日报为 null → undefined → 全量渲染
+  const enabledSet = data.enabledMetricKeys ? new Set(data.enabledMetricKeys) : undefined
 
   return (
     <div className="vendor-snapshot-page min-h-screen bg-white">
@@ -123,6 +125,7 @@ export default function VendorPortalPage() {
           before11Date={data.before11Date}
           dispatch24hDate={data.dispatch24hDate}
           complaintDateRange={data.complaintDateRange}
+          enabledMetricKeys={enabledSet}
         />
 
         {/* Footer */}

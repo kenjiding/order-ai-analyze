@@ -63,6 +63,8 @@ export async function fetchVendors(
 
 export type VendorAnalyzeArtifact = {
   referenceDate: string
+  /** 本次任务实际抓取的数据源；老任务无该字段（视为全量） */
+  dataSources?: string[]
   tickets: ComplaintTicketRow[]
   waybills: WaybillRow[]
   unprocessedTickets: UnprocessedTicketsData
@@ -96,6 +98,10 @@ export type VendorAnalyzeAsyncParams = {
   before11Date: string
   dayBeforeDate: string
   force?: boolean
+  /** 勾选的指标 key；不传 = 全量抓取（老行为） */
+  metricKeys?: string[]
+  /** 增量拉取：直接指定本次要抓取的数据源，优先于 metricKeys（只用于补拉已缺失的部分） */
+  dataSources?: string[]
 }
 
 /** 提交/复用一次供应商数据分析任务；立即返回 jobId，通过 getJobById 轮询状态。 */
@@ -124,24 +130,26 @@ export type VendorAiDriverInput = {
   courierName: string
   courierCode: string
   routeCode: string
-  ofdCount: number
-  dispatchRate24h: number | null
-  dispatch24hCount: number
-  totalDispatchCount: number
-  returnWarningCount: number
-  longTailCount: number
+  /** 以下字段均对应可自由取消的指标，未勾选时省略（不发 0，避免误导模型） */
+  ofdCount?: number
+  dispatchRate24h?: number | null
+  dispatch24hCount?: number
+  totalDispatchCount?: number
+  returnWarningCount?: number
+  longTailCount?: number
 }
 
 export type VendorAiInput = {
   vendorCode: string
   vendorName: string
-  before11ExitRate: number | null
-  dispatchRate24h: number | null
-  complaintRate: number
-  complaintCount: number
-  waybillCount: number
-  unprocessedTicketCount: number
-  longTailCount: number
+  /** 以下字段均对应可自由取消的指标，未勾选时省略 */
+  before11ExitRate?: number | null
+  dispatchRate24h?: number | null
+  complaintRate?: number
+  complaintCount?: number
+  waybillCount?: number
+  unprocessedTicketCount?: number
+  longTailCount?: number
   drivers: VendorAiDriverInput[]
 }
 
@@ -151,10 +159,11 @@ import type { VendorSnapshotData, VendorSnapshotVendor, VendorSnapshotAiSummarie
 export async function fetchVendorAiSummaries(
   vendors: VendorAiInput[],
   locale: AppLocale = 'zh-CN',
+  metricKeys?: string[],
 ): Promise<{ ok: true; data: Record<string, string> } | { ok: false; error: string }> {
   return apiFetch<Record<string, string>>('/api/vendor-analysis/ai-summary', {
     method: 'POST',
-    body: JSON.stringify({ vendors, locale }),
+    body: JSON.stringify({ vendors, locale, metricKeys }),
   })
 }
 
@@ -174,6 +183,7 @@ export async function postDailyReport(
     generatedAt: snapshot.generatedAt,
     vendors: snapshot.vendors,
     aiSummaries: snapshot.aiSummaries,
+    enabledMetricKeys: snapshot.enabledMetricKeys,
   }
   return apiFetch<{ id: string; createdAt: string }>('/api/vendor-analysis/daily-reports', {
     method: 'POST',
@@ -232,6 +242,8 @@ export type VendorPortalDaily = {
   generatedAt: string
   vendor: VendorSnapshotVendor
   aiSummary: VendorSnapshotAiSummaries[string] | null
+  /** 发布日报时的指标勾选集合；老日报为 null → 全量渲染 */
+  enabledMetricKeys: string[] | null
 }
 
 export async function fetchVendorPortalDaily(

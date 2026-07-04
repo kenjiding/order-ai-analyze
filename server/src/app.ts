@@ -18,6 +18,7 @@ import { vendorPortalRouter } from './routes/vendorPortalRouter'
 import { fleetSupplierPushRouter } from './routes/fleetSupplierPushRouter'
 import { exitAlarmRouter } from './routes/exitAlarmRouter'
 import { supplierConfigScopeRouter } from './routes/supplierConfigScopeRouter'
+import { userPreferencesRouter } from './routes/userPreferencesRouter'
 
 const app = express()
 
@@ -62,6 +63,7 @@ app.use('/api/vendor-analysis', requireAuth, vendorAnalysisRouter)
 app.use('/api/vendor-portal', vendorPortalRouter)
 app.use('/api/fleet-supplier-push', requireAuth, fleetSupplierPushRouter)
 app.use('/api/supplier-config-scopes', requireAuth, supplierConfigScopeRouter)
+app.use('/api/user-preferences', requireAuth, userPreferencesRouter)
 app.use('/api/feishu-webhook', requireAuth, feishuWebhookTestRouter)
 app.use('/api/exit-alarm', requireAuth, exitAlarmRouter)
 

@@ -11,6 +11,12 @@ import { VENDOR_ANALYZE_JOB_TYPE } from '../jobs/handlers'
 import { canAccessJob, resolveEnqueueRegionCode, sendJobAccessDenied } from '../jobs/access'
 import { listSupplierPushConfigs } from '../supplierPushConfigs'
 import { purgeOldVendorDailyData } from '../vendorAnalysis/retention'
+import {
+  buildVendorAiSystemPrompt,
+  parseVendorAnalysisDataSources,
+  resolveVendorAnalysisDataSources,
+  type VendorAnalysisDataSource,
+} from '../vendorAnalysis/metricsCatalog'
 
 export const vendorAnalysisRouter = Router()
 
@@ -48,7 +54,11 @@ function normalizeVendorAnalyzeCode(code: string): string {
   return code.trim()
 }
 
-/** 相同筛选条件（region + 站点 + 日期 + 供应商）在此内生成同一个 key，命中 enqueueJob 的幂等去重 */
+/**
+ * 相同筛选条件（region + 站点 + 日期 + 供应商 + 数据源集合）在此内生成同一个 key，命中 enqueueJob 的幂等去重。
+ * dataSources 参与 key：勾选指标集合不同 → 需要抓取的数据不同 → 不能命中旧任务（否则缺数据）。
+ * v1 → v2：老 key 永不再命中，避免命中无 dataSources 字段的历史任务。
+ */
 function buildVendorAnalyzeIdempotencyKey(input: {
   regionCode: string | null
   stationCodes: string[]
@@ -56,17 +66,19 @@ function buildVendorAnalyzeIdempotencyKey(input: {
   complaintStart: string
   complaintEnd: string
   vendorCodes: string[]
+  dataSources: VendorAnalysisDataSource[]
 }): string {
   const region = input.regionCode ?? '_global_'
   const stations = [...new Set(input.stationCodes.map((s) => s.trim()).filter(Boolean))].sort().join(',')
   const vendors = [...new Set(input.vendorCodes.map((s) => s.trim()).filter(Boolean))].sort().join(',')
   return [
-    'vendor.analyze:v1',
+    'vendor.analyze:v2',
     region,
     stations,
     input.referenceDate,
     `${input.complaintStart}~${input.complaintEnd}`,
     vendors,
+    input.dataSources.join(','),
   ].join('|')
 }
 
@@ -88,6 +100,9 @@ type AnalyzeAsyncBody = {
   dayBeforeDate?: unknown
   regionCode?: unknown
   force?: unknown
+  metricKeys?: unknown
+  /** 增量拉取：前端直接指定本次要抓取的数据源，跳过 metricKeys → 并集 的解析。传了则优先于 metricKeys */
+  dataSources?: unknown
 }
 
 const ANALYZE_ASYNC_REQUIRED_STRING_FIELDS = [
@@ -128,6 +143,40 @@ vendorAnalysisRouter.post('/analyze-async', async (req: AuthenticatedRequest, re
     return
   }
 
+  // metricKeys 独立于 dataSources 解析：即便本次是增量拉取（走 dataSources 分支），前端仍会带上当前完整的勾选
+  // 集合，单纯落库供「查看数据」还原指标配置用，不参与本次抓取范围计算（抓取范围只看 dataSources）
+  let metricKeys: string[] | null = null
+  if (body.metricKeys !== undefined) {
+    if (!Array.isArray(body.metricKeys) || body.metricKeys.some((k) => typeof k !== 'string')) {
+      res.status(400).json({ ok: false, error: '无效的 metricKeys' })
+      return
+    }
+    metricKeys = body.metricKeys as string[]
+  }
+
+  // dataSources 显式指定（增量拉取，只补缺失的数据源）→ 优先于 metricKeys 解析；
+  // 否则 metricKeys 不传（老客户端）→ 全量抓取，传了则按勾选指标解析需要的数据源并集
+  let dataSources: VendorAnalysisDataSource[]
+  if (body.dataSources !== undefined) {
+    if (!Array.isArray(body.dataSources) || body.dataSources.some((s) => typeof s !== 'string') || body.dataSources.length === 0) {
+      res.status(400).json({ ok: false, error: '无效的 dataSources' })
+      return
+    }
+    const parsed = parseVendorAnalysisDataSources(body.dataSources as string[])
+    if (parsed.invalid.length > 0) {
+      res.status(400).json({ ok: false, error: `未知数据源: ${parsed.invalid.join(', ')}` })
+      return
+    }
+    dataSources = parsed.dataSources
+  } else {
+    const resolved = resolveVendorAnalysisDataSources(metricKeys)
+    if (resolved.unknownKeys.length > 0) {
+      res.status(400).json({ ok: false, error: `未知指标: ${resolved.unknownKeys.join(', ')}` })
+      return
+    }
+    dataSources = resolved.dataSources
+  }
+
   // vendorCodes 由服务端直接查统一供应商配置表得出；按分析目标州过滤，与车队配置的按州隔离保持一致
   // （超管未指定具体州时 regionResult 为 null，此时不限州，覆盖全部供应商配置）
   const db = getDb()
@@ -144,6 +193,7 @@ vendorAnalysisRouter.post('/analyze-async', async (req: AuthenticatedRequest, re
         complaintStart: body.complaintStart as string,
         complaintEnd: body.complaintEnd as string,
         vendorCodes,
+        dataSources,
       })
 
   const enqueuePayload = {
@@ -162,6 +212,9 @@ vendorAnalysisRouter.post('/analyze-async', async (req: AuthenticatedRequest, re
     unprocessedStartTime: body.unprocessedStartTime,
     before11Date: body.before11Date,
     dayBeforeDate: body.dayBeforeDate,
+    dataSources,
+    // 仅用于任务队列「查看数据」还原当时的指标勾选状态，Worker 抓取阶段不读此字段
+    metricKeys,
   }
 
   let job = await enqueueJob({
@@ -239,6 +292,7 @@ type DailyReportBody = {
   generatedAt?: unknown
   vendors?: unknown
   aiSummaries?: unknown
+  enabledMetricKeys?: unknown
 }
 
 /**
@@ -264,6 +318,11 @@ vendorAnalysisRouter.post('/daily-reports', async (req: AuthenticatedRequest, re
     generatedAt: typeof body.generatedAt === 'string' ? body.generatedAt : new Date().toISOString(),
     vendors: body.vendors,
     aiSummaries: body.aiSummaries && typeof body.aiSummaries === 'object' ? body.aiSummaries : undefined,
+    // 发布时的指标勾选集合；外部门户按它过滤渲染，缺省（老日报）视为全量
+    enabledMetricKeys:
+      Array.isArray(body.enabledMetricKeys) && body.enabledMetricKeys.every((k) => typeof k === 'string')
+        ? (body.enabledMetricKeys as string[])
+        : undefined,
   }
   try {
     const db = getDb()
@@ -391,82 +450,29 @@ type VendorAiDriverInput = {
   courierName: string
   courierCode: string
   routeCode: string
-  ofdCount: number
+  /** 以下字段均对应可自由取消的指标，未勾选对应指标时省略 */
+  ofdCount?: number
   /** 24H派签率，fraction */
-  dispatchRate24h: number | null
-  dispatch24hCount: number
-  totalDispatchCount: number
-  returnWarningCount: number
-  /** 长尾单件数 */
-  longTailCount: number
+  dispatchRate24h?: number | null
+  dispatch24hCount?: number
+  totalDispatchCount?: number
+  returnWarningCount?: number
+  longTailCount?: number
 }
 
 type VendorAiInput = {
   vendorCode: string
   vendorName: string
-  /** 11点前出仓率，fraction */
-  before11ExitRate: number | null
-  /** 24H派签率，fraction */
-  dispatchRate24h: number | null
-  /** 客诉率，fraction */
-  complaintRate: number
-  complaintCount: number
-  waybillCount: number
-  unprocessedTicketCount: number
-  longTailCount: number
+  /** 以下字段均对应可自由取消的指标，未勾选对应指标时省略 */
+  before11ExitRate?: number | null
+  dispatchRate24h?: number | null
+  complaintRate?: number
+  complaintCount?: number
+  waybillCount?: number
+  unprocessedTicketCount?: number
+  longTailCount?: number
   /** 按归班预警数降序、再按派签率升序排列，最多 30 条 */
   drivers: VendorAiDriverInput[]
-}
-
-const VENDOR_AI_SYSTEM_PROMPTS: Record<'zh-CN' | 'en', string> = {
-  'zh-CN': `你是 iMile Australia 的资深运营分析师，负责向各快递供应商提供有深度、可执行的数据分析报告。
-
-【指标基准线】
-- 11点前出仓率：≥99% 达标，[95%,99%) 预警，<95% 异常
-- 24H派签率：≥95% 达标，[92%,95%) 预警，<92% 异常
-- 客诉率：≤0.025% 达标，(0.025%,0.03%) 预警，≥0.03% 异常
-
-【分析要求】针对每家供应商输出150~250字的专业中文分析，必须涵盖以下维度：
-1. 供应商整体表现总结（对照基准，指出哪些指标有问题、偏差幅度，不只是重复数字）
-2. 司机层面深入分析：
-   - 点名24H派签率最低的2~3名司机及其路由、具体数值
-   - 点名归班预警次数最多的司机，说明风险
-   - 若存在长尾单较多的司机，说明待跟进件量及潜在风险
-   - 若存在某条路由多名司机均表现差，判断可能是路线问题而非个人问题
-3. 问题归因推断（基于数据，不要凭空猜测）
-4. 具体可执行建议（涉及到人名或路由，而非"加强管理"之类的空话）
-
-【格式要求】
-- 流畅中文段落，不使用 markdown、分点符号、emoji
-- 150~250字，言之有物，不堆砌废话
-- 若某家供应商所有指标均达标，则以积极语气简要肯定（60~80字即可），并从司机数据中找出表现最优司机予以点名
-- 禁止出现：AI、大模型、自动生成、人工智能
-
-返回严格 JSON（UTF-8，无 markdown wrapper）：{"summaries":{"<vendorCode>":"<analysis>",...}}`,
-  en: `You are a senior operations analyst at iMile Australia, producing in-depth, actionable performance reports for courier vendors.
-
-[Metric baselines]
-- Exit rate by 11:00: ≥99% on target, [95%,99%) warning, <95% critical
-- 24h dispatch/sign-off rate: ≥95% on target, [92%,95%) warning, <92% critical
-- Complaint rate: ≤0.025% on target, (0.025%,0.03%) warning, ≥0.03% critical
-
-[Requirements] For each vendor, write a professional English analysis of 150–250 words covering:
-1. Overall vendor performance vs baselines (which metrics miss target and by how much—not just repeating numbers)
-2. Courier-level analysis:
-   - Name the 2–3 couriers with the lowest 24h dispatch rates, their routes, and figures
-   - Name couriers with the most return alerts and explain risk
-   - If couriers have high long-tail counts, note follow-up volume and risk
-   - If multiple couriers on the same route underperform, consider a route issue rather than individuals
-3. Root-cause inference grounded in data (no speculation)
-4. Concrete, actionable recommendations (name couriers or routes—avoid vague "improve management")
-
-[Format]
-- Fluent English paragraphs only; no markdown, bullet lists, or emoji
-- 150–250 words; substantive, not filler
-- If all metrics are on target, give brief positive feedback (60–80 words) and name top-performing couriers
-- Do not mention: AI, LLM, auto-generated, artificial intelligence
-
-Return strict JSON (UTF-8, no markdown wrapper): {"summaries":{"<vendorCode>":"<analysis>",...}}`,
 }
 
 const VENDOR_AI_USER_PROMPTS: Record<'zh-CN' | 'en', (count: number) => string> = {
@@ -485,11 +491,21 @@ vendorAnalysisRouter.post('/ai-summary', async (req: AuthenticatedRequest, res: 
     return
   }
 
-  const { vendors, locale: rawLocale } = req.body as { vendors?: VendorAiInput[]; locale?: unknown }
+  const { vendors, locale: rawLocale, metricKeys: rawMetricKeys } = req.body as {
+    vendors?: VendorAiInput[]
+    locale?: unknown
+    metricKeys?: unknown
+  }
   if (!Array.isArray(vendors) || vendors.length === 0) {
     res.status(400).json({ ok: false, error: '缺少 vendors 数据' })
     return
   }
+
+  // 不传 metricKeys（老客户端）→ prompt 与历史硬编码版本一致
+  const metricKeys =
+    Array.isArray(rawMetricKeys) && rawMetricKeys.every((k) => typeof k === 'string')
+      ? (rawMetricKeys as string[])
+      : null
 
   const locale = resolveVendorAiLocale(rawLocale)
   const userPrompt = `${VENDOR_AI_USER_PROMPTS[locale](vendors.length)}\n${JSON.stringify(vendors, null, 2)}`
@@ -503,7 +519,7 @@ vendorAnalysisRouter.post('/ai-summary', async (req: AuthenticatedRequest, res: 
       max_tokens: 3000,
       response_format: { type: 'json_object' },
       messages: [
-        { role: 'system', content: VENDOR_AI_SYSTEM_PROMPTS[locale] },
+        { role: 'system', content: buildVendorAiSystemPrompt(locale, metricKeys) },
         { role: 'user', content: userPrompt },
       ],
     })

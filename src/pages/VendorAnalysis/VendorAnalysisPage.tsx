@@ -9,9 +9,10 @@ import { VendorFilterPanel } from './components/VendorFilterPanel'
 import { VendorJobsTabContent } from './components/VendorJobsTabContent'
 import { VendorMetricsPreview } from './components/VendorMetricsPreview'
 import { useVendorShareLinks, buildVendorShareLinkColumn } from './components/VendorShareLinkColumn'
+import { MetricConfigPanel } from './components/MetricConfigPanel'
 import { useVendorAnalysisPage, type TabId } from './useVendorAnalysisPage'
-import { buildVendorSnapshot, saveVendorSnapshot, type VendorSnapshotAiSummaries } from './vendorSnapshotStorage'
-import { mergeAiSummariesForLocale } from './vendorSnapshotAi'
+import { buildVendorSnapshot, saveVendorSnapshot } from './vendorSnapshotStorage'
+import { buildVendorAiInputsFromSnapshot, mergeAiSummariesForLocale } from './vendorSnapshotAi'
 import { fetchVendorAiSummaries, postDailyReport } from './vendorAnalysisApi'
 import { useAppLocale } from '../../i18n/hooks'
 
@@ -34,56 +35,28 @@ export default function VendorAnalysisPage() {
       message.warning('请先在下方启用要推送的供应商')
       return
     }
-    setAiLoading(true)
-    let aiSummaries: VendorSnapshotAiSummaries | undefined
-    try {
-      const inputs = v.vendorMetrics.map((m) => {
-        const dispatchRate24h = m.dispatchRate24hText ? parseFloat(m.dispatchRate24hText) / 100 : null
-        const rawDrivers = v.driverPerformanceByVendor[m.vendorCode] ?? []
-        // 按归班预警降序、再按派签率升序，取前 30 条，让模型聚焦最需关注的司机
-        const sortedDrivers = [...rawDrivers].sort(
-          (a, b) =>
-            b.returnWarningCount - a.returnWarningCount ||
-            (a.dispatchRate24h ?? 1) - (b.dispatchRate24h ?? 1),
-        ).slice(0, 30)
-        return {
-          vendorCode: m.vendorCode,
-          vendorName: m.vendorName,
-          before11ExitRate: m.before11ExitRate,
-          dispatchRate24h,
-          complaintRate: m.complaintRate,
-          complaintCount: m.complaintCount,
-          waybillCount: m.waybillCount,
-          unprocessedTicketCount: m.unprocessedTicketCount,
-          longTailCount: m.longTailCount,
-          drivers: sortedDrivers.map((d) => ({
-            courierName: d.courierName,
-            courierCode: d.courierCode,
-            routeCode: d.routeCode,
-            ofdCount: d.ofdCount,
-            dispatchRate24h: d.dispatchRate24h,
-            dispatch24hCount: d.dispatch24hCount,
-            totalDispatchCount: d.totalDispatchCount,
-            returnWarningCount: d.returnWarningCount,
-            longTailCount: d.longTailCount,
-          })),
-        }
-      })
-      const result = await fetchVendorAiSummaries(inputs, locale)
-      if (result.ok) {
-        aiSummaries = mergeAiSummariesForLocale(undefined, locale, result.data)
-      }
-    } finally {
-      setAiLoading(false)
-    }
     const snapshot = buildVendorSnapshot({
       fetchedData: v.fetchedData,
       stations: v.selectedStations,
       vendorMetrics: v.vendorMetrics,
       driverPerformanceByVendor: v.driverPerformanceByVendor,
       configs: v.selectedPushConfigs,
-      aiSummaries,
+      enabledMetricKeys: v.metricPrefs.enabledKeys,
+      aiSummaryEnabled: v.metricPrefs.aiSummaryEnabled,
     })
+    // AI 总开关关闭时完全不调用 AI 接口；开启时输入与快照渲染共用同一套勾选过滤
+    if (v.metricPrefs.aiSummaryEnabled) {
+      setAiLoading(true)
+      try {
+        const inputs = buildVendorAiInputsFromSnapshot(snapshot.vendors, v.metricPrefs.enabledSet)
+        const result = await fetchVendorAiSummaries(inputs, locale, v.metricPrefs.enabledKeys)
+        if (result.ok) {
+          snapshot.aiSummaries = mergeAiSummariesForLocale(undefined, locale, result.data)
+        }
+      } finally {
+        setAiLoading(false)
+      }
+    }
     saveVendorSnapshot(snapshot)
     // 发布日报到服务端，供外部供应商分享链接读取；失败不阻断快照页打开，但明确提示
     void postDailyReport(snapshot).then((result) => {
@@ -94,7 +67,7 @@ export default function VendorAnalysisPage() {
       refetchShareLinks()
     })
     window.open(autoPush ? '/vendor-snapshot?autoPush=1' : '/vendor-snapshot', '_blank')
-  }, [v.fetchedData, v.selectedStations, v.vendorMetrics, v.driverPerformanceByVendor, v.selectedPushConfigs, selectedPushCount, locale, message, refetchShareLinks])
+  }, [v.fetchedData, v.selectedStations, v.vendorMetrics, v.driverPerformanceByVendor, v.selectedPushConfigs, v.metricPrefs, selectedPushCount, locale, message, refetchShareLinks])
 
   const pushBtnTooltip = !v.fetchedData
     ? '请先点击「获取数据」'
@@ -171,6 +144,16 @@ export default function VendorAnalysisPage() {
             jobProgress={v.jobProgress}
             jobError={v.jobError}
             jobReused={v.jobReused}
+            missingMetricLabels={v.missingMetricLabels}
+            extra={
+              <MetricConfigPanel
+                loading={v.metricPrefs.loading}
+                saving={v.metricPrefs.saving}
+                value={v.metricPrefs.value}
+                onSave={v.metricPrefs.save}
+                referenceDateIsToday={v.isReferenceDateToday}
+              />
+            }
           />
 
           {/* 指标预览（含各供应商的司机派件表现） */}
@@ -180,6 +163,7 @@ export default function VendorAnalysisPage() {
               fetchedData={v.fetchedData}
               hasStations={v.selectedStations.length > 0}
               driverPerformanceByVendor={v.driverPerformanceByVendor}
+              enabledMetricKeys={v.metricPrefs.enabledSet}
             />
           )}
 
@@ -197,7 +181,17 @@ export default function VendorAnalysisPage() {
                 <span className="text-xs tabular-nums text-slate-500">
                   已启用 {selectedPushCount} / {v.configs.length}
                 </span>
-                <Tooltip title={!v.fetchedData ? '请先获取数据' : aiLoading ? 'AI 分析中...' : '预览截图落地页（不自动推送）'}>
+                <Tooltip
+                  title={
+                    !v.fetchedData
+                      ? '请先获取数据'
+                      : aiLoading
+                        ? 'AI 分析中...'
+                        : v.metricPrefs.aiSummaryEnabled
+                          ? '预览截图落地页（不自动推送）'
+                          : '预览截图落地页（AI 分析已在指标配置中关闭）'
+                  }
+                >
                   <span>
                     <Button
                       icon={aiLoading ? <BrainCircuit className="h-4 w-4 animate-pulse" /> : <Camera className="h-4 w-4" />}

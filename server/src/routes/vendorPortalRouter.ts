@@ -89,6 +89,7 @@ type ReportPayload = {
   generatedAt?: unknown
   vendors?: unknown
   aiSummaries?: Record<string, unknown>
+  enabledMetricKeys?: unknown
 }
 
 const num = (v: unknown): number => (typeof v === 'number' && Number.isFinite(v) ? v : 0)
@@ -205,6 +206,8 @@ vendorPortalRouter.get('/daily/:token', rateLimit, async (req: Request, res: Res
         generatedAt: str(payload.generatedAt),
         vendor: pickVendor(vendorRaw),
         aiSummary: pickAiSummary(payload.aiSummaries?.[link.vendorCode]),
+        // 发布日报时的指标勾选集合；门户按它过滤渲染。老日报无该字段 → null → 前端全量渲染
+        enabledMetricKeys: Array.isArray(payload.enabledMetricKeys) ? strArr(payload.enabledMetricKeys) : null,
       },
     })
   } catch {
