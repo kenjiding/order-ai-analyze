@@ -1,4 +1,5 @@
 import { htmlToLarkMd, larkMdToHtml } from './feishuLarkMdConvert'
+import { feishuImageMarker } from './feishuLarkMdMarkers'
 
 /** 判断存储值是否为 TipTap HTML（兼容旧版 lark_md 纯文本） */
 export function isEditorHtml(value: string): boolean {
@@ -22,10 +23,56 @@ export function mergeEditorHtmlParts(parts: string[]): string {
   return htmlParts.join('<p></p>')
 }
 
-export function prepareFleetRichPayload(
+/** 飞书卡片 img size 自定义像素上限（官方允许 [1,1000]px） */
+const FEISHU_IMG_MAX_PX = 1000
+
+/** 等比缩放进 [1,1000]px，避免独立钳制破坏宽高比 */
+function fitFeishuImgSize(width: number, height: number): { width: number; height: number } {
+  const scale = Math.min(1, FEISHU_IMG_MAX_PX / width, FEISHU_IMG_MAX_PX / height)
+  return {
+    width: Math.max(1, Math.round(width * scale)),
+    height: Math.max(1, Math.round(height * scale)),
+  }
+}
+
+function probeImageNaturalSize(src: string): Promise<{ width: number; height: number } | null> {
+  return new Promise((resolve) => {
+    const probe = new Image()
+    probe.onload = () => {
+      if (probe.naturalWidth > 0 && probe.naturalHeight > 0) {
+        resolve({ width: probe.naturalWidth, height: probe.naturalHeight })
+      } else {
+        resolve(null)
+      }
+    }
+    probe.onerror = () => resolve(null)
+    probe.src = src
+  })
+}
+
+/** 编辑器中调整过大小的图片带 width/height 属性；只有 width 时按自然比例补算高度 */
+async function resolveEditorImageSize(
+  img: HTMLImageElement,
+  src: string,
+): Promise<{ width: number; height: number } | undefined> {
+  const attrW = Number.parseInt(img.getAttribute('width') ?? '', 10)
+  const attrH = Number.parseInt(img.getAttribute('height') ?? '', 10)
+  if (attrW > 0 && attrH > 0) {
+    return fitFeishuImgSize(attrW, attrH)
+  }
+  if (attrW > 0) {
+    const natural = await probeImageNaturalSize(src)
+    if (natural) {
+      return fitFeishuImgSize(attrW, (attrW * natural.height) / natural.width)
+    }
+  }
+  return undefined
+}
+
+export async function prepareFleetRichPayload(
   editorHtml: string,
   extraImageDataUrls: string[],
-): { content: string; images: string[] } {
+): Promise<{ content: string; images: string[] }> {
   const trimmed = editorHtml.trim()
   const inlineImages: string[] = []
 
@@ -36,11 +83,19 @@ export function prepareFleetRichPayload(
       'text/html',
     )
     const root = doc.body
-    root.querySelectorAll('img').forEach((img) => {
+    for (const img of Array.from(root.querySelectorAll('img'))) {
       const src = img.getAttribute('src')?.trim() ?? ''
-      if (src.startsWith('data:')) inlineImages.push(src)
-      img.remove()
-    })
+      if (src.startsWith('data:')) {
+        // 原位置写入占位标记（含展示尺寸），后端按标记把图片插回同一位置，保持编辑顺序与大小
+        const size = await resolveEditorImageSize(img, src)
+        const marker = doc.createElement('p')
+        marker.textContent = feishuImageMarker(inlineImages.length, size)
+        inlineImages.push(src)
+        img.replaceWith(marker)
+      } else {
+        img.remove()
+      }
+    }
     textHtml = root.innerHTML
   }
 

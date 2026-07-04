@@ -75,21 +75,30 @@ function normalizeEditorHtmlForLarkMd(html: string): string {
   return wrapper.innerHTML
 }
 
+/** 首尾空白外提：`**text **` 飞书不识别会露出 **，需转成 `**text** ` */
+function splitEdgeWhitespace(inner: string): { lead: string; core: string; trail: string } {
+  const m = inner.match(/^(\s*)([\s\S]*?)(\s*)$/)
+  return { lead: m?.[1] ?? '', core: m?.[2] ?? inner, trail: m?.[3] ?? '' }
+}
+
 function formatBoldLarkMd(inner: string): string {
   if (!inner || !inner.trim()) return inner
-  // 千分位逗号、星号等用 __ 可避免飞书 lark_md 对 ** 的误解析
-  const delim = /[*_,]/.test(inner) ? '__' : '**'
-  return `${delim}${inner}${delim}`
+  const { lead, core, trail } = splitEdgeWhitespace(inner)
+  // 内容自带星号时用 __（飞书 markdown 组件两者均支持），避免 ** 被误闭合
+  const delim = core.includes('*') ? '__' : '**'
+  return `${lead}${delim}${core}${delim}${trail}`
 }
 
 function formatItalicLarkMd(inner: string): string {
   if (!inner || !inner.trim()) return inner
-  return `_${inner}_`
+  const { lead, core, trail } = splitEdgeWhitespace(inner)
+  return `${lead}*${core}*${trail}`
 }
 
 function formatStrikeLarkMd(inner: string): string {
   if (!inner || !inner.trim()) return inner
-  return `~~${inner}~~`
+  const { lead, core, trail } = splitEdgeWhitespace(inner)
+  return `${lead}~~${core}~~${trail}`
 }
 
 function cleanupLarkMd(md: string): string {
@@ -299,6 +308,18 @@ function parseInlineLarkMd(input: string): string {
   return parts.join('')
 }
 
+/** 行内元素若带颜色（SPAN style.color / FONT color 属性），返回飞书颜色名 */
+function inlineElementColorName(el: HTMLElement): string {
+  if (el.tagName === 'FONT') {
+    const c = el.getAttribute('color')
+    return c ? cssColorToFeishuName(c) : ''
+  }
+  if (el.tagName === 'SPAN' && el.style.color) {
+    return cssColorToFeishuName(el.style.color)
+  }
+  return ''
+}
+
 function inlineNodesToLarkMd(parent: Node): string {
   let out = ''
   parent.childNodes.forEach((node) => {
@@ -351,8 +372,19 @@ function nodeToLarkMd(node: Node): string {
 
   switch (tag) {
     case 'STRONG':
-    case 'B':
+    case 'B': {
+      // 飞书 markdown 要求颜色标签在外层（<font>**x**</font>）；
+      // 编辑器可能产出 <strong><span style="color:..."> 的反向嵌套，这里交换
+      const only = el.childNodes.length === 1 ? el.firstChild : null
+      if (only && only.nodeType === Node.ELEMENT_NODE) {
+        const colorName = inlineElementColorName(only as HTMLElement)
+        if (colorName) {
+          const bolded = formatBoldLarkMd(inlineNodesToLarkMd(only as HTMLElement))
+          return `<font color='${colorName}'>${bolded}</font>`
+        }
+      }
       return formatBoldLarkMd(inner)
+    }
     case 'EM':
     case 'I':
       return formatItalicLarkMd(inner)

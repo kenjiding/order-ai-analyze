@@ -12,11 +12,12 @@ import { fetchDeliveryWeatherLarkMd, summarizeFeishuTestFailure } from '../feish
 import { WEATHER_LOCATION_PRESETS } from '../weatherLocations'
 import { readWeatherPushSettings, writeWeatherPushSettings } from '../weatherPushSettings'
 import {
+  FeishuLarkMdEditor,
   hasEditorContent,
   mergeEditorHtmlParts,
   prepareFleetRichPayload,
   stripEditorContentForPreview,
-} from '../feishuEditorContent'
+} from '../../../components/FeishuLarkMdEditor'
 import { pushFleetRichMessage } from '../pushFleetRichMessage'
 import type { FleetSupplierConfig, FleetSupplierConfigDraft } from '../fleetSupplierPushTypes'
 import { LEGACY_GLOBAL_SUPPLIER_REGION_CODE, supplierDisplayName } from '../fleetSupplierPushTypes'
@@ -39,7 +40,6 @@ import { PERMISSION_KEYS, usePermission } from '../../../hooks/usePermission'
 import { useAppSettings } from '../../../context/AppSettingsContext'
 import { fetchVendors } from '../../VendorAnalysis/vendorAnalysisApi'
 import { FleetSupplierEditModal } from './FleetSupplierEditModal'
-import { FeishuLarkMdEditor } from './FeishuLarkMdEditor'
 import './fleetSupplierPushTab.css'
 
 function truncateMiddle(s: string, maxChars: number): string {
@@ -250,7 +250,7 @@ export function FleetSupplierPushTab({
   const pushCustomImageDataUrls = useMemo(() => pushImages.map((img) => img.dataUrl), [pushImages])
 
   const pushSupplierRichText = async (s: FleetSupplierConfig, editorHtml: string) => {
-    const { content, images } = prepareFleetRichPayload(editorHtml, [])
+    const { content, images } = await prepareFleetRichPayload(editorHtml, [])
     return withRetry(() =>
       pushFleetRichMessage({
         pushScope: 'fleet-supplier',

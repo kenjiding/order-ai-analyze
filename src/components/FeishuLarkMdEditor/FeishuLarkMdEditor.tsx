@@ -22,7 +22,7 @@ import {
   Undo2,
 } from 'lucide-react'
 import { useEffect, useRef, useState, type ChangeEvent, type MouseEvent } from 'react'
-import { editorContentFromStored } from '../feishuEditorContent'
+import { editorContentFromStored } from './feishuEditorContent'
 import { FeishuAtAll } from './feishuAtAllExtension'
 import './feishuLarkMdEditor.css'
 
@@ -46,6 +46,19 @@ const COLOR_PRESETS: { label: string; color: string }[] = [
 const EDITOR_LINE_HEIGHT = 22
 const EDITOR_PADDING_Y = 16
 
+/** 上传/粘贴/拖拽插入图片的默认展示宽度（px），推送到飞书时按此宽度与自然比例换算尺寸 */
+const DEFAULT_IMAGE_WIDTH = 300
+
+/** 默认宽度 300px 的图片扩展：未显式指定宽度的图片（新粘贴/新插入）统一按 300px 展示 */
+const SizedImage = Image.extend({
+  addAttributes() {
+    return {
+      ...this.parent?.(),
+      width: { default: DEFAULT_IMAGE_WIDTH },
+    }
+  },
+})
+
 function readImageFileAsDataUrl(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader()
@@ -56,6 +69,12 @@ function readImageFileAsDataUrl(file: File): Promise<string> {
     reader.onerror = () => reject(reader.error ?? new Error('读取图片失败'))
     reader.readAsDataURL(file)
   })
+}
+
+/** 取剪贴板/拖拽数据里的图片文件 */
+function pickImageFiles(list: FileList | null | undefined): File[] {
+  if (!list) return []
+  return Array.from(list).filter((f) => f.type.startsWith('image/'))
 }
 
 export function FeishuLarkMdEditor({
@@ -82,7 +101,7 @@ export function FeishuLarkMdEditor({
       }),
       TextStyle,
       Color,
-      Image.configure({
+      SizedImage.configure({
         allowBase64: true,
         inline: false,
         resize: {
@@ -109,6 +128,48 @@ export function FeishuLarkMdEditor({
       attributes: {
         class: 'feishu-lark-md-tiptap',
         ...(id ? { id } : {}),
+      },
+      // 粘贴截图：以默认 300px 宽度插入（SizedImage 的 width 默认值），保持编辑顺序
+      handlePaste: (view, event) => {
+        if (!view.editable) return false
+        const files = pickImageFiles(event.clipboardData?.files)
+        if (!files.length) return false
+        void (async () => {
+          for (const file of files) {
+            try {
+              const dataUrl = await readImageFileAsDataUrl(file)
+              const node = view.state.schema.nodes.image?.create({ src: dataUrl, alt: file.name })
+              if (node) view.dispatch(view.state.tr.replaceSelectionWith(node))
+            } catch {
+              /* ignore */
+            }
+          }
+        })()
+        return true
+      },
+      // 拖拽图片文件到编辑器：同样按默认宽度插入到落点位置
+      handleDrop: (view, event, _slice, moved) => {
+        if (moved || !view.editable) return false
+        const files = pickImageFiles(event.dataTransfer?.files)
+        if (!files.length) return false
+        const pos = view.posAtCoords({ left: event.clientX, top: event.clientY })?.pos
+        void (async () => {
+          let insertAt = pos ?? view.state.selection.to
+          for (const file of files) {
+            try {
+              const dataUrl = await readImageFileAsDataUrl(file)
+              const node = view.state.schema.nodes.image?.create({ src: dataUrl, alt: file.name })
+              if (node) {
+                const safePos = Math.min(insertAt, view.state.doc.content.size)
+                view.dispatch(view.state.tr.insert(safePos, node))
+                insertAt = safePos + node.nodeSize
+              }
+            } catch {
+              /* ignore */
+            }
+          }
+        })()
+        return true
       },
     },
     onUpdate: ({ editor: ed }) => {
@@ -182,6 +243,46 @@ export function FeishuLarkMdEditor({
     editor.chain().focus().toggleBold().run()
   }
 
+  /**
+   * 段内软换行（Shift+Enter / 粘贴产生的 <br>）会让列表把整段多行一起格式化。
+   * 切列表前先把选区所在段落按软换行拆成独立段落，仅选中的行进入列表。
+   */
+  const splitHardBreaksInSelectedBlocks = () => {
+    if (!editor) return
+    const { state } = editor
+    const { $from, $to } = state.selection
+    const blockStart = $from.depth > 0 ? $from.start() : $from.pos
+    const blockEnd = $to.depth > 0 ? $to.end() : $to.pos
+    const breakPositions: number[] = []
+    state.doc.nodesBetween(blockStart, blockEnd, (node, pos) => {
+      if (node.type.name === 'hardBreak') breakPositions.push(pos)
+    })
+    if (!breakPositions.length) return
+    editor
+      .chain()
+      .command(({ tr }) => {
+        // 倒序处理，前面的位置不受后面删除/拆分的影响
+        for (const pos of breakPositions.sort((a, b) => b - a)) {
+          tr.delete(pos, pos + 1)
+          tr.split(pos)
+        }
+        return true
+      })
+      .run()
+  }
+
+  const toggleBulletList = () => {
+    if (!editor || disabled) return
+    splitHardBreaksInSelectedBlocks()
+    editor.chain().focus().toggleBulletList().run()
+  }
+
+  const toggleOrderedList = () => {
+    if (!editor || disabled) return
+    splitHardBreaksInSelectedBlocks()
+    editor.chain().focus().toggleOrderedList().run()
+  }
+
   const openImagePicker = () => {
     if (disabled) return
     imageInputRef.current?.click()
@@ -194,7 +295,7 @@ export function FeishuLarkMdEditor({
     if (!file.type.startsWith('image/')) return
     try {
       const dataUrl = await readImageFileAsDataUrl(file)
-      editor.chain().focus().setImage({ src: dataUrl, alt: file.name, width: 320 }).run()
+      editor.chain().focus().setImage({ src: dataUrl, alt: file.name, width: DEFAULT_IMAGE_WIDTH }).run()
     } catch {
       /* ignore */
     }
@@ -286,7 +387,7 @@ export function FeishuLarkMdEditor({
             className={editor.isActive('bulletList') ? 'feishu-lark-md-editor-btn-active' : undefined}
             icon={<List className="h-4 w-4" />}
             onMouseDown={handleToolbarMouseDown}
-            onClick={() => editor.chain().focus().toggleBulletList().run()}
+            onClick={toggleBulletList}
           />
         </Tooltip>
         <Tooltip title="有序列表">
@@ -296,7 +397,7 @@ export function FeishuLarkMdEditor({
             className={editor.isActive('orderedList') ? 'feishu-lark-md-editor-btn-active' : undefined}
             icon={<ListOrdered className="h-4 w-4" />}
             onMouseDown={handleToolbarMouseDown}
-            onClick={() => editor.chain().focus().toggleOrderedList().run()}
+            onClick={toggleOrderedList}
           />
         </Tooltip>
         <Tooltip title="引用">
@@ -370,7 +471,7 @@ export function FeishuLarkMdEditor({
       </div>
 
       <div className="feishu-lark-md-editor-hint">
-        分隔线与 @所有人 按飞书卡片格式推送。
+        分隔线、@所有人与图片按编辑顺序推送到飞书卡片。
       </div>
 
       <Modal

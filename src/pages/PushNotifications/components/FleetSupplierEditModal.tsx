@@ -5,7 +5,7 @@ import { webhookFieldRules } from '../pushEntryFormValidators'
 import { parseFleetRouteCodes } from '../fleetRouteCodeParse'
 import type { FleetSupplierConfig, FleetSupplierConfigDraft } from '../fleetSupplierPushTypes'
 import { FEISHU_WEBHOOK_PREFIX } from '../feishuPushTypes'
-import { FeishuLarkMdEditor } from './FeishuLarkMdEditor'
+import { FeishuLarkMdEditor } from '../../../components/FeishuLarkMdEditor'
 
 type VendorOption = {
   vendorCode: string
