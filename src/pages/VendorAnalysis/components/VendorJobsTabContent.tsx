@@ -1,8 +1,25 @@
-import { Button, Table, Tag } from 'antd'
+import { Button, Table, Tag, Tooltip } from 'antd'
 import type { ColumnsType } from 'antd/es/table'
 import { Loader2, Play, RefreshCw } from 'lucide-react'
-import { useMemo } from 'react'
+import { useMemo, type ReactNode } from 'react'
 import type { JobStatus, PublicJob } from '../vendorAnalysisApi'
+import { ALL_METRIC_KEYS, metricDisplayLabel } from '../metricsRegistry'
+
+/** 任务提交时固化的指标选择（只读展示）；老任务未落 metricKeys 视为全量 */
+function MetricKeysCell({ job }: { job: PublicJob }) {
+  const keys = Array.isArray(job.payload.metricKeys)
+    ? (job.payload.metricKeys as unknown[]).filter((k): k is string => typeof k === 'string')
+    : null
+  if (!keys) return <Tag className="mr-0" color="default">全部指标</Tag>
+  if (keys.length === 0) return <span className="text-slate-400">—</span>
+  if (keys.length >= ALL_METRIC_KEYS.length) return <Tag className="mr-0" color="blue">全部指标</Tag>
+  const labels = keys.map(metricDisplayLabel).join('、')
+  return (
+    <Tooltip title={labels}>
+      <span className="text-slate-600 line-clamp-2">{labels}</span>
+    </Tooltip>
+  )
+}
 
 type Props = {
   jobs: PublicJob[]
@@ -13,6 +30,10 @@ type Props = {
   onCancel: (jobId: string) => void
   onDelete: (jobId: string) => void
   onRetry: (job: PublicJob) => void
+  /** 站点 code → 名称映射，用于「站点」列回填名称 */
+  stationNameMap?: Record<string, string>
+  /** 队列标题行右侧的额外操作（如「新建分析任务」按钮），与「刷新」同排展示 */
+  headerAction?: ReactNode
 }
 
 function formatRelativeTime(isoString: string): string {
@@ -61,6 +82,7 @@ function buildColumns(
   onCancel: (jobId: string) => void,
   onDelete: (jobId: string) => void,
   onRetry: (job: PublicJob) => void,
+  stationNameMap: Record<string, string>,
 ): ColumnsType<PublicJob> {
   return [
     {
@@ -97,7 +119,9 @@ function buildColumns(
       width: 160,
       render: (_, job) => {
         const codes = getStationCodes(job)
-        return <span className="text-slate-600" title={codes.join('、')}>{codes.length > 0 ? codes.join('、') : '—'}</span>
+        // 回填站点名称：优先用全局站点列表映射，缺失时兜底展示 code
+        const names = codes.map((code) => stationNameMap[code] ?? code)
+        return <span className="text-slate-600" title={names.join('、')}>{names.length > 0 ? names.join('、') : '—'}</span>
       },
     },
     {
@@ -105,6 +129,12 @@ function buildColumns(
       key: 'dateRange',
       width: 180,
       render: (_, job) => <span className="text-slate-500">{getDateRangeLabel(job)}</span>,
+    },
+    {
+      title: '指标配置',
+      key: 'metricKeys',
+      width: 200,
+      render: (_, job) => <MetricKeysCell job={job} />,
     },
     {
       title: '进度',
@@ -200,11 +230,12 @@ function buildColumns(
   ]
 }
 
-export function VendorJobsTabContent({ jobs, isLoading, loadingJobId, onRefresh, onLoadResults, onCancel, onDelete, onRetry }: Props) {
+export function VendorJobsTabContent({ jobs, isLoading, loadingJobId, onRefresh, onLoadResults, onCancel, onDelete, onRetry, stationNameMap, headerAction }: Props) {
   const activeCount = jobs.filter((j) => j.status === 'pending' || j.status === 'running').length
+  const stationMap = useMemo(() => stationNameMap ?? {}, [stationNameMap])
   const columns = useMemo(
-    () => buildColumns(loadingJobId, onLoadResults, onCancel, onDelete, onRetry),
-    [loadingJobId, onLoadResults, onCancel, onDelete, onRetry],
+    () => buildColumns(loadingJobId, onLoadResults, onCancel, onDelete, onRetry, stationMap),
+    [loadingJobId, onLoadResults, onCancel, onDelete, onRetry, stationMap],
   )
 
   return (
@@ -233,6 +264,7 @@ export function VendorJobsTabContent({ jobs, isLoading, loadingJobId, onRefresh,
               <RefreshCw className={`h-4 w-4 ${isLoading ? 'animate-spin' : ''}`} />
               刷新
             </button>
+            {headerAction}
           </div>
         </div>
       </div>
@@ -249,7 +281,7 @@ export function VendorJobsTabContent({ jobs, isLoading, loadingJobId, onRefresh,
             showTotal: (total) => `共 ${total} 条`,
           }}
           locale={{ emptyText: '暂无数据获取任务' }}
-          scroll={{ x: 1120 }}
+          scroll={{ x: 1320 }}
         />
       </div>
     </div>

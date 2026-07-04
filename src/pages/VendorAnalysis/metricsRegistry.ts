@@ -58,30 +58,16 @@ export const DATE_SENSITIVE_METRIC_KEYS: ReadonlySet<string> = new Set(
   VENDOR_ANALYSIS_METRICS.filter((m) => m.dateSensitive).map((m) => m.key),
 )
 
-/** 服务端用户偏好的存储 key（/api/user-preferences/:key） */
-export const METRIC_PREF_KEY = 'vendor-analysis.metrics'
+/** 全部指标 key，顺序与 registry 一致。新建分析时的默认全选集合。 */
+export const ALL_METRIC_KEYS: string[] = VENDOR_ANALYSIS_METRICS.map((m) => m.key)
 
-/**
- * 只记录用户显式改过的非固定指标（overrides），而非完整 enabled 数组：
- * 以后注册新指标时，老用户自动按新指标的 defaultEnabled 生效，无需迁移偏好数据。
- */
-export type MetricPreferencesValue = {
-  v: 1
-  overrides: Record<string, boolean>
-  aiSummaryEnabled: boolean
-}
+const METRIC_BY_KEY = new Map(VENDOR_ANALYSIS_METRICS.map((m) => [m.key, m] as const))
 
-export const DEFAULT_METRIC_PREFERENCES: MetricPreferencesValue = {
-  v: 1,
-  overrides: {},
-  aiSummaryEnabled: true,
-}
-
-/** 偏好 → 生效的指标 key 列表（全部指标均按 overrides ?? defaultEnabled 判定，无强制常开项） */
-export function resolveEnabledMetricKeys(prefs: MetricPreferencesValue | null): string[] {
-  return VENDOR_ANALYSIS_METRICS.filter(
-    (m) => m.fixed || (prefs?.overrides[m.key] ?? m.defaultEnabled),
-  ).map((m) => m.key)
+/** 指标 key → 「供应商·客诉率」式展示名，供任务队列的「指标配置」列使用 */
+export function metricDisplayLabel(key: string): string {
+  const m = METRIC_BY_KEY.get(key)
+  if (!m) return key
+  return `${m.category === 'vendor' ? '供应商' : '司机'}·${m.label}`
 }
 
 /**
@@ -101,18 +87,4 @@ export function resolveDataSources(enabledKeys: readonly string[]): VendorAnalys
     if (m.fixed || enabled.has(m.key)) m.dataSources.forEach((s) => sources.add(s))
   }
   return [...sources].sort()
-}
-
-/**
- * 已启用的指标 key 列表 → 精确复刻这份勾选状态的 overrides（每个已知指标都显式写 true/false，
- * 不依赖 defaultEnabled）。用于「查看数据」还原某条历史任务提交时的指标配置；
- * 列表里混入的未知/已废弃 key（指标已下线）会被自然忽略。
- */
-export function buildOverridesFromEnabledKeys(enabledKeys: readonly string[]): Record<string, boolean> {
-  const enabled = new Set(enabledKeys)
-  const overrides: Record<string, boolean> = {}
-  for (const m of VENDOR_ANALYSIS_METRICS) {
-    overrides[m.key] = enabled.has(m.key)
-  }
-  return overrides
 }
