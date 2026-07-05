@@ -206,6 +206,23 @@ export async function deleteJob(jobId: string): Promise<boolean> {
   return result.length > 0
 }
 
+/**
+ * 把 patch 合并进任务的 payload（浅合并，仅覆盖 patch 里的键）。
+ * 用于任务创建后编辑「输出配置」类字段（不参与分析、不影响幂等/结果），如推送供应商范围、AI 开关。
+ */
+export async function updateJobPayload(jobId: string, patch: Record<string, unknown>): Promise<Job | null> {
+  const db = getDb()
+  const [current] = await db.select().from(jobs).where(eq(jobs.id, jobId)).limit(1)
+  if (!current) return null
+  const nextPayload = { ...(current.payload as Record<string, unknown>), ...patch }
+  const [updated] = await db
+    .update(jobs)
+    .set({ payload: nextPayload, updatedAt: new Date() })
+    .where(eq(jobs.id, jobId))
+    .returning()
+  return updated ?? null
+}
+
 export async function recoverStaleRunningJobs(staleLockMinutes: number): Promise<number> {
   const db = getDb()
   const cutoff = new Date(Date.now() - staleLockMinutes * 60 * 1000)

@@ -7,17 +7,8 @@ import {
   type JobStatus,
   type PublicJob,
 } from '../../api/jobsClient'
-import type {
-  Before11ExitRateResult,
-  ComplaintTicketRow,
-  DriverWaybillRow,
-  DriverReturnRawRow,
-  LongTailOrderRow,
-  StationOption,
-  UnprocessedTicketsData,
-  VendorOption,
-  WaybillRow,
-} from './vendorAnalysisTypes'
+import type { StationOption, VendorOption } from './vendorAnalysisTypes'
+import type { VendorAnalyzeSummary } from './vendorAnalysisSummary'
 
 export { getJobById, listJobs, cancelJobApi, deleteJobApi }
 export type { JobStatus, PublicJob }
@@ -61,25 +52,8 @@ export async function fetchVendors(
   })
 }
 
-export type VendorAnalyzeArtifact = {
-  referenceDate: string
-  /** 本次任务实际抓取的数据源；老任务无该字段（视为全量） */
-  dataSources?: string[]
-  tickets: ComplaintTicketRow[]
-  waybills: WaybillRow[]
-  unprocessedTickets: UnprocessedTicketsData
-  longTailOrders: LongTailOrderRow[]
-  before11ExitRateByVendor: Record<string, Before11ExitRateResult>
-  driverYesterdayWaybills: DriverWaybillRow[]
-  driverDayBeforeWaybills: DriverWaybillRow[]
-  driverReturnRows: DriverReturnRawRow[]
-  startTime: string
-  endTime: string
-  ticketStartTime: string
-  ticketEndTime: string
-  before11Date: string
-  dayBeforeDate: string
-}
+/** worker 落库的汇总结果即 artifact（不再是原始明细，见 vendorAnalysisSummary.ts） */
+export type VendorAnalyzeArtifact = VendorAnalyzeSummary
 
 export type VendorAnalyzeAsyncParams = {
   stationCodes: string[]
@@ -102,6 +76,10 @@ export type VendorAnalyzeAsyncParams = {
   metricKeys?: string[]
   /** 增量拉取：直接指定本次要抓取的数据源，优先于 metricKeys（只用于补拉已缺失的部分） */
   dataSources?: string[]
+  /** 输出配置：本任务的推送供应商范围（配置 id 列表），落库供查看/编辑 */
+  pushEnabledIds?: string[]
+  /** 输出配置：本任务的 AI 分析总结开关，落库供查看/编辑 */
+  aiSummaryEnabled?: boolean
 }
 
 /** 提交/复用一次供应商数据分析任务；立即返回 jobId，通过 getJobById 轮询状态。 */
@@ -113,6 +91,18 @@ export async function postVendorAnalyzeAsync(
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${imileToken}` },
     body: JSON.stringify(params),
+  })
+}
+
+/** 编辑某任务的输出配置：推送供应商范围 + AI 总结开关（不重跑分析）。 */
+export async function updateVendorAnalyzeConfig(
+  jobId: string,
+  config: { pushEnabledIds?: string[]; aiSummaryEnabled?: boolean },
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  return apiFetch<undefined>(`/api/vendor-analysis/analyze-jobs/${encodeURIComponent(jobId)}/config`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(config),
   })
 }
 
@@ -169,12 +159,14 @@ export async function fetchVendorAiSummaries(
 
 // ─── 日报发布与分享链接 ───────────────────────────────────────────────────────
 
-/** 发布日报到服务端供外部分享链接读取；剔除 webhookConfigs，webhook 地址与密钥不落库 */
+/** 发布日报到服务端供外部分享链接读取；剔除 webhookConfigs，webhook 地址与密钥不落库。按 jobId 绑定（每任务一份） */
 export async function postDailyReport(
+  jobId: string,
   snapshot: VendorSnapshotData,
 ): Promise<{ ok: true; data: { id: string; createdAt: string } } | { ok: false; error: string }> {
   // 白名单构造，确保 webhookConfigs（含 webhook 地址与签名密钥）不上传
   const payload = {
+    jobId,
     reportDate: snapshot.reportDate,
     stations: snapshot.stations,
     complaintDateRange: snapshot.complaintDateRange,
@@ -193,6 +185,7 @@ export async function postDailyReport(
 
 export type VendorShareLink = {
   id: string
+  jobId: string
   vendorCode: string
   vendorName: string
   reportDate: string
@@ -203,12 +196,12 @@ export type VendorShareLink = {
   lastAccessedAt: string | null
 }
 
-/** 分享链接按 (vendorCode, reportDate) 绑定，发布日报时自动开通；这里只查某一天的 */
+/** 分享链接按 (vendorCode, jobId) 绑定，发布日报时自动开通；这里查某个任务的全部 */
 export async function listShareLinks(
-  reportDate: string,
+  jobId: string,
 ): Promise<{ ok: true; data: VendorShareLink[] } | { ok: false; error: string }> {
   return apiFetch<VendorShareLink[]>(
-    `/api/vendor-analysis/share-links?reportDate=${encodeURIComponent(reportDate)}`,
+    `/api/vendor-analysis/share-links?jobId=${encodeURIComponent(jobId)}`,
     { method: 'GET' },
   )
 }

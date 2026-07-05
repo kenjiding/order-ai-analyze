@@ -1,6 +1,7 @@
 import { Button, Checkbox, DatePicker, Drawer, Switch, Tooltip, Typography } from 'antd'
 import type { Dayjs } from 'dayjs'
 import {
+  AlertTriangle,
   CalendarDays,
   DatabaseZap,
   ExternalLink,
@@ -16,7 +17,7 @@ import {
   isSupplierPushEligible,
   type SupplierPushConfig,
 } from '../../../shared/supplierPushConfig'
-import { ALL_METRIC_KEYS } from '../metricsRegistry'
+import { ALL_METRIC_KEYS, enabledDateSensitiveLabels } from '../metricsRegistry'
 import { MetricSelectionGroups } from './MetricSelectionGroups'
 
 type ScopeBindingLike = {
@@ -199,6 +200,13 @@ export function NewAnalysisDrawer({
   const canStart = filtersReady && hasStations && !dataFetching
   const allMetricsSelected = metricSelection.length === ALL_METRIC_KEYS.length
 
+  // 参考日期非当天时，日期敏感指标（11点前出仓率/24H派签率）用当前时刻状态回填历史日期，可能不准确，
+  // 仅在有勾选这类指标时给出提示，不阻止分析。
+  const dateSensitiveLabels = useMemo(
+    () => (referenceDateIsToday ? [] : enabledDateSensitiveLabels(metricSelection)),
+    [referenceDateIsToday, metricSelection],
+  )
+
   // 只有已配置 Webhook 的供应商才能被选中推送；未配置的置灰展示
   const eligibleConfigs = useMemo(
     () => catalogConfigs.filter(isSupplierPushEligible),
@@ -242,11 +250,11 @@ export function NewAnalysisDrawer({
             将统计 {selectedStations.length} 个责任站点 · 推送 {enabledPushCount} 个供应商
           </span>
           <div className="flex items-center gap-2">
-            <Button onClick={onClose} disabled={dataFetching}>
+            <Button size="small" onClick={onClose} disabled={dataFetching}>
               取消
             </Button>
             <Tooltip title={!hasStations ? '请先在顶部选择责任站点' : !filtersReady ? '请先选择日期' : ''}>
-              <Button
+              <Button size="small"
                 type="primary"
                 icon={<DatabaseZap className="h-4 w-4" />}
                 loading={dataFetching}
@@ -308,38 +316,45 @@ export function NewAnalysisDrawer({
           description="勾选本次分析要抓取并展示的指标，默认全选。"
           action={
             <div className="flex items-center gap-2">
-              <Button
+              <Button size="small"
                 disabled={allMetricsSelected}
                 onClick={() => onMetricSelectionChange([...ALL_METRIC_KEYS])}
               >
                 全选
               </Button>
-              <Button disabled={metricSelection.length === 0} onClick={() => onMetricSelectionChange([])}>
+              <Button size="small" disabled={metricSelection.length === 0} onClick={() => onMetricSelectionChange([])}>
                 清空
               </Button>
             </div>
           }
         >
+          {dateSensitiveLabels.length > 0 && (
+            <div className="mb-4 flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3.5 py-2.5">
+              <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-500" aria-hidden />
+              <Typography.Text type="warning" className="text-xs leading-relaxed">
+                你所选的数据参考日期是以往日期，因此{dateSensitiveLabels.join('、')}会存在归班等数据, 从而会导致不准确的情况
+              </Typography.Text>
+            </div>
+          )}
           <MetricSelectionGroups
             selection={metricSelection}
             onChange={onMetricSelectionChange}
-            referenceDateIsToday={referenceDateIsToday}
           />
         </FormSection>
 
         <FormSection
           icon={Truck}
           title="推送供应商配置"
-          description="选中的供应商将在截图推送时收到飞书报告，默认全选。Webhook 在「飞书推送」统一维护。"
+          description=""
           action={
             <div className="flex items-center gap-2">
-              <Button
+              <Button size="small"
                 disabled={scopeBinding.saving || allEligibleSelected || eligibleConfigs.length === 0}
                 onClick={() => void scopeBinding.persist(eligibleConfigs.map((c) => c.id))}
               >
                 全选
               </Button>
-              <Button
+              <Button size="small"
                 disabled={scopeBinding.saving || selectedPushCount === 0}
                 onClick={() => void scopeBinding.persist([])}
               >

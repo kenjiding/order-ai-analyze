@@ -6,7 +6,7 @@ import { getDb, schema } from '../db'
 import { createDeepSeekClient } from '../openaiClient'
 import { fetchVendorStations, fetchVendors } from '../imile/vendorAnalysis'
 import { readImileTokenFromRequest } from './imileAuth'
-import { enqueueJob, getJobById } from '../jobs/queue'
+import { enqueueJob, getJobById, updateJobPayload } from '../jobs/queue'
 import { VENDOR_ANALYZE_JOB_TYPE } from '../jobs/handlers'
 import { canAccessJob, resolveEnqueueRegionCode, sendJobAccessDenied } from '../jobs/access'
 import { listSupplierPushConfigs } from '../supplierPushConfigs'
@@ -103,6 +103,9 @@ type AnalyzeAsyncBody = {
   metricKeys?: unknown
   /** 增量拉取：前端直接指定本次要抓取的数据源，跳过 metricKeys → 并集 的解析。传了则优先于 metricKeys */
   dataSources?: unknown
+  /** 输出配置：本任务的推送供应商范围（配置 id 列表）+ AI 总结开关。不参与分析、不影响幂等，仅落库供查看/编辑 */
+  pushEnabledIds?: unknown
+  aiSummaryEnabled?: unknown
 }
 
 const ANALYZE_ASYNC_REQUIRED_STRING_FIELDS = [
@@ -215,6 +218,11 @@ vendorAnalysisRouter.post('/analyze-async', async (req: AuthenticatedRequest, re
     dataSources,
     // 仅用于任务队列「查看数据」还原当时的指标勾选状态，Worker 抓取阶段不读此字段
     metricKeys,
+    // 输出配置：推送供应商范围 + AI 开关。Worker 不读，仅落库供「查看数据」时应用、以及「编辑」时修改
+    pushEnabledIds: Array.isArray(body.pushEnabledIds)
+      ? (body.pushEnabledIds as unknown[]).filter((s): s is string => typeof s === 'string')
+      : [],
+    aiSummaryEnabled: body.aiSummaryEnabled !== false,
   }
 
   let job = await enqueueJob({
@@ -281,9 +289,58 @@ vendorAnalysisRouter.get('/analyze-jobs/:jobId/snapshot', async (req: Authentica
   res.json({ ok: true, data: snapshot.payload })
 })
 
+// 编辑任务的「输出配置」：仅推送供应商范围 + AI 分析总结开关。这两项不参与分析、不影响结果与幂等，
+// 因此任务创建后可自由修改（浅合并进 payload），不需要重跑 worker。
+vendorAnalysisRouter.patch('/analyze-jobs/:jobId/config', async (req: AuthenticatedRequest, res: Response) => {
+  const jobId = String(req.params.jobId ?? '').trim()
+  const job = await getJobById(jobId)
+  if (!job) {
+    res.status(404).json({ ok: false, error: '任务不存在' })
+    return
+  }
+  if (!canAccessJob(req, job)) {
+    sendJobAccessDenied(res)
+    return
+  }
+  if (job.type !== VENDOR_ANALYZE_JOB_TYPE) {
+    res.status(400).json({ ok: false, error: '任务类型不匹配' })
+    return
+  }
+
+  const body = req.body as { pushEnabledIds?: unknown; aiSummaryEnabled?: unknown }
+  const patch: Record<string, unknown> = {}
+  if (body.pushEnabledIds !== undefined) {
+    if (!Array.isArray(body.pushEnabledIds) || body.pushEnabledIds.some((s) => typeof s !== 'string')) {
+      res.status(400).json({ ok: false, error: '无效的 pushEnabledIds' })
+      return
+    }
+    patch.pushEnabledIds = body.pushEnabledIds
+  }
+  if (body.aiSummaryEnabled !== undefined) {
+    if (typeof body.aiSummaryEnabled !== 'boolean') {
+      res.status(400).json({ ok: false, error: '无效的 aiSummaryEnabled' })
+      return
+    }
+    patch.aiSummaryEnabled = body.aiSummaryEnabled
+  }
+  if (Object.keys(patch).length === 0) {
+    res.status(400).json({ ok: false, error: '无可更新字段' })
+    return
+  }
+
+  const updated = await updateJobPayload(jobId, patch)
+  if (!updated) {
+    res.status(404).json({ ok: false, error: '任务不存在' })
+    return
+  }
+  res.json({ ok: true })
+})
+
 // ─── 日报发布（供外部分享链接读取） ────────────────────────────────────────────
 
 type DailyReportBody = {
+  /** 该日报对应的分析任务；日报与分享链接按它绑定（每任务一份，互不覆盖） */
+  jobId?: unknown
   reportDate?: unknown
   stations?: unknown
   complaintDateRange?: unknown
@@ -301,12 +358,23 @@ type DailyReportBody = {
  */
 vendorAnalysisRouter.post('/daily-reports', async (req: AuthenticatedRequest, res: Response) => {
   const body = req.body as DailyReportBody
+  const jobId = typeof body.jobId === 'string' ? body.jobId.trim() : ''
+  if (!jobId) {
+    res.status(400).json({ ok: false, error: '缺少 jobId' })
+    return
+  }
   if (typeof body.reportDate !== 'string' || !body.reportDate.trim()) {
     res.status(400).json({ ok: false, error: '缺少 reportDate' })
     return
   }
   if (!Array.isArray(body.vendors) || body.vendors.length === 0) {
     res.status(400).json({ ok: false, error: '缺少 vendors 数据' })
+    return
+  }
+  // 校验任务存在且当前用户可访问，避免给别人的任务发布日报
+  const job = await getJobById(jobId)
+  if (!job || !canAccessJob(req, job)) {
+    sendJobAccessDenied(res)
     return
   }
   const payload = {
@@ -329,17 +397,18 @@ vendorAnalysisRouter.post('/daily-reports', async (req: AuthenticatedRequest, re
     const [row] = await db
       .insert(schema.vendorDailyReports)
       .values({
+        jobId,
         reportDate: payload.reportDate,
         payload,
         createdBy: req.authUser?.id ?? null,
       })
       .onConflictDoUpdate({
-        target: schema.vendorDailyReports.reportDate,
-        set: { payload, createdBy: req.authUser?.id ?? null, createdAt: new Date() },
+        target: schema.vendorDailyReports.jobId,
+        set: { payload, reportDate: payload.reportDate, createdBy: req.authUser?.id ?? null, createdAt: new Date() },
       })
       .returning({ id: schema.vendorDailyReports.id, createdAt: schema.vendorDailyReports.createdAt })
 
-    // 按 (vendorCode, reportDate) 自动开通分享链接：已存在则跳过，不轮换 token（同一天重复发布不能让已发给供应商的链接失效）
+    // 按 (vendorCode, jobId) 自动开通分享链接：已存在则跳过，不轮换 token（同一任务重复发布不能让已发给供应商的链接失效）
     try {
       for (const vendor of payload.vendors as Array<{ vendorCode?: unknown; vendorName?: unknown }>) {
         const vendorCode = typeof vendor.vendorCode === 'string' ? vendor.vendorCode.trim() : ''
@@ -348,6 +417,7 @@ vendorAnalysisRouter.post('/daily-reports', async (req: AuthenticatedRequest, re
         await db
           .insert(schema.vendorShareLinks)
           .values({
+            jobId,
             vendorCode,
             vendorName,
             reportDate: payload.reportDate,
@@ -355,7 +425,7 @@ vendorAnalysisRouter.post('/daily-reports', async (req: AuthenticatedRequest, re
             createdBy: req.authUser?.id ?? null,
           })
           .onConflictDoNothing({
-            target: [schema.vendorShareLinks.vendorCode, schema.vendorShareLinks.reportDate],
+            target: [schema.vendorShareLinks.vendorCode, schema.vendorShareLinks.jobId],
           })
       }
     } catch (err) {
@@ -382,9 +452,9 @@ function generateShareToken(): string {
 }
 
 vendorAnalysisRouter.get('/share-links', requireShare, async (req: AuthenticatedRequest, res: Response) => {
-  const reportDate = typeof req.query.reportDate === 'string' ? req.query.reportDate.trim() : ''
-  if (!reportDate) {
-    res.status(400).json({ ok: false, error: '缺少 reportDate' })
+  const jobId = typeof req.query.jobId === 'string' ? req.query.jobId.trim() : ''
+  if (!jobId) {
+    res.status(400).json({ ok: false, error: '缺少 jobId' })
     return
   }
   try {
@@ -392,7 +462,7 @@ vendorAnalysisRouter.get('/share-links', requireShare, async (req: Authenticated
     const rows = await db
       .select()
       .from(schema.vendorShareLinks)
-      .where(eq(schema.vendorShareLinks.reportDate, reportDate))
+      .where(eq(schema.vendorShareLinks.jobId, jobId))
       .orderBy(schema.vendorShareLinks.vendorName)
     res.json({ ok: true, data: rows })
   } catch {

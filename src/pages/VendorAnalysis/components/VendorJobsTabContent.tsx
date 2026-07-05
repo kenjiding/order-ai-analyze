@@ -27,6 +27,9 @@ type Props = {
   loadingJobId: string | null
   onRefresh: () => void
   onLoadResults: (jobId: string) => void
+  onEdit: (job: PublicJob) => void
+  /** 打开分享链接抽屉；无分享权限时为 undefined（不渲染「分享」按钮） */
+  onShare?: (job: PublicJob) => void
   onCancel: (jobId: string) => void
   onDelete: (jobId: string) => void
   onRetry: (job: PublicJob) => void
@@ -79,6 +82,8 @@ const STATUS_CFG: Record<JobStatus, { label: string; color: 'warning' | 'process
 function buildColumns(
   loadingJobId: string | null,
   onLoadResults: (jobId: string) => void,
+  onEdit: (job: PublicJob) => void,
+  onShare: ((job: PublicJob) => void) | undefined,
   onCancel: (jobId: string) => void,
   onDelete: (jobId: string) => void,
   onRetry: (job: PublicJob) => void,
@@ -99,42 +104,6 @@ function buildColumns(
           </Tag>
         )
       },
-    },
-    {
-      title: '提交时间',
-      key: 'createdAt',
-      dataIndex: 'createdAt',
-      width: 120,
-      render: (createdAt: string) => <span className="text-slate-500">{formatRelativeTime(createdAt)}</span>,
-    },
-    {
-      title: '数据参考日期',
-      key: 'referenceDate',
-      width: 120,
-      render: (_, job) => <span className="text-slate-600">{getReferenceDate(job)}</span>,
-    },
-    {
-      title: '站点',
-      key: 'stations',
-      width: 160,
-      render: (_, job) => {
-        const codes = getStationCodes(job)
-        // 回填站点名称：优先用全局站点列表映射，缺失时兜底展示 code
-        const names = codes.map((code) => stationNameMap[code] ?? code)
-        return <span className="text-slate-600" title={names.join('、')}>{names.length > 0 ? names.join('、') : '—'}</span>
-      },
-    },
-    {
-      title: '客诉成立量时间',
-      key: 'dateRange',
-      width: 180,
-      render: (_, job) => <span className="text-slate-500">{getDateRangeLabel(job)}</span>,
-    },
-    {
-      title: '指标配置',
-      key: 'metricKeys',
-      width: 200,
-      render: (_, job) => <MetricKeysCell job={job} />,
     },
     {
       title: '进度',
@@ -172,6 +141,42 @@ function buildColumns(
       },
     },
     {
+      title: '提交时间',
+      key: 'createdAt',
+      dataIndex: 'createdAt',
+      width: 120,
+      render: (createdAt: string) => <span className="text-slate-500">{formatRelativeTime(createdAt)}</span>,
+    },
+    {
+      title: '数据参考日期',
+      key: 'referenceDate',
+      width: 120,
+      render: (_, job) => <span className="text-slate-600">{getReferenceDate(job)}</span>,
+    },
+    {
+      title: '站点',
+      key: 'stations',
+      width: 80,
+      render: (_, job) => {
+        const codes = getStationCodes(job)
+        // 回填站点名称：优先用全局站点列表映射，缺失时兜底展示 code
+        const names = codes.map((code) => stationNameMap[code] ?? code)
+        return <span className="text-slate-600" title={names.join('、')}>{names.length > 0 ? names.join('、') : '—'}</span>
+      },
+    },
+    {
+      title: '客诉成立量时间',
+      key: 'dateRange',
+      width: 210,
+      render: (_, job) => <span className="text-slate-500">{getDateRangeLabel(job)}</span>,
+    },
+    {
+      title: '指标配置',
+      key: 'metricKeys',
+      width: 200,
+      render: (_, job) => <MetricKeysCell job={job} />,
+    },
+    {
       title: '完成时间',
       key: 'finishedAt',
       dataIndex: 'finishedAt',
@@ -186,7 +191,7 @@ function buildColumns(
     {
       title: '操作',
       key: 'actions',
-      width: 220,
+      width: 340,
       fixed: 'right',
       render: (_, job) => {
         const isLoadingThis = loadingJobId === job.id
@@ -216,6 +221,22 @@ function buildColumns(
               <Button disabled={isLoadingOther} onClick={() => onCancel(job.id)}>取消</Button>
             )}
             <Button
+              disabled={isLoadingOther}
+              onClick={() => onEdit(job)}
+              title="编辑推送供应商配置与 AI 分析总结"
+            >
+              编辑
+            </Button>
+            {onShare && job.status === 'succeeded' && (
+              <Button
+                disabled={isLoadingOther}
+                onClick={() => onShare(job)}
+                title="管理该任务的对外分享链接"
+              >
+                分享
+              </Button>
+            )}
+            <Button
               danger
               disabled={job.status === 'running' || isLoadingOther}
               onClick={() => onDelete(job.id)}
@@ -230,12 +251,12 @@ function buildColumns(
   ]
 }
 
-export function VendorJobsTabContent({ jobs, isLoading, loadingJobId, onRefresh, onLoadResults, onCancel, onDelete, onRetry, stationNameMap, headerAction }: Props) {
+export function VendorJobsTabContent({ jobs, isLoading, loadingJobId, onRefresh, onLoadResults, onEdit, onShare, onCancel, onDelete, onRetry, stationNameMap, headerAction }: Props) {
   const activeCount = jobs.filter((j) => j.status === 'pending' || j.status === 'running').length
   const stationMap = useMemo(() => stationNameMap ?? {}, [stationNameMap])
   const columns = useMemo(
-    () => buildColumns(loadingJobId, onLoadResults, onCancel, onDelete, onRetry, stationMap),
-    [loadingJobId, onLoadResults, onCancel, onDelete, onRetry, stationMap],
+    () => buildColumns(loadingJobId, onLoadResults, onEdit, onShare, onCancel, onDelete, onRetry, stationMap),
+    [loadingJobId, onLoadResults, onEdit, onShare, onCancel, onDelete, onRetry, stationMap],
   )
 
   return (
@@ -244,9 +265,6 @@ export function VendorJobsTabContent({ jobs, isLoading, loadingJobId, onRefresh,
         <div className="flex items-center justify-between">
           <div>
             <h3 className="text-sm font-semibold text-slate-950">任务队列</h3>
-            <p className="mt-0.5 text-xs text-slate-500">
-              数据获取任务在后台处理，完成后点击「查看数据」回填到分析页，也可回溯查看以前的数据
-            </p>
           </div>
           <div className="flex items-center gap-3">
             {activeCount > 0 && (
@@ -281,7 +299,7 @@ export function VendorJobsTabContent({ jobs, isLoading, loadingJobId, onRefresh,
             showTotal: (total) => `共 ${total} 条`,
           }}
           locale={{ emptyText: '暂无数据获取任务' }}
-          scroll={{ x: 1320 }}
+          scroll={{ x: 1440 }}
         />
       </div>
     </div>

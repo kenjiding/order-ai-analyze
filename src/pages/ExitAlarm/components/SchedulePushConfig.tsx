@@ -1,5 +1,5 @@
 import { Button, Checkbox, TimePicker } from 'antd'
-import { Clock, Plus, Save, X } from 'lucide-react'
+import { Clock, Pencil, Plus, Save, X } from 'lucide-react'
 import { useCallback, useEffect, useState } from 'react'
 import dayjs from 'dayjs'
 import { AU_REGIONS, type ExitAlarmSchedule, type ExitAlarmScheduleDraft, type PushTimeSlot, type WeekdayNum } from '../exitAlarmTypes'
@@ -30,14 +30,21 @@ export function SchedulePushConfig({ schedule, saving, stationCode, onSave }: Pr
   const [weekdays, setWeekdays] = useState<WeekdayNum[]>([])
   const [pushTimes, setPushTimes] = useState<PushTimeSlot[]>([])
   const [isEnabled, setIsEnabled] = useState(true)
+  // 保存后进入禁用（只读）状态，点击「编辑」才能再次修改；尚无配置时默认可编辑
+  const [editing, setEditing] = useState(true)
+
+  const syncFromSchedule = useCallback((s: ExitAlarmSchedule | null) => {
+    setWeekdays(s?.weekdays ?? [])
+    setPushTimes(s?.pushTimes ?? [])
+    setIsEnabled(s?.isEnabled ?? true)
+  }, [])
 
   useEffect(() => {
     if (schedule) {
-      setWeekdays(schedule.weekdays)
-      setPushTimes(schedule.pushTimes)
-      setIsEnabled(schedule.isEnabled)
+      syncFromSchedule(schedule)
+      setEditing(false)
     }
-  }, [schedule])
+  }, [schedule, syncFromSchedule])
 
   const handleAddTime = useCallback(() => {
     setPushTimes((prev) => [...prev, { id: generateId(), time: '11:00' }])
@@ -52,8 +59,16 @@ export function SchedulePushConfig({ schedule, saving, stationCode, onSave }: Pr
   }, [])
 
   const handleSave = useCallback(async () => {
-    await onSave({ weekdays, pushTimes, isEnabled, stationCode })
+    const ok = await onSave({ weekdays, pushTimes, isEnabled, stationCode })
+    if (ok) setEditing(false)
   }, [weekdays, pushTimes, isEnabled, stationCode, onSave])
+
+  const handleCancel = useCallback(() => {
+    syncFromSchedule(schedule)
+    setEditing(false)
+  }, [schedule, syncFromSchedule])
+
+  const disabled = !editing
 
   const summaryWeekdays = WEEKDAYS.filter((d) => weekdays.includes(d.value)).map((d) => d.label)
   const summaryTimes = [...pushTimes].sort((a, b) => a.time.localeCompare(b.time)).map((t) => t.time)
@@ -67,14 +82,27 @@ export function SchedulePushConfig({ schedule, saving, stationCode, onSave }: Pr
           定时推送配置
           <span className="ml-1 text-xs font-normal text-slate-400">{regionLabel} 时区（跟随本账号州/区域）</span>
         </h3>
-        <Button
-          type="primary"
-          icon={<Save className="h-3.5 w-3.5" />}
-          loading={saving}
-          onClick={() => void handleSave()}
-        >
-          保存
-        </Button>
+        {editing ? (
+          <div className="flex items-center gap-2">
+            {schedule && (
+              <Button onClick={handleCancel} disabled={saving}>
+                取消
+              </Button>
+            )}
+            <Button
+              type="primary"
+              icon={<Save className="h-3.5 w-3.5" />}
+              loading={saving}
+              onClick={() => void handleSave()}
+            >
+              保存
+            </Button>
+          </div>
+        ) : (
+          <Button icon={<Pencil className="h-3.5 w-3.5" />} onClick={() => setEditing(true)}>
+            编辑
+          </Button>
+        )}
       </div>
 
       <div className="divide-y divide-[var(--admin-line)]">
@@ -83,6 +111,7 @@ export function SchedulePushConfig({ schedule, saving, stationCode, onSave }: Pr
           <span className="w-16 shrink-0 text-xs font-medium text-slate-500">推送星期</span>
           <Checkbox.Group
             value={weekdays}
+            disabled={disabled}
             onChange={(vals) => setWeekdays(vals as WeekdayNum[])}
           >
             <div className="flex flex-wrap gap-x-4 gap-y-1">
@@ -110,27 +139,32 @@ export function SchedulePushConfig({ schedule, saving, stationCode, onSave }: Pr
                   minuteStep={5}
                   allowClear={false}
                   variant="borderless"
+                  disabled={disabled}
                   className="!w-24"
                   onChange={(val) => {
                     if (val) handleTimeChange(slot.id, val.format('HH:mm'))
                   }}
                 />
-                <button
-                  onClick={() => handleRemoveTime(slot.id)}
-                  className="flex h-5 w-5 items-center justify-center rounded text-slate-300 transition-colors hover:bg-red-50 hover:text-red-400"
-                >
-                  <X className="h-3 w-3" />
-                </button>
+                {!disabled && (
+                  <button
+                    onClick={() => handleRemoveTime(slot.id)}
+                    className="flex h-5 w-5 items-center justify-center rounded text-slate-300 transition-colors hover:bg-red-50 hover:text-red-400"
+                  >
+                    <X className="h-3 w-3" />
+                  </button>
+                )}
               </div>
             ))}
-            <Button
-              type="dashed"
-              icon={<Plus className="h-3.5 w-3.5" />}
-              onClick={handleAddTime}
-              className="!border-[var(--admin-accent)]/40 !text-xs !text-[var(--admin-accent)] hover:!border-[var(--admin-accent)] hover:!bg-[var(--admin-accent-soft)]"
-            >
-              添加
-            </Button>
+            {!disabled && (
+              <Button
+                type="dashed"
+                icon={<Plus className="h-3.5 w-3.5" />}
+                onClick={handleAddTime}
+                className="!border-[var(--admin-accent)]/40 !text-xs !text-[var(--admin-accent)] hover:!border-[var(--admin-accent)] hover:!bg-[var(--admin-accent-soft)]"
+              >
+                添加
+              </Button>
+            )}
             {pushTimes.length === 0 && (
               <span className="text-xs text-slate-400">暂无推送时间</span>
             )}

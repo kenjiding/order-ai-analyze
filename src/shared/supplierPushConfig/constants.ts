@@ -7,4 +7,5 @@ export const SUPPLIER_CONFIG_SCOPE_LABELS: Record<
 > = {
   'exit-alarm.scheduled': '状态',
   'vendor-analysis.push': '状态',
+  'chase-dispatch.scheduled': '状态',
 }

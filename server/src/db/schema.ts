@@ -213,29 +213,35 @@ export const vendorAnalysisSnapshots = pgTable(
   ],
 )
 
-/** 供应商数据日报发布记录：每个 reportDate 一行（重复发布覆盖），供外部分享链接读取 */
+/** 供应商数据日报发布记录：每个任务（jobId）一行（同任务重复发布覆盖），供外部分享链接读取。保留一周（按 createdAt 清理） */
 export const vendorDailyReports = pgTable(
   'vendor_daily_reports',
   {
     id: uuid('id').primaryKey().defaultRandom(),
+    /** 该日报对应的分析任务；删除任务级联删除其日报 */
+    jobId: uuid('job_id').notNull().references(() => jobs.id, { onDelete: 'cascade' }),
+    /** 业务日期，仅供展示/排序，不再作为唯一键 */
     reportDate: varchar('report_date', { length: 10 }).notNull(),
     payload: jsonb('payload').notNull(),
     createdBy: uuid('created_by').references(() => users.id, { onDelete: 'set null' }),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => [
-    uniqueIndex('vendor_daily_reports_report_date_unique').on(table.reportDate),
+    uniqueIndex('vendor_daily_reports_job_id_unique').on(table.jobId),
     index('vendor_daily_reports_created_at_idx').on(table.createdAt),
   ],
 )
 
-/** 供应商数据日报分享链接：每个供应商每天一条，日报发布时自动开通，可禁用/重置；仅保留最近 7 天 */
+/** 供应商数据日报分享链接：每个任务每个供应商一条，日报发布时自动开通，可禁用/重置；保留一周（按 createdAt 清理） */
 export const vendorShareLinks = pgTable(
   'vendor_share_links',
   {
     id: uuid('id').primaryKey().defaultRandom(),
+    /** 该链接对应的分析任务；删除任务级联删除其链接 */
+    jobId: uuid('job_id').notNull().references(() => jobs.id, { onDelete: 'cascade' }),
     vendorCode: varchar('vendor_code', { length: 64 }).notNull(),
     vendorName: varchar('vendor_name', { length: 255 }).notNull(),
+    /** 业务日期，仅供展示，不再作为唯一键 */
     reportDate: varchar('report_date', { length: 10 }).notNull(),
     token: varchar('token', { length: 128 }).notNull(),
     isDisabled: boolean('is_disabled').notNull().default(false),
@@ -245,9 +251,9 @@ export const vendorShareLinks = pgTable(
     lastAccessedAt: timestamp('last_accessed_at', { withTimezone: true }),
   },
   (table) => [
-    uniqueIndex('vendor_share_links_vendor_date_unique').on(table.vendorCode, table.reportDate),
+    uniqueIndex('vendor_share_links_vendor_job_unique').on(table.vendorCode, table.jobId),
     uniqueIndex('vendor_share_links_token_unique').on(table.token),
-    index('vendor_share_links_report_date_idx').on(table.reportDate),
+    index('vendor_share_links_job_id_idx').on(table.jobId),
   ],
 )
 
@@ -272,6 +278,31 @@ export const exitAlarmSchedules = pgTable(
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => [uniqueIndex('exit_alarm_schedules_user_id_unique').on(table.userId)],
+)
+
+/** 催派推送：定时推送配置（每个账号最多一条，userId 唯一），复用出仓告警的供应商配置 catalog */
+export const chaseDispatchSchedules = pgTable(
+  'chase_dispatch_schedules',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    /** 拥有该配置的账号；时区按该账号的 regionCode 判断，未设置兜底阿德莱德 */
+    userId: uuid('user_id').references(() => users.id, { onDelete: 'cascade' }),
+    /** 推送星期，1=周一…7=周日，存为 JSONB 数组 */
+    weekdays: jsonb('weekdays').notNull().default([]),
+    /** 推送时间点列表 [{id, time}]，time 格式 HH:mm（按拥有者账号所属州本地时间） */
+    pushTimes: jsonb('push_times').notNull().default([]),
+    /** 滞留时间区间多选，值如 '0-1' '1-2' … '7+'，存为 JSONB 字符串数组 */
+    stagnationBuckets: jsonb('stagnation_buckets').notNull().default([]),
+    isEnabled: boolean('is_enabled').notNull().default(true),
+    /** 定时推送使用的站点编码（stockStationCodes） */
+    stationCode: varchar('station_code', { length: 64 }).notNull().default(''),
+    /** 定时拉数使用的 iMile token（保存配置时从全局设置同步，不对外返回） */
+    imileToken: varchar('imile_token', { length: 2048 }),
+    updatedBy: uuid('updated_by').references(() => users.id, { onDelete: 'set null' }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [uniqueIndex('chase_dispatch_schedules_user_id_unique').on(table.userId)],
 )
 
 /**
@@ -314,5 +345,7 @@ export type FleetSupplierPushConfig = typeof fleetSupplierPushConfigs.$inferSele
 export type NewFleetSupplierPushConfig = typeof fleetSupplierPushConfigs.$inferInsert
 export type ExitAlarmSchedule = typeof exitAlarmSchedules.$inferSelect
 export type NewExitAlarmSchedule = typeof exitAlarmSchedules.$inferInsert
+export type ChaseDispatchSchedule = typeof chaseDispatchSchedules.$inferSelect
+export type NewChaseDispatchSchedule = typeof chaseDispatchSchedules.$inferInsert
 export type StationInboundWaybillIndex = typeof stationInboundWaybillIndex.$inferSelect
 export type NewStationInboundWaybillIndex = typeof stationInboundWaybillIndex.$inferInsert

@@ -24,6 +24,7 @@ export const SUPPLIER_CONFIG_SCOPE_ADAPTERS: Record<
 > = {
   'exit-alarm.scheduled': createScopeAdapter('exit-alarm.scheduled'),
   'vendor-analysis.push': createScopeAdapter('vendor-analysis.push'),
+  'chase-dispatch.scheduled': createScopeAdapter('chase-dispatch.scheduled'),
 }
 
 export function getSupplierConfigScopeAdapter(

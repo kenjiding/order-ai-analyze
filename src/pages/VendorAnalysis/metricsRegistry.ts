@@ -33,9 +33,9 @@ export type VendorMetricDef = {
   defaultEnabled: boolean
   dataSources: VendorAnalysisDataSource[]
   /**
-   * 日期敏感指标：数据反映“抓取那一刻”的实时状态（是否已在 11 点前出仓 / 是否已在 24H 内派签），
-   * 只有「数据参考日期」正好是当天时重新抓取才有意义。非当天时不可再勾选去补拉，只能取消勾选隐藏；
-   * 已经合法抓到的历史数据（如加载过去某天的任务）不受影响，仍正常展示。
+   * 日期敏感指标：数据反映“抓取那一刻”的实时状态（是否已在 11 点前出仓 / 是否已在 24H 内派签）。
+   * 与其他指标完全一致地勾选、抓取、展示，不做任何过滤或禁用；此标记仅为元数据，
+   * 供新建分析在「数据参考日期」不是当天时提示这些指标可能不准确（历史日期用当前时刻状态回填，参考意义有限）。
    */
   dateSensitive?: boolean
 }
@@ -53,10 +53,15 @@ export const VENDOR_ANALYSIS_METRICS: VendorMetricDef[] = [
   { key: 'driver.longTail', category: 'driver', label: '长尾单', fixed: false, defaultEnabled: true, dataSources: ['longTail'] },
 ]
 
-/** 日期敏感指标 key 集合，供配置面板禁用勾选框、页面过滤本次实际抓取范围使用 */
-export const DATE_SENSITIVE_METRIC_KEYS: ReadonlySet<string> = new Set(
-  VENDOR_ANALYSIS_METRICS.filter((m) => m.dateSensitive).map((m) => m.key),
-)
+/**
+ * 勾选集合里命中的日期敏感指标展示名（去重）。
+ * 供新建分析在「数据参考日期非当天」时提示这些指标可能不准确。
+ */
+export function enabledDateSensitiveLabels(enabledKeys: readonly string[]): string[] {
+  const enabled = new Set(enabledKeys)
+  const labels = VENDOR_ANALYSIS_METRICS.filter((m) => m.dateSensitive && enabled.has(m.key)).map((m) => m.label)
+  return [...new Set(labels)]
+}
 
 /** 全部指标 key，顺序与 registry 一致。新建分析时的默认全选集合。 */
 export const ALL_METRIC_KEYS: string[] = VENDOR_ANALYSIS_METRICS.map((m) => m.key)
@@ -68,15 +73,6 @@ export function metricDisplayLabel(key: string): string {
   const m = METRIC_BY_KEY.get(key)
   if (!m) return key
   return `${m.category === 'vendor' ? '供应商' : '司机'}·${m.label}`
-}
-
-/**
- * 勾选集合 → 本次实际可用于抓取/校验缺失数据源的指标 key 集合：
- * 参考日期不是当天时，过滤掉日期敏感指标（即便仍勾选，也不会被当作“新增”去补拉数据）。
- */
-export function resolveFetchableEnabledKeys(enabledKeys: readonly string[], isReferenceDateToday: boolean): string[] {
-  if (isReferenceDateToday) return [...enabledKeys]
-  return enabledKeys.filter((key) => !DATE_SENSITIVE_METRIC_KEYS.has(key))
 }
 
 /** 勾选集合 → 需要抓取的数据源并集（去重 + 排序，与后端解析结果一致） */

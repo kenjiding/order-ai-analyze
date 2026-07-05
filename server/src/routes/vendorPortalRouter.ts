@@ -13,6 +13,9 @@ export const vendorPortalRouter = Router()
 
 const SHARE_TOKEN_PATTERN = /^[0-9a-f]{64}$/
 
+/** 分享链接有效期：一周（与 retention 保留期一致） */
+const SHARE_LINK_TTL_MS = 7 * 24 * 60 * 60 * 1000
+
 // ─── 极简内存限流：60 次/分钟/IP（代码库无现成 rate-limit 中间件） ──────────────
 const RATE_LIMIT_MAX = 60
 const RATE_LIMIT_WINDOW_MS = 60_000
@@ -171,10 +174,16 @@ vendorPortalRouter.get('/daily/:token', rateLimit, async (req: Request, res: Res
       return
     }
 
+    // 一周有效期：超过 7 天（按开通时刻）即失效，与后端保留期一致，防止过期链接仍可访问
+    if (Date.now() - new Date(link.createdAt).getTime() > SHARE_LINK_TTL_MS) {
+      sendNotFound(res)
+      return
+    }
+
     const [report] = await db
       .select({ payload: schema.vendorDailyReports.payload })
       .from(schema.vendorDailyReports)
-      .where(eq(schema.vendorDailyReports.reportDate, link.reportDate))
+      .where(eq(schema.vendorDailyReports.jobId, link.jobId))
       .limit(1)
     if (!report) {
       sendNotFound(res)

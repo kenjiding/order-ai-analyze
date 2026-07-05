@@ -16,8 +16,10 @@ import {
 } from '../../imile/driverPerformance'
 import { Semaphore } from '../../imile/semaphore'
 import { getDb, schema } from '../../db'
+import { resolveRegionTz } from '../../imile/ausTimezone'
 import type { JobHandler } from '../types'
 import { VENDOR_ANALYSIS_DATA_SOURCES, type VendorAnalysisDataSource } from '../../vendorAnalysis/metricsCatalog'
+import { aggregateVendorAnalysis, type VendorAnalyzeSummary } from '../../vendorAnalysis/aggregate'
 
 export const VENDOR_ANALYZE_JOB_TYPE = 'vendor.analyze'
 
@@ -249,27 +251,40 @@ export const vendorAnalyzeHandler: JobHandler = {
       totalSteps: enabledStages.length,
     })
 
-    const artifactData = {
+    // 原始明细就地聚合成「汇总结果」，只落汇总（不再存海量原始行）。
+    // 站点口径用任务的 stationCodes 冻结；tz 由账号所属州决定；nowMs=完成时刻（归班 48h 基准）。
+    const nowMs = Date.now()
+    const vendors = aggregateVendorAnalysis({
+      tickets: tickets as never,
+      waybills: slimmedWaybills as never,
+      unprocessedTickets: unprocessedTickets as never,
+      longTailOrders: longTailOrders as never,
+      before11ExitRateByVendor,
+      driverYesterdayWaybills,
+      driverDayBeforeWaybills: driverDayBeforeWaybills as never,
+      driverReturnRows: driverReturnRows as never,
+      stationCodes: params.stationCodes,
+      tz: resolveRegionTz(ctx.job.regionCode),
+      nowMs,
+    })
+
+    const artifactData: VendorAnalyzeSummary = {
+      schemaVersion: 2,
       referenceDate: params.referenceDate,
       // 本次实际抓取的数据源；前端据此判断新勾选指标是否需要重新获取数据
       dataSources: [...enabledSources].sort(),
-      tickets,
-      waybills: slimmedWaybills,
-      unprocessedTickets,
-      longTailOrders,
-      before11ExitRateByVendor,
-      driverYesterdayWaybills,
-      driverDayBeforeWaybills,
-      driverReturnRows,
+      stationCodes: params.stationCodes,
       startTime: params.startTime,
       endTime: params.endTime,
       ticketStartTime: params.ticketStartTime,
       ticketEndTime: params.ticketEndTime,
       before11Date: params.before11Date,
       dayBeforeDate: params.dayBeforeDate,
+      computedAt: new Date(nowMs).toISOString(),
+      vendors,
     }
 
-    // 完整分析结果长期存库，不依赖 jobs.artifactPath 的文件+TTL 清理机制，支持长期回溯
+    // 汇总分析结果长期存库，不依赖 jobs.artifactPath 的文件+TTL 清理机制，支持长期回溯
     const db = getDb()
     await db.insert(schema.vendorAnalysisSnapshots).values({
       jobId: ctx.job.id,

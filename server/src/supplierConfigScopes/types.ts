@@ -1,5 +1,8 @@
 /** 业务侧「启用哪些供应商配置」的作用域标识；与主配置 catalog 解耦 */
-export type SupplierConfigScopeKey = 'exit-alarm.scheduled' | 'vendor-analysis.push'
+export type SupplierConfigScopeKey =
+  | 'exit-alarm.scheduled'
+  | 'vendor-analysis.push'
+  | 'chase-dispatch.scheduled'
 
 export type SupplierConfigScopeStore = {
   key: SupplierConfigScopeKey

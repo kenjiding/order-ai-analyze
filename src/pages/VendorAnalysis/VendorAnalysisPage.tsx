@@ -5,10 +5,12 @@ import { PageSectionTabs, type PageSectionTabItem } from '../../components/PageS
 import { useGlobalFilterStore } from '../../stores/globalFilterStore'
 import { PERMISSION_KEYS, usePermission } from '../../hooks/usePermission'
 import { VendorJobsTabContent } from './components/VendorJobsTabContent'
+import { EditJobConfigDrawer } from './components/EditJobConfigDrawer'
+import { ShareLinkDrawer } from './components/ShareLinkDrawer'
+import type { PublicJob } from './vendorAnalysisApi'
 import { VendorMetricsPreview } from './components/VendorMetricsPreview'
 import { NewAnalysisDrawer } from './components/NewAnalysisDrawer'
-import { AnalysisProgressStrip, AnalysisErrorBanner } from './components/AnalysisProgress'
-import { useVendorShareLinks } from './components/VendorShareLinkColumn'
+import { AnalysisErrorBanner } from './components/AnalysisProgress'
 import { useVendorAnalysisPage, type TabId } from './useVendorAnalysisPage'
 import { buildVendorSnapshot, saveVendorSnapshot } from './vendorSnapshotStorage'
 import { buildVendorAiInputsFromSnapshot, mergeAiSummariesForLocale } from './vendorSnapshotAi'
@@ -22,11 +24,13 @@ export default function VendorAnalysisPage() {
 
   const [aiLoading, setAiLoading] = useState(false)
   const [drawerOpen, setDrawerOpen] = useState(false)
+  const [editingJob, setEditingJob] = useState<PublicJob | null>(null)
+  const [sharingJob, setSharingJob] = useState<PublicJob | null>(null)
   const canShare = usePermission(PERMISSION_KEYS.btnVendorAnalysisShare)
-  const shareLinks = useVendorShareLinks(canShare, v.fetchedData?.before11Date ?? null)
-  const { refetch: refetchShareLinks } = shareLinks
 
+  // 预览推送：按当前查看的这份任务自身的推送范围；新建抽屉：按全局 scope（新任务的默认模板）
   const selectedPushCount = v.selectedPushConfigs.length
+  const newAnalysisPushCount = v.scopeBinding.enabledPushable.length
   const canTriggerPush = !!v.fetchedData && v.selectedStations.length > 0 && selectedPushCount > 0
 
   const stationOptions = useGlobalFilterStore((s) => s.stations)
@@ -44,6 +48,7 @@ export default function VendorAnalysisPage() {
 
   const openSnapshot = useCallback(async (autoPush: boolean) => {
     if (!v.fetchedData) return
+    if (!v.viewedJobId) { message.warning('请先从任务队列「查看数据」载入一条任务'); return }
     if (autoPush && selectedPushCount === 0) {
       message.warning('请先在「新建分析任务」中启用要推送的供应商')
       return
@@ -55,10 +60,10 @@ export default function VendorAnalysisPage() {
       driverPerformanceByVendor: v.driverPerformanceByVendor,
       configs: v.selectedPushConfigs,
       enabledMetricKeys: v.viewedMetricKeys,
-      aiSummaryEnabled: v.aiSummaryEnabled,
+      aiSummaryEnabled: v.viewedAiSummaryEnabled,
     })
     // AI 总开关关闭时完全不调用 AI 接口；开启时输入与快照渲染共用同一套勾选过滤
-    if (v.aiSummaryEnabled) {
+    if (v.viewedAiSummaryEnabled) {
       setAiLoading(true)
       try {
         const inputs = buildVendorAiInputsFromSnapshot(snapshot.vendors, v.viewedMetricSet)
@@ -71,16 +76,14 @@ export default function VendorAnalysisPage() {
       }
     }
     saveVendorSnapshot(snapshot)
-    // 发布日报到服务端，供外部供应商分享链接读取；失败不阻断快照页打开，但明确提示
-    void postDailyReport(snapshot).then((result) => {
+    // 发布日报到服务端（按本任务 jobId 绑定），供外部供应商分享链接读取；失败不阻断快照页打开，但明确提示
+    void postDailyReport(v.viewedJobId, snapshot).then((result) => {
       if (!result.ok) {
         message.warning(`日报发布失败，外部分享链接数据未更新：${result.error}`)
-        return
       }
-      refetchShareLinks()
     })
     window.open(autoPush ? '/vendor-snapshot?autoPush=1' : '/vendor-snapshot', '_blank')
-  }, [v.fetchedData, v.selectedStations, v.vendorMetrics, v.driverPerformanceByVendor, v.selectedPushConfigs, v.viewedMetricKeys, v.viewedMetricSet, v.aiSummaryEnabled, selectedPushCount, locale, message, refetchShareLinks])
+  }, [v.fetchedData, v.viewedJobId, v.selectedStations, v.vendorMetrics, v.driverPerformanceByVendor, v.selectedPushConfigs, v.viewedMetricKeys, v.viewedMetricSet, v.viewedAiSummaryEnabled, selectedPushCount, locale, message])
 
   const pushBtnTooltip = !v.fetchedData
     ? '请先获取数据'
@@ -133,9 +136,6 @@ export default function VendorAnalysisPage() {
       {/* Tab A：新建分析入口 + 任务队列 */}
       {v.activeTab === 'analyze' && (
         <>
-          {v.dataFetching && (
-            <AnalysisProgressStrip progress={v.jobProgress} reused={v.jobReused} />
-          )}
           {!v.dataFetching && v.jobError && (
             <AnalysisErrorBanner error={v.jobError} onRetry={startAnalysis} />
           )}
@@ -146,6 +146,8 @@ export default function VendorAnalysisPage() {
             loadingJobId={v.loadingJobId}
             onRefresh={() => void v.refreshJobs()}
             onLoadResults={(jobId) => void v.loadJobResults(jobId)}
+            onEdit={(job) => setEditingJob(job)}
+            onShare={canShare ? (job) => setSharingJob(job) : undefined}
             onCancel={(jobId) => void v.cancelJobById(jobId)}
             onDelete={(jobId) => void v.deleteJobById(jobId)}
             onRetry={(job) => void v.retryJob(job)}
@@ -193,7 +195,7 @@ export default function VendorAnalysisPage() {
                     title={
                       aiLoading
                         ? 'AI 分析中...'
-                        : v.aiSummaryEnabled
+                        : v.viewedAiSummaryEnabled
                           ? '预览截图落地页（不自动推送）'
                           : '预览截图落地页（AI 分析已关闭）'
                     }
@@ -265,9 +267,24 @@ export default function VendorAnalysisPage() {
         catalogConfigs={v.catalog.configs}
         catalogLoading={v.catalog.loading}
         scopeBinding={v.scopeBinding}
-        enabledPushCount={selectedPushCount}
+        enabledPushCount={newAnalysisPushCount}
         dataFetching={v.dataFetching}
         onStart={startAnalysis}
+      />
+
+      <EditJobConfigDrawer
+        open={!!editingJob}
+        onClose={() => setEditingJob(null)}
+        job={editingJob}
+        catalogConfigs={v.catalog.configs}
+        onSave={v.updateJobConfig}
+      />
+
+      <ShareLinkDrawer
+        key={sharingJob?.id ?? 'none'}
+        open={!!sharingJob}
+        onClose={() => setSharingJob(null)}
+        jobId={sharingJob?.id ?? null}
       />
     </div>
   )

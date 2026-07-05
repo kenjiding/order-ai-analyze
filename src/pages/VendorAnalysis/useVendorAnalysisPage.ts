@@ -6,19 +6,11 @@ import { useGlobalFilterStore } from '../../stores/globalFilterStore'
 import { showToast } from '../../utils/toast'
 import { postFeishuPushCard } from '../PushNotifications/feishuWebhookTestApi'
 import type {
-  Before11ExitRateResult,
-  ComplaintTicketRow,
   DriverPerformanceRow,
-  DriverReturnRawRow,
-  DriverWaybillRow,
-  HubUnprocessedTicketRow,
-  LongTailOrderRow,
-  NormalUnprocessedTicketRow,
-  UnprocessedTicketsData,
   VendorMetricRow,
   VendorOption,
-  WaybillRow,
 } from './vendorAnalysisTypes'
+import type { VendorAnalyzeSummary } from './vendorAnalysisSummary'
 import {
   cancelJobApi,
   deleteJobApi,
@@ -27,40 +19,41 @@ import {
   getVendorAnalyzeSnapshot,
   listJobs,
   postVendorAnalyzeAsync,
+  updateVendorAnalyzeConfig,
   type PublicJob,
   type VendorAnalyzeArtifact,
   type VendorAnalyzeAsyncParams,
 } from './vendorAnalysisApi'
 import {
+  isSupplierPushEligible,
   useSupplierConfigScopeBinding,
   useSupplierPushCatalog,
 } from '../../shared/supplierPushConfig'
 import { fleetConfigsToVendorPushConfigs } from '../PushNotifications/supplierConfigAdapter'
-import {
-  ALL_METRIC_KEYS,
-  resolveFetchableEnabledKeys,
-} from './metricsRegistry'
+import { ALL_METRIC_KEYS } from './metricsRegistry'
 
 const VENDOR_ANALYSIS_PUSH_SCOPE = 'vendor-analysis.push' as const
-import { fromIMileTime, iMileTimeMs, nowIn, resolveRegionTz } from '../../utils/ausTimezone'
+import { nowIn, resolveRegionTz } from '../../utils/ausTimezone'
 
-/** 任务轮询间隔，与 OrderExceptionManagement 里的既有节奏保持一致 */
+/** 单任务进度轮询间隔（新建分析提交后跟踪当前任务） */
 const JOB_POLL_INTERVAL_MS = 3000
+/** 任务队列列表自动刷新间隔 */
+const JOBS_LIST_POLL_INTERVAL_MS = 10_000
 /** 供应商分析任务在通用 jobs 队列里的 type，与 server/src/jobs/handlers/vendorAnalyzeHandler.ts 的 VENDOR_ANALYZE_JOB_TYPE 保持一致 */
 const JOBS_LIST_TYPE = 'vendor.analyze'
 
 export type TabId = 'analyze' | 'preview'
 
-export type VendorAnalyzeJobProgress = {
-  phase?: string
-  message?: string
-  percent?: number
-  step?: number
-  totalSteps?: number
-}
-
 function normalizeVendorCode(code: string): string {
   return code.trim()
+}
+
+/** 从任务 payload 读取「输出配置」（推送供应商范围 + AI 开关）；老任务缺字段时兜底空/开 */
+function readJobOutputConfig(payload: Record<string, unknown>): { pushEnabledIds: string[]; aiSummaryEnabled: boolean } {
+  const pushEnabledIds = Array.isArray(payload.pushEnabledIds)
+    ? (payload.pushEnabledIds as unknown[]).filter((s): s is string => typeof s === 'string')
+    : []
+  return { pushEnabledIds, aiSummaryEnabled: payload.aiSummaryEnabled !== false }
 }
 
 /**
@@ -98,26 +91,9 @@ function deriveAnalyzeParamsFromPayload(payload: Record<string, unknown>): Vendo
 }
 
 
-export type FetchedData = {
-  /** 本次任务实际抓取的数据源；老任务的 artifact 无该字段（视为全量） */
-  dataSources?: string[]
-  tickets: ComplaintTicketRow[]
-  waybills: WaybillRow[]
-  unprocessedTickets: UnprocessedTicketsData
-  longTailOrders: LongTailOrderRow[]
-  before11ExitRateByVendor: Record<string, Before11ExitRateResult>
-  driverYesterdayWaybills: DriverWaybillRow[]
-  driverDayBeforeWaybills: DriverWaybillRow[]
-  driverReturnRows: DriverReturnRawRow[]
+/** 「数据预览」展示的一份分析结果：worker 落库的汇总 + 前端加载时刻 */
+export type FetchedData = VendorAnalyzeSummary & {
   fetchedAt: Date
-  startTime: string
-  endTime: string
-  ticketStartTime: string
-  ticketEndTime: string
-  /** 11点前出仓率：昨天 */
-  before11Date: string
-  /** 24小时派签率数据日期：参考日期的前天 */
-  dayBeforeDate: string
 }
 
 export function useVendorAnalysisPage() {
@@ -146,10 +122,27 @@ export function useVendorAnalysisPage() {
   )
   const configsLoading = catalog.loading
   const scopeBinding = useSupplierConfigScopeBinding(VENDOR_ANALYSIS_PUSH_SCOPE, catalog.configs)
-  const selectedPushConfigs = useMemo(
-    () => fleetConfigsToVendorPushConfigs(scopeBinding.enabledPushable),
-    [scopeBinding.enabledPushable],
-  )
+
+  // 「数据预览」展示的这份任务自身的输出配置（查看/新建完成时从任务 payload 写入），
+  // 与「新建分析」抽屉里的全局 scopeBinding / aiSummaryEnabled 相互独立：预览的推送与快照按这份走。
+  const [viewedJobId, setViewedJobId] = useState<string | null>(null)
+  const [viewedPushEnabledIds, setViewedPushEnabledIds] = useState<string[]>([])
+  const [viewedAiSummaryEnabled, setViewedAiSummaryEnabled] = useState(true)
+
+  const applyJobOutputConfig = useCallback((jobId: string, payload: Record<string, unknown>) => {
+    const { pushEnabledIds, aiSummaryEnabled } = readJobOutputConfig(payload)
+    setViewedJobId(jobId)
+    setViewedPushEnabledIds(pushEnabledIds)
+    setViewedAiSummaryEnabled(aiSummaryEnabled)
+  }, [])
+
+  // 预览的推送目标 = 该任务 push 范围 ∩ 当前有效（已配置 Webhook）的供应商配置
+  const selectedPushConfigs = useMemo(() => {
+    const enabled = new Set(viewedPushEnabledIds)
+    return fleetConfigsToVendorPushConfigs(
+      catalog.configs.filter((c) => enabled.has(c.id) && isSupplierPushEligible(c)),
+    )
+  }, [catalog.configs, viewedPushEnabledIds])
 
   // 指标配置：每次新建分析的本地选择，默认全选，不落库（无服务端偏好）
   const [metricSelection, setMetricSelection] = useState<string[]>(ALL_METRIC_KEYS)
@@ -161,10 +154,7 @@ export function useVendorAnalysisPage() {
 
   const [fetchedData, setFetchedData] = useState<FetchedData | null>(null)
   const [dataFetching, setDataFetching] = useState(false)
-  const [jobProgress, setJobProgress] = useState<VendorAnalyzeJobProgress | null>(null)
   const [jobError, setJobError] = useState<string | null>(null)
-  /** 点击「获取数据」时命中了别处（同筛选条件跨用户共享）已经在跑/已完成的任务，而非本次全新创建 */
-  const [jobReused, setJobReused] = useState(false)
   const [isPushingAll, setIsPushingAll] = useState(false)
 
   const [activeTab, setActiveTab] = useState<TabId>('analyze')
@@ -173,17 +163,15 @@ export function useVendorAnalysisPage() {
   /** 任务队列里点击「查看数据」时，正在加载哪个任务的完整结果（结果体积可能很大，需要明确的加载中反馈） */
   const [loadingJobId, setLoadingJobId] = useState<string | null>(null)
   const jobsPollingRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  const activeTabRef = useRef<TabId>(activeTab)
+  const refreshJobsRef = useRef<(silent?: boolean) => Promise<void>>(async () => {})
 
-  // 「11点前出仓率」「24H派签率」反映的是抓取那一刻的实时状态，只有参考日期=当天时重新抓取才有意义；
+  // 「11点前出仓率」「24H派签率」反映的是抓取那一刻的实时状态，参考日期非当天时数据可能不准确；
+  // 此处仅用于在新建分析抽屉里给出提示，不再过滤掉这些指标。
   // 按日历日字符串比较，避免 DatePicker 返回的 dayjs 与 nowIn(targetTz) 时区对象不一致导致误判
   const isReferenceDateToday = useMemo(
     () => !!referenceDate && referenceDate.format('YYYY-MM-DD') === nowIn(targetTz).format('YYYY-MM-DD'),
     [referenceDate, targetTz],
-  )
-  // 本次新建分析实际提交的指标：非当天时过滤掉日期敏感指标（无意义，不抓取）
-  const fetchableEnabledKeys = useMemo(
-    () => resolveFetchableEnabledKeys(metricSelection, isReferenceDateToday),
-    [metricSelection, isReferenceDateToday],
   )
 
   const initRef = useRef(false)
@@ -249,17 +237,66 @@ export function useVendorAnalysisPage() {
       before11Date: yesterday.format('YYYY-MM-DD'),
       dayBeforeDate: dayBefore.format('YYYY-MM-DD'),
       // 勾选的指标决定后端抓取哪些数据源；未勾选的不请求。日期敏感指标（11点前出仓率/24H派签率）
-      // 在参考日期非当天时被排除，避免抓取「以当前时刻状态回填历史日期」这种没有意义的数据
-      metricKeys: fetchableEnabledKeys,
+      // 与其他指标一致直接提交，参考日期非当天时只在抽屉里提示可能不准确，不再过滤。
+      metricKeys: metricSelection,
+      // 输出配置随任务落库：把新建时的全局推送范围 + AI 开关快照进本任务，之后可在任务队列单独编辑
+      pushEnabledIds: scopeBinding.enabledIds,
+      aiSummaryEnabled,
     }
-  }, [referenceDate, complaintDateRange, selectedStations, fetchableEnabledKeys])
+  }, [referenceDate, complaintDateRange, selectedStations, metricSelection, scopeBinding.enabledIds, aiSummaryEnabled])
+
+  useEffect(() => {
+    activeTabRef.current = activeTab
+  }, [activeTab])
+
+  const stopJobsPolling = useCallback(() => {
+    if (jobsPollingRef.current) {
+      clearInterval(jobsPollingRef.current)
+      jobsPollingRef.current = null
+    }
+  }, [])
+
+  const startJobsPolling = useCallback(() => {
+    if (activeTabRef.current !== 'analyze') return
+    if (jobsPollingRef.current) return
+    jobsPollingRef.current = setInterval(() => {
+      void refreshJobsRef.current(true)
+    }, JOBS_LIST_POLL_INTERVAL_MS)
+  }, [])
+
+  const refreshJobs = useCallback(async (silent = false) => {
+    setIsJobsLoading(true)
+    try {
+      const { jobs } = await listJobs({ type: JOBS_LIST_TYPE, limit: 30 })
+      setJobsList(jobs)
+      const hasActive = jobs.some((j) => j.status === 'pending' || j.status === 'running')
+      if (hasActive) startJobsPolling()
+      else stopJobsPolling()
+    } catch (e) {
+      if (!silent) showToast((e as Error).message || '任务列表加载失败', 'error')
+    } finally {
+      setIsJobsLoading(false)
+    }
+  }, [stopJobsPolling, startJobsPolling])
+
+  // 让轮询定时器里的 refreshJobsRef 始终指向最新的 refreshJobs（在 effect 里同步，避免渲染期写 ref）
+  useEffect(() => {
+    refreshJobsRef.current = refreshJobs
+  }, [refreshJobs])
 
   const pollJob = useCallback((jobId: string, metricKeys: string[]) => {
     stopPolling()
     pollTimerRef.current = setInterval(async () => {
       try {
         const job = await getJobById(jobId)
-        setJobProgress(job.progress as VendorAnalyzeJobProgress)
+        // 同步写回 jobsList，让任务队列「进度」列在列表轮询间隔内也能更新
+        setJobsList((prev) => {
+          const index = prev.findIndex((j) => j.id === jobId)
+          if (index < 0) return prev
+          const next = [...prev]
+          next[index] = job
+          return next
+        })
         if (job.status === 'succeeded') {
           stopPolling()
           const snapshotRes = await getVendorAnalyzeSnapshot(jobId)
@@ -271,6 +308,9 @@ export function useVendorAnalysisPage() {
           }
           applyArtifact(snapshotRes.data)
           setViewedMetricKeys(metricKeys)
+          applyJobOutputConfig(jobId, job.payload as Record<string, unknown>)
+          // 完成态切到「数据预览」前先刷新任务队列，避免切走后队列轮询停掉、完成态漏进列表
+          void refreshJobs(true)
           setActiveTab('preview')
           setDataFetching(false)
           showToast('数据获取成功', 'success')
@@ -286,7 +326,7 @@ export function useVendorAnalysisPage() {
         console.warn('[vendor-analysis] 轮询任务状态失败', err)
       }
     }, JOB_POLL_INTERVAL_MS)
-  }, [stopPolling, applyArtifact])
+  }, [stopPolling, applyArtifact, refreshJobs, applyJobOutputConfig])
 
   const enqueueAndAttach = useCallback(async () => {
     if (!referenceDate) { showToast('请先选择数据参考日期', 'error'); return }
@@ -305,8 +345,6 @@ export function useVendorAnalysisPage() {
 
     setDataFetching(true)
     setJobError(null)
-    setJobProgress(null)
-    setJobReused(false)
 
     try {
       let res = await postVendorAnalyzeAsync(imileToken, { ...requestParams, force: false })
@@ -327,7 +365,9 @@ export function useVendorAnalysisPage() {
       }
 
       // 返回时已经是 running/succeeded，说明命中了别处（同筛选条件 / 其他用户）已经在跑的任务，而非本次全新创建
-      setJobReused(res.data.status === 'running' || res.data.status === 'succeeded')
+
+      // 提交成功后立即刷新任务队列，让新任务马上出现在列表里，而不用等下一次 10 秒轮询
+      void refreshJobs(true)
 
       if (res.data.status === 'succeeded') {
         // 幂等命中一个此前已完成的任务：直接取 snapshot，无需轮询
@@ -339,6 +379,11 @@ export function useVendorAnalysisPage() {
         }
         applyArtifact(snapshotRes.data)
         setViewedMetricKeys(submittedKeys)
+        // 幂等命中的是既有任务：以该任务自身落库的输出配置为准（可能与当前全局 scope 不同）
+        try {
+          const job = await getJobById(res.data.jobId)
+          applyJobOutputConfig(res.data.jobId, job.payload as Record<string, unknown>)
+        } catch { /* 取不到任务不阻断展示，预览沿用上一份配置 */ }
         setActiveTab('preview')
         setDataFetching(false)
         showToast('已获取此前完成的数据', 'success')
@@ -350,32 +395,11 @@ export function useVendorAnalysisPage() {
       setDataFetching(false)
       showToast('任务提交失败，请重试', 'error')
     }
-  }, [referenceDate, complaintDateRange, selectedStations, imileToken, buildEnqueueParams, applyArtifact, pollJob])
+  }, [referenceDate, complaintDateRange, selectedStations, imileToken, buildEnqueueParams, applyArtifact, pollJob, refreshJobs, applyJobOutputConfig])
 
   const fetchData = enqueueAndAttach
 
-  const stopJobsPolling = useCallback(() => {
-    if (jobsPollingRef.current) {
-      clearInterval(jobsPollingRef.current)
-      jobsPollingRef.current = null
-    }
-  }, [])
-
   useEffect(() => stopJobsPolling, [stopJobsPolling])
-
-  const refreshJobs = useCallback(async (silent = false) => {
-    setIsJobsLoading(true)
-    try {
-      const { jobs } = await listJobs({ type: JOBS_LIST_TYPE, limit: 30 })
-      setJobsList(jobs)
-      const hasActive = jobs.some((j) => j.status === 'pending' || j.status === 'running')
-      if (!hasActive) stopJobsPolling()
-    } catch (e) {
-      if (!silent) showToast((e as Error).message || '任务列表加载失败', 'error')
-    } finally {
-      setIsJobsLoading(false)
-    }
-  }, [stopJobsPolling])
 
   // 挂载时立即拉取一次，任务队列 Tab 的角标不依赖用户先切过去；用 setTimeout 让 setState 脱离 effect 的同步提交阶段
   useEffect(() => {
@@ -383,11 +407,10 @@ export function useVendorAnalysisPage() {
     return () => clearTimeout(timer)
   }, [refreshJobs])
 
-  // 停留在「分析任务」Tab（含任务队列）时开启轮询，离开后自动停止
+  // 停留在「分析任务」Tab 时拉列表并由 refreshJobs 按是否有进行中任务启停轮询；离开后清定时器
   useEffect(() => {
     if (activeTab !== 'analyze') return
     const timer = setTimeout(() => void refreshJobs(true), 0)
-    jobsPollingRef.current = setInterval(() => void refreshJobs(true), JOB_POLL_INTERVAL_MS)
     return () => {
       clearTimeout(timer)
       stopJobsPolling()
@@ -410,8 +433,8 @@ export function useVendorAnalysisPage() {
         ? (job.payload.metricKeys as unknown[]).filter((k): k is string => typeof k === 'string')
         : null
       setViewedMetricKeys(jobMetricKeys ?? ALL_METRIC_KEYS)
+      applyJobOutputConfig(jobId, job.payload as Record<string, unknown>)
       setJobError(null)
-      setJobReused(false)
       setActiveTab('preview')
 
       const jobStations = Array.isArray(job.payload.stationCodes)
@@ -429,7 +452,23 @@ export function useVendorAnalysisPage() {
     } finally {
       setLoadingJobId(null)
     }
-  }, [applyArtifact, selectedStations])
+  }, [applyArtifact, selectedStations, applyJobOutputConfig])
+
+  // 编辑某任务的输出配置（推送供应商范围 + AI 开关），不重跑分析；若正在预览该任务则同步生效。
+  const updateJobConfig = useCallback(
+    async (jobId: string, config: { pushEnabledIds: string[]; aiSummaryEnabled: boolean }) => {
+      const res = await updateVendorAnalyzeConfig(jobId, config)
+      if (!res.ok) { showToast(`保存失败: ${res.error}`, 'error'); return false }
+      if (jobId === viewedJobId) {
+        setViewedPushEnabledIds(config.pushEnabledIds)
+        setViewedAiSummaryEnabled(config.aiSummaryEnabled)
+      }
+      await refreshJobs(true)
+      showToast('已保存', 'success')
+      return true
+    },
+    [viewedJobId, refreshJobs],
+  )
 
   const cancelJobById = useCallback(async (jobId: string) => {
     try {
@@ -466,116 +505,58 @@ export function useVendorAnalysisPage() {
 
   const activeJobCount = jobsList.filter((j) => j.status === 'pending' || j.status === 'running').length
 
-  const indexedData = useMemo(() => {
-    if (!fetchedData) return null
-    const stationSet = new Set(selectedStations)
-
-    const waybillsByVendor = new Map<string, WaybillRow[]>()
-    for (const w of fetchedData.waybills) {
-      const key = w.courierVendorCode ?? ''
-      let arr = waybillsByVendor.get(key)
-      if (!arr) { arr = []; waybillsByVendor.set(key, arr) }
-      arr.push(w)
-    }
-
-    const ticketsByVendor = new Map<string, ComplaintTicketRow[]>()
-    for (const t of fetchedData.tickets) {
-      if (stationSet.size > 0 && !stationSet.has(t.relatedResponsibleHubCode ?? '')) continue
-      const key = t.responsibleDeptCode ?? ''
-      let arr = ticketsByVendor.get(key)
-      if (!arr) { arr = []; ticketsByVendor.set(key, arr) }
-      arr.push(t)
-    }
-
-    const longTailByVendor = new Map<string, LongTailOrderRow[]>()
-    for (const o of fetchedData.longTailOrders) {
-      const key = o.driverVendorCode ?? ''
-      let arr = longTailByVendor.get(key)
-      if (!arr) { arr = []; longTailByVendor.set(key, arr) }
-      arr.push(o)
-    }
-
-    const unprocessedCountByVendor = new Map<string, number>()
-    const unprocessedOrderCodesByVendor = new Map<string, string[]>()
-    const addUnprocessed = (key: string, orderCode: unknown) => {
-      unprocessedCountByVendor.set(key, (unprocessedCountByVendor.get(key) ?? 0) + 1)
-      const code = typeof orderCode === 'string' ? orderCode : ''
-      if (!code) return
-      let arr = unprocessedOrderCodesByVendor.get(key)
-      if (!arr) { arr = []; unprocessedOrderCodesByVendor.set(key, arr) }
-      arr.push(code)
-    }
-    const { normalTickets, complaintTickets, arbitrationTickets } = fetchedData.unprocessedTickets
-    for (const t of normalTickets) {
-      const row = t as NormalUnprocessedTicketRow
-      if (stationSet.size > 0 && !stationSet.has(row.currentHandleStationCode ?? '')) continue
-      addUnprocessed(row.currentHandleCode ?? '', row.orderCode)
-    }
-    for (const t of [...complaintTickets, ...arbitrationTickets]) {
-      const row = t as HubUnprocessedTicketRow
-      if (stationSet.size > 0 && !stationSet.has(row.relatedResponsibleHubCode ?? '')) continue
-      addUnprocessed(row.responsibleDeptCode ?? '', row.orderCode)
-    }
-
-    // 24H 派签率：前天运单，按站点过滤后按供应商统计达标情况
-    const dispatch24hByVendor = new Map<string, { total: number; met: number; unmetNos: string[] }>()
-    for (const row of fetchedData.driverDayBeforeWaybills) {
-      const vendorCode = row.courierVendorCode ?? ''
-      if (!vendorCode) continue
-      // 按最新派件网点过滤：lastScanSiteCode 必须在选中站点内
-      if (stationSet.size > 0 && !stationSet.has(row.lastScanSiteCode ?? '')) continue
-      if (!row.deliveryTime) continue
-
-      const deliveryLocal = fromIMileTime(row.deliveryTime, targetTz)
-      const deliveryMs = deliveryLocal.valueOf()
-      const signMs = row.signDate ? iMileTimeMs(row.signDate) : null
-      const problemMs = row.lastProblemDate ? iMileTimeMs(row.lastProblemDate) : null
-      const dow = deliveryLocal.day() // 0=Sun,1=Mon,...,6=Sat
-
-      let met = false
-      if (dow >= 1 && dow <= 4) {
-        // 周一~周四：signDate 或 lastProblemDate 距 deliveryTime <= 24h 之一达标即算
-        const within24h = (ms: number | null) => ms != null && ms - deliveryMs <= 24 * 60 * 60 * 1000
-        met = within24h(signMs) || within24h(problemMs)
-      } else {
-        // 周五(5)、周六(6)、周日(0)：下周一 23:59:59（账号所属州本地时间）前签收达标
-        const daysToMonday = dow === 0 ? 1 : dow === 5 ? 3 : 2
-        const nextMondayMs = deliveryLocal
-          .add(daysToMonday, 'day')
-          .hour(23).minute(59).second(59).millisecond(0)
-          .valueOf()
-        met = signMs != null && signMs <= nextMondayMs
+  // 供应商指标行：直接读 worker 落库的汇总，按 vendorCode join 配置（名称/昵称/id）；
+  // 以 configs 为主循环，已配置但本次无数据的供应商补 0（保持既有展示行为）。
+  const vendorMetrics = useMemo<VendorMetricRow[]>(() => {
+    if (!fetchedData) return []
+    const byVendor = new Map(fetchedData.vendors.map((v) => [v.vendorCode, v]))
+    return configs.map((config) => {
+      const vendorCode = normalizeVendorCode(config.vendorCode)
+      const s = byVendor.get(vendorCode)
+      return {
+        id: config.id,
+        vendorCode,
+        vendorName: config.vendorName,
+        supplierNickname: config.supplierNickname,
+        complaintCount: s?.complaintCount ?? 0,
+        waybillCount: s?.waybillCount ?? 0,
+        complaintRate: s?.complaintRate ?? 0,
+        unprocessedTicketCount: s?.unprocessedTicketCount ?? 0,
+        unprocessedTicketOrderCodes: s?.unprocessedTicketOrderCodes ?? [],
+        longTailCount: s?.longTailCount ?? 0,
+        before11ExitRate: s?.before11ExitRate ?? null,
+        before11ExitVolume: s?.before11ExitVolume ?? null,
+        before11TotalReceived: s?.before11TotalReceived ?? null,
+        before11UnmetWaybillNos: s?.before11UnmetWaybillNos ?? [],
+        dispatchRate24hText: s?.dispatchRate24hText ?? null,
+        notMet24hSignCount: s?.notMet24hSignCount ?? null,
+        dispatch24hTotal: s?.dispatch24hTotal ?? null,
+        dispatch24hCount: s?.dispatch24hCount ?? null,
+        dispatch24hUnmetWaybillNos: s?.dispatch24hUnmetWaybillNos ?? [],
+        complaintOrderCodes: s?.complaintOrderCodes ?? [],
       }
+    })
+  }, [fetchedData, configs])
 
-      let stat = dispatch24hByVendor.get(vendorCode)
-      if (!stat) { stat = { total: 0, met: 0, unmetNos: [] }; dispatch24hByVendor.set(vendorCode, stat) }
-      stat.total += 1
-      if (met) {
-        stat.met += 1
-      } else {
-        const wbNo = row.waybillNo ?? ''
-        if (wbNo) stat.unmetNos.push(wbNo)
-      }
+  // 司机绩效：读汇总里每供应商的 drivers，补上配置的 vendorName（汇总不含供应商名）。
+  const driverPerformanceByVendor = useMemo<Record<string, DriverPerformanceRow[]>>(() => {
+    if (!fetchedData) return {}
+    const byVendor = new Map(fetchedData.vendors.map((v) => [v.vendorCode, v]))
+    const result: Record<string, DriverPerformanceRow[]> = {}
+    for (const config of configs) {
+      const vendorCode = normalizeVendorCode(config.vendorCode)
+      const s = byVendor.get(vendorCode)
+      result[vendorCode] = (s?.drivers ?? []).map((d) => ({
+        ...d,
+        vendorCode,
+        vendorName: config.vendorName,
+      }))
     }
-
-    // 11点前未出仓单号：按供应商聚合（无站点过滤，与 before11ExitRate 口径一致）
-    const before11UnmetByVendor = new Map<string, string[]>()
-    for (const row of fetchedData.driverYesterdayWaybills) {
-      if (row.before11Exit) continue
-      const vendorCode = row.courierVendorCode ?? ''
-      if (!vendorCode) continue
-      const wbNo = row.waybillNo ?? ''
-      if (!wbNo) continue
-      let arr = before11UnmetByVendor.get(vendorCode)
-      if (!arr) { arr = []; before11UnmetByVendor.set(vendorCode, arr) }
-      arr.push(wbNo)
-    }
-
-    return { waybillsByVendor, ticketsByVendor, longTailByVendor, unprocessedCountByVendor, unprocessedOrderCodesByVendor, stationSet, dispatch24hByVendor, before11UnmetByVendor }
-  }, [fetchedData, selectedStations, targetTz])
+    return result
+  }, [fetchedData, configs])
 
   const pushAll = useCallback(async () => {
-    if (!fetchedData || !indexedData) { showToast('请先点击「获取数据」', 'error'); return }
+    if (!fetchedData) { showToast('请先点击「获取数据」', 'error'); return }
     if (selectedStations.length === 0) { showToast('请先选择责任站点', 'error'); return }
 
     const enabledConfigs = selectedPushConfigs
@@ -586,51 +567,37 @@ export function useVendorAnalysisPage() {
 
     setIsPushingAll(true)
 
-    const { waybillsByVendor, ticketsByVendor, longTailByVendor, unprocessedCountByVendor } = indexedData
+    const metricByVendor = new Map(vendorMetrics.map((m) => [m.vendorCode, m]))
     const fmt = (s: string) => s.slice(5, 10).replace('-', '/')
     const dateLabel = `${fmt(fetchedData.startTime)}—${fmt(fetchedData.endTime)}`
     const ticketDateLabel = `${fmt(fetchedData.ticketStartTime)}—${fmt(fetchedData.ticketEndTime)}`
-    const stationLabel = selectedStations.join('、')
+    const stationLabel = fetchedData.stationCodes.join('、')
 
     let successCount = 0
     let failCount = 0
 
     for (const config of enabledConfigs) {
-      const complaintCount = ticketsByVendor.get(config.vendorCode)?.length ?? 0
-      const waybillCount = waybillsByVendor.get(config.vendorCode)?.length ?? 0
-      const complaintRate = waybillCount > 0 ? complaintCount / waybillCount : 0
-      const ratePercent = (complaintRate * 100).toFixed(2)
-
-      const unprocessedTicketCount = unprocessedCountByVendor.get(config.vendorCode) ?? 0
-      const longTailCount = longTailByVendor.get(config.vendorCode)?.length ?? 0
-      const before11 = fetchedData.before11ExitRateByVendor[config.vendorCode]
-      const dispatch24h = indexedData.dispatch24hByVendor.get(config.vendorCode)
-      const before11ExitRate = before11?.before11ExitRate ?? null
-      const before11ExitPercent = before11ExitRate != null
-        ? (before11ExitRate * 100).toFixed(2)
+      const m = metricByVendor.get(normalizeVendorCode(config.vendorCode))
+      const ratePercent = ((m?.complaintRate ?? 0) * 100).toFixed(2)
+      const before11ExitPercent = m?.before11ExitRate != null
+        ? (m.before11ExitRate * 100).toFixed(2)
         : '—'
-      const before11ExitVolume = before11?.before11ExitVolume ?? null
-      const before11TotalReceived = before11?.totalReceived ?? null
-      const dispatchRate24hText = dispatch24h && dispatch24h.total > 0
-        ? `${(dispatch24h.met / dispatch24h.total * 100).toFixed(2)}%`
-        : null
-      const notMet24hSignCount = dispatch24h ? dispatch24h.total - dispatch24h.met : null
 
       const card = buildVendorFeishuCard({
         vendorName: config.vendorName,
         dateLabel,
         ticketDateLabel,
         stationLabel,
-        complaintCount,
-        waybillCount,
+        complaintCount: m?.complaintCount ?? 0,
+        waybillCount: m?.waybillCount ?? 0,
         ratePercent,
         before11ExitPercent,
-        before11ExitVolume,
-        before11TotalReceived,
-        dispatchRate24hText,
-        notMet24hSignCount,
-        unprocessedTicketCount,
-        longTailCount,
+        before11ExitVolume: m?.before11ExitVolume ?? null,
+        before11TotalReceived: m?.before11TotalReceived ?? null,
+        dispatchRate24hText: m?.dispatchRate24hText ?? null,
+        notMet24hSignCount: m?.notMet24hSignCount ?? null,
+        unprocessedTicketCount: m?.unprocessedTicketCount ?? 0,
+        longTailCount: m?.longTailCount ?? 0,
         pushDescription: config.pushDescription ?? '',
       })
 
@@ -659,236 +626,7 @@ export function useVendorAnalysisPage() {
     } else {
       showToast(`推送完成：${successCount} 成功 · ${failCount} 失败`, 'warning')
     }
-  }, [fetchedData, indexedData, selectedStations, selectedPushConfigs])
-
-  const driverPerformanceByVendor = useMemo<Record<string, DriverPerformanceRow[]>>(() => {
-    if (!fetchedData) return {}
-
-    // ── 归班预警：以查询发起时刻为基准，ofdDate（墨尔本时间）转换后距基准>=48h 则计入 ──
-    const cutoffMs = nowIn(targetTz).valueOf()
-
-    const returnWarningMap = new Map<string, { count: number; waybillNos: string[] }>()
-    for (const row of fetchedData.driverReturnRows) {
-      if (!row.driverCode || !row.ofdDate) continue
-      if (cutoffMs - iMileTimeMs(row.ofdDate) >= 48 * 60 * 60 * 1000) {
-        const entry = returnWarningMap.get(row.driverCode) ?? { count: 0, waybillNos: [] }
-        entry.count += 1
-        if (row.waybillNo) entry.waybillNos.push(row.waybillNo)
-        returnWarningMap.set(row.driverCode, entry)
-      }
-    }
-
-    const result: Record<string, DriverPerformanceRow[]> = {}
-
-    for (const config of configs) {
-      // ── 今日取件量：昨日运单，按 courierVendorCode 匹配，按 courierCode 计数 ──
-      type PickupAgg = { courierName: string; routeCode: string; count: number; before11Count: number; waybillNos: string[]; before11UnmetWaybillNos: string[] }
-      const pickupMap = new Map<string, PickupAgg>()
-      for (const row of fetchedData.driverYesterdayWaybills) {
-        if (!row.courierCode || row.courierVendorCode !== config.vendorCode) continue
-        const agg = pickupMap.get(row.courierCode)
-        const wbNo = row.waybillNo ?? ''
-        if (agg) {
-          agg.count += 1
-          if (row.before11Exit) {
-            agg.before11Count += 1
-          } else if (wbNo) {
-            agg.before11UnmetWaybillNos.push(wbNo)
-          }
-          if (wbNo) agg.waybillNos.push(wbNo)
-        } else {
-          pickupMap.set(row.courierCode, {
-            courierName: row.courier ?? '',
-            routeCode: row.consigneeRouteCode ?? '',
-            count: 1,
-            before11Count: row.before11Exit ? 1 : 0,
-            waybillNos: wbNo ? [wbNo] : [],
-            before11UnmetWaybillNos: !row.before11Exit && wbNo ? [wbNo] : [],
-          })
-        }
-      }
-
-      // ── 24H派签率：前天运单，按站点+供应商过滤，按规则判断是否达标 ──
-      const stationSet = new Set(selectedStations)
-      type DispatchAgg = { total: number; completed: number; routeCode: string; unmetNos: string[] }
-      const dispatchMap = new Map<string, DispatchAgg>()
-      for (const row of fetchedData.driverDayBeforeWaybills) {
-        if (!row.courierCode || row.courierVendorCode !== config.vendorCode) continue
-        if (!row.deliveryTime) continue
-        // 按最新派件网点过滤（与供应商级指标保持一致）
-        if (stationSet.size > 0 && !stationSet.has(row.lastScanSiteCode ?? '')) continue
-
-        // iMile 时间为墨尔本本地时间，需先转为账号所属州本地时间再判断星期和截止时间
-        const deliveryLocal = fromIMileTime(row.deliveryTime, targetTz)
-        const deliveryMs = deliveryLocal.valueOf()
-        const signMs = row.signDate ? iMileTimeMs(row.signDate) : null
-        const problemMs = row.lastProblemDate ? iMileTimeMs(row.lastProblemDate) : null
-        const dow = deliveryLocal.day() // 0=Sun,1=Mon,...,6=Sat
-
-        let completed = false
-        if (dow >= 1 && dow <= 4) {
-          // 周一~周四：signDate 或 lastProblemDate 距 deliveryTime <= 24h 之一达标即算
-          const within24h = (ms: number | null) => ms != null && ms - deliveryMs <= 24 * 60 * 60 * 1000
-          completed = within24h(signMs) || within24h(problemMs)
-        } else {
-          // 周五(5)、周六(6)、周日(0)：下周一 23:59:59（账号所属州本地时间）前签收即达标
-          const daysToMonday = dow === 0 ? 1 : dow === 5 ? 3 : 2
-          const nextMondayMs = deliveryLocal
-            .add(daysToMonday, 'day')
-            .hour(23).minute(59).second(59).millisecond(0)
-            .valueOf()
-          completed = signMs != null && signMs <= nextMondayMs
-        }
-
-        const wbNo = row.waybillNo ?? ''
-        const agg = dispatchMap.get(row.courierCode)
-        if (agg) {
-          agg.total += 1
-          if (completed) {
-            agg.completed += 1
-          } else if (wbNo) {
-            agg.unmetNos.push(wbNo)
-          }
-        } else {
-          dispatchMap.set(row.courierCode, {
-            total: 1,
-            completed: completed ? 1 : 0,
-            routeCode: row.consigneeRouteCode ?? '',
-            unmetNos: !completed && wbNo ? [wbNo] : [],
-          })
-        }
-      }
-
-      // ── 长尾单：按司机 driverCode 聚合（与当前供应商匹配） ──
-      type LongTailAgg = { count: number; waybillNos: string[] }
-      const longTailByDriver = new Map<string, LongTailAgg>()
-      for (const order of fetchedData.longTailOrders) {
-        if (!order.driverCode || order.driverVendorCode !== config.vendorCode) continue
-        const waybillNo = typeof order.waybillNo === 'string' ? order.waybillNo : ''
-        const agg = longTailByDriver.get(order.driverCode)
-        if (agg) {
-          agg.count += 1
-          if (waybillNo) agg.waybillNos.push(waybillNo)
-        } else {
-          longTailByDriver.set(order.driverCode, { count: 1, waybillNos: waybillNo ? [waybillNo] : [] })
-        }
-      }
-
-      // ── 合并所有司机（取件量 + 24H派签 + 归班预警 + 长尾单 四个来源） ──
-      const allCourierCodes = new Set([
-        ...pickupMap.keys(),
-        ...dispatchMap.keys(),
-        ...longTailByDriver.keys(),
-        ...[...returnWarningMap.keys()].filter((code) => {
-          const returnRow = fetchedData.driverReturnRows.find(
-            (r) => r.driverCode === code && r.driverVendorCode === config.vendorCode,
-          )
-          return !!returnRow
-        }),
-      ])
-
-      const drivers: DriverPerformanceRow[] = []
-      for (const courierCode of allCourierCodes) {
-        const pickup = pickupMap.get(courierCode)
-        const dispatch = dispatchMap.get(courierCode)
-
-        let courierName = pickup?.courierName ?? ''
-        if (!courierName) {
-          const dispatchRow = fetchedData.driverDayBeforeWaybills.find(
-            (r) => r.courierCode === courierCode && r.courierVendorCode === config.vendorCode,
-          )
-          courierName = dispatchRow?.courier ?? ''
-        }
-        if (!courierName) {
-          const returnRow = fetchedData.driverReturnRows.find(
-            (r) => r.driverCode === courierCode && r.driverVendorCode === config.vendorCode,
-          )
-          courierName = returnRow?.driverName ?? ''
-        }
-        if (!courierName) {
-          const longTailRow = fetchedData.longTailOrders.find(
-            (o) => o.driverCode === courierCode && o.driverVendorCode === config.vendorCode,
-          )
-          courierName = longTailRow?.driverName ?? courierCode
-        }
-
-        const totalDispatch = dispatch?.total ?? 0
-        const dispatch24hCount = dispatch?.completed ?? 0
-        const dispatchRate24h = totalDispatch > 0 ? dispatch24hCount / totalDispatch : null
-
-        drivers.push({
-          courierCode,
-          courierName,
-          vendorCode: config.vendorCode,
-          vendorName: config.vendorName,
-          routeCode: pickup?.routeCode || dispatch?.routeCode || '',
-          ofdCount: pickup?.count ?? 0,
-          ofdWaybillNos: pickup?.waybillNos ?? [],
-          before11OfdCount: pickup?.before11Count ?? 0,
-          before11UnmetWaybillNos: pickup?.before11UnmetWaybillNos ?? [],
-          returnWarningCount: returnWarningMap.get(courierCode)?.count ?? 0,
-          returnWarningWaybillNos: returnWarningMap.get(courierCode)?.waybillNos ?? [],
-          dispatch24hCount,
-          totalDispatchCount: totalDispatch,
-          dispatchRate24h,
-          dispatch24hUnmetWaybillNos: dispatch?.unmetNos ?? [],
-          longTailCount: longTailByDriver.get(courierCode)?.count ?? 0,
-          longTailWaybillNos: longTailByDriver.get(courierCode)?.waybillNos ?? [],
-        })
-      }
-
-      drivers.sort((a, b) => b.returnWarningCount - a.returnWarningCount || b.ofdCount - a.ofdCount)
-      result[config.vendorCode] = drivers
-    }
-
-    return result
-  }, [fetchedData, configs, selectedStations, targetTz])
-
-  const vendorMetrics = useMemo<VendorMetricRow[]>(() => {
-    if (!fetchedData || !indexedData) return []
-    const { waybillsByVendor, ticketsByVendor, longTailByVendor, unprocessedCountByVendor, unprocessedOrderCodesByVendor, dispatch24hByVendor, before11UnmetByVendor } = indexedData
-    return configs.map((config) => {
-      const complaintCount = ticketsByVendor.get(config.vendorCode)?.length ?? 0
-      const waybillCount = waybillsByVendor.get(config.vendorCode)?.length ?? 0
-      const complaintRate = waybillCount > 0 ? complaintCount / waybillCount : 0
-      const unprocessedTicketCount = unprocessedCountByVendor.get(config.vendorCode) ?? 0
-      const unprocessedTicketOrderCodes = unprocessedOrderCodesByVendor.get(config.vendorCode) ?? []
-      const longTailCount = longTailByVendor.get(config.vendorCode)?.length ?? 0
-      const vendorCode = normalizeVendorCode(config.vendorCode)
-      const before11 = fetchedData.before11ExitRateByVendor[vendorCode]
-      const dispatch24h = dispatch24hByVendor.get(vendorCode)
-      const dispatch24hTotal = dispatch24h?.total ?? null
-      const dispatch24hCount = dispatch24h?.met ?? null
-      const dispatchRate24hText = dispatch24h && dispatch24h.total > 0
-        ? `${(dispatch24h.met / dispatch24h.total * 100).toFixed(2)}%`
-        : null
-      const notMet24hSignCount = dispatch24h ? dispatch24h.total - dispatch24h.met : null
-      const complaintOrderCodes = ticketsByVendor.get(config.vendorCode)
-        ?.map((t) => String((t as Record<string, unknown>).orderCode ?? '')).filter(Boolean) ?? []
-      return {
-        id: config.id,
-        vendorCode,
-        vendorName: config.vendorName,
-        supplierNickname: config.supplierNickname,
-        complaintCount,
-        waybillCount,
-        complaintRate,
-        unprocessedTicketCount,
-        unprocessedTicketOrderCodes,
-        longTailCount,
-        before11ExitRate: before11?.before11ExitRate ?? null,
-        before11ExitVolume: before11?.before11ExitVolume ?? null,
-        before11TotalReceived: before11?.totalReceived ?? null,
-        before11UnmetWaybillNos: before11UnmetByVendor.get(vendorCode) ?? [],
-        dispatchRate24hText,
-        notMet24hSignCount,
-        dispatch24hTotal,
-        dispatch24hCount,
-        dispatch24hUnmetWaybillNos: dispatch24h?.unmetNos ?? [],
-        complaintOrderCodes,
-      }
-    })
-  }, [fetchedData, indexedData, configs])
+  }, [fetchedData, vendorMetrics, selectedStations, selectedPushConfigs])
 
   return {
     referenceDate,
@@ -905,9 +643,7 @@ export function useVendorAnalysisPage() {
     selectedPushConfigs,
     fetchedData,
     dataFetching,
-    jobProgress,
     jobError,
-    jobReused,
     fetchData,
     isPushingAll,
     pushAll,
@@ -917,6 +653,10 @@ export function useVendorAnalysisPage() {
     setMetricSelection,
     aiSummaryEnabled,
     setAiSummaryEnabled,
+    // 预览展示的这份任务自身的 AI 开关（openSnapshot 用它，而非新建抽屉的全局开关）
+    viewedAiSummaryEnabled,
+    // 预览展示的这份任务 id（发布日报 / 分享链接按它绑定）
+    viewedJobId,
     viewedMetricKeys,
     viewedMetricSet,
     isReferenceDateToday,
@@ -928,6 +668,7 @@ export function useVendorAnalysisPage() {
     activeJobCount,
     refreshJobs,
     loadJobResults,
+    updateJobConfig,
     cancelJobById,
     deleteJobById,
     retryJob,

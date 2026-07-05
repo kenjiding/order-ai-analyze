@@ -74,6 +74,43 @@ export function iMileStrToMs(str: string): number {
   return parseLocalStrMs(str, IMILE_TZ)
 }
 
+/** 某 UTC 时刻在指定时区的星期几：0=周日 … 6=周六（对齐前端 dayjs 的 .day()） */
+export function weekdayInTz(utcMs: number, tz: AusTz): number {
+  const wd = new Intl.DateTimeFormat('en-US', { timeZone: tz, weekday: 'short' }).format(new Date(utcMs))
+  return ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].indexOf(wd)
+}
+
+/** 某 UTC 时刻在指定时区的本地日期 'YYYY-MM-DD' */
+export function localDateInTz(utcMs: number, tz: AusTz): string {
+  return new Intl.DateTimeFormat('en-CA', {
+    timeZone: tz,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).format(new Date(utcMs))
+}
+
+/**
+ * 以某 UTC 时刻在 targetTz 的本地日期为基准，加 addDays 天后的 hh:mm:ss（targetTz 本地）对应的 UTC 毫秒。
+ * 用中午做加天探针，避开 DST 边界歧义。对齐前端 `deliveryLocal.add(n,'day').hour(h)...valueOf()`。
+ */
+export function localDatePlusDaysMs(
+  utcMs: number,
+  tz: AusTz,
+  addDays: number,
+  hour: number,
+  minute: number,
+  second: number,
+): number {
+  const baseDate = localDateInTz(utcMs, tz)
+  const baseNoonMs = parseLocalStrMs(`${baseDate} 12:00:00`, tz)
+  const shiftedDate = localDateInTz(baseNoonMs + addDays * 24 * 60 * 60 * 1000, tz)
+  const hh = String(hour).padStart(2, '0')
+  const mm = String(minute).padStart(2, '0')
+  const ss = String(second).padStart(2, '0')
+  return parseLocalStrMs(`${shiftedDate} ${hh}:${mm}:${ss}`, tz)
+}
+
 /**
  * 以 iMile 时间字符串（墨尔本时间）的日期为基准，求次日在 targetTz 的
  * hour:minute 时刻对应的 UTC 毫秒数。

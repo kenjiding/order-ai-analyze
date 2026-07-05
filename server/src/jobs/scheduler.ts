@@ -2,6 +2,10 @@ import cron from 'node-cron'
 import { runScheduledFeishuPush } from '../feishu/scheduledPush'
 import { logExitAlarmSchedulerReadiness, runExitAlarmScheduledPush } from '../feishu/exitAlarmScheduledPush'
 import {
+  logChaseDispatchSchedulerReadiness,
+  runChaseDispatchScheduledPush,
+} from '../feishu/chaseDispatchScheduledPush'
+import {
   logInboundIndexSchedulerReadiness,
   runDailyInboundWaybillIndexPrefetch,
 } from '../imile/inboundWaybillIndexScheduler'
@@ -54,6 +58,22 @@ export function startJobScheduler(): { stop: () => void } {
   tasks.push(exitAlarmTask)
   console.log('[scheduler] 已启动出仓告警检查任务 cron="* * * * *" timezone="Australia/Adelaide"')
   void logExitAlarmSchedulerReadiness()
+
+  // 催派推送：worker 内始终注册，是否执行由 DB 配置 isEnabled 控制
+  const chaseDispatchTask = cron.schedule(
+    '* * * * *',
+    async () => {
+      try {
+        await runChaseDispatchScheduledPush()
+      } catch (err) {
+        console.error('[scheduler/chase-dispatch] 推送异常:', err)
+      }
+    },
+    { timezone: 'Australia/Adelaide' },
+  )
+  tasks.push(chaseDispatchTask)
+  console.log('[scheduler] 已启动催派推送检查任务 cron="* * * * *" timezone="Australia/Adelaide"')
+  void logChaseDispatchSchedulerReadiness()
 
   // 到件 waybillNo 索引：每日 06:00 阿德莱德预取昨天 inbound/query（与出仓告警解耦）
   const inboundIndexCron = process.env.INBOUND_INDEX_CRON?.trim() || '0 6 * * *'
