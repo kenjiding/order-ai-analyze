@@ -1,10 +1,17 @@
-import * as XLSX from 'xlsx'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useLocation, useNavigate } from 'react-router-dom'
+import { useAppSettings } from '../../context/AppSettingsContext'
+import { PERMISSION_KEYS, usePermission } from '../../hooks/usePermission'
 import {
   buildDailyLaborCostFromPayrollByDate,
   computeAttendancePayrollFromFiles,
+  computeAttendancePayrollFromSheetRows,
   type AttendancePayrollResult,
 } from '../../payroll/attendancePayrollFromUpload'
+import {
+  filterZktAttendanceSheetRowsByDateRange,
+  mapZktTimeCardToAttendanceSheetRows,
+} from '../../payroll/zktTimeCardSheetMapping'
 import type { RateSettings } from '../../payroll/wageRateCalculation'
 import { DEFAULT_RATE_SETTINGS } from '../WageSalary/constants'
 import { loadEmployeesFromStorage, loadRateSettingsFromStorage } from '../WageSalary/storage'
@@ -22,6 +29,7 @@ import {
   applyAttendanceDailyHoursOverrides,
   computeAttendanceDailyMatchAverages,
   dedupeParsedScanRowsByWaybill,
+  dedupeParsedAttendanceRowsByPersonDay,
   type ParsedAllocationRow,
   type ParsedAttendanceRow,
   type ParsedScanRow,
@@ -32,24 +40,39 @@ import {
   formatNumber,
 } from './formatAndParse'
 import { parseAllocationFiles, parseScanFiles, parseAttendanceFiles } from './parsers'
-import { flushPaint } from './excelParseClient'
-import { exportAttendanceSchedulingPlanExcel } from './exportAttendanceSchedulingPlanExcel'
-import { buildExportWorkbook, type SourceInfo } from './exportWorkbook'
-import { buildFrontDeskSaturation } from './frontDeskSaturation'
 import {
-  buildSortingEfficiencyLookup,
-  buildSortingScanCountLookup,
-  sortingScanCountForPerson,
-} from './sortingLookup'
+  dedupeParsedAllocationRows,
+  mapAssignedListRecordsToParsedAllocationRows,
+} from './assignedListMapper'
+import { fetchBoxAssignedList, fetchCancelScanAnalysis, fetchInboundScans, fetchZktAttendance, saveDailyEfficiencyRecords } from './scannerEfficiencyApi'
+import { mapInboundRecordsToParsedScanRows } from './inboundScanMapper'
+import { mapZktTimeCardRecordsToParsedAttendanceRows } from './mapZktAttendanceRecords'
+import type { CancelScanAnalysisState } from './cancelScanAnalysisTypes'
+import { buildZoneInboundScanTotals } from './cancelScanRouteZoneTable'
+import { flushPaint } from './excelParseClient'
+import { buildAllocationDensity, buildFrontDeskClockOutDays } from './frontDeskSaturation'
+import {
+  captureEfficiencyAttendanceDayRecords,
+  normalizeEfficiencyAttendanceDayRecord,
+  restoreEfficiencyAttendancePage,
+  type EfficiencyAttendanceDayRecord,
+  type EfficiencyAttendancePageRestore,
+} from './dailyEfficiencyRecordSnapshot'
+import type { SourceInfo } from './sourceInfo'
+import { buildScannerTotalEfficiencyRows, sortingScanCountForPerson } from './sortingLookup'
 import type { DataTableRow } from './components/ui'
+import { showToast } from '../../utils/toast'
 import {
   buildAttendanceMatchColumns,
   buildAttendancePersonColumns,
   buildDailyVolumeColumns,
   buildScannerDailyColumns,
   buildScannerPersonColumns,
+  buildScannerTotalEfficiencyColumns,
 } from './scannerEfficiencyTableColumns'
 import { buildScannerHourlyPivotTables } from './scannerHourlyPivotTable'
+import { buildAttendanceWeeklySummaryTableRows } from './attendanceEfficiencyWeek'
+import type { EfficiencyDetailDimension } from './DailyEfficiencyBubbleChart'
 
 const EMPTY_SOURCE: SourceInfo = {
   fileCount: 0,
@@ -57,6 +80,16 @@ const EMPTY_SOURCE: SourceInfo = {
   droppedRows: 0,
   duplicateWaybillRows: 0,
   fileNames: [],
+}
+
+export type InboundApiFetchStats = {
+  dateRange: string
+  totalResult: number
+  fetched: number
+  mapped: number
+  sortingEligible: number
+  parseDropped: number
+  afterDedupe: number
 }
 
 function mergeOrderedUniqueFileNames(prev: string[], next: string[]): string[] {
@@ -70,12 +103,26 @@ function mergeOrderedUniqueFileNames(prev: string[], next: string[]): string[] {
   return out
 }
 
+function mergeOrderedUniqueFiles(prev: File[], next: File[]): File[] {
+  const seen = new Set(prev.map((file) => file.name))
+  const out = [...prev]
+  for (const file of next) {
+    if (seen.has(file.name)) continue
+    seen.add(file.name)
+    out.push(file)
+  }
+  return out
+}
+
 /** 与工资页上传表默认一致：未勾选「分拣班次 / 公众假期」时的映射口径 */
-const WAGE_LABOR_UPLOAD_SORTING = false
-const WAGE_LABOR_UPLOAD_PUBLIC_HOLIDAY = false
 
 export function useScannerEfficiencyPage() {
+  const { imileToken, imilePortal, zktAttendance } = useAppSettings()
+  const location = useLocation()
+  const navigate = useNavigate()
   const [settings, setSettings] = useState<ScanSettings>(() => ({ ...DEFAULT_SETTINGS }))
+  const [snapshotRestore, setSnapshotRestore] = useState<EfficiencyAttendancePageRestore | null>(null)
+  const [savingDailyRecords, setSavingDailyRecords] = useState(false)
 
   const [wageEmployees, setWageEmployees] = useState<{ employeeId: string; role: string }[]>([])
   const [rateSettingsForLabor, setRateSettingsForLabor] = useState<RateSettings>(() =>
@@ -90,27 +137,35 @@ export function useScannerEfficiencyPage() {
     })()
   }, [])
 
-  const refreshAttendancePayroll = useCallback(async (files: File[]) => {
-    if (!files.length) {
-      setAttendancePayroll(null)
+  const refreshAttendancePayroll = useCallback(async () => {
+    if (lastAttendanceFilesRef.current.length) {
+      const payroll = await computeAttendancePayrollFromFiles(
+        lastAttendanceFilesRef.current,
+        wageEmployees,
+        rateSettingsForLabor,
+      )
+      setAttendancePayroll(payroll)
       return
     }
-    const payroll = await computeAttendancePayrollFromFiles(
-      files,
-      wageEmployees,
-      rateSettingsForLabor,
-      WAGE_LABOR_UPLOAD_SORTING,
-      WAGE_LABOR_UPLOAD_PUBLIC_HOLIDAY,
-    )
-    setAttendancePayroll(payroll)
+    if (lastZktSheetRowsRef.current.length) {
+      const payroll = computeAttendancePayrollFromSheetRows(
+        lastZktSheetRowsRef.current,
+        wageEmployees,
+        rateSettingsForLabor,
+      )
+      setAttendancePayroll(payroll)
+      return
+    }
+    setAttendancePayroll(null)
   }, [wageEmployees, rateSettingsForLabor])
 
   useEffect(() => {
-    void refreshAttendancePayroll(lastAttendanceFilesRef.current)
+    void refreshAttendancePayroll()
   }, [refreshAttendancePayroll])
 
   const [scanRows, setScanRows] = useState<ParsedScanRow[]>([])
   const [scanSourceInfo, setScanSourceInfo] = useState<SourceInfo>(EMPTY_SOURCE)
+  const [lastInboundApiStats, setLastInboundApiStats] = useState<InboundApiFetchStats | null>(null)
 
   const scanRowsRef = useRef(scanRows)
   const scanSourceInfoRef = useRef(scanSourceInfo)
@@ -127,31 +182,88 @@ export function useScannerEfficiencyPage() {
   /** 与工资结算「计算薪资」同款结果；总成本只看此对象 */
   const [attendancePayroll, setAttendancePayroll] = useState<AttendancePayrollResult | null>(null)
   const lastAttendanceFilesRef = useRef<File[]>([])
+  /** ZKT API 拉取的考勤表行，用于与上传文件互斥地重算总成本 */
+  const lastZktSheetRowsRef = useRef<Record<string, unknown>[]>([])
   const [attendanceSourceInfo, setAttendanceSourceInfo] = useState<SourceInfo>(EMPTY_SOURCE)
+
+  const attendanceRowsRef = useRef(attendanceRows)
+  const attendanceSourceInfoRef = useRef(attendanceSourceInfo)
+
+  useEffect(() => {
+    attendanceRowsRef.current = attendanceRows
+  }, [attendanceRows])
+
+  useEffect(() => {
+    attendanceSourceInfoRef.current = attendanceSourceInfo
+  }, [attendanceSourceInfo])
   const [allocationRows, setAllocationRows] = useState<ParsedAllocationRow[]>([])
   const [allocationSourceInfo, setAllocationSourceInfo] = useState<SourceInfo>(EMPTY_SOURCE)
+
+  const allocationRowsRef = useRef(allocationRows)
+  const allocationSourceInfoRef = useRef(allocationSourceInfo)
+
+  useEffect(() => {
+    allocationRowsRef.current = allocationRows
+  }, [allocationRows])
+
+  useEffect(() => {
+    allocationSourceInfoRef.current = allocationSourceInfo
+  }, [allocationSourceInfo])
 
   const [loadingScan, setLoadingScan] = useState(false)
   const [loadingAttendance, setLoadingAttendance] = useState(false)
   const [loadingAllocation, setLoadingAllocation] = useState(false)
+  const [loadingAllocationApi, setLoadingAllocationApi] = useState(false)
+  const [loadingCancelScanAnalysis, setLoadingCancelScanAnalysis] = useState(false)
+  const [cancelScanAnalysis, setCancelScanAnalysis] = useState<CancelScanAnalysisState | null>(null)
+  const [apiDateRange, setApiDateRange] = useState<[string, string] | null>(null)
   const [error, setError] = useState('')
   const [manualTab, setManualTab] = useState<TabKey>(TAB_KEYS.WAREHOUSE)
   const [scannerHourlyExpanded, setScannerHourlyExpanded] = useState(false)
+  const [efficiencyDetailDimension, setEfficiencyDetailDimension] =
+    useState<EfficiencyDetailDimension>('day')
+  const [efficiencyChartOpenDaysOnly, setEfficiencyChartOpenDaysOnly] = useState(true)
+  const [efficiencyDetailExpandedWeekKeys, setEfficiencyDetailExpandedWeekKeys] = useState<
+    Set<string>
+  >(() => new Set())
+
+  const handleEfficiencyChartOpenDaysOnlyChange = useCallback((next: boolean) => {
+    setEfficiencyChartOpenDaysOnly(next)
+  }, [])
+
+  const handleEfficiencyDetailDimensionChange = useCallback((next: EfficiencyDetailDimension) => {
+    setEfficiencyDetailDimension(next)
+    if (next === 'day') setEfficiencyDetailExpandedWeekKeys(new Set())
+  }, [])
+
+  const handleEfficiencyDetailWeekRowClick = useCallback((row: DataTableRow) => {
+    const weekKey = String(row.weekKey ?? '')
+    if (!weekKey || !row.isWeekSummaryRow) return
+    setEfficiencyDetailExpandedWeekKeys((prev) => {
+      const next = new Set(prev)
+      if (next.has(weekKey)) next.delete(weekKey)
+      else next.add(weekKey)
+      return next
+    })
+  }, [])
 
   const scanAggregate = useMemo(() => {
+    if (snapshotRestore) return snapshotRestore.scanAggregate
     if (!scanRows.length) return null
     return buildScanAggregate(scanRows)
-  }, [scanRows])
+  }, [scanRows, snapshotRestore])
 
   const attendanceAggregate = useMemo(() => {
+    if (snapshotRestore) return null
     if (!attendanceRows.length) return null
     return buildAttendanceAggregate(attendanceRows, settings.openDayThreshold)
-  }, [attendanceRows, settings.openDayThreshold])
+  }, [attendanceRows, settings.openDayThreshold, snapshotRestore])
 
   const attendanceEfficiencyBase = useMemo(() => {
+    if (snapshotRestore) return snapshotRestore.attendanceResult
     if (!scanAggregate || !attendanceAggregate) return null
     return buildAttendanceEfficiency(scanAggregate, attendanceAggregate)
-  }, [scanAggregate, attendanceAggregate])
+  }, [scanAggregate, attendanceAggregate, snapshotRestore])
 
   const [dailyHoursOverrides, setDailyHoursOverrides] = useState<Record<string, number>>({})
 
@@ -160,11 +272,13 @@ export function useScannerEfficiencyPage() {
   }, [scanRows, attendanceRows])
 
   const attendanceResult = useMemo(() => {
+    if (snapshotRestore) return snapshotRestore.attendanceResult
     if (!attendanceEfficiencyBase) return null
     return applyAttendanceDailyHoursOverrides(attendanceEfficiencyBase, dailyHoursOverrides)
-  }, [attendanceEfficiencyBase, dailyHoursOverrides])
+  }, [attendanceEfficiencyBase, dailyHoursOverrides, snapshotRestore])
 
   const handleDailyTotalHoursCommit = useCallback((date: string, value: number | null) => {
+    if (snapshotRestore) return
     setDailyHoursOverrides((prev) => {
       if (value === null) {
         const { [date]: _, ...rest } = prev
@@ -172,34 +286,39 @@ export function useScannerEfficiencyPage() {
       }
       return { ...prev, [date]: value }
     })
-  }, [])
+  }, [snapshotRestore])
 
   const scannerResult = useMemo(() => {
+    if (snapshotRestore) return snapshotRestore.scannerResult
     if (!scanRows.length) return null
     return buildScannerEfficiency(scanRows, settings)
-  }, [scanRows, settings])
+  }, [scanRows, settings, snapshotRestore])
 
-  const frontDeskResult = useMemo(
-    () =>
-      buildFrontDeskSaturation({
-        attendanceResult,
-        attendanceRows,
-        allocationRows,
-        scannerResult,
-        afternoonStartHour: settings.frontDeskAfternoonStartHour,
-      }),
-    [
-      allocationRows,
-      attendanceResult,
-      attendanceRows,
-      scannerResult,
-      settings.frontDeskAfternoonStartHour,
-    ],
+  const allocationDensityRows = useMemo(
+    () => snapshotRestore?.allocationDensityRows ?? buildAllocationDensity(allocationRows),
+    [allocationRows, snapshotRestore],
   )
 
+  const frontDeskClockOutRows = useMemo(
+    () =>
+      snapshotRestore?.frontDeskClockOutRows ??
+      buildFrontDeskClockOutDays({ attendanceRows, allocationRows }),
+    [attendanceRows, allocationRows, snapshotRestore],
+  )
+
+  const showPushTab = usePermission(PERMISSION_KEYS.btnPushNotificationsWarehouseEfficiency)
+
   const activeTab = useMemo((): TabKey => {
-    if (manualTab === TAB_KEYS.WEEKLY) return TAB_KEYS.WEEKLY
-    if (manualTab === TAB_KEYS.PUSH) return TAB_KEYS.PUSH
+    const hasAttendance = Boolean(attendanceEfficiencyBase)
+    if (manualTab === TAB_KEYS.WEEKLY) return hasAttendance ? TAB_KEYS.WEEKLY : TAB_KEYS.FRONT_DESK
+    if (manualTab === TAB_KEYS.PUSH) {
+      if (!showPushTab || !hasAttendance) return TAB_KEYS.FRONT_DESK
+      return TAB_KEYS.PUSH
+    }
+    if (manualTab === TAB_KEYS.CANCEL_SCAN) return TAB_KEYS.CANCEL_SCAN
+    if (manualTab === TAB_KEYS.FRONT_DESK) return TAB_KEYS.FRONT_DESK
+    // WAREHOUSE / SCANNER
+    if (!hasAttendance) return TAB_KEYS.FRONT_DESK
     const coerced: TabKey | null =
       attendanceEfficiencyBase && !scannerResult
         ? TAB_KEYS.WAREHOUSE
@@ -209,13 +328,14 @@ export function useScannerEfficiencyPage() {
             ? TAB_KEYS.WAREHOUSE
             : null
     return coerced ?? manualTab
-  }, [manualTab, attendanceEfficiencyBase, scannerResult])
+  }, [manualTab, attendanceEfficiencyBase, scannerResult, showPushTab])
 
   const setActiveTab = (tab: TabKey) => setManualTab(tab)
 
   const weeklyPanelKey = useMemo(
     () =>
       [
+        snapshotRestore?.restoredDates.join(',') ?? '',
         scanSourceInfo.fileNames.join(','),
         String(scanSourceInfo.rowCount),
         String(scanSourceInfo.droppedRows),
@@ -227,12 +347,12 @@ export function useScannerEfficiencyPage() {
         String(settings.breakCapMinutes),
         String(settings.splitThresholdMinutes),
         String(settings.minSingleScanSessionMinutes),
-        String(settings.frontDeskAfternoonStartHour),
         allocationSourceInfo.fileNames.join(','),
         String(allocationSourceInfo.rowCount),
         String(allocationSourceInfo.droppedRows),
       ].join('|'),
     [
+      snapshotRestore?.restoredDates,
       scanSourceInfo.fileNames,
       scanSourceInfo.rowCount,
       scanSourceInfo.droppedRows,
@@ -244,7 +364,6 @@ export function useScannerEfficiencyPage() {
       settings.breakCapMinutes,
       settings.splitThresholdMinutes,
       settings.minSingleScanSessionMinutes,
-      settings.frontDeskAfternoonStartHour,
       allocationSourceInfo.fileNames,
       allocationSourceInfo.rowCount,
       allocationSourceInfo.droppedRows,
@@ -339,25 +458,132 @@ export function useScannerEfficiencyPage() {
     return []
   }, [activeTab, warehouseMetrics, scannerMetrics])
 
-  const personSortingLookup = useMemo(() => buildSortingEfficiencyLookup(scannerResult), [scannerResult])
-  const personSortingScanCountLookup = useMemo(
-    () => buildSortingScanCountLookup(scannerResult),
-    [scannerResult],
-  )
-
   const dailyVolumeColumns = useMemo(() => buildDailyVolumeColumns(), [])
   const attendanceMatchColumns = useMemo(
     () => buildAttendanceMatchColumns({ onDailyTotalHoursCommit: handleDailyTotalHoursCommit }),
     [handleDailyTotalHoursCommit],
   )
   const attendancePersonColumns = useMemo(
-    () => buildAttendancePersonColumns(personSortingLookup),
-    [personSortingLookup],
+    () => buildAttendancePersonColumns(scannerResult),
+    [scannerResult],
   )
   const scannerDailyColumns = useMemo(() => buildScannerDailyColumns(), [])
   const scannerPersonColumns = useMemo(() => buildScannerPersonColumns(), [])
+  const scannerTotalEfficiencyColumns = useMemo(() => buildScannerTotalEfficiencyColumns(), [])
+
+  const clearSnapshotRestore = useCallback(() => {
+    setSnapshotRestore(null)
+  }, [])
+
+  const dismissSnapshotRestore = useCallback(() => {
+    setSnapshotRestore(null)
+    setScanRows([])
+    setScanSourceInfo(EMPTY_SOURCE)
+    setLastInboundApiStats(null)
+    setAttendanceRows([])
+    setAttendanceSourceInfo(EMPTY_SOURCE)
+    setAttendancePayroll(null)
+    lastAttendanceFilesRef.current = []
+    lastZktSheetRowsRef.current = []
+    setAllocationRows([])
+    setAllocationSourceInfo(EMPTY_SOURCE)
+    setDailyHoursOverrides({})
+    setCancelScanAnalysis(null)
+    setError('')
+  }, [])
+
+  const applyDailyRecordRestore = useCallback((rawRecords: unknown[]) => {
+    const records = rawRecords
+      .map((item) => normalizeEfficiencyAttendanceDayRecord(item))
+      .filter((item): item is EfficiencyAttendanceDayRecord => item != null)
+    if (!records.length) {
+      showToast('记录数据不可用，请刷新后重试', 'error')
+      return
+    }
+    const restore = restoreEfficiencyAttendancePage(records)
+    setSnapshotRestore(restore)
+    setSettings((current) => ({ ...current, ...restore.settings }))
+    setScanRows([])
+    setAttendanceRows(restore.attendanceRows)
+    setAllocationRows([])
+    setScanSourceInfo(restore.scanSourceInfo)
+    setAttendanceSourceInfo(restore.attendanceSourceInfo)
+    setAllocationSourceInfo(restore.allocationSourceInfo)
+    setAttendancePayroll(restore.attendancePayroll)
+    lastAttendanceFilesRef.current = []
+    lastZktSheetRowsRef.current = []
+    setLastInboundApiStats(null)
+    setDailyHoursOverrides({})
+    setError('')
+  }, [])
+
+  useEffect(() => {
+    const state = location.state as {
+      restoreDailyRecord?: unknown
+      restoreDailyRecords?: unknown[]
+    } | null
+    const rawRecords = state?.restoreDailyRecords?.length
+      ? state.restoreDailyRecords
+      : state?.restoreDailyRecord
+        ? [state.restoreDailyRecord]
+        : null
+    if (!rawRecords?.length) return
+    applyDailyRecordRestore(rawRecords)
+    navigate(location.pathname, { replace: true, state: null })
+  }, [applyDailyRecordRestore, location.pathname, location.state, navigate])
+
+  const canSaveDailyRecords = Boolean(
+    !snapshotRestore && scanAggregate && attendanceResult && attendanceRows.length,
+  )
+
+  const handleSaveDailyRecords = useCallback(async () => {
+    if (!canSaveDailyRecords || !attendanceResult) return
+
+    setSavingDailyRecords(true)
+    setError('')
+    try {
+      const records = captureEfficiencyAttendanceDayRecords({
+        attendanceResult,
+        attendanceRows,
+        scannerResult,
+        allocationDensityRows,
+        frontDeskClockOutRows,
+        cancelScanAnalysis,
+        attendancePayroll,
+        settings,
+        scanSourceInfo,
+        attendanceSourceInfo,
+        allocationSourceInfo,
+      })
+      if (!records.length) {
+        throw new Error('当前没有可保存的按日效率记录')
+      }
+      const { savedCount } = await saveDailyEfficiencyRecords(records)
+      showToast(`已保存 ${savedCount} 天到效率考勤记录`, 'success')
+    } catch (currentError: unknown) {
+      const message = currentError instanceof Error ? currentError.message : '保存效率考勤记录失败'
+      showToast(message, 'error')
+    } finally {
+      setSavingDailyRecords(false)
+    }
+  }, [
+    allocationDensityRows,
+    allocationSourceInfo,
+    attendancePayroll,
+    cancelScanAnalysis,
+    attendanceResult,
+    attendanceRows,
+    attendanceSourceInfo,
+    canSaveDailyRecords,
+    frontDeskClockOutRows,
+    scanAggregate,
+    scanSourceInfo,
+    scannerResult,
+    settings,
+  ])
 
   const handleSettingChange = (key: keyof ScanSettings, value: string) => {
+    if (snapshotRestore) return
     const numeric = Number(value)
     setSettings((current) => ({
       ...current,
@@ -369,6 +595,7 @@ export function useScannerEfficiencyPage() {
     const files = Array.from(fileList || [])
     if (!files.length) return
 
+    clearSnapshotRestore()
     setLoadingScan(true)
     setError('')
     await flushPaint()
@@ -407,51 +634,252 @@ export function useScannerEfficiencyPage() {
         fileNames: mergedNames,
       })
     } catch (currentError: unknown) {
-      setScanRows([])
-      setScanSourceInfo(EMPTY_SOURCE)
       setError(currentError instanceof Error ? currentError.message : '读取到件扫描文件失败。请检查文件格式。')
     } finally {
       setLoadingScan(false)
     }
   }
 
-  const handleAttendanceFileChange = async (fileList: FileList | null) => {
-    const files = Array.from(fileList || [])
+  const performAllocationFetch = async (token: string, startDate: string, endDate: string) => {
+    setLoadingAllocationApi(true)
+    try {
+      const result = await fetchBoxAssignedList({
+        imileToken: token,
+        startDate,
+        endDate,
+        imilePortal,
+      })
 
-    if (!files.length) {
-      setAttendanceRows([])
-      setAttendanceSourceInfo(EMPTY_SOURCE)
-      setAttendancePayroll(null)
-      lastAttendanceFilesRef.current = []
+      console.group(`[ScannerEfficiency] iMile 前台分配 API 原始数据 ${startDate} ~ ${endDate}`)
+      console.log('records（resultObject.results，未裁剪）', result.records)
+      console.log('raw（完整分页 HTTP JSON）', result.raw)
+      console.groupEnd()
+
+      const sourceLabel = `iMile 前台分配 API（${startDate} ~ ${endDate}）`
+      const mapped = mapAssignedListRecordsToParsedAllocationRows(result.records, sourceLabel)
+      const prevRows = allocationRowsRef.current
+      const prevSource = allocationSourceInfoRef.current
+
+      console.info('[ScannerEfficiency] iMile 前台分配 API 拉取完成', {
+        dateRange: `${startDate} ~ ${endDate}`,
+        apiTotalResult: result.meta.totalResult,
+        apiFetched: result.records.length,
+        mappedRows: mapped.rows.length,
+        mappedDropped: mapped.droppedRows,
+      })
+
+      if (!mapped.rows.length) {
+        showToast(
+          prevRows.length
+            ? '本次前台分配 API 没有可统计记录，已有分配数据未改动。'
+            : '所选日期区间内没有可统计的前台分配记录。',
+          'warning',
+        )
+        return
+      }
+
+      const combinedRawRows = prevRows.length ? [...prevRows, ...mapped.rows] : mapped.rows
+      const { rows: deduped, duplicateDropped } = dedupeParsedAllocationRows(combinedRawRows)
+      if (!deduped.length) {
+        showToast('前台分配经去重后没有可统计记录。', 'warning')
+        return
+      }
+
+      setAllocationRows(deduped)
+      const mergedNames = prevRows.length
+        ? mergeOrderedUniqueFileNames(prevSource.fileNames, [sourceLabel])
+        : [sourceLabel]
+
+      setAllocationSourceInfo({
+        fileCount: mergedNames.length,
+        rowCount: deduped.length,
+        droppedRows: prevRows.length
+          ? prevSource.droppedRows + mapped.droppedRows
+          : mapped.droppedRows,
+        duplicateWaybillRows: duplicateDropped,
+        fileNames: mergedNames,
+      })
+
+      showToast(
+        `前台分配 API 已载入 ${formatInteger(deduped.length)} 条（${startDate} ~ ${endDate}）`,
+        'success',
+      )
+    } catch (currentError: unknown) {
+      const message =
+        currentError instanceof Error ? currentError.message : 'iMile 前台分配 API 拉取失败'
+      showToast(message, 'error')
+    } finally {
+      setLoadingAllocationApi(false)
+    }
+  }
+
+  const handleAllocationApiFetch = async () => {
+    const token = imileToken.trim()
+    if (!token) {
+      showToast('请先在全局设置中配置 iMile Token', 'error')
+      return
+    }
+    if (!apiDateRange) {
+      showToast('请先在"载入扫描记录"中选择日期区间', 'error')
+      return
+    }
+    void performAllocationFetch(token, apiDateRange[0], apiDateRange[1])
+  }
+
+  const performCancelScanFetch = async (token: string, startDate: string, endDate: string) => {
+    setLoadingCancelScanAnalysis(true)
+    try {
+      const result = await fetchCancelScanAnalysis({
+        imileToken: token,
+        startDate,
+        endDate,
+        imilePortal,
+      })
+
+      console.group(`[ScannerEfficiency] 细分错误率分析 API 原始数据 ${startDate} ~ ${endDate}`)
+      console.log('cancelScanRecords', result.cancelScanRecords)
+      console.log('waybillRecords', result.waybillRecords)
+      console.log('routeCodeDistribution', result.routeCodeDistribution)
+      console.log('raw', result.raw)
+      console.groupEnd()
+
+      setCancelScanAnalysis({
+        dateRange: `${startDate} ~ ${endDate}`,
+        routeCodeDistribution: result.routeCodeDistribution,
+        dailyRouteCodeCounts: result.dailyRouteCodeCounts,
+        meta: result.meta,
+      })
+
+      if (result.meta.cancelScanFetched === 0) {
+        showToast('所选日期区间内没有细分错误记录。', 'warning')
+        return
+      }
+
+      showToast(
+        `细分错误率分析完成：${formatInteger(result.meta.cancelScanFetched)} 条记录，${formatInteger(result.routeCodeDistribution.length)} 种路由码`,
+        'success',
+      )
+    } catch (currentError: unknown) {
+      const message =
+        currentError instanceof Error ? currentError.message : '细分错误率分析拉取失败'
+      showToast(message, 'error')
+    } finally {
+      setLoadingCancelScanAnalysis(false)
+    }
+  }
+
+  const handleCancelScanApiFetch = async () => {
+    const token = imileToken.trim()
+    if (!token) {
+      showToast('请先在全局设置中配置 iMile Token', 'error')
+      return
+    }
+    if (!apiDateRange) {
+      showToast('请先在"载入扫描记录"中选择日期区间', 'error')
+      return
+    }
+    void performCancelScanFetch(token, apiDateRange[0], apiDateRange[1])
+  }
+
+  const performAttendanceApiFetch = async (
+    startDate: string,
+    endDate: string,
+    options?: { replaceExisting?: boolean },
+  ) => {
+    const settings = zktAttendance
+    if (!settings.username.trim() || !settings.password) {
+      showToast('请先在系统设置中配置 ZKT 考勤 API 账号与密码', 'warning')
       return
     }
 
     setLoadingAttendance(true)
-    setError('')
-    await flushPaint()
-
     try {
-      const parsed = await parseAttendanceFiles(files)
-      if (!parsed.rows.length) {
-        throw new Error('考勤文件没有识别到有效工时。请确认包含“日期、人员”，以及“工作时长”或“总时长”列。')
-      }
-
-      setAttendanceRows(parsed.rows)
-      setAttendanceSourceInfo({
-        fileCount: files.length,
-        rowCount: parsed.rows.length,
-        droppedRows: parsed.droppedRows,
-        duplicateWaybillRows: 0,
-        fileNames: parsed.fileNames,
+      const result = await fetchZktAttendance({
+        zktAttendance: settings,
+        startDate,
+        endDate,
       })
 
-      lastAttendanceFilesRef.current = files
-      const payroll = await computeAttendancePayrollFromFiles(
-        files,
+      if (result.count > 0 && result.meta.fetched < result.count) {
+        throw new Error(`ZKT 考勤数据不完整：count=${result.count}，实际拉取 ${result.meta.fetched} 条`)
+      }
+
+      const sourceLabel = `ZKT 考勤 API（${startDate} ~ ${endDate}）`
+      const mapped = mapZktTimeCardRecordsToParsedAttendanceRows(result.data, sourceLabel, {
+        startDate,
+        endDate,
+      })
+      const replaceExisting = options?.replaceExisting ?? false
+      const prevRows = replaceExisting ? [] : attendanceRowsRef.current
+      const prevSource = replaceExisting ? EMPTY_SOURCE : attendanceSourceInfoRef.current
+
+      console.info('[ScannerEfficiency] ZKT 考勤 API 拉取完成', {
+        dateRange: `${startDate} ~ ${endDate}`,
+        query: result.meta.query ?? {
+          start_date: startDate,
+          end_date: endDate,
+        },
+        count: result.count,
+        fetched: result.meta.fetched,
+        replaceExisting,
+        mappedRows: mapped.rows.length,
+        mappedDropped: mapped.droppedRows,
+      })
+
+      if (!mapped.rows.length) {
+        showToast(
+          !replaceExisting && attendanceRowsRef.current.length
+            ? `ZKT 考勤 API 返回 ${result.count} 条，但没有可解析的有效工作时长（worked_hrs），已有考勤数据未改动。`
+            : `ZKT 考勤 API 返回 ${result.count} 条，但没有可解析的有效工作时长（worked_hrs）。`,
+          'warning',
+        )
+        return
+      }
+
+      if (mapped.droppedRows > 0) {
+        showToast(
+          `ZKT 考勤已载入 ${mapped.rows.length} 条（count=${result.count}，${mapped.droppedRows} 条无有效 worked_hrs 已跳过）`,
+          mapped.droppedRows > mapped.rows.length ? 'warning' : 'success',
+        )
+      }
+
+      const combinedRawRows = prevRows.length ? [...prevRows, ...mapped.rows] : mapped.rows
+      const { rows: deduped, duplicateDropped } = dedupeParsedAttendanceRowsByPersonDay(combinedRawRows)
+      if (!deduped.length) {
+        showToast('考勤经同人同日去重后没有可统计记录。', 'warning')
+        return
+      }
+
+      setAttendanceRows(deduped)
+      const mergedNames = prevRows.length
+        ? mergeOrderedUniqueFileNames(prevSource.fileNames, [sourceLabel])
+        : [sourceLabel]
+
+      setAttendanceSourceInfo({
+        fileCount: mergedNames.length,
+        rowCount: deduped.length,
+        droppedRows: prevRows.length
+          ? prevSource.droppedRows + mapped.droppedRows
+          : mapped.droppedRows,
+        duplicateWaybillRows: duplicateDropped,
+        fileNames: mergedNames,
+      })
+
+      const fetchedSheetRows = filterZktAttendanceSheetRowsByDateRange(
+        mapZktTimeCardToAttendanceSheetRows(result.data),
+        startDate,
+        endDate,
+      )
+      const mergedSheetRows = replaceExisting
+        ? fetchedSheetRows
+        : [...lastZktSheetRowsRef.current, ...fetchedSheetRows]
+      lastZktSheetRowsRef.current = mergedSheetRows
+      lastAttendanceFilesRef.current = []
+
+      const payroll = computeAttendancePayrollFromSheetRows(
+        mergedSheetRows,
         wageEmployees,
         rateSettingsForLabor,
-        WAGE_LABOR_UPLOAD_SORTING,
-        WAGE_LABOR_UPLOAD_PUBLIC_HOLIDAY,
       )
       setAttendancePayroll(payroll)
       if (payroll.validationErrors.length > 0) {
@@ -460,10 +888,156 @@ export function useScannerEfficiencyPage() {
         )
       }
     } catch (currentError: unknown) {
-      setAttendanceRows([])
-      setAttendanceSourceInfo(EMPTY_SOURCE)
-      setAttendancePayroll(null)
-      lastAttendanceFilesRef.current = []
+      const message =
+        currentError instanceof Error ? currentError.message : 'ZKT 考勤 API 拉取失败'
+      showToast(message, 'error')
+    } finally {
+      setLoadingAttendance(false)
+    }
+  }
+
+  const handleScanApiFetch = async (startDate: string, endDate: string) => {
+    const token = imileToken.trim()
+    if (!token) {
+      setError('请先在全局设置中配置 iMile Token')
+      return
+    }
+    if (!startDate || !endDate) {
+      setError('请选择有效的日期区间')
+      return
+    }
+
+    setApiDateRange([startDate, endDate])
+    clearSnapshotRestore()
+    setLoadingScan(true)
+    setError('')
+    await flushPaint()
+
+    const attendancePromise = performAttendanceApiFetch(startDate, endDate, { replaceExisting: true })
+
+    try {
+      const result = await fetchInboundScans({
+        imileToken: token,
+        startDate,
+        endDate,
+        imilePortal,
+      })
+
+      console.group(`[ScannerEfficiency] iMile 到件 API 原始数据 ${startDate} ~ ${endDate}`)
+      console.log('records（resultObject.results，未裁剪）', result.records)
+      console.log('raw（完整分页 HTTP JSON）', result.raw)
+      console.groupEnd()
+
+      const sourceLabel = `iMile 到件 API（${startDate} ~ ${endDate}）`
+      const mapped = mapInboundRecordsToParsedScanRows(result.records, sourceLabel)
+
+      console.info('[ScannerEfficiency] iMile 到件 API 拉取完成', {
+        dateRange: `${startDate} ~ ${endDate}`,
+        apiTotalResult: result.meta.totalResult,
+        apiFetched: result.records.length,
+        mappedRows: mapped.rows.length,
+        mappedDropped: mapped.droppedRows,
+        sortingEligible: mapped.sortingEligibleCount,
+      })
+
+      if (!mapped.rows.length) {
+        throw new Error('所选日期区间内没有可统计的到件记录。')
+      }
+
+      const { rows: deduped, duplicateDropped } = dedupeParsedScanRowsByWaybill(mapped.rows)
+      if (!deduped.length) {
+        throw new Error('到件扫描经运单号去重后没有可统计记录。')
+      }
+
+      console.info('[ScannerEfficiency] iMile 到件计入统计', {
+        afterDedupe: deduped.length,
+        duplicateDropped,
+      })
+
+      setScanRows(deduped)
+      setLastInboundApiStats({
+        dateRange: `${startDate} ~ ${endDate}`,
+        totalResult: result.meta.totalResult,
+        fetched: result.records.length,
+        mapped: mapped.rows.length,
+        sortingEligible: mapped.sortingEligibleCount,
+        parseDropped: mapped.droppedRows,
+        afterDedupe: deduped.length,
+      })
+      setScanSourceInfo({
+        fileCount: 1,
+        rowCount: deduped.length,
+        droppedRows: mapped.droppedRows,
+        duplicateWaybillRows: duplicateDropped,
+        fileNames: [sourceLabel],
+      })
+    } catch (currentError: unknown) {
+      setError(currentError instanceof Error ? currentError.message : 'iMile 到件 API 拉取失败')
+    } finally {
+      setLoadingScan(false)
+      await attendancePromise
+    }
+  }
+
+  const handleAttendanceFileChange = async (fileList: FileList | null) => {
+    const files = Array.from(fileList || [])
+    if (!files.length) return
+
+    clearSnapshotRestore()
+    setLoadingAttendance(true)
+    setError('')
+    await flushPaint()
+
+    try {
+      const parsed = await parseAttendanceFiles(files)
+      const prevRows = attendanceRowsRef.current
+      const prevSource = attendanceSourceInfoRef.current
+      const prevFiles = lastAttendanceFilesRef.current
+
+      if (!parsed.rows.length) {
+        throw new Error(
+          prevRows.length
+            ? '本次追加的考勤文件没有识别到有效工时。请确认包含“日期、人员”，以及“工作时长”或“总时长”列；已有数据未改动。'
+            : '考勤文件没有识别到有效工时。请确认包含“日期、人员”，以及“工作时长”或“总时长”列。',
+        )
+      }
+
+      const combinedRawRows = prevRows.length ? [...prevRows, ...parsed.rows] : parsed.rows
+      const { rows: deduped, duplicateDropped } = dedupeParsedAttendanceRowsByPersonDay(combinedRawRows)
+      if (!deduped.length) {
+        throw new Error('考勤经同人同日去重后没有可统计记录。')
+      }
+
+      const mergedFiles = prevFiles.length ? mergeOrderedUniqueFiles(prevFiles, files) : files
+      const mergedNames = prevFiles.length
+        ? mergeOrderedUniqueFileNames(prevSource.fileNames, parsed.fileNames)
+        : parsed.fileNames
+
+      setAttendanceRows(deduped)
+      setAttendanceSourceInfo({
+        fileCount: mergedNames.length,
+        rowCount: deduped.length,
+        droppedRows: prevRows.length
+          ? prevSource.droppedRows + parsed.droppedRows
+          : parsed.droppedRows,
+        duplicateWaybillRows: duplicateDropped,
+        fileNames: mergedNames,
+      })
+
+      lastAttendanceFilesRef.current = mergedFiles
+      lastZktSheetRowsRef.current = []
+      const payroll = await computeAttendancePayrollFromFiles(
+        mergedFiles,
+        wageEmployees,
+        rateSettingsForLabor,
+      )
+      setAttendancePayroll(payroll)
+      if (payroll.validationErrors.length > 0) {
+        setError(
+          `考勤工资：${payroll.wageRows.length} 条有效记录已计入总成本；${payroll.validationErrors.length} 条未通过工资页同款校验（与工资结算上传提示一致）。`,
+        )
+      }
+    } catch (currentError: unknown) {
       setError(currentError instanceof Error ? currentError.message : '读取考勤文件失败。请检查文件格式。')
     } finally {
       setLoadingAttendance(false)
@@ -474,11 +1048,13 @@ export function useScannerEfficiencyPage() {
     const files = Array.from(fileList || [])
 
     if (!files.length) {
+      clearSnapshotRestore()
       setAllocationRows([])
       setAllocationSourceInfo(EMPTY_SOURCE)
       return
     }
 
+    clearSnapshotRestore()
     setLoadingAllocation(true)
     setError('')
     await flushPaint()
@@ -511,60 +1087,29 @@ export function useScannerEfficiencyPage() {
     setAttendanceSourceInfo(EMPTY_SOURCE)
     setAttendancePayroll(null)
     lastAttendanceFilesRef.current = []
+    lastZktSheetRowsRef.current = []
   }
 
   const clearAllocation = () => {
+    clearSnapshotRestore()
     setAllocationRows([])
     setAllocationSourceInfo(EMPTY_SOURCE)
   }
 
   const clearAll = () => {
+    clearSnapshotRestore()
     setScanRows([])
     setScanSourceInfo(EMPTY_SOURCE)
+    setLastInboundApiStats(null)
     setAttendanceRows([])
     setAttendanceSourceInfo(EMPTY_SOURCE)
     setAttendancePayroll(null)
     lastAttendanceFilesRef.current = []
+    lastZktSheetRowsRef.current = []
     setAllocationRows([])
     setAllocationSourceInfo(EMPTY_SOURCE)
+    setCancelScanAnalysis(null)
     setError('')
-  }
-
-  const handleExport = async () => {
-    if (!scanAggregate) return
-    if (activeTab === TAB_KEYS.WEEKLY) return
-    if (activeTab === TAB_KEYS.PUSH) return
-    if (activeTab === TAB_KEYS.SCANNER && !scannerResult) return
-    if (activeTab === TAB_KEYS.FRONT_DESK) return
-    if (activeTab === TAB_KEYS.WAREHOUSE && attendanceResult) {
-      const { exportedCount } = await exportAttendanceSchedulingPlanExcel({
-        attendanceResult,
-        attendanceRows,
-        scannerResult,
-        dailyLaborCostByDate,
-      })
-      if (exportedCount === 0) {
-        setError('统计窗口内无开仓日，未生成出勤及排班计划。')
-      }
-      return
-    }
-    const workbook = buildExportWorkbook({
-      scanAggregate,
-      attendanceResult,
-      scannerResult,
-      sourceInfo: scanSourceInfo,
-      attendanceSourceInfo,
-      allocationSourceInfo,
-      exportTab: activeTab === TAB_KEYS.WAREHOUSE ? TAB_KEYS.WAREHOUSE : TAB_KEYS.SCANNER,
-      attendanceDailyCostPerTicket: dailyCostPerTicketByDate,
-      attendanceDailyTotalLaborCost: dailyTotalLaborCostByDate,
-      attendancePayrollTotal,
-      frontDeskResult,
-    })
-    if (!workbook) return
-    const exportName =
-      activeTab === TAB_KEYS.WAREHOUSE ? '仓库效率_开仓与总体.xlsx' : '仓库效率_一级分拣.xlsx'
-    XLSX.writeFile(workbook, exportName)
   }
 
   const hasScanData = Boolean(scanAggregate)
@@ -597,8 +1142,9 @@ export function useScannerEfficiencyPage() {
         efficiency: r.dayEfficiency as number,
         totalHours: r.totalHours,
         costPerTicket: dailyCostPerTicketByDate?.[r.date] ?? null,
+        totalLaborCost: dailyTotalLaborCostByDate?.[r.date] ?? null,
       }))
-  }, [attendanceResult, dailyCostPerTicketByDate])
+  }, [attendanceResult, dailyCostPerTicketByDate, dailyTotalLaborCostByDate])
 
   const attendanceDailyAsTable = useMemo((): DataTableRow[] => {
     const rows = attendanceResult?.dailyRows ?? []
@@ -621,7 +1167,7 @@ export function useScannerEfficiencyPage() {
       totalLaborCostSum != null && payrollDaysWithCost > 0
         ? totalLaborCostSum / payrollDaysWithCost
         : null
-    const totalVolumeForUnitCost = bodyRows.reduce(
+    const totalVolumeForUnitCost = rows.reduce(
       (sum, r) => sum + (Number(r.volume) > 0 ? Number(r.volume) : 0),
       0,
     )
@@ -632,7 +1178,7 @@ export function useScannerEfficiencyPage() {
     return [
       ...bodyRows,
       {
-        date: '平均 / 总计',
+        date: '总计',
         isAttendanceMatchFooter: true,
         isAttendanceOnly: false,
         sorterCount: 0,
@@ -655,17 +1201,34 @@ export function useScannerEfficiencyPage() {
     attendancePayroll,
   ])
 
+  const attendanceWeeklyAsTable = useMemo((): DataTableRow[] => {
+    const rows = attendanceResult?.dailyRows ?? []
+    if (!rows.length) return []
+    return buildAttendanceWeeklySummaryTableRows({
+      dailyRows: rows,
+      dailyCostPerTicketByDate,
+      dailyTotalLaborCostByDate,
+      attendancePayrollTotal,
+      attendancePayroll,
+    })
+  }, [
+    attendanceResult?.dailyRows,
+    dailyCostPerTicketByDate,
+    dailyTotalLaborCostByDate,
+    attendancePayrollTotal,
+    attendancePayroll,
+  ])
+
   const attendancePersonAsTable = useMemo((): DataTableRow[] => {
     const persons = attendanceEfficiencyBase?.personRows
     if (!persons?.length) return []
-    const lookupScan = personSortingScanCountLookup
     return persons.map((r) => {
       const args = {
         sorterName: r.sorterName,
         sorterKey: r.sorterKey,
         efficiencyMatchNames: r.efficiencyMatchNames,
       }
-      const scan = sortingScanCountForPerson(args, lookupScan)
+      const scan = sortingScanCountForPerson(args, scannerResult)
       const hrs = r.totalHours
       const matchedScan = scan === '' ? null : scan
       const onDuty =
@@ -676,11 +1239,11 @@ export function useScannerEfficiencyPage() {
         personOnDutyEfficiencyPerHour: onDuty,
       }
     })
-  }, [attendanceEfficiencyBase, personSortingScanCountLookup])
+  }, [attendanceEfficiencyBase, scannerResult])
 
   const scannerDailyAsTable = (scannerResult?.dailySummaryRows ?? []) as unknown as DataTableRow[]
-  const frontDeskDailyAsTable = (frontDeskResult?.dailyRows ?? []) as unknown as DataTableRow[]
-  const frontDeskDensityAsTable = (frontDeskResult?.densityRows ?? []) as unknown as DataTableRow[]
+  const allocationDensityAsTable = allocationDensityRows as unknown as DataTableRow[]
+  const frontDeskClockOutAsTable = frontDeskClockOutRows as unknown as DataTableRow[]
 
   const scannerHourlyPivotTables = useMemo(
     () => buildScannerHourlyPivotTables(scannerResult?.scannerHourlyRows ?? []),
@@ -689,6 +1252,13 @@ export function useScannerEfficiencyPage() {
 
   const scannerPersonAsTable = (scannerResult?.scannerTotalRows ?? []) as unknown as DataTableRow[]
 
+  const scannerTotalEfficiencyRows = useMemo(
+    () => buildScannerTotalEfficiencyRows(scannerResult, attendanceEfficiencyBase?.personRows),
+    [scannerResult, attendanceEfficiencyBase?.personRows],
+  )
+
+  const scannerTotalEfficiencyAsTable = scannerTotalEfficiencyRows as unknown as DataTableRow[]
+
   const scannerDailyEfficiencyTrendPoints = useMemo(() => {
     const rows = scannerResult?.dailySummaryRows ?? []
     return rows.map((r) => ({ date: r.date, value: r.efficiency }))
@@ -696,22 +1266,47 @@ export function useScannerEfficiencyPage() {
 
   const openDayRuleTooltipText = `当前规则：分拣人数 > ${settings.openDayThreshold} 计入开仓日；分拣人数 ≤ ${settings.openDayThreshold} 计入不开仓日。`
 
+  const effectiveCancelScanAnalysis = useMemo(
+    () => snapshotRestore?.cancelScanAnalysis ?? cancelScanAnalysis,
+    [snapshotRestore?.cancelScanAnalysis, cancelScanAnalysis],
+  )
+
+  const zoneInboundScanTotals = useMemo(() => {
+    if (!scanRows.length || !effectiveCancelScanAnalysis) return null
+    const { startDate, endDate } = effectiveCancelScanAnalysis.meta
+    const totals = buildZoneInboundScanTotals(scanRows, startDate, endDate)
+    return totals.size > 0 ? totals : null
+  }, [scanRows, effectiveCancelScanAnalysis])
+
   return {
     settings,
     scanSourceInfo,
+    lastInboundApiStats,
     attendanceSourceInfo,
     allocationSourceInfo,
+    loadingAllocationApi,
+    loadingCancelScanAnalysis,
+    cancelScanAnalysis: effectiveCancelScanAnalysis,
+    zoneInboundScanTotals,
     loading,
     error,
     scannerHourlyExpanded,
     setScannerHourlyExpanded,
+    efficiencyDetailDimension,
+    handleEfficiencyDetailDimensionChange,
+    efficiencyChartOpenDaysOnly,
+    handleEfficiencyChartOpenDaysOnlyChange,
+    efficiencyDetailExpandedWeekKeys,
+    handleEfficiencyDetailWeekRowClick,
     scanAggregate,
     attendanceResult,
     attendanceRows,
     scannerResult,
-    frontDeskResult,
+    allocationDensityRows,
+    frontDeskClockOutRows,
     activeTab,
     setActiveTab,
+    showPushTab,
     weeklyPanelKey,
     summaryMetrics,
     dailyVolumeColumns,
@@ -719,14 +1314,19 @@ export function useScannerEfficiencyPage() {
     attendancePersonColumns,
     scannerDailyColumns,
     scannerPersonColumns,
+    scannerTotalEfficiencyColumns,
     handleSettingChange,
     handleScanFileChange,
+    handleScanApiFetch,
+    handleCancelScanApiFetch,
+    handleAllocationApiFetch,
+    apiDateRange,
+    setApiDateRange,
     handleAttendanceFileChange,
     handleAllocationFileChange,
     clearAttendance,
     clearAllocation,
     clearAll,
-    handleExport,
     hasScanData,
     dailyCostPerTicketByDate,
     dailyTotalLaborCostByDate,
@@ -735,14 +1335,22 @@ export function useScannerEfficiencyPage() {
     dailyVolumeTrendPoints,
     attendanceDayEfficiencyBubbleData,
     attendanceDailyAsTable,
+    attendanceWeeklyAsTable,
     attendancePersonAsTable,
     scannerDailyAsTable,
-    frontDeskDailyAsTable,
-    frontDeskDensityAsTable,
+    allocationDensityAsTable,
+    frontDeskClockOutAsTable,
     scannerHourlyPivotTables,
     scannerPersonAsTable,
+    scannerTotalEfficiencyRows,
+    scannerTotalEfficiencyAsTable,
     scannerDailyEfficiencyTrendPoints,
     openDayRuleTooltipText,
+    snapshotRestore,
+    dismissSnapshotRestore,
+    canSaveDailyRecords,
+    savingDailyRecords,
+    handleSaveDailyRecords,
   }
 }
 

@@ -1,16 +1,24 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   ORDER_EXCEPTION_ANALYZE_MAX_BATCH,
   captureRegressionCase,
+  cancelJobApi,
+  deleteJobApi,
   deleteRegressionCase,
   listRegressionCases,
+  listJobsApi,
   postOrderExceptionAnalyze,
+  postOrderExceptionAnalyzeAsync,
+  getJobById,
+  getJobArtifact,
   runRegression,
+  type PublicJob,
   type OrderAnalyzeInterceptLog,
   type OrderAnalyzeAiProvider,
   type OrderAnalyzeApiTiming,
   type OrderAnalyzeResultItem,
   type OrderAnalyzeResponsibilityOwner,
+  type OrderTrackFacts,
   type ResponsibilityTrackMarker,
   type OrderAnalyzeTokenUsage,
   type OrderQueryInfo,
@@ -19,13 +27,23 @@ import {
 } from './orderExceptionApi'
 import type { TrackEvent } from './types'
 import { useAppSettings } from '../../context/AppSettingsContext'
+import { useGlobalFilterStore } from '../../stores/globalFilterStore'
 import { parseOrderNumbersFromFile } from './parseOrderNumbersFromFile'
 import { parseOrderNumbersUnique } from '../../utils/orderNoInput'
 import { showToast } from '../../utils/toast'
+import { cloneDefaultWarehouseConfig } from './warehouseConfig/defaults'
+import { fetchWarehouseConfig, saveWarehouseConfigApi } from './warehouseConfig/warehouseConfigApi'
+import type { WarehouseConfigDto } from './warehouseConfig/types'
+import { validateWarehouseConfig } from './warehouseConfig/validateWarehouseConfig'
+import { DEFAULT_POST_FILTER_CONFIG } from './postFilter/defaults'
+import { applyPostFilter } from './postFilter/applyPostFilter'
+import type { PostFilterConfig } from './postFilter/types'
 
 const ANALYZE_AI_PROVIDER_KEY = 'order_exception_analyze_ai_v1'
 const BATCH_ANALYZE_KEY = 'order_exception_batch_analyze_v1'
 const TRACK_DRIVER_ID_RE = /\bID\s*[:：]\s*(D[0-9A-Za-z-]+)/i
+const JOBS_POLL_INTERVAL_MS = 3000
+const JOBS_LIST_TYPE = 'order.analyze'
 
 function readStoredAnalyzeAiProvider(): OrderAnalyzeAiProvider {
   if (typeof localStorage === 'undefined') return 'deepseek'
@@ -47,7 +65,12 @@ function readStoredBatchAnalyze(): boolean {
   }
 }
 
-export type TabId = 'analyze' | 'regression'
+export type TabId = 'analyze' | 'jobs' | 'regression' | 'warehouse-config'
+
+export type SubmittedJobBanner = {
+  jobId: string
+  orderCount: number
+}
 
 export type AnalysisRowStatus = 'pending' | 'analyzing' | 'done' | 'error'
 
@@ -103,6 +126,50 @@ function mergeAnalyzeApiTiming(
     imileMs: acc.imileMs + next.imileMs,
     aiMs: acc.aiMs + next.aiMs,
   }
+}
+
+function logOrderAnalysisFacts(orderNo: string, facts: OrderTrackFacts | undefined): void {
+  if (!facts) return
+  console.group(`%c[程序化关键判断点] ${orderNo}`, 'color:#1677ff;font-weight:bold')
+  console.log('📅 今天 / 最后轨迹更新:', facts.todayStr, '/', facts.lastEventTime, `(距今 ${facts.lastEventDaysDiff} 天)`)
+  console.log('📦 当前最新事件:', facts.latestEventKind)
+  console.log('🏭 当前责任主体:', facts.activeResponsibilityOwner, '|', facts.activeWarehouseName ?? '未知仓库', facts.activeWarehouseKnown ? '' : '(未配置)')
+  console.log('⏱️ 当前仓库丢失阈值:', facts.activeWarehouseLossTimeoutDays, '天')
+  console.log('📍 责任段状态:', facts.activeSegmentStatus, '| 起算:', facts.activeSegmentStartTime ?? '-', `(距今 ${facts.activeSegmentDaysDiff} 天)`)
+  console.log('✅ 真实操作员扫描:', facts.hasRealOperatorScan ? '有' : '无')
+  if (facts.inWarehouseStartTime) {
+    console.log('🔒 库内责任起算:', facts.inWarehouseStartTime, `(距今 ${facts.inWarehouseDaysDiff} 天)`, '|', facts.inWarehouseBasis ?? '')
+    console.log('   库内责任已被出库覆盖:', facts.inWarehouseStartSupersededByDispatch ? '是' : '否')
+  } else {
+    console.log('🔒 库内责任起算: 无法确定')
+  }
+  if (facts.lastDispatchedOutTime) {
+    console.log('🚚 最近出库时间:', facts.lastDispatchedOutTime, `(距今 ${facts.outWarehouseDaysDiff} 天)`, '| 出库后有回仓:', facts.lastDispatchHasReturn ? '是' : '否')
+  }
+  if (facts.finalResponsibilityOwner) {
+    console.log('⚖️ 最终责任点:', facts.finalResponsibilityOwner, '|', facts.finalResponsibilityStartTime ?? '-', `(距今 ${facts.finalResponsibilityDaysDiff} 天)`)
+    console.log('   依据:', facts.finalResponsibilityBasis ?? '-')
+  }
+  console.log('📊 派送分配次数:', facts.deliveryAssignmentCount, '| 取消分配次数:', facts.deliveryCancelCount, '| 问题件次数:', facts.problemCount)
+  console.log('🔄 分配-取消循环(无出库):', facts.assignCancelLoopWithoutDispatch ? '是' : '否')
+  if (facts.hasDeliveryCompletion) {
+    console.log('✔️ 正常完结:', facts.deliveryCompletionTime ?? '-', facts.deliveryCompletionEvidence ?? '')
+  }
+  if (facts.latestOrderExceptionClosed) console.log('🔚 订单异常完结终态: 是')
+  if (facts.stationLossCompletion) console.log('🏪 承运商站内丢包标记: 是')
+  if (facts.merchantDestroyConfirmed) console.log('🗑️ 商家销毁确认: 是 |', facts.merchantDestroyConfirmTime ?? '-')
+  if (facts.merchantAbandonActive) console.log('🗑️ 商家Abandon销毁: 是')
+  if (facts.merchantStorageActive) console.log('📦 商家暂存: 是')
+  if (facts.merchantReturnClosed) console.log('↩️ 退返商家闭环: 是')
+  if (facts.merchantReturnRequested) console.log('↩️ 退返商家待处理: 是')
+  if (facts.unknownWarehouseInActiveSegment) console.log('⚠️ 当前仓库未匹配配置: 是')
+  if (facts.hasInterceptLogs) {
+    console.log('🚫 阻断日志最新时间:', facts.latestInterceptTime ?? '-', '| 操作员:', facts.latestInterceptUserCode ?? '-', `(${facts.latestInterceptOperatorType ?? '未知'})`)
+    if (facts.interceptAdjustedResponsibilityOwner) {
+      console.log('   阻断日志调整后责任:', facts.interceptAdjustedResponsibilityOwner, `(距今 ${facts.interceptAdjustedResponsibilityDaysDiff} 天)`, '|', facts.interceptAdjustedResponsibilityBasis ?? '')
+    }
+  }
+  console.groupEnd()
 }
 
 function createPendingAnalysisRow(orderNo: string): AnalysisRow {
@@ -203,6 +270,7 @@ function mapAnalyzeHitToRow(
 
 export function useOrderExceptionManagementPage() {
   const { imileToken } = useAppSettings()
+  const scanStationCode = useGlobalFilterStore((state) => state.selectedStations[0])
   const [activeTab, setActiveTab] = useState<TabId>('analyze')
 
   const [analyzeOrderText, setAnalyzeOrderText] = useState('')
@@ -221,7 +289,12 @@ export function useOrderExceptionManagementPage() {
 
   const [analysisRows, setAnalysisRows] = useState<AnalysisRow[]>([])
   const [analyzeProgress, setAnalyzeProgress] = useState<AnalyzeProgress | null>(null)
+  const [submittedJobBanner, setSubmittedJobBanner] = useState<SubmittedJobBanner | null>(null)
   const analyzeRunIdRef = useRef(0)
+
+  const [jobsList, setJobsList] = useState<PublicJob[]>([])
+  const [isJobsLoading, setIsJobsLoading] = useState(false)
+  const jobsPollingRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
   const [regressionCases, setRegressionCases] = useState<RegressionCaseListItem[]>([])
   const [captureOrderNo, setCaptureOrderNo] = useState('')
@@ -242,6 +315,21 @@ export function useOrderExceptionManagementPage() {
     null
   )
 
+  const [warehouseDraftConfig, setWarehouseDraftConfig] = useState<WarehouseConfigDto>(() =>
+    cloneDefaultWarehouseConfig()
+  )
+  const [warehouseSavedConfig, setWarehouseSavedConfig] = useState<WarehouseConfigDto>(() =>
+    cloneDefaultWarehouseConfig()
+  )
+  const [selectedWarehouseHubId, setSelectedWarehouseHubId] = useState<string | null>(
+    () => cloneDefaultWarehouseConfig().profiles[0]?.hubId ?? null
+  )
+  const [isSavingWarehouseConfig, setIsSavingWarehouseConfig] = useState(false)
+  const [isWarehouseConfigLoaded, setIsWarehouseConfigLoaded] = useState(false)
+
+  const [postFilterDraft, setPostFilterDraft] = useState<PostFilterConfig>(DEFAULT_POST_FILTER_CONFIG)
+  const [appliedPostFilter, setAppliedPostFilter] = useState<PostFilterConfig>(DEFAULT_POST_FILTER_CONFIG)
+
   useEffect(() => {
     try {
       localStorage.setItem(ANALYZE_AI_PROVIDER_KEY, analyzeAiProvider)
@@ -257,6 +345,57 @@ export function useOrderExceptionManagementPage() {
       /* ignore */
     }
   }, [batchAnalyze])
+
+  useEffect(() => {
+    void (async () => {
+      try {
+        const remote = await fetchWarehouseConfig()
+        if (remote) {
+          setWarehouseDraftConfig(remote)
+          setWarehouseSavedConfig(remote)
+          setSelectedWarehouseHubId(remote.profiles[0]?.hubId ?? null)
+        }
+      } catch {
+        /* 加载失败静默回退到默认值 */
+      } finally {
+        setIsWarehouseConfigLoaded(true)
+      }
+    })()
+  }, [])
+
+  const runPostFilter = useCallback(() => {
+    setAppliedPostFilter(postFilterDraft)
+  }, [postFilterDraft])
+
+  const filteredAnalysisRows = useMemo(
+    () => applyPostFilter(analysisRows, appliedPostFilter),
+    [analysisRows, appliedPostFilter]
+  )
+
+  const persistWarehouseConfig = useCallback(async () => {
+    const issues = validateWarehouseConfig(warehouseDraftConfig)
+    if (issues.length) {
+      showToast(issues[0].message, 'error')
+      return
+    }
+    setIsSavingWarehouseConfig(true)
+    try {
+      await saveWarehouseConfigApi(warehouseDraftConfig)
+      setWarehouseSavedConfig(warehouseDraftConfig)
+      showToast('仓库配置已保存', 'success')
+    } catch (e) {
+      showToast((e as Error).message || '保存失败', 'error')
+    } finally {
+      setIsSavingWarehouseConfig(false)
+    }
+  }, [warehouseDraftConfig])
+
+  const resetWarehouseConfig = useCallback(() => {
+    const defaults = cloneDefaultWarehouseConfig()
+    setWarehouseDraftConfig(defaults)
+    setSelectedWarehouseHubId(defaults.profiles[0]?.hubId ?? null)
+    showToast('已恢复默认配置（尚未保存）', 'success')
+  }, [])
 
   const ensureToken = useCallback((): string | null => {
     const t = imileToken.trim()
@@ -282,6 +421,121 @@ export function useOrderExceptionManagementPage() {
     }
   }, [activeTab, loadRegressionCases])
 
+  const refreshJobs = useCallback(async (silent = false) => {
+    setIsJobsLoading(true)
+    try {
+      const { jobs } = await listJobsApi({ type: JOBS_LIST_TYPE, limit: 30 })
+      setJobsList(jobs)
+      const hasActive = jobs.some((j) => j.status === 'pending' || j.status === 'running')
+      if (!hasActive && jobsPollingRef.current) {
+        clearInterval(jobsPollingRef.current)
+        jobsPollingRef.current = null
+      }
+    } catch (e) {
+      if (!silent) showToast((e as Error).message || '任务列表加载失败', 'error')
+    } finally {
+      setIsJobsLoading(false)
+    }
+  }, [])
+
+  // 挂载时立即拉取一次，badge 和列表不依赖用户先切 Tab
+  useEffect(() => {
+    void refreshJobs(true)
+  }, [refreshJobs])
+
+  // 在任务队列 Tab 时开启轮询
+  useEffect(() => {
+    if (activeTab !== 'jobs') return
+    void refreshJobs(true)
+    jobsPollingRef.current = setInterval(() => void refreshJobs(true), JOBS_POLL_INTERVAL_MS)
+    return () => {
+      if (jobsPollingRef.current) clearInterval(jobsPollingRef.current)
+      jobsPollingRef.current = null
+    }
+  }, [activeTab, refreshJobs])
+
+  const loadJobResults = useCallback(async (jobId: string) => {
+    try {
+      const job = await getJobById(jobId)
+      if (!job) throw new Error('任务不存在')
+      if (job.status !== 'succeeded') throw new Error('任务尚未完成')
+      const artifact = await getJobArtifact(jobId)
+      const orderNos = Array.isArray(job.payload.orderNos) ? (job.payload.orderNos as string[]) : []
+      const rows = orderNos.map((orderNo) =>
+        mapAnalyzeHitToRow(
+          orderNo,
+          artifact.results.find((r) => r.orderNo === orderNo),
+          artifact.trackInfo,
+          artifact.interceptLogs,
+          artifact.orderInfo ?? {}
+        )
+      )
+      if (artifact.trackFacts) {
+        rows.forEach((row) => logOrderAnalysisFacts(row.orderNo, artifact.trackFacts![row.orderNo]))
+      }
+      setAnalysisRows(rows)
+      setAnalyzeTokenUsage(artifact.tokenUsage)
+      setAnalyzeProgress({
+        total: orderNos.length,
+        completed: orderNos.length,
+        succeeded: orderNos.length,
+        failed: 0,
+      })
+      setLastAnalyzeOrderCount(orderNos.length)
+      setSubmittedJobBanner(null)
+      setActiveTab('analyze')
+      showToast(`已加载 ${orderNos.length} 单分析结果`, 'success')
+      if (artifact.cancelScanRecheck?.error) {
+        showToast(`库外丢失取消扫描核验未完成：${artifact.cancelScanRecheck.error}`, 'error')
+      }
+    } catch (e) {
+      showToast((e as Error).message || '加载结果失败', 'error')
+    }
+  }, [])
+
+  const cancelJobById = useCallback(async (jobId: string) => {
+    try {
+      await cancelJobApi(jobId)
+      await refreshJobs()
+      showToast('任务已取消', 'success')
+    } catch (e) {
+      showToast((e as Error).message || '取消失败', 'error')
+    }
+  }, [refreshJobs])
+
+  const deleteJobById = useCallback(async (jobId: string) => {
+    try {
+      await deleteJobApi(jobId)
+      setJobsList((prev) => prev.filter((j) => j.id !== jobId))
+      showToast('已删除', 'success')
+    } catch (e) {
+      showToast((e as Error).message || '删除失败', 'error')
+    }
+  }, [])
+
+  const retryJob = useCallback(async (job: PublicJob) => {
+    const token = imileToken.trim()
+    if (!token) {
+      showToast('请先填写 iMile Bearer Token', 'error')
+      return
+    }
+    const orderNos = Array.isArray(job.payload.orderNos) ? (job.payload.orderNos as string[]) : []
+    const aiProvider = (job.payload.aiProvider as OrderAnalyzeAiProvider | undefined) ?? 'deepseek'
+    if (!orderNos.length) {
+      showToast('任务中未找到订单号', 'error')
+      return
+    }
+    try {
+      const { jobId } = await postOrderExceptionAnalyzeAsync({ imileToken: token, orderNos, aiProvider, scanStationCode })
+      await refreshJobs()
+      showToast(`重新提交成功（${orderNos.length} 单），任务 ID: ${jobId.slice(0, 8)}…`, 'success')
+    } catch (e) {
+      showToast((e as Error).message || '重新提交失败', 'error')
+    }
+  }, [imileToken, refreshJobs, scanStationCode])
+
+  const activeJobCount = jobsList.filter((j) => j.status === 'pending' || j.status === 'running').length
+
   const onAnalyze = useCallback(async () => {
     const token = ensureToken()
     if (!token) return
@@ -298,6 +552,13 @@ export function useOrderExceptionManagementPage() {
         'error'
       )
       return
+    }
+
+    if (
+      isWarehouseConfigLoaded &&
+      JSON.stringify(warehouseDraftConfig) !== JSON.stringify(warehouseSavedConfig)
+    ) {
+      showToast('仓库配置有未保存修改，本次分析将使用上次保存的版本', 'error')
     }
 
     const runId = analyzeRunIdRef.current + 1
@@ -317,68 +578,32 @@ export function useOrderExceptionManagementPage() {
     let failed = 0
 
     if (batchAnalyze) {
-      setAnalysisRows((prev) =>
-        prev.map((row) => ({
-          ...row,
-          status: 'analyzing' as const,
-          reason: '批量分析中…',
-        }))
-      )
-
       try {
-        const { results, trackInfo, orderInfo, interceptLogs, tokenUsage, timing } =
-          await postOrderExceptionAnalyze({
+        const { jobId } = await postOrderExceptionAnalyzeAsync({
           imileToken: token,
           orderNos,
           aiProvider: analyzeAiProvider,
+          scanStationCode,
         })
         if (isStaleRun()) return
-
-        setAnalysisRows(
-          orderNos.map((orderNo) =>
-            mapAnalyzeHitToRow(
-              orderNo,
-              results.find((r) => r.orderNo === orderNo),
-              trackInfo,
-              interceptLogs,
-              orderInfo ?? {}
-            )
-          )
-        )
-        setAnalyzeTokenUsage(tokenUsage)
-        if (timing) setAnalyzeApiTiming(timing)
-        succeeded = orderNos.length
-        setAnalyzeProgress({
-          total: orderNos.length,
-          completed: orderNos.length,
-          succeeded: orderNos.length,
-          failed: 0,
-        })
+        setSubmittedJobBanner({ jobId, orderCount: orderNos.length })
+        setAnalysisRows([])
+        setAnalyzeProgress(null)
+        // 乐观更新 jobs 列表（不等 tab 切换再刷新）
+        void refreshJobs()
+        showToast(`批量任务已提交（${orderNos.length} 单），在「任务队列」标签查看进度`, 'success')
       } catch (e) {
         if (isStaleRun()) return
-        const message = (e as Error).message || '分析失败'
-        setAnalysisRows((prev) =>
-          prev.map((r) => ({
-            ...r,
-            status: 'error' as const,
-            reason: message,
-            lossScope: '—',
-            categoryName: '—',
-            currentResponsibilityParty: '—',
-            confidence: '—',
-          }))
-        )
-        failed = orderNos.length
-        setAnalyzeProgress({
-          total: orderNos.length,
-          completed: orderNos.length,
-          succeeded: 0,
-          failed: orderNos.length,
-        })
+        showToast((e as Error).message || '提交失败', 'error')
+      } finally {
+        setIsAnalyzing(false)
+        setAnalyzeDurationMs(null)
       }
+      return
     } else {
       let accumulatedTokenUsage: OrderAnalyzeTokenUsage | null = null
       let accumulatedApiTiming: OrderAnalyzeApiTiming | null = null
+      let cancelScanRecheckWarned = false
 
       for (const orderNo of orderNos) {
         if (isStaleRun()) return
@@ -392,11 +617,12 @@ export function useOrderExceptionManagementPage() {
         )
 
         try {
-          const { results, trackInfo, orderInfo, interceptLogs, tokenUsage, timing } =
+          const { results, trackInfo, orderInfo, interceptLogs, tokenUsage, timing, trackFacts, cancelScanRecheck } =
             await postOrderExceptionAnalyze({
             imileToken: token,
             orderNos: [orderNo],
             aiProvider: analyzeAiProvider,
+            scanStationCode,
           })
           if (isStaleRun()) return
 
@@ -407,9 +633,14 @@ export function useOrderExceptionManagementPage() {
             interceptLogs,
             orderInfo ?? {}
           )
+          if (trackFacts) logOrderAnalysisFacts(orderNo, trackFacts[orderNo])
           setAnalysisRows((prev) => prev.map((r) => (r.orderNo === orderNo ? row : r)))
           accumulatedTokenUsage = mergeAnalyzeTokenUsage(accumulatedTokenUsage, tokenUsage)
           setAnalyzeTokenUsage(accumulatedTokenUsage)
+          if (cancelScanRecheck?.error && !cancelScanRecheckWarned) {
+            cancelScanRecheckWarned = true
+            showToast(`库外丢失取消扫描核验未完成：${cancelScanRecheck.error}`, 'error')
+          }
           if (timing) {
             accumulatedApiTiming = mergeAnalyzeApiTiming(accumulatedApiTiming, timing)
             setAnalyzeApiTiming(accumulatedApiTiming)
@@ -458,7 +689,19 @@ export function useOrderExceptionManagementPage() {
     } else {
       showToast(`分析结束：${succeeded} 单成功，${failed} 单失败`, 'error')
     }
-  }, [analyzeAiProvider, analyzeOrderText, batchAnalyze, ensureToken, importedAnalyzeOrders])
+  }, [
+    analyzeAiProvider,
+    analyzeOrderText,
+    batchAnalyze,
+    ensureToken,
+    importedAnalyzeOrders,
+    isWarehouseConfigLoaded,
+    refreshJobs,
+    scanStationCode,
+    warehouseDraftConfig,
+    warehouseSavedConfig,
+  ])
+  // Note: warehouseSavedConfig kept in deps to detect unsaved-changes warning only
 
   const onAnalyzeOrderFileUpload = useCallback(
     async (file: File) => {
@@ -584,10 +827,20 @@ export function useOrderExceptionManagementPage() {
     isAnalyzing,
     analysisRows,
     analyzeProgress,
+    submittedJobBanner,
+    dismissSubmittedJobBanner: () => setSubmittedJobBanner(null),
     analyzeTokenUsage,
     lastAnalyzeOrderCount,
     analyzeDurationMs,
     analyzeApiTiming,
+    jobsList,
+    isJobsLoading,
+    activeJobCount,
+    refreshJobs,
+    loadJobResults,
+    cancelJobById,
+    deleteJobById,
+    retryJob,
     regressionCases,
     captureOrderNo,
     setCaptureOrderNo,
@@ -607,5 +860,18 @@ export function useOrderExceptionManagementPage() {
     regressionResults,
     regressionSummary,
     regressionTokenUsage,
+    warehouseDraftConfig,
+    setWarehouseDraftConfig,
+    warehouseSavedConfig,
+    selectedWarehouseHubId,
+    setSelectedWarehouseHubId,
+    persistWarehouseConfig,
+    resetWarehouseConfig,
+    isSavingWarehouseConfig,
+    postFilterDraft,
+    setPostFilterDraft,
+    appliedPostFilter,
+    runPostFilter,
+    filteredAnalysisRows,
   }
 }

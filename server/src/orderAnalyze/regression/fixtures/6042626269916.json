@@ -4,8 +4,8 @@
   "capturedAt": "2026-05-25T01:37:50.737Z",
   "expected": {
     "lossScope": "暂无异常",
-    "exceptionCategoryId": "退返商家",
-    "reason": ""
+    "exceptionCategoryId": "",
+    "reason": "商家仅给出退返处理方向，尚未出现退件已退返商家/签收等闭环信号；未超当前仓库阈值，暂无异常且不使用退返商家子类型"
   },
   "tracks": [
     {

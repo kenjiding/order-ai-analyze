@@ -1,5 +1,6 @@
 import type { DBSchema } from 'idb'
 import { createSingletonIdb } from '../../storage/createSingletonIdb'
+import { generateId } from '../../utils/generateId'
 import { stripHtmlToPlainText } from '../../utils/stripHtmlToPlainText'
 import type { ExceptionCategoryEntity, ExceptionSampleEntity, TrackEvent } from './types'
 import { normalizeLossScope } from './types'
@@ -75,7 +76,7 @@ export function createIndexedDbOrderExceptionRepository(): OrderExceptionReposit
       const db = await openDb()
       const now = new Date().toISOString()
       const row: ExceptionCategoryEntity = {
-        id: crypto.randomUUID(),
+        id: generateId(),
         name: name.trim(),
         description: description.trim(),
         lossScope,
@@ -139,7 +140,7 @@ export function createIndexedDbOrderExceptionRepository(): OrderExceptionReposit
         return next
       }
       const row: ExceptionSampleEntity = {
-        id: crypto.randomUUID(),
+        id: generateId(),
         categoryId: input.categoryId,
         orderNo,
         tracks: stripTrackHtml(input.tracks),

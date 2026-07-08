@@ -1,5 +1,7 @@
-import type { Request, Response } from 'express'
+import type { Response } from 'express'
 import { Router } from 'express'
+import type { AuthenticatedRequest } from '../auth/middleware'
+import { requirePushApiScope } from '../permissions/pushNotificationAccess'
 import { getFeishuTenantAccessToken } from '../feishuServerEnv'
 import {
   FEISHU_UPLOAD_IMAGES_URL,
@@ -12,16 +14,61 @@ import {
   generateSortEfficiencyFeishuAnalysis,
   splitFeishuWebhookTextChunks,
 } from '../sortEfficiencyFeishuAnalysis'
+import { buildFleetRichMessageCard } from '../feishu/buildFleetRichMessageCard'
+import { uploadFeishuImageFromBase64 } from '../feishu/feishuImageUpload'
+import { upsertFeishuPushSnapshot } from '../feishu/pushSnapshotRepository'
+import {
+  buildOrderExceptionFeishuCard,
+  buildOrderExceptionPushStats,
+  generateOrderExceptionFeishuSummary,
+  type OrderExceptionPushRow,
+} from '../orderExceptionFeishuAnalysis'
+import { fetchBomDailyForecast } from '../weather/bomWeatherClient'
+import { buildDeliveryWeather, renderDeliveryWeatherLarkMd } from '../weather/deliveryWeatherSummary'
+import { generateDeliveryWeatherText } from '../weather/deliveryWeatherAi'
 
 export const feishuWebhookTestRouter = Router()
+
+/**
+ * 派送天气预报（明天/后天）——供「车队供应商推送」附加恶劣天气提示。
+ * 返回 BOM 官方预报渲染的 lark_md 文本，供前端合并进富文本推送。
+ */
+feishuWebhookTestRouter.get('/delivery-weather', async (req: AuthenticatedRequest, res: Response) => {
+  const lat = Number(req.query.lat)
+  const lng = Number(req.query.lng)
+  const label = typeof req.query.label === 'string' && req.query.label.trim() ? req.query.label.trim() : '派送区域'
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
+    res.status(400).json({ ok: false, error: '缺少或非法的经纬度参数 lat/lng' })
+    return
+  }
+  const forecast = await fetchBomDailyForecast(lat, lng)
+  if (!forecast) {
+    res.status(502).json({ ok: false, error: '获取 BOM 天气预报失败，请稍后重试' })
+    return
+  }
+  const block = buildDeliveryWeather(forecast, label)
+  if (!block) {
+    res.status(502).json({ ok: false, error: '预报数据不足，无法生成明天/后天天气' })
+    return
+  }
+  // 优先用 AI 结合预报数据生成播报文案，失败则回退机械渲染
+  const aiText = await generateDeliveryWeatherText(block)
+  const larkMd = aiText
+    ? `🌦️ **${block.locationLabel} Weather Forecast**\n${aiText}`
+    : renderDeliveryWeatherLarkMd(block)
+  res.json({ ok: true, data: { block, larkMd } })
+})
 
 type TestBody = {
   webhookUrl?: unknown
   signingSecret?: unknown
   pushName?: unknown
+  pushScope?: unknown
 }
 
-feishuWebhookTestRouter.post('/test', async (req: Request, res: Response) => {
+feishuWebhookTestRouter.post('/test', async (req: AuthenticatedRequest, res: Response) => {
+  if (!requirePushApiScope(req, res)) return
+
   const body = req.body as TestBody
   let webhookHref: string
   try {
@@ -95,10 +142,13 @@ type PushTextBody = {
   signingSecret?: unknown
   /** 完整可见正文（建议由前端加好前缀如 [仓库管理]） */
   text?: unknown
+  pushScope?: unknown
 }
 
 /** 仅推送文本：无需图片与 tenant_access_token；长文案按段拆分发送 */
-feishuWebhookTestRouter.post('/push-text', async (req: Request, res: Response) => {
+feishuWebhookTestRouter.post('/push-text', async (req: AuthenticatedRequest, res: Response) => {
+  if (!requirePushApiScope(req, res)) return
+
   const body = req.body as PushTextBody
   let webhookHref: string
   try {
@@ -166,7 +216,204 @@ feishuWebhookTestRouter.post('/push-text', async (req: Request, res: Response) =
   }
 })
 
+type PushCardBody = {
+  pushScope?: unknown
+  webhookUrl?: unknown
+  signingSecret?: unknown
+  /** 飞书交互式卡片 JSON（card 字段） */
+  card?: unknown
+}
+
+/** 推送飞书交互式卡片（富文本 / HTML 样式） */
+feishuWebhookTestRouter.post('/push-card', async (req: AuthenticatedRequest, res: Response) => {
+  if (!requirePushApiScope(req, res)) return
+
+  const body = req.body as PushCardBody
+  let webhookHref: string
+  try {
+    webhookHref = parseSafeWebhookUrl(body.webhookUrl).href
+  } catch {
+    res.status(400).json({
+      ok: false,
+      error: '仅允许访问飞书开放平台官方 webhook 地址（HTTPS，open.feishu.cn/open-apis/bot/v2/hook/…）。',
+    })
+    return
+  }
+
+  if (!body.card || typeof body.card !== 'object' || Array.isArray(body.card)) {
+    res.status(400).json({ ok: false, error: '缺少 card 卡片内容' })
+    return
+  }
+
+  const secretRaw = body.signingSecret
+  const secret =
+    typeof secretRaw === 'string' && secretRaw.trim() !== '' ? secretRaw.trim() : undefined
+
+  const payload: Record<string, unknown> = {
+    msg_type: 'interactive',
+    card: body.card,
+  }
+  if (secret) await appendWebhookSign(payload, secret)
+
+  try {
+    const r = await postWebhookJson(webhookHref, payload)
+    if (!r.ok) {
+      res.status(502).json({
+        ok: false,
+        error: '飞书 webhook 卡片消息发送失败。',
+        httpStatus: r.httpStatus,
+        feishu: r.feishu,
+      })
+      return
+    }
+    res.status(200).json({ ok: true, httpStatus: r.httpStatus, feishu: r.feishu })
+  } catch {
+    res.status(502).json({
+      ok: false,
+      error: '推送卡片时发生网络错误，请稍后重试。',
+    })
+  }
+})
+
+type PushRichMessageBody = {
+  pushScope?: unknown
+  webhookUrl?: unknown
+  signingSecret?: unknown
+  /** lark_md 富文本正文 */
+  content?: unknown
+  /** data URL 或纯 base64 图片列表 */
+  images?: unknown
+}
+
+/** 富文本 + 多图合并为一条交互式卡片消息 */
+feishuWebhookTestRouter.post('/push-rich-message', async (req: AuthenticatedRequest, res: Response) => {
+  if (!requirePushApiScope(req, res)) return
+
+  const body = req.body as PushRichMessageBody
+  let webhookHref: string
+  try {
+    webhookHref = parseSafeWebhookUrl(body.webhookUrl).href
+  } catch {
+    res.status(400).json({
+      ok: false,
+      error: '仅允许访问飞书开放平台官方 webhook 地址（HTTPS，open.feishu.cn/open-apis/bot/v2/hook/…）。',
+    })
+    return
+  }
+
+  const content = typeof body.content === 'string' ? body.content.trim() : ''
+  const imagesRaw = Array.isArray(body.images) ? body.images : []
+  const images = imagesRaw.filter((x): x is string => typeof x === 'string' && x.trim() !== '')
+
+  if (!content && images.length === 0) {
+    res.status(400).json({ ok: false, error: '缺少文案与图片，无法推送' })
+    return
+  }
+
+  const secretRaw = body.signingSecret
+  const secret =
+    typeof secretRaw === 'string' && secretRaw.trim() !== '' ? secretRaw.trim() : undefined
+
+  const imageKeys: string[] = []
+  if (images.length > 0) {
+    const tenantRes = await getFeishuTenantAccessToken()
+    if (!tenantRes.ok) {
+      if (tenantRes.reason === 'not_configured') {
+        res.status(400).json({
+          ok: false,
+          error:
+            '服务器未配置飞书开放接口凭证。请在运行后端的 .env 中设置 FEISHU_APP_ID 与 FEISHU_APP_SECRET（含图片上传权限）。',
+        })
+        return
+      }
+      res.status(502).json({
+        ok: false,
+        error: tenantRes.error || '获取 tenant_access_token 失败',
+        feishuAuth: tenantRes.feishuAuth,
+      })
+      return
+    }
+
+    for (let i = 0; i < images.length; i++) {
+      const upload = await uploadFeishuImageFromBase64(tenantRes.token, images[i]!)
+      if (!upload.ok) {
+        res.status(502).json({
+          ok: false,
+          error: `第 ${i + 1} 张图片上传失败：${upload.error}`,
+          feishuUpload: upload.feishu,
+          imageIndex: i,
+        })
+        return
+      }
+      imageKeys.push(upload.imageKey)
+    }
+  }
+
+  // 纯图片（无文案）：每张图单独发 msg_type: 'image'，飞书会折叠为可点击的缩略图
+  if (!content && imageKeys.length > 0) {
+    try {
+      let lastFeishu: unknown
+      let lastHttp = 200
+      for (const key of imageKeys) {
+        const imgPayload: Record<string, unknown> = {
+          msg_type: 'image',
+          content: { image_key: key },
+        }
+        if (secret) await appendWebhookSign(imgPayload, secret)
+        const r = await postWebhookJson(webhookHref, imgPayload)
+        lastFeishu = r.feishu
+        lastHttp = r.httpStatus
+        if (!r.ok) {
+          res.status(502).json({
+            ok: false,
+            error: '飞书 webhook 图片消息发送失败。',
+            httpStatus: r.httpStatus,
+            feishu: r.feishu,
+            imageUploadedCount: imageKeys.length,
+          })
+          return
+        }
+      }
+      res.status(200).json({ ok: true, httpStatus: lastHttp, feishu: lastFeishu, imageUploadedCount: imageKeys.length })
+    } catch {
+      res.status(502).json({ ok: false, error: '推送图片时发生网络错误，请稍后重试。', imageUploadedCount: imageKeys.length })
+    }
+    return
+  }
+
+  const card = buildFleetRichMessageCard({ content, imageKeys })
+  const payload: Record<string, unknown> = { msg_type: 'interactive', card }
+  if (secret) await appendWebhookSign(payload, secret)
+
+  try {
+    const r = await postWebhookJson(webhookHref, payload)
+    if (!r.ok) {
+      res.status(502).json({
+        ok: false,
+        error: '飞书 webhook 富文本卡片消息发送失败。',
+        httpStatus: r.httpStatus,
+        feishu: r.feishu,
+        imageUploadedCount: imageKeys.length,
+      })
+      return
+    }
+    res.status(200).json({
+      ok: true,
+      httpStatus: r.httpStatus,
+      feishu: r.feishu,
+      imageUploadedCount: imageKeys.length,
+    })
+  } catch {
+    res.status(502).json({
+      ok: false,
+      error: '推送富文本卡片时发生网络错误，请稍后重试。',
+      imageUploadedCount: imageKeys.length,
+    })
+  }
+})
+
 type PushImageBody = {
+  pushScope?: unknown
   webhookUrl?: unknown
   signingSecret?: unknown
   imageBase64?: unknown
@@ -205,7 +452,9 @@ async function postWebhookJson(webhookHref: string, payload: Record<string, unkn
   return { ok, httpStatus: upstream.status, feishu }
 }
 
-feishuWebhookTestRouter.post('/push-image', async (req: Request, res: Response) => {
+feishuWebhookTestRouter.post('/push-image', async (req: AuthenticatedRequest, res: Response) => {
+  if (!requirePushApiScope(req, res)) return
+
   const body = req.body as PushImageBody
   let webhookHref: string
   try {
@@ -319,6 +568,15 @@ feishuWebhookTestRouter.post('/push-image', async (req: Request, res: Response) 
 
   const snapRaw = body.dataSnapshot
   if (snapRaw !== undefined && snapRaw !== null && typeof snapRaw === 'object' && !Array.isArray(snapRaw)) {
+    // 将快照保存到服务端 DB，供定时调度器复用（失败不影响本次推送）
+    const regionCode = req.authUser?.regionCode?.trim() || 'global'
+    const periodLabel = typeof (snapRaw as { periodLabel?: string }).periodLabel === 'string'
+      ? (snapRaw as { periodLabel?: string }).periodLabel as string
+      : ''
+    upsertFeishuPushSnapshot(regionCode, periodLabel, snapRaw).catch((err) => {
+      console.error('[push-image] 快照保存失败（不影响推送）:', err)
+    })
+
     const gen = await generateSortEfficiencyFeishuAnalysis(snapRaw)
     if (gen.ok) {
       analysisChunksResolved = splitFeishuWebhookTextChunks(gen.text)
@@ -378,5 +636,74 @@ feishuWebhookTestRouter.post('/push-image', async (req: Request, res: Response) 
       aiAnalysisGenerated,
       aiAnalysisError,
     })
+  }
+})
+
+type PushOrderExceptionBody = {
+  pushScope?: unknown
+  webhookUrl?: unknown
+  signingSecret?: unknown
+  /** 已完成分析的行（done 状态），从前端过滤后传入 */
+  rows?: unknown
+  analysisDate?: unknown
+  /** 'deepseek' | 'openai'，默认 deepseek */
+  aiProvider?: unknown
+}
+
+/** 订单异常分析结果推送：AI 总结 + 富文本卡片 */
+feishuWebhookTestRouter.post('/push-order-exception', async (req: AuthenticatedRequest, res: Response) => {
+  if (!requirePushApiScope(req, res)) return
+
+  const body = req.body as PushOrderExceptionBody
+  let webhookHref: string
+  try {
+    webhookHref = parseSafeWebhookUrl(body.webhookUrl).href
+  } catch {
+    res.status(400).json({ ok: false, error: '仅允许访问飞书开放平台官方 webhook 地址（HTTPS，open.feishu.cn/open-apis/bot/v2/hook/…）。' })
+    return
+  }
+
+  if (!Array.isArray(body.rows) || body.rows.length === 0) {
+    res.status(400).json({ ok: false, error: '缺少分析结果数据（rows 为空）' })
+    return
+  }
+
+  const secretRaw = body.signingSecret
+  const secret = typeof secretRaw === 'string' && secretRaw.trim() !== '' ? secretRaw.trim() : undefined
+  const analysisDate = typeof body.analysisDate === 'string' && body.analysisDate
+    ? body.analysisDate
+    : new Date().toISOString().slice(0, 10)
+  const aiProvider = body.aiProvider === 'openai' ? 'openai' : 'deepseek'
+
+  const rows = (body.rows as unknown[]).map((r) => {
+    const o = (r && typeof r === 'object' ? r : {}) as Record<string, unknown>
+    return {
+      lossScope: String(o.lossScope ?? ''),
+      categoryName: String(o.categoryName ?? ''),
+      currentResponsibilityParty: String(o.currentResponsibilityParty ?? ''),
+      confidence: String(o.confidence ?? ''),
+    } satisfies OrderExceptionPushRow
+  })
+
+  const stats = buildOrderExceptionPushStats(rows, analysisDate)
+
+  const aiResult = await generateOrderExceptionFeishuSummary(stats, aiProvider)
+  const aiSummary = aiResult.ok ? aiResult.text : null
+  const aiError = aiResult.ok ? undefined : aiResult.error
+
+  const card = buildOrderExceptionFeishuCard(stats, aiSummary)
+
+  const payload: Record<string, unknown> = { msg_type: 'interactive', card }
+  if (secret) await appendWebhookSign(payload, secret)
+
+  try {
+    const r = await postWebhookJson(webhookHref, payload)
+    if (!r.ok) {
+      res.status(502).json({ ok: false, error: '飞书 webhook 卡片消息发送失败。', httpStatus: r.httpStatus, feishu: r.feishu })
+      return
+    }
+    res.status(200).json({ ok: true, httpStatus: r.httpStatus, feishu: r.feishu, aiSummaryGenerated: Boolean(aiSummary), aiError })
+  } catch {
+    res.status(502).json({ ok: false, error: '推送卡片时发生网络错误，请稍后重试。' })
   }
 })

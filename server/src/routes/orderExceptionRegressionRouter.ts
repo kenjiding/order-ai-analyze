@@ -131,7 +131,7 @@ export function registerOrderExceptionRegressionRoutes(
 
   router.post('/regression/run', async (req: Request, res: Response) => {
     try {
-      const body = readJson<{ caseIds?: string[]; aiProvider?: string }>(req)
+      const body = readJson<{ caseIds?: string[]; aiProvider?: string; enableDualRunCompare?: boolean }>(req)
       const aiProviderRaw = String(body.aiProvider ?? 'deepseek').trim().toLowerCase()
       const aiProvider: OrderAnalyzeAiProvider =
         aiProviderRaw === 'openai' ? 'openai' : 'deepseek'
@@ -149,7 +149,11 @@ export function registerOrderExceptionRegressionRoutes(
         }
       }
 
-      const report = await runOrderAnalyzeRegression({ caseIds, aiProvider })
+      const report = await runOrderAnalyzeRegression({
+        caseIds,
+        aiProvider,
+        enableDualRunCompare: body.enableDualRunCompare === true,
+      })
       res.json(report)
     } catch (e) {
       res.status(500).json({ error: (e as Error).message || '回归测试失败' })

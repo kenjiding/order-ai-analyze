@@ -1,4 +1,4 @@
-export type FeishuPushKind = 'sort_efficiency' | 'attendance_scheduling'
+export type FeishuPushKind = 'sort_efficiency' | 'attendance_scheduling' | 'order_exception'
 
 export type FeishuPushEntry = {
   id: string
@@ -16,14 +16,16 @@ export type FeishuPushEntry = {
 export type FeishuPushEntryWithKind = FeishuPushEntry & { kind: FeishuPushKind }
 
 export const FEISHU_PUSH_KIND_LABELS: Record<FeishuPushKind, string> = {
-  sort_efficiency: '仓库效率推送',
+  sort_efficiency: '物流运营推送',
   attendance_scheduling: '仓库出勤/排班推送',
+  order_exception: '订单异常分析推送',
 }
 
 /** 新增类型时请同步扩展 FeishuPushKind 与本数组顺序 */
 export const FEISHU_PUSH_KIND_ORDER = [
   'sort_efficiency',
   'attendance_scheduling',
+  'order_exception',
 ] as const satisfies readonly FeishuPushKind[]
 
 export const FEISHU_PUSH_DEFAULT_KIND: FeishuPushKind =

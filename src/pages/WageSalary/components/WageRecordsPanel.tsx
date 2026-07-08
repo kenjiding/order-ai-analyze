@@ -1,17 +1,10 @@
 // @ts-nocheck
-import {
-  AlertCircle,
-  ChevronLeft,
-  ChevronRight,
-  Download,
-  Edit2,
-  Save,
-  Search,
-  Trash2,
-  X,
-} from 'lucide-react'
+import { AlertCircle, Download, Search, X } from 'lucide-react'
+import { Tooltip } from 'antd'
+import { PERMISSION_KEYS, usePermission } from '../../../hooks/usePermission'
 
 import { WageChartsSection } from './WageChartsSection'
+import { WageRecordsTable } from './WageRecordsTable'
 
 export function WageRecordsPanel({
   wageRecords,
@@ -29,12 +22,10 @@ export function WageRecordsPanel({
   handleExport,
   billingVsActualSummary,
   onOpenActualWorkerRates,
-  paginatedRecords,
   currentPage,
   setCurrentPage,
   pageSize,
   setPageSize,
-  totalPages,
   rowEditingData,
   setRowEditingData,
   formatDate,
@@ -44,23 +35,27 @@ export function WageRecordsPanel({
   cancelRowEditing,
   handleDeleteRecord,
 }) {
+  const canExport = usePermission(PERMISSION_KEYS.btnWageSalaryExport)
+  const canEdit = usePermission(PERMISSION_KEYS.btnWageSalaryEdit)
   return (
     <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
       <div className="flex items-center justify-between mb-4">
         <h3 className="text-lg font-semibold text-gray-900">工资记录 ({wageRecords.length} 条)</h3>
-        <button
-          type="button"
-          onClick={handleExport}
-          disabled={filteredWageRecords.length === 0}
-          className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-colors ${
-            filteredWageRecords.length === 0
-              ? 'bg-gray-200 text-gray-500 cursor-not-allowed'
-              : 'bg-green-600 text-white hover:bg-green-700'
-          }`}
-        >
-          <Download className="w-4 h-4" />
-          导出Excel
-        </button>
+        <Tooltip title={!canExport ? '无操作权限' : undefined}>
+          <button
+            type="button"
+            onClick={handleExport}
+            disabled={filteredWageRecords.length === 0 || !canExport}
+            className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-colors ${
+              filteredWageRecords.length === 0 || !canExport
+                ? 'bg-gray-200 text-gray-500 cursor-not-allowed'
+                : 'bg-green-600 text-white hover:bg-green-700'
+            }`}
+          >
+            <Download className="w-4 h-4" />
+            导出Excel
+          </button>
+        </Tooltip>
       </div>
 
       <div className="mb-4 p-4 bg-gray-50 rounded-lg border border-gray-200">
@@ -189,302 +184,24 @@ export function WageRecordsPanel({
           <p>没有符合筛选条件的记录</p>
         </div>
       ) : (
-        <>
-          <div className="overflow-x-auto">
-            <table className="min-w-full divide-y divide-gray-200">
-              <thead className="bg-gray-50">
-                <tr>
-                  <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase">人员编号</th>
-                  <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase">昵称</th>
-                  <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase">日期</th>
-                  <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase">工作日</th>
-                  <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase">总时长</th>
-                  <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase">工作时长</th>
-                  <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase">实际签到时间</th>
-                  <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase">实际签退时间</th>
-                  <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase">扣减</th>
-                  <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase">奖励</th>
-                  <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase">角色</th>
-                  <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase">类型</th>
-                  <th className="px-3 py-3 text-right text-xs font-medium text-gray-500 uppercase">时薪</th>
-                  <th className="px-3 py-3 text-right text-xs font-medium text-gray-500 uppercase">总工资</th>
-                  <th className="px-3 py-3 text-center text-xs font-medium text-gray-500 uppercase">操作</th>
-                </tr>
-              </thead>
-              <tbody className="bg-white divide-y divide-gray-200">
-                {paginatedRecords.map((record) => {
-                  const isRowEditing = rowEditingData[record._id] !== undefined
-                  const editData = rowEditingData[record._id]
-
-                  return (
-                    <tr key={record._id} className={`hover:bg-gray-50 ${isRowEditing ? 'bg-blue-50' : ''}`}>
-                      <td className="px-3 py-3 text-sm text-gray-900">{record.employeeId}</td>
-                      <td className="px-3 py-3 text-sm text-gray-600">{record.nickname || '-'}</td>
-                      <td className="px-3 py-3 text-sm text-gray-600">
-                        {isRowEditing ? (
-                          <input
-                            type="date"
-                            value={editData.date || ''}
-                            onChange={(e) => {
-                              setRowEditingData((prev) => ({
-                                ...prev,
-                                [record._id]: {
-                                  ...prev[record._id],
-                                  date: e.target.value,
-                                },
-                              }))
-                            }}
-                            className="text-sm border border-gray-300 rounded px-2 py-1 w-32 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                          />
-                        ) : (
-                          <span>{formatDate(record.date)}</span>
-                        )}
-                      </td>
-                      <td className="px-3 py-3 text-sm text-gray-600">
-                        {isRowEditing ? (
-                          <input
-                            type="text"
-                            value={editData.workday || ''}
-                            onChange={(e) => {
-                              setRowEditingData((prev) => ({
-                                ...prev,
-                                [record._id]: {
-                                  ...prev[record._id],
-                                  workday: e.target.value,
-                                },
-                              }))
-                            }}
-                            className="text-sm border border-gray-300 rounded px-2 py-1 w-24 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                            placeholder="工作日"
-                          />
-                        ) : (
-                          <span>{formatWorkday(record.workday)}</span>
-                        )}
-                      </td>
-                      <td className="px-3 py-3 text-sm text-gray-600">
-                        <span>{record.totalHours || '-'}</span>
-                      </td>
-                      <td className="px-3 py-3 text-sm text-gray-600">
-                        {isRowEditing ? (
-                          <input
-                            type="text"
-                            value={editData.totalHours || ''}
-                            onChange={(e) => {
-                              setRowEditingData((prev) => ({
-                                ...prev,
-                                [record._id]: {
-                                  ...prev[record._id],
-                                  totalHours: e.target.value,
-                                },
-                              }))
-                            }}
-                            className="text-sm border border-gray-300 rounded px-2 py-1 w-20 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                            placeholder="工作时长"
-                          />
-                        ) : (
-                          <span>
-                            {record.workHours ?? '-'} ({record.totalHoursDecimal.toFixed(2)}h)
-                          </span>
-                        )}
-                      </td>
-                      <td className="px-3 py-3 text-sm text-gray-600">{record.firstClockIn || '-'}</td>
-                      <td className="px-3 py-3 text-sm text-gray-600">{record.lastClockOut || '-'}</td>
-                      <td className="px-3 py-3 text-sm text-gray-600">{record.deduction || '-'}</td>
-                      <td className="px-3 py-3 text-sm text-gray-600">{record.reward || '-'}</td>
-                      <td className="px-3 py-3 text-sm">
-                        {isRowEditing ? (
-                          <select
-                            value={editData.role || 'worker'}
-                            onChange={(e) => {
-                              setRowEditingData((prev) => ({
-                                ...prev,
-                                [record._id]: {
-                                  ...prev[record._id],
-                                  role: e.target.value,
-                                },
-                              }))
-                            }}
-                            className="text-sm border border-gray-300 rounded px-2 py-1 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                          >
-                            {roles.map((role) => (
-                              <option key={role} value={role}>
-                                {roleMap[role]}
-                              </option>
-                            ))}
-                          </select>
-                        ) : (
-                          <span
-                            className={`px-2 py-1 rounded text-xs font-medium ${
-                              record.role === 'worker'
-                                ? 'bg-blue-100 text-blue-800'
-                                : record.role === 'forklift'
-                                  ? 'bg-purple-100 text-purple-800'
-                                  : 'bg-green-100 text-green-800'
-                            }`}
-                          >
-                            {roleMap[record.role]}
-                          </span>
-                        )}
-                      </td>
-                      <td className="px-3 py-3 text-sm">
-                        {isRowEditing ? (
-                          <select
-                            value={
-                              editData.isPublicHoliday
-                                ? 'publicHoliday'
-                                : editData.isSorting
-                                  ? 'sorting'
-                                  : 'regular'
-                            }
-                            onChange={(e) => {
-                              const type = e.target.value
-                              setRowEditingData((prev) => ({
-                                ...prev,
-                                [record._id]: {
-                                  ...prev[record._id],
-                                  isPublicHoliday: type === 'publicHoliday',
-                                  isSorting: type === 'sorting',
-                                },
-                              }))
-                            }}
-                            className="text-sm border border-gray-300 rounded px-2 py-1 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                          >
-                            <option value="regular">不分拣</option>
-                            <option value="sorting">分拣</option>
-                            <option value="publicHoliday">公共假期</option>
-                          </select>
-                        ) : record.isPublicHoliday ? (
-                          <span className="px-2 py-1 rounded text-xs font-medium bg-orange-100 text-orange-800">
-                            公共假期
-                          </span>
-                        ) : record.isSorting ? (
-                          <span className="px-2 py-1 rounded text-xs font-medium bg-green-100 text-green-800">
-                            分拣
-                          </span>
-                        ) : (
-                          <span className="px-2 py-1 rounded text-xs font-medium bg-gray-100 text-gray-800">
-                            不分拣
-                          </span>
-                        )}
-                      </td>
-                      <td className="px-3 py-3 text-sm text-right text-gray-900 font-medium">
-                        ${record.hourlyRate.toFixed(2)}
-                      </td>
-                      <td className="px-3 py-3 text-sm text-right text-green-600 font-bold">
-                        ${record.totalWage.toFixed(2)}
-                      </td>
-                      <td className="px-3 py-3 text-sm text-center">
-                        <div className="flex items-center justify-center gap-2">
-                          {isRowEditing ? (
-                            <>
-                              <button
-                                type="button"
-                                onClick={() => saveRowEditing(record._id)}
-                                className="text-green-600 hover:text-green-800"
-                                title="保存"
-                              >
-                                <Save className="w-4 h-4" />
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => cancelRowEditing(record._id)}
-                                className="text-gray-600 hover:text-gray-800"
-                                title="取消"
-                              >
-                                <X className="w-4 h-4" />
-                              </button>
-                            </>
-                          ) : (
-                            <>
-                              <button
-                                type="button"
-                                onClick={() => startRowEditing(record)}
-                                className="text-blue-600 hover:text-blue-800"
-                                title="编辑"
-                              >
-                                <Edit2 className="w-4 h-4" />
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => handleDeleteRecord(record._id)}
-                                className="text-red-600 hover:text-red-800"
-                                title="删除"
-                              >
-                                <Trash2 className="w-4 h-4" />
-                              </button>
-                            </>
-                          )}
-                        </div>
-                      </td>
-                    </tr>
-                  )
-                })}
-              </tbody>
-              <tfoot className="bg-gray-50">
-                <tr>
-                  <td colSpan="7" className="px-3 py-3 text-sm font-bold text-right text-gray-900">
-                    当前页总计:
-                  </td>
-                  <td className="px-3 py-3 text-sm text-right font-bold text-gray-900">
-                    {paginatedRecords.reduce((sum, r) => sum + r.totalHoursDecimal, 0).toFixed(2)}h
-                  </td>
-                  <td colSpan="4" className="px-3 py-3" aria-hidden />
-                  <td className="px-3 py-3" aria-hidden />
-                  <td className="px-3 py-3 text-sm text-right font-bold text-green-600">
-                    ${paginatedRecords.reduce((sum, r) => sum + r.totalWage, 0).toFixed(2)}
-                  </td>
-                  <td />
-                </tr>
-              </tfoot>
-            </table>
-          </div>
-
-          {totalPages > 1 && (
-            <div className="mt-4 flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <span className="text-sm text-gray-600">每页显示</span>
-                <select
-                  value={pageSize}
-                  onChange={(e) => {
-                    setPageSize(Number(e.target.value))
-                    setCurrentPage(1)
-                  }}
-                  className="px-2 py-1 border border-gray-300 rounded text-sm"
-                >
-                  <option value={10}>10</option>
-                  <option value={20}>20</option>
-                  <option value={50}>50</option>
-                  <option value={100}>100</option>
-                </select>
-                <span className="text-sm text-gray-600">条</span>
-              </div>
-
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
-                  disabled={currentPage === 1}
-                  className="p-2 border border-gray-300 rounded hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  <ChevronLeft className="w-4 h-4" />
-                </button>
-
-                <span className="text-sm text-gray-600">
-                  第 {currentPage} / {totalPages} 页
-                </span>
-
-                <button
-                  type="button"
-                  onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
-                  disabled={currentPage === totalPages}
-                  className="p-2 border border-gray-300 rounded hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  <ChevronRight className="w-4 h-4" />
-                </button>
-              </div>
-            </div>
-          )}
-        </>
+        <WageRecordsTable
+          filteredWageRecords={filteredWageRecords}
+          currentPage={currentPage}
+          setCurrentPage={setCurrentPage}
+          pageSize={pageSize}
+          setPageSize={setPageSize}
+          rowEditingData={rowEditingData}
+          setRowEditingData={setRowEditingData}
+          roles={roles}
+          roleMap={roleMap}
+          formatDate={formatDate}
+          formatWorkday={formatWorkday}
+          startRowEditing={startRowEditing}
+          saveRowEditing={saveRowEditing}
+          cancelRowEditing={cancelRowEditing}
+          handleDeleteRecord={handleDeleteRecord}
+          canEditRecord={canEdit}
+        />
       )}
     </div>
   )

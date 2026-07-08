@@ -13,17 +13,13 @@
 import {
   buildImileAuthHeaders,
   envFirstOr,
-  imileRequestJson,
   isRetryableBusyFailure,
   isRetryableUnauthorizedFailure,
   mergeBatchRaw,
   normalizeImileToken,
-  readImileBusinessFailure,
   sleep,
-  truncateRawText,
-  type ImileBusinessFailure,
-  type ImileRequestJsonResult,
 } from './shared'
+import { requestImileApi } from './client'
 import { mapWithConcurrency } from '../orderAnalyze/runtime'
 
 function readTrackConcurrency(): number {
@@ -169,14 +165,19 @@ function searchTypeKey(searchType: string): string {
   return searchType.replace(/\s+/g, '')
 }
 
-async function postTrack(url: string, imileToken: string, body: Record<string, unknown>): Promise<ImileRequestJsonResult> {
-  const normalizedToken = normalizeImileToken(imileToken)
-  const headers = buildForwardHeaders(normalizedToken, body)
-  return imileRequestJson({
+async function postTrack(
+  url: string,
+  imileToken: string,
+  body: Record<string, unknown>,
+  label: string,
+) {
+  const headers = buildForwardHeaders(normalizeImileToken(imileToken), body)
+  return requestImileApi({
     url,
     method: 'POST',
     headers,
-    body: JSON.stringify(body),
+    body,
+    label,
   })
 }
 
@@ -190,30 +191,13 @@ export async function queryImileTracks(
 
   if (legacyMode) {
     const body = buildLegacyBatchBody(orderNos)
-    const res = await postTrack(url, token, body)
-    if (!res.readOk) {
+    const res = await postTrack(url, token, body, '轨迹查询')
+    if (!res.ok) {
       return {
         ok: false,
         status: res.status,
-        message: '轨迹接口返回非 JSON',
-        rawText: truncateRawText(res.text),
-      }
-    }
-    if (!res.httpOk) {
-      return {
-        ok: false,
-        status: res.status,
-        message: '轨迹接口 HTTP 错误',
-        rawText: truncateRawText(res.text),
-      }
-    }
-    const failure = readImileBusinessFailure(res.json)
-    if (failure) {
-      return {
-        ok: false,
-        status: res.status,
-        message: `轨迹接口业务失败：${failure.message}`,
-        rawText: truncateRawText(res.text),
+        message: res.message,
+        rawText: res.rawText,
       }
     }
     const trackInfo = extractTrackInfo(res.json)
@@ -223,63 +207,57 @@ export async function queryImileTracks(
 
   const concurrency = readTrackConcurrency()
 
-  /** 查询单个运单轨迹，失败时抛出 SingleTrackError 而非返回 ok:false，以便并发中传播错误。 */
+  /**
+   * 查询单个运单轨迹；失败抛 SingleTrackError 供并发层收集。
+   * "系统繁忙"最多重试 2 次（间隔 1.5 s / 3 s），其余错误立即抛出。
+   */
   async function fetchOneOrderTrack(
     searchValue: string
   ): Promise<{ trackInfo: Record<string, TrackEvent[]>; orderInfo: Record<string, OrderQueryInfo | null>; raw: unknown }> {
-    let resolved = false
-    let lastBusinessFailure: { message: string; rawText: string; status: number } | null = null
     const candidates = buildSearchCandidates(searchValue)
+    const MAX_BUSY_RETRIES = 2
+    let lastFailure: { message: string; rawText?: string; status: number } | null = null
 
-    for (const candidate of candidates) {
-      const maxAttempts = 3
-      let res: ImileRequestJsonResult | null = null
-      let failure: ImileBusinessFailure | null = null
-      for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
-        res = await postTrack(url, token, candidate.body)
-        if (!res.readOk || !res.httpOk) break
-        failure = readImileBusinessFailure(res.json)
-        if (!failure) break
-        if (!isRetryableBusyFailure(failure) || attempt >= maxAttempts - 1) break
-        await sleep(180 * (attempt + 1))
-      }
-      if (!res) {
-        throw new SingleTrackError({ ok: false, status: 502, message: `轨迹查询失败（运单 ${searchValue}）` })
-      }
-      if (!res.readOk) {
-        throw new SingleTrackError({ ok: false, status: res.status, message: '轨迹接口返回非 JSON', rawText: truncateRawText(res.text) })
-      }
-      if (!res.httpOk) {
-        throw new SingleTrackError({ ok: false, status: res.status, message: `轨迹接口 HTTP 错误（运单 ${searchValue}）`, rawText: truncateRawText(res.text) })
-      }
-      if (failure) {
-        lastBusinessFailure = {
-          status: res.status,
-          message: `轨迹接口业务失败（运单 ${searchValue}，${candidate.label}）：${failure.message}`,
-          rawText: truncateRawText(res.text),
+    for (let attempt = 0; attempt <= MAX_BUSY_RETRIES; attempt++) {
+      if (attempt > 0) await sleep(1500 * attempt) // 1.5 s → 3 s
+
+      let hitBusy = false
+
+      for (const candidate of candidates) {
+        const res = await postTrack(
+          url,
+          token,
+          candidate.body,
+          `轨迹查询（运单 ${searchValue}，${candidate.label}）`,
+        )
+        if (res.ok) {
+          const trackInfo = extractTrackInfo(res.json)
+          const orderInfo = mapOrderInfoForTrackKeys(trackInfo, extractOrderInfo(res.json), searchValue)
+          return { trackInfo, orderInfo, raw: { candidate: candidate.label, body: candidate.body, response: res.json } }
         }
-        if (isRetryableUnauthorizedFailure(failure)) continue
-        throw new SingleTrackError({ ok: false, status: res.status, message: lastBusinessFailure.message, rawText: lastBusinessFailure.rawText })
+
+        if (res.businessFailure && isRetryableUnauthorizedFailure(res.businessFailure)) {
+          lastFailure = { status: res.status, message: res.message, rawText: res.rawText }
+          continue // 尝试下一个候选参数
+        }
+
+        if (res.businessFailure && isRetryableBusyFailure(res.businessFailure)) {
+          hitBusy = true
+          lastFailure = { status: res.status, message: res.message, rawText: res.rawText }
+          break // 跳出候选循环，等待后重试本次 attempt
+        }
+
+        throw new SingleTrackError({ ok: false, status: res.status, message: res.message, rawText: res.rawText })
       }
-      resolved = true
-      const trackInfo = extractTrackInfo(res.json)
-      const orderInfo = mapOrderInfoForTrackKeys(trackInfo, extractOrderInfo(res.json), searchValue)
-      return {
-        trackInfo,
-        orderInfo,
-        raw: { candidate: candidate.label, body: candidate.body, response: res.json },
-      }
+
+      if (!hitBusy) break // 非 busy（auth 失败耗尽候选），不做 busy 重试
     }
 
-    if (!resolved) {
-      throw new SingleTrackError(
-        lastBusinessFailure
-          ? { ok: false, status: lastBusinessFailure.status, message: lastBusinessFailure.message, rawText: lastBusinessFailure.rawText }
-          : { ok: false, status: 502, message: `轨迹查询失败（运单 ${searchValue}）` }
-      )
-    }
-    // 理论上不可达，满足 TypeScript 返回类型
-    throw new SingleTrackError({ ok: false, status: 502, message: `轨迹查询失败（运单 ${searchValue}）` })
+    throw new SingleTrackError(
+      lastFailure
+        ? { ok: false, status: lastFailure.status, message: lastFailure.message, rawText: lastFailure.rawText }
+        : { ok: false, status: 502, message: `轨迹查询失败（运单 ${searchValue}）` }
+    )
   }
 
   try {

@@ -1,0 +1,11 @@
+node_modules
+dist
+.sst
+.git
+.gitignore
+*.md
+.env
+.env.*
+Containerfile
+compose.yaml
+pnpm-debug.log*

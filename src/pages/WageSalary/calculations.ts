@@ -1,6 +1,7 @@
 export {
   calculateDecimalHours,
   calculateHourlyRate,
+  calculatePayrollWage,
   recalcWageAmounts,
   summarizeBillingVsActualPayout,
   type RateBand,

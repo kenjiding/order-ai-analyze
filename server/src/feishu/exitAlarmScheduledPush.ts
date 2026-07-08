@@ -1,0 +1,203 @@
+import { eq } from 'drizzle-orm'
+import { getDb, schema } from '../db'
+import type { ExitAlarmSchedule } from '../db/schema'
+import { buildExitAlarmCard } from './buildExitAlarmCard'
+import { computeFeishuWebhookSign, parseSafeWebhookUrl } from '../feishuWebhookHelpers'
+import { envFirst } from '../imile/shared'
+import { fetchWaybillDetailsByInboundIndex, getRegionNow } from '../imile/inboundWaybillIndex'
+import { resolveRegionTz } from '../imile/ausTimezone'
+import { listPushableConfigsForScope } from '../supplierConfigScopes'
+import { supplierDisplayName } from '../supplierPushConfigs'
+
+type EnabledSchedule = { schedule: ExitAlarmSchedule; regionCode: string | null }
+
+/** 已启用的定时配置（按账号隔离），附带各自拥有者的 regionCode */
+async function listEnabledSchedules(): Promise<EnabledSchedule[]> {
+  const db = getDb()
+  const rows = await db
+    .select({ schedule: schema.exitAlarmSchedules, regionCode: schema.users.regionId })
+    .from(schema.exitAlarmSchedules)
+    .leftJoin(schema.users, eq(schema.exitAlarmSchedules.userId, schema.users.id))
+    .where(eq(schema.exitAlarmSchedules.isEnabled, true))
+  return rows
+}
+
+export function readExitAlarmImileToken(schedule?: Pick<ExitAlarmSchedule, 'imileToken'> | null): string {
+  const fromSchedule = schedule?.imileToken?.trim()
+  if (fromSchedule) return fromSchedule
+  return envFirst('IMILE_EXIT_ALARM_TOKEN') ?? ''
+}
+
+export function hasExitAlarmImileToken(schedule?: Pick<ExitAlarmSchedule, 'imileToken'> | null): boolean {
+  return readExitAlarmImileToken(schedule).length > 0
+}
+
+/** 解析路由码字符串：支持空格、换行、英文逗号、中文逗号分隔 */
+export function parseRouteCodes(raw: string): string[] {
+  return raw
+    .split(/[\s,，]+/)
+    .map((r) => r.trim())
+    .filter(Boolean)
+}
+
+/** worker 启动时检查定时推送前置条件，便于排查「配置了但不执行」 */
+export async function logExitAlarmSchedulerReadiness(): Promise<void> {
+  const label = '[exit-alarm/scheduler]'
+  try {
+    const enabled = await listEnabledSchedules()
+    if (enabled.length === 0) {
+      console.log(`${label} 尚无已启用的定时配置，等待各账号页面保存后生效`)
+      return
+    }
+    const scheduledConfigs = await listPushableConfigsForScope('exit-alarm.scheduled')
+    for (const { schedule, regionCode } of enabled) {
+      if (!schedule.stationCode?.trim()) {
+        console.warn(`${label} 配置 ${schedule.id} 已启用，但未保存站点编码 stationCode`)
+      }
+      if (!hasExitAlarmImileToken(schedule)) {
+        console.warn(
+          `${label} 配置 ${schedule.id} 已启用，但缺少 iMile token（保存配置时需携带全局 token，或设置 IMILE_EXIT_ALARM_TOKEN）`,
+        )
+        continue
+      }
+      const pushTimes = schedule.pushTimes as Array<{ id: string; time: string }>
+      const weekdays = schedule.weekdays as number[]
+      console.log(
+        `${label} 就绪 user=${schedule.userId} weekdays=[${weekdays.join(',')}] times=[${pushTimes.map((s) => s.time).join(',')}] station=${schedule.stationCode} region=${regionCode ?? '(默认阿德莱德)'} scheduledSuppliers=${scheduledConfigs.length}`,
+      )
+    }
+  } catch (err) {
+    console.error(`${label} 启动自检失败:`, err)
+  }
+}
+
+async function pushCardToWebhook(
+  webhookUrl: string,
+  signingSecret: string | null,
+  card: Record<string, unknown>,
+): Promise<boolean> {
+  let webhookHref: string
+  try {
+    webhookHref = parseSafeWebhookUrl(webhookUrl).href
+  } catch {
+    return false
+  }
+  const payload: Record<string, unknown> = { msg_type: 'interactive', card }
+  if (signingSecret) {
+    const timestampSec = Math.floor(Date.now() / 1000)
+    payload.timestamp = String(timestampSec)
+    payload.sign = computeFeishuWebhookSign(signingSecret, timestampSec)
+  }
+  try {
+    const upstream = await fetch(webhookHref, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    })
+    const data = (await upstream.json().catch(() => ({}))) as Record<string, unknown>
+    return upstream.ok && typeof data.code === 'number' && data.code === 0
+  } catch {
+    return false
+  }
+}
+
+/** 处理单个账号的定时配置：命中推送时间则读取到件索引并执行告警推送 */
+async function runOneScheduledPush(schedule: ExitAlarmSchedule, regionCode: string | null): Promise<void> {
+  const label = `[exit-alarm/scheduler user=${schedule.userId}]`
+
+  const stationCode = schedule.stationCode?.trim()
+  if (!stationCode) return
+
+  const tz = resolveRegionTz(regionCode)
+  const { weekday, timeHHmm, prevDateStr } = getRegionNow(tz)
+  const weekdays = schedule.weekdays as number[]
+  if (!weekdays.includes(weekday)) return
+
+  const pushTimes = schedule.pushTimes as Array<{ id: string; time: string }>
+  const matchedSlot = pushTimes.find((s) => s.time === timeHHmm)
+  if (!matchedSlot) return
+
+  const rawToken = readExitAlarmImileToken(schedule)
+  if (!rawToken) {
+    console.warn(
+      `${label} 命中推送时间 weekday=${weekday} time=${timeHHmm}，但缺少 iMile token，无法拉数推送`,
+    )
+    return
+  }
+
+  console.log(`${label} 命中推送时间 weekday=${weekday} time=${timeHHmm} date=${prevDateStr}`)
+
+  const configs = await listPushableConfigsForScope('exit-alarm.scheduled')
+  if (configs.length === 0) {
+    console.log(`${label} 无参与定时推送的供应商，跳过（请在「11点前出仓告警」启用供应商）`)
+    return
+  }
+
+  const result = await fetchWaybillDetailsByInboundIndex({
+    token: rawToken,
+    stationCode,
+    dateStr: prevDateStr,
+    tz,
+    label: '出仓告警定时推送',
+  })
+
+  if (!result.ok) {
+    console.error(`${label} 运单查询失败: ${result.message}`)
+    return
+  }
+
+  const waybills = result.records
+
+  let pushedCount = 0
+  for (const config of configs) {
+    const routeCodes = parseRouteCodes(config.routeCode)
+
+    const vendorWaybills =
+      routeCodes.length > 0
+        ? waybills.filter((w) => routeCodes.includes((w.consigneeRouteCode ?? '').trim()))
+        : waybills
+
+    const zoneBreakdown: Record<string, { pending: number; total: number }> = {}
+    for (const w of vendorWaybills) {
+      const zone = (w.consigneeRouteCode ?? '').trim() || 'Unknown route'
+      if (!zoneBreakdown[zone]) zoneBreakdown[zone] = { pending: 0, total: 0 }
+      zoneBreakdown[zone].total++
+      if (!w.deliveryTime) zoneBreakdown[zone].pending++
+    }
+
+    const totalPending = Object.values(zoneBreakdown).reduce((s, v) => s + v.pending, 0)
+    const card = buildExitAlarmCard({
+      vendorName: supplierDisplayName(config),
+      stationCode,
+      date: prevDateStr,
+      pushTime: timeHHmm,
+      zoneBreakdown,
+      totalPending,
+      totalWaybills: vendorWaybills.length,
+      pushDescription: config.pushDescription,
+    })
+
+    const ok = await pushCardToWebhook(config.webhookUrl, config.signingSecret, card)
+    if (ok) {
+      pushedCount++
+      console.log(`${label} ✓ 推送成功: ${supplierDisplayName(config)}`)
+    } else {
+      console.error(`${label} ✗ 推送失败: ${supplierDisplayName(config)}`)
+    }
+  }
+
+  console.log(`${label} 完成 ${pushedCount}/${configs.length} 条`)
+}
+
+/** 每分钟由 scheduler 调用；遍历所有已启用的账号级定时配置，各自独立判断是否命中推送 */
+export async function runExitAlarmScheduledPush(): Promise<void> {
+  const label = '[exit-alarm/scheduler]'
+  const enabled = await listEnabledSchedules()
+  for (const { schedule, regionCode } of enabled) {
+    try {
+      await runOneScheduledPush(schedule, regionCode)
+    } catch (err) {
+      console.error(`${label} 配置 ${schedule.id}（user=${schedule.userId}）推送异常:`, err)
+    }
+  }
+}

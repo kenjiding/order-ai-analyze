@@ -45,10 +45,10 @@ export const FleetPivotReportView = forwardRef<HTMLDivElement, FleetPivotReportV
 
         <table className="fpr-table">
           <colgroup>
-            <col style={{ width: '18%' }} />
-            <col style={{ width: '16%' }} />
-            <col style={{ width: '46%' }} />
             <col style={{ width: '20%' }} />
+            <col style={{ width: '20%' }} />
+            <col style={{ width: '32%' }} />
+            <col style={{ width: '28%' }} />
           </colgroup>
           <thead>
             <tr>

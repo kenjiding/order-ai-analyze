@@ -84,6 +84,15 @@ body::before {
     @apply relative z-10 min-h-screen;
   }
 
+  @keyframes slideInFromLeft {
+    from {
+      transform: translateX(-100%);
+    }
+    to {
+      transform: translateX(0);
+    }
+  }
+
   .admin-topbar {
     @apply sticky top-0 z-30 border-b px-4 py-3 backdrop-blur sm:px-6 lg:px-8;
     background: rgba(255, 255, 255, 0.86);
@@ -127,15 +136,15 @@ body::before {
     @apply inline-flex items-center justify-center gap-2 rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 transition hover:border-slate-400 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50;
   }
 
-  .admin-btn-primary {
-    @apply text-white;
-    background: var(--admin-accent);
-    border-color: var(--admin-accent);
+  /* 与 admin-btn 组合时须用 @apply 覆盖其 bg-white / text-slate-700 */
+  .admin-btn-primary,
+  .admin-btn.admin-btn-primary {
+    @apply border-[#2f8f87] bg-[#2f8f87] text-white;
   }
 
-  .admin-btn-primary:hover {
-    background: #267a73;
-    border-color: #267a73;
+  .admin-btn-primary:hover:not(:disabled),
+  .admin-btn.admin-btn-primary:hover:not(:disabled) {
+    @apply border-[#267a73] bg-[#267a73];
   }
 
   .admin-btn-dark {
@@ -206,22 +215,68 @@ body::before {
     flex-direction: column;
   }
 
-  .order-analysis-timeline .ant-timeline-item-rail {
-    border-inline-start-color: #d8e6ee;
+  .admin-drawer .ant-drawer-header-title,
+  .admin-drawer .ant-drawer-title {
+    flex: 1;
+    width: 100%;
+    margin: 0;
   }
 
-  .order-analysis-timeline .ant-timeline-item-icon {
-    box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.95);
+  .order-analysis-timeline .ant-timeline-item-rail {
+    border-inline-start-color: #d8e6ee;
   }
 
   /* Query 完整轨迹：条目间距更紧凑 */
   .order-analysis-timeline--compact.ant-timeline-vertical > .ant-timeline-item {
     min-height: auto;
-    padding-bottom: 6px;
+    padding-bottom: 2px;
+  }
+
+  .order-analysis-timeline--compact .ant-timeline-item-content {
+    margin-block: 0;
+    inset-block-start: -2px;
   }
 
   .order-analysis-timeline--compact.ant-timeline-vertical > .ant-timeline-item:last-child {
     padding-bottom: 0;
+  }
+
+  .warehouse-config-workspace {
+    @apply overflow-hidden rounded-lg border bg-white;
+    border-color: var(--admin-line);
+    box-shadow: 0 18px 48px rgba(47, 83, 105, 0.07);
+  }
+
+  .warehouse-config-stat {
+    @apply rounded-lg px-3 py-2 ring-1 ring-[var(--admin-line)];
+    background: var(--admin-surface-soft);
+  }
+
+  .warehouse-config-stat--accent {
+    @apply ring-[rgba(47,143,135,0.18)];
+    background: var(--admin-accent-soft);
+    color: #1f6f68;
+  }
+
+  .warehouse-config-stat--warn {
+    @apply ring-amber-200/80;
+    background: #fffbeb;
+    color: #92400e;
+  }
+
+  .warehouse-config-editor-enter {
+    animation: warehouse-config-fade-in 220ms ease-out both;
+  }
+
+  @keyframes warehouse-config-fade-in {
+    from {
+      opacity: 0;
+      transform: translateY(6px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
   }
 }
 
@@ -313,17 +368,6 @@ body::before {
   box-shadow: 0 0 0 3px rgba(47, 143, 135, 0.14);
 }
 
-.data-table::-webkit-scrollbar {
-  height: 10px;
-  width: 10px;
-}
-
-.data-table::-webkit-scrollbar-thumb {
-  background: rgba(71, 85, 105, 0.35);
-  border-radius: 999px;
-}
-
-/* 长表：限制可视高度，内部滚动；表头吸附便于对照列含义 */
 .data-table.data-table--bounded {
   max-height: min(72vh, 30rem);
   overflow: auto;
@@ -335,4 +379,83 @@ body::before {
   z-index: 2;
   background: var(--admin-sky-soft);
   box-shadow: 0 1px 0 0 rgb(226 232 240);
+}
+
+.scanner-efficiency-antd-table .ant-table {
+  font-size: 0.875rem;
+  line-height: 1.25rem;
+}
+
+.scanner-efficiency-antd-table .ant-table-thead > tr > th {
+  background: var(--admin-sky-soft) !important;
+  color: #25526e;
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.scanner-efficiency-antd-table .ant-table-tbody > tr > td {
+  color: rgb(51 65 85);
+  white-space: nowrap;
+}
+
+.scanner-efficiency-antd-table .ant-table-tbody > tr:nth-child(even) > td {
+  background: rgb(248 250 252);
+}
+
+.scanner-efficiency-antd-table .ant-table-tbody > tr:hover > td {
+  background: rgb(241 245 249) !important;
+}
+
+.scanner-efficiency-antd-table__average > td {
+  background: rgb(241 245 249 / 0.95) !important;
+  font-weight: 500;
+}
+
+.scanner-efficiency-antd-table .ant-table-summary > tr > td {
+  border-top: 1px solid rgb(226 232 240);
+}
+
+.wage-antd-table .ant-table {
+  font-size: 0.875rem;
+  line-height: 1.25rem;
+}
+
+.wage-antd-table .ant-table-thead > tr > th {
+  background: var(--admin-sky-soft) !important;
+  color: #25526e;
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  white-space: nowrap;
+}
+
+.wage-antd-table .ant-table-tbody > tr > td {
+  color: rgb(51 65 85);
+  white-space: nowrap;
+}
+
+.wage-antd-table .ant-table-tbody > tr:nth-child(even) > td {
+  background: rgb(248 250 252);
+}
+
+.wage-antd-table .ant-table-tbody > tr:hover > td {
+  background: rgb(241 245 249) !important;
+}
+
+.wage-antd-table .ant-table-summary > tr > td {
+  border-top: 1px solid rgb(226 232 240);
+  background: rgb(248 250 252) !important;
+  font-weight: 600;
+}
+
+.wage-antd-table .ant-table-cell-fix-right,
+.wage-antd-table .ant-table-summary .ant-table-cell-fix-right {
+  background: rgb(248 250 252) !important;
+}
+
+.wage-antd-table .ant-table-tbody > tr:hover > td.ant-table-cell-fix-right {
+  background: rgb(241 245 249) !important;
 }

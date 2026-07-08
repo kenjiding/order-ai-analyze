@@ -1,0 +1,1 @@
+ALTER TABLE "exit_alarm_schedules" ADD COLUMN "station_code" varchar(64) DEFAULT '' NOT NULL;

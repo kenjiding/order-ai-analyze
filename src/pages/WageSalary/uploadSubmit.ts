@@ -1,6 +1,8 @@
+import { generateId } from '../../utils/generateId'
 import {
   calculateDecimalHours,
   calculateHourlyRate,
+  calculatePayrollWage,
   type RateSettings,
 } from './calculations'
 import { convertDateToStandard } from './dateUtils'
@@ -30,6 +32,7 @@ export type NormalizedSubmitRow = {
   deduction: string | number
   reward: string | number
   role: string
+  positionTitle: string
   isSorting: boolean
   isPublicHoliday: boolean
 }
@@ -105,6 +108,7 @@ export function normalizeUploadedRowsForSubmit(
       deduction: String(record.deduction ?? ''),
       reward: String(record.reward ?? ''),
       role: String(record.role || 'worker'),
+      positionTitle: String(record.positionTitle ?? ''),
       isSorting: recordIsSorting,
       isPublicHoliday: recordIsPublicHoliday,
     })
@@ -126,7 +130,6 @@ export function buildWageRowsFromNormalized(
   const dupMap = new Map<string, Record<string, unknown>>()
 
   for (const rec of recordsToSubmit) {
-    const totalHoursDecimal = calculateDecimalHours(rec.workHours)
     const hourlyRate = calculateHourlyRate(
       rec.role,
       rec.workday,
@@ -134,10 +137,10 @@ export function buildWageRowsFromNormalized(
       rec.isPublicHoliday,
       rateSettings,
     )
-    const totalWage = totalHoursDecimal * hourlyRate
+    const { totalHoursDecimal, totalWage } = calculatePayrollWage(rec.workHours, hourlyRate)
 
     const row = {
-      _id: crypto.randomUUID(),
+      _id: generateId(),
       employeeId: rec.employeeId,
       name: rec.name || '',
       surname: rec.surname || '',
@@ -152,6 +155,7 @@ export function buildWageRowsFromNormalized(
       deduction: rec.deduction,
       reward: rec.reward,
       role: rec.role || 'worker',
+      positionTitle: rec.positionTitle || '',
       isSorting: rec.isSorting,
       isPublicHoliday: rec.isPublicHoliday,
       hourlyRate,

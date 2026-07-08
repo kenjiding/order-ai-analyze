@@ -12,6 +12,11 @@ export type {
 
 export { deriveTrackFacts } from './orderAnalyze/trackFacts'
 export { applyFactGuardrails } from './orderAnalyze/decisionRules'
-export { analyzeOrdersWithOpenAi, analyzeOrdersWithDeepSeek } from './orderAnalyze/analyzers'
+export {
+  analyzeOrdersWithOpenAi,
+  analyzeOrdersWithDeepSeek,
+  explainOrdersWithOpenAi,
+  explainOrdersWithDeepSeek,
+} from './orderAnalyze/analyzers'
 export type { TokenUsage } from './orderAnalyze/usage'
 export { emptyTokenUsage, mergeTokenUsage } from './orderAnalyze/usage'

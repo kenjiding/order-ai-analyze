@@ -1,0 +1,134 @@
+{
+  "tableName": [
+    "96a7d3f11ad74a4a9290b1de2664b721"
+  ],
+  "view": {
+    "30000": [
+      "d5f6e96e2bdbce62",
+      "8bf764c951aab5c4",
+      "892e26fc63feda53",
+      "3b02dda3cf001144",
+      "a2e3e14dcd02907d"
+    ]
+  },
+  "dimensions": {
+    "d5f6e96e2bdbce62": {
+      "id": "d5f6e96e2bdbce62",
+      "fieldId": "96a7d3f11ad74a4a9290b1de2664b721_first[5f]ofd[5f]station[5f]inbound[5f]volume",
+      "type": 2,
+      "group": {
+        "type": 3
+      },
+      "calculation": {
+        "type": 0,
+        "value": 0
+      }
+    },
+    "8bf764c951aab5c4": {
+      "id": "8bf764c951aab5c4",
+      "fieldId": "96a7d3f11ad74a4a9290b1de2664b721_first[5f]ofd[5f]station[5f]fofd[5f]volume",
+      "type": 2,
+      "group": {
+        "type": 3
+      },
+      "calculation": {
+        "type": 0,
+        "value": 0
+      }
+    },
+    "892e26fc63feda53": {
+      "id": "892e26fc63feda53",
+      "fieldId": "99568c938fda8ab2",
+      "type": 5,
+      "group": {
+        "type": 3
+      },
+      "calculation": {
+        "type": 0,
+        "value": 0
+      }
+    },
+    "3b02dda3cf001144": {
+      "id": "3b02dda3cf001144",
+      "fieldId": "96a7d3f11ad74a4a9290b1de2664b721_pickup[5f]ontime[5f]volume",
+      "type": 2,
+      "group": {
+        "type": 3
+      },
+      "calculation": {
+        "type": 0,
+        "value": 0
+      }
+    },
+    "a2e3e14dcd02907d": {
+      "id": "a2e3e14dcd02907d",
+      "fieldId": "7e817db67fa8527d",
+      "type": 5,
+      "group": {
+        "type": 3
+      },
+      "calculation": {
+        "type": 0,
+        "value": 0
+      }
+    }
+  },
+  "measures": [
+    {
+      "id": "99568c938fda8ab2",
+      "type": 97,
+      "name": "提货率",
+      "targetIds": [
+        "96a7d3f11ad74a4a9290b1de2664b721_first[5f]ofd[5f]station[5f]fofd[5f]volume",
+        "96a7d3f11ad74a4a9290b1de2664b721_first[5f]ofd[5f]station[5f]inbound[5f]volume"
+      ],
+      "calculate": {
+        "value": "SUM_AGG(${96a7d3f11ad74a4a9290b1de2664b721_first[5f]ofd[5f]station[5f]fofd[5f]volume})/SUM_AGG(${96a7d3f11ad74a4a9290b1de2664b721_first[5f]ofd[5f]station[5f]inbound[5f]volume})",
+        "aggregate": true,
+        "type": 0
+      }
+    },
+    {
+      "id": "7e817db67fa8527d",
+      "type": 97,
+      "name": "提货率",
+      "targetIds": [
+        "96a7d3f11ad74a4a9290b1de2664b721_first[5f]ofd[5f]station[5f]inbound[5f]volume",
+        "96a7d3f11ad74a4a9290b1de2664b721_pickup[5f]ontime[5f]volume"
+      ],
+      "calculate": {
+        "value": "SUM_AGG(${96a7d3f11ad74a4a9290b1de2664b721_pickup[5f]ontime[5f]volume})/SUM_AGG(${96a7d3f11ad74a4a9290b1de2664b721_first[5f]ofd[5f]station[5f]inbound[5f]volume})",
+        "aggregate": true,
+        "type": 0
+      }
+    },
+    {
+      "id": "96a7d3f11ad74a4a9290b1de2664b721_first[5f]ofd[5f]station[5f]inbound[5f]volume",
+      "type": 32
+    },
+    {
+      "id": "96a7d3f11ad74a4a9290b1de2664b721_first[5f]ofd[5f]station[5f]fofd[5f]volume",
+      "type": 32
+    },
+    {
+      "id": "96a7d3f11ad74a4a9290b1de2664b721_pickup[5f]ontime[5f]volume",
+      "type": 32
+    }
+  ],
+  "queryInfo": {
+    "parameter": {
+      "end_date_ctrl": {
+        "type": 97,
+        "value": "2026-06-20"
+      },
+      "vendor_code_ctrl": {
+        "type": 97,
+        "value": "SRM2500934"
+      },
+      "station_ctrl": {
+        "type": 97,
+        "value": "S210431701','S210372901"
+      }
+    }
+  }
+}

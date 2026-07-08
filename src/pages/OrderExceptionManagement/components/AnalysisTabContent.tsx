@@ -1,8 +1,9 @@
-import { Select, Tag } from 'antd'
+import { Select, Tag, Tooltip } from 'antd'
 import { saveAs } from 'file-saver'
-import { Loader2, Upload } from 'lucide-react'
-import { useCallback, useMemo, useState, type ChangeEvent, type ReactNode } from 'react'
+import { CheckSquare, ChevronDown, Loader2, Settings2, Upload, X } from 'lucide-react'
+import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent, type ReactNode } from 'react'
 import * as XLSX from 'xlsx-js-style'
+import { PERMISSION_KEYS, usePermission } from '../../../hooks/usePermission'
 import { applySheetCenterAlignment } from '../../../utils/xlsxCenteredSheet'
 import { DataTable, ExportButton, type DataTableColumn } from '../../ScannerEfficiency/components/ui'
 import {
@@ -10,11 +11,133 @@ import {
   type OrderAnalyzeApiTiming,
   type OrderAnalyzeTokenUsage,
 } from '../orderExceptionApi'
-import type { AnalysisRow, AnalyzeProgress, ImportedAnalyzeOrders } from '../useOrderExceptionManagementPage'
+import type { AnalysisRow, AnalyzeProgress, ImportedAnalyzeOrders, SubmittedJobBanner } from '../useOrderExceptionManagementPage'
+import type { PostFilterConfig } from '../postFilter/types'
 import { AnalyzeProgressStrip } from './AnalyzeProgressStrip'
 import { OrderAnalysisDetailDrawer } from './OrderAnalysisDetailDrawer'
+import { OrderExceptionPushSection } from './OrderExceptionPushSection'
+import { PostFilterConfigSection } from './PostFilterConfigSection'
 
 type Row = AnalysisRow
+
+type ColumnFilters = {
+  lossScope: string[]
+  categoryName: string[]
+  currentResponsibilityParty: string[]
+}
+
+function FilterableHeader({
+  title,
+  options,
+  selected,
+  onChange,
+}: {
+  title: string
+  options: string[]
+  selected: string[]
+  onChange: (next: string[]) => void
+}) {
+  const [open, setOpen] = useState(false)
+  const ref = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    if (!open) return
+    const handle = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false)
+    }
+    document.addEventListener('mousedown', handle)
+    return () => document.removeEventListener('mousedown', handle)
+  }, [open])
+
+  // 打开时把最近的 <th> 层级临时提升，使下拉框能盖过兄弟列头
+  useEffect(() => {
+    const th = ref.current?.closest('th') as HTMLElement | null
+    if (!th) return
+    if (open) {
+      th.style.zIndex = '20'
+    } else {
+      th.style.zIndex = ''
+    }
+    return () => {
+      th.style.zIndex = ''
+    }
+  }, [open])
+
+  const isActive = selected.length > 0
+
+  const toggleOption = (val: string) => {
+    onChange(selected.includes(val) ? selected.filter((s) => s !== val) : [...selected, val])
+  }
+
+  return (
+    <div ref={ref} className="relative inline-block">
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        className={[
+          'inline-flex items-center gap-1 rounded px-1 -mx-1 py-0.5 transition-colors',
+          isActive ? 'text-[#1f6f68]' : 'hover:text-[#1f6f68]',
+        ].join(' ')}
+      >
+        <span className={isActive ? 'font-bold' : ''}>{title}</span>
+        {isActive ? (
+          <span className="inline-flex h-[14px] min-w-[14px] items-center justify-center rounded-full bg-[#1f6f68] px-0.5 text-[9px] font-bold leading-none text-white">
+            {selected.length}
+          </span>
+        ) : (
+          <ChevronDown
+            className={['h-3 w-3 shrink-0 transition-transform', open ? 'rotate-180' : ''].join(' ')}
+            aria-hidden
+          />
+        )}
+      </button>
+
+      {open && (
+        <div className="absolute left-0 top-full z-50 mt-1.5 min-w-[148px] rounded-md border border-slate-200 bg-white shadow-lg">
+          <div className="flex items-center justify-between border-b border-slate-100 px-2.5 py-1.5">
+            <button
+              type="button"
+              onClick={() => onChange(options)}
+              className="text-[11px] text-slate-500 hover:text-slate-800"
+            >
+              全选
+            </button>
+            <button
+              type="button"
+              onClick={() => onChange([])}
+              className={[
+                'text-[11px] transition-colors',
+                isActive ? 'text-[#1f6f68] hover:text-[#2f8f87]' : 'text-slate-400',
+              ].join(' ')}
+            >
+              清除
+            </button>
+          </div>
+          <div className="max-h-52 overflow-y-auto py-1">
+            {options.length === 0 ? (
+              <p className="px-3 py-2 text-[11px] text-slate-400">暂无数据</p>
+            ) : (
+              options.map((opt) => (
+                <label
+                  key={opt}
+                  className="flex cursor-pointer items-center gap-2 px-2.5 py-1.5 text-[11px] font-normal normal-case tracking-normal text-slate-700 transition-colors hover:bg-slate-50"
+                >
+                  <input
+                    type="checkbox"
+                    checked={selected.includes(opt)}
+                    onChange={() => toggleOption(opt)}
+                    className="h-3.5 w-3.5 shrink-0 rounded border-slate-300 accent-[#1f6f68]"
+                  />
+                  <span className="truncate">{opt || '(空)'}</span>
+                </label>
+              ))
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
 
 function renderReasonCell(r: Row): ReactNode {
   const reason = String(r.reason ?? '')
@@ -25,7 +148,7 @@ function renderReasonCell(r: Row): ReactNode {
     return (
       <span className="inline-flex items-center gap-1.5 text-[#1f6f68]">
         <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin" aria-hidden />
-        分析中…
+        {reason || '分析中…'}
       </span>
     )
   }
@@ -40,10 +163,55 @@ function renderReasonCell(r: Row): ReactNode {
       </span>
     )
   }
+  if (reason.startsWith('[取消扫描核验纠正]')) {
+    return (
+      <span>
+        <span className="font-semibold text-amber-600">[取消扫描核验纠正]</span>
+        <span className="text-slate-700">{reason.slice('[取消扫描核验纠正]'.length)}</span>
+      </span>
+    )
+  }
   return <span className="text-slate-700">{reason}</span>
 }
 
-function buildColumns(onOpenOrderDetail: (row: Row) => void, visitedOrders: Set<string>): DataTableColumn[] {
+function SubmittedBanner({
+  banner,
+  onDismiss,
+  onGoToJobs,
+}: {
+  banner: SubmittedJobBanner
+  onDismiss: () => void
+  onGoToJobs: () => void
+}) {
+  return (
+    <div className="mt-4 flex items-center gap-3 rounded-md border border-blue-200 bg-blue-50 px-4 py-3">
+      <CheckSquare className="h-4 w-4 shrink-0 text-blue-500" aria-hidden />
+      <p className="min-w-0 flex-1 text-xs text-slate-700">
+        批量任务已提交（<span className="font-semibold">{banner.orderCount} 单</span>），后台 Worker 正在处理，分析页面不会被阻塞
+      </p>
+      <button
+        type="button"
+        onClick={onGoToJobs}
+        className="shrink-0 rounded-md bg-blue-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-blue-700"
+      >
+        查看任务队列 →
+      </button>
+      <button type="button" onClick={onDismiss} className="shrink-0 text-slate-400 hover:text-slate-600">
+        <X className="h-4 w-4" />
+      </button>
+    </div>
+  )
+}
+
+function buildColumns(
+  onOpenOrderDetail: (row: Row) => void,
+  visitedOrders: Set<string>,
+  columnFilters: ColumnFilters,
+  onColumnFilterChange: (key: keyof ColumnFilters, next: string[]) => void,
+  lossScopeOptions: string[],
+  categoryNameOptions: string[],
+  responsibilityOptions: string[],
+): DataTableColumn[] {
   return [
     {
       key: 'orderNo',
@@ -70,6 +238,14 @@ function buildColumns(onOpenOrderDetail: (row: Row) => void, visitedOrders: Set<
     {
       key: 'lossScope',
       title: '异常类型',
+      renderTitle: () => (
+        <FilterableHeader
+          title="异常类型"
+          options={lossScopeOptions}
+          selected={columnFilters.lossScope}
+          onChange={(next) => onColumnFilterChange('lossScope', next)}
+        />
+      ),
       render: (row) => {
         const r = row as unknown as Row
         if (r.status === 'pending' || r.status === 'analyzing') {
@@ -81,6 +257,14 @@ function buildColumns(onOpenOrderDetail: (row: Row) => void, visitedOrders: Set<
     {
       key: 'categoryName',
       title: '子类型',
+      renderTitle: () => (
+        <FilterableHeader
+          title="子类型"
+          options={categoryNameOptions}
+          selected={columnFilters.categoryName}
+          onChange={(next) => onColumnFilterChange('categoryName', next)}
+        />
+      ),
       render: (row) => {
         const r = row as unknown as Row
         if (r.status === 'pending' || r.status === 'analyzing') {
@@ -92,6 +276,14 @@ function buildColumns(onOpenOrderDetail: (row: Row) => void, visitedOrders: Set<
     {
       key: 'currentResponsibilityParty',
       title: '当前责任方',
+      renderTitle: () => (
+        <FilterableHeader
+          title="当前责任方"
+          options={responsibilityOptions}
+          selected={columnFilters.currentResponsibilityParty}
+          onChange={(next) => onColumnFilterChange('currentResponsibilityParty', next)}
+        />
+      ),
       render: (row) => {
         const r = row as unknown as Row
         if (r.status === 'pending' || r.status === 'analyzing') {
@@ -136,6 +328,8 @@ function buildColumns(onOpenOrderDetail: (row: Row) => void, visitedOrders: Set<
   ]
 }
 
+const ANALYSIS_RESULTS_MAX_HEIGHT_PX = 600
+
 const ANALYZE_MODEL_OPTIONS: { value: OrderAnalyzeAiProvider; label: string }[] = [
   { value: 'deepseek', label: 'DeepSeek' },
   { value: 'openai', label: 'OpenAI' },
@@ -167,11 +361,21 @@ type Props = {
   importedAnalyzeOrders: ImportedAnalyzeOrders | null
   isAnalyzing: boolean
   rows: Row[]
+  filteredRows: Row[]
+  totalDoneRowCount: number
   analyzeProgress: AnalyzeProgress | null
+  submittedJobBanner: SubmittedJobBanner | null
+  onDismissSubmittedJobBanner: () => void
+  onGoToJobsTab: () => void
   tokenUsage: OrderAnalyzeTokenUsage | null
   analyzedOrderCount: number
   durationMs: number | null
   apiTiming: OrderAnalyzeApiTiming | null
+  onOpenWarehouseConfig: () => void
+  postFilterDraft: PostFilterConfig
+  onPostFilterDraftChange: (next: PostFilterConfig) => void
+  appliedPostFilter: PostFilterConfig
+  onRunPostFilter: () => void
 }
 
 const CROSS_CHECKED_LABEL: Record<string, string> = {
@@ -195,14 +399,63 @@ export function AnalysisTabContent({
   importedAnalyzeOrders,
   isAnalyzing,
   rows,
+  filteredRows,
+  totalDoneRowCount,
   analyzeProgress,
+  submittedJobBanner,
+  onDismissSubmittedJobBanner,
+  onGoToJobsTab,
   tokenUsage,
   analyzedOrderCount,
   durationMs,
   apiTiming,
+  onOpenWarehouseConfig,
+  postFilterDraft,
+  onPostFilterDraftChange,
+  appliedPostFilter,
+  onRunPostFilter,
 }: Props) {
+  const canAnalyze = usePermission(PERMISSION_KEYS.btnOrderExceptionAnalyze)
   const [detailRow, setDetailRow] = useState<Row | null>(null)
   const [visitedOrders, setVisitedOrders] = useState<Set<string>>(() => new Set())
+  const [columnFilters, setColumnFilters] = useState<ColumnFilters>({
+    lossScope: [],
+    categoryName: [],
+    currentResponsibilityParty: [],
+  })
+
+  const onColumnFilterChange = useCallback((key: keyof ColumnFilters, next: string[]) => {
+    setColumnFilters((prev) => ({ ...prev, [key]: next }))
+  }, [])
+
+  const doneRows = useMemo(() => filteredRows.filter((r) => r.status === 'done'), [filteredRows])
+
+  const lossScopeOptions = useMemo(
+    () => [...new Set(doneRows.map((r) => r.lossScope ?? '').filter(Boolean))].sort(),
+    [doneRows],
+  )
+  const categoryNameOptions = useMemo(
+    () => [...new Set(doneRows.map((r) => r.categoryName ?? '').filter(Boolean))].sort(),
+    [doneRows],
+  )
+  const responsibilityOptions = useMemo(
+    () =>
+      [...new Set(doneRows.map((r) => r.currentResponsibilityParty ?? '').filter((v) => v && v !== '—'))].sort(),
+    [doneRows],
+  )
+
+  const columnFilteredRows = useMemo(() => {
+    const { lossScope, categoryName, currentResponsibilityParty } = columnFilters
+    const hasFilter = lossScope.length > 0 || categoryName.length > 0 || currentResponsibilityParty.length > 0
+    if (!hasFilter) return filteredRows
+    return filteredRows.filter((r) => {
+      if (r.status !== 'done') return true
+      if (lossScope.length > 0 && !lossScope.includes(r.lossScope ?? '')) return false
+      if (categoryName.length > 0 && !categoryName.includes(r.categoryName ?? '')) return false
+      if (currentResponsibilityParty.length > 0 && !currentResponsibilityParty.includes(r.currentResponsibilityParty ?? '')) return false
+      return true
+    })
+  }, [filteredRows, columnFilters])
 
   const onOrderFileChange = useCallback(
     (event: ChangeEvent<HTMLInputElement>) => {
@@ -233,10 +486,25 @@ export function AnalysisTabContent({
   const avgAiMsPerOrder =
     apiTiming && analyzedOrderCount > 0 ? Math.round(apiTiming.aiMs / analyzedOrderCount) : null
   const showAnalyzeStats = Boolean(tokenUsage || durationMs != null || apiTiming != null)
-  const exportableRows = rows.filter((r) => r.status === 'done')
+  const exportableRows = filteredRows.filter((r) => r.status === 'done')
+  const columnFilteredDoneCount = columnFilteredRows.filter((r) => r.status === 'done').length
+  const filteredDoneRowCount = columnFilteredDoneCount
+  const isFiltered = totalDoneRowCount > 0 && filteredDoneRowCount !== totalDoneRowCount
   const showResultsSection = rows.length > 0 || isAnalyzing
-  const columns = useMemo(() => buildColumns(handleOpenOrderDetail, visitedOrders), [handleOpenOrderDetail, visitedOrders])
-  const tableRows: Record<string, unknown>[] = rows.map((r) => ({
+  const columns = useMemo(
+    () =>
+      buildColumns(
+        handleOpenOrderDetail,
+        visitedOrders,
+        columnFilters,
+        onColumnFilterChange,
+        lossScopeOptions,
+        categoryNameOptions,
+        responsibilityOptions,
+      ),
+    [handleOpenOrderDetail, visitedOrders, columnFilters, onColumnFilterChange, lossScopeOptions, categoryNameOptions, responsibilityOptions],
+  )
+  const tableRows: Record<string, unknown>[] = columnFilteredRows.map((r) => ({
     ...r,
     id: r.orderNo,
   })) as unknown as Record<string, unknown>[]
@@ -319,12 +587,23 @@ export function AnalysisTabContent({
             <button
               type="button"
               disabled={isAnalyzing}
-              onClick={onAnalyze}
-              className="admin-btn admin-btn-primary inline-flex items-center gap-2 disabled:cursor-not-allowed disabled:opacity-50"
+              onClick={onOpenWarehouseConfig}
+              className="admin-btn border border-slate-300 bg-white text-slate-800 shadow-sm hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
             >
-              {isAnalyzing ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : null}
-              开始分析
+              <Settings2 className="h-4 w-4" />
+              分析配置
             </button>
+            <Tooltip title={!canAnalyze ? '无操作权限' : undefined}>
+              <button
+                type="button"
+                disabled={isAnalyzing || !canAnalyze}
+                onClick={onAnalyze}
+                className="admin-btn admin-btn-primary inline-flex items-center gap-2 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {isAnalyzing ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : null}
+                开始分析
+              </button>
+            </Tooltip>
           </div>
         </div>
         {importedAnalyzeOrders ? (
@@ -419,16 +698,31 @@ export function AnalysisTabContent({
       </section>
 
       {showResultsSection ? (
-        <section className="admin-panel p-5">
+        <section className="admin-panel p-5 pr-0">
           <div className="flex flex-wrap items-center justify-between gap-3">
-            <h3 className="text-sm font-semibold text-slate-950">分析结果</h3>
+            <div className="flex items-center gap-3">
+              <h3 className="text-sm font-semibold text-slate-950">分析结果</h3>
+              {isFiltered && (
+                <span className="text-xs text-slate-500" aria-live="polite">
+                  共 {totalDoneRowCount} 条，已过滤至 {filteredDoneRowCount} 条
+                </span>
+              )}
+            </div>
             <ExportButton
               label="导出 Excel"
-              disabled={exportableRows.length === 0 || isAnalyzing}
+              permission={PERMISSION_KEYS.btnOrderExceptionAnalyze}
+              disabled={exportableRows.length === 0 || isAnalyzing || !canAnalyze}
               onClick={onExportResults}
               className="shrink-0"
             />
           </div>
+          {submittedJobBanner ? (
+            <SubmittedBanner
+              banner={submittedJobBanner}
+              onDismiss={onDismissSubmittedJobBanner}
+              onGoToJobs={onGoToJobsTab}
+            />
+          ) : null}
           {analyzeProgress ? (
             <div className="mt-4">
               <AnalyzeProgressStrip
@@ -438,16 +732,38 @@ export function AnalysisTabContent({
               />
             </div>
           ) : null}
-          <div className="mt-4">
-            <DataTable
-              columns={columns}
-              rows={tableRows}
-              emptyText="暂无结果，填写订单号并点击开始分析。"
-              boundedScroll
+          <div className="mt-4 flex items-stretch gap-0">
+            <div className="min-w-0 flex-1 pr-[10px]">
+              <DataTable
+                columns={columns}
+                rows={tableRows}
+                emptyText="暂无结果，填写订单号并点击开始分析。"
+                boundedScroll
+                boundedScrollMaxHeight={ANALYSIS_RESULTS_MAX_HEIGHT_PX}
+              />
+            </div>
+            <PostFilterConfigSection
+              draft={postFilterDraft}
+              applied={appliedPostFilter}
+              onChange={onPostFilterDraftChange}
+              onApply={onRunPostFilter}
+              maxHeight={ANALYSIS_RESULTS_MAX_HEIGHT_PX}
             />
           </div>
         </section>
       ) : null}
+
+      {exportableRows.length > 0 && (
+        <OrderExceptionPushSection
+          doneRows={exportableRows.map((r) => ({
+            lossScope: r.lossScope ?? '',
+            categoryName: r.categoryName ?? '',
+            currentResponsibilityParty: r.currentResponsibilityParty ?? '',
+            confidence: r.confidence ?? '',
+          }))}
+          analysisDate={new Date().toISOString().slice(0, 10)}
+        />
+      )}
 
       <OrderAnalysisDetailDrawer row={detailRow} onClose={() => setDetailRow(null)} />
     </div>

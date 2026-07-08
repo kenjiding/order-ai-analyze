@@ -230,6 +230,19 @@ function isMerchantReturnRequestEvent(content: string): boolean {
   )
 }
 
+function isMerchantReturnDirectionRequestEvent(content: string): boolean {
+  return isMerchantReturnRequestEvent(content) && /(退返商家|退回商家)/.test(content)
+}
+
+function isMerchantReturnProgressEvent(content: string): boolean {
+  return (
+    isMerchantReturnRequestEvent(content) ||
+    isBoxedTransferEvent(content) ||
+    content.includes('开始退回') ||
+    content.includes('退件中')
+  )
+}
+
 /**
  * 「【AAAA】已装箱（集包），目的地【BBBB】」属于起始仓 AAAA 的最后一次库内真实操作。
  * 它不代表责任已离开 AAAA：在目的仓 BBBB 出现真实操作（轨迹到达 / 阻断扫描）之前，责任仍归 AAAA。
@@ -326,12 +339,27 @@ function isReturnOrInventoryEvent(t: TrackEvent): boolean {
   return t.content.includes('已回到网点') || t.content.includes('已盘点') || t.content.includes('已归班')
 }
 
+/**
+ * 外部承运商将包裹退回仓库的入仓确认事件。
+ * 例："【Sydney Center】已收到【Australia Fastway】退回包裹" 或 "已收到退件包裹"。
+ * 此类事件与 isReturnOrInventoryEvent 中的「已回到网点/已盘点」地位等同：
+ * 物理包裹到仓已由平台记录确认，不依赖操作员账号类型即可建立库内责任起算点。
+ */
+function isReturnFromCarrierArrivalEvent(content: string): boolean {
+  return (content.includes('已收到') && content.includes('退回包裹')) || content.includes('已收到退件包裹')
+}
+
 function isProblemEvent(t: TrackEvent): boolean {
   return t.content.includes('登记问题件') || hasTrackType(t, 'problem')
 }
 
 function isWarehouseArrivalEvent(t: TrackEvent): boolean {
-  return t.content.includes('已到达') || t.content.includes('已收到退件包裹')
+  const c = t.content
+  return (
+    c.includes('已到达') ||
+    c.includes('已收到退件包裹') ||
+    (c.includes('已收到') && c.includes('退回包裹'))
+  )
 }
 
 function isWarehousePhysicalResponsibilityEvent(t: TrackEvent): boolean {
@@ -425,6 +453,15 @@ function getTrackResponsibilityPoint(
       owner: 'in_warehouse',
       time: event.time,
       basis: `正常轨迹「${label}」回仓/盘点责任点（${event.time}）`,
+      source: 'track',
+    }
+  }
+
+  if (isReturnFromCarrierArrivalEvent(event.content)) {
+    return {
+      owner: 'in_warehouse',
+      time: event.time,
+      basis: `正常轨迹外部承运商退件入仓确认责任点（${event.time}）`,
       source: 'track',
     }
   }
@@ -670,7 +707,8 @@ function buildResponsibilitySegments(sorted: TrackEvent[]): InternalSegment[] {
         !active ||
         active.owner === 'unknown' ||
         (active.owner === 'company_warehouse' && isWarehousePhysicalResponsibilityEvent(event)) ||
-        (active.owner === 'company_warehouse' && hasSameHub(active, leadingHub))
+        (active.owner === 'company_warehouse' && hasSameHub(active, leadingHub)) ||
+        (active.owner === 'external_carrier' && isWarehousePhysicalResponsibilityEvent(event))
 
       if (canLocateWarehouse) {
         ensureWarehouseSegment(
@@ -709,16 +747,19 @@ function findLastEvent(events: TrackEvent[], predicate: (event: TrackEvent) => b
   return null
 }
 
-function isWarehouseRealScanCandidate(event: TrackEvent): boolean {
-  return !isDispatchOutEvent(event)
-}
-
 function findFirstRealScan(events: TrackEvent[], profile: WarehouseProfile | null): TrackEvent | null {
   for (const event of events) {
-    if (!isWarehouseRealScanCandidate(event)) continue
     if (isSorterDeviceScanEvent(event.content)) return event
+    if (isReturnFromCarrierArrivalEvent(event.content)) return event
     const op = extractOperatorFromContent(event.content)
-    if (classifyOperatorForWarehouse(op, profile) === 'real') return event
+    if (classifyOperatorForWarehouse(op, profile) !== 'real') continue
+    if (
+      isBoxedTransferEvent(event.content) ||
+      isWarehousePhysicalResponsibilityEvent(event) ||
+      isSydneyInternalWarehouseResetEvent(event, profile)
+    ) {
+      return event
+    }
   }
   return null
 }
@@ -726,10 +767,17 @@ function findFirstRealScan(events: TrackEvent[], profile: WarehouseProfile | nul
 function findLastRealScan(events: TrackEvent[], profile: WarehouseProfile | null): TrackEvent | null {
   for (let i = events.length - 1; i >= 0; i -= 1) {
     const event = events[i]
-    if (!isWarehouseRealScanCandidate(event)) continue
     if (isSorterDeviceScanEvent(event.content)) return event
+    if (isReturnFromCarrierArrivalEvent(event.content)) return event
     const op = extractOperatorFromContent(event.content)
-    if (classifyOperatorForWarehouse(op, profile) === 'real') return event
+    if (classifyOperatorForWarehouse(op, profile) !== 'real') continue
+    if (
+      isBoxedTransferEvent(event.content) ||
+      isWarehousePhysicalResponsibilityEvent(event) ||
+      isSydneyInternalWarehouseResetEvent(event, profile)
+    ) {
+      return event
+    }
   }
   return null
 }
@@ -797,14 +845,14 @@ function reconcileSegmentsWithInterceptArrivals(
     if (active.owner === 'company_warehouse' && active.hubId === hubProfile.hubId) continue
     const op = interceptHubOpOwner(log, hubProfile)
     if (!op) continue
-    closeSegment(active, log.gmtIntercept, `阻断日志显示已在 ${hubProfile.displayName} 操作`)
+    closeSegment(active, log.gmtIntercept, `阻断日志显示已在 ${hubProfile.name} 操作`)
     segments.push(
       makeSegment({
         owner: 'company_warehouse',
         status: op === 'out_warehouse' ? 'out_warehouse' : 'in_warehouse',
         startTime: log.gmtIntercept,
-        startReason: `阻断日志 ${log.scanUserName || log.scanUserCode} 在 ${hubProfile.displayName} 的真实操作，责任转入该仓`,
-        hubName: hubProfile.displayName,
+        startReason: `阻断日志 ${log.scanUserName || log.scanUserCode} 在 ${hubProfile.name} 的真实操作，责任转入该仓`,
+        hubName: hubProfile.name,
       })
     )
   }
@@ -896,12 +944,19 @@ function makeEmptyFacts(input: {
     merchantStorageSupersededByBusinessProgress: false,
     merchantStorageBusinessProgressTime: null,
     merchantStorageBusinessProgressEvidence: null,
-    merchantReturnConfirmed: false,
-    merchantReturnConfirmTime: null,
-    merchantReturnEvidence: null,
+    hasPhysicalActivityAfterDirectionFeedback: false,
+    merchantReturnClosed: false,
+    merchantReturnClosedTime: null,
+    merchantReturnClosedEvidence: null,
+    merchantReturnDirectionActive: false,
     merchantReturnRequested: false,
     merchantReturnRequestTime: null,
+    merchantReturnRequestDaysDiff: -1,
     merchantReturnRequestEvidence: null,
+    merchantReturnLatestProgressTime: null,
+    merchantReturnLatestProgressDaysDiff: -1,
+    merchantReturnLatestProgressEvidence: null,
+    merchantReturnTransferInProgress: false,
     latestEventKind: '',
   }
 }
@@ -910,8 +965,15 @@ function makeEmptyFacts(input: {
  * 从轨迹事件中提取结构化事实（纯计算，无 I/O）。
  * 先解析当前责任段，再只基于当前责任段计算库内/库外时效。
  */
-export function deriveTrackFacts(tracks: TrackEvent[], interceptLogs: ScanInterceptLog[] = []): TrackFacts {
-  const today = new Date()
+export function deriveTrackFacts(
+  tracks: TrackEvent[],
+  interceptLogs: ScanInterceptLog[] = [],
+  options: { analysisDate?: string | Date } = {}
+): TrackFacts {
+  const today = options.analysisDate ? new Date(options.analysisDate) : new Date()
+  if (isNaN(today.getTime())) {
+    today.setTime(Date.now())
+  }
   today.setHours(0, 0, 0, 0)
   const todayStr = today.toISOString().slice(0, 10)
 
@@ -1041,9 +1103,13 @@ export function deriveTrackFacts(tracks: TrackEvent[], interceptLogs: ScanInterc
   let merchantStorageEvent: TrackEvent | null = null
   let merchantStorageEvidence: string | null = null
   let merchantReturnEvent: TrackEvent | null = null
-  let merchantReturnEvidence: string | null = null
+  let merchantReturnClosedEvidence: string | null = null
   let merchantReturnRequestEvent: TrackEvent | null = null
   let merchantReturnRequestEvidence: string | null = null
+  let merchantReturnDirectionRequestEvent: TrackEvent | null = null
+  let merchantOtherReturnRequestEvent: TrackEvent | null = null
+  let merchantReturnLatestProgressEvent: TrackEvent | null = null
+  let merchantReturnLatestProgressEvidence: string | null = null
   let merchantAbandonFeedbackEvent: TrackEvent | null = null
   let merchantAbandonFeedbackEvidence: string | null = null
   let merchantAbandonClosedEvent: TrackEvent | null = null
@@ -1071,11 +1137,24 @@ export function deriveTrackFacts(tracks: TrackEvent[], interceptLogs: ScanInterc
     }
     if (isMerchantReturnEvent(event.content)) {
       merchantReturnEvent = event
-      merchantReturnEvidence = extractMerchantReturnEvidence(event.content)
+      merchantReturnClosedEvidence = extractMerchantReturnEvidence(event.content)
     }
     if (isMerchantReturnRequestEvent(event.content)) {
       merchantReturnRequestEvent = event
       merchantReturnRequestEvidence = extractShortEvidence(event.content)
+      if (isMerchantReturnDirectionRequestEvent(event.content)) {
+        merchantReturnDirectionRequestEvent = event
+      } else {
+        merchantOtherReturnRequestEvent = event
+      }
+    }
+    if (
+      merchantReturnRequestEvent &&
+      event.time >= merchantReturnRequestEvent.time &&
+      isMerchantReturnProgressEvent(event.content)
+    ) {
+      merchantReturnLatestProgressEvent = event
+      merchantReturnLatestProgressEvidence = extractShortEvidence(event.content)
     }
     if (isMerchantAbandonFeedbackEvent(event.content)) {
       merchantAbandonFeedbackEvent = event
@@ -1086,15 +1165,6 @@ export function deriveTrackFacts(tracks: TrackEvent[], interceptLogs: ScanInterc
       merchantAbandonClosedEvidence = extractShortEvidence(event.content)
     }
   }
-
-  // "最新商家反馈优先"：Abandon 只有在时间上晚于所有暂存和退返事件时才视为有效
-  // 闭环事件（退件已销毁）比方向事件（退件处理意见[Abandon]）更优先作为 Abandon 时间基准
-  const latestAbandonEventTime = merchantAbandonClosedEvent?.time ?? merchantAbandonFeedbackEvent?.time ?? null
-  const merchantAbandonActive =
-    latestAbandonEventTime !== null &&
-    (merchantStorageEvent === null || latestAbandonEventTime > merchantStorageEvent.time) &&
-    (merchantReturnEvent === null || latestAbandonEventTime > merchantReturnEvent.time) &&
-    (merchantReturnRequestEvent === null || latestAbandonEventTime > merchantReturnRequestEvent.time)
 
   const storageScheduleEvent =
     merchantStorageEvent === null
@@ -1107,10 +1177,42 @@ export function deriveTrackFacts(tracks: TrackEvent[], interceptLogs: ScanInterc
         null)
   const merchantStorageReleasedBySchedule = storageScheduleEvent !== null
   const merchantStorageSupersededByBusinessProgress = storageBusinessProgressEvent !== null
+  const latestAbandonEvent = merchantAbandonClosedEvent ?? merchantAbandonFeedbackEvent
+  const latestMerchantDirection = [
+    merchantDestroyEvent ? { type: 'destroy' as const, event: merchantDestroyEvent } : null,
+    latestAbandonEvent ? { type: 'abandon' as const, event: latestAbandonEvent } : null,
+    merchantStorageEvent ? { type: 'storage' as const, event: merchantStorageEvent } : null,
+    merchantReturnEvent ? { type: 'return_closed' as const, event: merchantReturnEvent } : null,
+    merchantReturnDirectionRequestEvent ? { type: 'return_direction' as const, event: merchantReturnDirectionRequestEvent } : null,
+    merchantOtherReturnRequestEvent ? { type: 'other_return' as const, event: merchantOtherReturnRequestEvent } : null,
+  ]
+    .filter((item): item is NonNullable<typeof item> => item !== null)
+    .sort((a, b) => a.event.time.localeCompare(b.event.time))
+    .at(-1)
+
+  const merchantDestroyActive = latestMerchantDirection?.type === 'destroy'
+  const merchantAbandonActive = latestMerchantDirection?.type === 'abandon'
   const merchantStorageActive =
-    merchantStorageEvent !== null &&
+    latestMerchantDirection?.type === 'storage' &&
     !merchantStorageReleasedBySchedule &&
     !merchantStorageSupersededByBusinessProgress
+  const merchantReturnClosed = latestMerchantDirection?.type === 'return_closed'
+  const merchantReturnDirectionActive = merchantReturnClosed || latestMerchantDirection?.type === 'return_direction'
+  const merchantReturnActive = merchantReturnDirectionActive || latestMerchantDirection?.type === 'other_return'
+
+  // 计算：方向指令后是否有真实物理活动支撑（责任点为证据）
+  // merchantReturnClosed / merchantAbandonClosed 本身即物理闭环证据，无需后续检查
+  const latestActiveDirectionTime: string | null = merchantReturnClosed
+    ? null
+    : latestMerchantDirection?.event.time ?? null
+  const hasPhysicalActivityAfterDirectionFeedback: boolean = merchantReturnClosed
+    ? true
+    : merchantAbandonActive && merchantAbandonClosedEvent !== null
+    ? true
+    : latestActiveDirectionTime === null
+    ? false
+    : allResponsibilityPoints.some((rp) => rp.time > latestActiveDirectionTime)
+
   const latestInterceptTime = latestIntercept?.gmtIntercept ?? null
 
   const normalResponsibilityOwner: LossResponsibilityOwner | null = latestTrackResponsibilityPoint?.owner ?? null
@@ -1131,6 +1233,17 @@ export function deriveTrackFacts(tracks: TrackEvent[], interceptLogs: ScanInterc
   const activeWarehouseLossTimeoutDays = getWarehouseLossTimeoutDays(activeProfile)
   const externalCarrierTransferTime =
     activeSegment?.owner === 'external_carrier' ? activeSegment.startTime : null
+  const merchantReturnLatestProgressDestination = merchantReturnLatestProgressEvent
+    ? extractTransferDestination(merchantReturnLatestProgressEvent.content)
+    : ''
+  const merchantReturnDestinationReached =
+    merchantReturnLatestProgressEvent !== null &&
+    merchantReturnRequestEvent !== null &&
+    merchantReturnLatestProgressDestination !== '' &&
+    activeSegment?.owner === 'company_warehouse' &&
+    hasSameHub(activeSegment, merchantReturnLatestProgressDestination) &&
+    finalResponsibilityPoint !== null &&
+    finalResponsibilityPoint.time > merchantReturnRequestEvent.time
 
   return {
     todayStr,
@@ -1197,12 +1310,13 @@ export function deriveTrackFacts(tracks: TrackEvent[], interceptLogs: ScanInterc
     finalResponsibilitySource: finalResponsibilityPoint?.source ?? null,
     finalResponsibilityDaysDiff: finalResponsibilityPoint ? daysDiff(finalResponsibilityPoint.time) : -1,
     finalResponsibilityBasis,
-    merchantDestroyConfirmed: merchantDestroyEvent !== null,
+    merchantDestroyConfirmed: merchantDestroyActive,
     merchantDestroyConfirmTime: merchantDestroyEvent?.time ?? null,
     merchantDestroyEvidence,
     merchantAbandonActive,
-    merchantAbandonConfirmTime: merchantAbandonFeedbackEvent?.time ?? merchantAbandonClosedEvent?.time ?? null,
-    merchantAbandonEvidence: merchantAbandonFeedbackEvidence ?? merchantAbandonClosedEvidence,
+    merchantAbandonConfirmTime: latestAbandonEvent?.time ?? null,
+    merchantAbandonEvidence:
+      latestAbandonEvent === merchantAbandonClosedEvent ? merchantAbandonClosedEvidence : merchantAbandonFeedbackEvidence,
     merchantAbandonClosed: merchantAbandonClosedEvent !== null,
     merchantAbandonClosedTime: merchantAbandonClosedEvent?.time ?? null,
     merchantAbandonClosedEvidence,
@@ -1214,12 +1328,27 @@ export function deriveTrackFacts(tracks: TrackEvent[], interceptLogs: ScanInterc
     merchantStorageSupersededByBusinessProgress,
     merchantStorageBusinessProgressTime: storageBusinessProgressEvent?.time ?? null,
     merchantStorageBusinessProgressEvidence: storageBusinessProgressEvent?.content ?? null,
-    merchantReturnConfirmed: merchantReturnEvent !== null,
-    merchantReturnConfirmTime: merchantReturnEvent?.time ?? null,
-    merchantReturnEvidence,
-    merchantReturnRequested: merchantReturnRequestEvent !== null && merchantReturnEvent === null,
+    hasPhysicalActivityAfterDirectionFeedback,
+    merchantReturnClosed,
+    merchantReturnClosedTime: merchantReturnClosed ? merchantReturnEvent?.time ?? null : null,
+    merchantReturnClosedEvidence: merchantReturnClosed ? merchantReturnClosedEvidence : null,
+    merchantReturnDirectionActive,
+    merchantReturnRequested: merchantReturnRequestEvent !== null && !merchantReturnClosed && merchantReturnActive,
     merchantReturnRequestTime: merchantReturnRequestEvent?.time ?? null,
+    merchantReturnRequestDaysDiff: merchantReturnRequestEvent ? daysDiff(merchantReturnRequestEvent.time) : -1,
     merchantReturnRequestEvidence,
+    merchantReturnLatestProgressTime: merchantReturnLatestProgressEvent?.time ?? null,
+    merchantReturnLatestProgressDaysDiff: merchantReturnLatestProgressEvent
+      ? daysDiff(merchantReturnLatestProgressEvent.time)
+      : -1,
+    merchantReturnLatestProgressEvidence,
+    merchantReturnTransferInProgress:
+      merchantReturnRequestEvent !== null &&
+      !merchantReturnClosed &&
+      merchantReturnLatestProgressEvent !== null &&
+      isBoxedTransferEvent(merchantReturnLatestProgressEvent.content) &&
+      !merchantReturnDestinationReached &&
+      (!finalResponsibilityPoint || finalResponsibilityPoint.time <= merchantReturnLatestProgressEvent.time),
     latestEventKind: summarizeLatestEvent(lastEvent),
   }
 }
@@ -1243,8 +1372,12 @@ function formatSegmentSummary(facts: TrackFacts): string {
  * 将 `deriveTrackFacts` 的结构化结果渲染成 LLM prompt 中的时序分析文本。
  * LLM 直接使用这些预计算值，无需自行推算时间差。
  */
-export function computeTrackTemporalContext(tracks: TrackEvent[], interceptLogs: ScanInterceptLog[] = []): string {
-  const facts = deriveTrackFacts(tracks, interceptLogs)
+export function computeTrackTemporalContext(
+  tracks: TrackEvent[],
+  interceptLogs: ScanInterceptLog[] = [],
+  options: { analysisDate?: string | Date } = {}
+): string {
+  const facts = deriveTrackFacts(tracks, interceptLogs, options)
 
   if (!tracks.length) {
     return `[时序分析（服务端预计算，直接使用，禁止自行推算时间差）]\n今天: ${facts.todayStr}\n轨迹为空，无法计算时序特征。`
@@ -1268,7 +1401,7 @@ export function computeTrackTemporalContext(tracks: TrackEvent[], interceptLogs:
     )
     lines.push(`当前仓库丢失超时阈值: ${facts.activeWarehouseLossTimeoutDays} 天`)
     if (!facts.activeWarehouseKnown) {
-      lines.push('仓库配置状态: 未知仓库，禁止默认把操作员视为真实扫描员；若结论依赖真实扫描员，应输出「需人工判断」。')
+      lines.push('仓库配置状态: 未知仓库，禁止默认把操作员视为真实操作员；若结论依赖真实操作员，应输出「需人工判断」。')
     }
   } else if (facts.activeResponsibilityOwner === 'external_carrier') {
     lines.push(
@@ -1286,7 +1419,7 @@ export function computeTrackTemporalContext(tracks: TrackEvent[], interceptLogs:
   lines.push('')
   lines.push('--- 当前责任段：库内责任超时 ---')
   lines.push(
-    `真实操作员扫描记录: ${facts.hasRealOperatorScan ? '是（仓内扫描/盘点，不含「包裹正在派送中」二次出库扫描）' : '否（当前责任段无已配置仓库的真实扫描员）'}`
+    `真实操作员扫描记录: ${facts.hasRealOperatorScan ? '是（仓内扫描/盘点，不含「包裹正在派送中」二次出库扫描）' : '否（当前责任段无可确认为真实操作员的仓内扫描/盘点）'}`
   )
 
   if (facts.inWarehouseStartTime && facts.inWarehouseBasis) {
@@ -1406,13 +1539,13 @@ export function computeTrackTemporalContext(tracks: TrackEvent[], interceptLogs:
       `商家销毁终态: 是（${facts.merchantDestroyConfirmTime ?? '-'}，证据: ${facts.merchantDestroyEvidence ?? '命中销毁关键词'}）  → 该订单已进入商家确认销毁闭环，优先判定「暂无异常」，子类型建议「Abandon销毁」`
     )
   }
-  if (facts.merchantReturnConfirmed) {
+  if (facts.merchantReturnClosed) {
     lines.push(
-      `退返商家闭环: 是（${facts.merchantReturnConfirmTime ?? '-'}，证据: ${facts.merchantReturnEvidence ?? '命中退返闭环关键词'}）  → 该订单已完成退返/退回商家，优先判定「暂无异常」，子类型建议「退返商家」`
+      `退返商家闭环: 是（${facts.merchantReturnClosedTime ?? '-'}，证据: ${facts.merchantReturnClosedEvidence ?? '命中退返闭环关键词'}）  → 该订单已完成退返/退回商家，优先判定「暂无异常」，子类型建议「退返商家」`
     )
   } else if (facts.merchantReturnRequested) {
     lines.push(
-      `退返商家待处理: 是（${facts.merchantReturnRequestTime ?? '-'}，证据: ${facts.merchantReturnRequestEvidence ?? '命中退返处理方向'}）  → 商家仅给出退返方向，未出现退返闭环，仍按当前责任段库内/库外超时判断`
+      `退返商家待处理: 是（${facts.merchantReturnRequestTime ?? '-'}，证据: ${facts.merchantReturnRequestEvidence ?? '命中退返处理方向'}；最新推进: ${facts.merchantReturnLatestProgressTime ?? '-'}，${facts.merchantReturnLatestProgressEvidence ?? '无'}）  → 商家已给出退返方向但未出现退返闭环；该方向不改变责任点，最终结论仍以当前责任段最终责任点和当前仓库阈值为准；仅在 lossScope 为「暂无异常」时使用子类型「退返商家」`
     )
   }
   if (facts.merchantStorageActive) {

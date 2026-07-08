@@ -1,27 +1,55 @@
 import { format } from 'date-fns'
 import { adjustAttendanceClockTimeText } from './attendanceClockTime'
-import { isWeekendWorkday, parseDate } from './attendanceDate'
+import { parseDate } from './attendanceDate'
 import { calculateDecimalHours } from './wageRateCalculation'
+import { cellStringFromSheetRow } from './sheetCellLookup'
 
 export type EmployeeLite = { employeeId: string; role: string }
 
-const POSITION_TITLE_KEYS = ['职位名称', 'Job Title', 'jobTitle', 'Position', 'position'] as const
+const POSITION_TITLE_KEYS = [
+  '职位名称/Job Title',
+  '职位名称',
+  'Job Title',
+  'jobTitle',
+  'Position',
+  'position',
+  '职位/position Name',
+] as const
 const POSITION_CODE_KEYS = ['职位编号', 'Job Code', 'jobCode', 'Position Code', 'positionCode'] as const
+const NAME_KEYS = ['姓名/Name', '姓名', 'Name', 'name'] as const
+const SURNAME_KEYS = ['姓氏/Surname', '姓氏', 'Surname', 'surname'] as const
+const NICKNAME_KEYS = ['昵称/Nickname', '昵称', 'Nickname', 'nickname'] as const
+const DEPARTMENT_KEYS = ['部门/Department', '部门', 'Department', 'department'] as const
+const EMPLOYEE_ID_KEYS = ['人员编号/Employee ID', '人员编号', 'Employee ID', 'employeeId'] as const
+const DATE_KEYS = ['日期/Date', '日期', 'Date', 'date'] as const
+const WORKDAY_KEYS = ['工作日/Workday', '工作日', 'Workday', 'workday'] as const
 const CLOCK_IN_KEYS = ['实际签到时间', '实际签到', '首次打卡', 'First Clock In', 'firstClockIn'] as const
 const CLOCK_OUT_KEYS = ['实际签退时间', '实际签退', '最后打卡', 'Last Clock Out', 'lastClockOut'] as const
 const TOTAL_HOURS_KEYS = ['总时长', 'Total Hours', 'totalHours'] as const
 const WORK_HOURS_KEYS = ['工作时长', '工作时长(小时)', '工作时长（小时）', 'Work Hours', 'workHours'] as const
-const DEDUCTION_KEYS = ['扣减', '扣款', 'Deduction', 'deduction'] as const
-const REWARD_KEYS = ['奖励', '奖金', 'Reward', 'reward'] as const
+const DEDUCTION_KEYS = [
+  '扣减',
+  '扣款',
+  'Punishment',
+  'punishment',
+  '扣减/Punishment',
+  'Punishment/扣减',
+  'Deduction',
+  'deduction',
+] as const
+const REWARD_KEYS = [
+  '奖励',
+  '奖金',
+  'Award',
+  'award',
+  '奖励/Award',
+  'Award/奖励',
+  'Reward',
+  'reward',
+] as const
 
 function cellString(row: Record<string, unknown>, keys: readonly string[]): string {
-  for (const key of keys) {
-    const v = row[key]
-    if (v !== undefined && v !== null && String(v).trim() !== '') {
-      return String(v).trim()
-    }
-  }
-  return ''
+  return cellStringFromSheetRow(row, keys)
 }
 
 function normalizePositionTitle(raw: string): string {
@@ -82,8 +110,6 @@ export function resolveRoleFromAttendanceRow(
 export function transformSheetRowsToUploadedData(
   jsonData: Record<string, unknown>[],
   employees: EmployeeLite[],
-  isSorting: boolean,
-  isPublicHoliday: boolean,
 ): Record<string, unknown>[] {
   const employeeRoleMap: Record<string, string> = {}
   employees.forEach((emp) => {
@@ -91,74 +117,52 @@ export function transformSheetRowsToUploadedData(
   })
 
   const mappedData = jsonData.map((row) => {
-    const employeeId = String(row['人员编号'] ?? row['Employee ID'] ?? row['employeeId'] ?? '')
+    const employeeId = cellString(row, EMPLOYEE_ID_KEYS) || String(row['人员编号'] ?? row['Employee ID'] ?? row['employeeId'] ?? '')
     const role = resolveRoleFromAttendanceRow(row, employeeRoleMap)
 
-    const workdayValue = row['工作日'] ?? row['Workday'] ?? row['workday'] ?? ''
-    const dateValue = row['日期'] ?? row['Date'] ?? row['date'] ?? ''
-
-    let weekend = isWeekendWorkday(workdayValue)
-    if (!weekend) {
-      const dateObj = parseDate(dateValue)
-      if (dateObj) {
-        const dayOfWeek = dateObj.getDay()
-        weekend = dayOfWeek === 0 || dayOfWeek === 6
-      }
-    }
-
-    let isPublicHolidayRow = false
-    let isSortingRow = false
-    let weekendOption: string
-
-    if (weekend) {
-      if (isPublicHoliday) {
-        isPublicHolidayRow = true
-        weekendOption = 'publicHoliday'
-      } else if (isSorting) {
-        isSortingRow = true
-        weekendOption = 'sorting'
-      } else {
-        weekendOption = 'sorting'
-        isSortingRow = true
-      }
-    } else {
-      if (isPublicHoliday) {
-        isPublicHolidayRow = true
-        weekendOption = 'publicHoliday'
-      } else if (isSorting) {
-        isSortingRow = true
-        weekendOption = 'sorting'
-      } else {
-        weekendOption = 'sorting'
-        isSortingRow = true
-      }
-    }
+    const workdayValue =
+      cellString(row, WORKDAY_KEYS) ||
+      (row['工作日'] ?? row['Workday'] ?? row['workday'] ?? '')
+    const dateValue =
+      cellString(row, DATE_KEYS) ||
+      String(row['日期'] ?? row['Date'] ?? row['date'] ?? '')
 
     const totalHours = cellString(row, TOTAL_HOURS_KEYS)
     const workHours = cellString(row, WORK_HOURS_KEYS)
     const effectiveHours = workHours || totalHours
+    const positionTitle = cellString(row, POSITION_TITLE_KEYS)
 
     return {
       employeeId,
       /** 考勤表「姓名」，仅展示/导出用，不参与校验 */
-      name: row['姓名'] ?? row['Name'] ?? row['name'] ?? '',
-      surname: row['姓氏'] ?? row['Surname'] ?? row['surname'] ?? '',
-      nickname: row['昵称'] ?? row['Nickname'] ?? row['nickname'] ?? '',
-      department: row['部门'] ?? row['Department'] ?? row['department'] ?? '',
+      name:
+        cellString(row, NAME_KEYS) ||
+        String(row['姓名'] ?? row['Name'] ?? row['name'] ?? ''),
+      surname:
+        cellString(row, SURNAME_KEYS) ||
+        String(row['姓氏'] ?? row['Surname'] ?? row['surname'] ?? ''),
+      nickname:
+        cellString(row, NICKNAME_KEYS) ||
+        String(row['昵称'] ?? row['Nickname'] ?? row['nickname'] ?? ''),
+      department:
+        cellString(row, DEPARTMENT_KEYS) ||
+        String(row['部门'] ?? row['Department'] ?? row['department'] ?? ''),
       date: dateValue,
       workday: workdayValue,
       firstClockIn: adjustAttendanceClockTimeText(cellString(row, CLOCK_IN_KEYS), dateValue),
       lastClockOut: adjustAttendanceClockTimeText(cellString(row, CLOCK_OUT_KEYS), dateValue),
       totalHours,
       workHours,
-      deduction: cellString(row, DEDUCTION_KEYS),
-      reward: cellString(row, REWARD_KEYS),
+      deduction:
+        cellString(row, DEDUCTION_KEYS) ||
+        String(row['Punishment'] ?? row['punishment'] ?? ''),
+      reward:
+        cellString(row, REWARD_KEYS) ||
+        String(row['Award'] ?? row['award'] ?? ''),
       /** 工资结算统一口径：直接使用「工作时长」；不存在时回退「总时长」。 */
       effectiveHours,
+      positionTitle,
       role,
-      isPublicHolidayRow,
-      isSortingRow,
-      weekendOption,
     }
   })
 
@@ -182,24 +186,17 @@ export function transformSheetRowsToUploadedData(
 
   const processedData = validHoursData.map((record) => {
     const dateObj = parseDate(record.date)
-    if (dateObj && !record.isPublicHolidayRow) {
-      const dateKey = format(dateObj, 'yyyy-MM-dd')
-      const workerCount = dateGroupMap.get(dateKey)?.size || 0
-
-      if (workerCount < 3) {
-        return {
-          ...record,
-          weekendOption: 'regularWeekend',
-          isSortingRow: false,
-        }
-      }
-      return {
-        ...record,
-        weekendOption: 'sorting',
-        isSortingRow: true,
-      }
+    if (!dateObj) {
+      return { ...record, weekendOption: 'sorting' }
     }
-    return record
+
+    const dateKey = format(dateObj, 'yyyy-MM-dd')
+    const workerCount = dateGroupMap.get(dateKey)?.size || 0
+
+    if (workerCount < 3) {
+      return { ...record, weekendOption: 'regularWeekend' }
+    }
+    return { ...record, weekendOption: 'sorting' }
   })
 
   return processedData.sort((a, b) => {

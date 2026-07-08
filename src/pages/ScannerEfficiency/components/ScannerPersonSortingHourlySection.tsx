@@ -17,20 +17,20 @@ export type ScannerPersonSortingHourlySectionProps = {
 }
 
 /**
- * 「一级分拣个人效率」-tab 内的「扫描员按小时段」：可折叠的按日小时透视表。
+ * 「分拣员个人效率」-tab 内的「扫描员按小时段」：可折叠的按日小时透视表。
  */
 export function ScannerPersonSortingHourlySection({
   expanded,
   onExpandedChange,
   pivotTables,
-  sectionEyebrow = 'Scanner Hourly',
+  sectionEyebrow,
   sectionTitle = '扫描员按小时段',
   sectionDescription = '',
   emptyPivotText = '暂无按小时段数据。',
   forStaticCapture = false,
 }: ScannerPersonSortingHourlySectionProps) {
   const pivotBody = (
-    <div className="space-y-6 px-4 pt-1">
+    <div className="space-y-6 p-4 pt-0">
       {pivotTables.length === 0 ? (
         <div className="overflow-x-auto">
           <DataTable columns={buildScannerHourlyPivotColumns([])} rows={[]} emptyText={emptyPivotText} />
@@ -52,21 +52,25 @@ export function ScannerPersonSortingHourlySection({
 
   if (forStaticCapture) {
     return (
-      <section className="space-y-4">
-        <SectionTitle eyebrow={sectionEyebrow} title={sectionTitle} description={sectionDescription} />
+      <section className="admin-panel overflow-hidden">
+        <SectionTitle kicker={sectionEyebrow} title={sectionTitle} description={sectionDescription} />
         {pivotBody}
       </section>
     )
   }
 
   return (
-    <section className="space-y-4">
-      <div className="flex items-start gap-2">
+    <section className="admin-panel overflow-hidden">
+      <div className="se-section-head flex flex-wrap items-start justify-between gap-4">
         <div className="min-w-0 flex-1">
-          <SectionTitle eyebrow={sectionEyebrow} title={sectionTitle} description={sectionDescription} />
+          <SectionTitle
+            bare
+            kicker={sectionEyebrow}
+            title={sectionTitle}
+            description={sectionDescription}
+          />
         </div>
         <IconButton
-          size="small"
           aria-expanded={expanded}
           aria-label={expanded ? '收起按小时段表格' : '展开按小时段表格'}
           onClick={() => onExpandedChange(!expanded)}

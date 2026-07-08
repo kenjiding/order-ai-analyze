@@ -1,4 +1,4 @@
-import { ClipboardList, PackageSearch } from 'lucide-react'
+import { ClipboardList, Layers, PackageSearch, Settings2 } from 'lucide-react'
 import { PageSectionTabs } from '../../../components/PageSectionTabs'
 import type { PageSectionTabItem } from '../../../components/PageSectionTabs'
 import type { TabId } from '../useOrderExceptionManagementPage'
@@ -6,17 +6,25 @@ import type { TabId } from '../useOrderExceptionManagementPage'
 type Props = {
   activeTab: TabId
   onTabChange: (id: TabId) => void
+  activeJobCount: number
 }
-
-const tabItems: PageSectionTabItem[] = [
-  { id: 'analyze', label: '异常订单分析', icon: PackageSearch },
-  { id: 'regression', label: '测试用例', icon: ClipboardList },
-]
 
 export function OrderExceptionManagementHeader({
   activeTab,
   onTabChange,
+  activeJobCount,
 }: Props) {
+  const tabItems: PageSectionTabItem[] = [
+    { id: 'analyze', label: 'AI异常订单分析', icon: PackageSearch },
+    {
+      id: 'jobs',
+      label: '任务队列',
+      icon: Layers,
+      badge: activeJobCount > 0 ? String(activeJobCount) : undefined,
+    },
+    { id: 'warehouse-config', label: '分析配置', icon: Settings2 },
+    { id: 'regression', label: '测试用例', icon: ClipboardList },
+  ]
   return (
     <div className="admin-panel overflow-hidden">
       <div className="border-b border-slate-200 px-5 py-4">
@@ -25,7 +33,7 @@ export function OrderExceptionManagementHeader({
             <div className="admin-eyebrow">Exception Operations</div>
             <h2 className="mt-1 flex items-center gap-2 text-xl font-semibold tracking-tight text-slate-950">
               <PackageSearch className="h-5 w-5 text-[#2f8f87]" aria-hidden />
-              订单异常管理
+              AI订单异常管理
             </h2>
           </div>
         </div>

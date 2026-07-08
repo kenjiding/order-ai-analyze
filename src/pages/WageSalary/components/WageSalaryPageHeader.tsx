@@ -1,12 +1,19 @@
-import { DollarSign, Scale, Settings, Upload, Users } from 'lucide-react'
+import { DollarSign, Scale, Settings, Upload, Users, GitCompareArrows } from 'lucide-react'
+import { PageSectionTabs } from '../../../components/PageSectionTabs'
+import type { PageSectionTabItem } from '../../../components/PageSectionTabs'
 
 type Statistics = { totalWages: number; totalHours: number; totalRecords: number } | null
+
+const WAGE_TABS: PageSectionTabItem[] = [
+  { id: 'upload', label: '工资结算', icon: Upload },
+  { id: 'reconciliation', label: '差异排查', icon: GitCompareArrows },
+  { id: 'employees', label: '员工管理', icon: Users },
+]
 
 type Props = {
   statistics: Statistics
   activeTab: string
-  onTabUpload: () => void
-  onTabEmployees: () => void
+  onTabChange: (tabId: string) => void
   onOpenRateSettings: () => void
   onOpenActualWorkerRates: () => void
 }
@@ -14,8 +21,7 @@ type Props = {
 export function WageSalaryPageHeader({
   statistics,
   activeTab,
-  onTabUpload,
-  onTabEmployees,
+  onTabChange,
   onOpenRateSettings,
   onOpenActualWorkerRates,
 }: Props) {
@@ -68,34 +74,7 @@ export function WageSalaryPageHeader({
         </div>
       </div>
 
-      <div className="border-b border-slate-200 bg-slate-50 px-5 py-3">
-        <div className="flex space-x-8">
-          <button
-            type="button"
-            onClick={onTabUpload}
-            className={`pb-2 px-1 border-b-2 font-medium text-sm transition-colors flex items-center gap-2 ${
-              activeTab === 'upload'
-                ? 'border-[#2f8f87] text-[#2f8f87]'
-                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-            }`}
-          >
-            <Upload className="w-4 h-4" />
-            文件上传
-          </button>
-          <button
-            type="button"
-            onClick={onTabEmployees}
-            className={`pb-2 px-1 border-b-2 font-medium text-sm transition-colors flex items-center gap-2 ${
-              activeTab === 'employees'
-                ? 'border-[#2f8f87] text-[#2f8f87]'
-                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-            }`}
-          >
-            <Users className="w-4 h-4" />
-            员工管理
-          </button>
-        </div>
-      </div>
+      <PageSectionTabs activeId={activeTab} items={WAGE_TABS} onChange={onTabChange} />
     </div>
   )
 }

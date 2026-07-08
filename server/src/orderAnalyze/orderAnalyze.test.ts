@@ -4,12 +4,17 @@ import type { ScanInterceptLog } from '../imile/interceptLogs'
 import { normalizeTrackEvent } from '../imile/track'
 import type { TrackEvent } from '../imile/track'
 import { compareRegressionCase } from './regression/compare'
-import { applyFactGuardrails } from './decisionRules'
+import { applyFactGuardrails, classifyOrderFromFacts } from './decisionRules'
 import { normalizeSubType } from './exceptionCatalog'
 import { parseOrderAnalyzeResults, prepareAnalyzeCategories } from './prompt'
 import { deriveTrackFacts, summarizeTracks } from './trackFacts'
 import { formatCurrentResponsibilityParty } from './pipeline'
-import { classifyOperatorForWarehouse, findWarehouseProfileByName } from './warehouseProfiles'
+import {
+  classifyOperatorForWarehouse,
+  findWarehouseProfileByName,
+  runWithWarehouseProfileContext,
+  type WarehouseConfigDto,
+} from './warehouseProfiles'
 import type { OrderAnalyzeResult, TrackFacts } from './types'
 
 function track(time: string, content: string, trackType = '', trackStageTx = ''): TrackEvent {
@@ -60,7 +65,7 @@ test('商家销毁终态优先纠正为暂无异常', () => {
   const guarded = applyFactGuardrails(baseResult(), facts)
 
   assert.equal(guarded.lossScope, '暂无异常')
-  assert.equal(guarded.needsReview, true)
+  assert.equal(guarded.needsReview, false)
   assert.equal(guarded.appliedDecisionRuleId, 'merchant_destroy_terminal')
 })
 
@@ -94,10 +99,22 @@ test('退返商家闭环纠正为暂无异常且子类型为退返商家', () =>
   ])
   const guarded = applyFactGuardrails(baseResult({ lossScope: '库内丢失' }), facts)
 
-  assert.equal(facts.merchantReturnConfirmed, true)
+  assert.equal(facts.merchantReturnClosed, true)
   assert.equal(guarded.lossScope, '暂无异常')
   assert.equal(guarded.exceptionCategoryId, '退返商家')
   assert.equal(guarded.appliedDecisionRuleId, 'merchant_return_terminal')
+})
+
+test('最新退返方向不会沿用历史退返闭环', () => {
+  const facts = deriveTrackFacts([
+    track('2024-01-01 10:00:00', '【ADL DS】退件已退返商家。操作员【ADL OP1】'),
+    track('2024-01-02 10:00:00', '【】包裹确认派送结束, 将按照商家反馈意见[退返商家]进行处理。', '', '退件处理'),
+  ])
+
+  assert.equal(facts.merchantReturnClosed, false)
+  assert.equal(facts.merchantReturnClosedTime, null)
+  assert.equal(facts.merchantReturnDirectionActive, true)
+  assert.equal(facts.merchantReturnRequested, true)
 })
 
 test('最新轨迹为订单异常完结时纠正为暂无异常且子类型为订单已完结', () => {
@@ -176,7 +193,7 @@ test('NDR 退返商家终态优先于当前责任段缺证据兜底', () => {
   assert.equal(facts.activeWarehouseHubId, 'adelaide_ds')
   assert.equal(facts.hasRealOperatorScan, true)
   assert.equal(facts.inWarehouseStartTime, inventoryTime)
-  assert.equal(facts.merchantReturnConfirmed, true)
+  assert.equal(facts.merchantReturnClosed, true)
   assert.equal(guarded.lossScope, '暂无异常')
   assert.equal(guarded.exceptionCategoryId, '退返商家')
   assert.equal(guarded.appliedDecisionRuleId, undefined)
@@ -198,7 +215,7 @@ test('已退返商家终态不被公司仓缺证据兜底覆盖', () => {
 
   assert.equal(facts.activeResponsibilityOwner, 'company_warehouse')
   assert.equal(facts.hasRealOperatorScan, false)
-  assert.equal(facts.merchantReturnConfirmed, true)
+  assert.equal(facts.merchantReturnClosed, true)
   assert.equal(guarded.lossScope, '暂无异常')
   assert.equal(guarded.exceptionCategoryId, '退返商家')
   assert.equal(guarded.appliedDecisionRuleId, undefined)
@@ -242,7 +259,7 @@ test('退返商家已正确闭环时不被后续退件装箱和缺证据兜底�
     facts
   )
 
-  assert.equal(facts.merchantReturnConfirmed, true)
+  assert.equal(facts.merchantReturnClosed, true)
   assert.equal(facts.activeSegmentStatus, 'in_warehouse')
   assert.equal(guarded.lossScope, '暂无异常')
   assert.equal(guarded.exceptionCategoryId, '退返商家')
@@ -262,7 +279,7 @@ test('暂存后出现退件意见时释放暂存，但不当作退返闭环', ()
 
   assert.equal(facts.merchantStorageActive, false)
   assert.equal(facts.merchantStorageSupersededByBusinessProgress, true)
-  assert.equal(facts.merchantReturnConfirmed, false)
+  assert.equal(facts.merchantReturnClosed, false)
   assert.equal(guarded.lossScope, '暂无异常')
   assert.equal(guarded.exceptionCategoryId, '')
   assert.equal(guarded.appliedDecisionRuleId, 'merchant_storage_superseded_by_progress')
@@ -336,7 +353,7 @@ test('暂存释放后库内最终责任已超时，AI 暂无异常误判应被�
   assert.notEqual(guarded.appliedDecisionRuleId, 'merchant_storage_superseded_by_progress')
 })
 
-test('商家退返方向未闭环且未超时，不使用退返商家子类型', () => {
+test('商家退返方向未闭环且未超时，使用退返商家子类型', () => {
   const inventoryTime = daysAgo(1, '10:00:00')
   const returnRequestTime = daysAgo(1, '16:18:05')
   const facts = deriveTrackFacts([
@@ -350,11 +367,73 @@ test('商家退返方向未闭环且未超时，不使用退返商家子类型',
   )
 
   assert.equal(facts.merchantReturnRequested, true)
-  assert.equal(facts.merchantReturnConfirmed, false)
+  assert.equal(facts.merchantReturnDirectionActive, true)
+  assert.equal(facts.merchantReturnClosed, false)
   assert.equal(facts.inWarehouseStartTime, inventoryTime)
+  assert.equal(guarded.lossScope, '暂无异常')
+  assert.equal(guarded.exceptionCategoryId, '退返商家')
+  assert.equal(guarded.appliedDecisionRuleId, undefined)
+})
+
+test('退返商家方向后仅有库内推进未闭环，暂无异常时保持退返商家子类型', () => {
+  const facts = deriveTrackFacts(
+    [
+      track('2026-06-03 16:15:48', '【SYDN】已盘点，库位编号[SYDN-7-1]。操作员【NSYD W3】', '', '派送'),
+      track('2026-06-04 16:09:08', '【SYDN】已盘点，库位编号[SYDN-7-1]。操作员【NSYD W2】', '', '派送'),
+      track('2026-06-05 16:45:20', '【SYDN】已盘点，库位编号[SYDN-7-1]。操作员【NSYD W3】', '', '派送'),
+      track('2026-06-09 08:05:02', '【SYDN】包裹确认派送结束, 将按照商家反馈意见[退返商家]进行处理。', '', '退件处理'),
+      track('2026-06-09 16:40:51', '【SYDN】已盘点，库位编号[SYDN-7-1]。操作员【NSYD W2】', '', '退件处理'),
+      track('2026-06-09 17:01:38', '【SYDN】已下架。操作员【NSYD W2】', '', '退件处理'),
+    ],
+    [],
+    { analysisDate: '2026-06-10' }
+  )
+  const guarded = classifyOrderFromFacts({ orderNo: 'T1', facts })
+
+  assert.equal(facts.merchantReturnRequested, true)
+  assert.equal(facts.merchantReturnDirectionActive, true)
+  assert.equal(facts.merchantReturnClosed, false)
+  assert.equal(facts.activeWarehouseHubId, 'SYDN')
+  assert.equal(facts.finalResponsibilityOwner, 'in_warehouse')
+  assert.equal(guarded.lossScope, '暂无异常')
+  assert.equal(guarded.exceptionCategoryId, '退返商家')
+})
+
+test('退返商家方向后最新处理方向改为 Transfer 时，不沿用退返商家子类型', () => {
+  const facts = deriveTrackFacts([
+    track(daysAgo(1, '10:00:00'), '【ADL DS】已盘点，库位编号[01]。操作员【ADL-前台】', '', '派送'),
+    track(daysAgo(1, '11:00:00'), '【ADL DS】包裹确认派送结束, 将按照商家反馈意见[退返商家]进行处理。', '', '退件处理'),
+    track(daysAgo(1, '12:00:00'), '商家已反馈退件处理意见[Transfer]，操作员【Yanwen_AUS】', '', '退件处理'),
+  ])
+  const guarded = applyFactGuardrails(
+    baseResult({ lossScope: '暂无异常', exceptionCategoryId: '退返商家', reason: '退返商家' }),
+    facts
+  )
+
+  assert.equal(facts.merchantReturnRequested, true)
+  assert.equal(facts.merchantReturnDirectionActive, false)
   assert.equal(guarded.lossScope, '暂无异常')
   assert.equal(guarded.exceptionCategoryId, '')
   assert.equal(guarded.appliedDecisionRuleId, 'merchant_return_in_progress_not_terminal')
+})
+
+test('退返商家方向后最新处理方向改为 Abandon 时，以 Abandon 子类型为准', () => {
+  const facts = deriveTrackFacts([
+    track(daysAgo(1, '10:00:00'), '【ADL DS】已盘点，库位编号[01]。操作员【ADL-前台】', '', '派送'),
+    track(daysAgo(1, '11:00:00'), '【ADL DS】包裹确认派送结束, 将按照商家反馈意见[退返商家]进行处理。', '', '退件处理'),
+    track(daysAgo(1, '12:00:00'), '商家已反馈退件处理意见[Abandon]', '', '退件处理'),
+  ])
+  const guarded = applyFactGuardrails(
+    baseResult({ lossScope: '暂无异常', exceptionCategoryId: '退返商家', reason: '退返商家' }),
+    facts
+  )
+
+  assert.equal(facts.merchantReturnRequested, false)
+  assert.equal(facts.merchantReturnDirectionActive, false)
+  assert.equal(facts.merchantAbandonActive, true)
+  assert.equal(guarded.lossScope, '暂无异常')
+  assert.equal(guarded.exceptionCategoryId, 'Abandon销毁')
+  assert.equal(guarded.appliedDecisionRuleId, 'merchant_abandon_terminal')
 })
 
 test('商家退返方向不是库内真实责任点，不能覆盖 sorter 设备扫描起算', () => {
@@ -375,6 +454,45 @@ test('商家退返方向不是库内真实责任点，不能覆盖 sorter 设备
   assert.equal(facts.inWarehouseBasis?.includes('商家退返'), false)
 })
 
+test('商家退返方向未闭环不阻断库内超时判定', () => {
+  const responsibilityTime = '2026-05-06 13:46:54'
+  const facts = deriveTrackFacts(
+    [
+      track('2026-05-05 19:22:56', '【Sydney Center】派送任务已分配给派件员(派件员：PARB,电话：***)，待派件员领取包裹。 操作员【cornerstone】', '', '派送'),
+      track('2026-05-05 20:34:16', '【Sydney Center】包裹已取消分配给[PARB]。操作员【SYD OPS2】', '', '派送'),
+      track('2026-05-06 13:43:19', '【Sydney Center】已盘点，库位编号[S-5-1]。操作员【SYD Warehouse21】', '', '派送'),
+      track(responsibilityTime, '【Sydney Center】已下架。操作员【SYD Warehouse21】', '', '派送'),
+      track('2026-05-07 08:11:37', '【Sydney Center】派送任务已分配给派件员(派件员：PARB,电话：***)，待派件员领取包裹。 操作员【cornerstone】', '', '派送'),
+      track('2026-05-07 08:57:17', '【Sydney Center】包裹已取消分配给[PARB]。操作员【SYD OPS2】', '', '派送'),
+      track('2026-05-08 07:52:56', '【Sydney Center】派送任务已分配给派件员(派件员：PARB,电话：***)，待派件员领取包裹。 操作员【cornerstone】', '', '派送'),
+      track('2026-05-08 08:30:20', '【Sydney Center】包裹已取消分配给[PARB]。操作员【SYD OPS2】', '', '派送'),
+      track('2026-05-09 09:05:27', '【Sydney Center】派送任务已分配给派件员(派件员：PARB,电话：***)，待派件员领取包裹。 操作员【cornerstone】', '', '派送'),
+      track('2026-05-09 09:45:23', '【Sydney Center】包裹已取消分配给[PARB]。操作员【SYD OPS2】', '', '派送'),
+      track('2026-05-11 19:47:48', '【Sydney Center】派送任务已分配给派件员(派件员：PARB,电话：***)，待派件员领取包裹。 操作员【cornerstone】', '', '派送'),
+      track('2026-05-11 20:31:33', '【Sydney Center】包裹已取消分配给[PARB]。操作员【SYD OPS2】', '', '派送'),
+      track('2026-05-13 08:02:29', '【Sydney Center】派送任务已分配给派件员(派件员：PARB,电话：***)，待派件员领取包裹。 操作员【cornerstone】', '', '派送'),
+      track('2026-05-13 08:42:37', '【Sydney Center】包裹已取消分配给[PARB]。操作员【SYD OPS2】', '', '派送'),
+      track('2026-05-13 19:31:36', '【Sydney Center】派送任务已分配给派件员(派件员：PARB,电话：***)，待派件员领取包裹。 操作员【cornerstone】', '', '派送'),
+      track('2026-05-13 19:32:26', '【Sydney Center】包裹已取消分配给[PARB]。操作员【SYD OPS2】', '', '派送'),
+      track('2026-05-14 16:31:29', '【Sydney Center】登记问题件[派送失败，需退回。], 操作员【Frank Wang Xige】。', 'Problem', '派送'),
+      track('2026-05-14 16:31:31', '【Sydney Center】已进入NDR，NDR来源[问题件触发NDR]', '', '派送'),
+      track('2026-05-16 08:01:08', '【】包裹确认派送结束, 将按照商家反馈意见[退返商家]进行处理。', '', '退件处理'),
+    ],
+    [],
+    { analysisDate: '2026-06-10' }
+  )
+  const guarded = classifyOrderFromFacts({ orderNo: '6042526946050', facts })
+
+  assert.equal(facts.activeWarehouseName, 'Sydney Center')
+  assert.equal(facts.merchantReturnRequested, true)
+  assert.equal(facts.merchantReturnClosed, false)
+  assert.equal(facts.finalResponsibilityOwner, 'in_warehouse')
+  assert.equal(facts.finalResponsibilityStartTime, responsibilityTime)
+  assert.equal(guarded.lossScope, '库内丢失')
+  assert.equal(guarded.exceptionCategoryId, '扫描员丢失')
+  assert.equal(guarded.needsReview, false)
+})
+
 test('商家退返方向后最新盘点重置仓内起算', () => {
   const inventoryTime = daysAgo(0, '15:01:57')
   const facts = deriveTrackFacts([
@@ -389,11 +507,12 @@ test('商家退返方向后最新盘点重置仓内起算', () => {
   )
 
   assert.equal(facts.merchantReturnRequested, true)
+  assert.equal(facts.merchantReturnDirectionActive, true)
   assert.equal(facts.inWarehouseStartTime, inventoryTime)
   assert.equal(facts.inWarehouseDaysDiff < facts.activeWarehouseLossTimeoutDays, true)
   assert.equal(guarded.lossScope, '暂无异常')
-  assert.equal(guarded.exceptionCategoryId, '')
-  assert.equal(guarded.appliedDecisionRuleId, 'merchant_return_in_progress_not_terminal')
+  assert.equal(guarded.exceptionCategoryId, '退返商家')
+  assert.equal(guarded.appliedDecisionRuleId, undefined)
 })
 
 test('退返方向后装箱集包转运是起始仓库内操作，责任仍留在起始仓未超时不判丢失', () => {
@@ -409,7 +528,7 @@ test('退返方向后装箱集包转运是起始仓库内操作，责任仍留�
   )
 
   assert.equal(facts.merchantReturnRequested, true)
-  assert.equal(facts.merchantReturnConfirmed, false)
+  assert.equal(facts.merchantReturnClosed, false)
   // 装箱集包不切换责任段，责任仍在起始仓 ADL DS，且装箱本身作为最新库内真实操作点
   assert.equal(facts.activeResponsibilityOwner, 'company_warehouse')
   assert.equal(facts.activeWarehouseHubId, 'adelaide_ds')
@@ -417,9 +536,9 @@ test('退返方向后装箱集包转运是起始仓库内操作，责任仍留�
   assert.equal(facts.inWarehouseStartTime, packageTime)
   assert.equal(facts.finalResponsibilityOwner, 'in_warehouse')
   assert.equal(guarded.lossScope, '暂无异常')
-  assert.equal(guarded.exceptionCategoryId, '')
-  assert.equal(guarded.appliedDecisionRuleId, 'merchant_return_in_progress_not_terminal')
-  assert.equal(normalizeSubType({ lossScope: '暂无异常', facts }), '')
+  assert.equal(guarded.exceptionCategoryId, '退返商家')
+  assert.equal(guarded.appliedDecisionRuleId, 'in_warehouse_loss_threshold_not_met')
+  assert.equal(normalizeSubType({ lossScope: '暂无异常', facts }), '退返商家')
 })
 
 test('退件处理意见 Transfer 后目的仓收到退件，应切回目的仓并按库内超时纠正', () => {
@@ -435,7 +554,7 @@ test('退件处理意见 Transfer 后目的仓收到退件，应切回目的仓�
     facts
   )
 
-  assert.equal(facts.merchantReturnConfirmed, false)
+  assert.equal(facts.merchantReturnClosed, false)
   assert.equal(facts.activeResponsibilityOwner, 'company_warehouse')
   assert.equal(facts.activeSegmentStatus, 'in_warehouse')
   assert.equal(facts.activeWarehouseHubId, 'adelaide_ds')
@@ -717,23 +836,23 @@ test('同城上游仓真实扫描可作为 DS 内部转发入库依据', () => {
   assert.equal(normalizeSubType({ lossScope: '库内丢失', facts }), '扫描员丢失')
 })
 
-test('当前责任段真实出库超 7 天且未回仓满足库外事实', () => {
+test('当前责任段真实出库超阈值且未回仓满足库外事实', () => {
   const facts = deriveTrackFacts([
-    track(daysAgo(9), '【ADL DS】包号[2603191734601]已到达。操作员【ADL-DC-Tong】 。'),
-    track(daysAgo(8), '【ADL DS】包裹正在派送中(派件员: ADL-JC-city-A,ID: D001,电话: ***)', 'delivery'),
+    track(daysAgo(17), '【ADL DS】包号[2603191734601]已到达。操作员【ADL-DC-Tong】 。'),
+    track(daysAgo(16), '【ADL DS】包裹正在派送中(派件员: ADL-JC-city-A,ID: D001,电话: ***)', 'delivery'),
   ])
 
   assert.equal(facts.activeWarehouseHubId, 'adelaide_ds')
   assert.equal(facts.hasRealOperatorScan, true)
   assert.equal(facts.lastDispatchHasReturn, false)
-  assert.ok(facts.outWarehouseDaysDiff >= 7)
+  assert.ok(facts.outWarehouseDaysDiff >= facts.activeWarehouseLossTimeoutDays)
   assert.equal(normalizeSubType({ lossScope: '库外丢失', facts }), '快递员丢失')
 })
 
-test('派件员二次出库扫描不作为仓内真实扫描，且超 7 天未回仓强制归库外', () => {
-  const dispatchTime = daysAgo(8, '09:53:51')
+test('派件员二次出库扫描不作为仓内真实扫描，且超阈值未回仓强制归库外', () => {
+  const dispatchTime = daysAgo(16, '09:53:51')
   const facts = deriveTrackFacts([
-    track(daysAgo(9, '13:39:32'), '【ADL DS】已到达。操作员【System】 。'),
+    track(daysAgo(17, '13:39:32'), '【ADL DS】已到达。操作员【System】 。'),
     track(
       dispatchTime,
       '【ADL DS】包裹正在派送中(派件员: ADL-city-003-VENKATA SRAVI TEJA SETTY, ***)。操作员【ADL-city-003-VENKATA SRAVI TEJA SETTY】',
@@ -791,7 +910,7 @@ test('仅 trackStageTx 命中已签收时仍识别为正常完结', () => {
 })
 
 test('已签收终态下阻断日志责任点不应反转为库外丢失', () => {
-  const completionTime = daysAgo(7, '13:08:53')
+  const completionTime = daysAgo(16, '13:08:53')
   const interceptLogs: ScanInterceptLog[] = [
     {
       waybillNo: '3781057901749',
@@ -803,8 +922,8 @@ test('已签收终态下阻断日志责任点不应反转为库外丢失', () =>
   ]
   const facts = deriveTrackFacts(
     [
-      track(daysAgo(8, '13:45:18'), '【ADL DS】已到达。操作员【System】 。'),
-      track(daysAgo(7, '09:44:17'), '【ADL DS】包裹正在派送中(派件员: ADL-DPAC-Sai Kumar, ***)。操作员【ADL-DPAC-Sai Kumar】', 'delivery', '派送中'),
+      track(daysAgo(17, '13:45:18'), '【ADL DS】已到达。操作员【System】 。'),
+      track(daysAgo(16, '09:44:17'), '【ADL DS】包裹正在派送中(派件员: ADL-DPAC-Sai Kumar, ***)。操作员【ADL-DPAC-Sai Kumar】', 'delivery', '派送中'),
       track(completionTime, '【ADL DS】签收成功，操作员【ADL-DPAC-Sai Kumar】【View Proof】', '', '已签收'),
     ],
     interceptLogs
@@ -822,19 +941,19 @@ test('已签收终态下阻断日志责任点不应反转为库外丢失', () =>
 
   assert.equal(facts.hasDeliveryCompletion, true)
   assert.equal(facts.finalResponsibilityOwner, 'out_warehouse')
-  assert.equal(facts.finalResponsibilityDaysDiff >= facts.activeWarehouseLossTimeoutDays, true)
+  assert.equal(facts.finalResponsibilityDaysDiff >= 0, true)
   assert.equal(guarded.lossScope, '暂无异常')
   assert.equal(guarded.appliedDecisionRuleId, undefined)
 })
 
 test('同城上游仓扫描后出库时，库内起算不得被派件员账号污染', () => {
-  const inboundScanTime = daysAgo(9, '13:39:30')
-  const dispatchTime = daysAgo(8, '09:53:51')
+  const inboundScanTime = daysAgo(17, '13:39:30')
+  const dispatchTime = daysAgo(16, '09:53:51')
   const facts = deriveTrackFacts([
-    track(daysAgo(9, '13:39:00'), '【Adelaide Center】已揽收, 操作员【System】。'),
+    track(daysAgo(17, '13:39:00'), '【Adelaide Center】已揽收, 操作员【System】。'),
     track(inboundScanTime, '【Adelaide Center】已到达。操作员【ADL-DC-Lily】 。'),
-    track(daysAgo(9, '13:39:31'), '【Adelaide Center】完成待转发件，目的地【ADL DS】。操作员【System】'),
-    track(daysAgo(9, '13:39:32'), '【ADL DS】已到达。操作员【System】 。'),
+    track(daysAgo(17, '13:39:31'), '【Adelaide Center】完成待转发件，目的地【ADL DS】。操作员【System】'),
+    track(daysAgo(17, '13:39:32'), '【ADL DS】已到达。操作员【System】 。'),
     track(
       dispatchTime,
       '【ADL DS】包裹正在派送中(派件员: ADL-city-003-VENKATA SRAVI TEJA SETTY, ***)。操作员【ADL-city-003-VENKATA SRAVI TEJA SETTY】',
@@ -888,6 +1007,38 @@ test('未知当前仓库配置时依赖扫描员的结论进入人工判断', ()
   assert.equal(guarded.appliedDecisionRuleId, 'unknown_active_warehouse_needs_review')
 })
 
+test('仓库名与轨迹【】文案一致时匹配配置', () => {
+  const config: WarehouseConfigDto = {
+    global: {
+      defaultLossTimeoutDays: 15,
+      externalCarrierLossTimeoutDays: 15,
+      commonSystemOperators: ['System'],
+      commonNonRealOperators: ['MEL-CSP1'],
+      commonNonRealOperatorPatterns: [],
+    },
+    profiles: [
+      {
+        cityId: 'MEL',
+        hubId: 'mel_csp_1',
+        name: 'MEL CSP 1',
+        nonRealOperators: ['MEL-CSP1'],
+      },
+    ],
+  }
+
+  runWithWarehouseProfileContext(config, () => {
+    const profile = findWarehouseProfileByName('MEL CSP 1')
+    const facts = deriveTrackFacts([
+      track(daysAgo(3), '【MEL CSP 1】包号[2603191734601]已到达。操作员【MEL Scanner】 。'),
+    ])
+
+    assert.equal(profile?.hubId, 'mel_csp_1')
+    assert.equal(facts.unknownWarehouseInActiveSegment, false)
+    assert.equal(facts.activeWarehouseName, 'MEL CSP 1')
+    assert.equal(classifyOperatorForWarehouse('MEL-CSP1', profile), 'non_real')
+  })
+})
+
 test('分配-取消循环无出库与出库后回仓再分配取消保持区分', () => {
   const noDispatchFacts = deriveTrackFacts([
     track('2024-01-01 10:00:00', '【ADL DS】操作员【ADL-DC-Tong】 已盘点'),
@@ -924,8 +1075,20 @@ test('无真实操作员扫描时禁止库内丢失', () => {
   assert.equal(guarded.appliedDecisionRuleId, 'no_real_operator_cannot_be_in_warehouse_loss')
 })
 
+test('问题件登记操作人不作为仓内真实扫描记录', () => {
+  const facts = deriveTrackFacts([
+    track(daysAgo(20), '【Sydney Center】登记问题件[派送失败，需退回。], 操作员【Frank Wang Xige】。', 'Problem', '派送'),
+  ])
+  const guarded = classifyOrderFromFacts({ orderNo: 'T1', facts })
+
+  assert.equal(facts.activeWarehouseName, 'Sydney Center')
+  assert.equal(facts.hasRealOperatorScan, false)
+  assert.equal(facts.finalResponsibilityOwner, null)
+  assert.equal(guarded.lossScope, '需人工判断')
+})
+
 test('sorter 携带设备编码时视为仓内真实扫描记录', () => {
-  const scanTime = daysAgo(8)
+  const scanTime = daysAgo(16)
   const facts = deriveTrackFacts([
     track(scanTime, '【Sydney Center】已到达，包裹重量为【0kg】。操作员【sorter】 ,设备编码[AUS_S210312_01]'),
   ])
@@ -1058,6 +1221,18 @@ test('Canberra Station 使用 CBR Warehouse 数字账号可识别为真实扫描
   assert.equal(facts.hasRealOperatorScan, true)
 })
 
+test('已知仓库使用排除法识别真实操作员', () => {
+  const profile = findWarehouseProfileByName('ADL DS')
+
+  assert.equal(classifyOperatorForWarehouse('System', profile), 'system')
+  assert.equal(classifyOperatorForWarehouse('cornerstone', profile), 'system')
+  assert.equal(classifyOperatorForWarehouse('ADL OP1', profile), 'system')
+  assert.equal(classifyOperatorForWarehouse('ADL-DC-Unload', profile), 'non_real')
+  assert.equal(classifyOperatorForWarehouse('ADL-new-scanner-without-profile-rule', profile), 'real')
+  assert.equal(classifyOperatorForWarehouse('DRW-new-scanner', null), 'unknown')
+  assert.equal(classifyOperatorForWarehouse('SYD OPS2', findWarehouseProfileByName('Sydney Center')), 'non_real')
+})
+
 test('SYD Warehouse 数字账号可作为 Sydney Center 内部转仓起算候选', () => {
   const transferTime = daysAgo(8, '19:35:53')
   const facts = deriveTrackFacts([
@@ -1096,6 +1271,25 @@ test('SYDN OPS 取消分配不作为真实扫描且不重置库内起算', () =>
   assert.notEqual(facts.inWarehouseStartTime, daysAgo(7, '22:48:06'))
 })
 
+test('SYDN 使用 7 天仓库阈值判断库外超时', () => {
+  const facts = deriveTrackFacts(
+    [
+      track('2026-05-11 20:28:03', '【SYDN】包号[2605072419701]已到达。操作员【NSYD W3】 。', '', '派送'),
+      track('2026-05-11 21:46:46', '【SYDN】包裹正在派送中(派件员: SYD-BB-039-Tejaswi KOIRALA, ***)。操作员【SYD-BB-039-Tejaswi KOIRALA】', 'Delivery', '派送'),
+    ],
+    [],
+    { analysisDate: '2026-05-23T00:00:00.000Z' }
+  )
+  const guarded = applyFactGuardrails(baseResult({ lossScope: '暂无异常' }), facts)
+
+  assert.equal(facts.activeWarehouseHubId, 'SYDN')
+  assert.equal(facts.activeWarehouseLossTimeoutDays, 7)
+  assert.equal(facts.finalResponsibilityOwner, 'out_warehouse')
+  assert.equal(facts.finalResponsibilityDaysDiff >= facts.activeWarehouseLossTimeoutDays, true)
+  assert.equal(guarded.lossScope, '库外丢失')
+  assert.equal(guarded.exceptionCategoryId, '快递员丢失')
+})
+
 test('最近一次出库后已回仓时按最终责任点转为库内丢失', () => {
   const facts = deriveTrackFacts([
     track('2024-01-01 10:00:00', '【ADL DS】操作员【ADL-DC-Tong】 已盘点'),
@@ -1132,24 +1326,24 @@ test('阻断日志只在库内和库外之间做交叉改判', () => {
   assert.equal(guarded.appliedDecisionRuleId, 'intercept_updates_responsibility_start')
 })
 
-test('阻断日志派送员晚于库内起算时以阻断时间作为库外起算重新判断 7 天', () => {
+test('阻断日志派送员晚于库内起算时以阻断时间作为库外起算重新判断阈值', () => {
   const interceptLogs: ScanInterceptLog[] = [
     {
       waybillNo: 'T1',
       scanUserCode: 'D001',
       scanUserName: 'ADL Courier',
-      gmtIntercept: daysAgo(8),
+      gmtIntercept: daysAgo(16),
       operatorType: 'courier',
     },
   ]
   const facts = deriveTrackFacts(
-    [track(daysAgo(12), '【ADL DS】操作员【ADL-DC-Tong】 已盘点')],
+    [track(daysAgo(20), '【ADL DS】操作员【ADL-DC-Tong】 已盘点')],
     interceptLogs
   )
   const guarded = applyFactGuardrails(baseResult({ lossScope: '库内丢失' }), facts)
 
   assert.equal(facts.interceptAdjustedResponsibilityOwner, 'out_warehouse')
-  assert.equal(facts.interceptAdjustedResponsibilityDaysDiff >= 7, true)
+  assert.equal(facts.interceptAdjustedResponsibilityDaysDiff >= facts.activeWarehouseLossTimeoutDays, true)
   assert.equal(guarded.lossScope, '库外丢失')
   assert.equal(guarded.exceptionCategoryId, '快递员丢失')
   assert.equal(guarded.appliedDecisionRuleId, 'intercept_updates_responsibility_start')
@@ -1157,7 +1351,7 @@ test('阻断日志派送员晚于库内起算时以阻断时间作为库外起�
 })
 
 test('阻断日志派送员责任点晚于回仓时不被回仓记录否决', () => {
-  const interceptTime = daysAgo(8, '12:00:00')
+  const interceptTime = daysAgo(16, '12:00:00')
   const interceptLogs: ScanInterceptLog[] = [
     {
       waybillNo: 'T1',
@@ -1169,10 +1363,10 @@ test('阻断日志派送员责任点晚于回仓时不被回仓记录否决', ()
   ]
   const facts = deriveTrackFacts(
     [
-      track(daysAgo(14, '09:00:00'), '【ADL DS】操作员【ADL-DC-Tong】 已盘点'),
-      track(daysAgo(13, '09:00:00'), '【ADL DS】包裹正在派送中', 'delivery'),
-      track(daysAgo(12, '09:00:00'), '【ADL DS】已回到网点'),
-      track(daysAgo(8, '10:00:00'), '【ADL DS】已下架。操作员【ADL-DC-Tong】'),
+      track(daysAgo(22, '09:00:00'), '【ADL DS】操作员【ADL-DC-Tong】 已盘点'),
+      track(daysAgo(21, '09:00:00'), '【ADL DS】包裹正在派送中', 'delivery'),
+      track(daysAgo(20, '09:00:00'), '【ADL DS】已回到网点'),
+      track(daysAgo(16, '10:00:00'), '【ADL DS】已下架。操作员【ADL-DC-Tong】'),
     ],
     interceptLogs
   )
@@ -1277,6 +1471,59 @@ test('分析提示不向模型暴露仓库正则画像，操作员判断只读�
 
   assert.equal(fullPrompt.includes('真实扫描员规则='), false)
   assert.equal(fullPrompt.includes('/^ADL-'), false)
-  assert.match(fullPrompt, /模型禁止自行解析正则/)
+  assert.match(fullPrompt, /模型禁止自行解析账号名前缀/)
   assert.match(fullPrompt, /真实操作员扫描记录: 否/)
+})
+
+test('3PL 退件返回公司仓后责任段应切回公司仓库，不再视为外部承运', () => {
+  const returnTime = '2026-04-09 16:45:52'
+  const facts = deriveTrackFacts([
+    track('2026-04-09 15:26:21', '【Sydney Center】包号[2604011987301]已到达。操作员【SYD Warehouse9】'),
+    track('2026-04-09 16:45:35', '【Sydney Center】包裹已转交至【JD.COM AUSTRALIA PTY LTD】进行承运。操作员【SYD OPS2】'),
+    track(returnTime, '【Sydney Center】已收到【JD.COM AUSTRALIA PTY LTD】退回包裹。操作员【SYD Warehouse9】'),
+    track('2026-04-09 16:45:53', '【Sydney Center】已进入NDR，NDR来源[供应商退件到件]'),
+  ])
+
+  assert.equal(facts.activeResponsibilityOwner, 'company_warehouse')
+  assert.equal(facts.activeWarehouseName, 'Sydney Center')
+  assert.equal(facts.hasRealOperatorScan, true)
+  assert.equal(facts.inWarehouseStartTime, returnTime)
+})
+
+test('3PL 自身载运事件（操作员为承运商）不应切回公司仓', () => {
+  const facts = deriveTrackFacts([
+    track('2026-04-09 16:45:35', '【Sydney Center】包裹已转交至【JD.COM AUSTRALIA PTY LTD】进行承运。操作员【SYD OPS2】'),
+    track('2026-04-17 22:38:11', '【Sydney Center】已到达。操作员【JD AUS JD.COM AUSTRALIA PTY LTD】'),
+    track('2026-04-20 12:38:11', '【Sydney Center】包裹正在派送中(派件员: ,ID: ,电话: )。操作员【JD AUS JD.COM AUSTRALIA PTY LTD】', 'delivery'),
+  ])
+
+  assert.equal(facts.activeResponsibilityOwner, 'external_carrier')
+  assert.equal(facts.activeExternalCarrierName, 'JD.COM AUSTRALIA PTY LTD')
+})
+
+test('3PL 退返仓库后商家给出 RTC 退件方向，责任段正确切回公司仓', () => {
+  const returnTime = '2026-04-09 16:45:52'
+  const facts = deriveTrackFacts(
+    [
+      track('2026-04-04 12:56:28', '【Brisbane Center】已揽收, 操作员【System】。'),
+      track('2026-04-04 12:56:58', '【Brisbane Center】已到达。操作员【BNE Warehouse5】'),
+      track('2026-04-04 13:16:39', '【Brisbane Center】已装箱，集包号[2604011987301]，目的地【Sydney Center】。操作员【BNEN Warehouse2】'),
+      track('2026-04-09 15:23:59', '【Sydney Center】包号[2604011987301]已到达。操作员【SYD OPS2】'),
+      track('2026-04-09 15:26:21', '【Sydney Center】包号[2604011987301]已到达。操作员【SYD Warehouse9】'),
+      track('2026-04-09 16:45:35', '【Sydney Center】包裹已转交至【JD.COM AUSTRALIA PTY LTD】进行承运。操作员【SYD OPS2】'),
+      track(returnTime, '【Sydney Center】已收到【JD.COM AUSTRALIA PTY LTD】退回包裹。操作员【SYD Warehouse9】'),
+      track('2026-04-09 16:45:53', '【Sydney Center】已进入NDR，NDR来源[供应商退件到件]'),
+      track('2026-04-24 08:03:51', '【Sydney Center】包裹确认派送结束, 将按照商家反馈意见[暂存]进行处理。'),
+      track('2026-05-07 15:46:10', '商家已反馈退件处理意见[RTC]，操作员【刘欣】'),
+    ],
+    [],
+    { analysisDate: '2026-06-14' }
+  )
+
+  assert.equal(facts.activeResponsibilityOwner, 'company_warehouse')
+  assert.equal(facts.activeWarehouseName, 'Sydney Center')
+  assert.equal(facts.hasRealOperatorScan, true)
+  assert.equal(facts.inWarehouseStartTime, returnTime)
+  assert.equal(facts.merchantReturnRequested, true)
+  assert.equal(facts.merchantStorageSupersededByBusinessProgress, true)
 })

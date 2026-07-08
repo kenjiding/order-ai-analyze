@@ -43,6 +43,12 @@ export type FeishuSortEfficiencyDataSnapshot = {
     allHours: number
     openDayCount: number
     matchedDayCount: number
+    /** 菜鸟占比（开仓日口径）0~1；菜鸟票量多时处理复杂度更高，直接影响效率基准 */
+    cainiaoShareOpenDays: number
+    /** 菜鸟占比（全窗口/全考勤口径）0~1 */
+    cainiaoShareWindow: number
+    /** 每票平均人工成本（周期总人工成本 ÷ 总货量），无薪资数据时为 null */
+    averageCostPerTicket: number | null
   }
 }
 
@@ -67,8 +73,10 @@ export function buildFeishuSortEfficiencyDataSnapshot(options: {
   periodLabel: string
   scannerResult: ScannerEfficiencyResult | null
   attendanceResult: AttendanceEfficiencyResult | null
+  attendanceDailyCostPerTicket?: Record<string, number | null>
+  attendanceDailyTotalLaborCost?: Record<string, number | null>
 }): FeishuSortEfficiencyDataSnapshot | null {
-  const { periodLabel, scannerResult, attendanceResult } = options
+  const { periodLabel, scannerResult, attendanceResult, attendanceDailyTotalLaborCost } = options
   if (!scannerResult) return null
 
   const daily = scannerResult.dailySummaryRows.map((row) => ({
@@ -105,6 +113,23 @@ export function buildFeishuSortEfficiencyDataSnapshot(options: {
 
   if (attendanceResult) {
     const s = attendanceResult.summary
+
+    let averageCostPerTicket: number | null = null
+    if (attendanceDailyTotalLaborCost) {
+      let totalLaborCost = 0
+      let totalVolume = 0
+      for (const row of attendanceResult.dailyRows) {
+        if (!row.hasAttendance || row.volume <= 0) continue
+        const labor = attendanceDailyTotalLaborCost[row.date]
+        if (labor == null || !Number.isFinite(labor) || labor < 0) continue
+        totalLaborCost += labor
+        totalVolume += row.volume
+      }
+      if (totalVolume > 0 && totalLaborCost > 0) {
+        averageCostPerTicket = round4(totalLaborCost / totalVolume)
+      }
+    }
+
     snap.warehouseAttendance = {
       uploadedVolume: s.uploadedVolume,
       openEfficiency: round2(s.openEfficiency),
@@ -113,6 +138,9 @@ export function buildFeishuSortEfficiencyDataSnapshot(options: {
       allHours: round4(s.allHours),
       openDayCount: s.openDayCount,
       matchedDayCount: s.matchedDayCount,
+      cainiaoShareOpenDays: round4(s.cainiaoShareOpenDays),
+      cainiaoShareWindow: round4(s.cainiaoShareWindow),
+      averageCostPerTicket,
     }
   }
 

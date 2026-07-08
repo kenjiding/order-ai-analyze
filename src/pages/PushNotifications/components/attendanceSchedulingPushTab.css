@@ -1,0 +1,28 @@
+.attendance-scheduling-push-tab-page .as-card {
+  border-radius: 12px;
+  border: 1px solid var(--admin-line);
+  background: var(--admin-surface);
+  box-shadow: 0 10px 32px rgba(47, 83, 105, 0.07);
+  overflow: hidden;
+}
+
+.attendance-scheduling-push-tab-page .as-card-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  border-bottom: 1px solid var(--admin-line);
+  background: var(--admin-surface-soft);
+  padding: 14px 16px;
+}
+
+.attendance-scheduling-push-tab-page .as-card-head-title {
+  font-size: 15px;
+  font-weight: 600;
+  color: rgb(15 23 42);
+}
+
+.attendance-scheduling-push-tab-page .as-card-body {
+  padding: 16px;
+}

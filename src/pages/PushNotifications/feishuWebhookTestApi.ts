@@ -1,12 +1,15 @@
 import { getApiBaseUrl } from '../../utils/apiBaseUrl'
+import type { PushApiScope } from '../../permissions/pushNotificationAccess'
 
 export type FeishuPushTestPayload = {
+  pushScope: PushApiScope
   webhookUrl: string
   signingSecret?: string | undefined
   pushName: string
 }
 
 export type FeishuPushImagePayload = {
+  pushScope: PushApiScope
   webhookUrl: string
   signingSecret?: string | undefined
   /** 纯 base64 或 data:image/png;base64,... */
@@ -74,6 +77,7 @@ export async function postFeishuPushTest(payload: FeishuPushTestPayload): Promis
 }
 
 export async function postFeishuPushText(payload: {
+  pushScope: PushApiScope
   webhookUrl: string
   signingSecret?: string
   text: string
@@ -84,6 +88,7 @@ export async function postFeishuPushText(payload: {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
+        pushScope: payload.pushScope,
         webhookUrl: payload.webhookUrl.trim(),
         signingSecret: payload.signingSecret,
         text: payload.text,
@@ -113,6 +118,105 @@ export async function postFeishuPushText(payload: {
   }
 }
 
+export async function postFeishuPushCard(payload: {
+  pushScope: PushApiScope
+  webhookUrl: string
+  signingSecret?: string
+  card: Record<string, unknown>
+}): Promise<FeishuPushTestOk | FeishuPushTestFail> {
+  const url = `${getApiBaseUrl()}/api/feishu-webhook/push-card`
+  try {
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        pushScope: payload.pushScope,
+        webhookUrl: payload.webhookUrl.trim(),
+        signingSecret: payload.signingSecret,
+        card: payload.card,
+      }),
+    })
+    type Wire = { ok?: boolean; httpStatus?: number; feishu?: unknown; error?: string }
+    const parsed = (await res.json()) as Wire
+    if (parsed && typeof parsed === 'object') {
+      if (parsed.ok === true) {
+        return { ok: true, httpStatus: parsed.httpStatus ?? res.status, feishu: parsed.feishu }
+      }
+      return {
+        ok: false,
+        httpStatus: parsed.httpStatus ?? res.status,
+        feishu: parsed.feishu,
+        error: typeof parsed.error === 'string' ? parsed.error : '卡片推送失败。',
+      }
+    }
+    return { ok: false, httpStatus: res.status, error: '无法解析服务端响应。' }
+  } catch {
+    return { ok: false, error: `无法访问后端 (${url})。请确认已运行 server 或检查 VITE_API_BASE。` }
+  }
+}
+
+export async function postFeishuPushRichMessage(payload: {
+  pushScope: PushApiScope
+  webhookUrl: string
+  signingSecret?: string
+  content: string
+  images: string[]
+}): Promise<FeishuPushTestOk | FeishuPushTestFail> {
+  const url = `${getApiBaseUrl()}/api/feishu-webhook/push-rich-message`
+  try {
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        pushScope: payload.pushScope,
+        webhookUrl: payload.webhookUrl.trim(),
+        signingSecret: payload.signingSecret,
+        content: payload.content,
+        images: payload.images,
+      }),
+    })
+    type Wire = { ok?: boolean; httpStatus?: number; feishu?: unknown; error?: string; imageUploadedCount?: number }
+    const parsed = (await res.json()) as Wire
+    if (parsed && typeof parsed === 'object') {
+      if (parsed.ok === true) {
+        return { ok: true, httpStatus: parsed.httpStatus ?? res.status, feishu: parsed.feishu }
+      }
+      return {
+        ok: false,
+        httpStatus: parsed.httpStatus ?? res.status,
+        feishu: parsed.feishu,
+        error: typeof parsed.error === 'string' ? parsed.error : '富文本卡片推送失败。',
+      }
+    }
+    return { ok: false, httpStatus: res.status, error: '无法解析服务端响应。' }
+  } catch {
+    return { ok: false, error: `无法访问后端 (${url})。请确认已运行 server 或检查 VITE_API_BASE。` }
+  }
+}
+
+export async function fetchDeliveryWeatherLarkMd(params: {
+  lat: number
+  lng: number
+  label: string
+}): Promise<{ ok: true; larkMd: string } | { ok: false; error: string }> {
+  const qs = new URLSearchParams({
+    lat: String(params.lat),
+    lng: String(params.lng),
+    label: params.label,
+  })
+  const url = `${getApiBaseUrl()}/api/feishu-webhook/delivery-weather?${qs.toString()}`
+  try {
+    const res = await fetch(url, { credentials: 'include' })
+    const parsed = (await res.json()) as { ok?: boolean; data?: { larkMd?: string }; error?: string }
+    if (parsed?.ok === true && typeof parsed.data?.larkMd === 'string') {
+      return { ok: true, larkMd: parsed.data.larkMd }
+    }
+    return { ok: false, error: typeof parsed?.error === 'string' ? parsed.error : '获取天气预报失败。' }
+  } catch {
+    return { ok: false, error: `无法访问后端 (${url})。` }
+  }
+}
+
 export function summarizeFeishuTestFailure(result: FeishuPushTestFail): string {
   if (result.error && !result.feishu) return result.error
   const fb = result.feishu as Record<string, unknown> | null | undefined
@@ -131,6 +235,7 @@ export async function postFeishuPushImage(
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
+        pushScope: payload.pushScope,
         webhookUrl: payload.webhookUrl.trim(),
         signingSecret: payload.signingSecret,
         imageBase64: payload.imageBase64,

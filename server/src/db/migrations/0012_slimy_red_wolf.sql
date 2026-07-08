@@ -1,0 +1,1 @@
+ALTER TABLE "exit_alarm_push_configs" ADD COLUMN "route_code" varchar(1024) DEFAULT '' NOT NULL;

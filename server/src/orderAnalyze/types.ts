@@ -14,19 +14,19 @@ export type AnalyzeTarget = {
   orderNo: string
   tracks: TrackEvent[]
   interceptLogs?: ScanInterceptLog[]
+  /** 分析基准时间；生产默认当前时间，回归用 fixture capturedAt 固定结果，避免日期漂移 */
+  analysisDate?: string
 }
 
 export type WarehouseCityId = 'ADL' | 'MEL' | 'PER' | 'SYD' | 'BNE' | 'QLD' | 'CBR'
 
-/** 真实操作员匹配规则：正则表达式或精确账号名（大小写不敏感） */
-export type RealOperatorPattern = RegExp | string
-
 export type WarehouseProfile = {
   cityId: WarehouseCityId
   hubId: string
-  displayName: string
-  aliases: readonly string[]
-  realOperatorPatterns: readonly RealOperatorPattern[]
+  /** 与轨迹【】内仓库名一致，分析匹配的主键 */
+  name: string
+  /** 轨迹中可能出现的其他写法，可选 */
+  extraAliases?: readonly string[]
   /** 当前仓库库内/库外丢失判定超时天数；未配置时使用系统默认值 */
   lossTimeoutDays?: number
   nonRealOperators?: readonly string[]
@@ -125,7 +125,7 @@ export type TrackFacts = {
   inWarehouseStartSupersededByDispatch: boolean
   /** 是否存在任何取消分配记录（仅表示存在，非全程无出库的循环） */
   hasDeliveryCancellations: boolean
-  /** 是否存在仓内真实操作员扫描/盘点记录，不包含派件员二次出库扫描 */
+  /** 是否存在仓内真实操作员扫描/盘点或外部承运商退件入仓确认记录，不含派件员二次出库扫描 */
   hasRealOperatorScan: boolean
   /** 是否已有签收、妥投、派件完成等正常完结记录 */
   hasDeliveryCompletion: boolean
@@ -221,14 +221,34 @@ export type TrackFacts = {
   merchantStorageSupersededByBusinessProgress: boolean
   merchantStorageBusinessProgressTime: string | null
   merchantStorageBusinessProgressEvidence: string | null
-  /** 轨迹已进入退返/退回商家闭环或明确退件处理链路 */
-  merchantReturnConfirmed: boolean
-  merchantReturnConfirmTime: string | null
-  merchantReturnEvidence: string | null
+  /** 当前最新有效商家状态为退返/退回商家闭环 */
+  merchantReturnClosed: boolean
+  merchantReturnClosedTime: string | null
+  merchantReturnClosedEvidence: string | null
+  /** 当前最新有效商家处理方向为退返/退回商家；只用于暂无异常子类型，不作为终态闭环 */
+  merchantReturnDirectionActive: boolean
   /** 商家已给出退返/退回处理方向，但尚未出现退返闭环 */
   merchantReturnRequested: boolean
   merchantReturnRequestTime: string | null
+  merchantReturnRequestDaysDiff: number
   merchantReturnRequestEvidence: string | null
+  /** 退返处理方向后的最新业务推进（含退件中、开始退回、装箱转运等） */
+  merchantReturnLatestProgressTime: string | null
+  merchantReturnLatestProgressDaysDiff: number
+  merchantReturnLatestProgressEvidence: string | null
+  /** 退返处理已进入转运但尚未闭环；最终结论仍以当前责任段最终责任点为准 */
+  merchantReturnTransferInProgress: boolean
+  /**
+   * 商家处理方向指令（暂存/销毁/Abandon/退返方向）后，是否存在真实物理扫描作为支撑。
+   * - merchantReturnClosed = true：物理退返完成，视为有物理支撑
+   * - merchantAbandonClosed = true（退件已销毁）：物理销毁完成，视为有物理支撑
+   * - 其他情况：检查方向事件时间之后是否有 allResponsibilityPoints 中的责任点
+   * - 无活跃方向时设为 false（字段无意义）
+   *
+   * 用于判断方向指令是否应豁免超时检测：只有指令后有物理支撑，才视为终态；
+   * 若方向指令是在包裹已超时后由系统 NDR 流程触发（无后续扫描），则不重置超时计数。
+   */
+  hasPhysicalActivityAfterDirectionFeedback: boolean
   latestEventKind: string
 }
 

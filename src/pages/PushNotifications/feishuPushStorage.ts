@@ -1,3 +1,4 @@
+import { generateId } from '../../utils/generateId'
 import type { FeishuPushEntry, FeishuPushKind } from './feishuPushTypes'
 
 /** 历史 localStorage 键：`feishuPushRepository.idb` 首次读取时会迁移并删除。 */
@@ -30,11 +31,7 @@ function legacyBucketsPresent(byKind: object): boolean {
 }
 
 export function createPushEntryId(): string {
-  try {
-    return crypto.randomUUID()
-  } catch {
-    return `push-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`
-  }
+  return generateId()
 }
 
 export function sanitizeEntries(raw: unknown): FeishuPushEntry[] {
@@ -70,7 +67,7 @@ export function sanitizeEntries(raw: unknown): FeishuPushEntry[] {
 export type FeishuPushStore = Record<FeishuPushKind, FeishuPushEntry[]>
 
 export function emptyFeishuPushStore(): FeishuPushStore {
-  return { sort_efficiency: [], attendance_scheduling: [] }
+  return { sort_efficiency: [], attendance_scheduling: [], order_exception: [] }
 }
 
 export function toFeishuPushStoredPayload(store: FeishuPushStore): FeishuPushStoredShapeV1 {
@@ -79,6 +76,7 @@ export function toFeishuPushStoredPayload(store: FeishuPushStore): FeishuPushSto
     byKind: {
       sort_efficiency: store.sort_efficiency,
       attendance_scheduling: store.attendance_scheduling,
+      order_exception: store.order_exception,
     },
   }
 }
@@ -100,11 +98,12 @@ export function normalizeFeishuPushFromParsed(parsed: unknown): {
   const { byKind } = v
   const sort = sanitizeEntries(byKind.sort_efficiency)
   const attendanceScheduling = sanitizeEntries(byKind.attendance_scheduling)
+  const orderException = sanitizeEntries(byKind.order_exception)
   const legacyA = sanitizeEntries(byKind.level1_sort_efficiency)
   const legacyB = sanitizeEntries(byKind.overall_efficiency)
   const merged = dedupeMergeEntryLists([sort, legacyA, legacyB])
   return {
-    store: { sort_efficiency: merged, attendance_scheduling: attendanceScheduling },
+    store: { sort_efficiency: merged, attendance_scheduling: attendanceScheduling, order_exception: orderException },
     needsCanonicalResave: legacyBucketsPresent(byKind),
   }
 }

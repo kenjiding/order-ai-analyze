@@ -1,0 +1,113 @@
+{
+  "title": "供应商数据日报",
+  "brand": "iMile Australia",
+  "mockWarning": "当前显示为示例数据。请在供应商数据分析页面获取数据后点击「截图并推送到飞书」，然后刷新此页。",
+  "header": {
+    "referenceDate": "参考日期",
+    "complaintStats": "客诉统计",
+    "generatedAt": "生成于 {{time}}",
+    "vendorCount": "{{count}} 家供应商"
+  },
+  "push": {
+    "pushing": "推送中...",
+    "button": "截图推送到飞书（{{count}} 个群）",
+    "successCount": "{{count}} 成功",
+    "failCount": "{{count}} 失败",
+    "capturing": "正在截图...",
+    "sending": "正在推送...",
+    "sent": "已推送",
+    "failed": "推送失败",
+    "sectionNotFound": "找不到对应区块",
+    "captureFailed": "截图失败: {{message}}",
+    "unknownError": "未知错误",
+    "shareLinkText": "查看完整每日报告"
+  },
+  "summary": {
+    "vendorCount": "供应商数量",
+    "pushEnabled": "{{count}} 家推送启用",
+    "unprocessedTickets": "未处理工单",
+    "pendingAction": "待及时处理",
+    "allClear": "全部清空",
+    "longTailTotal": "长尾件合计",
+    "itemsToFollowUp": "件待跟进",
+    "noLongTail": "无长尾件",
+    "alertVendors": "指标预警供应商",
+    "vendorsNeedAttention": "{{count}} 家需关注",
+    "allMet": "全部达标"
+  },
+  "legend": {
+    "title": "颜色说明",
+    "met": "达标",
+    "warning": "预警",
+    "notMet": "未达标",
+    "thresholdHint": "出仓率 ≥99% / 派签率 ≥95% / 客诉率 ≤0.025% 为达标"
+  },
+  "vendor": {
+    "returnWarning": "归班预警 {{count}}",
+    "lowDispatch": "派签未达标 {{count}} 人",
+    "unprocessedTickets": "未处理工单 {{count}}",
+    "pushDisabled": "推送已禁用"
+  },
+  "kpi": {
+    "before11ExitRate": "11点前出仓率",
+    "asOfDate": "截至 {{date}}",
+    "dispatch24h": "24H 派签率",
+    "complaintRate": "客诉率",
+    "complaintSub": "{{complaints}} 件客诉 · 揽收 {{waybills}} 件",
+    "unprocessedTickets": "未处理工单",
+    "needsAction": "需及时处理",
+    "noPending": "暂无待处理",
+    "longTail": "长尾单",
+    "longTailFollowUp": "{{count}} 件待跟进",
+    "noLongTailItems": "无长尾件",
+    "pieces": "{{done}} / {{total}} 件",
+    "ticketsNotMet": "{{count}} 票未达标",
+    "allMet": "全部达标"
+  },
+  "driverTable": {
+    "title": "派件员表现",
+    "count": "{{count}} 位",
+    "courier": "派件员",
+    "todayPickup": "今日取件",
+    "before11ExitRate": "11点前出仓率",
+    "dispatch24h": "24H 派签",
+    "returnWarning": "归班预警",
+    "longTail": "长尾单",
+    "tooltip": {
+      "pickup": "运单号",
+      "before11Unmet": "11点前未出仓单号",
+      "dispatch24hUnmet": "24H未达标单号",
+      "returnWarning": "归班预警记录",
+      "longTail": "长尾单单号"
+    }
+  },
+  "metrics": {
+    "sectionTitle": "指标说明",
+    "onTimePickup": {
+      "name": "准时提货率",
+      "formula": "规定时间内完成提货单量 / 最新派件网点到件量"
+    },
+    "dispatch24h": {
+      "name": "24H 派签率",
+      "formula": "规定时间内签收成功单量 / 当天派件单量"
+    },
+    "complaintRate": {
+      "name": "客诉率",
+      "formula": "责任客诉量 / 责任网点到件量"
+    },
+    "signedNotReceived": {
+      "name": "签收未收",
+      "formula": "签收未收判定成立的工单数量 + POD合格但收件人未收到货的工单数量"
+    }
+  },
+  "empty": "暂无供应商数据",
+  "footer": "iMile Operations Analytics",
+  "aiSummary": {
+    "loading": "正在生成 AI 分析…"
+  },
+  "portal": {
+    "loading": "正在加载日报数据…",
+    "invalidTitle": "链接无效或已失效",
+    "invalidHint": "该分享链接不存在、已被禁用或暂无日报数据，请联系 iMile 对接人获取最新链接。"
+  }
+}

@@ -1,0 +1,227 @@
+.feishu-lark-md-editor {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.feishu-lark-md-editor-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 2px;
+  padding: 4px 6px;
+  border: 1px solid var(--admin-line);
+  border-radius: 8px 8px 0 0;
+  background: var(--admin-surface-soft);
+  border-bottom: none;
+}
+
+.feishu-lark-md-editor-toolbar-divider {
+  width: 1px;
+  height: 20px;
+  margin: 0 4px;
+  background: var(--admin-line);
+}
+
+.feishu-lark-md-editor-btn-active {
+  background: rgba(47, 143, 135, 0.12) !important;
+  color: #1f6f68 !important;
+}
+
+.feishu-lark-md-editor-color-btn {
+  min-width: 28px;
+  padding-inline: 6px !important;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.feishu-lark-md-editor-color-red {
+  color: #c0392b !important;
+}
+
+.feishu-lark-md-editor-color-orange {
+  color: #d97706 !important;
+}
+
+.feishu-lark-md-editor-color-green {
+  color: #15803d !important;
+}
+
+.feishu-lark-md-editor-color-blue {
+  color: #2563eb !important;
+}
+
+.feishu-lark-md-editor-color-grey {
+  color: #6b7280 !important;
+}
+
+.feishu-lark-md-editor-content .tiptap blockquote {
+  margin: 0.4em 0;
+  padding: 0.35em 0.75em;
+  border-left: 3px solid #c8deee;
+  color: var(--admin-muted);
+  background: var(--admin-surface-soft);
+  border-radius: 0 6px 6px 0;
+}
+
+.feishu-lark-md-editor-content .tiptap hr {
+  margin: 0.75em 0;
+  border: none;
+  border-top: 1px solid var(--admin-line);
+}
+
+.feishu-lark-md-editor-content .tiptap .feishu-at-all {
+  color: #2563eb;
+  font-weight: 600;
+}
+
+.feishu-lark-md-editor-content .tiptap u {
+  text-underline-offset: 2px;
+}
+
+.feishu-lark-md-editor-surface {
+  border: 1px solid var(--admin-line);
+  border-radius: 0 0 8px 8px;
+  background: #fff;
+}
+
+.feishu-lark-md-editor-surface:focus-within {
+  border-color: #6baed6;
+  box-shadow: 0 0 0 2px rgba(47, 143, 135, 0.12);
+}
+
+.feishu-lark-md-editor-surface-loading {
+  background: var(--admin-surface-soft);
+}
+
+.feishu-lark-md-editor-content .tiptap,
+.feishu-lark-md-tiptap {
+  min-height: inherit;
+  padding: 8px 12px;
+  font-size: 14px;
+  line-height: 22px;
+  color: var(--admin-text);
+  outline: none;
+  word-break: break-word;
+}
+
+.feishu-lark-md-editor-content .tiptap p {
+  margin: 0.2em 0;
+}
+
+/* Tailwind preflight 会重置 list-style，需在编辑器内显式恢复 */
+.feishu-lark-md-editor-content .tiptap ul,
+.feishu-lark-md-editor-content .tiptap ol {
+  margin: 0.25em 0;
+  padding-left: 1.4em;
+}
+
+.feishu-lark-md-editor-content .tiptap ul {
+  list-style-type: disc;
+}
+
+.feishu-lark-md-editor-content .tiptap ol {
+  list-style-type: decimal;
+}
+
+.feishu-lark-md-editor-content .tiptap li {
+  margin: 0.15em 0;
+  display: list-item;
+}
+
+.feishu-lark-md-editor-content .tiptap li > p {
+  margin: 0;
+}
+
+.feishu-lark-md-editor-content .tiptap a {
+  color: #2563eb;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.feishu-lark-md-editor-content .tiptap img {
+  display: block;
+  margin: 0.5em 0;
+  border-radius: 6px;
+  border: 1px solid var(--admin-line);
+  max-width: 100%;
+}
+
+/* TipTap ResizableNodeView：选中图片后可拖拽边角缩放 */
+.feishu-lark-md-editor-content [data-resize-state] {
+  position: relative;
+  display: inline-block;
+  max-width: 100%;
+  line-height: 0;
+  margin: 0.5em 0;
+}
+
+.feishu-lark-md-editor-content [data-resize-state] img {
+  margin: 0;
+  display: block;
+}
+
+.feishu-lark-md-editor-content [data-resize-handle] {
+  position: absolute;
+  z-index: 3;
+  width: 10px;
+  height: 10px;
+  border: 1px solid #fff;
+  border-radius: 2px;
+  background: #2f8f87;
+  box-shadow: 0 1px 4px rgba(30, 45, 58, 0.28);
+}
+
+.feishu-lark-md-editor-content [data-resize-handle='top-left'] {
+  top: -5px;
+  left: -5px;
+  cursor: nwse-resize;
+}
+
+.feishu-lark-md-editor-content [data-resize-handle='top-right'] {
+  top: -5px;
+  right: -5px;
+  cursor: nesw-resize;
+}
+
+.feishu-lark-md-editor-content [data-resize-handle='bottom-left'] {
+  bottom: -5px;
+  left: -5px;
+  cursor: nesw-resize;
+}
+
+.feishu-lark-md-editor-content [data-resize-handle='bottom-right'] {
+  bottom: -5px;
+  right: -5px;
+  cursor: nwse-resize;
+}
+
+.feishu-lark-md-editor-content .ProseMirror-selectednode [data-resize-state] {
+  outline: 2px solid rgba(47, 143, 135, 0.45);
+  outline-offset: 2px;
+  border-radius: 6px;
+}
+
+.feishu-lark-md-editor-content .tiptap p.is-editor-empty:first-child::before {
+  color: #bfbfbf;
+  content: attr(data-placeholder);
+  float: left;
+  height: 0;
+  pointer-events: none;
+}
+
+.feishu-lark-md-editor-content-disabled {
+  background: var(--admin-surface-soft);
+  cursor: not-allowed;
+}
+
+.feishu-lark-md-editor-content-disabled .tiptap {
+  color: var(--admin-muted);
+  pointer-events: none;
+}
+
+.feishu-lark-md-editor-hint {
+  font-size: 11px;
+  line-height: 1.45;
+  color: var(--admin-muted);
+}

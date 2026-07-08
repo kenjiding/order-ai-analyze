@@ -1,5 +1,8 @@
 import { Router, type Request, type Response } from 'express'
+import { eq } from 'drizzle-orm'
 import { runOrderAnalyzePipeline } from '../orderAnalyze/pipeline'
+import { reclassifyOutWarehouseLossWithCancelScan } from '../orderAnalyze/cancelScanReclassify'
+import { parseWarehouseConfigInput } from '../orderAnalyze/warehouseProfiles'
 import type { AnalyzeTarget } from '../openaiOrderAnalyze'
 import {
   queryClosureVendorOptions,
@@ -12,6 +15,13 @@ import {
   queryTracksWithCache,
 } from './orderExceptionData'
 import { registerOrderExceptionRegressionRoutes } from './orderExceptionRegressionRouter'
+import { readImileTokenFromRequest } from './imileAuth'
+import { getDb } from '../db'
+import { orderExceptionPostFilterConfigs, orderExceptionWarehouseConfigs } from '../db/schema'
+import { DEFAULT_WAREHOUSE_CONFIG } from '../orderAnalyze/warehouseProfiles'
+import type { AuthenticatedRequest } from '../auth/middleware'
+import { enqueueJob } from '../jobs/queue'
+import { ORDER_ANALYZE_JOB_TYPE } from '../jobs/handlers'
 
 export const orderExceptionRouter = Router()
 
@@ -19,21 +29,8 @@ function readJson<T>(req: Request): T {
   return req.body as T
 }
 
-function normalizeToken(raw: string): string {
-  return raw.replace(/^Bearer\s+/i, '').trim()
-}
-
 function readImileToken(req: Request, bodyToken: unknown): string {
-  const fromBody = String(bodyToken ?? '').trim()
-  if (fromBody) return normalizeToken(fromBody)
-
-  const fromQuery = String(req.query?.token ?? '').trim()
-  if (fromQuery) return normalizeToken(fromQuery)
-
-  const authHeader = String(req.headers.authorization ?? '').trim()
-  if (authHeader) return normalizeToken(authHeader)
-
-  return ''
+  return readImileTokenFromRequest(req, bodyToken, { allowQuery: true })
 }
 
 registerOrderExceptionRegressionRoutes(orderExceptionRouter, {
@@ -189,12 +186,110 @@ orderExceptionRouter.post('/prefetch', async (req: Request, res: Response) => {
   }
 })
 
+orderExceptionRouter.get('/post-filter', async (_req: Request, res: Response) => {
+  try {
+    const db = getDb()
+    const [row] = await db
+      .select()
+      .from(orderExceptionPostFilterConfigs)
+      .where(eq(orderExceptionPostFilterConfigs.configKey, 'global'))
+      .limit(1)
+    res.json({ config: row?.payload ?? null })
+  } catch (e) {
+    res.status(500).json({ error: (e as Error).message || '读取后置过滤配置失败' })
+  }
+})
+
+orderExceptionRouter.post('/post-filter', async (req: Request, res: Response) => {
+  try {
+    const { payload } = req.body as { payload: unknown }
+    if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
+      res.status(400).json({ error: '无效的过滤配置' })
+      return
+    }
+    const now = new Date()
+    const authReq = req as AuthenticatedRequest
+    const db = getDb()
+    const [result] = await db
+      .insert(orderExceptionPostFilterConfigs)
+      .values({
+        configKey: 'global',
+        payload,
+        savedBy: authReq.authUser?.id ?? null,
+        createdAt: now,
+        updatedAt: now,
+      })
+      .onConflictDoUpdate({
+        target: orderExceptionPostFilterConfigs.configKey,
+        set: {
+          payload,
+          savedBy: authReq.authUser?.id ?? null,
+          updatedAt: now,
+        },
+      })
+      .returning()
+    res.json({ config: result.payload, updatedAt: result.updatedAt.toISOString() })
+  } catch (e) {
+    res.status(500).json({ error: (e as Error).message || '保存后置过滤配置失败' })
+  }
+})
+
+orderExceptionRouter.get('/warehouse-config', async (_req: Request, res: Response) => {
+  try {
+    const db = getDb()
+    const [row] = await db
+      .select()
+      .from(orderExceptionWarehouseConfigs)
+      .where(eq(orderExceptionWarehouseConfigs.configKey, 'global'))
+      .limit(1)
+    res.json({ config: row?.payload ?? DEFAULT_WAREHOUSE_CONFIG })
+  } catch (e) {
+    res.status(500).json({ error: (e as Error).message || '读取仓库配置失败' })
+  }
+})
+
+orderExceptionRouter.post('/warehouse-config', async (req: Request, res: Response) => {
+  try {
+    const { payload } = req.body as { payload: unknown }
+    if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
+      res.status(400).json({ error: '无效的仓库配置' })
+      return
+    }
+    const now = new Date()
+    const authReq = req as AuthenticatedRequest
+    const db = getDb()
+    const [result] = await db
+      .insert(orderExceptionWarehouseConfigs)
+      .values({
+        configKey: 'global',
+        payload,
+        savedBy: authReq.authUser?.id ?? null,
+        createdAt: now,
+        updatedAt: now,
+      })
+      .onConflictDoUpdate({
+        target: orderExceptionWarehouseConfigs.configKey,
+        set: {
+          payload,
+          savedBy: authReq.authUser?.id ?? null,
+          updatedAt: now,
+        },
+      })
+      .returning()
+    res.json({ config: result.payload, updatedAt: result.updatedAt.toISOString() })
+  } catch (e) {
+    res.status(500).json({ error: (e as Error).message || '保存仓库配置失败' })
+  }
+})
+
 orderExceptionRouter.post('/analyze', async (req: Request, res: Response) => {
   try {
     const body = readJson<{
       imileToken?: string
       orderNos?: string[]
       aiProvider?: string
+      enableAiExplain?: boolean
+      scanStationCode?: string
     }>(req)
     const token = readImileToken(req, body.imileToken)
     const orderNos = Array.isArray(body.orderNos)
@@ -212,6 +307,14 @@ orderExceptionRouter.post('/analyze', async (req: Request, res: Response) => {
       res.status(400).json({ error: '单次最多分析 500 个订单，请拆分后分批提交' })
       return
     }
+
+    const db = getDb()
+    const [warehouseConfigRow] = await db
+      .select()
+      .from(orderExceptionWarehouseConfigs)
+      .where(eq(orderExceptionWarehouseConfigs.configKey, 'global'))
+      .limit(1)
+    const warehouseConfigPayload = warehouseConfigRow?.payload ?? DEFAULT_WAREHOUSE_CONFIG
 
     const imileStartedAt = performance.now()
     const sourceResult = await fetchOrderExceptionSourcesForAnalyze(token, orderNos)
@@ -233,10 +336,24 @@ orderExceptionRouter.post('/analyze', async (req: Request, res: Response) => {
 
     const aiProviderRaw = String(body.aiProvider ?? 'deepseek').trim().toLowerCase()
     const aiProvider = aiProviderRaw === 'openai' ? 'openai' : 'deepseek'
+    const enableAiExplain = body.enableAiExplain === true
 
     const aiStartedAt = performance.now()
-    const { results, tokenUsage } = await runOrderAnalyzePipeline({ targets, aiProvider })
+    const warehouseConfig = parseWarehouseConfigInput(warehouseConfigPayload)
+    const { results: pipelineResults, tokenUsage, trackFacts } = await runOrderAnalyzePipeline({
+      targets,
+      aiProvider,
+      enableAiExplain,
+      warehouseConfig,
+    })
     const aiMs = Math.round(performance.now() - aiStartedAt)
+
+    const { results, meta: cancelScanRecheck } = await reclassifyOutWarehouseLossWithCancelScan({
+      results: pipelineResults,
+      trackFacts,
+      imileToken: token,
+      scanStationCode: body.scanStationCode,
+    })
 
     res.json({
       results,
@@ -245,8 +362,56 @@ orderExceptionRouter.post('/analyze', async (req: Request, res: Response) => {
       interceptLogs: sourceResult.interceptLogs,
       tokenUsage,
       timing: { imileMs, aiMs },
+      trackFacts,
+      cancelScanRecheck,
     })
   } catch (e) {
     res.status(500).json({ error: (e as Error).message || '分析失败' })
+  }
+})
+
+/** 异步版本：立即返回 jobId，由 worker 后台执行；前端轮询 /api/jobs/:id 获取结果 */
+orderExceptionRouter.post('/analyze-async', async (req: Request, res: Response) => {
+  try {
+    const body = readJson<{
+      imileToken?: string
+      orderNos?: string[]
+      aiProvider?: string
+      enableAiExplain?: boolean
+      scanStationCode?: string
+    }>(req)
+    const token = readImileToken(req, body.imileToken)
+    const orderNos = Array.isArray(body.orderNos)
+      ? body.orderNos.map((s) => String(s).trim()).filter(Boolean)
+      : []
+    if (!token) {
+      res.status(400).json({ error: '缺少 imileToken' })
+      return
+    }
+    if (!orderNos.length) {
+      res.status(400).json({ error: '请提供 orderNos' })
+      return
+    }
+    if (orderNos.length > 500) {
+      res.status(400).json({ error: '单次最多分析 500 个订单，请拆分后分批提交' })
+      return
+    }
+
+    const aiProvider = String(body.aiProvider ?? 'deepseek').trim().toLowerCase() === 'openai' ? 'openai' : 'deepseek'
+    const enableAiExplain = body.enableAiExplain === true
+    const scanStationCode = String(body.scanStationCode ?? '').trim() || undefined
+    const authReq = req as AuthenticatedRequest
+
+    const job = await enqueueJob({
+      type: ORDER_ANALYZE_JOB_TYPE,
+      payload: { imileToken: token, orderNos, aiProvider, enableAiExplain, scanStationCode },
+      regionCode: authReq.authUser?.regionCode ?? null,
+      createdBy: authReq.authUser?.id ?? null,
+      maxAttempts: 2,
+    })
+
+    res.status(202).json({ jobId: job.id, status: job.status, orderCount: orderNos.length })
+  } catch (e) {
+    res.status(500).json({ error: (e as Error).message || '提交分析任务失败' })
   }
 })

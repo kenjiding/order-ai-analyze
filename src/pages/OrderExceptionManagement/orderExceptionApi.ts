@@ -4,6 +4,8 @@ import type { TrackEvent } from './types'
 const JSON_HEADERS = { 'Content-Type': 'application/json' } as const
 
 const orderExceptionApi = `${getApiBaseUrl()}/api/order-exception`
+const jobsApi = `${getApiBaseUrl()}/api/jobs`
+const feishuWebhookApi = `${getApiBaseUrl()}/api/feishu-webhook`
 
 async function readHttpError(res: Response, text: string): Promise<string> {
   try {
@@ -221,10 +223,68 @@ export async function postOrderExceptionPrefetch(payload: {
   }
 }
 
+export type OrderTrackFacts = {
+  todayStr: string
+  lastEventTime: string
+  lastEventDaysDiff: number
+  latestEventKind: string
+  activeResponsibilityOwner: string
+  activeSegmentStatus: string
+  activeWarehouseName: string | null
+  activeWarehouseKnown: boolean
+  activeWarehouseLossTimeoutDays: number
+  activeExternalCarrierName: string | null
+  activeSegmentStartTime: string | null
+  activeSegmentDaysDiff: number
+  hasRealOperatorScan: boolean
+  inWarehouseStartTime: string | null
+  inWarehouseBasis: string | null
+  inWarehouseDaysDiff: number
+  inWarehouseStartSupersededByDispatch: boolean
+  lastDispatchedOutTime: string | null
+  outWarehouseDaysDiff: number
+  lastDispatchHasReturn: boolean
+  deliveryAssignmentCount: number
+  deliveryCancelCount: number
+  problemCount: number
+  hasDeliveryCompletion: boolean
+  deliveryCompletionTime: string | null
+  deliveryCompletionEvidence: string | null
+  latestOrderExceptionClosed: boolean
+  stationLossCompletion: boolean
+  assignCancelLoopWithoutDispatch: boolean
+  hasInterceptLogs: boolean
+  latestInterceptTime: string | null
+  latestInterceptUserCode: string | null
+  latestInterceptOperatorType: string | null
+  interceptAdjustedResponsibilityOwner: string | null
+  interceptAdjustedResponsibilityBasis: string | null
+  interceptAdjustedResponsibilityDaysDiff: number
+  finalResponsibilityOwner: string | null
+  finalResponsibilityStartTime: string | null
+  finalResponsibilityDaysDiff: number
+  finalResponsibilityBasis: string | null
+  merchantDestroyConfirmed: boolean
+  merchantDestroyConfirmTime: string | null
+  merchantAbandonActive: boolean
+  merchantStorageActive: boolean
+  merchantReturnClosed: boolean
+  merchantReturnRequested: boolean
+  unknownWarehouseInActiveSegment: boolean
+}
+
+/** 「库外丢失」经取消扫描接口二次核验后的改判统计；error 存在时表示本次未完成核验，结果维持原判。 */
+export type CancelScanRecheckMeta = {
+  checkedOrderNos: string[]
+  reclassifiedOrderNos: string[]
+  error?: string
+}
+
 export async function postOrderExceptionAnalyze(payload: {
   imileToken: string
   orderNos: string[]
   aiProvider?: OrderAnalyzeAiProvider
+  scanStationCode?: string
 }): Promise<{
   results: OrderAnalyzeResultItem[]
   trackInfo: Record<string, TrackEvent[]>
@@ -232,6 +292,8 @@ export async function postOrderExceptionAnalyze(payload: {
   interceptLogs: Record<string, OrderAnalyzeInterceptLog[]>
   tokenUsage: OrderAnalyzeTokenUsage
   timing?: OrderAnalyzeApiTiming
+  trackFacts?: Record<string, OrderTrackFacts>
+  cancelScanRecheck?: CancelScanRecheckMeta
 }> {
   const res = await fetch(`${orderExceptionApi}/analyze`, {
     method: 'POST',
@@ -252,6 +314,8 @@ export async function postOrderExceptionAnalyze(payload: {
     interceptLogs: Record<string, OrderAnalyzeInterceptLog[]>
     tokenUsage: OrderAnalyzeTokenUsage
     timing?: OrderAnalyzeApiTiming
+    trackFacts?: Record<string, OrderTrackFacts>
+    cancelScanRecheck?: CancelScanRecheckMeta
   }
 }
 
@@ -292,4 +356,141 @@ export async function postClosureDriverVendor(payload: {
     stationCode: string
     result: { driverId: string; vendorCode: string; vendorName: string } | null
   }
+}
+
+// ─── 异步 AI 分析（jobs queue）───────────────────────────────────────────────
+
+export type JobStatus = 'pending' | 'running' | 'succeeded' | 'failed' | 'cancelled'
+
+export type PublicJob = {
+  id: string
+  type: string
+  status: JobStatus
+  payload: Record<string, unknown>
+  progress: Record<string, unknown>
+  error: string | null
+  artifactPath: string | null
+  artifactExpiresAt: string | null
+  attemptCount: number
+  maxAttempts: number
+  startedAt: string | null
+  finishedAt: string | null
+  createdAt: string
+  updatedAt: string
+}
+
+/** artifact 与同步 /analyze 响应的 shape 一致（无 timing 字段）。 */
+export type AnalyzeJobArtifact = {
+  results: OrderAnalyzeResultItem[]
+  trackInfo: Record<string, TrackEvent[]>
+  orderInfo: Record<string, OrderQueryInfo | null>
+  interceptLogs: Record<string, OrderAnalyzeInterceptLog[]>
+  tokenUsage: OrderAnalyzeTokenUsage
+  trackFacts?: Record<string, OrderTrackFacts>
+  cancelScanRecheck?: CancelScanRecheckMeta
+}
+
+/** 提交批量异步分析任务；立即返回 jobId，通过 getJobById 轮询状态。 */
+export async function postOrderExceptionAnalyzeAsync(payload: {
+  imileToken: string
+  orderNos: string[]
+  aiProvider?: OrderAnalyzeAiProvider
+  enableAiExplain?: boolean
+  scanStationCode?: string
+}): Promise<{ jobId: string; status: JobStatus; orderCount: number }> {
+  const res = await fetch(`${orderExceptionApi}/analyze-async`, {
+    method: 'POST',
+    headers: JSON_HEADERS,
+    body: JSON.stringify({
+      ...payload,
+      aiProvider: payload.aiProvider ?? 'deepseek',
+    }),
+  })
+  const text = await res.text()
+  if (!res.ok) throw new Error(await readHttpError(res, text))
+  return JSON.parse(text) as { jobId: string; status: JobStatus; orderCount: number }
+}
+
+export async function getJobById(jobId: string): Promise<PublicJob> {
+  const res = await fetch(`${jobsApi}/${encodeURIComponent(jobId)}`, { cache: 'no-store' })
+  const text = await res.text()
+  if (!res.ok) throw new Error(await readHttpError(res, text))
+  const parsed = JSON.parse(text) as { job: PublicJob }
+  return parsed.job
+}
+
+export async function getJobArtifact(jobId: string): Promise<AnalyzeJobArtifact> {
+  const res = await fetch(`${jobsApi}/${encodeURIComponent(jobId)}/artifact`, { cache: 'no-store' })
+  const text = await res.text()
+  if (!res.ok) throw new Error(await readHttpError(res, text))
+  const parsed = JSON.parse(text) as { artifact: AnalyzeJobArtifact }
+  return parsed.artifact
+}
+
+export async function listJobsApi(params?: {
+  type?: string
+  limit?: number
+}): Promise<{ jobs: PublicJob[]; total: number }> {
+  const qs = new URLSearchParams()
+  if (params?.type) qs.set('type', params.type)
+  if (params?.limit != null) qs.set('limit', String(params.limit))
+  const url = `${jobsApi}?${qs.toString()}`
+  const res = await fetch(url, { cache: 'no-store' })
+  const text = await res.text()
+  if (!res.ok) throw new Error(await readHttpError(res, text))
+  return JSON.parse(text) as { jobs: PublicJob[]; total: number }
+}
+
+export async function deleteJobApi(jobId: string): Promise<void> {
+  const res = await fetch(`${jobsApi}/${encodeURIComponent(jobId)}`, { method: 'DELETE' })
+  if (!res.ok) {
+    const text = await res.text()
+    throw new Error(await readHttpError(res, text))
+  }
+}
+
+export async function cancelJobApi(jobId: string): Promise<PublicJob> {
+  const res = await fetch(`${jobsApi}/${encodeURIComponent(jobId)}/cancel`, {
+    method: 'POST',
+    headers: JSON_HEADERS,
+    body: JSON.stringify({}),
+  })
+  const text = await res.text()
+  if (!res.ok) throw new Error(await readHttpError(res, text))
+  const parsed = JSON.parse(text) as { job: PublicJob }
+  return parsed.job
+}
+
+export type OrderExceptionPushRow = {
+  lossScope: string
+  categoryName: string
+  currentResponsibilityParty: string
+  confidence: string
+}
+
+export type OrderExceptionPushResult = {
+  ok: boolean
+  aiSummaryGenerated?: boolean
+  aiError?: string
+  httpStatus?: number
+  feishu?: unknown
+  error?: string
+}
+
+export async function postFeishuPushOrderException(payload: {
+  pushScope: 'order-exception'
+  webhookUrl: string
+  signingSecret?: string
+  rows: OrderExceptionPushRow[]
+  analysisDate: string
+  aiProvider: 'deepseek' | 'openai'
+}): Promise<OrderExceptionPushResult> {
+  const res = await fetch(`${feishuWebhookApi}/push-order-exception`, {
+    method: 'POST',
+    headers: JSON_HEADERS,
+    body: JSON.stringify(payload),
+  })
+  const text = await res.text()
+  if (!res.ok) throw new Error(await readHttpError(res, text))
+  return JSON.parse(text) as OrderExceptionPushResult
 }

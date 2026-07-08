@@ -2,7 +2,8 @@ import { normalizeSubType } from './exceptionCatalog'
 import {
   analyzeOrdersWithDeepSeek,
   analyzeOrdersWithOpenAi,
-  applyFactGuardrails,
+  explainOrdersWithDeepSeek,
+  explainOrdersWithOpenAi,
   deriveTrackFacts,
   emptyTokenUsage,
   mergeTokenUsage,
@@ -11,6 +12,8 @@ import {
   type TokenUsage,
 } from '../openaiOrderAnalyze'
 import type { TrackFacts } from './types'
+import { classifyOrderFromFacts } from './decisionRules'
+import { runWithWarehouseProfileContextAsync, type WarehouseConfigDto } from './warehouseProfiles'
 
 export type OrderAnalyzeAiProvider = 'openai' | 'deepseek'
 
@@ -106,10 +109,62 @@ async function analyzeTargetsWithProvider(input: {
   return analyzeOrdersWithOpenAi({ targets: input.targets })
 }
 
-export async function runOrderAnalyzePipeline(input: {
+async function explainTargetsWithProvider(input: {
+  useDeepSeek: boolean
+  targets: Array<{
+    orderNo: string
+    tracks: AnalyzeTarget['tracks']
+    interceptLogs?: AnalyzeTarget['interceptLogs']
+    deterministicLossScope: OrderAnalyzeResult['lossScope']
+    deterministicSubType: string
+    deterministicReason: string
+    analysisDate?: AnalyzeTarget['analysisDate']
+  }>
+}): Promise<{ results: Array<{ orderNo: string; reason: string }>; tokenUsage: TokenUsage }> {
+  if (input.useDeepSeek) {
+    return explainOrdersWithDeepSeek({ targets: input.targets })
+  }
+  return explainOrdersWithOpenAi({ targets: input.targets })
+}
+
+function mergeAiExplanation(input: {
+  deterministic: OrderAnalyzeResult
+  ai?: { orderNo: string; reason: string }
+  provider: OrderAnalyzeAiProvider
+}): OrderAnalyzeResult {
+  const { deterministic, ai, provider } = input
+  if (!ai) return deterministic
+  const reason = (ai.reason ?? '').trim()
+  if (!reason) return deterministic
+  return {
+    ...deterministic,
+    reason,
+    confidence: deterministic.confidence,
+    needsReview: deterministic.needsReview,
+    crossCheckedBy: provider,
+  }
+}
+
+function finalizeResultWithFacts(result: OrderAnalyzeResult, facts: TrackFacts | undefined): OrderAnalyzeResult {
+  return {
+    ...result,
+    exceptionCategoryId: normalizeSubType({
+      lossScope: result.lossScope,
+      subType: result.exceptionCategoryId,
+      facts,
+    }),
+    currentResponsibilityParty: formatCurrentResponsibilityParty(facts),
+    activeResponsibilityOwner: facts?.activeResponsibilityOwner,
+    latestResponsibilityTrackMarker: buildLatestResponsibilityTrackMarker(facts),
+  }
+}
+
+export async function runOrderAnalyzePipelineLegacy(input: {
   targets: AnalyzeTarget[]
   aiProvider: OrderAnalyzeAiProvider
+  warehouseConfig?: WarehouseConfigDto | null
 }): Promise<{ results: OrderAnalyzeResult[]; tokenUsage: TokenUsage }> {
+  return runWithWarehouseProfileContextAsync(input.warehouseConfig, async () => {
   const { targets } = input
   const useDeepSeek = input.aiProvider === 'deepseek'
 
@@ -122,11 +177,22 @@ export async function runOrderAnalyzePipeline(input: {
   tokenUsage = mergeTokenUsage(tokenUsage, primaryUsage)
 
   const targetFactsMap = new Map(
-    targets.map((t) => [t.orderNo, deriveTrackFacts(t.tracks, t.interceptLogs ?? [])])
+    targets.map((t) => [t.orderNo, deriveTrackFacts(t.tracks, t.interceptLogs ?? [], { analysisDate: t.analysisDate })])
   )
   const guardedResults = primaryResults.map((r) => {
     const facts = targetFactsMap.get(r.orderNo)
-    return facts ? applyFactGuardrails(r, facts) : r
+    if (!facts) return r
+    const deterministic = classifyOrderFromFacts({ orderNo: r.orderNo, facts })
+    return {
+      ...r,
+      lossScope: deterministic.lossScope,
+      exceptionCategoryId: deterministic.exceptionCategoryId,
+      reason: deterministic.reason,
+      confidence: deterministic.confidence,
+      needsReview: deterministic.needsReview,
+      factGuardrailHit: deterministic.factGuardrailHit,
+      appliedDecisionRuleId: deterministic.appliedDecisionRuleId,
+    }
   })
 
   const crossProviderEnabled = readCrossProviderEnabled()
@@ -147,7 +213,18 @@ export async function runOrderAnalyzePipeline(input: {
       tokenUsage = mergeTokenUsage(tokenUsage, secondaryUsage)
       const guardedSecondaryResults = secondaryResults.map((r) => {
         const facts = targetFactsMap.get(r.orderNo)
-        return facts ? applyFactGuardrails(r, facts) : r
+        if (!facts) return r
+        const deterministic = classifyOrderFromFacts({ orderNo: r.orderNo, facts })
+        return {
+          ...r,
+          lossScope: deterministic.lossScope,
+          exceptionCategoryId: deterministic.exceptionCategoryId,
+          reason: deterministic.reason,
+          confidence: deterministic.confidence,
+          needsReview: deterministic.needsReview,
+          factGuardrailHit: deterministic.factGuardrailHit,
+          appliedDecisionRuleId: deterministic.appliedDecisionRuleId,
+        }
       })
       const secondaryMap = new Map(guardedSecondaryResults.map((r) => [r.orderNo, r]))
       const secondaryProvider: 'openai' | 'deepseek' = useDeepSeek ? 'openai' : 'deepseek'
@@ -173,7 +250,18 @@ export async function runOrderAnalyzePipeline(input: {
       tokenUsage = mergeTokenUsage(tokenUsage, retryUsage)
       const guardedRetriedResults = retriedResults.map((r) => {
         const facts = targetFactsMap.get(r.orderNo)
-        return facts ? applyFactGuardrails(r, facts) : r
+        if (!facts) return r
+        const deterministic = classifyOrderFromFacts({ orderNo: r.orderNo, facts })
+        return {
+          ...r,
+          lossScope: deterministic.lossScope,
+          exceptionCategoryId: deterministic.exceptionCategoryId,
+          reason: deterministic.reason,
+          confidence: deterministic.confidence,
+          needsReview: deterministic.needsReview,
+          factGuardrailHit: deterministic.factGuardrailHit,
+          appliedDecisionRuleId: deterministic.appliedDecisionRuleId,
+        }
       })
       const retryMap = new Map(guardedRetriedResults.map((r) => [r.orderNo, r]))
       finalResults = guardedResults.map((original) => {
@@ -185,16 +273,95 @@ export async function runOrderAnalyzePipeline(input: {
   }
 
   const normalizedResults = finalResults.map((r) => ({
-    ...r,
-    exceptionCategoryId: normalizeSubType({
-      lossScope: r.lossScope,
-      subType: r.exceptionCategoryId,
-      facts: targetFactsMap.get(r.orderNo),
-    }),
-    currentResponsibilityParty: formatCurrentResponsibilityParty(targetFactsMap.get(r.orderNo)),
-    activeResponsibilityOwner: targetFactsMap.get(r.orderNo)?.activeResponsibilityOwner,
-    latestResponsibilityTrackMarker: buildLatestResponsibilityTrackMarker(targetFactsMap.get(r.orderNo)),
+    ...finalizeResultWithFacts(r, targetFactsMap.get(r.orderNo)),
   }))
 
   return { results: normalizedResults, tokenUsage }
+  })
+}
+
+export async function runOrderAnalyzePipeline(input: {
+  targets: AnalyzeTarget[]
+  aiProvider: OrderAnalyzeAiProvider
+  enableAiExplain?: boolean
+  warehouseConfig?: WarehouseConfigDto | null
+}): Promise<{ results: OrderAnalyzeResult[]; tokenUsage: TokenUsage; trackFacts: Record<string, TrackFacts> }> {
+  return runWithWarehouseProfileContextAsync(input.warehouseConfig, async () => {
+  const { targets } = input
+  const useDeepSeek = input.aiProvider === 'deepseek'
+  const targetFactsMap = new Map(
+    targets.map((t) => [t.orderNo, deriveTrackFacts(t.tracks, t.interceptLogs ?? [], { analysisDate: t.analysisDate })])
+  )
+
+  const deterministicResults = targets.map((target) => {
+    const facts = targetFactsMap.get(target.orderNo)
+    if (!facts) {
+      return {
+        orderNo: target.orderNo,
+        lossScope: '需人工判断' as const,
+        exceptionCategoryId: '',
+        reason: '缺少可用轨迹事实，需人工复核',
+        confidence: 0,
+        needsReview: true,
+      }
+    }
+    return classifyOrderFromFacts({ orderNo: target.orderNo, facts })
+  })
+
+  let tokenUsage = emptyTokenUsage()
+  let mergedResults = deterministicResults
+
+  if (input.enableAiExplain) {
+    const explainTargets = deterministicResults
+      .filter((result) => result.needsReview === true)
+      .map((result) => {
+        const target = targets.find((row) => row.orderNo === result.orderNo)
+        if (!target) return null
+        return {
+          orderNo: result.orderNo,
+          tracks: target.tracks,
+          interceptLogs: target.interceptLogs ?? [],
+          analysisDate: target.analysisDate,
+          deterministicLossScope: result.lossScope,
+          deterministicSubType: result.exceptionCategoryId,
+          deterministicReason: result.reason,
+        }
+      })
+      .filter(Boolean) as Array<{
+      orderNo: string
+      tracks: AnalyzeTarget['tracks']
+      interceptLogs?: AnalyzeTarget['interceptLogs']
+      deterministicLossScope: OrderAnalyzeResult['lossScope']
+      deterministicSubType: string
+      deterministicReason: string
+      analysisDate?: AnalyzeTarget['analysisDate']
+    }>
+
+    if (explainTargets.length > 0) {
+      try {
+        const { results: aiResults, tokenUsage: explainUsage } = await explainTargetsWithProvider({
+          useDeepSeek,
+          targets: explainTargets,
+        })
+        tokenUsage = mergeTokenUsage(tokenUsage, explainUsage)
+        const aiMap = new Map(aiResults.map((result) => [result.orderNo, result]))
+        mergedResults = deterministicResults.map((deterministic) =>
+          mergeAiExplanation({
+            deterministic,
+            ai: aiMap.get(deterministic.orderNo),
+            provider: input.aiProvider,
+          })
+        )
+      } catch {
+        mergedResults = deterministicResults
+      }
+    }
+  }
+
+  const normalizedResults = mergedResults.map((result) =>
+    finalizeResultWithFacts(result, targetFactsMap.get(result.orderNo))
+  )
+  const trackFacts: Record<string, TrackFacts> = Object.fromEntries(targetFactsMap.entries())
+  return { results: normalizedResults, tokenUsage, trackFacts }
+  })
 }

@@ -1,0 +1,113 @@
+{
+  "title": "Vendor Daily Report",
+  "brand": "iMile Australia",
+  "mockWarning": "Showing sample data. Fetch data on the Vendor Analysis page, click \"Capture & push to Feishu\", then refresh this page.",
+  "header": {
+    "referenceDate": "Reference date",
+    "complaintStats": "Complaint period",
+    "generatedAt": "Generated at {{time}}",
+    "vendorCount": "{{count}} vendors"
+  },
+  "push": {
+    "pushing": "Pushing…",
+    "button": "Capture & push to Feishu ({{count}} groups)",
+    "successCount": "{{count}} succeeded",
+    "failCount": "{{count}} failed",
+    "capturing": "Capturing screenshot…",
+    "sending": "Pushing…",
+    "sent": "Sent",
+    "failed": "Push failed",
+    "sectionNotFound": "Section not found",
+    "captureFailed": "Screenshot failed: {{message}}",
+    "unknownError": "Unknown error",
+    "shareLinkText": "View full daily report"
+  },
+  "summary": {
+    "vendorCount": "Vendors",
+    "pushEnabled": "{{count}} push enabled",
+    "unprocessedTickets": "Open tickets",
+    "pendingAction": "Needs attention",
+    "allClear": "All clear",
+    "longTailTotal": "Long-tail total",
+    "itemsToFollowUp": "items to follow up",
+    "noLongTail": "No long-tail items",
+    "alertVendors": "Vendors with alerts",
+    "vendorsNeedAttention": "{{count}} need attention",
+    "allMet": "All targets met"
+  },
+  "legend": {
+    "title": "Color key",
+    "met": "On target",
+    "warning": "Warning",
+    "notMet": "Below target",
+    "thresholdHint": "Exit rate ≥99% / 24h dispatch ≥95% / complaint rate ≤0.025% = on target"
+  },
+  "vendor": {
+    "returnWarning": "Return alert {{count}}",
+    "lowDispatch": "Dispatch below target {{count}}",
+    "unprocessedTickets": "Open tickets {{count}}",
+    "pushDisabled": "Push disabled"
+  },
+  "kpi": {
+    "before11ExitRate": "Exit rate by 11:00",
+    "asOfDate": "As of {{date}}",
+    "dispatch24h": "24h dispatch rate",
+    "complaintRate": "Complaint rate",
+    "complaintSub": "{{complaints}} complaints · {{waybills}} waybills",
+    "unprocessedTickets": "Open tickets",
+    "needsAction": "Action required",
+    "noPending": "None pending",
+    "longTail": "Long-tail",
+    "longTailFollowUp": "{{count}} to follow up",
+    "noLongTailItems": "No long-tail items",
+    "pieces": "{{done}} / {{total}} pcs",
+    "ticketsNotMet": "{{count}} below target",
+    "allMet": "All on target"
+  },
+  "driverTable": {
+    "title": "Courier performance",
+    "count": "{{count}} couriers",
+    "courier": "Courier",
+    "todayPickup": "Today's pickups",
+    "before11ExitRate": "Exit by 11:00",
+    "dispatch24h": "24h dispatch",
+    "returnWarning": "Return alert",
+    "longTail": "Long-tail",
+    "tooltip": {
+      "pickup": "Waybill numbers",
+      "before11Unmet": "Not exited by 11:00",
+      "dispatch24hUnmet": "Below 24h dispatch target",
+      "returnWarning": "Return alert records",
+      "longTail": "Long-tail waybill numbers"
+    }
+  },
+  "metrics": {
+    "sectionTitle": "Metric definitions",
+    "onTimePickup": {
+      "name": "On-time pickup rate",
+      "formula": "Pickups completed within SLA / latest hub inbound volume"
+    },
+    "dispatch24h": {
+      "name": "24h dispatch rate",
+      "formula": "Successful sign-offs within SLA / same-day dispatch volume"
+    },
+    "complaintRate": {
+      "name": "Complaint rate",
+      "formula": "Attributed complaints / attributed hub inbound volume"
+    },
+    "signedNotReceived": {
+      "name": "Signed but not received",
+      "formula": "Confirmed signed-not-received tickets + valid POD but recipient did not receive"
+    }
+  },
+  "empty": "No vendor data",
+  "footer": "iMile Operations Analytics",
+  "aiSummary": {
+    "loading": "Generating AI analysis…"
+  },
+  "portal": {
+    "loading": "Loading daily report…",
+    "invalidTitle": "Link invalid or expired",
+    "invalidHint": "This share link does not exist, has been disabled, or has no report data yet. Please contact your iMile representative for the latest link."
+  }
+}

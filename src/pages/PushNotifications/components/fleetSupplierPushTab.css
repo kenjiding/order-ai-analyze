@@ -65,6 +65,17 @@
   gap: 10px;
 }
 
+.fleet-supplier-push-tab .fs-toolbar-weather {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--admin-line);
+  background: var(--admin-surface-soft);
+}
+
 .fleet-supplier-push-tab .fs-push-images {
   display: flex;
   flex-wrap: wrap;
@@ -189,6 +200,50 @@
 
 .fleet-supplier-push-tab .fs-supplier-table-wrap .ant-table-tbody > tr:nth-child(even) > td {
   background: var(--admin-surface-soft) !important;
+}
+
+/* 推送失败面板 */
+.fleet-supplier-push-tab .fs-push-fail-panel {
+  border-radius: 10px;
+  border: 1px solid #fca5a5;
+  background: #fff5f5;
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.fleet-supplier-push-tab .fs-push-fail-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #b91c1c;
+  font-size: 13px;
+  font-weight: 650;
+}
+
+.fleet-supplier-push-tab .fs-push-fail-list {
+  margin: 0;
+  padding: 0 0 0 2px;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.fleet-supplier-push-tab .fs-push-fail-item {
+  font-size: 12px;
+  line-height: 1.5;
+  color: #7f1d1d;
+}
+
+.fleet-supplier-push-tab .fs-push-fail-name {
+  font-weight: 650;
+  margin-right: 4px;
+}
+
+.fleet-supplier-push-tab .fs-push-fail-errors {
+  color: #b91c1c;
 }
 
 /* 折叠面板 */

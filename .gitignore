@@ -15,6 +15,7 @@ temp
 .env
 .env.production
 .env.development
+.env.ecs-web
 
 
 # Editor directories and files
@@ -27,3 +28,4 @@ temp
 *.njsproj
 *.sln
 *.sw?
+server/data/job-artifacts/

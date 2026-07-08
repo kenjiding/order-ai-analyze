@@ -1,8 +1,10 @@
-import { DatePicker, Image, Input, Radio } from 'antd'
+import { DatePicker, Image, Input, Radio, Tooltip } from 'antd'
 import dayjs from 'dayjs'
 import { Camera, Download, Filter, ImagePlus, Loader2, RotateCcw, X } from 'lucide-react'
 import { useCallback, useId, useState, type ChangeEvent } from 'react'
+import { PERMISSION_KEYS, usePermission } from '../../../hooks/usePermission'
 import { showToast } from '../../../utils/toast'
+import { confirmDialog } from '../../../utils/confirmDialog'
 import {
   exportDailyChecklistExcel,
   validateDailyChecklistForExport,
@@ -16,6 +18,7 @@ type Props = {
 }
 
 export function DailyChecklistTable({ vm }: Props) {
+  const canExport = usePermission(PERMISSION_KEYS.btnWarehouseSafetyExport)
   const {
     form,
     onlyRiskRows,
@@ -123,20 +126,29 @@ export function DailyChecklistTable({ vm }: Props) {
               type="button"
               className="inline-flex items-center gap-1.5 rounded-md border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50"
               onClick={() => {
-                if (window.confirm('确定清空当前填写内容？')) resetForm()
+                void confirmDialog({
+                  title: '清空填写内容',
+                  content: '确定清空当前填写内容？',
+                  okText: '清空',
+                  danger: true,
+                }).then((confirmed) => {
+                  if (confirmed) resetForm()
+                })
               }}
             >
               清空
             </button>
-            <button
-              type="button"
-              disabled={exporting}
-              className="inline-flex items-center gap-1.5 rounded-md bg-[#1f6f68] px-3 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-[#185a54] disabled:opacity-60"
-              onClick={() => void onExport()}
-            >
-              <Download className="h-3.5 w-3.5" aria-hidden />
-              {exporting ? '导出中…' : '导出 Excel'}
-            </button>
+            <Tooltip title={!canExport ? '无操作权限' : undefined}>
+              <button
+                type="button"
+                disabled={exporting || !canExport}
+                className="inline-flex items-center gap-1.5 rounded-md bg-[#1f6f68] px-3 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-[#185a54] disabled:opacity-60"
+                onClick={() => void onExport()}
+              >
+                <Download className="h-3.5 w-3.5" aria-hidden />
+                {exporting ? '导出中…' : '导出 Excel'}
+              </button>
+            </Tooltip>
           </div>
         </div>
 
@@ -210,7 +222,6 @@ export function DailyChecklistTable({ vm }: Props) {
                       </td>
                       <td className="border border-slate-200 px-2 py-2 text-center">
                         <Radio.Group
-                          size="small"
                           value={row.result}
                           onChange={(e) => setRowResult(tpl.serialNo, e.target.value as InspectionResult)}
                           className="flex flex-col items-stretch gap-1"
@@ -298,7 +309,6 @@ function EvidenceRectificationCell({
             完成时间
             <DatePicker
               className="mt-1 w-full"
-              size="small"
               value={dueDate ? dayjs(dueDate) : null}
               onChange={(d) => onDueDateChange(d ? d.format('YYYY-MM-DD') : '')}
               placeholder="选择日期"

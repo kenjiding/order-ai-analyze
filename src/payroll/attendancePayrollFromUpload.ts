@@ -1,6 +1,6 @@
 /**
  * 出勤文件 → 工资结算同款口径（与工资页上传 → 计算薪资一致）。
- * 仓库效率「总成本」应使用本模块，勿再走扫描解析后的二次映射。
+ * 物流运营「总成本」应使用本模块，勿再走扫描解析后的二次映射。
  */
 import * as XLSX from 'xlsx'
 import {
@@ -49,31 +49,42 @@ async function readSheetRowsFromFile(file: File): Promise<Record<string, unknown
   return XLSX.utils.sheet_to_json(worksheet, { raw: false }) as Record<string, unknown>[]
 }
 
-/**
- * 按工资结算系统同一流程计算考勤工资。
- * @param isSorting / @param isPublicHoliday 与工资页上传区两个勾选项一致（仓库效率默认均为 false）
- */
-export async function computeAttendancePayrollFromFiles(
-  files: File[],
+function attendanceUploadRowKey(row: Record<string, unknown>): string {
+  const dateRaw = row['日期'] ?? row['Date'] ?? row['date'] ?? ''
+  const date = convertDateToStandard(String(dateRaw)) || String(dateRaw).trim()
+  const id = String(row['人员编号'] ?? row['Employee ID'] ?? row['employeeId'] ?? '').trim()
+  const nick = String(row['昵称'] ?? row['Nickname'] ?? row['nickname'] ?? '').trim()
+  const name = String(row['姓名'] ?? row['Name'] ?? row['name'] ?? '').trim()
+  const person = id || nick || name
+  if (!date || !person) return ''
+  return `${date}|${person}`
+}
+
+/** 叠加上传时同人同日保留首条，与物流运营考勤解析去重口径一致 */
+function dedupeAttendanceUploadRows(rows: Record<string, unknown>[]): Record<string, unknown>[] {
+  const seen = new Set<string>()
+  const out: Record<string, unknown>[] = []
+  for (const row of rows) {
+    const key = attendanceUploadRowKey(row)
+    if (!key) {
+      out.push(row)
+      continue
+    }
+    if (seen.has(key)) continue
+    seen.add(key)
+    out.push(row)
+  }
+  return out
+}
+
+function buildAttendancePayrollResult(
+  jsonData: Record<string, unknown>[],
   employees: EmployeeLite[],
   rateSettings: RateSettings,
-  isSorting: boolean,
-  isPublicHoliday: boolean,
-): Promise<AttendancePayrollResult> {
-  if (!files.length) {
-    return { wageRows: [], totalWages: 0, wagesByDate: {}, validationErrors: [] }
-  }
-
-  const jsonData: Record<string, unknown>[] = []
-  for (const file of files) {
-    jsonData.push(...(await readSheetRowsFromFile(file)))
-  }
-
+): AttendancePayrollResult {
   const uploadedData = transformSheetRowsToUploadedData(
-    jsonData,
+    dedupeAttendanceUploadRows(jsonData),
     employees,
-    isSorting,
-    isPublicHoliday,
   )
   const { validationErrors, recordsToSubmit } = normalizeUploadedRowsForSubmit(uploadedData)
   const computed = buildWageRowsFromNormalized(recordsToSubmit, rateSettings)
@@ -97,6 +108,36 @@ export async function computeAttendancePayrollFromFiles(
   }
 
   return { wageRows, totalWages, wagesByDate, validationErrors }
+}
+
+/** 考勤表行（上传表 / ZKT API 映射）→ 工资结算同款口径 */
+export function computeAttendancePayrollFromSheetRows(
+  sheetRows: Record<string, unknown>[],
+  employees: EmployeeLite[],
+  rateSettings: RateSettings,
+): AttendancePayrollResult {
+  if (!sheetRows.length) {
+    return { wageRows: [], totalWages: 0, wagesByDate: {}, validationErrors: [] }
+  }
+  return buildAttendancePayrollResult(sheetRows, employees, rateSettings)
+}
+
+/** 按工资结算系统同一流程计算考勤工资（日配置由导入后自动推断，工资页可在预览中逐行调整）。 */
+export async function computeAttendancePayrollFromFiles(
+  files: File[],
+  employees: EmployeeLite[],
+  rateSettings: RateSettings,
+): Promise<AttendancePayrollResult> {
+  if (!files.length) {
+    return { wageRows: [], totalWages: 0, wagesByDate: {}, validationErrors: [] }
+  }
+
+  const jsonData: Record<string, unknown>[] = []
+  for (const file of files) {
+    jsonData.push(...(await readSheetRowsFromFile(file)))
+  }
+
+  return buildAttendancePayrollResult(jsonData, employees, rateSettings)
 }
 
 type DailyRowForLaborCost = {

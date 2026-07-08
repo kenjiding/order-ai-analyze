@@ -1,18 +1,23 @@
 // @ts-nocheck
-import { Save, Upload, X, Trash2 } from 'lucide-react'
+import { Button, DatePicker, Radio } from 'antd'
+import { CloudDownload, FileSpreadsheet, Save } from 'lucide-react'
+import dayjs from 'dayjs'
+import { useMemo, useState } from 'react'
+import { WageFileUploadBar } from './WageFileUploadBar'
+import { UploadPreviewTable } from './UploadPreviewTable'
+
+type IntakeMode = 'upload' | 'api'
 
 export function UploadTabContent({
-  isSorting,
-  setIsSorting,
-  isPublicHoliday,
-  setIsPublicHoliday,
   handleFileUpload,
+  handleZktApiFetch,
+  isLoadingZktAttendance,
+  wageApiDateRange,
+  setWageApiDateRange,
   uploadedData,
-  uploadedSourceFileName,
   handleSubmitUpload,
   isUploading,
   handleClearUploadedData,
-  rateSettings,
   roleMap,
   roles,
   handleUpdateUploadedRole,
@@ -21,190 +26,167 @@ export function UploadTabContent({
   formatDate,
   formatWorkday,
 }) {
+  const [mode, setMode] = useState<IntakeMode>('api')
+
+  const range = useMemo(() => {
+    if (!wageApiDateRange) return null
+    const [start, end] = wageApiDateRange
+    const startDay = dayjs(start, 'YYYY-MM-DD', true)
+    const endDay = dayjs(end, 'YYYY-MM-DD', true)
+    if (!startDay.isValid() || !endDay.isValid()) return null
+    return [startDay, endDay]
+  }, [wageApiDateRange])
+
+  const handleRangeChange = (values) => {
+    if (!values?.[0] || !values[1]) {
+      setWageApiDateRange(null)
+      return
+    }
+    setWageApiDateRange([values[0].format('YYYY-MM-DD'), values[1].format('YYYY-MM-DD')])
+  }
+
+  const handleFetch = () => {
+    if (!wageApiDateRange) return
+    void handleZktApiFetch(wageApiDateRange[0], wageApiDateRange[1])
+  }
+
+  const intakeBusy = isUploading || isLoadingZktAttendance
+
   return (
-    <div className="space-y-6">
-      <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
-        <div className="flex items-center justify-between mb-4">
-          <h3 className="text-lg font-semibold text-gray-900">上传配置</h3>
-        </div>
-
-        <div className="flex flex-col md:flex-row md:items-stretch gap-4 mb-4">
-
-        <div className="flex gap-3 p-3 rounded-lg border border-emerald-200 bg-emerald-50 md:flex-1 md:min-w-0 items-start">
-            <Upload className="h-5 w-5 shrink-0 text-emerald-600 mt-0.5" aria-hidden />
-            <div className="flex min-w-0 flex-1 flex-col gap-3">
-              <div className="min-w-0 space-y-1">
-                <span className="text-sm font-medium text-emerald-950 block">文件导入与计算</span>
-              </div>
-              <div className="flex flex-wrap gap-2">
-                <label className="cursor-pointer">
-                  <div className="inline-flex items-center justify-center rounded-md border border-emerald-300 bg-white px-3 py-2 text-sm font-medium text-emerald-900 shadow-sm transition-colors hover:bg-emerald-100/80">
-                    选择文件
-                  </div>
-                  <input
-                    type="file"
-                    accept=".xlsx,.xls,.csv"
-                    onChange={handleFileUpload}
-                    className="hidden"
-                  />
-                </label>
-                {uploadedData.length > 0 && (
-                  <>
-                    <button
-                      type="button"
-                      onClick={handleSubmitUpload}
-                      disabled={isUploading}
-                      className="inline-flex items-center justify-center gap-2 rounded-md border border-emerald-700 bg-emerald-700 px-3 py-2 text-sm font-medium text-white shadow-sm transition-colors hover:bg-emerald-800 disabled:cursor-not-allowed disabled:opacity-50"
-                    >
-                      <Save className="h-4 w-4 shrink-0" />
-                      {isUploading ? '薪资计算中...' : '计算薪资'}
-                    </button>
-                    <button
-                      type="button"
-                      onClick={handleClearUploadedData}
-                      className="inline-flex items-center justify-center gap-2 rounded-md border border-emerald-300 bg-white px-3 py-2 text-sm font-medium text-emerald-900 shadow-sm transition-colors hover:bg-emerald-100/80"
-                    >
-                      <X className="h-4 w-4 shrink-0 text-emerald-700" />
-                      清空
-                    </button>
-                  </>
-                )}
-              </div>
-            </div>
+    <div className="admin-panel overflow-hidden">
+      <div className="admin-section-title py-3">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <h3 className="text-base font-semibold text-slate-950">考勤数据</h3>
+            <p className="admin-description mt-0.5 text-xs leading-5">
+              支持 Excel/CSV 上传或 ZKT API 拉取，预览后计算薪资
+            </p>
           </div>
-          <div className="flex items-center gap-3 p-3 rounded-lg border border-blue-200 bg-blue-50 md:flex-1 min-w-0">
-            <input
-              type="checkbox"
-              id="isSorting"
-              checked={isSorting}
-              onChange={(e) => setIsSorting(e.target.checked)}
-              className="h-5 w-5 shrink-0 rounded border-blue-300 text-blue-600 accent-blue-600 focus:ring-2 focus:ring-blue-500 focus:ring-offset-0 cursor-pointer"
-            />
-            <label htmlFor="isSorting" className="cursor-pointer flex-1 min-w-0">
-              <span className="text-sm font-medium text-blue-950">是否分拣（影响周末时薪）</span>
-              <p className="text-xs text-blue-800/90 mt-0.5">仅影响周末，非节假日时生效</p>
-            </label>
-          </div>
-          <div className="flex items-center gap-3 p-3 rounded-lg border border-rose-200 bg-rose-50 md:flex-1 min-w-0">
-            <input
-              type="checkbox"
-              id="isPublicHoliday"
-              checked={isPublicHoliday}
-              onChange={(e) => setIsPublicHoliday(e.target.checked)}
-              className="h-5 w-5 shrink-0 rounded border-rose-300 text-rose-600 accent-rose-600 focus:ring-2 focus:ring-rose-500 focus:ring-offset-0 cursor-pointer"
-            />
-            <label htmlFor="isPublicHoliday" className="cursor-pointer flex-1 min-w-0">
-              <span className="text-sm font-medium text-rose-950">是否公共节假日（三倍工资）</span>
-              <p className="text-xs text-rose-800/90 mt-0.5">优先级最高，全天按节假日时薪计算</p>
-            </label>
-          </div>
+          <Radio.Group
+            value={mode}
+            onChange={(e) => setMode(e.target.value as IntakeMode)}
+            optionType="button"
+            buttonStyle="solid"
+            disabled={intakeBusy}
+          >
+            <Radio.Button value="upload">
+              <span className="inline-flex items-center gap-1.5">
+                <FileSpreadsheet className="h-4 w-4" aria-hidden />
+                文件
+              </span>
+            </Radio.Button>
+            <Radio.Button value="api">
+              <span className="inline-flex items-center gap-1.5">
+                <CloudDownload className="h-4 w-4" aria-hidden />
+                API
+              </span>
+            </Radio.Button>
+          </Radio.Group>
         </div>
       </div>
 
+      <div className="border-b border-slate-200 px-5 py-3">
+        {mode === 'upload' ? (
+          <WageFileUploadBar
+            variant="attendance"
+            title="考勤数据"
+            description="支持 .xlsx / .xls / .csv"
+            recordCount={uploadedData.length}
+            onFileSelect={handleFileUpload}
+            onClear={handleClearUploadedData}
+            primaryAction={{
+              label: '计算薪资',
+              loadingLabel: '计算中…',
+              onClick: handleSubmitUpload,
+              disabled: intakeBusy,
+              loading: isUploading,
+              icon: <Save className="h-3.5 w-3.5" />,
+            }}
+          />
+        ) : (
+          <div
+            className={[
+              'flex flex-wrap items-center gap-3 rounded-lg border px-3 py-2.5 sm:px-4',
+              uploadedData.length > 0 ? 'border-slate-200 bg-white' : 'border-dashed border-slate-200 bg-slate-50/60',
+            ].join(' ')}
+          >
+            <div
+              className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[#e8f7f3] text-[#2f8f87]"
+              aria-hidden
+            >
+              <CloudDownload className="h-4 w-4" />
+            </div>
+
+            <div className="min-w-0 flex-1 basis-[12rem]">
+              <p className="text-sm font-medium text-slate-900">ZKT 考勤 API</p>
+              <p className="text-xs text-slate-500">账号与部门 ID 见系统设置</p>
+            </div>
+
+            <div className="flex shrink-0 flex-wrap items-center gap-2">
+              <DatePicker.RangePicker
+                value={range}
+                onChange={handleRangeChange}
+                allowClear
+                format="YYYY-MM-DD"
+                disabled={intakeBusy}
+                className="w-[17.5rem]"
+              />
+              <Button
+                type="default"
+                icon={<CloudDownload className="h-4 w-4" aria-hidden />}
+                loading={isLoadingZktAttendance}
+                disabled={!wageApiDateRange || intakeBusy}
+                onClick={handleFetch}
+              >
+                获取考勤
+              </Button>
+              {uploadedData.length > 0 && (
+                <Button
+                  type="primary"
+                  icon={<Save className="h-4 w-4" aria-hidden />}
+                  loading={isUploading}
+                  disabled={intakeBusy}
+                  onClick={handleSubmitUpload}
+                >
+                  计算薪资
+                </Button>
+              )}
+            </div>
+
+            {uploadedData.length > 0 && (
+              <span className="shrink-0 rounded-md border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs font-semibold text-slate-500 tabular-nums ring-1 ring-slate-200">
+                {uploadedData.length} 条
+              </span>
+            )}
+
+            {uploadedData.length > 0 && (
+              <Button type="link" onClick={handleClearUploadedData} disabled={intakeBusy} className="shrink-0 px-0">
+                清空
+              </Button>
+            )}
+          </div>
+        )}
+      </div>
+
       {uploadedData.length > 0 && (
-        <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
-          <div className="flex items-center justify-between mb-4">
-            <h3 className="text-lg font-semibold text-gray-900">数据预览 ({uploadedData.length} 条记录)</h3>
+        <div className="px-5 py-4">
+          <div className="mb-3 flex items-center justify-between gap-2">
+            <h4 className="text-sm font-semibold text-slate-800">
+              数据预览
+              <span className="ml-2 font-normal text-slate-500">{uploadedData.length} 条</span>
+            </h4>
           </div>
 
-          <div className="overflow-x-auto">
-            <table className="min-w-full divide-y divide-gray-200">
-              <thead className="bg-gray-50">
-                <tr>
-                  <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase">人员编号</th>
-                  <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase">昵称</th>
-                  <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase">部门</th>
-                  <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase">日期</th>
-                  <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase">工作日</th>
-                  <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase">实际签到时间</th>
-                  <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase">实际签退时间</th>
-                  <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase">总时长</th>
-                  <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase">工作时长</th>
-                  <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase">扣减</th>
-                  <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase">奖励</th>
-                  <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase">角色</th>
-                  <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase">日配置</th>
-                  <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase">操作</th>
-                </tr>
-              </thead>
-              <tbody className="bg-white divide-y divide-gray-200">
-                {uploadedData.map((record, index) => (
-                  <tr key={index} className="hover:bg-gray-50">
-                    <td className="px-3 py-3 text-sm text-gray-900">{record.employeeId}</td>
-                    <td className="px-3 py-3 text-sm text-gray-600">{record.nickname || '-'}</td>
-                    <td className="px-3 py-3 text-sm text-gray-600">{record.department}</td>
-                    <td className="px-3 py-3 text-sm text-gray-600">{formatDate(record.date)}</td>
-                    <td className="px-3 py-3 text-sm text-gray-600">{formatWorkday(record.workday)}</td>
-                    <td className="px-3 py-3 text-sm text-gray-600">{record.firstClockIn || '-'}</td>
-                    <td className="px-3 py-3 text-sm text-gray-600">{record.lastClockOut || '-'}</td>
-                    <td className="px-3 py-3 text-sm text-gray-600">{record.totalHours || '-'}</td>
-                    <td className="px-3 py-3 text-sm text-gray-600">{record.workHours || '-'}</td>
-                    <td className="px-3 py-3 text-sm text-gray-600">{record.deduction || '-'}</td>
-                    <td className="px-3 py-3 text-sm text-gray-600">{record.reward || '-'}</td>
-                    <td className="px-3 py-3 text-sm">
-                      <select
-                        value={record.role}
-                        onChange={(e) => handleUpdateUploadedRole(index, e.target.value)}
-                        className="text-sm border border-gray-300 rounded px-2 py-1 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      >
-                        {roles.map((role) => (
-                          <option key={role} value={role}>
-                            {roleMap[role]}
-                          </option>
-                        ))}
-                      </select>
-                    </td>
-                    <td className="px-3 py-3 text-sm text-gray-700">
-                      <div className="flex flex-col items-start gap-2">
-                        <label className="inline-flex items-center gap-2 text-xs">
-                          <input
-                            type="radio"
-                            name={`day-option-${index}`}
-                            value="publicHoliday"
-                            checked={record.weekendOption === 'publicHoliday'}
-                            onChange={() => handleDayOptionChange(index, 'publicHoliday')}
-                            className="text-red-500 focus:ring-red-500"
-                          />
-                          <span>公共节假日</span>
-                        </label>
-                        <label className="inline-flex items-center gap-2 text-xs">
-                          <input
-                            type="radio"
-                            name={`day-option-${index}`}
-                            value="sorting"
-                            checked={record.weekendOption === 'sorting'}
-                            onChange={() => handleDayOptionChange(index, 'sorting')}
-                            className="text-blue-500 focus:ring-blue-500"
-                          />
-                          <span>分拣</span>
-                        </label>
-                        <label className="inline-flex items-center gap-2 text-xs">
-                          <input
-                            type="radio"
-                            name={`day-option-${index}`}
-                            value="regularWeekend"
-                            checked={record.weekendOption === 'regularWeekend'}
-                            onChange={() => handleDayOptionChange(index, 'regularWeekend')}
-                            className="text-gray-500 focus:ring-gray-500"
-                          />
-                          <span>不分拣</span>
-                        </label>
-                      </div>
-                    </td>
-                    <td className="px-3 py-3 text-sm">
-                      <button
-                        type="button"
-                        onClick={() => handleDeleteUploadedRow(index)}
-                        className="text-red-600 hover:text-red-800"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+          <UploadPreviewTable
+            uploadedData={uploadedData}
+            roles={roles}
+            roleMap={roleMap}
+            handleUpdateUploadedRole={handleUpdateUploadedRole}
+            handleDayOptionChange={handleDayOptionChange}
+            handleDeleteUploadedRow={handleDeleteUploadedRow}
+            formatDate={formatDate}
+            formatWorkday={formatWorkday}
+          />
         </div>
       )}
     </div>

@@ -1,4 +1,4 @@
-/** iMile 开放平台 HTTP 调用公共能力（轨迹、阻断日志等接口共用）。 */
+/** iMile 开放平台 HTTP 调用公共能力（轨迹、阻断日志等接口共用）。业务模块请通过 client.requestImileApi 发请求，勿直接调用 imileRequestJson。 */
 
 export const IMILE_DEFAULT_FRONT_SEC = JSON.stringify({
   orgId: 10,
@@ -144,7 +144,7 @@ export function isRetryableUnauthorizedFailure(failure: ImileBusinessFailure): b
 
 export function isRetryableBusyFailure(failure: ImileBusinessFailure): boolean {
   if (failure.code === '44882') return true
-  return /system is busy/i.test(failure.message)
+  return /system is busy/i.test(failure.message) || /系统繁忙/.test(failure.message)
 }
 
 export function sleep(ms: number): Promise<void> {

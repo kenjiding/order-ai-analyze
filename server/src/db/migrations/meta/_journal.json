@@ -1,0 +1,209 @@
+{
+  "version": "7",
+  "dialect": "postgresql",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "7",
+      "when": 1740000000000,
+      "tag": "0000_init",
+      "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1740100000000,
+      "tag": "0001_regions_username",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1740200000000,
+      "tag": "0002_global_username_unique",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1740300000000,
+      "tag": "0003_jobs",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1740400000000,
+      "tag": "0004_super_admin_system_region",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1740500000000,
+      "tag": "0005_efficiency_attendance_daily_records",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1740600000000,
+      "tag": "0006_order_exception_post_filter_configs",
+      "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1740700000000,
+      "tag": "0007_order_exception_warehouse_config",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1750000000000,
+      "tag": "0008_feishu_push_snapshots",
+      "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1781976547206,
+      "tag": "0009_redundant_silver_samurai",
+      "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1782785779332,
+      "tag": "0010_charming_quasar",
+      "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1782806559499,
+      "tag": "0011_faithful_peter_parker",
+      "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1782807186307,
+      "tag": "0012_slimy_red_wolf",
+      "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1782809126066,
+      "tag": "0013_chubby_chamber",
+      "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1782812000000,
+      "tag": "0014_exit_alarm_schedule_imile_token",
+      "breakpoints": true
+    },
+    {
+      "idx": 15,
+      "version": "7",
+      "when": 1782922133607,
+      "tag": "0015_typical_rhodey",
+      "breakpoints": true
+    },
+    {
+      "idx": 16,
+      "version": "7",
+      "when": 1782960634041,
+      "tag": "0016_green_mariko_yashida",
+      "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1783000000000,
+      "tag": "0017_exit_alarm_inbound_cache",
+      "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1783100000000,
+      "tag": "0018_station_inbound_waybill_index",
+      "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1783200000000,
+      "tag": "0019_unified_supplier_push_configs",
+      "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "7",
+      "when": 1783300000000,
+      "tag": "0020_exit_alarm_push_config_ids",
+      "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "7",
+      "when": 1783400000000,
+      "tag": "0021_remove_fleet_supplier_is_disabled",
+      "breakpoints": true
+    },
+    {
+      "idx": 22,
+      "version": "7",
+      "when": 1783500000000,
+      "tag": "0022_supplier_config_scope_bindings",
+      "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "7",
+      "when": 1783600000000,
+      "tag": "0023_exit_alarm_schedule_owner",
+      "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "7",
+      "when": 1783700000000,
+      "tag": "0024_fleet_supplier_push_configs_region",
+      "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "7",
+      "when": 1783800000000,
+      "tag": "0025_vendor_share_links_report_date",
+      "breakpoints": true
+    },
+    {
+      "idx": 26,
+      "version": "7",
+      "when": 1783900000000,
+      "tag": "0026_user_preferences",
+      "breakpoints": true
+    },
+    {
+      "idx": 27,
+      "version": "7",
+      "when": 1784000000000,
+      "tag": "0027_vendor_share_links_job_id",
+      "breakpoints": true
+    },
+    {
+      "idx": 28,
+      "version": "7",
+      "when": 1784100000000,
+      "tag": "0028_chase_dispatch_schedules",
+      "breakpoints": true
+    }
+  ]
+}

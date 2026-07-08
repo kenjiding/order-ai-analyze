@@ -1,0 +1,37 @@
+/* 全局细滚动条 — 独立文件，在 main.tsx 于 index.css 之后导入 */
+*,
+html,
+body,
+.ant-table-body,
+.ant-drawer-body,
+.ant-modal-body {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(71, 85, 105, 0.35) transparent;
+}
+
+*::-webkit-scrollbar,
+html::-webkit-scrollbar,
+body::-webkit-scrollbar,
+.ant-table-body::-webkit-scrollbar,
+.ant-drawer-body::-webkit-scrollbar,
+.ant-modal-body::-webkit-scrollbar {
+  width: 4px !important;
+  height: 4px !important;
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+*::-webkit-scrollbar-thumb,
+html::-webkit-scrollbar-thumb,
+body::-webkit-scrollbar-thumb,
+.ant-table-body::-webkit-scrollbar-thumb,
+.ant-drawer-body::-webkit-scrollbar-thumb,
+.ant-modal-body::-webkit-scrollbar-thumb {
+  background-color: rgba(71, 85, 105, 0.35);
+  border-radius: 999px;
+}
+
+*::-webkit-scrollbar-track,
+*::-webkit-scrollbar-corner {
+  background-color: transparent;
+}

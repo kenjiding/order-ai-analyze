@@ -1,12 +1,12 @@
 import {
-  buildImileAuthHeaders,
   envFirstOr,
-  imileRequestJson,
   isRecord,
   normalizeImileToken,
   readDefaultImileHubcode,
-  truncateRawText,
 } from './shared'
+import { requestImileApi } from './client'
+import { buildImilePortalHeaders, IMILE_DS_CLOSURE_PORTAL } from './portal'
+import { readResultListRows, readResultObject } from './resultObject'
 
 export type ClosureVendorOption = {
   key: string
@@ -28,37 +28,16 @@ type ClosureApiError = {
 }
 
 function makeClosureHeaders(token: string): Record<string, string> {
-  return buildImileAuthHeaders({
+  return buildImilePortalHeaders({
     token,
-    resourceCode: envFirstOr(['IMILE_CLOSURE_RESOURCE_CODE'], 'orderExceptionClosure'),
-    sysName: envFirstOr(['IMILE_CLOSURE_SYS_NAME'], 'DS'),
-    sysPortal: envFirstOr(['IMILE_CLOSURE_SYS_PORTAL'], 'DS'),
-    origin: envFirstOr(['IMILE_CLOSURE_ORIGIN'], 'https://ds.imile.com'),
-    referer: envFirstOr(['IMILE_CLOSURE_REFERER'], 'https://ds.imile.com/'),
-    frontSecEnvKeys: ['IMILE_CLOSURE_FRONT_SEC', 'IMILE_TRACK_FRONT_SEC'],
-    hubcodeEnvKeys: ['IMILE_CLOSURE_HUBCODE', 'IMILE_TRACK_HUBCODE'],
-    langEnvKeys: ['IMILE_CLOSURE_LANG', 'IMILE_TRACK_LANG'],
-    timezoneEnvKeys: ['IMILE_CLOSURE_TIMEZONE', 'IMILE_TRACK_TIMEZONE'],
-    cookieEnvKeys: ['IMILE_CLOSURE_COOKIE', 'IMILE_TRACK_COOKIE'],
-    extra: {
-      'Content-Type': 'application/json',
-    },
+    envPrefix: 'IMILE_CLOSURE',
+    defaults: IMILE_DS_CLOSURE_PORTAL,
+    sharedEnvPrefixes: ['IMILE_TRACK'],
   })
 }
 
-function readResultObject(payload: unknown): unknown {
-  if (!isRecord(payload)) return null
-  return payload.resultObject
-}
-
 function readVendorRows(payload: unknown): unknown[] {
-  const resultObject = readResultObject(payload)
-  if (Array.isArray(resultObject)) return resultObject
-  if (!isRecord(resultObject)) return []
-  if (Array.isArray(resultObject.results)) return resultObject.results
-  if (Array.isArray(resultObject.list)) return resultObject.list
-  if (Array.isArray(resultObject.data)) return resultObject.data
-  return []
+  return readResultListRows(payload)
 }
 
 function normalizeVendorOption(raw: unknown): ClosureVendorOption | null {
@@ -82,26 +61,20 @@ export async function queryClosureVendorOptions(
 ): Promise<{ ok: true; vendors: ClosureVendorOption[] } | ClosureApiError> {
   const token = normalizeImileToken(imileToken)
   const url = envFirstOr(['IMILE_CLOSURE_VENDOR_URL'], 'https://ds.imile.com/hermes/vendor/getAllList')
-  const res = await imileRequestJson({
+  const res = await requestImileApi({
     url,
     method: 'GET',
     headers: makeClosureHeaders(token),
+    label: '供应商列表',
+    retryBusy: false,
   })
 
-  if (!res.readOk) {
+  if (!res.ok) {
     return {
       ok: false,
       status: res.status,
-      message: '供应商列表接口返回非 JSON',
-      rawText: truncateRawText(res.text),
-    }
-  }
-  if (!res.httpOk) {
-    return {
-      ok: false,
-      status: res.status,
-      message: '供应商列表接口 HTTP 错误',
-      rawText: truncateRawText(res.text),
+      message: res.message,
+      rawText: res.rawText,
     }
   }
 
@@ -172,27 +145,21 @@ export async function queryDriverVendorByDriverId(input: {
     'https://ds.imile.com/lm/express/base/v1/biz/driver/page'
   )
   const body = buildDriverQueryPayload({ driverId: input.driverId, stationCode: input.stationCode })
-  const res = await imileRequestJson({
+  const res = await requestImileApi({
     url,
     method: 'POST',
     headers: makeClosureHeaders(token),
-    body: JSON.stringify(body),
+    body,
+    label: '司机查询',
+    retryBusy: false,
   })
 
-  if (!res.readOk) {
+  if (!res.ok) {
     return {
       ok: false,
       status: res.status,
-      message: '司机查询接口返回非 JSON',
-      rawText: truncateRawText(res.text),
-    }
-  }
-  if (!res.httpOk) {
-    return {
-      ok: false,
-      status: res.status,
-      message: '司机查询接口 HTTP 错误',
-      rawText: truncateRawText(res.text),
+      message: res.message,
+      rawText: res.rawText,
     }
   }
 

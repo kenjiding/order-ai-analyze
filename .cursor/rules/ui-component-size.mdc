@@ -1,0 +1,41 @@
+---
+description: Ant Design / MUI 控件尺寸统一为 middle（默认）
+globs: **/*.{tsx,ts}
+alwaysApply: true
+---
+
+# UI 控件尺寸规范
+
+本仓库交互控件**统一使用 middle 尺寸**（口语亦称 medium）。不要混用 `small` / `large`。
+
+## Ant Design（主 UI 库）
+
+- `Button`、`Input`、`Select`、`DatePicker`、`Radio.Group`、`Form`、`Table` 等：**省略 `size` 属性**（默认即 `middle`）。
+- **禁止**写 `size="small"` 或 `size="large"`，包括表格行内操作按钮、工具栏、弹窗表单。
+- 若需紧凑布局，用 `className` / 间距调整，**不要**靠缩小控件尺寸。
+- 不要用原生 `<button>` + `text-xs` / `py-1.5` 模拟小按钮；统一用 Ant Design `Button`（省略 `size`）。
+
+```tsx
+// ❌ BAD
+<button className="admin-btn px-3 py-1.5 text-xs">拉取</button>
+<Button size="small">编辑</Button>
+<Input size="large" />
+<Table size="small" />
+
+// ✅ GOOD — 省略 size，使用默认 middle
+<Button>编辑</Button>
+<Input />
+<Table />
+```
+
+主题已在 `src/theme/antdTheme.ts` 将 `controlHeight` 设为 36（middle）。
+
+## MUI（少量补充组件）
+
+- `IconButton` 等：**省略 `size`**（默认 `medium`）。
+- **禁止** `size="small"` / `size="large"`。
+
+## 新增与修改代码时
+
+- 复制旧代码若带 `size="small"` 或 `size="large"`，提交前必须去掉。
+- Code review 与 AI 生成代码均按此规范执行。

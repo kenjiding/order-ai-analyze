@@ -1,15 +1,24 @@
 import { Chart } from '@antv/g2'
 import { useEffect, useMemo, useRef } from 'react'
-import { isScannerAdjustedEfficiencyLow } from './scannerEfficiencyThresholds'
+import {
+  isScannerAdjustedEfficiencyLow,
+  SCANNER_ADJUSTED_EFFICIENCY_RED_LT,
+  SCANNER_EFFICIENCY_CHART_FILL_LOW,
+  SCANNER_EFFICIENCY_CHART_FILL_NORMAL,
+} from './scannerEfficiencyThresholds'
 
 export type ScannerSummaryChartRow = {
   scanner: string
   scanCount: number
+  cainiaoScanCount: number
+  cainiaoShare: number
+  cainiaoCorrectionFactor: number
   activeDays: number
   effectiveHours: number
   efficiency: number
   reliabilityWeight: number
   adjustedEfficiency: number
+  cainiaoAdjustedEfficiency: number
 }
 
 type Props = {
@@ -17,14 +26,14 @@ type Props = {
   className?: string
 }
 
-const FILL_OK = '#2f8f87'
-const FILL_LOW = '#dc2626'
+const FILL_NORMAL = SCANNER_EFFICIENCY_CHART_FILL_NORMAL
+const FILL_LOW = SCANNER_EFFICIENCY_CHART_FILL_LOW
 
 export default function ScannerSummaryBarChart({ rows, className }: Props) {
   const containerRef = useRef<HTMLDivElement>(null)
 
   const rowsKey = useMemo(
-    () => rows.map((r) => `${r.scanner}\t${r.adjustedEfficiency}`).join('|'),
+    () => rows.map((r) => `${r.scanner}\t${r.cainiaoAdjustedEfficiency}`).join('|'),
     [rows],
   )
 
@@ -35,7 +44,7 @@ export default function ScannerSummaryBarChart({ rows, className }: Props) {
 
     const data = rows.map((r) => ({
       ...r,
-      adjustedEfficiency: Number.isFinite(r.adjustedEfficiency) ? r.adjustedEfficiency : 0,
+      cainiaoAdjustedEfficiency: Number.isFinite(r.cainiaoAdjustedEfficiency) ? r.cainiaoAdjustedEfficiency : 0,
     }))
 
     const chart = new Chart({
@@ -57,15 +66,10 @@ export default function ScannerSummaryBarChart({ rows, className }: Props) {
     })
 
     chart.axis('y', {
-      title: '修正效率（票/小时）',
+      title: '修正效率（票/小时，含菜鸟修正）',
       grid: true,
       gridLineDash: [4, 4],
       gridStroke: '#e2e8f0',
-    })
-
-    chart.scale('color', {
-      domain: ['ok', 'low'],
-      range: [FILL_OK, FILL_LOW],
     })
 
     chart.interaction('tooltip', true)
@@ -75,9 +79,9 @@ export default function ScannerSummaryBarChart({ rows, className }: Props) {
       .coordinate({ transform: [{ type: 'transpose' }] })
       .data(data)
       .encode('x', 'scanner')
-      .encode('y', 'adjustedEfficiency')
-      .encode('color', (d: (typeof data)[number]) =>
-        isScannerAdjustedEfficiencyLow(d.adjustedEfficiency) ? 'low' : 'ok',
+      .encode('y', 'cainiaoAdjustedEfficiency')
+      .style('fill', (d: (typeof data)[number]) =>
+        isScannerAdjustedEfficiencyLow(d.cainiaoAdjustedEfficiency) ? FILL_LOW : FILL_NORMAL,
       )
       .style('fillOpacity', 0.88)
 
@@ -106,12 +110,12 @@ export default function ScannerSummaryBarChart({ rows, className }: Props) {
       <div className="mb-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs font-medium text-slate-600">
         <span className="font-medium text-slate-700">各扫描员修正效率（票/小时）</span>
         <span className="inline-flex items-center gap-2">
-          <span className="h-2.5 w-6 rounded-full" style={{ backgroundColor: FILL_OK }} />
-          ≥460
+          <span className="h-2.5 w-6 rounded-full" style={{ backgroundColor: FILL_NORMAL }} />
+          ≥{SCANNER_ADJUSTED_EFFICIENCY_RED_LT}
         </span>
         <span className="inline-flex items-center gap-2">
           <span className="h-2.5 w-6 rounded-full" style={{ backgroundColor: FILL_LOW }} />
-          &lt;460
+          &lt;{SCANNER_ADJUSTED_EFFICIENCY_RED_LT}
         </span>
       </div>
       <div

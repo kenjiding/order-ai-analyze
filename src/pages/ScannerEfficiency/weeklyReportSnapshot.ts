@@ -1,6 +1,6 @@
 import type { AttendanceEfficiencyResult, ScanAggregate, ScannerEfficiencyResult } from './aggregates'
 import type { ScanSettings } from './constants'
-import type { SourceInfo } from './exportWorkbook'
+import type { SourceInfo } from './sourceInfo'
 import { formatInteger, formatNumber } from './formatAndParse'
 
 const DAY_MS = 24 * 60 * 60 * 1000
@@ -153,7 +153,7 @@ export function buildWeeklyReportSnapshot({
   scanSourceInfo,
   attendanceSourceInfo,
   settings,
-  dailyCostPerTicketByDate,
+  dailyCostPerTicketByDate: _dailyCostPerTicketByDate,
   dailyTotalLaborCostByDate,
   generatedAt = new Date(),
 }: {

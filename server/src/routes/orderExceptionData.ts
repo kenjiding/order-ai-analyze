@@ -1,5 +1,6 @@
 import { queryImileScanInterceptLogs, type ScanInterceptLog } from '../imile/interceptLogs'
 import { queryImileTracks, type OrderQueryInfo, type TrackEvent } from '../imile/track'
+import { normalizeImileToken } from '../imile/shared'
 
 type CacheRow<T> = {
   value: T
@@ -24,8 +25,8 @@ function normalizeTrackCacheValue(value: unknown): TrackCacheValue {
 const trackCache = new Map<string, CacheRow<TrackCacheValue>>()
 const interceptCache = new Map<string, CacheRow<ScanInterceptLog[]>>()
 
-function normalizeToken(raw: string): string {
-  return raw.replace(/^Bearer\s+/i, '').trim()
+function makeCacheKey(token: string, orderNo: string): string {
+  return `${normalizeImileToken(token)}::${orderNo}`
 }
 
 function readCacheTtlMs(): number {
@@ -48,10 +49,6 @@ function readCacheMaxEntries(): number {
   )
   if (!Number.isFinite(raw) || raw <= 0) return 3000
   return raw
-}
-
-function makeCacheKey(token: string, orderNo: string): string {
-  return `${normalizeToken(token)}::${orderNo}`
 }
 
 function pruneCache<T>(cache: Map<string, CacheRow<T>>, now = Date.now()): void {

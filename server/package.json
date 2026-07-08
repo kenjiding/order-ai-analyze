@@ -3,32 +3,47 @@
   "private": true,
   "version": "0.0.0",
   "type": "module",
+  "packageManager": "pnpm@8.15.9",
   "scripts": {
     "dev": "tsx watch src/index.ts",
     "start": "tsx src/index.ts",
+    "worker:dev": "tsx watch src/workerIndex.ts",
+    "worker:start": "tsx src/workerIndex.ts",
+    "db:migrate": "tsx src/db/migrate.ts",
+    "db:init": "bash scripts/init-local-db.sh",
+    "db:generate": "drizzle-kit generate",
     "typecheck": "tsc -p tsconfig.json",
     "test:order-analyze": "tsx --test src/orderAnalyze/orderAnalyze.test.ts",
+    "test:vendor-metrics": "tsx --test src/vendorAnalysis/metricsCatalog.test.ts",
     "test:order-analyze-regression": "tsx src/orderAnalyze/regression/regressionCli.ts",
-    "deploy": "AWS_PROFILE=aws_872570730 sst deploy --stage production",
-    "deploy:dev": "AWS_PROFILE=aws_872570730 sst deploy --stage dev",
-    "remove": "AWS_PROFILE=aws_872570730 sst remove --stage production",
-    "unlock": "AWS_PROFILE=aws_872570730 sst unlock --stage production"
+    "podman:build": "podman build -t warehouse-server:latest -f Containerfile .",
+    "podman:up": "podman compose up -d --build",
+    "podman:down": "podman compose down",
+    "ecs:upload": "bash scripts/ecs-upload.sh",
+    "ecs:deploy": "bash scripts/ecs-upload.sh --deploy"
   },
   "dependencies": {
+    "bcrypt": "^6.0.0",
+    "cookie-parser": "^1.4.7",
     "cors": "^2.8.5",
     "dotenv": "^17.4.2",
+    "drizzle-orm": "^0.45.2",
     "express": "^4.21.2",
+    "jsonwebtoken": "^9.0.3",
+    "node-cron": "^4.2.1",
     "openai": "^6.37.0",
-    "serverless-http": "^4.0.0",
-    "sst": "4.13.1"
+    "postgres": "^3.4.9",
+    "tsx": "^4.19.2"
   },
   "devDependencies": {
-    "@types/aws-lambda": "8.10.161",
+    "@types/bcrypt": "^6.0.0",
+    "@types/cookie-parser": "^1.4.10",
     "@types/cors": "^2.8.17",
     "@types/express": "^5.0.0",
+    "@types/jsonwebtoken": "^9.0.10",
     "@types/node": "^24.12.2",
-    "sst": "^4.13.1",
-    "tsx": "^4.19.2",
+    "@types/node-cron": "^3.0.11",
+    "drizzle-kit": "^0.31.10",
     "typescript": "~6.0.2"
   }
 }

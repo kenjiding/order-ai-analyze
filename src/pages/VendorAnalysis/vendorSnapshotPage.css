@@ -1,0 +1,28 @@
+/* 供应商数据日报落地页 — 移动端优先布局 */
+.vendor-snapshot-page {
+  overflow-x: clip;
+  -webkit-text-size-adjust: 100%;
+}
+
+@media (max-width: 767px) {
+  .vendor-snapshot-page .vs-locale-switch .ant-select {
+    width: 100% !important;
+  }
+}
+
+@media (min-width: 768px) {
+  .vendor-snapshot-page .vs-driver-scroll {
+    -webkit-overflow-scrolling: touch;
+  }
+}
+
+.vendor-snapshot-page .vs-driver-card:nth-child(even) {
+  background: rgb(255 251 235 / 0.35);
+}
+
+.vendor-snapshot-page .vs-stat-cell {
+  border-radius: 0.625rem;
+  border: 1px solid #f1f5f9;
+  background: #fff;
+  padding: 0.625rem 0.75rem;
+}

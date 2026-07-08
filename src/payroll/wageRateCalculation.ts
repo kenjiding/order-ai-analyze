@@ -61,14 +61,20 @@ function decimalHoursLikeExcelHourMinuteFromSerial(serial: number): number {
   return h + m / 60
 }
 
-export function calculateDecimalHours(totalHours: string | number): number {
+/** 工资结算：十进制工时保留 2 位小数后再参与乘时薪（如 10:11 → 10.18） */
+function roundDecimalHoursForPayroll(hours: number): number {
+  if (!Number.isFinite(hours) || hours <= 0) return 0
+  if (hours > MAX_HOURS_PER_ATTENDANCE_ROW) return 0
+  return Math.round(hours * 100) / 100
+}
+
+function parseDecimalHoursRaw(totalHours: string | number): number {
   if (typeof totalHours === 'number' && Number.isFinite(totalHours)) {
     if (totalHours <= 0) return 0
     if (totalHours > MAX_HOURS_PER_ATTENDANCE_ROW) return 0
-    // 仓库效率等已解析为「十进制小时」(如 8.5) 的数值必须直读；仅 (0,1] 视为 Excel 日内时间分数
+    // 物流运营等已解析为「十进制小时」(如 8.5) 的数值必须直读；仅 (0,1] 视为 Excel 日内时间分数
     if (totalHours > 1) return totalHours
-    const total = decimalHoursLikeExcelHourMinuteFromSerial(totalHours)
-    return total > MAX_HOURS_PER_ATTENDANCE_ROW ? 0 : total
+    return decimalHoursLikeExcelHourMinuteFromSerial(totalHours)
   }
 
   const timeStr = String(totalHours ?? '').trim()
@@ -78,21 +84,34 @@ export function calculateDecimalHours(totalHours: string | number): number {
     const parts = timeStr.split(':')
     const hours = parseInt(parts[0], 10) || 0
     const minutes = parseInt(parts[1], 10) || 0
-    const total = hours + minutes / 60
-    return total > MAX_HOURS_PER_ATTENDANCE_ROW ? 0 : total
+    return hours + minutes / 60
   }
 
   if (timeStr.includes('.')) {
     const parts = timeStr.split('.')
     const hours = parseInt(parts[0], 10) || 0
     const minutes = parseInt(parts[1], 10) || 0
-    const total = hours + minutes / 60
-    return total > MAX_HOURS_PER_ATTENDANCE_ROW ? 0 : total
+    return hours + minutes / 60
   }
 
-  const n = parseFloat(timeStr) || 0
-  if (n > MAX_HOURS_PER_ATTENDANCE_ROW) return 0
-  return n
+  return parseFloat(timeStr) || 0
+}
+
+export function calculateDecimalHours(totalHours: string | number): number {
+  return roundDecimalHoursForPayroll(parseDecimalHoursRaw(totalHours))
+}
+
+/** 工资结算：十进制工时（2 位小数）× 时薪，金额再保留 2 位小数 */
+export function calculatePayrollWage(
+  hoursSource: string | number,
+  hourlyRate: number,
+): { totalHoursDecimal: number; totalWage: number } {
+  const totalHoursDecimal = calculateDecimalHours(hoursSource)
+  if (totalHoursDecimal <= 0 || !Number.isFinite(hourlyRate)) {
+    return { totalHoursDecimal: 0, totalWage: 0 }
+  }
+  const totalWage = Math.round(totalHoursDecimal * hourlyRate * 100) / 100
+  return { totalHoursDecimal, totalWage }
 }
 
 export function recalcWageAmounts<
@@ -106,7 +125,6 @@ export function recalcWageAmounts<
   },
 >(record: R, rateSettings: RateSettings): R & { hourlyRate: number; totalHoursDecimal: number; totalWage: number } {
   const hoursSource = record.workHours ?? record.totalHours
-  const totalHoursDecimal = calculateDecimalHours(hoursSource)
   const hourlyRate = calculateHourlyRate(
     record.role,
     record.workday,
@@ -114,7 +132,7 @@ export function recalcWageAmounts<
     record.isPublicHoliday,
     rateSettings,
   )
-  const totalWage = totalHoursDecimal * hourlyRate
+  const { totalHoursDecimal, totalWage } = calculatePayrollWage(hoursSource, hourlyRate)
   return {
     ...record,
     hourlyRate,
