@@ -5,12 +5,12 @@ import dayjs from 'dayjs'
 import {
   AU_REGIONS,
   STAGNATION_BUCKET_OPTIONS,
-  type ChaseDispatchSchedule,
   type ChaseDispatchScheduleDraft,
   type PushTimeSlot,
   type StagnationBucket,
   type WeekdayNum,
 } from '../chaseDispatchTypes'
+import type { useChaseDispatchPage } from '../useChaseDispatchPage'
 
 const WEEKDAYS: { value: WeekdayNum; label: string }[] = [
   { value: 1, label: '周一' },
@@ -27,33 +27,27 @@ function generateId(): string {
 }
 
 type Props = {
-  schedule: ChaseDispatchSchedule | null
-  loading: boolean
-  saving: boolean
-  stationCode: string
-  onSave: (draft: ChaseDispatchScheduleDraft) => Promise<boolean>
+  page: ReturnType<typeof useChaseDispatchPage>
 }
 
-export function ChaseDispatchSchedulePushConfig({ schedule, saving, stationCode, onSave }: Props) {
+export function ChaseDispatchSchedulePushConfig({ page }: Props) {
+  const { schedule, scheduleSaving: saving, selectedStations, saveAll, editing, startEditing, cancelEditing } = page
+  const stationCode = selectedStations[0] ?? ''
+
   const [weekdays, setWeekdays] = useState<WeekdayNum[]>([])
   const [pushTimes, setPushTimes] = useState<PushTimeSlot[]>([])
   const [stagnationBuckets, setStagnationBuckets] = useState<StagnationBucket[]>([])
   const [isEnabled, setIsEnabled] = useState(true)
-  // 保存后进入禁用（只读）状态，点击「编辑」才能再次修改；尚无配置时默认可编辑
-  const [editing, setEditing] = useState(true)
 
-  const syncFromSchedule = useCallback((s: ChaseDispatchSchedule | null) => {
-    setWeekdays(s?.weekdays ?? [])
-    setPushTimes(s?.pushTimes ?? [])
-    setStagnationBuckets(s?.stagnationBuckets ?? [])
-    setIsEnabled(s?.isEnabled ?? true)
-  }, [])
+  const syncFromSchedule = useCallback(() => {
+    setWeekdays(schedule?.weekdays ?? [])
+    setPushTimes(schedule?.pushTimes ?? [])
+    setStagnationBuckets(schedule?.stagnationBuckets ?? [])
+    setIsEnabled(schedule?.isEnabled ?? true)
+  }, [schedule])
 
   useEffect(() => {
-    if (schedule) {
-      syncFromSchedule(schedule)
-      setEditing(false)
-    }
+    if (schedule) syncFromSchedule()
   }, [schedule, syncFromSchedule])
 
   const handleAddTime = useCallback(() => {
@@ -69,14 +63,14 @@ export function ChaseDispatchSchedulePushConfig({ schedule, saving, stationCode,
   }, [])
 
   const handleSave = useCallback(async () => {
-    const ok = await onSave({ weekdays, pushTimes, stagnationBuckets, isEnabled, stationCode })
-    if (ok) setEditing(false)
-  }, [weekdays, pushTimes, stagnationBuckets, isEnabled, stationCode, onSave])
+    const draft: ChaseDispatchScheduleDraft = { weekdays, pushTimes, stagnationBuckets, isEnabled, stationCode }
+    await saveAll(draft)
+  }, [weekdays, pushTimes, stagnationBuckets, isEnabled, stationCode, saveAll])
 
   const handleCancel = useCallback(() => {
-    syncFromSchedule(schedule)
-    setEditing(false)
-  }, [schedule, syncFromSchedule])
+    syncFromSchedule()
+    cancelEditing()
+  }, [syncFromSchedule, cancelEditing])
 
   const disabled = !editing
 
@@ -112,13 +106,31 @@ export function ChaseDispatchSchedulePushConfig({ schedule, saving, stationCode,
             </Button>
           </div>
         ) : (
-          <Button icon={<Pencil className="h-3.5 w-3.5" />} onClick={() => setEditing(true)}>
+          <Button icon={<Pencil className="h-3.5 w-3.5" />} onClick={startEditing}>
             编辑
           </Button>
         )}
       </div>
 
       <div className="divide-y divide-[var(--admin-line)]">
+
+        {/* 滞留时间 */}
+        <div className="flex items-center gap-4 px-5 py-3">
+          <span className="w-16 shrink-0 text-xs font-medium text-slate-500">滞留时间</span>
+          <Checkbox.Group
+            value={stagnationBuckets}
+            disabled={disabled}
+            onChange={(vals) => setStagnationBuckets(vals as StagnationBucket[])}
+          >
+            <div className="flex flex-wrap gap-x-4 gap-y-1">
+              {STAGNATION_BUCKET_OPTIONS.map((b) => (
+                <Checkbox key={b.value} value={b.value}>
+                  <span className="text-sm">{b.label}</span>
+                </Checkbox>
+              ))}
+            </div>
+          </Checkbox.Group>
+        </div>
         {/* 推送星期 */}
         <div className="flex items-center gap-4 px-5 py-3">
           <span className="w-16 shrink-0 text-xs font-medium text-slate-500">推送星期</span>
@@ -180,24 +192,6 @@ export function ChaseDispatchSchedulePushConfig({ schedule, saving, stationCode,
             )}
             {pushTimes.length === 0 && <span className="text-xs text-slate-400">暂无推送时间</span>}
           </div>
-        </div>
-
-        {/* 滞留时间 */}
-        <div className="flex items-center gap-4 px-5 py-3">
-          <span className="w-16 shrink-0 text-xs font-medium text-slate-500">滞留时间</span>
-          <Checkbox.Group
-            value={stagnationBuckets}
-            disabled={disabled}
-            onChange={(vals) => setStagnationBuckets(vals as StagnationBucket[])}
-          >
-            <div className="flex flex-wrap gap-x-4 gap-y-1">
-              {STAGNATION_BUCKET_OPTIONS.map((b) => (
-                <Checkbox key={b.value} value={b.value}>
-                  <span className="text-sm">{b.label}</span>
-                </Checkbox>
-              ))}
-            </div>
-          </Checkbox.Group>
         </div>
 
         {/* 推送计划摘要 */}

@@ -19,7 +19,8 @@
     "failed": "Push failed",
     "sectionNotFound": "Section not found",
     "captureFailed": "Screenshot failed: {{message}}",
-    "unknownError": "Unknown error"
+    "unknownError": "Unknown error",
+    "shareLinkText": "View full daily report"
   },
   "summary": {
     "vendorCount": "Vendors",

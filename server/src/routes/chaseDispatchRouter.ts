@@ -195,8 +195,6 @@ chaseDispatchRouter.post('/push-now', async (req: AuthenticatedRequest, res: Res
 
   type PushNowBody = {
     stationCode?: unknown
-    baseDate?: unknown
-    pushTime?: unknown
     stagnationBuckets?: unknown
     configIds?: unknown
   }
@@ -226,12 +224,8 @@ chaseDispatchRouter.post('/push-now', async (req: AuthenticatedRequest, res: Res
   }
 
   const stationCode = body.stationCode.trim()
-  const pushTime = typeof body.pushTime === 'string' && body.pushTime.trim() ? body.pushTime.trim() : '00:00'
   const tz = resolveRegionTz(req.authUser?.regionCode)
-  const baseDate =
-    typeof body.baseDate === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(body.baseDate.trim())
-      ? body.baseDate.trim()
-      : getRegionNow(tz).dateStr
+  const { dateStr: baseDate, timeHHmm: pushTime } = getRegionNow(tz)
 
   const configs = await listPushableSupplierPushConfigsByIds(configIds)
   if (configs.length === 0) {

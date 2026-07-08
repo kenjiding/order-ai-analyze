@@ -72,7 +72,7 @@ function parseDecimalHoursRaw(totalHours: string | number): number {
   if (typeof totalHours === 'number' && Number.isFinite(totalHours)) {
     if (totalHours <= 0) return 0
     if (totalHours > MAX_HOURS_PER_ATTENDANCE_ROW) return 0
-    // 仓库效率等已解析为「十进制小时」(如 8.5) 的数值必须直读；仅 (0,1] 视为 Excel 日内时间分数
+    // 物流运营等已解析为「十进制小时」(如 8.5) 的数值必须直读；仅 (0,1] 视为 Excel 日内时间分数
     if (totalHours > 1) return totalHours
     return decimalHoursLikeExcelHourMinuteFromSerial(totalHours)
   }

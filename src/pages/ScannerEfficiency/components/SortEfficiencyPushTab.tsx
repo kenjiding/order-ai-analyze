@@ -60,7 +60,7 @@ export default function SortEfficiencyPushTab({ vm, level1Push }: Props) {
     <div className="sort-efficiency-push-tab space-y-4">
       <div className="space-y-3 rounded-[10px] border border-[var(--admin-line)] bg-gradient-to-br from-violet-50 via-[var(--admin-surface-soft)] to-[var(--admin-accent-soft)] px-3.5 py-3">
         <Typography.Text type="secondary" className="block text-xs leading-relaxed">
-          选择要推送的图表；推送时按当前数据截图，发送至「推送通知 → 仓库效率推送」中已启用的
+          选择要推送的图表；推送时按当前数据截图，发送至「推送通知 → 物流运营推送」中已启用的
           webhook。含扫描员汇总时将附带 AI 数据点评。
         </Typography.Text>
         <div className="flex flex-wrap items-center justify-between gap-3 border-t border-violet-200/60 pt-3">

@@ -226,7 +226,7 @@ export default function WeeklyReportPanel({
     const url = URL.createObjectURL(blob)
     const link = document.createElement('a')
     link.href = url
-    link.download = '仓库效率周报邮件.html'
+    link.download = '物流运营周报邮件.html'
     document.body.appendChild(link)
     link.click()
     document.body.removeChild(link)
@@ -263,7 +263,7 @@ export default function WeeklyReportPanel({
             value={weeklyReportTitle}
             onChange={(event) => setWeeklyReportTitle(event.target.value)}
             className="admin-input w-full"
-            placeholder="仓库效率周报"
+            placeholder="物流运营周报"
           />
         </div>
 

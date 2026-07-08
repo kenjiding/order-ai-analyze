@@ -8,6 +8,7 @@ export default defineConfig(() => ({
   base: '/',
   plugins: [react()],
   server: {
+    host: true,
     port: process.env.PORT ? parseInt(process.env.PORT) : 5173,
     proxy: {
       '/api': {
@@ -21,6 +22,7 @@ export default defineConfig(() => ({
       input: {
         main: resolve(__dirname, 'index.html'),
         fleetSupplierPush: resolve(__dirname, 'fleet-supplier-push.html'),
+        deliveringNotify: resolve(__dirname, 'delivering-notify.html'),
       },
     },
   },

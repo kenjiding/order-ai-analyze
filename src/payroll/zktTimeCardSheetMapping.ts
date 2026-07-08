@@ -35,7 +35,7 @@ export function mapZktTimeCardToAttendanceSheetRows(records: unknown[]): Record<
   return rows
 }
 
-/** 与仓库效率 ZKT 解析一致：仅保留窗口内日期 */
+/** 与物流运营 ZKT 解析一致：仅保留窗口内日期 */
 export function filterZktAttendanceSheetRowsByDateRange(
   rows: Record<string, unknown>[],
   startDate: string,

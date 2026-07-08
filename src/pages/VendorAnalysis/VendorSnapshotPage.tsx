@@ -23,7 +23,7 @@ import {
   type VendorSnapshotVendor,
 } from './vendorSnapshotStorage'
 import { Legend, VendorSection, vendorSectionId } from './components/snapshotSections'
-import { fetchVendorAiSummaries } from './vendorAnalysisApi'
+import { fetchVendorAiSummaries, listShareLinks } from './vendorAnalysisApi'
 import {
   buildVendorAiInputsFromSnapshot,
   hasAiSummariesForLocale,
@@ -31,7 +31,12 @@ import {
   pickVendorAiSummary,
 } from './vendorSnapshotAi'
 import { postFeishuPushRichMessage } from '../PushNotifications/feishuWebhookTestApi'
+import { feishuImageMarker } from '../../components/FeishuLarkMdEditor'
 import './vendorSnapshotPage.css'
+
+function buildVendorShareUrl(token: string): string {
+  return `${window.location.origin}/vendor-daily/${token}`
+}
 
 // ── Mock data ──────────────────────────────────────────────────────────
 
@@ -214,6 +219,10 @@ export default function VendorSnapshotPage() {
   const [aiSummaryLoading, setAiSummaryLoading] = useState(false)
   const pushingRef = useRef(false)
   const autoPushFiredRef = useRef(false)
+  // ref 而非 state：避免其更新导致 handlePushAll 引用变化，进而清掉已排好的自动推送定时器
+  const shareTokenByVendorRef = useRef<Record<string, string>>({})
+  const localeRef = useRef(locale)
+  localeRef.current = locale
 
   // 老快照无 enabledMetricKeys → undefined → 全量渲染
   const enabledSet = useMemo(
@@ -268,6 +277,23 @@ export default function VendorSnapshotPage() {
     }
   }, [data, isMock, locale, enabledSet])
 
+  // 推送到飞书时需要在文案末尾附上可点击的分享链接：按 jobId 查一次该任务下各供应商的 token
+  useEffect(() => {
+    if (isMock || !data?.jobId) return
+    let cancelled = false
+    void listShareLinks(data.jobId).then((res) => {
+      if (cancelled || !res.ok) return
+      const map: Record<string, string> = {}
+      for (const link of res.data) {
+        if (!link.isDisabled) map[link.vendorCode] = link.token
+      }
+      shareTokenByVendorRef.current = map
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [data?.jobId, isMock])
+
   const handlePushAll = useCallback(async () => {
     if (!data || pushingRef.current) return
     const enabledConfigs = (data.webhookConfigs ?? []).filter(
@@ -309,11 +335,17 @@ export default function VendorSnapshotPage() {
       }
 
       setPushState((s) => ({ ...s, [config.vendorCode]: { status: 'pushing' } }))
+      const contentParts: string[] = [feishuImageMarker(0)]
+      const shareToken = shareTokenByVendorRef.current[config.vendorCode]
+      if (shareToken) {
+        contentParts.push(`[${t('push.shareLinkText')}](${buildVendorShareUrl(shareToken)})`)
+      }
+
       const result = await postFeishuPushRichMessage({
         pushScope: 'vendor-analysis',
         webhookUrl: config.webhookUrl,
         signingSecret: config.signingSecret ?? undefined,
-        content: '',
+        content: contentParts.join('\n\n'),
         images: [dataUrl],
       })
 

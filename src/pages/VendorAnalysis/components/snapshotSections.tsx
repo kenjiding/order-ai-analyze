@@ -1,3 +1,4 @@
+import { Fragment, type ReactNode } from 'react'
 import {
   AlertTriangle,
   BrainCircuit,
@@ -409,6 +410,49 @@ export function vendorSectionId(vendorCode: string) {
   return `vendor-section-${vendorCode}`
 }
 
+/** 行内 **加粗**：AI 总结的 Markdown 子集，仅解析加粗，其余原样输出 */
+function renderInlineBold(text: string, keyPrefix: string): ReactNode {
+  const parts = text.split(/(\*\*[^*]+\*\*)/g).filter(Boolean)
+  return parts.map((part, i) => {
+    const m = /^\*\*([^*]+)\*\*$/.exec(part)
+    return m ? <strong key={`${keyPrefix}-${i}`}>{m[1]}</strong> : <Fragment key={`${keyPrefix}-${i}`}>{part}</Fragment>
+  })
+}
+
+/**
+ * AI 总结的 Markdown 子集渲染：**加粗**小标题 + "- " 无序列表 + 段落。
+ * 不引入 markdown 解析库，仅处理 prompt 里明确约定、飞书 markdown 组件也支持的这几种语法，
+ * 保证截图页 / 供应商分享页与飞书推送消息的展示效果一致。
+ */
+function renderAiSummaryMarkdown(text: string): ReactNode {
+  const lines = text.split(/\n+/).map((l) => l.trim()).filter(Boolean)
+  const blocks: ReactNode[] = []
+  let listBuffer: string[] = []
+  const flushList = () => {
+    if (!listBuffer.length) return
+    const items = listBuffer
+    blocks.push(
+      <ul key={`ul-${blocks.length}`} className="list-disc space-y-0.5 pl-4">
+        {items.map((item, i) => (
+          <li key={i}>{renderInlineBold(item, `li-${blocks.length}-${i}`)}</li>
+        ))}
+      </ul>,
+    )
+    listBuffer = []
+  }
+  lines.forEach((line, idx) => {
+    const bulletMatch = /^[-*]\s+(.*)$/.exec(line)
+    if (bulletMatch) {
+      listBuffer.push(bulletMatch[1])
+      return
+    }
+    flushList()
+    blocks.push(<p key={`p-${idx}`}>{renderInlineBold(line, `p-${idx}`)}</p>)
+  })
+  flushList()
+  return blocks
+}
+
 function AiSummaryBlock({ summary, loading, loadingLabel }: { summary?: string; loading?: boolean; loadingLabel: string }) {
   if (!summary && !loading) return null
   return (
@@ -420,7 +464,7 @@ function AiSummaryBlock({ summary, loading, loadingLabel }: { summary?: string; 
           <span>{loadingLabel}</span>
         </div>
       ) : (
-        <p className="text-[13px] leading-relaxed text-indigo-900">{summary}</p>
+        <div className="space-y-1.5 text-[13px] leading-relaxed text-indigo-900">{renderAiSummaryMarkdown(summary!)}</div>
       )}
     </div>
   )
@@ -519,7 +563,7 @@ export function VendorSection({
       {/* KPI grid（所有指标均可取消，全部取消时不渲染） */}
       {kpiCount > 0 && (
         <div
-          className={`grid grid-cols-1 min-[420px]:grid-cols-2 md:grid-cols-3 ${KPI_GRID_COLS[kpiCount]} gap-2.5 sm:gap-3 p-3 sm:p-4`}
+          className={`grid grid-cols-2 md:grid-cols-3 ${KPI_GRID_COLS[kpiCount]} gap-2.5 sm:gap-3 p-3 sm:p-4`}
         >
           {flags.vendorBefore11 && (
             <KpiCard

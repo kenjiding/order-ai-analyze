@@ -7,16 +7,22 @@ type SupplierPushConfigImportRow = SupplierPushConfigDraft & { id: string }
 async function apiFetch<T>(
   path: string,
   options?: RequestInit,
-): Promise<{ ok: true; data: T } | { ok: false; error: string }> {
+): Promise<{ ok: true; data: T; meta?: { imported: number; skipped: number } } | { ok: false; error: string }> {
   try {
     const res = await fetch(`${getApiBaseUrl()}${path}`, {
       credentials: 'include',
       headers: { 'Content-Type': 'application/json' },
       ...options,
     })
-    type Wire = { ok?: boolean; data?: T; error?: string }
+    type Wire = { ok?: boolean; data?: T; error?: string; meta?: { imported: number; skipped: number } }
     const json = (await res.json()) as Wire
-    if (json.ok === true) return { ok: true, data: json.data as T }
+    if (json.ok === true) {
+      return {
+        ok: true,
+        data: json.data as T,
+        meta: json.meta,
+      }
+    }
     return { ok: false, error: typeof json.error === 'string' ? json.error : '请求失败' }
   } catch {
     return { ok: false, error: `无法访问后端 (${path})` }
@@ -91,11 +97,16 @@ export async function deleteSupplierPushConfig(
 export async function importSupplierPushCatalog(
   mode: 'merge' | 'replace',
   suppliers: SupplierPushConfigImportRow[],
-): Promise<{ ok: true; data: SupplierPushConfig[] } | { ok: false; error: string }> {
+): Promise<
+  | { ok: true; data: SupplierPushConfig[]; imported: number; skipped: number }
+  | { ok: false; error: string }
+> {
   const res = await apiFetch<ServerRow[]>('/api/fleet-supplier-push/configs/import', {
     method: 'POST',
     body: JSON.stringify({ mode, suppliers }),
   })
   if (!res.ok) return res
-  return { ok: true, data: res.data.map(toClient) }
+  const imported = res.meta?.imported ?? suppliers.length
+  const skipped = res.meta?.skipped ?? 0
+  return { ok: true, data: res.data.map(toClient), imported, skipped }
 }

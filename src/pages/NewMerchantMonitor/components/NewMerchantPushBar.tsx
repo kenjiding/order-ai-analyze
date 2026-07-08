@@ -63,7 +63,7 @@ export default function NewMerchantPushBar({ config, onChange, pushing, disabled
         </div>
       </div>
       <div className="mt-2 text-[11px] text-slate-400">
-        配置自动保存在浏览器本地；权限要求：「仓库效率推送」api scope。
+        配置自动保存在浏览器本地；权限要求：「物流运营推送」api scope。
       </div>
     </div>
   )

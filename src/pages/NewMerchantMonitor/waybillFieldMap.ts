@@ -36,6 +36,11 @@ export function readWaybillVendor(record: WaybillRecord): string {
   return readText(record, WAYBILL_API_FIELDS.courierVendor) || '(空)'
 }
 
+/** 派件供应商已在运单上匹配（courierVendor 非空） */
+export function hasMatchedWaybillVendor(record: WaybillRecord): boolean {
+  return readText(record, WAYBILL_API_FIELDS.courierVendor) !== ''
+}
+
 export function readWaybillDriverName(record: WaybillRecord): string {
   return readText(record, WAYBILL_API_FIELDS.courier) || '(空)'
 }

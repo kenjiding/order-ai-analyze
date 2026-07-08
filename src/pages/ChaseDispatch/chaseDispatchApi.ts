@@ -58,8 +58,6 @@ export async function triggerChaseDispatchPushNow(
   imileToken: string,
   params: {
     stationCode: string
-    baseDate: string // "YYYY-MM-DD" 按当前账号州/区域
-    pushTime: string // "HH:mm"
     stagnationBuckets: StagnationBucket[]
     configIds: string[]
   },

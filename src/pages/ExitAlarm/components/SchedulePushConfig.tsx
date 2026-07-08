@@ -2,7 +2,8 @@ import { Button, Checkbox, TimePicker } from 'antd'
 import { Clock, Pencil, Plus, Save, X } from 'lucide-react'
 import { useCallback, useEffect, useState } from 'react'
 import dayjs from 'dayjs'
-import { AU_REGIONS, type ExitAlarmSchedule, type ExitAlarmScheduleDraft, type PushTimeSlot, type WeekdayNum } from '../exitAlarmTypes'
+import { AU_REGIONS, type ExitAlarmScheduleDraft, type PushTimeSlot, type WeekdayNum } from '../exitAlarmTypes'
+import type { useExitAlarmPage } from '../useExitAlarmPage'
 
 const WEEKDAYS: { value: WeekdayNum; label: string }[] = [
   { value: 1, label: '周一' },
@@ -19,31 +20,25 @@ function generateId(): string {
 }
 
 type Props = {
-  schedule: ExitAlarmSchedule | null
-  loading: boolean
-  saving: boolean
-  stationCode: string
-  onSave: (draft: ExitAlarmScheduleDraft) => Promise<boolean>
+  page: ReturnType<typeof useExitAlarmPage>
 }
 
-export function SchedulePushConfig({ schedule, saving, stationCode, onSave }: Props) {
+export function SchedulePushConfig({ page }: Props) {
+  const { schedule, scheduleSaving: saving, selectedStations, saveAll, editing, startEditing, cancelEditing } = page
+  const stationCode = selectedStations[0] ?? ''
+
   const [weekdays, setWeekdays] = useState<WeekdayNum[]>([])
   const [pushTimes, setPushTimes] = useState<PushTimeSlot[]>([])
   const [isEnabled, setIsEnabled] = useState(true)
-  // 保存后进入禁用（只读）状态，点击「编辑」才能再次修改；尚无配置时默认可编辑
-  const [editing, setEditing] = useState(true)
 
-  const syncFromSchedule = useCallback((s: ExitAlarmSchedule | null) => {
-    setWeekdays(s?.weekdays ?? [])
-    setPushTimes(s?.pushTimes ?? [])
-    setIsEnabled(s?.isEnabled ?? true)
-  }, [])
+  const syncFromSchedule = useCallback(() => {
+    setWeekdays(schedule?.weekdays ?? [])
+    setPushTimes(schedule?.pushTimes ?? [])
+    setIsEnabled(schedule?.isEnabled ?? true)
+  }, [schedule])
 
   useEffect(() => {
-    if (schedule) {
-      syncFromSchedule(schedule)
-      setEditing(false)
-    }
+    if (schedule) syncFromSchedule()
   }, [schedule, syncFromSchedule])
 
   const handleAddTime = useCallback(() => {
@@ -59,14 +54,14 @@ export function SchedulePushConfig({ schedule, saving, stationCode, onSave }: Pr
   }, [])
 
   const handleSave = useCallback(async () => {
-    const ok = await onSave({ weekdays, pushTimes, isEnabled, stationCode })
-    if (ok) setEditing(false)
-  }, [weekdays, pushTimes, isEnabled, stationCode, onSave])
+    const draft: ExitAlarmScheduleDraft = { weekdays, pushTimes, isEnabled, stationCode }
+    await saveAll(draft)
+  }, [weekdays, pushTimes, isEnabled, stationCode, saveAll])
 
   const handleCancel = useCallback(() => {
-    syncFromSchedule(schedule)
-    setEditing(false)
-  }, [schedule, syncFromSchedule])
+    syncFromSchedule()
+    cancelEditing()
+  }, [syncFromSchedule, cancelEditing])
 
   const disabled = !editing
 
@@ -99,7 +94,7 @@ export function SchedulePushConfig({ schedule, saving, stationCode, onSave }: Pr
             </Button>
           </div>
         ) : (
-          <Button icon={<Pencil className="h-3.5 w-3.5" />} onClick={() => setEditing(true)}>
+          <Button icon={<Pencil className="h-3.5 w-3.5" />} onClick={startEditing}>
             编辑
           </Button>
         )}

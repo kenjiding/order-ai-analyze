@@ -10,10 +10,7 @@ export type {
 
 export { LEGACY_GLOBAL_SUPPLIER_REGION_CODE } from './types'
 
-export {
-  SUPPLIER_PUSH_CONFIG_MAINTAIN_PATH,
-  SUPPLIER_CONFIG_SCOPE_LABELS,
-} from './constants'
+export { SUPPLIER_PUSH_CONFIG_MAINTAIN_PATH } from './constants'
 
 export { supplierDisplayName, truncateSupplierFieldMid } from './display'
 
@@ -43,20 +40,7 @@ export {
 export { useSupplierPushCatalog } from './hooks/useSupplierPushCatalog'
 export { useSupplierConfigScopeBinding } from './hooks/useSupplierConfigScopeBinding'
 
-export {
-  buildScopeActionsColumn,
-  buildScopeStatusColumn,
-  buildScopeStatusAndActionsColumns,
-  renderScopeEnableAction,
-  renderScopeStatus,
-  type ScopeEnableColumnBinding,
-} from './components/scopeEnableColumn'
-export { buildSupplierPushCatalogColumns } from './components/supplierPushTableColumns'
-export {
-  SupplierPushConfigPanel,
-  type SupplierPushConfigPanelScopeBinding,
-  type SupplierPushConfigPanelSelection,
-} from './components/SupplierPushConfigPanel'
+export { SupplierPushSelectionGrid } from './components/SupplierPushSelectionGrid'
 
 /**
  * 扩展新业务 scope  checklist:
@@ -65,5 +49,5 @@ export {
  * 3. server/supplierConfigScopes/registry.ts 注册 store
  * 4. src/shared/supplierPushConfig/types.ts 同步 scope key
  * 5. src/shared/supplierPushConfig/constants.ts 增加列标题
- * 6. 页面: useSupplierPushCatalog + useSupplierConfigScopeBinding + SupplierPushConfigPanel
+ * 6. 页面: useSupplierPushCatalog + useSupplierConfigScopeBinding + SupplierPushSelectionGrid
  */

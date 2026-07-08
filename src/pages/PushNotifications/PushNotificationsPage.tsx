@@ -2,6 +2,7 @@ import { Button, Empty, Popconfirm, Table, Tabs, Tooltip, Typography } from 'ant
 import type { ColumnsType } from 'antd/es/table'
 import { Megaphone, PencilLine, Plus, Send, Trash2 } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { useAuthStore } from '../../stores/authStore'
 import { AttendanceSchedulingPushTab } from './components/AttendanceSchedulingPushTab'
 import { PushEntryEditModal } from './components/PushEntryEditModal'
@@ -14,7 +15,9 @@ import type { PushEntryDraft } from './pushEntryFormTransforms'
 import {
   getPushFeatureByFeishuKind,
   getPushFeatureByTabKey,
+  isPushPageTabKey,
   listAccessiblePushFeatures,
+  PUSH_PAGE_TAB_QUERY_KEY,
   type PushPageTabKey,
 } from '../../permissions/pushNotificationAccess'
 
@@ -39,6 +42,7 @@ function isWarehousePushTabKey(key: PushPageTabKey): key is WarehousePushTabKey 
 export default function PushNotificationsPage() {
   const v = usePushNotificationsPage()
   const { hasPermission } = useAuthStore()
+  const [searchParams, setSearchParams] = useSearchParams()
   const accessibleFeatures = useMemo(
     () => listAccessiblePushFeatures(hasPermission),
     [hasPermission],
@@ -48,17 +52,42 @@ export default function PushNotificationsPage() {
     [accessibleFeatures],
   )
 
-  const [activeTabKey, setActiveTabKey] = useState<PushPageTabKey>('warehouse_efficiency')
+  const tabFromUrl = searchParams.get(PUSH_PAGE_TAB_QUERY_KEY)
+  const [activeTabKey, setActiveTabKey] = useState<PushPageTabKey>(() => {
+    if (tabFromUrl && isPushPageTabKey(tabFromUrl)) return tabFromUrl
+    return 'warehouse_efficiency'
+  })
   const [modalOpen, setModalOpen] = useState(false)
   const [editingRecord, setEditingRecord] = useState<FeishuPushEntryWithKind | null>(null)
   const [testingId, setTestingId] = useState<string | null>(null)
 
+  const setActiveTab = useCallback(
+    (tabKey: PushPageTabKey) => {
+      setActiveTabKey(tabKey)
+      setSearchParams(
+        (prev) => {
+          const next = new URLSearchParams(prev)
+          next.set(PUSH_PAGE_TAB_QUERY_KEY, tabKey)
+          return next
+        },
+        { replace: true },
+      )
+    },
+    [setSearchParams],
+  )
+
+  useEffect(() => {
+    if (!tabFromUrl || !isPushPageTabKey(tabFromUrl)) return
+    if (!accessibleTabKeys.includes(tabFromUrl)) return
+    setActiveTabKey(tabFromUrl)
+  }, [accessibleTabKeys, tabFromUrl])
+
   useEffect(() => {
     if (accessibleTabKeys.length === 0) return
     if (!accessibleTabKeys.includes(activeTabKey)) {
-      setActiveTabKey(accessibleTabKeys[0])
+      setActiveTab(accessibleTabKeys[0])
     }
-  }, [accessibleTabKeys, activeTabKey])
+  }, [accessibleTabKeys, activeTabKey, setActiveTab])
 
   const activeWarehouseTab = isWarehousePushTabKey(activeTabKey) ? activeTabKey : null
   const modalFeature = editingRecord
@@ -77,11 +106,11 @@ export default function PushNotificationsPage() {
         showToast('无操作权限', 'error')
         return
       }
-      setActiveTabKey(tabKey)
+      setActiveTab(tabKey)
       setEditingRecord(null)
       setModalOpen(true)
     },
-    [hasPermission],
+    [hasPermission, setActiveTab],
   )
 
   const openEditModal = useCallback(
@@ -91,11 +120,11 @@ export default function PushNotificationsPage() {
         showToast('无操作权限', 'error')
         return
       }
-      if (feature.tabKey) setActiveTabKey(feature.tabKey)
+      if (feature.tabKey) setActiveTab(feature.tabKey)
       setEditingRecord(record)
       setModalOpen(true)
     },
-    [hasPermission],
+    [hasPermission, setActiveTab],
   )
 
   const closeModal = () => {
@@ -330,7 +359,7 @@ export default function PushNotificationsPage() {
           label: feature.label,
           children: renderWarehousePushTab(
             'warehouse_efficiency',
-            '管理仓库效率相关推送；列表与编辑弹窗中可维护推送类型。',
+            '管理物流运营相关推送；列表与编辑弹窗中可维护推送类型。',
           ),
         }
       }
@@ -389,7 +418,7 @@ export default function PushNotificationsPage() {
               description="当前账号未分配任何推送子功能权限，请联系管理员在「按钮权限」中勾选对应推送类型。"
             />
           ) : (
-            <Tabs activeKey={activeTabKey} onChange={(key) => setActiveTabKey(key as PushPageTabKey)} items={tabItems} />
+            <Tabs activeKey={activeTabKey} onChange={(key) => setActiveTab(key as PushPageTabKey)} items={tabItems} />
           )}
         </div>
       </div>

@@ -1,148 +1,98 @@
-import { createContext, useContext, useEffect, useMemo, useState } from 'react'
+import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react'
+import { getUserPreference, putUserPreference } from '../api/userPreferencesApi'
 import {
   DEFAULT_IMILE_PORTAL_SETTINGS,
-  IMILE_PORTAL_STORAGE_KEY,
   normalizeImilePortalSettings,
-  readStoredImilePortalSettings,
   type ImilePortalSettings,
 } from '../imile/imilePortalSettings'
 import {
   DEFAULT_ZKT_ATTENDANCE_SETTINGS,
-  ZKT_ATTENDANCE_STORAGE_KEY,
   normalizeZktAttendanceSettings,
-  readStoredZktAttendanceSettings,
   type ZktAttendanceSettings,
 } from '../imile/zktAttendanceSettings'
 
 /* Context 模块同时导出 Provider 与 hooks，故关闭 react-refresh 的仅导出组件规则。 */
 /* eslint-disable react-refresh/only-export-components */
 
-const GLOBAL_TOKEN_KEY = 'app_imile_bearer_token_v1'
-const GLOBAL_REMEMBER_KEY = 'app_imile_token_remember_v1'
-const LEGACY_TOKEN_KEY = 'order_exception_imile_token_v1'
-const LEGACY_REMEMBER_KEY = 'order_exception_imile_remember_v1'
+/** 系统设置绑定到登录账号，存储在服务端 user_preferences 表，跨设备登录同一账号即可读到 */
+const APP_SETTINGS_PREF_KEY = 'app-settings'
+
+export type StoredAppSettings = {
+  imileToken: string
+  imilePortal: ImilePortalSettings
+  zktAttendance: ZktAttendanceSettings
+}
+
+const DEFAULT_APP_SETTINGS: StoredAppSettings = {
+  imileToken: '',
+  imilePortal: { ...DEFAULT_IMILE_PORTAL_SETTINGS },
+  zktAttendance: { ...DEFAULT_ZKT_ATTENDANCE_SETTINGS },
+}
+
+function normalizeStoredAppSettings(raw: Partial<StoredAppSettings> | null | undefined): StoredAppSettings {
+  return {
+    imileToken: String(raw?.imileToken ?? ''),
+    imilePortal: normalizeImilePortalSettings(raw?.imilePortal),
+    zktAttendance: normalizeZktAttendanceSettings(raw?.zktAttendance),
+  }
+}
 
 export type AppSettingsContextValue = {
   imileToken: string
-  setImileToken: (value: string) => void
-  rememberImileToken: boolean
-  setRememberImileToken: (value: boolean) => void
   imilePortal: ImilePortalSettings
-  setImilePortal: (value: ImilePortalSettings) => void
   zktAttendance: ZktAttendanceSettings
-  setZktAttendance: (value: ZktAttendanceSettings) => void
+  /** 服务端首次拉取是否已完成；拉取完成前 imileToken 等字段可能仍是默认值 */
+  settingsLoaded: boolean
+  /** 整体覆盖式保存，落地到当前登录账号的服务端偏好 */
+  updateSettings: (partial: Partial<StoredAppSettings>) => void
+  /** 登录成功后调用，从服务端重新拉取当前账号的设置 */
+  refreshSettings: () => Promise<void>
 }
 
 const AppSettingsContext = createContext<AppSettingsContextValue | null>(null)
 
-function migrateLegacyImileKeys(): void {
-  if (typeof localStorage === 'undefined') return
-  try {
-    if (localStorage.getItem(GLOBAL_TOKEN_KEY) !== null) return
-    const legacyToken = localStorage.getItem(LEGACY_TOKEN_KEY)
-    if (legacyToken != null && legacyToken !== '') {
-      localStorage.setItem(GLOBAL_TOKEN_KEY, legacyToken)
-      const rawRemember = localStorage.getItem(LEGACY_REMEMBER_KEY)
-      const remember = rawRemember === null ? true : rawRemember === '1'
-      localStorage.setItem(GLOBAL_REMEMBER_KEY, remember ? '1' : '0')
-    }
-  } catch {
-    /* ignore */
-  }
-}
-
-function readRememberFlag(): boolean {
-  if (typeof localStorage === 'undefined') return true
-  try {
-    migrateLegacyImileKeys()
-    const raw = localStorage.getItem(GLOBAL_REMEMBER_KEY)
-    if (raw === null) return true
-    return raw === '1'
-  } catch {
-    return true
-  }
-}
-
-function readStoredImileToken(): string {
-  if (typeof localStorage === 'undefined') return ''
-  try {
-    migrateLegacyImileKeys()
-    const remember = readRememberFlag()
-    if (remember) {
-      return localStorage.getItem(GLOBAL_TOKEN_KEY) ?? ''
-    }
-  } catch {
-    /* ignore */
-  }
-  return ''
-}
-
-function readStoredImilePortal(): ImilePortalSettings {
-  if (typeof localStorage === 'undefined') return { ...DEFAULT_IMILE_PORTAL_SETTINGS }
-  try {
-    if (!readRememberFlag()) return { ...DEFAULT_IMILE_PORTAL_SETTINGS }
-    return readStoredImilePortalSettings()
-  } catch {
-    return { ...DEFAULT_IMILE_PORTAL_SETTINGS }
-  }
-}
-
-function readStoredZktAttendance(): ZktAttendanceSettings {
-  if (typeof localStorage === 'undefined') return { ...DEFAULT_ZKT_ATTENDANCE_SETTINGS }
-  try {
-    if (!readRememberFlag()) return { ...DEFAULT_ZKT_ATTENDANCE_SETTINGS }
-    return readStoredZktAttendanceSettings()
-  } catch {
-    return { ...DEFAULT_ZKT_ATTENDANCE_SETTINGS }
-  }
-}
-
 export function AppSettingsProvider({ children }: { children: React.ReactNode }) {
-  const [imileToken, setImileToken] = useState(readStoredImileToken)
-  const [rememberImileToken, setRememberImileToken] = useState(readRememberFlag)
-  const [imilePortal, setImilePortalState] = useState(readStoredImilePortal)
-  const [zktAttendance, setZktAttendanceState] = useState(readStoredZktAttendance)
+  const [settings, setSettings] = useState<StoredAppSettings>(DEFAULT_APP_SETTINGS)
+  const [settingsLoaded, setSettingsLoaded] = useState(false)
 
-  const setImilePortal = (value: ImilePortalSettings) => {
-    setImilePortalState(normalizeImilePortalSettings(value))
-  }
-
-  const setZktAttendance = (value: ZktAttendanceSettings) => {
-    setZktAttendanceState(normalizeZktAttendanceSettings(value))
-  }
+  const refreshSettings = useCallback(async () => {
+    const result = await getUserPreference<Partial<StoredAppSettings>>(APP_SETTINGS_PREF_KEY)
+    setSettings(normalizeStoredAppSettings(result.ok ? result.data.value : null))
+    setSettingsLoaded(true)
+  }, [])
 
   useEffect(() => {
-    try {
-      localStorage.setItem(GLOBAL_REMEMBER_KEY, rememberImileToken ? '1' : '0')
-      if (rememberImileToken) {
-        localStorage.setItem(GLOBAL_TOKEN_KEY, imileToken)
-        localStorage.setItem(IMILE_PORTAL_STORAGE_KEY, JSON.stringify(normalizeImilePortalSettings(imilePortal)))
-        localStorage.setItem(
-          ZKT_ATTENDANCE_STORAGE_KEY,
-          JSON.stringify(normalizeZktAttendanceSettings(zktAttendance)),
-        )
-      } else {
-        localStorage.removeItem(GLOBAL_TOKEN_KEY)
-        localStorage.removeItem(IMILE_PORTAL_STORAGE_KEY)
-        localStorage.removeItem(ZKT_ATTENDANCE_STORAGE_KEY)
-      }
-    } catch {
-      /* ignore */
+    let ignore = false
+    async function bootstrap() {
+      const result = await getUserPreference<Partial<StoredAppSettings>>(APP_SETTINGS_PREF_KEY)
+      if (ignore) return
+      setSettings(normalizeStoredAppSettings(result.ok ? result.data.value : null))
+      setSettingsLoaded(true)
     }
-  }, [imileToken, rememberImileToken, imilePortal, zktAttendance])
+    void bootstrap()
+    return () => {
+      ignore = true
+    }
+  }, [])
+
+  const updateSettings = useCallback((partial: Partial<StoredAppSettings>) => {
+    setSettings((prev) => {
+      const next = normalizeStoredAppSettings({ ...prev, ...partial })
+      void putUserPreference(APP_SETTINGS_PREF_KEY, next)
+      return next
+    })
+  }, [])
 
   const value = useMemo<AppSettingsContextValue>(
     () => ({
-      imileToken,
-      setImileToken,
-      rememberImileToken,
-      setRememberImileToken,
-      imilePortal,
-      setImilePortal,
-      zktAttendance,
-      setZktAttendance,
+      imileToken: settings.imileToken,
+      imilePortal: settings.imilePortal,
+      zktAttendance: settings.zktAttendance,
+      settingsLoaded,
+      updateSettings,
+      refreshSettings,
     }),
-    [imileToken, rememberImileToken, imilePortal, zktAttendance],
+    [settings, settingsLoaded, updateSettings, refreshSettings],
   )
 
   return <AppSettingsContext.Provider value={value}>{children}</AppSettingsContext.Provider>

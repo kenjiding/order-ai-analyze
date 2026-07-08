@@ -38,7 +38,7 @@ export default function AppLayout() {
               </button>
               <div>
                 <div className="text-xs font-medium uppercase tracking-[0.18em] text-slate-500">Operations Console</div>
-                <div className="mt-0.5 text-sm font-semibold text-slate-950">企业级仓库管理后台</div>
+                <div className="mt-0.5 text-sm font-semibold text-slate-950">企业级物流运营管理后台</div>
               </div>
             </div>
 

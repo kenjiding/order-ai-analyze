@@ -85,8 +85,7 @@ export async function triggerExitAlarmPushNow(
   imileToken: string,
   params: {
     stationCode: string
-    pushTime: string // "HH:mm"
-    date: string    // "YYYY-MM-DD" 阿德莱德时区
+    date: string // "YYYY-MM-DD" 按当前账号州/区域
     configIds: string[]
   },
   signal?: AbortSignal,

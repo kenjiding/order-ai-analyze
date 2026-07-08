@@ -40,7 +40,7 @@ export default function ScannerEfficiencyTopSection({ vm }: Props) {
       <header className="se-hero-head border-b border-[var(--admin-line)] px-5 py-5 sm:px-6">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div className="min-w-0 max-w-3xl">
-            <h1 className="se-page-title">仓库效率工作台</h1>
+            <h1 className="se-page-title">物流运营工作台</h1>
             <p className="se-page-lead">
               汇入到件扫描与考勤数据，计算开仓效率、分拣效率与包裹分配密度，支持周报与飞书推送。
             </p>

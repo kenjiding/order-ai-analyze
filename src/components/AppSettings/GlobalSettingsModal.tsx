@@ -24,7 +24,6 @@ const SECTIONS: { id: SettingsSectionId; label: string; icon: typeof Truck }[] =
 
 type ImileSettingsDraft = {
   imileToken: string
-  rememberImileToken: boolean
   imilePortal: ImilePortalSettings
   zktAttendance: ZktAttendanceSettings
 }
@@ -56,51 +55,39 @@ function zktDraftEqual(a: ZktAttendanceSettings, b: ZktAttendanceSettings): bool
 
 function buildDraftFromSettings(input: {
   imileToken: string
-  rememberImileToken: boolean
   imilePortal: ImilePortalSettings
   zktAttendance: ZktAttendanceSettings
 }): ImileSettingsDraft {
   return {
     imileToken: input.imileToken,
-    rememberImileToken: input.rememberImileToken,
     imilePortal: normalizeImilePortalSettings(input.imilePortal),
     zktAttendance: normalizeZktAttendanceSettings(input.zktAttendance),
   }
 }
 
 export function GlobalSettingsModal({ isOpen, onClose }: Props) {
-  const {
-    imileToken,
-    setImileToken,
-    rememberImileToken,
-    setRememberImileToken,
-    imilePortal,
-    setImilePortal,
-    zktAttendance,
-    setZktAttendance,
-  } = useAppSettings()
+  const { imileToken, imilePortal, zktAttendance, updateSettings } = useAppSettings()
   const [activeSection, setActiveSection] = useState<SettingsSectionId>('imile')
   const [draft, setDraft] = useState<ImileSettingsDraft>(() =>
-    buildDraftFromSettings({ imileToken, rememberImileToken, imilePortal, zktAttendance }),
+    buildDraftFromSettings({ imileToken, imilePortal, zktAttendance }),
   )
   const wasOpenRef = useRef(false)
 
   useEffect(() => {
     if (isOpen && !wasOpenRef.current) {
-      setDraft(buildDraftFromSettings({ imileToken, rememberImileToken, imilePortal, zktAttendance }))
+      setDraft(buildDraftFromSettings({ imileToken, imilePortal, zktAttendance }))
       setActiveSection('imile')
     }
     wasOpenRef.current = isOpen
-  }, [isOpen, imileToken, rememberImileToken, imilePortal, zktAttendance])
+  }, [isOpen, imileToken, imilePortal, zktAttendance])
 
   const savedDraft = useMemo(
-    () => buildDraftFromSettings({ imileToken, rememberImileToken, imilePortal, zktAttendance }),
-    [imileToken, rememberImileToken, imilePortal, zktAttendance],
+    () => buildDraftFromSettings({ imileToken, imilePortal, zktAttendance }),
+    [imileToken, imilePortal, zktAttendance],
   )
 
   const isDirty = useMemo(() => {
     if (draft.imileToken !== savedDraft.imileToken) return true
-    if (draft.rememberImileToken !== savedDraft.rememberImileToken) return true
     if (!portalDraftEqual(draft.imilePortal, savedDraft.imilePortal)) return true
     return !zktDraftEqual(draft.zktAttendance, savedDraft.zktAttendance)
   }, [draft, savedDraft])
@@ -120,10 +107,7 @@ export function GlobalSettingsModal({ isOpen, onClose }: Props) {
   }
 
   const handleSave = () => {
-    setImileToken(draft.imileToken)
-    setRememberImileToken(draft.rememberImileToken)
-    setImilePortal(draft.imilePortal)
-    setZktAttendance(draft.zktAttendance)
+    updateSettings(draft)
     showToast('设置已保存', 'success')
     onClose()
   }
@@ -200,22 +184,14 @@ export function GlobalSettingsModal({ isOpen, onClose }: Props) {
                   className="mt-1.5 w-full max-w-xl rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm focus:border-[#2f8f87] focus:outline-none focus:ring-2 focus:ring-[#2f8f87]/25"
                 />
               </label>
-              <label className="flex cursor-pointer items-center gap-2 text-sm text-slate-600">
-                <input
-                  type="checkbox"
-                  className="h-4 w-4 rounded border-slate-300 text-[#2f8f87] accent-[#2f8f87]"
-                  checked={draft.rememberImileToken}
-                  onChange={(e) =>
-                    setDraft((prev) => ({ ...prev, rememberImileToken: e.target.checked }))
-                  }
-                />
-                记住 Token、门户与考勤 API 配置（仅存本机 localStorage）
-              </label>
+              <p className="text-xs text-slate-500">
+                Token、门户与考勤 API 配置将保存到服务器并绑定当前账号，用同一账号在其他电脑登录后自动生效。
+              </p>
 
               <div className="border-t border-slate-200 pt-4">
                 <h4 className="text-base font-semibold text-slate-950">ZKT 考勤 API</h4>
                 <p className="mt-1 text-xs text-slate-500">
-                  仓库效率工作台 API 模式拉取考勤时使用；会话过期后由服务端自动重新登录。
+                  物流运营工作台 API 模式拉取考勤时使用；会话过期后由服务端自动重新登录。
                 </p>
                 <div className="mt-3 grid max-w-xl gap-3 sm:grid-cols-2">
                   <label className="block text-sm font-medium text-slate-700">

@@ -22,6 +22,32 @@ export function useExitAlarmPage() {
   const [scheduleLoading, setScheduleLoading] = useState(false)
   const [scheduleSaving, setScheduleSaving] = useState(false)
 
+  // 「编辑」统一驱动定时推送配置与供应商配置（多选）：未加载出配置前默认可编辑，
+  // 加载完成后进入只读态，点击「编辑」才能同时修改两者，点击「保存」一并提交。
+  const [editing, setEditing] = useState(true)
+  const [pendingSupplierIds, setPendingSupplierIdsState] = useState<string[]>([])
+
+  useEffect(() => {
+    if (schedule) setEditing(false)
+  }, [schedule])
+
+  // 首次加载完成后（不论是否已有 schedule）先同步一次已启用供应商，
+  // 之后仅在非编辑态同步，避免覆盖用户正在编辑中的多选。
+  const supplierSyncedRef = useRef(false)
+  useEffect(() => {
+    if (scopeBinding.loading) return
+    if (supplierSyncedRef.current && editing) return
+    supplierSyncedRef.current = true
+    setPendingSupplierIdsState(scopeBinding.enabledIds)
+  }, [scopeBinding.enabledIds, scopeBinding.loading, editing])
+
+  const startEditing = useCallback(() => setEditing(true), [])
+
+  const cancelEditing = useCallback(() => {
+    setPendingSupplierIdsState(scopeBinding.enabledIds)
+    setEditing(false)
+  }, [scopeBinding.enabledIds])
+
   const initRef = useRef(false)
 
   useEffect(() => {
@@ -48,7 +74,6 @@ export function useExitAlarmPage() {
       const res = await saveExitAlarmSchedule(draft, imileToken)
       if (res.ok) {
         setSchedule(res.data)
-        scopeBinding.setEnabledIds(res.data.pushConfigIds)
         showToast('定时推送配置已保存', 'success')
         return true
       }
@@ -57,7 +82,21 @@ export function useExitAlarmPage() {
     } finally {
       setScheduleSaving(false)
     }
-  }, [imileToken, scopeBinding])
+  }, [imileToken])
+
+  // 「编辑」同时作用于定时推送配置与供应商配置：保存时先提交定时配置，
+  // 再提交多选的供应商范围，两者都成功才退出编辑态。
+  const saveAll = useCallback(
+    async (draft: ExitAlarmScheduleDraft): Promise<boolean> => {
+      const scheduleOk = await saveSchedule(draft)
+      if (!scheduleOk) return false
+      const supplierOk = await scopeBinding.persist(pendingSupplierIds)
+      if (!supplierOk) return false
+      setEditing(false)
+      return true
+    },
+    [saveSchedule, scopeBinding, pendingSupplierIds],
+  )
 
   const pushableConfigs = catalog.configs.filter((c) => c.webhookUrl.trim().length > 0)
 
@@ -70,6 +109,11 @@ export function useExitAlarmPage() {
     scheduleLoading,
     scheduleSaving,
     selectedStations,
-    saveSchedule,
+    editing,
+    startEditing,
+    cancelEditing,
+    pendingSupplierIds,
+    setPendingSupplierIds: setPendingSupplierIdsState,
+    saveAll,
   }
 }

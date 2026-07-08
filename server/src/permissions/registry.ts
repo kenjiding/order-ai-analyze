@@ -59,7 +59,7 @@ export const PERMISSION_REGISTRY: PermissionDefinition[] = [
   {
     key: 'btn:push-notifications:warehouse-efficiency',
     type: 'button',
-    label: '仓库效率推送',
+    label: '物流运营推送',
     menuKey: 'push-notifications',
     sortOrder: 410,
   },

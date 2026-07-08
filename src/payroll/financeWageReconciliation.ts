@@ -19,6 +19,7 @@ export type ReconciliationRow = {
   personLabel: string
   financePersonName: string
   systemPersonName: string
+  systemPersonNickname: string
   financePosition: string
   systemPosition: string
   financeWorkday: string
@@ -169,6 +170,13 @@ function displaySystemPerson(record: SystemWageRecordLike): string {
   return fromAlias || '未知'
 }
 
+function displaySystemNickname(record: SystemWageRecordLike): string {
+  const nickname = String(record.nickname ?? '').trim()
+  if (nickname) return nickname
+  const o = record as Record<string, unknown>
+  return String(o['昵称'] ?? o['Nickname'] ?? o['nickName'] ?? '').trim()
+}
+
 function displaySystemPosition(record: SystemWageRecordLike): string {
   const title = String(record.positionTitle ?? '').trim()
   if (title) return title
@@ -254,6 +262,7 @@ function buildReconciliationRow(
     personLabel: finance?.personName ?? (system ? displaySystemPerson(system) : ''),
     financePersonName: finance?.personName ?? '',
     systemPersonName: system ? displaySystemPerson(system) : '',
+    systemPersonNickname: system ? displaySystemNickname(system) : '',
     financePosition: finance?.positionName ?? '',
     systemPosition: system ? displaySystemPosition(system) : '',
     financeWorkday: finance?.workday ?? '',
@@ -379,6 +388,7 @@ export function buildReconciliationExportRows(result: ReconciliationResult): Rec
     人员: row.personLabel,
     '财务-人员': row.financePersonName,
     '系统-人员': row.systemPersonName,
+    '系统-昵称': row.systemPersonNickname,
     '财务-职位': row.financePosition,
     '系统-职位': row.systemPosition,
     '财务-工作日': row.financeWorkday,

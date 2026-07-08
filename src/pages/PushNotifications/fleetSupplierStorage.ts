@@ -19,9 +19,12 @@ export function sanitizeFleetSupplier(
 
   const legacyName = typeof o.supplierName === 'string' ? o.supplierName.trim() : ''
   const vendorCode = typeof o.vendorCode === 'string' ? o.vendorCode.trim() : ''
-  const vendorName = typeof o.vendorName === 'string' ? o.vendorName.trim() : legacyName
+  const vendorName =
+    typeof o.vendorName === 'string' && o.vendorName.trim()
+      ? o.vendorName.trim()
+      : legacyName
   const supplierNickname =
-    typeof o.supplierNickname === 'string'
+    typeof o.supplierNickname === 'string' && o.supplierNickname.trim()
       ? o.supplierNickname.trim()
       : legacyName
   const routeCode = typeof o.routeCode === 'string' ? o.routeCode.trim() : ''

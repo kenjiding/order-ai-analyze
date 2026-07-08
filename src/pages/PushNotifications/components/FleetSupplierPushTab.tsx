@@ -460,12 +460,14 @@ export function FleetSupplierPushTab({
     if (!file) { showToast('请先选择文件。', 'error'); return }
     setImporting(true)
     try {
-      const r = await parseFleetSuppliersImportFile(file)
+      const r = await parseFleetSuppliersImportFile(file, { vendors })
       if (!r.ok) { showToast(r.error, 'error'); return }
       if (!importMerge) {
         const confirmed = await confirmDialog({
           title: '确认替换全部供应商配置？',
-          content: `将删除当前 ${suppliers.length} 条配置，仅保留文件中的 ${r.suppliers.length} 条。`,
+          content: `将删除当前 ${suppliers.length} 条配置，仅保留文件中的 ${r.suppliers.length} 条${
+            r.skipped > 0 ? `（另有 ${r.skipped} 条因缺少 vendorCode 将跳过）` : ''
+          }。`,
           okText: '替换',
           danger: true,
         })
@@ -475,10 +477,12 @@ export function FleetSupplierPushTab({
       if (!res.ok) { showToast(`导入失败：${res.error}`, 'error'); return }
       setSuppliers(res.data)
       closeImportModal()
+      const skippedTotal = r.skipped
+      const skipNote = skippedTotal > 0 ? `，跳过 ${skippedTotal} 条（缺少 vendorCode 且无法匹配主数据）` : ''
       showToast(
         importMerge
-          ? `已合并导入 ${r.suppliers.length} 条（相同 id 以文件为准）。`
-          : `已导入并替换为 ${r.suppliers.length} 条供应商。`,
+          ? `已合并导入 ${res.imported} 条（相同 id 以文件为准）${skipNote}`
+          : `已导入并替换为 ${res.imported} 条供应商${skipNote}`,
         'success',
       )
     } finally {
@@ -826,8 +830,9 @@ export function FleetSupplierPushTab({
             <Button type="default">选择文件</Button>
           </Upload>
           <p className="text-xs text-slate-500">
-            支持 xlsx、xls、csv、json。列名可与导出文件一致（英文字段），也可使用中文表头（如「供应商名称」「路由编码」等）。完整 webhook
-            / 密钥请在「飞书推送」页导出或向东道主索取含密文的表格后再于此处导入。
+            支持 xlsx、xls、csv、json。列名可与导出文件一致（vendorCode、vendorName、supplierNickname 等），也可使用中文表头。
+            旧版 supplierName 列会回填为 supplierNickname；vendorCode 须来自文件列或能匹配供应商主数据，无法确定的行将跳过。
+            完整 webhook / 密钥请在「飞书推送」页导出或向东道主索取含密文的表格后再于此处导入。
           </p>
         </div>
       </Modal>

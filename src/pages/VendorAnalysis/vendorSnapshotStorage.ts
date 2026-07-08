@@ -61,6 +61,8 @@ export type VendorSnapshotData = {
   enabledMetricKeys?: string[]
   /** AI 分析总结开关；false 时快照页不展示 AI 块、切换语言也不补拉 */
   aiSummaryEnabled?: boolean
+  /** 所属任务 id；用于截图推送时按供应商查询对外分享链接 */
+  jobId?: string | null
 }
 
 const STORAGE_KEY = 'vendorSnapshotData'
@@ -116,8 +118,9 @@ export function buildVendorSnapshot(params: {
   aiSummaries?: VendorSnapshotAiSummaries
   enabledMetricKeys?: string[]
   aiSummaryEnabled?: boolean
+  jobId?: string | null
 }): VendorSnapshotData {
-  const { fetchedData, stations, vendorMetrics, driverPerformanceByVendor, configs, aiSummaries, enabledMetricKeys, aiSummaryEnabled } = params
+  const { fetchedData, stations, vendorMetrics, driverPerformanceByVendor, configs, aiSummaries, enabledMetricKeys, aiSummaryEnabled, jobId } = params
   const fmt = (s: string) => s.slice(5, 10).replace('-', '/')
   // configs 已经是「本次推送范围（scope 已启用）」的供应商配置；不在其中的即视为未启用
   const enabledVendorCodes = new Set(configs.map((c) => c.vendorCode))
@@ -132,6 +135,7 @@ export function buildVendorSnapshot(params: {
     aiSummaries,
     enabledMetricKeys,
     aiSummaryEnabled,
+    jobId,
     webhookConfigs: configs.map((c) => ({
       vendorCode: c.vendorCode,
       vendorName: c.vendorName,

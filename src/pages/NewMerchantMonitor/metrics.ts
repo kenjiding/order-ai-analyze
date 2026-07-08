@@ -1,5 +1,6 @@
 import dayjs, { type Dayjs } from 'dayjs'
 import {
+  hasMatchedWaybillVendor,
   readWaybillDriverCode,
   readWaybillDriverName,
   readWaybillNo,
@@ -56,10 +57,6 @@ function parseDate(raw: string): Dayjs | null {
   if (d.isValid()) return d
   d = dayjs(raw)
   return d.isValid() ? d : null
-}
-
-function isSigned(rec: WaybillRecord): boolean {
-  return parseDate(readField(rec, 'signDate')) !== null
 }
 
 function diffHours(a: Dayjs, b: Dayjs): number {
@@ -432,6 +429,7 @@ function computeRouteCodeRow(
 
   const vendorCounts = new Map<string, number>()
   for (const rec of records) {
+    if (!hasMatchedWaybillVendor(rec)) continue
     const v = readVendor(rec)
     vendorCounts.set(v, (vendorCounts.get(v) ?? 0) + 1)
   }
@@ -512,9 +510,16 @@ export type CourierBreakdownRow = {
   courier: string
   courierCode: string
   waybillNos: string[]
+  /** 未签收运单号（签收率分子未命中） */
+  notSignedWaybillNos: string[]
+  /** 已派送但未达 24h 派签的运单号（含未签收） */
+  notWithin24hWaybillNos: string[]
   volume: number
   signedCount: number
   signRate: number | null
+  dispatchedCount: number
+  within24hCount: number
+  within24hRate: number | null
   medianTransitDays: number | null
 }
 
@@ -525,6 +530,7 @@ export function computeCourierBreakdown(
   const groups = new Map<string, { vendor: string; courier: string; courierCode: string; records: WaybillRecord[] }>()
   for (const rec of records) {
     if (readRouteCode(rec) !== routeCode) continue
+    if (!hasMatchedWaybillVendor(rec)) continue
     const vendor = readVendor(rec)
     const courier = readWaybillDriverName(rec)
     const courierCode = readWaybillDriverCode(rec)
@@ -537,9 +543,29 @@ export function computeCourierBreakdown(
   const rows: CourierBreakdownRow[] = []
   for (const [key, { vendor, courier, courierCode, records: group }] of groups) {
     let signedCount = 0
+    let dispatchedCount = 0
+    let within24hCount = 0
     const transitDays: number[] = []
+    const notSignedWaybillNos: string[] = []
+    const notWithin24hWaybillNos: string[] = []
     for (const rec of group) {
-      if (isSigned(rec)) signedCount += 1
+      const waybillNo = readWaybillNo(rec)
+      const signDate = parseDate(readField(rec, 'signDate'))
+      const deliveryTime = parseDate(readField(rec, 'deliveryTime'))
+      const signed = signDate !== null
+
+      if (signed) signedCount += 1
+      else if (waybillNo) notSignedWaybillNos.push(waybillNo)
+
+      if (deliveryTime) {
+        dispatchedCount += 1
+        if (signed && isWithin24hWithWeekend(signDate, deliveryTime)) {
+          within24hCount += 1
+        } else if (waybillNo) {
+          notWithin24hWaybillNos.push(waybillNo)
+        }
+      }
+
       const firstDsArrive = parseDate(readField(rec, 'firstDsArriveDate'))
       const firstCountry = parseDate(readField(rec, 'firstCountryDate'))
       if (firstDsArrive && firstCountry) {
@@ -555,9 +581,14 @@ export function computeCourierBreakdown(
       courier,
       courierCode,
       waybillNos,
+      notSignedWaybillNos,
+      notWithin24hWaybillNos,
       volume,
       signedCount,
       signRate: safeRate(signedCount, volume),
+      dispatchedCount,
+      within24hCount,
+      within24hRate: safeRate(within24hCount, dispatchedCount),
       medianTransitDays: median(transitDays),
     })
   }

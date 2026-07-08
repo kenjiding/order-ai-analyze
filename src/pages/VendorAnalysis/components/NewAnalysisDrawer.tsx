@@ -1,4 +1,4 @@
-import { Button, Checkbox, DatePicker, Drawer, Switch, Tooltip, Typography } from 'antd'
+import { Button, DatePicker, Drawer, Switch, Tooltip, Typography } from 'antd'
 import type { Dayjs } from 'dayjs'
 import {
   AlertTriangle,
@@ -15,6 +15,8 @@ import { useEffect, useMemo, useRef, type ReactNode } from 'react'
 import { Link } from 'react-router-dom'
 import {
   isSupplierPushEligible,
+  SUPPLIER_PUSH_CONFIG_MAINTAIN_PATH,
+  SupplierPushSelectionGrid,
   type SupplierPushConfig,
 } from '../../../shared/supplierPushConfig'
 import { ALL_METRIC_KEYS, enabledDateSensitiveLabels } from '../metricsRegistry'
@@ -85,88 +87,6 @@ function FormSection({
       </header>
       <div className="px-4 py-4">{children}</div>
     </section>
-  )
-}
-
-/**
- * 推送供应商多选：沿用「指标配置」的卡片网格样式（一行 4 个），
- * 每个卡片重点展示供应商昵称与供应商名。选中即代表会被推送；
- * 未配置 Webhook 的供应商禁用（无法推送），并给出提示。
- */
-function SupplierPushGrid({
-  configs,
-  enabledIdSet,
-  togglingId,
-  saving,
-  onToggle,
-}: {
-  configs: SupplierPushConfig[]
-  enabledIdSet: ReadonlySet<string>
-  togglingId: string | null
-  saving: boolean
-  onToggle: (configId: string, next: boolean) => void
-}) {
-  if (configs.length === 0) {
-    return <p className="text-xs text-slate-400">暂无供应商配置，请前往「飞书推送」维护。</p>
-  }
-  return (
-    <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-      {configs.map((c) => {
-        const checked = enabledIdSet.has(c.id)
-        const eligible = isSupplierPushEligible(c)
-        // 保存期间禁用其余卡片，避免并发切换丢失点击（scope 一次只处理一个）
-        const busy = saving && togglingId !== c.id
-        const disabled = !eligible || busy
-        const nickname = c.supplierNickname?.trim()
-        const primary = nickname || c.vendorName || '未知供应商'
-        const showVendorLine = !!nickname && c.vendorName.trim().length > 0
-
-        const checkboxNode = (
-          <Checkbox
-            checked={checked}
-            disabled={disabled}
-            onChange={(e) => onToggle(c.id, e.target.checked)}
-            className="flex w-full min-w-0 items-center [&>span:last-child]:min-w-0 [&>span:last-child]:flex-1 [&>span:last-child]:overflow-hidden"
-          >
-            <span className="flex min-w-0 flex-col leading-tight">
-              <Tooltip title={primary}>
-                <span className={`truncate text-[13px] font-semibold ${eligible ? 'text-slate-800' : 'text-slate-400'}`}>
-                  {primary}
-                </span>
-              </Tooltip>
-              {showVendorLine && (
-                <Tooltip title={c.vendorName}>
-                  <span className={`truncate text-[11px] font-medium ${eligible ? 'text-[var(--admin-accent)]' : 'text-slate-400'}`}>
-                    {c.vendorName}
-                  </span>
-                </Tooltip>
-              )}
-            </span>
-          </Checkbox>
-        )
-
-        return (
-          <label
-            key={c.id}
-            className={`flex min-w-0 items-center gap-1.5 overflow-hidden rounded-lg border px-3 py-2.5 transition-colors ${
-              !eligible
-                ? 'cursor-default border-[var(--admin-line)] bg-[var(--admin-surface-soft)]'
-                : checked
-                  ? 'cursor-pointer border-[var(--admin-accent)] bg-[var(--admin-accent-soft)]'
-                  : 'cursor-pointer border-[var(--admin-line)] bg-white hover:bg-slate-50'
-            }`}
-          >
-            {eligible ? (
-              checkboxNode
-            ) : (
-              <Tooltip title="该供应商未配置 Webhook，无法推送">
-                <span className="flex w-full min-w-0">{checkboxNode}</span>
-              </Tooltip>
-            )}
-          </label>
-        )
-      })}
-    </div>
   )
 }
 
@@ -363,7 +283,7 @@ export function NewAnalysisDrawer({
             </div>
           }
         >
-          <SupplierPushGrid
+          <SupplierPushSelectionGrid
             configs={catalogConfigs}
             enabledIdSet={enabledIdSet}
             togglingId={scopeBinding.togglingId}
@@ -374,7 +294,7 @@ export function NewAnalysisDrawer({
             <span>已选 {selectedPushCount} / {eligibleConfigs.length} 个可推送供应商</span>
             <span className="flex items-center gap-3">
               {ineligibleCount > 0 && <span>{ineligibleCount} 个未配置 Webhook</span>}
-              <Link to="/push-notifications" className="inline-flex items-center gap-1 text-[var(--admin-accent)] hover:underline">
+              <Link to={SUPPLIER_PUSH_CONFIG_MAINTAIN_PATH} className="inline-flex items-center gap-1 text-[var(--admin-accent)] hover:underline">
                 <ExternalLink className="h-3 w-3" />维护配置
               </Link>
             </span>

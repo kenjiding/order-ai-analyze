@@ -1,4 +1,4 @@
-import { Button, DatePicker, TimePicker } from 'antd'
+import { Button, DatePicker } from 'antd'
 import { Send } from 'lucide-react'
 import dayjs from 'dayjs'
 import { useState } from 'react'
@@ -18,7 +18,6 @@ export function PushNowPanel({ disabled, configs }: Props) {
   const { imileToken } = useAppSettings()
   const { selectedStations } = useGlobalFilterStore()
   const [date, setDate] = useState<dayjs.Dayjs | null>(dayjs().subtract(1, 'day'))
-  const [pushTime, setPushTime] = useState<dayjs.Dayjs | null>(dayjs())
   const [loading, setLoading] = useState(false)
   const [lastResult, setLastResult] = useState<string | null>(null)
 
@@ -44,7 +43,6 @@ export function PushNowPanel({ disabled, configs }: Props) {
       const res = await triggerExitAlarmPushNow(imileToken, {
         stationCode,
         date: date.format('YYYY-MM-DD'),
-        pushTime: pushTime?.format('HH:mm') ?? dayjs().format('HH:mm'),
         configIds: configs.map((c) => c.id),
       })
       if (res.ok) {
@@ -72,17 +70,6 @@ export function PushNowPanel({ disabled, configs }: Props) {
             onChange={setDate}
             placeholder="选择日期"
             disabledDate={(d) => d.isAfter(dayjs(), 'day')}
-            disabled={disabled || loading}
-          />
-        </div>
-        <div>
-          <div className="mb-1 text-xs text-slate-500">推送时间（标记用，不影响查询）</div>
-          <TimePicker
-            value={pushTime}
-            onChange={setPushTime}
-            format="HH:mm"
-            minuteStep={5}
-            placeholder="选择时间"
             disabled={disabled || loading}
           />
         </div>

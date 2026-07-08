@@ -6,6 +6,9 @@ export type PushApiScope = 'warehouse-efficiency' | 'attendance-scheduling' | 'f
 
 export type PushPageTabKey = 'warehouse_efficiency' | 'attendance_scheduling' | 'fleet_supplier' | 'order_exception'
 
+export const PUSH_NOTIFICATIONS_BASE_PATH = '/push-notifications'
+export const PUSH_PAGE_TAB_QUERY_KEY = 'tab'
+
 export type PushNotificationFeature = {
   tabKey: PushPageTabKey
   label: string
@@ -18,7 +21,7 @@ export type PushNotificationFeature = {
 export const PUSH_NOTIFICATION_FEATURES: readonly PushNotificationFeature[] = [
   {
     tabKey: 'warehouse_efficiency',
-    label: '仓库效率推送',
+    label: '物流运营推送',
     permissionKey: PERMISSION_KEYS.btnPushNotificationsWarehouseEfficiency,
     apiScope: 'warehouse-efficiency',
     feishuKind: 'sort_efficiency',
@@ -44,6 +47,19 @@ export const PUSH_NOTIFICATION_FEATURES: readonly PushNotificationFeature[] = [
     feishuKind: 'order_exception',
   },
 ] as const
+
+const PUSH_PAGE_TAB_KEYS = new Set<PushPageTabKey>(
+  PUSH_NOTIFICATION_FEATURES.map((feature) => feature.tabKey),
+)
+
+export function isPushPageTabKey(value: string): value is PushPageTabKey {
+  return PUSH_PAGE_TAB_KEYS.has(value as PushPageTabKey)
+}
+
+export function buildPushNotificationsPath(tabKey?: PushPageTabKey): string {
+  if (!tabKey) return PUSH_NOTIFICATIONS_BASE_PATH
+  return `${PUSH_NOTIFICATIONS_BASE_PATH}?${PUSH_PAGE_TAB_QUERY_KEY}=${tabKey}`
+}
 
 export function listAccessiblePushFeatures(
   hasPermission: (key: string) => boolean,

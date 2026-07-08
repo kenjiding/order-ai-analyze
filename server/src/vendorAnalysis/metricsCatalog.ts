@@ -222,7 +222,8 @@ ${driverBullets}
 4. 具体可执行建议（涉及到人名或路由，而非"加强管理"之类的空话）
 
 【格式要求】
-- 流畅中文段落，不使用 markdown、分点符号、emoji
+- 输出适合飞书消息卡片展示的 Markdown：用 **加粗** 标出小标题（如"整体表现""司机分析""问题归因""改进建议"）分段书写；涉及具体人名、路由、数值的逐条内容用 "- " 开头的无序列表列出，不要堆在一段话里
+- 不使用一级/二级标题（#）、表格、代码块、emoji
 - 150~250字，言之有物，不堆砌废话
 - 若某家供应商所有指标均达标，则以积极语气简要肯定（60~80字即可），并从司机数据中找出表现最优司机予以点名
 - 禁止出现：AI、大模型、自动生成、人工智能
@@ -243,7 +244,8 @@ ${driverBullets}
 4. Concrete, actionable recommendations (name couriers or routes—avoid vague "improve management")
 
 [Format]
-- Fluent English paragraphs only; no markdown, bullet lists, or emoji
+- Output clean Markdown suitable for a Feishu message card: use **bold** as section labels (e.g. "Overall Performance", "Courier Analysis", "Root Cause", "Recommendations"); list specific courier names, routes, and figures as "- " bullet items instead of burying them in a paragraph
+- No #/## headings, tables, code blocks, or emoji
 - 150–250 words; substantive, not filler
 - If all metrics are on target, give brief positive feedback (60–80 words) and name top-performing couriers
 - Do not mention: AI, LLM, auto-generated, artificial intelligence

@@ -53,7 +53,7 @@ export function payrollWageForMappedRecord(
   return calculatePayrollWage(hoursSource, rate).totalWage
 }
 
-/** 与仓库效率工作台解析后的考勤行兼容 */
+/** 与物流运营工作台解析后的考勤行兼容 */
 export type ParsedAttendanceRowForLabor = {
   date: string
   sorterKey: string
@@ -173,7 +173,7 @@ export type PerTicketLaborCost = {
   costPerTicketOpen: number | null
 }
 
-/** 与仓库效率「效率明细/天」、排班计划「总成本/每票成本」共用的按日人工口径 */
+/** 与物流运营「效率明细/天」、排班计划「总成本/每票成本」共用的按日人工口径 */
 export type DailyLaborCostMetrics = {
   totalLaborCost: number | null
   costPerTicket: number | null

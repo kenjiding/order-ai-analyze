@@ -113,8 +113,8 @@ export const buildWeeklyReportTitle = (
   attendanceResult: AttendanceEfficiencyResult | null = null,
 ): string => {
   const period = resolveWeeklyReportPeriod(scanAggregate, attendanceResult)
-  if (!period) return '仓库效率周报'
-  return `仓库效率周报（${formatWeeklyReportPeriodText(period.startDate, period.endDate)}）`
+  if (!period) return '物流运营周报'
+  return `物流运营周报（${formatWeeklyReportPeriodText(period.startDate, period.endDate)}）`
 }
 
 export const getExtremeRow = <T>(
@@ -896,7 +896,7 @@ export function buildWeeklyReportEmailHtml({
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>仓库效率周报</title>
+    <title>物流运营周报</title>
   </head>
   <body style="margin:0;padding:0;background:#f2f8ff;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif;color:#243447;">
     <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f2f8ff;padding:24px 12px;">
@@ -905,8 +905,8 @@ export function buildWeeklyReportEmailHtml({
           <table role="presentation" width="900" cellpadding="0" cellspacing="0" style="max-width:900px;width:100%;background:#ffffff;border-radius:22px;overflow:hidden;border:1px solid #d7e8ff;">
             <tr>
               <td style="padding:30px 32px;background:linear-gradient(120deg,#1e88ff,#48c5ff,#7ee4c4);color:#ffffff;">
-                <div style="font-size:12px;letter-spacing:0.22em;text-transform:uppercase;font-weight:600;opacity:0.95;">Warehouse Weekly Efficiency</div>
-                <div style="margin-top:10px;font-size:30px;font-weight:800;line-height:1.25;">仓库效率周报</div>
+                <div style="font-size:12px;letter-spacing:0.22em;text-transform:uppercase;font-weight:600;opacity:0.95;">Logistics Operations Weekly</div>
+                <div style="margin-top:10px;font-size:30px;font-weight:800;line-height:1.25;">物流运营周报</div>
                 <div style="margin-top:8px;font-size:15px;font-weight:500;opacity:0.95;">统计周期：${escapeHtml(periodText)}</div>
                 <div style="margin-top:8px;font-size:13px;font-weight:500;opacity:0.95;">统计模式：${escapeHtml(modeTitle)}</div>
               </td>

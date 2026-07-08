@@ -75,7 +75,7 @@ export async function generateSortEfficiencyFeishuAnalysis(dataSnapshot: unknown
     `④ 总效率好坏的唯一判断标准是与 ${OVERALL_EFFICIENCY_TARGET} 票/小时对比（不要在正文里写出这个数字）：实际值 > ${OVERALL_EFFICIENCY_TARGET} = 偏高/良好；实际值 < ${OVERALL_EFFICIENCY_TARGET} = 偏低/不足；相差 5% 以内可写「正常」。warehouseAttendance 存在时，须报出总效率实际值并给出这句定性评价。`,
     '⑤ warehouseAttendance.cainiaoShareOpenDays 是开仓日菜鸟票占比（0~1），cainiaoShareWindow 是全窗口菜鸟票占比。菜鸟件处理流程相对简单，菜鸟占比越高效率天然越高，菜鸟占比越低效率天然越低。菜鸟占比只用来解释效率结果的成因，不影响好坏判断（好坏判断只看④中的基准）。须：',
     `   a. 用百分比报出本期菜鸟占比（如「菜鸟占比 XX%」）；`,
-    `   b. 用菜鸟占比解释本期效率合不合理：占比高时效率自然偏高属正常，占比低时仍能维持高效说明人效突出，仅此解释成因，不重新给效率下好坏定论。`,
+    `   b. 用菜鸟占比客观说明成因即可，须先报出占比数字再给结论，句式类似「菜鸟占比 XX%，对效率有一定支撑」；占比较低时仍能维持高效则说明人效突出。不要展开「流程较简单」等原因描述，也不重新给效率下好坏定论。措辞要中性、正面，禁止使用「效率偏高属正常」「属正常现象」等把好成绩说成理所当然、显得在给结果打折扣的表述。`,
     '⑥ warehouseAttendance.averageCostPerTicket 是每票平均人工成本（货币单位与薪资口径一致）；若该字段有值，须在点评中作为单位成本指标提及（如「每票成本 $X.XX」），体现人效比；若为 null，跳过不提。',
     '对扫描员排名、高低值判断时，优先使用 topScanners[].adjustedEfficiency（与页面表格/图表一致）；仅当该字段缺失时，才回退到 rawEfficiency。',
     '只依据数字与字段下笔；不许编造；缺的关键信息就用一句话点出缺口。',
@@ -83,6 +83,7 @@ export async function generateSortEfficiencyFeishuAnalysis(dataSnapshot: unknown
     '建议结构：先一句概括区间整体；再报总效率实际值 vs 目标，并结合菜鸟占比解读差距；若有每票成本则附上；最后一句一级分拣情况或风险提示。尽量不用分点或小标题，除非内容确实需要分层。',
     '禁止输出：markdown、JSON；少用空话套话。',
     '禁止使用这些词或同类表述：人工智能、AI、大模型、自动生成。',
+    '禁止使用「效率偏高属正常」「属正常现象」等把良好业绩淡化为理所当然的措辞；如需解释菜鸟占比与效率的关系，用中性、正面的说法。',
   ].join('\n')
 
   const userPrompt = [

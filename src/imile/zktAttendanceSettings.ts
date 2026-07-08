@@ -11,8 +11,6 @@ export const DEFAULT_ZKT_ATTENDANCE_SETTINGS: ZktAttendanceSettings = {
   departmentId: '23',
 }
 
-export const ZKT_ATTENDANCE_STORAGE_KEY = 'app_zkt_attendance_v1'
-
 type LegacyZktAttendanceSettings = Partial<ZktAttendanceSettings> & {
   baseUrl?: string
 }
@@ -26,17 +24,6 @@ export function normalizeZktAttendanceSettings(
     departmentId:
       String(raw?.departmentId ?? DEFAULT_ZKT_ATTENDANCE_SETTINGS.departmentId).trim() ||
       DEFAULT_ZKT_ATTENDANCE_SETTINGS.departmentId,
-  }
-}
-
-export function readStoredZktAttendanceSettings(): ZktAttendanceSettings {
-  if (typeof localStorage === 'undefined') return { ...DEFAULT_ZKT_ATTENDANCE_SETTINGS }
-  try {
-    const raw = localStorage.getItem(ZKT_ATTENDANCE_STORAGE_KEY)
-    if (!raw) return { ...DEFAULT_ZKT_ATTENDANCE_SETTINGS }
-    return normalizeZktAttendanceSettings(JSON.parse(raw) as LegacyZktAttendanceSettings)
-  } catch {
-    return { ...DEFAULT_ZKT_ATTENDANCE_SETTINGS }
   }
 }
 

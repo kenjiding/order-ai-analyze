@@ -8,13 +8,11 @@ import { postFeishuPushCard } from '../PushNotifications/feishuWebhookTestApi'
 import type {
   DriverPerformanceRow,
   VendorMetricRow,
-  VendorOption,
 } from './vendorAnalysisTypes'
 import type { VendorAnalyzeSummary } from './vendorAnalysisSummary'
 import {
   cancelJobApi,
   deleteJobApi,
-  fetchVendors,
   getJobById,
   getVendorAnalyzeSnapshot,
   listJobs,
@@ -112,9 +110,6 @@ export function useVendorAnalysisPage() {
     return [lastMonday, lastSunday]
   })
 
-  const [vendors, setVendors] = useState<VendorOption[]>([])
-  const [vendorsLoading, setVendorsLoading] = useState(false)
-
   const catalog = useSupplierPushCatalog()
   const configs = useMemo(
     () => fleetConfigsToVendorPushConfigs(catalog.configs),
@@ -173,20 +168,6 @@ export function useVendorAnalysisPage() {
     () => !!referenceDate && referenceDate.format('YYYY-MM-DD') === nowIn(targetTz).format('YYYY-MM-DD'),
     [referenceDate, targetTz],
   )
-
-  const initRef = useRef(false)
-
-  useEffect(() => {
-    if (initRef.current) return
-    initRef.current = true
-
-    setVendorsLoading(true)
-    void fetchVendors(imileToken).then((res) => {
-      setVendorsLoading(false)
-      if (res.ok) setVendors(res.data)
-      else showToast(`供应商加载失败: ${res.error}`, 'error')
-    })
-  }, [imileToken])
 
   // 筛选条件（参考日期/客诉时间/站点）现在只定义「下一次新建分析」的参数，
   // 与「数据预览」Tab 正在展示的这份结果相互独立，改动筛选不再清空已展示的结果。
@@ -634,8 +615,6 @@ export function useVendorAnalysisPage() {
     complaintDateRange,
     setComplaintDateRange,
     selectedStations,
-    vendors,
-    vendorsLoading,
     catalog,
     configs,
     configsLoading,

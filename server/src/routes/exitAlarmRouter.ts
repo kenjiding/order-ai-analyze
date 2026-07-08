@@ -5,7 +5,7 @@ import { getDb, schema } from '../db'
 import type { ExitAlarmSchedule } from '../db/schema'
 import { readImileTokenFromRequest } from './imileAuth'
 import { normalizeImileToken } from '../imile/shared'
-import { fetchWaybillDetailsByInboundIndex } from '../imile/inboundWaybillIndex'
+import { fetchWaybillDetailsByInboundIndex, getRegionNow } from '../imile/inboundWaybillIndex'
 import { resolveRegionTz } from '../imile/ausTimezone'
 import { buildExitAlarmCard } from '../feishu/buildExitAlarmCard'
 import { hasExitAlarmImileToken, parseRouteCodes } from '../feishu/exitAlarmScheduledPush'
@@ -179,7 +179,7 @@ exitAlarmRouter.post('/push-now', async (req: AuthenticatedRequest, res: Respons
     return
   }
 
-  type PushNowBody = { stationCode?: unknown; date?: unknown; pushTime?: unknown; configIds?: unknown }
+  type PushNowBody = { stationCode?: unknown; date?: unknown; configIds?: unknown }
   const body = req.body as PushNowBody
 
   if (typeof body.stationCode !== 'string' || !body.stationCode.trim()) {
@@ -203,7 +203,8 @@ exitAlarmRouter.post('/push-now', async (req: AuthenticatedRequest, res: Respons
 
   const stationCode = body.stationCode.trim()
   const date = body.date.trim()
-  const pushTime = typeof body.pushTime === 'string' && body.pushTime.trim() ? body.pushTime.trim() : '11:00'
+  const tz = resolveRegionTz(req.authUser?.regionCode)
+  const { timeHHmm: pushTime } = getRegionNow(tz)
 
   const configs = await listPushableSupplierPushConfigsByIds(configIds)
 
@@ -217,7 +218,7 @@ exitAlarmRouter.post('/push-now', async (req: AuthenticatedRequest, res: Respons
     token,
     stationCode,
     dateStr: date,
-    tz: resolveRegionTz(req.authUser?.regionCode),
+    tz,
     label: '出仓告警立即推送',
   })
 

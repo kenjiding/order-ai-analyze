@@ -18,6 +18,7 @@ import { vendorPortalRouter } from './routes/vendorPortalRouter'
 import { fleetSupplierPushRouter } from './routes/fleetSupplierPushRouter'
 import { exitAlarmRouter } from './routes/exitAlarmRouter'
 import { chaseDispatchRouter } from './routes/chaseDispatchRouter'
+import { deliveringNotifyRouter } from './routes/deliveringNotifyRouter'
 import { supplierConfigScopeRouter } from './routes/supplierConfigScopeRouter'
 import { userPreferencesRouter } from './routes/userPreferencesRouter'
 
@@ -68,5 +69,6 @@ app.use('/api/user-preferences', requireAuth, userPreferencesRouter)
 app.use('/api/feishu-webhook', requireAuth, feishuWebhookTestRouter)
 app.use('/api/exit-alarm', requireAuth, exitAlarmRouter)
 app.use('/api/chase-dispatch', requireAuth, chaseDispatchRouter)
+app.use('/api/delivering-notify', requireAuth, deliveringNotifyRouter)
 
 export { app }

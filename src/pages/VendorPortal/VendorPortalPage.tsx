@@ -15,9 +15,14 @@ import '../VendorAnalysis/vendorSnapshotPage.css'
 export default function VendorPortalPage() {
   const { token } = useParams<{ token: string }>()
   const { t } = useVendorSnapshotTranslation()
-  const { locale } = useAppLocale()
+  const { locale, setLocale } = useAppLocale()
   const [data, setData] = useState<VendorPortalDaily | null>(null)
   const [status, setStatus] = useState<'loading' | 'ready' | 'error'>(token ? 'loading' : 'error')
+
+  // 外部供应商落地页默认英文（仍可通过 LocaleSwitcher 切换）
+  useEffect(() => {
+    setLocale('en')
+  }, [setLocale])
 
   useEffect(() => {
     if (!token) return

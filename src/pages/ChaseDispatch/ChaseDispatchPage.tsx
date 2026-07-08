@@ -28,13 +28,7 @@ export default function ChaseDispatchPage() {
         </div>
       </div>
 
-      <ChaseDispatchSchedulePushConfig
-        schedule={v.schedule}
-        loading={v.scheduleLoading}
-        saving={v.scheduleSaving}
-        stationCode={v.selectedStations[0] ?? ''}
-        onSave={v.saveSchedule}
-      />
+      <ChaseDispatchSchedulePushConfig page={v} />
 
       <ChaseDispatchSupplierSection page={v} />
 

@@ -19,7 +19,8 @@
     "failed": "推送失败",
     "sectionNotFound": "找不到对应区块",
     "captureFailed": "截图失败: {{message}}",
-    "unknownError": "未知错误"
+    "unknownError": "未知错误",
+    "shareLinkText": "查看完整每日报告"
   },
   "summary": {
     "vendorCount": "供应商数量",

@@ -1,6 +1,5 @@
-import { Button, Checkbox, DatePicker, TimePicker } from 'antd'
+import { Button, Checkbox } from 'antd'
 import { Send } from 'lucide-react'
-import dayjs from 'dayjs'
 import { useEffect, useState } from 'react'
 import { useAppSettings } from '../../../context/AppSettingsContext'
 import { useGlobalFilterStore } from '../../../stores/globalFilterStore'
@@ -20,8 +19,6 @@ type Props = {
 export function ChaseDispatchPushNowPanel({ disabled, configs, defaultBuckets }: Props) {
   const { imileToken } = useAppSettings()
   const { selectedStations } = useGlobalFilterStore()
-  const [baseDate, setBaseDate] = useState<dayjs.Dayjs | null>(dayjs())
-  const [pushTime, setPushTime] = useState<dayjs.Dayjs | null>(dayjs())
   const [buckets, setBuckets] = useState<StagnationBucket[]>(defaultBuckets)
   const [loading, setLoading] = useState(false)
   const [lastResult, setLastResult] = useState<string | null>(null)
@@ -38,10 +35,6 @@ export function ChaseDispatchPushNowPanel({ disabled, configs, defaultBuckets }:
       showToast('请先在顶部选择责任站点', 'error')
       return
     }
-    if (!baseDate) {
-      showToast('请选择基准日期', 'error')
-      return
-    }
     if (buckets.length === 0) {
       showToast('请至少选择一个滞留时间', 'error')
       return
@@ -55,8 +48,6 @@ export function ChaseDispatchPushNowPanel({ disabled, configs, defaultBuckets }:
     try {
       const res = await triggerChaseDispatchPushNow(imileToken, {
         stationCode,
-        baseDate: baseDate.format('YYYY-MM-DD'),
-        pushTime: pushTime?.format('HH:mm') ?? dayjs().format('HH:mm'),
         stagnationBuckets: buckets,
         configIds: configs.map((c) => c.id),
       })
@@ -78,27 +69,6 @@ export function ChaseDispatchPushNowPanel({ disabled, configs, defaultBuckets }:
     <div className="admin-panel">
       <div className="admin-section-title px-4 pt-3 pb-0">立即推送</div>
       <div className="flex flex-wrap items-end gap-3 px-4 py-3">
-        <div>
-          <div className="mb-1 text-xs text-slate-500">基准日期（按当前账号州/区域判断）</div>
-          <DatePicker
-            value={baseDate}
-            onChange={setBaseDate}
-            placeholder="选择日期"
-            disabledDate={(d) => d.isAfter(dayjs(), 'day')}
-            disabled={disabled || loading}
-          />
-        </div>
-        <div>
-          <div className="mb-1 text-xs text-slate-500">推送时间（标记用，不影响查询）</div>
-          <TimePicker
-            value={pushTime}
-            onChange={setPushTime}
-            format="HH:mm"
-            minuteStep={5}
-            placeholder="选择时间"
-            disabled={disabled || loading}
-          />
-        </div>
         <div>
           <div className="mb-1 text-xs text-slate-500">滞留时间</div>
           <Checkbox.Group

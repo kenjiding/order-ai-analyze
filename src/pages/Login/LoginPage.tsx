@@ -2,6 +2,7 @@ import { type FormEvent, useEffect, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { Warehouse } from 'lucide-react'
 import { useAuthStore } from '../../stores/authStore'
+import { useAppSettings } from '../../context/AppSettingsContext'
 import { getDefaultRouteForPermissions, getDefaultRouteFromPermissionKeys } from '../../components/Layout/sidebarMenu'
 import { showToast } from '../../utils/toast'
 import { useLoginRive } from './useLoginRive'
@@ -14,6 +15,7 @@ export default function LoginPage() {
   const navigate = useNavigate()
   const location = useLocation()
   const { login, isAuthenticated, loading, hasPermission, isSuperAdmin } = useAuthStore()
+  const { refreshSettings } = useAppSettings()
   const [submitting, setSubmitting] = useState(false)
   const {
     riveCanvasRef,
@@ -84,6 +86,7 @@ export default function LoginPage() {
     void login(username, password)
       .then((session) => {
         clearPasswordError()
+        void refreshSettings()
         if (remember) {
           localStorage.setItem(REMEMBER_KEY, 'true')
           localStorage.setItem(USERNAME_KEY, username)
@@ -96,7 +99,12 @@ export default function LoginPage() {
           session.permissions,
           session.user.role === 'super_admin',
         )
-        navigate(from || defaultRoute, { replace: true })
+        const target = from || defaultRoute
+        if (target === '/login') {
+          triggerPasswordError('账号未分配任何可访问页面，请联系管理员')
+          return
+        }
+        navigate(target, { replace: true })
       })
       .catch((e: unknown) => {
         const message = e instanceof Error ? e.message : '登录失败'
@@ -167,9 +175,9 @@ export default function LoginPage() {
                   <Warehouse className="h-6 w-6" aria-hidden />
                 </div>
                 <div>
-                  <h1 className="text-[15px] font-semibold tracking-tight text-slate-900">物流运营效率管理</h1>
+                  <h1 className="text-[15px] font-semibold tracking-tight text-slate-900">物流运营管理</h1>
                   <p className="mt-0.5 text-[11px] font-medium uppercase tracking-[0.22em] text-slate-500">
-                    Warehouse Control
+                    Logistics Operations
                   </p>
                 </div>
               </div>

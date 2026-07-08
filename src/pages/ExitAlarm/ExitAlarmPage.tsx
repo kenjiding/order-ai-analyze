@@ -28,13 +28,7 @@ export default function ExitAlarmPage() {
         </div>
       </div>
 
-      <SchedulePushConfig
-        schedule={v.schedule}
-        loading={v.scheduleLoading}
-        saving={v.scheduleSaving}
-        stationCode={v.selectedStations[0] ?? ''}
-        onSave={v.saveSchedule}
-      />
+      <SchedulePushConfig page={v} />
 
       <ExitAlarmSupplierSection page={v} />
 

@@ -85,10 +85,10 @@ export default function Sidebar({ collapsed, onCollapsedChange, mobileOpen = fal
                 style={{ transitionDelay: isCollapsedDesktop ? '0ms' : '140ms' }}
               >
                 <h1 className="truncate whitespace-nowrap text-[15px] font-semibold leading-tight tracking-tight text-slate-900">
-                  仓库效率管理
+                  物流运营管理
                 </h1>
                 <p className="mt-1 truncate whitespace-nowrap text-[11px] font-medium uppercase tracking-[0.22em] text-slate-500">
-                  Warehouse Control
+                  Logistics Operations
                 </p>
               </div>
             </div>
@@ -302,11 +302,11 @@ export default function Sidebar({ collapsed, onCollapsedChange, mobileOpen = fal
                   }`}
                   style={{ transitionDelay: collapsed ? '0ms' : '120ms' }}
                 >
-                  Warehouse · v1.0.0
+                  Logistics · v1.0.0
                 </span>
               </>
             ) : (
-              <span>Warehouse · v1.0.0</span>
+              <span>Logistics · v1.0.0</span>
             )}
           </div>
         </div>

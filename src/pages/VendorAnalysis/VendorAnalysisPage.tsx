@@ -61,6 +61,7 @@ export default function VendorAnalysisPage() {
       configs: v.selectedPushConfigs,
       enabledMetricKeys: v.viewedMetricKeys,
       aiSummaryEnabled: v.viewedAiSummaryEnabled,
+      jobId: v.viewedJobId,
     })
     // AI 总开关关闭时完全不调用 AI 接口；开启时输入与快照渲染共用同一套勾选过滤
     if (v.viewedAiSummaryEnabled) {

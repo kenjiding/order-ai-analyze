@@ -147,7 +147,7 @@ export function WageReconciliationPanel({
               <tr>
                 <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">状态</th>
                 <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">日期</th>
-                <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">人员</th>
+                <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">人员(财/系/昵称)</th>
                 <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">职位(财/系)</th>
                 <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">工作日(财/系)</th>
                 <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">工时(财/系/差)</th>
@@ -172,7 +172,8 @@ export function WageReconciliationPanel({
                   <td className="px-3 py-2 whitespace-nowrap text-gray-900">{row.date || '-'}</td>
                   <td className="px-3 py-2 text-gray-900">
                     <div>
-                      {row.financePersonName || '-'} / {row.systemPersonName || '-'}
+                      {row.financePersonName || '-'} / {row.systemPersonName || '-'} /{' '}
+                      {row.systemPersonNickname || '-'}
                     </div>
                   </td>
                   <td className="px-3 py-2 text-gray-700">

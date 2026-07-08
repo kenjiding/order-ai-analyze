@@ -211,13 +211,22 @@ function formatEmptyDriverLabel(value: string): string {
   return value === '(空)' ? '未分配' : value
 }
 
-function VolumeWaybillPopover({ volume, waybillNos }: { volume: number; waybillNos: string[] }) {
+function WaybillNosHoverPopover({
+  label,
+  waybillNos,
+  listTitle,
+  labelClassName,
+}: {
+  label: ReactNode
+  waybillNos: string[]
+  listTitle: string
+  labelClassName?: string
+}) {
   const preview = waybillNos.slice(0, VOLUME_WAYBILL_PREVIEW_LIMIT)
   const hiddenCount = waybillNos.length - preview.length
-  const label = formatCount(volume)
 
   if (!waybillNos.length) {
-    return <span>{label}</span>
+    return <span className={labelClassName}>{label}</span>
   }
 
   return (
@@ -226,7 +235,9 @@ function VolumeWaybillPopover({ volume, waybillNos }: { volume: number; waybillN
       placement="left"
       content={
         <div className="max-h-56 w-56 overflow-auto py-1">
-          <div className="mb-1 px-2 text-xs text-slate-500">运单号（{waybillNos.length}）</div>
+          <div className="mb-1 px-2 text-xs text-slate-500">
+            {listTitle}（{waybillNos.length}）
+          </div>
           <ul className="list-none space-y-0.5 px-2 text-xs text-slate-700">
             {preview.map((no) => (
               <li key={no} className="font-mono">
@@ -240,8 +251,22 @@ function VolumeWaybillPopover({ volume, waybillNos }: { volume: number; waybillN
         </div>
       }
     >
-      <span className="cursor-default border-b border-dashed border-slate-300">{label}</span>
+      <span
+        className={`cursor-default border-b border-dashed border-slate-300 ${labelClassName ?? ''}`}
+      >
+        {label}
+      </span>
     </Popover>
+  )
+}
+
+function VolumeWaybillPopover({ volume, waybillNos }: { volume: number; waybillNos: string[] }) {
+  return (
+    <WaybillNosHoverPopover
+      label={formatCount(volume)}
+      waybillNos={waybillNos}
+      listTitle="运单号"
+    />
   )
 }
 
@@ -283,9 +308,30 @@ const BREAKDOWN_COLUMNS: ColumnsType<CourierBreakdownRow> = [
     width: 100,
     align: 'right',
     render: (v: number | null, r) => (
-      <span className={r.volume < 5 ? 'text-slate-400' : 'text-slate-800'}>{formatPercent(v)}</span>
+      <WaybillNosHoverPopover
+        label={formatPercent(v)}
+        waybillNos={r.notSignedWaybillNos}
+        listTitle="未签收运单号"
+        labelClassName={r.volume < 5 ? 'text-slate-400' : 'text-slate-800'}
+      />
     ),
     sorter: (a, b) => (a.signRate ?? -1) - (b.signRate ?? -1),
+  },
+  {
+    title: '24h派签率',
+    dataIndex: 'within24hRate',
+    key: 'within24hRate',
+    width: 110,
+    align: 'right',
+    render: (v: number | null, r) => (
+      <WaybillNosHoverPopover
+        label={formatPercent(v)}
+        waybillNos={r.notWithin24hWaybillNos}
+        listTitle="未达 24h 派签运单号"
+        labelClassName={r.dispatchedCount < 5 ? 'text-slate-400' : 'text-slate-800'}
+      />
+    ),
+    sorter: (a, b) => (a.within24hRate ?? -1) - (b.within24hRate ?? -1),
   },
   {
     title: '中位转运',
@@ -307,7 +353,11 @@ function CourierExpandPanel({
 }) {
   const rows = useMemo(() => computeCourierBreakdown(records, routeCode), [records, routeCode])
   if (!rows.length) {
-    return <div className="py-3 text-center text-xs text-slate-400">该路由码下无派件司机记录</div>
+    return (
+      <div className="py-3 text-center text-xs text-slate-400">
+        该路由码下无已匹配派件供应商的派件司机记录
+      </div>
+    )
   }
   return (
     <div className="bg-slate-50/60 p-2">

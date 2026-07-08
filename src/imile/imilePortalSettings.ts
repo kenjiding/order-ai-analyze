@@ -11,8 +11,6 @@ export const DEFAULT_IMILE_PORTAL_SETTINGS: ImilePortalSettings = {
   userCode: '',
 }
 
-export const IMILE_PORTAL_STORAGE_KEY = 'app_imile_portal_v1'
-
 export function normalizeImilePortalSettings(raw: Partial<ImilePortalSettings> | null | undefined): ImilePortalSettings {
   return {
     hubcode: String(raw?.hubcode ?? DEFAULT_IMILE_PORTAL_SETTINGS.hubcode).trim() || DEFAULT_IMILE_PORTAL_SETTINGS.hubcode,
@@ -20,17 +18,6 @@ export function normalizeImilePortalSettings(raw: Partial<ImilePortalSettings> |
       String(raw?.resourceCode ?? DEFAULT_IMILE_PORTAL_SETTINGS.resourceCode).trim() ||
       DEFAULT_IMILE_PORTAL_SETTINGS.resourceCode,
     userCode: String(raw?.userCode ?? '').trim(),
-  }
-}
-
-export function readStoredImilePortalSettings(): ImilePortalSettings {
-  if (typeof localStorage === 'undefined') return { ...DEFAULT_IMILE_PORTAL_SETTINGS }
-  try {
-    const raw = localStorage.getItem(IMILE_PORTAL_STORAGE_KEY)
-    if (!raw) return { ...DEFAULT_IMILE_PORTAL_SETTINGS }
-    return normalizeImilePortalSettings(JSON.parse(raw) as Partial<ImilePortalSettings>)
-  } catch {
-    return { ...DEFAULT_IMILE_PORTAL_SETTINGS }
   }
 }
 

@@ -16,7 +16,7 @@ export type FeishuPushEntry = {
 export type FeishuPushEntryWithKind = FeishuPushEntry & { kind: FeishuPushKind }
 
 export const FEISHU_PUSH_KIND_LABELS: Record<FeishuPushKind, string> = {
-  sort_efficiency: '仓库效率推送',
+  sort_efficiency: '物流运营推送',
   attendance_scheduling: '仓库出勤/排班推送',
   order_exception: '订单异常分析推送',
 }

@@ -1,6 +1,6 @@
 /**
  * 出勤文件 → 工资结算同款口径（与工资页上传 → 计算薪资一致）。
- * 仓库效率「总成本」应使用本模块，勿再走扫描解析后的二次映射。
+ * 物流运营「总成本」应使用本模块，勿再走扫描解析后的二次映射。
  */
 import * as XLSX from 'xlsx'
 import {
@@ -60,7 +60,7 @@ function attendanceUploadRowKey(row: Record<string, unknown>): string {
   return `${date}|${person}`
 }
 
-/** 叠加上传时同人同日保留首条，与仓库效率考勤解析去重口径一致 */
+/** 叠加上传时同人同日保留首条，与物流运营考勤解析去重口径一致 */
 function dedupeAttendanceUploadRows(rows: Record<string, unknown>[]): Record<string, unknown>[] {
   const seen = new Set<string>()
   const out: Record<string, unknown>[] = []

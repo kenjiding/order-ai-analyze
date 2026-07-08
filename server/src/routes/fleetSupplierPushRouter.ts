@@ -125,14 +125,20 @@ fleetSupplierPushRouter.post('/configs/import', async (req: AuthenticatedRequest
     return
   }
 
+  const total = (body.suppliers as RawSupplier[]).length
   const incoming = (body.suppliers as RawSupplier[])
     .map((o) => extractSupplierPushConfigFields(o))
     .filter((s) => s.vendorCode && s.supplierNickname)
 
   if (!incoming.length) {
-    res.status(400).json({ ok: false, error: '无有效供应商数据' })
+    res.status(400).json({
+      ok: false,
+      error: `无有效供应商数据（共 ${total} 条，均缺少 vendorCode 或 supplierNickname）`,
+    })
     return
   }
+
+  const skipped = total - incoming.length
 
   try {
     const db = getDb()
@@ -170,7 +176,7 @@ fleetSupplierPushRouter.post('/configs/import', async (req: AuthenticatedRequest
       }
     })
     const rows = await listSupplierPushConfigs(regionCode)
-    res.json({ ok: true, data: rows })
+    res.json({ ok: true, data: rows, meta: { imported: incoming.length, skipped } })
   } catch (err) {
     console.error('[fleet-supplier-push] import error:', err)
     res.status(500).json({ ok: false, error: '导入失败' })
