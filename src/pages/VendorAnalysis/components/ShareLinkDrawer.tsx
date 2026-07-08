@@ -11,6 +11,25 @@ function buildShareUrl(token: string): string {
   return `${window.location.origin}/vendor-daily/${token}`
 }
 
+/** navigator.clipboard 仅在安全上下文（HTTPS/localhost）可用，线上非 HTTPS 场景需要这个降级方案 */
+function fallbackCopy(text: string): boolean {
+  const textarea = document.createElement('textarea')
+  textarea.value = text
+  textarea.style.position = 'fixed'
+  textarea.style.opacity = '0'
+  document.body.appendChild(textarea)
+  textarea.focus()
+  textarea.select()
+  let ok = false
+  try {
+    ok = document.execCommand('copy')
+  } catch {
+    ok = false
+  }
+  document.body.removeChild(textarea)
+  return ok
+}
+
 function formatExpiry(createdAt: string): string {
   const d = new Date(new Date(createdAt).getTime() + SHARE_LINK_TTL_MS)
   const pad = (n: number) => String(n).padStart(2, '0')
@@ -45,11 +64,17 @@ export function ShareLinkDrawer({ open, onClose, jobId }: Props) {
   }, [open, jobId, message])
 
   const copy = async (link: VendorShareLink) => {
+    const url = buildShareUrl(link.token)
     try {
-      await navigator.clipboard.writeText(buildShareUrl(link.token))
+      if (!navigator.clipboard) throw new Error('clipboard API unavailable')
+      await navigator.clipboard.writeText(url)
       message.success('分享链接已复制')
     } catch {
-      message.error('复制失败，请手动复制')
+      if (fallbackCopy(url)) {
+        message.success('分享链接已复制')
+      } else {
+        message.error('复制失败，请手动复制')
+      }
     }
   }
 

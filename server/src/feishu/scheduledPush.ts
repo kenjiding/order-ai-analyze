@@ -4,8 +4,14 @@ import {
   splitFeishuWebhookTextChunks,
 } from '../sortEfficiencyFeishuAnalysis'
 import { getLatestFeishuPushSnapshot } from './pushSnapshotRepository'
+import { claimScheduledSlot } from '../jobs/scheduledClaim'
 
 const MAX_SNAPSHOT_AGE_DAYS = 14
+
+/** 目标时区当天日期 YYYY-MM-DD，用于按天幂等抢占（每日一次的定时推送） */
+function todayDateStrInTz(tz: string): string {
+  return new Intl.DateTimeFormat('en-CA', { timeZone: tz }).format(new Date())
+}
 
 async function postWebhookJson(
   webhookHref: string,
@@ -50,6 +56,13 @@ export async function runScheduledFeishuPush(): Promise<void> {
 
   const regionCode = process.env.FEISHU_SCHEDULE_REGION_CODE?.trim() || 'global'
   const secret = process.env.FEISHU_SCHEDULE_WEBHOOK_SECRET?.trim() || undefined
+  const tz = process.env.FEISHU_SCHEDULE_TIMEZONE?.trim() || 'Asia/Shanghai'
+
+  const claimed = await claimScheduledSlot(`feishu-schedule:${regionCode}`, todayDateStrInTz(tz))
+  if (!claimed) {
+    console.log(`[scheduler/feishu] region=${regionCode} 今日已推送过（其他 worker 抢先处理），跳过`)
+    return
+  }
 
   const row = await getLatestFeishuPushSnapshot(regionCode)
   if (!row) {

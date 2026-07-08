@@ -15,6 +15,7 @@ import {
   type StagnationBucket,
 } from '../imile/stagnantWaybills'
 import { aggregateVendorStagnation, type BucketResult } from '../imile/chaseDispatchAggregate'
+import { claimScheduledSlot } from '../jobs/scheduledClaim'
 
 const CHASE_DISPATCH_SCOPE = 'chase-dispatch.scheduled' as const
 
@@ -186,6 +187,12 @@ async function runOneScheduledPush(schedule: ChaseDispatchSchedule, regionCode: 
 
   const pushTimes = schedule.pushTimes as Array<{ id: string; time: string }>
   if (!pushTimes.some((s) => s.time === timeHHmm)) return
+
+  const claimed = await claimScheduledSlot(`chase-dispatch:${schedule.id}`, `${dateStr}|${timeHHmm}`)
+  if (!claimed) {
+    console.log(`${label} 时间槽 date=${dateStr} time=${timeHHmm} 已被推送过（其他 worker 抢先处理），跳过`)
+    return
+  }
 
   const buckets = parseStagnationBuckets(schedule.stagnationBuckets)
   if (buckets.length === 0) {

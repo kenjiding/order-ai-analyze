@@ -280,6 +280,23 @@ export const exitAlarmSchedules = pgTable(
   (table) => [uniqueIndex('exit_alarm_schedules_user_id_unique').on(table.userId)],
 )
 
+/**
+ * 定时任务幂等抢占记录：所有轮询式定时推送（出仓告警/催派推送/飞书日报等）共用。
+ * 调用方确认"命中触发条件"之后、执行推送等副作用之前，用 (jobKey, slotKey) 抢占一次；
+ * 插入成功才允许继续，插入失败（唯一约束冲突）说明这个时间槽已被别的 worker/重启窗口处理过，直接跳过。
+ * jobKey 用于区分任务与归属实体，如 'exit-alarm:<scheduleId>'；slotKey 标识具体命中的时间槽，如 '2026-07-08|10:00'。
+ */
+export const scheduledJobClaims = pgTable(
+  'scheduled_job_claims',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    jobKey: varchar('job_key', { length: 128 }).notNull(),
+    slotKey: varchar('slot_key', { length: 64 }).notNull(),
+    claimedAt: timestamp('claimed_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [uniqueIndex('scheduled_job_claims_job_slot_unique').on(table.jobKey, table.slotKey)],
+)
+
 /** 催派推送：定时推送配置（每个账号最多一条，userId 唯一），复用出仓告警的供应商配置 catalog */
 export const chaseDispatchSchedules = pgTable(
   'chase_dispatch_schedules',
@@ -345,6 +362,8 @@ export type FleetSupplierPushConfig = typeof fleetSupplierPushConfigs.$inferSele
 export type NewFleetSupplierPushConfig = typeof fleetSupplierPushConfigs.$inferInsert
 export type ExitAlarmSchedule = typeof exitAlarmSchedules.$inferSelect
 export type NewExitAlarmSchedule = typeof exitAlarmSchedules.$inferInsert
+export type ScheduledJobClaim = typeof scheduledJobClaims.$inferSelect
+export type NewScheduledJobClaim = typeof scheduledJobClaims.$inferInsert
 export type ChaseDispatchSchedule = typeof chaseDispatchSchedules.$inferSelect
 export type NewChaseDispatchSchedule = typeof chaseDispatchSchedules.$inferInsert
 export type StationInboundWaybillIndex = typeof stationInboundWaybillIndex.$inferSelect

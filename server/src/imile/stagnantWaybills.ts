@@ -95,6 +95,7 @@ export async function fetchStagnantWaybills(
     currentPage: 1,
     end: params.end,
     fromOc: false,
+    ocCenterCode: 'S210206',
     orderTypes: [],
     scanType: '',
     scanTypeList: [],
@@ -103,6 +104,7 @@ export async function fetchStagnantWaybills(
     stockReportType: 'notClosedTotal',
     stockStationCodes: params.stationCodes,
   }
+  console.log('[催派滞留单查询] iMile 请求参数:', { url, body })
 
   const result = await requestImileApi({ url, method: 'POST', headers, body, label: '催派滞留单查询' })
   if (!result.ok) {
