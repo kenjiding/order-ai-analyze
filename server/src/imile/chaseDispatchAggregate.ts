@@ -9,22 +9,22 @@ export type BucketResult = {
   rows: StagnantWaybillRow[]
 }
 
-export type VendorStagnationBucketStat = {
-  bucket: StagnationBucket
-  label: string
-  count: number
-}
-
-export type VendorStagnationDriverStat = {
+export type VendorStagnationBucketDriverStat = {
   driverName: string
   driverCode: string
   count: number
 }
 
+export type VendorStagnationBucketStat = {
+  bucket: StagnationBucket
+  label: string
+  count: number
+  drivers: VendorStagnationBucketDriverStat[]
+}
+
 export type VendorStagnationSummary = {
   totalStagnant: number
   buckets: VendorStagnationBucketStat[]
-  drivers: VendorStagnationDriverStat[]
 }
 
 function waybillKey(row: StagnantWaybillRow, index: number): string {
@@ -43,13 +43,14 @@ export function aggregateVendorStagnation(
 ): VendorStagnationSummary {
   const target = vendorCode.trim()
   const totalSeen = new Set<string>()
-  const driverSeen = new Map<string, Set<string>>()
-  const driverMeta = new Map<string, { driverName: string; driverCode: string }>()
 
   const buckets: VendorStagnationBucketStat[] = []
 
   for (const { bucket, rows } of bucketResults) {
     const bucketSeen = new Set<string>()
+    const driverSeen = new Map<string, Set<string>>()
+    const driverMeta = new Map<string, { driverName: string; driverCode: string }>()
+
     rows.forEach((row, index) => {
       if ((row.driverVendorCode ?? '').trim() !== target) return
       const key = waybillKey(row, index)
@@ -58,23 +59,23 @@ export function aggregateVendorStagnation(
 
       const driverCode = (row.driverCode ?? '').trim() || '未知司机代码'
       const driverName = (row.driverName ?? '').trim() || '未知司机'
-      const driverKey = driverCode
-      if (!driverSeen.has(driverKey)) {
-        driverSeen.set(driverKey, new Set())
-        driverMeta.set(driverKey, { driverName, driverCode })
+      if (!driverSeen.has(driverCode)) {
+        driverSeen.set(driverCode, new Set())
+        driverMeta.set(driverCode, { driverName, driverCode })
       }
-      driverSeen.get(driverKey)!.add(key)
+      driverSeen.get(driverCode)!.add(key)
     })
-    buckets.push({ bucket, label: stagnationBucketLabel(bucket), count: bucketSeen.size })
+
+    const drivers: VendorStagnationBucketDriverStat[] = [...driverSeen.entries()]
+      .map(([driverCode, keys]) => ({
+        driverName: driverMeta.get(driverCode)!.driverName,
+        driverCode,
+        count: keys.size,
+      }))
+      .sort((a, b) => b.count - a.count)
+
+    buckets.push({ bucket, label: stagnationBucketLabel(bucket), count: bucketSeen.size, drivers })
   }
 
-  const drivers: VendorStagnationDriverStat[] = [...driverSeen.entries()]
-    .map(([driverKey, keys]) => ({
-      driverName: driverMeta.get(driverKey)!.driverName,
-      driverCode: driverMeta.get(driverKey)!.driverCode,
-      count: keys.size,
-    }))
-    .sort((a, b) => b.count - a.count)
-
-  return { totalStagnant: totalSeen.size, buckets, drivers }
+  return { totalStagnant: totalSeen.size, buckets }
 }

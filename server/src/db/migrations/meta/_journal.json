@@ -204,6 +204,13 @@
       "when": 1784100000000,
       "tag": "0028_chase_dispatch_schedules",
       "breakpoints": true
+    },
+    {
+      "idx": 29,
+      "version": "7",
+      "when": 1784200000000,
+      "tag": "0029_scheduled_job_claims",
+      "breakpoints": true
     }
   ]
 }

@@ -28,7 +28,7 @@ export function buildChaseDispatchCard(params: {
   pushDescription?: string | null
 }): Record<string, unknown> {
   const { vendorName, baseDate, pushTime, summary, pushDescription } = params
-  const { totalStagnant, buckets, drivers } = summary
+  const { totalStagnant, buckets } = summary
   const elements: CardEl[] = []
 
   // 供应商名称已在卡片 header 展示，此处仅可选地展示推送说明
@@ -54,20 +54,17 @@ export function buildChaseDispatchCard(params: {
     ),
   )
 
-  // Per driver
-  if (drivers.length > 0) {
+  // Per driver, grouped by stagnation range
+  const bucketsWithDrivers = activeBuckets.filter((b) => b.drivers.length > 0)
+  if (bucketsWithDrivers.length > 0) {
     elements.push(hr())
-    elements.push(div(`**By driver (${drivers.length})**`))
-    elements.push(
-      div(
-        drivers
-          .map(
-            (d) =>
-              `· ${d.driverName} (${d.driverCode}): ${colored(`${d.count}`, d.count >= 10 ? 'red' : 'grey')}`,
-          )
-          .join('\n'),
-      ),
-    )
+    const bucketBlocks = bucketsWithDrivers.map((b) => {
+      const driverLines = b.drivers
+        .map((d) => `· ${d.driverName} (${d.driverCode}): ${colored(`${d.count}`, d.count >= 10 ? 'red' : 'grey')}`)
+        .join('\n')
+      return `**${b.bucket} days:**\n${driverLines}`
+    })
+    elements.push(div(`**By driver**\n${bucketBlocks.join('\n')}`))
   }
 
   if (totalStagnant === 0) {

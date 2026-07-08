@@ -8,6 +8,7 @@ import { fetchWaybillDetailsByInboundIndex, getRegionNow } from '../imile/inboun
 import { resolveRegionTz } from '../imile/ausTimezone'
 import { listPushableConfigsForScope } from '../supplierConfigScopes'
 import { supplierDisplayName } from '../supplierPushConfigs'
+import { claimScheduledSlot } from '../jobs/scheduledClaim'
 
 type EnabledSchedule = { schedule: ExitAlarmSchedule; regionCode: string | null }
 
@@ -116,6 +117,12 @@ async function runOneScheduledPush(schedule: ExitAlarmSchedule, regionCode: stri
   const pushTimes = schedule.pushTimes as Array<{ id: string; time: string }>
   const matchedSlot = pushTimes.find((s) => s.time === timeHHmm)
   if (!matchedSlot) return
+
+  const claimed = await claimScheduledSlot(`exit-alarm:${schedule.id}`, `${prevDateStr}|${timeHHmm}`)
+  if (!claimed) {
+    console.log(`${label} 时间槽 date=${prevDateStr} time=${timeHHmm} 已被推送过（其他 worker 抢先处理），跳过`)
+    return
+  }
 
   const rawToken = readExitAlarmImileToken(schedule)
   if (!rawToken) {

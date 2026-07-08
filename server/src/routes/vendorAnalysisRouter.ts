@@ -58,6 +58,7 @@ function normalizeVendorAnalyzeCode(code: string): string {
  * 相同筛选条件（region + 站点 + 日期 + 供应商 + 数据源集合）在此内生成同一个 key，命中 enqueueJob 的幂等去重。
  * dataSources 参与 key：勾选指标集合不同 → 需要抓取的数据不同 → 不能命中旧任务（否则缺数据）。
  * v1 → v2：老 key 永不再命中，避免命中无 dataSources 字段的历史任务。
+ * v2 → v3：供应商/数据源列表改为 sha256，避免 jobs.idempotency_key varchar(255) 溢出。
  */
 function buildVendorAnalyzeIdempotencyKey(input: {
   regionCode: string | null
@@ -71,14 +72,17 @@ function buildVendorAnalyzeIdempotencyKey(input: {
   const region = input.regionCode ?? '_global_'
   const stations = [...new Set(input.stationCodes.map((s) => s.trim()).filter(Boolean))].sort().join(',')
   const vendors = [...new Set(input.vendorCodes.map((s) => s.trim()).filter(Boolean))].sort().join(',')
+  const scopeHash = crypto
+    .createHash('sha256')
+    .update(`${vendors}\0${input.dataSources.join(',')}`)
+    .digest('hex')
   return [
-    'vendor.analyze:v2',
+    'vendor.analyze:v3',
     region,
     stations,
     input.referenceDate,
     `${input.complaintStart}~${input.complaintEnd}`,
-    vendors,
-    input.dataSources.join(','),
+    scopeHash,
   ].join('|')
 }
 

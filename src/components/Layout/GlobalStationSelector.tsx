@@ -36,6 +36,7 @@ export function GlobalStationSelector() {
   }, [imileToken, setStations, setStationsLoading])
 
   const handleChange = (value: string | undefined) => {
+    console.log('[GlobalStationSelector] 切换站点 stationCode =', value)
     const next = value ? [value] : []
     setSelectedStations(next)
     if (next.length > 0) localStorage.setItem(STORAGE_KEY, JSON.stringify(next))

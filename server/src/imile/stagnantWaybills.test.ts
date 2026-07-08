@@ -50,9 +50,12 @@ test('aggregateVendorStagnation 按 driverVendorCode 过滤并跨区间去重', 
     summary.buckets.map((b) => [b.bucket, b.count]),
     [['0-1', 2], ['1-2', 2]],
   )
-  // 司机 D1: W1 W3 = 2（W1 跨区间去重）；D2: W2 = 1
+  // 按区间分别展示司机分布：0-1 区间 D1:W1=1、D2:W2=1；1-2 区间 D1:W1+W3=2（区间内不跨区间去重）
   assert.deepEqual(
-    summary.drivers.map((d) => [d.driverCode, d.count]),
-    [['D1', 2], ['D2', 1]],
+    summary.buckets.map((b) => [b.bucket, b.drivers.map((d) => [d.driverCode, d.count])]),
+    [
+      ['0-1', [['D1', 1], ['D2', 1]]],
+      ['1-2', [['D1', 2]]],
+    ],
   )
 })
