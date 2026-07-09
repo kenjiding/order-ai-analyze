@@ -8,8 +8,9 @@ import {
   IMILE_DC_SCAN_QUERY_PORTAL,
 } from './portal'
 import { envFirstOr, normalizeImileToken } from './shared'
-import { iMileStrToMs, resolveRegionTz } from './ausTimezone'
-import { fetchWaybillDetailsByInboundIndex, localToUtcMs } from './inboundWaybillIndex'
+import { resolveRegionTz } from './ausTimezone'
+import { computeBefore11ThresholdMs, isBefore11Exit } from './before11Exit'
+import { fetchWaybillDetailsByInboundIndex } from './inboundWaybillIndex'
 
 const DEFAULT_STATION_URL =
   'https://ds.imile.com/lm/express/base/v1/search/auth/permission/station'
@@ -360,12 +361,7 @@ export async function fetchBefore11ExitRates(
 
   const rows = result.records as Record<string, unknown>[]
 
-  // 阈值：以 dateStr（账号所在洲的「昨天」）为基准，取次日（即「今天」）11:00:00 在目标时区
-  // 对应的 UTC 时间戳。派件时间（墨尔本本地）转 UTC 后 ≤ 阈值即达标；空派件时间视为未达标。
-  // 与派件时间统一为 UTC 毫秒后比较，避免跨时区/跨日直接比字符串出错。
-  const [y, mo, d] = params.dateStr.split('-').map(Number)
-  const nextDayStr = new Date(Date.UTC(y, mo - 1, d + 1)).toISOString().slice(0, 10)
-  const before11ThresholdMs = localToUtcMs(`${nextDayStr} 11:00:00`, tz)
+  const before11ThresholdMs = computeBefore11ThresholdMs(params.dateStr, tz)
 
   const vendorSet = new Set(params.vendorCodes)
   const stats = new Map<string, { before11: number; total: number }>()
@@ -378,9 +374,7 @@ export async function fetchBefore11ExitRates(
       ? row.deliveryTime
       : null
 
-    const before11Exit = deliveryTime
-      ? iMileStrToMs(deliveryTime) <= before11ThresholdMs
-      : false
+    const before11Exit = isBefore11Exit(deliveryTime, before11ThresholdMs)
 
     pickupRows.push({
       waybillNo: typeof row.waybillNo === 'string' ? row.waybillNo : '',

@@ -6,6 +6,7 @@ import { computeFeishuWebhookSign, parseSafeWebhookUrl } from '../feishuWebhookH
 import { envFirst } from '../imile/shared'
 import { fetchWaybillDetailsByInboundIndex, getRegionNow } from '../imile/inboundWaybillIndex'
 import { resolveRegionTz } from '../imile/ausTimezone'
+import { buildExitAlarmZoneBreakdown, computeBefore11ThresholdMs } from '../imile/before11Exit'
 import { listPushableConfigsForScope } from '../supplierConfigScopes'
 import { supplierDisplayName } from '../supplierPushConfigs'
 import { claimScheduledSlot } from '../jobs/scheduledClaim'
@@ -76,12 +77,12 @@ async function pushCardToWebhook(
   webhookUrl: string,
   signingSecret: string | null,
   card: Record<string, unknown>,
-): Promise<boolean> {
+): Promise<{ ok: boolean; reason?: string }> {
   let webhookHref: string
   try {
     webhookHref = parseSafeWebhookUrl(webhookUrl).href
   } catch {
-    return false
+    return { ok: false, reason: 'webhookUrl 不合法' }
   }
   const payload: Record<string, unknown> = { msg_type: 'interactive', card }
   if (signingSecret) {
@@ -96,9 +97,13 @@ async function pushCardToWebhook(
       body: JSON.stringify(payload),
     })
     const data = (await upstream.json().catch(() => ({}))) as Record<string, unknown>
-    return upstream.ok && typeof data.code === 'number' && data.code === 0
-  } catch {
-    return false
+    if (upstream.ok && typeof data.code === 'number' && data.code === 0) {
+      return { ok: true }
+    }
+    return { ok: false, reason: `飞书返回 code=${String(data.code)}` }
+  } catch (err) {
+    const cause = err instanceof Error ? (err.cause as { code?: string } | undefined)?.code : undefined
+    return { ok: false, reason: `网络错误(${cause ?? (err instanceof Error ? err.message : String(err))})` }
   }
 }
 
@@ -154,6 +159,7 @@ async function runOneScheduledPush(schedule: ExitAlarmSchedule, regionCode: stri
   }
 
   const waybills = result.records
+  const before11ThresholdMs = computeBefore11ThresholdMs(prevDateStr, tz)
 
   let pushedCount = 0
   for (const config of configs) {
@@ -164,13 +170,7 @@ async function runOneScheduledPush(schedule: ExitAlarmSchedule, regionCode: stri
         ? waybills.filter((w) => routeCodes.includes((w.consigneeRouteCode ?? '').trim()))
         : waybills
 
-    const zoneBreakdown: Record<string, { pending: number; total: number }> = {}
-    for (const w of vendorWaybills) {
-      const zone = (w.consigneeRouteCode ?? '').trim() || 'Unknown route'
-      if (!zoneBreakdown[zone]) zoneBreakdown[zone] = { pending: 0, total: 0 }
-      zoneBreakdown[zone].total++
-      if (!w.deliveryTime) zoneBreakdown[zone].pending++
-    }
+    const zoneBreakdown = buildExitAlarmZoneBreakdown(vendorWaybills, before11ThresholdMs)
 
     const totalPending = Object.values(zoneBreakdown).reduce((s, v) => s + v.pending, 0)
     const card = buildExitAlarmCard({
@@ -184,12 +184,12 @@ async function runOneScheduledPush(schedule: ExitAlarmSchedule, regionCode: stri
       pushDescription: config.pushDescription,
     })
 
-    const ok = await pushCardToWebhook(config.webhookUrl, config.signingSecret, card)
+    const { ok, reason } = await pushCardToWebhook(config.webhookUrl, config.signingSecret, card)
     if (ok) {
       pushedCount++
       console.log(`${label} ✓ 推送成功: ${supplierDisplayName(config)}`)
     } else {
-      console.error(`${label} ✗ 推送失败: ${supplierDisplayName(config)}`)
+      console.error(`${label} ✗ 推送失败: ${supplierDisplayName(config)}${reason ? ` (${reason})` : ''}`)
     }
   }
 

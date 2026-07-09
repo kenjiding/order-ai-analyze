@@ -7,6 +7,7 @@ import { readImileTokenFromRequest } from './imileAuth'
 import { normalizeImileToken } from '../imile/shared'
 import { fetchWaybillDetailsByInboundIndex, getRegionNow } from '../imile/inboundWaybillIndex'
 import { resolveRegionTz } from '../imile/ausTimezone'
+import { buildExitAlarmZoneBreakdown, computeBefore11ThresholdMs } from '../imile/before11Exit'
 import { buildExitAlarmCard } from '../feishu/buildExitAlarmCard'
 import { hasExitAlarmImileToken, parseRouteCodes } from '../feishu/exitAlarmScheduledPush'
 import { computeFeishuWebhookSign, parseSafeWebhookUrl } from '../feishuWebhookHelpers'
@@ -233,6 +234,7 @@ exitAlarmRouter.post('/push-now', async (req: AuthenticatedRequest, res: Respons
     [key: string]: unknown
   }
   const waybills = result.records as WaybillRow[]
+  const before11ThresholdMs = computeBefore11ThresholdMs(date, tz)
 
   // 逐配置推送
   let pushedCount = 0
@@ -246,14 +248,7 @@ exitAlarmRouter.post('/push-now', async (req: AuthenticatedRequest, res: Respons
         ? waybills.filter((w) => routeCodes.includes((w.consigneeRouteCode ?? '').trim()))
         : waybills
 
-    // 按 routeCode 分区统计：deliveryTime 为空 = 不达标
-    const zoneBreakdown: Record<string, { pending: number; total: number }> = {}
-    for (const w of vendorWaybills) {
-      const zone = (w.consigneeRouteCode ?? '').trim() || 'Unknown route'
-      if (!zoneBreakdown[zone]) zoneBreakdown[zone] = { pending: 0, total: 0 }
-      zoneBreakdown[zone].total++
-      if (!w.deliveryTime) zoneBreakdown[zone].pending++
-    }
+    const zoneBreakdown = buildExitAlarmZoneBreakdown(vendorWaybills, before11ThresholdMs)
 
     const totalPending = Object.values(zoneBreakdown).reduce((s, v) => s + v.pending, 0)
     const totalWaybills = vendorWaybills.length
@@ -290,8 +285,11 @@ exitAlarmRouter.post('/push-now', async (req: AuthenticatedRequest, res: Respons
       } else {
         errors.push(`${supplierDisplayName(config)}: 飞书返回 code=${String(code)}`)
       }
-    } catch {
-      errors.push(`${supplierDisplayName(config)}: 网络错误`)
+    } catch (err) {
+      const cause = err instanceof Error ? (err.cause as { code?: string } | undefined)?.code : undefined
+      const reason = cause ?? (err instanceof Error ? err.message : String(err))
+      console.error(`[exit-alarm/push-now] ${supplierDisplayName(config)} 推送异常:`, err)
+      errors.push(`${supplierDisplayName(config)}: 网络错误(${reason})`)
     }
   }
 

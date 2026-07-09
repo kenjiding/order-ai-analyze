@@ -48,9 +48,9 @@ function zoneTile(
   const lines = [
     `**${routeCode}**`,
     pending === 0
-      ? colored('✅ All dispatched', 'green')
-      : colored(`**${pending} awaiting dispatch**`, pendingColor),
-    colored(`Dispatched ${exited} / ${total} total · ${rate}%`, 'grey'),
+      ? colored('✅ All exited by 11:00', 'green')
+      : colored(`**${pending} not exited by 11:00**`, pendingColor),
+    colored(`Exited by 11:00 ${exited} / ${total} total · ${rate}%`, 'grey'),
   ]
   return {
     tag: 'column',
@@ -118,12 +118,12 @@ export function buildExitAlarmCard(params: {
   elements.push(
     columnSet([
       summaryTile(
-        'Awaiting dispatch',
+        'Not exited by 11:00',
         `${totalPending}`,
         `${totalWaybills} waybills total`,
         totalPending > 0 ? 'red' : 'green',
       ),
-      summaryTile('Dispatch rate', `${exitRate}%`, `${exited} dispatched`, rateColor),
+      summaryTile('Pre-11am exit rate', `${exitRate}%`, `${exited} exited on time`, rateColor),
     ]),
   )
 
@@ -136,9 +136,9 @@ export function buildExitAlarmCard(params: {
     .sort((a, b) => b[1].pending - a[1].pending)
 
   if (pendingZones.length === 0) {
-    elements.push(div(colored('✅ All routes meet dispatch rate target', 'green')))
+    elements.push(div(colored('✅ All routes meet pre-11am exit target', 'green')))
   } else {
-    elements.push(div(`🚨 **Routes awaiting dispatch (${pendingZones.length})** — Notify drivers now!`))
+    elements.push(div(`🚨 **Routes not exited by 11:00 (${pendingZones.length})** — Notify drivers now!`))
     for (let i = 0; i < pendingZones.length; i += 2) {
       const pair = pendingZones.slice(i, i + 2)
       const cols = pair.map(([code, { pending, total }]) => zoneTile(code, pending, total, 'default'))
