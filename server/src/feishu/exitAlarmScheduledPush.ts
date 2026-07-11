@@ -8,7 +8,7 @@ import { fetchWaybillDetailsByInboundIndex, getRegionNow } from '../imile/inboun
 import { resolveRegionTz } from '../imile/ausTimezone'
 import { buildExitAlarmZoneBreakdown, computeBefore11ThresholdMs } from '../imile/before11Exit'
 import { listPushableConfigsForScope } from '../supplierConfigScopes'
-import { supplierDisplayName } from '../supplierPushConfigs'
+import { parseRouteCodes, parseRouteCodeWhitelistSet, supplierDisplayName } from '../supplierPushConfigs'
 import { claimScheduledSlot } from '../jobs/scheduledClaim'
 
 type EnabledSchedule = { schedule: ExitAlarmSchedule; regionCode: string | null }
@@ -32,14 +32,6 @@ export function readExitAlarmImileToken(schedule?: Pick<ExitAlarmSchedule, 'imil
 
 export function hasExitAlarmImileToken(schedule?: Pick<ExitAlarmSchedule, 'imileToken'> | null): boolean {
   return readExitAlarmImileToken(schedule).length > 0
-}
-
-/** 解析路由码字符串：支持空格、换行、英文逗号、中文逗号分隔 */
-export function parseRouteCodes(raw: string): string[] {
-  return raw
-    .split(/[\s,，]+/)
-    .map((r) => r.trim())
-    .filter(Boolean)
 }
 
 /** worker 启动时检查定时推送前置条件，便于排查「配置了但不执行」 */
@@ -164,11 +156,14 @@ async function runOneScheduledPush(schedule: ExitAlarmSchedule, regionCode: stri
   let pushedCount = 0
   for (const config of configs) {
     const routeCodes = parseRouteCodes(config.routeCode)
+    const whitelist = parseRouteCodeWhitelistSet(config.routeCodeWhitelist)
 
-    const vendorWaybills =
-      routeCodes.length > 0
-        ? waybills.filter((w) => routeCodes.includes((w.consigneeRouteCode ?? '').trim()))
-        : waybills
+    const vendorWaybills = waybills.filter((w) => {
+      const code = (w.consigneeRouteCode ?? '').trim()
+      if (routeCodes.length > 0 && !routeCodes.includes(code)) return false
+      if (whitelist.has(code)) return false
+      return true
+    })
 
     const zoneBreakdown = buildExitAlarmZoneBreakdown(vendorWaybills, before11ThresholdMs)
 

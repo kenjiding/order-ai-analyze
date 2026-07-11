@@ -3,8 +3,11 @@ import type { ColumnsType } from 'antd/es/table'
 import { TrendingUp, Users, ChevronDown } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { WaybillListPopover } from '../../../components/WaybillPopover'
+import { rankVendors } from '../../../../shared/vendorAnalysis/rankingScore'
+import { toVendorRankingInput } from '../toVendorRankingInput'
 import type { FetchedData } from '../useVendorAnalysisPage'
 import type { DriverPerformanceRow, VendorMetricRow } from '../vendorAnalysisTypes'
+import { VendorRankingBoard } from './VendorRankingBoard'
 
 type Props = {
   metrics: VendorMetricRow[]
@@ -547,6 +550,27 @@ export function VendorMetricsPreview({
   enabledMetricKeys,
 }: Props) {
   const driverColumns = useMemo(() => buildDriverColumns(enabledMetricKeys), [enabledMetricKeys])
+
+  const rankingPool = useMemo(() => {
+    const inputs = metrics.map((m) => toVendorRankingInput(m))
+    return rankVendors(inputs, enabledMetricKeys)
+  }, [metrics, enabledMetricKeys])
+
+  const nameByCode = useMemo(() => {
+    const map = new Map<string, string>()
+    for (const m of metrics) map.set(m.vendorCode, m.supplierNickname || m.vendorName)
+    return map
+  }, [metrics])
+
+  const sortedMetrics = useMemo(() => {
+    if (rankingPool.poolSize < 2) return metrics
+    return [...metrics].sort((a, b) => {
+      const ra = rankingPool.byVendorCode.get(a.vendorCode)?.rank ?? 999
+      const rb = rankingPool.byVendorCode.get(b.vendorCode)?.rank ?? 999
+      return ra - rb
+    })
+  }, [metrics, rankingPool])
+
   return (
     <div className="admin-panel overflow-hidden">
       <div className="admin-section-title flex flex-wrap items-center gap-3 bg-[var(--admin-surface-soft)]">
@@ -573,8 +597,10 @@ export function VendorMetricsPreview({
         </div>
       )}
 
+      {metrics.length > 0 && <VendorRankingBoard pool={rankingPool} nameByCode={nameByCode} />}
+
       <div className="divide-y divide-[var(--admin-line)]">
-        {metrics.map((row) => (
+        {sortedMetrics.map((row) => (
           <VendorCard
             key={row.id}
             row={row}

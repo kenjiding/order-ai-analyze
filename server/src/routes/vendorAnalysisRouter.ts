@@ -9,7 +9,7 @@ import { readImileTokenFromRequest } from './imileAuth'
 import { enqueueJob, getJobById, updateJobPayload } from '../jobs/queue'
 import { VENDOR_ANALYZE_JOB_TYPE } from '../jobs/handlers'
 import { canAccessJob, resolveEnqueueRegionCode, sendJobAccessDenied } from '../jobs/access'
-import { listSupplierPushConfigs } from '../supplierPushConfigs'
+import { listSupplierPushConfigs, parseRouteCodes } from '../supplierPushConfigs'
 import { purgeOldVendorDailyData } from '../vendorAnalysis/retention'
 import {
   buildVendorAiSystemPrompt,
@@ -68,13 +68,19 @@ function buildVendorAnalyzeIdempotencyKey(input: {
   complaintEnd: string
   vendorCodes: string[]
   dataSources: VendorAnalysisDataSource[]
+  routeCodeWhitelistByVendor: Record<string, string[]>
 }): string {
   const region = input.regionCode ?? '_global_'
   const stations = [...new Set(input.stationCodes.map((s) => s.trim()).filter(Boolean))].sort().join(',')
   const vendors = [...new Set(input.vendorCodes.map((s) => s.trim()).filter(Boolean))].sort().join(',')
+  // 白名单变化会改变统计口径，需参与幂等 key，避免编辑白名单后复用旧结果
+  const whitelistText = Object.entries(input.routeCodeWhitelistByVendor)
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([vendor, codes]) => `${vendor}:${[...codes].sort().join(',')}`)
+    .join(';')
   const scopeHash = crypto
     .createHash('sha256')
-    .update(`${vendors}\0${input.dataSources.join(',')}`)
+    .update(`${vendors}\0${input.dataSources.join(',')}\0${whitelistText}`)
     .digest('hex')
   return [
     'vendor.analyze:v3',
@@ -190,6 +196,13 @@ vendorAnalysisRouter.post('/analyze-async', async (req: AuthenticatedRequest, re
   const configRows = await listSupplierPushConfigs(regionResult ?? undefined)
   const vendorCodes = [...new Set(configRows.map((c) => normalizeVendorAnalyzeCode(c.vendorCode)).filter(Boolean))]
 
+  // 路由码白名单：命中的路由码代表要从该供应商统计中剔除的数据，随任务 payload 冻结
+  const routeCodeWhitelistByVendor: Record<string, string[]> = {}
+  for (const c of configRows) {
+    const codes = parseRouteCodes(c.routeCodeWhitelist)
+    if (codes.length > 0) routeCodeWhitelistByVendor[normalizeVendorAnalyzeCode(c.vendorCode)] = codes
+  }
+
   const force = body.force === true
   const idempotencyKey = force
     ? null
@@ -201,12 +214,14 @@ vendorAnalysisRouter.post('/analyze-async', async (req: AuthenticatedRequest, re
         complaintEnd: body.complaintEnd as string,
         vendorCodes,
         dataSources,
+        routeCodeWhitelistByVendor,
       })
 
   const enqueuePayload = {
     imileToken: token,
     stationCodes,
     vendorCodes,
+    routeCodeWhitelistByVendor,
     referenceDate: body.referenceDate,
     startTime: body.startTime,
     endTime: body.endTime,

@@ -3,6 +3,8 @@ export type SupplierConfigScopeKey =
   | 'exit-alarm.scheduled'
   | 'vendor-analysis.push'
   | 'chase-dispatch.scheduled'
+  | 'work-order-push.scheduled'
+  | 'dispatch-alarm.scheduled'
 
 export type SupplierConfigScopeStore = {
   key: SupplierConfigScopeKey

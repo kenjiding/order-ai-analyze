@@ -11,6 +11,8 @@ export type SupplierPushConfig = {
   vendorName: string
   supplierNickname: string
   routeCode: string
+  /** 路由码白名单（可选）；多码分隔格式与 routeCode 一致 */
+  routeCodeWhitelist: string
   webhookUrl: string
   signingSecret?: string
   pushDescription: string | null
@@ -27,6 +29,8 @@ export type SupplierConfigScopeKey =
   | 'exit-alarm.scheduled'
   | 'vendor-analysis.push'
   | 'chase-dispatch.scheduled'
+  | 'work-order-push.scheduled'
+  | 'dispatch-alarm.scheduled'
 
 export type SupplierConfigScopeBinding = {
   scopeKey: SupplierConfigScopeKey

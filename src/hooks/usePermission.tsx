@@ -80,5 +80,7 @@ export const PERMISSION_KEYS = {
   btnVendorAnalysisPush: 'btn:vendor-analysis:push',
   btnVendorAnalysisShare: 'btn:vendor-analysis:share',
   menuExitAlarm: 'menu:exit-alarm',
+  btnExitAlarmDispatchAlarm: 'btn:exit-alarm:dispatch-alarm',
   menuChaseDispatch: 'menu:chase-dispatch',
+  menuWorkOrderPush: 'menu:work-order-push',
 } as const

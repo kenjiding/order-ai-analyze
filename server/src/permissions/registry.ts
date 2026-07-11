@@ -23,8 +23,15 @@ export const PERMISSION_REGISTRY: PermissionDefinition[] = [
   { key: 'menu:new-merchant-monitor', type: 'menu', label: '新商家数据监控', description: '新商家货量与签收指标看板', sortOrder: 35 },
   { key: 'menu:problem-package-audit', type: 'menu', label: 'AI问题件审核', description: '问题件图片AI智能审核', sortOrder: 37 },
   { key: 'menu:vendor-analysis', type: 'menu', label: '供应商数据分析', description: '供应商客诉率与工单数据推送', sortOrder: 38 },
-  { key: 'menu:exit-alarm', type: 'menu', label: '11点前出仓告警', description: '监控供应商11点前出仓率并定时推送告警', sortOrder: 39 },
+  {
+    key: 'menu:exit-alarm',
+    type: 'menu',
+    label: '出仓 / 派签告警',
+    description: '监控供应商11点前出仓率、24小时派签率并定时推送告警',
+    sortOrder: 39,
+  },
   { key: 'menu:chase-dispatch', type: 'menu', label: '催派推送', description: '按滞留时间统计供应商滞留订单并定时推送催派', sortOrder: 39 },
+  { key: 'menu:work-order-push', type: 'menu', label: '工单推送', description: '未处理工单定时推送提醒供应商', sortOrder: 39 },
   { key: 'menu:push-notifications', type: 'menu', label: '推送功能', description: '飞书群机器人推送配置', sortOrder: 40 },
   { key: 'menu:warehouse-safety', type: 'menu', label: '仓库安全日常检查', description: '安全自查表填写与导出', sortOrder: 50 },
   { key: 'menu:system-users', type: 'menu', label: '用户管理', description: '系统用户与权限管理', sortOrder: 60 },
@@ -105,6 +112,14 @@ export const PERMISSION_REGISTRY: PermissionDefinition[] = [
     label: '导出检查表',
     menuKey: 'warehouse-safety',
     sortOrder: 510,
+  },
+  {
+    key: 'btn:exit-alarm:dispatch-alarm',
+    type: 'button',
+    label: '24小时派签告警',
+    description: '在「出仓 / 派签告警」页面查看并操作24小时派签率告警 Tab',
+    menuKey: 'exit-alarm',
+    sortOrder: 391,
   },
 ]
 

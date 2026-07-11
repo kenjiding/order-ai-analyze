@@ -28,6 +28,8 @@ export function sanitizeFleetSupplier(
       ? o.supplierNickname.trim()
       : legacyName
   const routeCode = typeof o.routeCode === 'string' ? o.routeCode.trim() : ''
+  const routeCodeWhitelist =
+    typeof o.routeCodeWhitelist === 'string' ? o.routeCodeWhitelist.trim() : ''
   const webhookUrl = typeof o.webhookUrl === 'string' ? o.webhookUrl.trim() : ''
   const signingSecret =
     typeof o.signingSecret === 'string' && o.signingSecret.trim() !== '' ? o.signingSecret.trim() : undefined
@@ -45,6 +47,7 @@ export function sanitizeFleetSupplier(
     vendorName,
     supplierNickname: supplierNickname || vendorName,
     routeCode,
+    routeCodeWhitelist,
     webhookUrl,
     signingSecret,
     pushDescription,

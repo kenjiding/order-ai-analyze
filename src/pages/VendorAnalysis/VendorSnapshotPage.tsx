@@ -24,6 +24,8 @@ import {
 } from './vendorSnapshotStorage'
 import { Legend, VendorSection, vendorSectionId } from './components/snapshotSections'
 import { fetchVendorAiSummaries, listShareLinks } from './vendorAnalysisApi'
+import { rankVendors } from '../../../shared/vendorAnalysis/rankingScore'
+import { toVendorRankingInput } from './toVendorRankingInput'
 import {
   buildVendorAiInputsFromSnapshot,
   hasAiSummariesForLocale,
@@ -60,6 +62,8 @@ const MOCK_DATA: VendorSnapshotData = {
       before11TotalReceived: 288,
       dispatchRate24hText: '96.50%',
       notMet24hSignCount: 8,
+      dispatch24hTotal: 229,
+      dispatch24hCount: 221,
       unprocessedTicketCount: 0,
       longTailCount: 2,
       isDisabled: false,
@@ -81,6 +85,8 @@ const MOCK_DATA: VendorSnapshotData = {
       before11TotalReceived: 228,
       dispatchRate24hText: '88.20%',
       notMet24hSignCount: 24,
+      dispatch24hTotal: 203,
+      dispatch24hCount: 179,
       unprocessedTicketCount: 3,
       longTailCount: 7,
       isDisabled: false,
@@ -100,19 +106,23 @@ const SUMMARY_GRID_COLS: Record<number, string> = {
   2: 'md:grid-cols-2',
   3: 'md:grid-cols-3',
   4: 'md:grid-cols-4',
+  5: 'md:grid-cols-5',
 }
 
 function SummaryStrip({
   vendors,
   enabledMetricKeys,
+  rankingSummary,
 }: {
   vendors: VendorSnapshotVendor[]
   enabledMetricKeys?: ReadonlySet<string>
+  rankingSummary?: { topScore: number | null; bottomScore: number | null; median: number | null; poolSize: number }
 }) {
   const { t } = useVendorSnapshotTranslation()
   const showUnprocessed = enabledMetricKeys?.has('vendor.unprocessedTickets') ?? true
   const showLongTail = enabledMetricKeys?.has('vendor.longTail') ?? true
-  const tileCount = 2 + (showUnprocessed ? 1 : 0) + (showLongTail ? 1 : 0)
+  const showRanking = (rankingSummary?.poolSize ?? 0) >= 2
+  const tileCount = 2 + (showUnprocessed ? 1 : 0) + (showLongTail ? 1 : 0) + (showRanking ? 1 : 0)
   const activeVendors = vendors.filter((v) => !v.isDisabled)
   const totalUnprocessed = vendors.reduce((s, v) => s + v.unprocessedTicketCount, 0)
   const totalLongTail = vendors.reduce((s, v) => s + v.longTailCount, 0)
@@ -124,12 +134,27 @@ function SummaryStrip({
   ).length
 
   return (
-    <div className={`grid grid-cols-2 ${SUMMARY_GRID_COLS[tileCount]} gap-3 sm:gap-4 mb-6 sm:mb-8`}>
+    <div className={`grid grid-cols-2 ${SUMMARY_GRID_COLS[tileCount] ?? 'md:grid-cols-4'} gap-3 sm:gap-4 mb-6 sm:mb-8`}>
       <div className="rounded-xl sm:rounded-2xl border border-slate-100 bg-white px-4 py-4 sm:px-6 sm:py-5 shadow-sm min-w-0">
         <div className="text-xs font-bold text-slate-500 leading-snug mb-2 sm:mb-3">{t('summary.vendorCount')}</div>
         <div className="text-3xl sm:text-5xl font-black tabular-nums text-slate-800">{vendors.length}</div>
         <div className="mt-2 text-xs text-slate-400">{t('summary.pushEnabled', { count: activeVendors.length })}</div>
       </div>
+      {showRanking && (
+        <div className="rounded-xl sm:rounded-2xl border border-slate-100 bg-white px-4 py-4 sm:px-6 sm:py-5 shadow-sm min-w-0">
+          <div className="text-xs font-bold text-slate-500 leading-snug mb-2 sm:mb-3">{t('summary.ranking')}</div>
+          <div className="text-3xl sm:text-5xl font-black tabular-nums text-indigo-600">
+            {rankingSummary?.topScore != null ? rankingSummary.topScore.toFixed(0) : '—'}
+          </div>
+          <div className="mt-2 text-xs text-slate-400">
+            {t('summary.rankingRange', {
+              top: rankingSummary?.topScore?.toFixed(1) ?? '—',
+              bottom: rankingSummary?.bottomScore?.toFixed(1) ?? '—',
+              median: rankingSummary?.median?.toFixed(1) ?? '—',
+            })}
+          </div>
+        </div>
+      )}
       {showUnprocessed && (
         <div className="rounded-xl sm:rounded-2xl border border-slate-100 bg-white px-4 py-4 sm:px-6 sm:py-5 shadow-sm min-w-0">
           <div className="text-xs font-bold text-slate-500 leading-snug mb-2 sm:mb-3">{t('summary.unprocessedTickets')}</div>
@@ -229,6 +254,24 @@ export default function VendorSnapshotPage() {
     () => (data?.enabledMetricKeys ? new Set(data.enabledMetricKeys) : undefined),
     [data],
   )
+
+  const rankingPool = useMemo(() => {
+    if (!data?.vendors.length) return null
+    return rankVendors(
+      data.vendors.map((v) => toVendorRankingInput(v)),
+      enabledSet,
+    )
+  }, [data, enabledSet])
+
+  const sortedVendors = useMemo(() => {
+    if (!data?.vendors) return []
+    if (!rankingPool || rankingPool.poolSize < 2) return data.vendors
+    return [...data.vendors].sort((a, b) => {
+      const ra = rankingPool.byVendorCode.get(a.vendorCode)?.rank ?? 999
+      const rb = rankingPool.byVendorCode.get(b.vendorCode)?.rank ?? 999
+      return ra - rb
+    })
+  }, [data, rankingPool])
 
   useEffect(() => {
     const loaded = loadVendorSnapshot()
@@ -477,14 +520,27 @@ export default function VendorSnapshotPage() {
         </div>
 
         {/* Summary strip */}
-        <SummaryStrip vendors={data.vendors} enabledMetricKeys={enabledSet} />
+        <SummaryStrip
+          vendors={data.vendors}
+          enabledMetricKeys={enabledSet}
+          rankingSummary={
+            rankingPool
+              ? {
+                  topScore: rankingPool.topScore,
+                  bottomScore: rankingPool.bottomScore,
+                  median: rankingPool.poolMedianScore,
+                  poolSize: rankingPool.poolSize,
+                }
+              : undefined
+          }
+        />
 
         {/* Color legend */}
         <Legend />
 
         {/* Vendor sections */}
         <div className="space-y-4 sm:space-y-6">
-          {data.vendors.map((vendor, i) => {
+          {sortedVendors.map((vendor, i) => {
             const ps = pushState[vendor.vendorCode]
             const aiSummary = pickVendorAiSummary(data.aiSummaries, vendor.vendorCode, locale)
             const showAiLoading =
@@ -501,6 +557,7 @@ export default function VendorSnapshotPage() {
                   dispatch24hDate={data.dispatch24hDate}
                   complaintDateRange={data.complaintDateRange}
                   enabledMetricKeys={enabledSet}
+                  ranking={rankingPool?.byVendorCode.get(vendor.vendorCode)}
                 />
                 {ps && <VendorPushBadge status={ps.status} error={ps.error} />}
               </div>

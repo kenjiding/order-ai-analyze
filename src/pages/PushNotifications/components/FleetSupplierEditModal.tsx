@@ -16,6 +16,7 @@ type FormValues = {
   vendorCode: string
   supplierNickname: string
   routeCode: string
+  routeCodeWhitelist: string
   webhookUrl: string
   signingSecret?: string
   pushContent: string
@@ -51,6 +52,7 @@ export function FleetSupplierEditModal({
         vendorCode: editing.vendorCode,
         supplierNickname: editing.supplierNickname,
         routeCode: editing.routeCode,
+        routeCodeWhitelist: editing.routeCodeWhitelist ?? '',
         pushContent: editing.pushContent,
       }
       if (secretsVisibility === 'full') {
@@ -67,6 +69,7 @@ export function FleetSupplierEditModal({
         vendorCode: undefined,
         supplierNickname: '',
         routeCode: '',
+        routeCodeWhitelist: '',
         webhookUrl: '',
         signingSecret: '',
         pushContent: '',
@@ -76,6 +79,7 @@ export function FleetSupplierEditModal({
         vendorCode: undefined,
         supplierNickname: '',
         routeCode: '',
+        routeCodeWhitelist: '',
         pushContent: '',
       })
     }
@@ -90,6 +94,8 @@ export function FleetSupplierEditModal({
         vendorName: selectedVendor?.vendorNameEn ?? values.vendorCode,
         supplierNickname: values.supplierNickname.trim(),
         routeCode: typeof values.routeCode === 'string' ? values.routeCode.trim() : '',
+        routeCodeWhitelist:
+          typeof values.routeCodeWhitelist === 'string' ? values.routeCodeWhitelist.trim() : '',
         pushDescription: editing?.pushDescription ?? null,
         pushContent: typeof values.pushContent === 'string' ? values.pushContent : '',
         webhookUrl: editing?.webhookUrl?.trim() ?? '',
@@ -126,7 +132,7 @@ export function FleetSupplierEditModal({
       cancelText="取消"
       {...rest}
     >
-      <Form form={form} layout="vertical" requiredMark={false} className="pt-2">
+      <Form form={form} layout="vertical" className="pt-2">
         <Row gutter={16}>
           <Col xs={24} sm={12}>
             <Form.Item
@@ -160,28 +166,45 @@ export function FleetSupplierEditModal({
           </Col>
         </Row>
 
-        <Form.Item
-          label="路由编码"
-          name="routeCode"
-          rules={[
-            { required: true, message: '请填写路由编码' },
-            {
-              validator: async (_, value: unknown) => {
-                const raw = typeof value === 'string' ? value : ''
-                if (!parseFleetRouteCodes(raw).length) {
-                  throw new Error('请至少填写一个有效路由编码（多个请用空格或逗号分隔）')
-                }
-              },
-            },
-          ]}
-          extra="多个编码可用空格、换行、英文逗号或中文逗号分隔。"
-        >
-          <Input.TextArea
-            rows={4}
-            placeholder={'例如：RC001 RC002\n或 RC001，RC002'}
-            allowClear
-          />
-        </Form.Item>
+        <Row gutter={16}>
+          <Col xs={24} sm={12}>
+            <Form.Item
+              label="路由编码"
+              name="routeCode"
+              rules={[
+                { required: true, message: '请填写路由编码' },
+                {
+                  validator: async (_, value: unknown) => {
+                    const raw = typeof value === 'string' ? value : ''
+                    if (!parseFleetRouteCodes(raw).length) {
+                      throw new Error('请至少填写一个有效路由编码（多个请用空格或逗号分隔）')
+                    }
+                  },
+                },
+              ]}
+              extra="多个编码可用空格、换行、英文逗号或中文逗号分隔。"
+            >
+              <Input.TextArea
+                rows={4}
+                placeholder={'例如：RC001 RC002\n或 RC001，RC002'}
+                allowClear
+              />
+            </Form.Item>
+          </Col>
+          <Col xs={24} sm={12}>
+            <Form.Item
+              label="路由码白名单"
+              name="routeCodeWhitelist"
+              extra="可选。多个编码可用空格、换行、英文逗号或中文逗号分隔。"
+            >
+              <Input.TextArea
+                rows={4}
+                placeholder={'例如：RC001 RC002\n或 RC001，RC002'}
+                allowClear
+              />
+            </Form.Item>
+          </Col>
+        </Row>
 
         {secretsVisibility === 'full' ? (
           <>

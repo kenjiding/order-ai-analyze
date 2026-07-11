@@ -7,11 +7,21 @@ import { readImileTokenFromRequest } from './imileAuth'
 import { normalizeImileToken } from '../imile/shared'
 import { fetchWaybillDetailsByInboundIndex, getRegionNow } from '../imile/inboundWaybillIndex'
 import { resolveRegionTz } from '../imile/ausTimezone'
-import { buildExitAlarmZoneBreakdown, computeBefore11ThresholdMs } from '../imile/before11Exit'
+import {
+  buildExitAlarmZoneBreakdown,
+  computeBefore11ThresholdMs,
+  isBefore11Exit,
+} from '../imile/before11Exit'
 import { buildExitAlarmCard } from '../feishu/buildExitAlarmCard'
-import { hasExitAlarmImileToken, parseRouteCodes } from '../feishu/exitAlarmScheduledPush'
+import { hasExitAlarmImileToken } from '../feishu/exitAlarmScheduledPush'
 import { computeFeishuWebhookSign, parseSafeWebhookUrl } from '../feishuWebhookHelpers'
-import { listPushableSupplierPushConfigsByIds, parsePushConfigIds, supplierDisplayName } from '../supplierPushConfigs'
+import {
+  listPushableSupplierPushConfigsByIds,
+  parsePushConfigIds,
+  parseRouteCodes,
+  parseRouteCodeWhitelistSet,
+  supplierDisplayName,
+} from '../supplierPushConfigs'
 import { exitAlarmScheduledScope } from '../supplierConfigScopes/exitAlarmScheduled'
 
 export const exitAlarmRouter = Router()
@@ -229,33 +239,81 @@ exitAlarmRouter.post('/push-now', async (req: AuthenticatedRequest, res: Respons
   }
 
   type WaybillRow = {
+    waybillNo?: string | null
     deliveryTime?: string | null
     consigneeRouteCode?: string | null
+    courier?: string | null
+    courierCode?: string | null
+    courierVendorCode?: string | null
     [key: string]: unknown
   }
   const waybills = result.records as WaybillRow[]
   const before11ThresholdMs = computeBefore11ThresholdMs(date, tz)
 
-  // 逐配置推送
+  type ExportWaybillRow = {
+    waybillNo: string
+    routeCode: string
+    deliveryTime: string
+    courier: string
+    courierCode: string
+    status: '达标' | '未达标'
+  }
+  type ExportSheet = {
+    vendorName: string
+    metCount: number
+    unmetCount: number
+    rows: ExportWaybillRow[]
+  }
+
+  // 逐配置推送；同时组装导出明细（按供应商分 sheet）
   let pushedCount = 0
   const errors: string[] = []
+  const exportSheets: ExportSheet[] = []
 
   for (const config of configs) {
     const routeCodes = parseRouteCodes(config.routeCode)
+    const whitelist = parseRouteCodeWhitelistSet(config.routeCodeWhitelist)
+    const vendorName = supplierDisplayName(config)
 
-    const vendorWaybills =
-      routeCodes.length > 0
-        ? waybills.filter((w) => routeCodes.includes((w.consigneeRouteCode ?? '').trim()))
-        : waybills
+    const vendorWaybills = waybills.filter((w) => {
+      const code = (w.consigneeRouteCode ?? '').trim()
+      if (routeCodes.length > 0 && !routeCodes.includes(code)) return false
+      if (whitelist.has(code)) return false
+      return true
+    })
 
     const zoneBreakdown = buildExitAlarmZoneBreakdown(vendorWaybills, before11ThresholdMs)
 
     const totalPending = Object.values(zoneBreakdown).reduce((s, v) => s + v.pending, 0)
     const totalWaybills = vendorWaybills.length
 
+    const unmetRows: ExportWaybillRow[] = []
+    const metRows: ExportWaybillRow[] = []
+    for (const w of vendorWaybills) {
+      const deliveryTime = typeof w.deliveryTime === 'string' && w.deliveryTime ? w.deliveryTime : ''
+      const met = isBefore11Exit(deliveryTime || null, before11ThresholdMs)
+      const row: ExportWaybillRow = {
+        waybillNo: typeof w.waybillNo === 'string' ? w.waybillNo.trim() : '',
+        routeCode: (w.consigneeRouteCode ?? '').trim() || 'Unknown route',
+        deliveryTime,
+        courier: typeof w.courier === 'string' ? w.courier.trim() : '',
+        courierCode: typeof w.courierCode === 'string' ? w.courierCode.trim() : '',
+        status: met ? '达标' : '未达标',
+      }
+      if (met) metRows.push(row)
+      else unmetRows.push(row)
+    }
+    exportSheets.push({
+      vendorName,
+      metCount: metRows.length,
+      unmetCount: unmetRows.length,
+      // 未达标在前，便于告警核对
+      rows: [...unmetRows, ...metRows],
+    })
+
     // 无运单也推送（告知已全部正常或无数据）
     const card = buildExitAlarmCard({
-      vendorName: supplierDisplayName(config),
+      vendorName,
       stationCode,
       date,
       pushTime,
@@ -283,13 +341,13 @@ exitAlarmRouter.post('/push-now', async (req: AuthenticatedRequest, res: Respons
       if (upstream.ok && typeof code === 'number' && code === 0) {
         pushedCount++
       } else {
-        errors.push(`${supplierDisplayName(config)}: 飞书返回 code=${String(code)}`)
+        errors.push(`${vendorName}: 飞书返回 code=${String(code)}`)
       }
     } catch (err) {
       const cause = err instanceof Error ? (err.cause as { code?: string } | undefined)?.code : undefined
       const reason = cause ?? (err instanceof Error ? err.message : String(err))
-      console.error(`[exit-alarm/push-now] ${supplierDisplayName(config)} 推送异常:`, err)
-      errors.push(`${supplierDisplayName(config)}: 网络错误(${reason})`)
+      console.error(`[exit-alarm/push-now] ${vendorName} 推送异常:`, err)
+      errors.push(`${vendorName}: 网络错误(${reason})`)
     }
   }
 
@@ -299,6 +357,9 @@ exitAlarmRouter.post('/push-now', async (req: AuthenticatedRequest, res: Respons
       pushedCount,
       totalConfigs: configs.length,
       errors,
+      stationCode,
+      date,
+      exportSheets,
     },
   })
 })

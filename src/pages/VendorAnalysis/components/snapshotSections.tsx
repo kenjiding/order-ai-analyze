@@ -16,6 +16,8 @@ import {
 import { useVendorSnapshotTranslation } from '../../../i18n/hooks'
 import { WaybillListPopover } from '../../../components/WaybillPopover'
 import type { VendorSnapshotDriver, VendorSnapshotVendor } from '../vendorSnapshotStorage'
+import type { VendorRankingResult } from '../../../../shared/vendorAnalysis/rankingScore'
+import { VendorRankPlate } from './VendorRankPlate'
 
 /* eslint-disable react-refresh/only-export-components -- 组件与 vendorSectionId/toneClasses 工具需同文件导出 */
 
@@ -138,6 +140,9 @@ const ACCENT_STYLES: Record<MetricAccent, { header: string; border: string; icon
   teal:   { header: 'bg-teal-100 border-teal-200',     border: 'border-slate-100', icon: 'text-teal-600',   label: 'text-teal-700'   },
 }
 
+/** PCS 工单工作台：落地页「未处理工单」数值跳转 */
+const PCS_TICKET_WORKBENCH_URL = 'https://pcs.imile.com/#/PCSTicketWorkbench'
+
 function KpiCard({
   label,
   dateNote,
@@ -150,7 +155,7 @@ function KpiCard({
 }: {
   label: string
   dateNote?: string
-  value: string
+  value: ReactNode
   tone: ColorTone
   sub?: string
   subTone?: 'warn' | 'ok' | 'muted'
@@ -482,6 +487,7 @@ export function VendorSection({
   dispatch24hDate,
   complaintDateRange,
   enabledMetricKeys,
+  ranking,
 }: {
   vendor: VendorSnapshotVendor
   index: number
@@ -491,11 +497,14 @@ export function VendorSection({
   before11Date: string
   dispatch24hDate: string
   complaintDateRange: string
-  /** 指标勾选集合；未传（老快照/老日报）→ 全量渲染 */
+  /** 指标勾选集合；未传 → 全量渲染 */
   enabledMetricKeys?: ReadonlySet<string>
+  /** 综合排名；由调用方现算后传入 */
+  ranking?: VendorRankingResult
 }) {
   const { t } = useVendorSnapshotTranslation()
   const flags = resolveMetricFlags(enabledMetricKeys)
+  const rank = ranking
   const kpiCount =
     (flags.vendorBefore11 ? 1 : 0) +
     (flags.vendorDispatch24h ? 1 : 0) +
@@ -521,11 +530,15 @@ export function VendorSection({
       {/* Vendor header */}
       <div className="flex flex-col gap-3 px-4 py-4 sm:flex-row sm:items-start sm:gap-4 sm:px-6 sm:py-5 bg-white border-b border-slate-100">
         <div className="flex items-start gap-3 min-w-0 flex-1">
-          <div className="flex h-9 w-9 sm:h-10 sm:w-10 shrink-0 items-center justify-center rounded-xl bg-indigo-600 shadow-sm">
-            <span className="text-sm font-black text-white tabular-nums">
-              {String(index + 1).padStart(2, '0')}
-            </span>
-          </div>
+          {rank && rank.poolSize >= 2 ? (
+            <VendorRankPlate ranking={rank} />
+          ) : (
+            <div className="flex h-9 w-9 sm:h-10 sm:w-10 shrink-0 items-center justify-center rounded-xl bg-slate-800 shadow-sm">
+              <span className="text-sm font-black text-white tabular-nums">
+                {String(index + 1).padStart(2, '0')}
+              </span>
+            </div>
+          )}
           <div className="min-w-0">
             <h2 className="text-lg sm:text-xl font-black text-slate-900 leading-tight break-words">
               {vendor.vendorName}
@@ -533,7 +546,7 @@ export function VendorSection({
             <div className="text-[12px] sm:text-[13px] text-slate-400 mt-0.5 font-mono">{vendor.vendorCode}</div>
           </div>
         </div>
-        <div className="flex flex-wrap items-center gap-2 sm:justify-end">
+        <div className="flex flex-wrap items-center gap-2 sm:justify-end sm:shrink-0">
           {flags.returnWarning && totalReturnWarning > 0 && (
             <span className="inline-flex items-center gap-1.5 rounded-full border border-rose-200 bg-rose-50 px-3 py-1 text-[11px] font-bold text-rose-600">
               <AlertTriangle className="h-3 w-3 shrink-0" aria-hidden />
@@ -616,7 +629,16 @@ export function VendorSection({
               label={t('kpi.unprocessedTickets')}
               accent="orange"
               icon={Inbox}
-              value={String(vendor.unprocessedTicketCount)}
+              value={
+                <a
+                  href={PCS_TICKET_WORKBENCH_URL}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="underline decoration-2 underline-offset-4 hover:opacity-80"
+                >
+                  {vendor.unprocessedTicketCount}
+                </a>
+              }
               tone={utTone}
               sub={vendor.unprocessedTicketCount > 0 ? t('kpi.needsAction') : t('kpi.noPending')}
               subTone={vendor.unprocessedTicketCount > 0 ? 'warn' : 'ok'}
@@ -780,6 +802,7 @@ function MetricsDefinitionFooter() {
           </div>
         ))}
       </div>
+      <p className="mt-2.5 text-[11px] leading-relaxed text-slate-400">{t('ranking.weightHint')}</p>
     </div>
   )
 }

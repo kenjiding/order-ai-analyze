@@ -1,5 +1,10 @@
 import { getApiBaseUrl } from '../../utils/apiBaseUrl'
-import type { ExitAlarmSchedule, ExitAlarmScheduleDraft, WaybillSearchItem } from './exitAlarmTypes'
+import type {
+  ExitAlarmExportSheet,
+  ExitAlarmSchedule,
+  ExitAlarmScheduleDraft,
+  WaybillSearchItem,
+} from './exitAlarmTypes'
 
 async function apiFetch<T>(
   path: string,
@@ -79,6 +84,9 @@ export type ExitAlarmPushNowResult = {
   pushedCount: number
   totalConfigs: number
   errors: string[]
+  stationCode: string
+  date: string
+  exportSheets: ExitAlarmExportSheet[]
 }
 
 export async function triggerExitAlarmPushNow(

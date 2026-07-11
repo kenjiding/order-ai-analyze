@@ -18,10 +18,12 @@ export default function VendorPortalPage() {
   const { locale, setLocale } = useAppLocale()
   const [data, setData] = useState<VendorPortalDaily | null>(null)
   const [status, setStatus] = useState<'loading' | 'ready' | 'error'>(token ? 'loading' : 'error')
+  // 先切到英文再展示正文，避免 setLocale 触发重渲染打断排名入场动效
+  const [localeReady, setLocaleReady] = useState(false)
 
-  // 外部供应商落地页默认英文（仍可通过 LocaleSwitcher 切换）
   useEffect(() => {
     setLocale('en')
+    setLocaleReady(true)
   }, [setLocale])
 
   useEffect(() => {
@@ -41,7 +43,7 @@ export default function VendorPortalPage() {
     }
   }, [token])
 
-  if (status === 'loading') {
+  if (status === 'loading' || !localeReady) {
     return (
       <div className="vendor-snapshot-page min-h-screen bg-white">
         <div className="h-1.5 bg-indigo-600" />
@@ -123,6 +125,7 @@ export default function VendorPortalPage() {
 
         {/* Vendor section */}
         <VendorSection
+          key={`${data.vendor.vendorCode}-${locale}-${data.ranking?.rank ?? 'x'}-${data.ranking?.score ?? 'x'}`}
           vendor={data.vendor}
           index={0}
           aiSummary={aiSummary}
@@ -131,6 +134,7 @@ export default function VendorPortalPage() {
           dispatch24hDate={data.dispatch24hDate}
           complaintDateRange={data.complaintDateRange}
           enabledMetricKeys={enabledSet}
+          ranking={data.ranking ?? undefined}
         />
 
         {/* Footer */}

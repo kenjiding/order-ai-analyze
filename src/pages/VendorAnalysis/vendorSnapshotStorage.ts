@@ -33,6 +33,8 @@ export type VendorSnapshotVendor = {
   before11TotalReceived: number | null
   dispatchRate24hText: string | null
   notMet24hSignCount: number | null
+  dispatch24hTotal: number | null
+  dispatch24hCount: number | null
   unprocessedTicketCount: number
   longTailCount: number
   isDisabled: boolean
@@ -154,6 +156,8 @@ export function buildVendorSnapshot(params: {
       before11TotalReceived: m.before11TotalReceived,
       dispatchRate24hText: m.dispatchRate24hText,
       notMet24hSignCount: m.notMet24hSignCount,
+      dispatch24hTotal: m.dispatch24hTotal,
+      dispatch24hCount: m.dispatch24hCount,
       unprocessedTicketCount: m.unprocessedTicketCount,
       longTailCount: m.longTailCount,
       isDisabled: !enabledVendorCodes.has(m.vendorCode),

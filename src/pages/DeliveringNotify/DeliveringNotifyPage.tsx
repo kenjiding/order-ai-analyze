@@ -13,6 +13,7 @@ import {
   X,
 } from 'lucide-react'
 import { GlobalStationSelector } from '../../components/Layout/GlobalStationSelector'
+import { useGlobalStationBootstrap } from '../../components/Layout/useGlobalStationBootstrap'
 import { useAppSettings } from '../../context/AppSettingsContext'
 import { useGlobalFilterStore } from '../../stores/globalFilterStore'
 import { pushDeliveringNotify, type DeliveringNotifyPushData } from './deliveringNotifyApi'
@@ -27,8 +28,12 @@ export default function DeliveringNotifyPage({
   onLogout: () => void
 }) {
   const { imileToken, settingsLoaded } = useAppSettings()
-  const { selectedStations } = useGlobalFilterStore()
+  // 页面打开即回填上次站点并拉列表；不能只依赖菜单内的 GlobalStationSelector
+  useGlobalStationBootstrap()
+  const { selectedStations, stations } = useGlobalFilterStore()
   const stationCode = selectedStations[0] ?? ''
+  const stationLabel =
+    stations.find((s) => s.value === stationCode)?.label ?? stationCode
 
   const [inputValue, setInputValue] = useState('')
   const [scannedList, setScannedList] = useState<string[]>([])
@@ -83,7 +88,7 @@ export default function DeliveringNotifyPage({
         : ''
 
   return (
-    <div className="relative flex min-h-[100dvh] flex-col overflow-hidden bg-gradient-to-b from-slate-50 via-white to-blue-50/40 text-zinc-900">
+    <div className="relative flex h-[100dvh] flex-col overflow-hidden bg-gradient-to-b from-slate-50 via-white to-blue-50/40 text-zinc-900">
       {/* 固定装饰光晕：不随内容滚动，仅作背景氛围；负 z-index 确保始终在最底层，不影响遮罩点击关闭 */}
       <div
         className="pointer-events-none fixed -right-16 -top-20 -z-10 h-56 w-56 rounded-full bg-blue-400/20 blur-3xl"
@@ -94,13 +99,18 @@ export default function DeliveringNotifyPage({
         aria-hidden
       />
 
-      {/* 顶部栏：标题 + 菜单入口，固定高度，单行不换行 */}
-      <header className="sticky top-0 z-20 flex h-11 shrink-0 items-center justify-between border-b border-zinc-200/80 bg-white/90 px-2.5 backdrop-blur-sm">
-        <div className="flex min-w-0 items-center gap-2">
+      {/* 顶部栏：标题 + 当前站点 + 菜单入口，固定高度，单行不换行 */}
+      <header className="z-20 flex h-11 shrink-0 items-center justify-between gap-2 border-b border-zinc-200/80 bg-white/90 px-2.5 backdrop-blur-sm">
+        <div className="flex min-w-0 flex-1 items-center gap-2">
           <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-blue-600 to-indigo-600 shadow-sm shadow-blue-600/30">
             <BellRing className="h-3.5 w-3.5 text-white" aria-hidden strokeWidth={2} />
           </span>
-          <span className="truncate text-sm font-semibold text-zinc-900">派送中包裹通知</span>
+          <span className="shrink-0 text-sm font-semibold text-zinc-900">派送中包裹通知</span>
+          {stationCode ? (
+            <span className="min-w-0 truncate rounded-full bg-blue-50 px-2 py-0.5 text-[11px] font-medium text-blue-700">
+              {stationLabel}
+            </span>
+          ) : null}
         </div>
         <button
           type="button"
@@ -157,8 +167,8 @@ export default function DeliveringNotifyPage({
         </div>
       )}
 
-      {/* 主体：可滚动，扫描输入 + 列表 + 结果 */}
-      <main className="flex-1 space-y-2.5 overflow-y-auto px-2.5 pb-2.5 pt-2.5">
+      {/* 主体：可滚动，扫描输入 + 列表 + 结果；底部留白避免被固定推送栏遮挡 */}
+      <main className="min-h-0 flex-1 space-y-2.5 overflow-y-auto px-2.5 pb-2.5 pt-2.5">
         {!stationCode && (
           <div className="flex items-center gap-1.5 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-medium text-amber-800">
             <TriangleAlert className="h-3.5 w-3.5 shrink-0" aria-hidden strokeWidth={2} />
@@ -344,8 +354,8 @@ export default function DeliveringNotifyPage({
         )}
       </main>
 
-      {/* 底部固定操作栏：拇指可触达的推送按钮 */}
-      <div className="sticky bottom-0 z-20 shrink-0 border-t border-zinc-200/80 bg-white/90 px-2.5 pb-[max(env(safe-area-inset-bottom),0.5rem)] pt-2 backdrop-blur-sm">
+      {/* 底部固定操作栏：flex 底栏 + 视口高度锁定，不随列表滚动 */}
+      <div className="z-20 shrink-0 border-t border-zinc-200/80 bg-white/95 px-2.5 pb-[max(env(safe-area-inset-bottom),0.5rem)] pt-2 backdrop-blur-sm">
         <button
           type="button"
           onClick={() => void handlePush()}

@@ -43,6 +43,7 @@ type VendorAnalyzePayload = {
   before11Date: string
   dayBeforeDate: string
   dataSources: VendorAnalysisDataSource[]
+  routeCodeWhitelistByVendor: Map<string, Set<string>>
 }
 
 function asStringArray(raw: unknown): string[] {
@@ -54,6 +55,17 @@ function parseDataSources(raw: unknown): VendorAnalysisDataSource[] {
   const valid = new Set<string>(VENDOR_ANALYSIS_DATA_SOURCES)
   const parsed = asStringArray(raw).filter((s): s is VendorAnalysisDataSource => valid.has(s))
   return parsed.length > 0 ? parsed : [...VENDOR_ANALYSIS_DATA_SOURCES]
+}
+
+/** 老任务 payload 无 routeCodeWhitelistByVendor 字段 → 视为无白名单（改造前行为） */
+function parseRouteCodeWhitelistByVendor(raw: unknown): Map<string, Set<string>> {
+  const map = new Map<string, Set<string>>()
+  if (!raw || typeof raw !== 'object') return map
+  for (const [vendorCode, codes] of Object.entries(raw as Record<string, unknown>)) {
+    const set = new Set(asStringArray(codes))
+    if (set.size > 0) map.set(vendorCode, set)
+  }
+  return map
 }
 
 function parsePayload(raw: Record<string, unknown>): VendorAnalyzePayload | null {
@@ -86,6 +98,7 @@ function parsePayload(raw: Record<string, unknown>): VendorAnalyzePayload | null
     before11Date: raw.before11Date as string,
     dayBeforeDate: raw.dayBeforeDate as string,
     dataSources: parseDataSources(raw.dataSources),
+    routeCodeWhitelistByVendor: parseRouteCodeWhitelistByVendor(raw.routeCodeWhitelistByVendor),
   }
 }
 
@@ -184,6 +197,7 @@ export const vendorAnalyzeHandler: JobHandler = {
               dateStr: params.before11Date,
               vendorCodes: params.vendorCodes,
               regionCode: ctx.job.regionCode,
+              routeCodeWhitelistByVendor: params.routeCodeWhitelistByVendor,
             }),
           )
           if (!res.ok) throw new Error(`11点前出仓率获取失败: ${res.message}`)
@@ -266,6 +280,7 @@ export const vendorAnalyzeHandler: JobHandler = {
       stationCodes: params.stationCodes,
       tz: resolveRegionTz(ctx.job.regionCode),
       nowMs,
+      routeCodeWhitelistByVendor: params.routeCodeWhitelistByVendor,
     })
 
     const artifactData: VendorAnalyzeSummary = {

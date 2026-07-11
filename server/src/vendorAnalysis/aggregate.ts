@@ -11,15 +11,9 @@
  * - 24H 内比较、归班 48h、"现在"均为绝对时刻，与时区无关；仅「星期判断」和「周五~日的下周一 23:59:59
  *   截止」依赖 targetTz。nowMs = worker 完成时刻。
  */
-import {
-  iMileStrToMs,
-  localDatePlusDaysMs,
-  weekdayInTz,
-  type AusTz,
-} from '../imile/ausTimezone'
+import { iMileStrToMs, type AusTz } from '../imile/ausTimezone'
 import type { Before11ExitRateResult, SlimPickupRow } from '../imile/vendorAnalysis'
-
-const DAY_MS = 24 * 60 * 60 * 1000
+import { aggregateDispatch24hByVendor, isDispatch24hMet } from './dispatch24hAggregate'
 
 // ── 输入行类型：只声明聚合真正读取的字段（运行时行还带其它字段，此处不关心） ──
 
@@ -50,6 +44,7 @@ type LongTailOrderRow = {
 
 type WaybillRow = {
   courierVendorCode?: string
+  consigneeRouteCode?: string
 }
 
 type DriverWaybillRow = {
@@ -90,6 +85,8 @@ export type VendorAnalyzeAggregateInput = {
   tz: AusTz
   /** worker 完成时刻，用作归班预警 48h 的基准 */
   nowMs: number
+  /** 路由码白名单：命中的路由码代表要从该供应商统计中剔除的数据 */
+  routeCodeWhitelistByVendor: Map<string, Set<string>>
 }
 
 // ── 输出汇总类型（前端 vendorAnalysisSummary.ts 镜像同一结构） ──
@@ -154,22 +151,13 @@ function norm(code: unknown): string {
   return typeof code === 'string' ? code.trim() : ''
 }
 
-/** 24H 派签是否达标：周一~四 24h 内签收/问题件即达标；周五~日下周一 23:59:59 前签收达标 */
-function isDispatch24hMet(row: DriverWaybillRow, tz: AusTz): boolean {
-  if (!row.deliveryTime) return false
-  const deliveryMs = iMileStrToMs(row.deliveryTime)
-  const signMs = row.signDate ? iMileStrToMs(row.signDate) : null
-  const problemMs = row.lastProblemDate ? iMileStrToMs(row.lastProblemDate) : null
-  const dow = weekdayInTz(deliveryMs, tz) // 0=周日 … 6=周六
-
-  if (dow >= 1 && dow <= 4) {
-    const within24h = (ms: number | null) => ms != null && ms - deliveryMs <= DAY_MS
-    return within24h(signMs) || within24h(problemMs)
-  }
-  // 周五(5)/周六(6)/周日(0)：下周一 23:59:59（targetTz 本地）前签收达标
-  const daysToMonday = dow === 0 ? 1 : dow === 5 ? 3 : 2
-  const nextMondayMs = localDatePlusDaysMs(deliveryMs, tz, daysToMonday, 23, 59, 59)
-  return signMs != null && signMs <= nextMondayMs
+/** 路由码白名单命中：该供应商这条数据要剔除，不参与统计 */
+function isWhitelisted(
+  vendorCode: string,
+  routeCode: string,
+  routeCodeWhitelistByVendor: Map<string, Set<string>>,
+): boolean {
+  return routeCodeWhitelistByVendor.get(vendorCode)?.has(routeCode.trim()) ?? false
 }
 
 export function aggregateVendorAnalysis(input: VendorAnalyzeAggregateInput): VendorSummary[] {
@@ -185,6 +173,7 @@ export function aggregateVendorAnalysis(input: VendorAnalyzeAggregateInput): Ven
     stationCodes,
     tz,
     nowMs,
+    routeCodeWhitelistByVendor,
   } = input
 
   const stationSet = new Set(stationCodes.map((s) => s.trim()).filter(Boolean))
@@ -205,6 +194,7 @@ export function aggregateVendorAnalysis(input: VendorAnalyzeAggregateInput): Ven
   const waybillCountByVendor = new Map<string, number>()
   for (const w of waybills) {
     const key = norm(w.courierVendorCode)
+    if (isWhitelisted(key, norm(w.consigneeRouteCode), routeCodeWhitelistByVendor)) continue
     waybillCountByVendor.set(key, (waybillCountByVendor.get(key) ?? 0) + 1)
   }
 
@@ -232,23 +222,12 @@ export function aggregateVendorAnalysis(input: VendorAnalyzeAggregateInput): Ven
   }
 
   // 24H派签率：前天运单，按最新派件网点（lastScanSiteCode）过滤后按供应商统计
-  const dispatch24hByVendor = new Map<string, { total: number; met: number; unmetNos: string[] }>()
-  for (const row of driverDayBeforeWaybills) {
-    const vendorCode = norm(row.courierVendorCode)
-    if (!vendorCode) continue
-    if (!inStation(row.lastScanSiteCode)) continue
-    if (!row.deliveryTime) continue
-    const met = isDispatch24hMet(row, tz)
-    let stat = dispatch24hByVendor.get(vendorCode)
-    if (!stat) { stat = { total: 0, met: 0, unmetNos: [] }; dispatch24hByVendor.set(vendorCode, stat) }
-    stat.total += 1
-    if (met) {
-      stat.met += 1
-    } else {
-      const wbNo = row.waybillNo ?? ''
-      if (wbNo) stat.unmetNos.push(wbNo)
-    }
-  }
+  const dispatch24hByVendor = aggregateDispatch24hByVendor({
+    rows: driverDayBeforeWaybills,
+    stationCodes,
+    tz,
+    routeCodeWhitelistByVendor,
+  })
 
   // 11点前未出仓单号：按供应商聚合（无站点过滤，与 before11ExitRate 口径一致）
   const before11UnmetByVendor = new Map<string, string[]>()
@@ -256,6 +235,7 @@ export function aggregateVendorAnalysis(input: VendorAnalyzeAggregateInput): Ven
     if (row.before11Exit) continue
     const vendorCode = norm(row.courierVendorCode)
     if (!vendorCode) continue
+    if (isWhitelisted(vendorCode, norm(row.consigneeRouteCode), routeCodeWhitelistByVendor)) continue
     const wbNo = row.waybillNo ?? ''
     if (!wbNo) continue
     let arr = before11UnmetByVendor.get(vendorCode)
@@ -333,7 +313,15 @@ function buildDriverSummaries(
   input: VendorAnalyzeAggregateInput,
   returnWarningByDriver: Map<string, { count: number; waybillNos: string[] }>,
 ): DriverSummary[] {
-  const { driverYesterdayWaybills, driverDayBeforeWaybills, longTailOrders, driverReturnRows, stationCodes, tz } = input
+  const {
+    driverYesterdayWaybills,
+    driverDayBeforeWaybills,
+    longTailOrders,
+    driverReturnRows,
+    stationCodes,
+    tz,
+    routeCodeWhitelistByVendor,
+  } = input
   const stationSet = new Set(stationCodes.map((s) => s.trim()).filter(Boolean))
   const inStation = (code: string | undefined) => stationSet.size === 0 || stationSet.has(norm(code))
 
@@ -342,6 +330,7 @@ function buildDriverSummaries(
   const pickupMap = new Map<string, PickupAgg>()
   for (const row of driverYesterdayWaybills) {
     if (!row.courierCode || norm(row.courierVendorCode) !== vendorCode) continue
+    if (isWhitelisted(vendorCode, norm(row.consigneeRouteCode), routeCodeWhitelistByVendor)) continue
     const wbNo = row.waybillNo ?? ''
     const agg = pickupMap.get(row.courierCode)
     if (agg) {
@@ -366,6 +355,7 @@ function buildDriverSummaries(
   const dispatchMap = new Map<string, DispatchAgg>()
   for (const row of driverDayBeforeWaybills) {
     if (!row.courierCode || norm(row.courierVendorCode) !== vendorCode) continue
+    if (isWhitelisted(vendorCode, norm(row.consigneeRouteCode), routeCodeWhitelistByVendor)) continue
     if (!row.deliveryTime) continue
     if (!inStation(row.lastScanSiteCode)) continue
     const completed = isDispatch24hMet(row, tz)

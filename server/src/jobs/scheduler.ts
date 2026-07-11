@@ -6,6 +6,14 @@ import {
   runChaseDispatchScheduledPush,
 } from '../feishu/chaseDispatchScheduledPush'
 import {
+  logWorkOrderPushSchedulerReadiness,
+  runWorkOrderPushScheduledPush,
+} from '../feishu/workOrderPushScheduledPush'
+import {
+  logDispatchAlarmSchedulerReadiness,
+  runDispatchAlarmScheduledPush,
+} from '../feishu/dispatchAlarmScheduledPush'
+import {
   logInboundIndexSchedulerReadiness,
   runDailyInboundWaybillIndexPrefetch,
 } from '../imile/inboundWaybillIndexScheduler'
@@ -74,6 +82,38 @@ export function startJobScheduler(): { stop: () => void } {
   tasks.push(chaseDispatchTask)
   console.log('[scheduler] 已启动催派推送检查任务 cron="* * * * *" timezone="Australia/Adelaide"')
   void logChaseDispatchSchedulerReadiness()
+
+  // 工单推送：worker 内始终注册，是否执行由 DB 配置 isEnabled 控制；每天都检查（工单出现时间不可预测）
+  const workOrderPushTask = cron.schedule(
+    '* * * * *',
+    async () => {
+      try {
+        await runWorkOrderPushScheduledPush()
+      } catch (err) {
+        console.error('[scheduler/work-order-push] 推送异常:', err)
+      }
+    },
+    { timezone: 'Australia/Adelaide' },
+  )
+  tasks.push(workOrderPushTask)
+  console.log('[scheduler] 已启动工单推送检查任务 cron="* * * * *" timezone="Australia/Adelaide"')
+  void logWorkOrderPushSchedulerReadiness()
+
+  // 24H派签告警：worker 内始终注册，是否执行由 DB 配置 isEnabled 控制
+  const dispatchAlarmTask = cron.schedule(
+    '* * * * *',
+    async () => {
+      try {
+        await runDispatchAlarmScheduledPush()
+      } catch (err) {
+        console.error('[scheduler/dispatch-alarm] 推送异常:', err)
+      }
+    },
+    { timezone: 'Australia/Adelaide' },
+  )
+  tasks.push(dispatchAlarmTask)
+  console.log('[scheduler] 已启动24H派签告警检查任务 cron="* * * * *" timezone="Australia/Adelaide"')
+  void logDispatchAlarmSchedulerReadiness()
 
   // 到件 waybillNo 索引：每日 06:00 阿德莱德预取昨天 inbound/query（与出仓告警解耦）
   const inboundIndexCron = process.env.INBOUND_INDEX_CRON?.trim() || '0 6 * * *'

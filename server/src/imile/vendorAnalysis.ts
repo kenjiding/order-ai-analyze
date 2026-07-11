@@ -348,7 +348,13 @@ export type Before11ExitRatesData = {
 
 export async function fetchBefore11ExitRates(
   token: string,
-  params: { stationCode: string; dateStr: string; vendorCodes: string[]; regionCode?: string | null },
+  params: {
+    stationCode: string
+    dateStr: string
+    vendorCodes: string[]
+    regionCode?: string | null
+    routeCodeWhitelistByVendor?: Map<string, Set<string>>
+  },
 ): Promise<VendorAnalysisSuccess<Before11ExitRatesData> | VendorAnalysisError> {
   const tz = resolveRegionTz(params.regionCode)
   const result = await fetchWaybillDetailsByInboundIndex({
@@ -364,15 +370,20 @@ export async function fetchBefore11ExitRates(
   const before11ThresholdMs = computeBefore11ThresholdMs(params.dateStr, tz)
 
   const vendorSet = new Set(params.vendorCodes)
+  const routeCodeWhitelistByVendor = params.routeCodeWhitelistByVendor ?? new Map<string, Set<string>>()
   const stats = new Map<string, { before11: number; total: number }>()
   const pickupRows: SlimPickupRow[] = []
 
   for (const row of rows) {
     const courierCode = typeof row.courierCode === 'string' ? row.courierCode : ''
     const courierVendorCode = typeof row.courierVendorCode === 'string' ? row.courierVendorCode : ''
+    const consigneeRouteCode = typeof row.consigneeRouteCode === 'string' ? row.consigneeRouteCode : ''
     const deliveryTime = typeof row.deliveryTime === 'string' && row.deliveryTime
       ? row.deliveryTime
       : null
+
+    // 路由码白名单命中：该供应商的这条数据要整行剔除，不参与任何统计
+    if (routeCodeWhitelistByVendor.get(courierVendorCode)?.has(consigneeRouteCode)) continue
 
     const before11Exit = isBefore11Exit(deliveryTime, before11ThresholdMs)
 
@@ -381,7 +392,7 @@ export async function fetchBefore11ExitRates(
       courierCode,
       courierVendorCode,
       courier: typeof row.courier === 'string' ? row.courier : '',
-      consigneeRouteCode: typeof row.consigneeRouteCode === 'string' ? row.consigneeRouteCode : '',
+      consigneeRouteCode,
       before11Exit,
     })
 

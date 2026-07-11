@@ -1,6 +1,12 @@
 import { Router, type Request, type Response, type NextFunction } from 'express'
 import { eq } from 'drizzle-orm'
 import { getDb, schema } from '../db'
+import {
+  dispatchRateFromTotals,
+  rankVendors,
+  type VendorRankingInput,
+  type VendorRankingResult,
+} from '../../../shared/vendorAnalysis/rankingScore'
 
 /**
  * 供应商日报外部门户（无登录鉴权，仅凭高熵分享 token 访问）。
@@ -79,6 +85,8 @@ type ReportVendor = {
   before11TotalReceived?: unknown
   dispatchRate24hText?: unknown
   notMet24hSignCount?: unknown
+  dispatch24hTotal?: unknown
+  dispatch24hCount?: unknown
   unprocessedTicketCount?: unknown
   longTailCount?: unknown
   drivers?: unknown
@@ -97,7 +105,7 @@ type ReportPayload = {
 
 const num = (v: unknown): number => (typeof v === 'number' && Number.isFinite(v) ? v : 0)
 const numOrNull = (v: unknown): number | null => (typeof v === 'number' && Number.isFinite(v) ? v : null)
-const str = (v: unknown): string => (typeof v === 'string' ? v : '')
+const str = (v: unknown): string => (typeof v === 'string' ? v.trim() : '')
 const strOrNull = (v: unknown): string | null => (typeof v === 'string' ? v : null)
 const strArr = (v: unknown): string[] => (Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string') : [])
 
@@ -136,11 +144,31 @@ function pickVendor(raw: ReportVendor) {
     before11TotalReceived: numOrNull(raw.before11TotalReceived),
     dispatchRate24hText: strOrNull(raw.dispatchRate24hText),
     notMet24hSignCount: numOrNull(raw.notMet24hSignCount),
+    dispatch24hTotal: numOrNull(raw.dispatch24hTotal),
+    dispatch24hCount: numOrNull(raw.dispatch24hCount),
     unprocessedTicketCount: num(raw.unprocessedTicketCount),
     longTailCount: num(raw.longTailCount),
-    // 内部推送启用状态不对外暴露，固定 false（前端类型要求该字段存在）
     isDisabled: false,
     drivers,
+  }
+}
+
+function toRankingInput(raw: ReportVendor): VendorRankingInput {
+  const dispatch24hTotal = numOrNull(raw.dispatch24hTotal)
+  const dispatch24hCount = numOrNull(raw.dispatch24hCount)
+  return {
+    vendorCode: str(raw.vendorCode),
+    complaintRate: num(raw.complaintRate),
+    complaintCount: num(raw.complaintCount),
+    waybillCount: num(raw.waybillCount),
+    unprocessedTicketCount: num(raw.unprocessedTicketCount),
+    longTailCount: num(raw.longTailCount),
+    before11ExitRate: numOrNull(raw.before11ExitRate),
+    before11ExitVolume: numOrNull(raw.before11ExitVolume),
+    before11TotalReceived: numOrNull(raw.before11TotalReceived),
+    dispatchRate24h: dispatchRateFromTotals(dispatch24hCount, dispatch24hTotal),
+    dispatch24hTotal,
+    dispatch24hCount,
   }
 }
 
@@ -192,11 +220,26 @@ vendorPortalRouter.get('/daily/:token', rateLimit, async (req: Request, res: Res
 
     const payload = report.payload as ReportPayload
     const vendors = Array.isArray(payload.vendors) ? (payload.vendors as ReportVendor[]) : []
-    const vendorRaw = vendors.find((v) => v.vendorCode === link.vendorCode)
+    const linkCode = str(link.vendorCode)
+    const vendorRaw = vendors.find((v) => str(v.vendorCode) === linkCode)
     if (!vendorRaw) {
       sendNotFound(res)
       return
     }
+
+    const enabledMetricKeys = Array.isArray(payload.enabledMetricKeys)
+      ? strArr(payload.enabledMetricKeys)
+      : null
+    const enabledSet = enabledMetricKeys ? new Set(enabledMetricKeys) : undefined
+    // 与快照页同一套 rankVendors：用日报里全部供应商做池，再取当前供应商名次
+    const rankingPool = rankVendors(
+      vendors
+        .filter((v) => str(v.vendorCode))
+        .map(toRankingInput),
+      enabledSet,
+    )
+    const ranking: VendorRankingResult | null =
+      rankingPool.byVendorCode.get(str(vendorRaw.vendorCode)) ?? null
 
     // 访问时间异步更新，不阻塞响应，失败不影响本次请求
     void db
@@ -214,9 +257,9 @@ vendorPortalRouter.get('/daily/:token', rateLimit, async (req: Request, res: Res
         dispatch24hDate: str(payload.dispatch24hDate),
         generatedAt: str(payload.generatedAt),
         vendor: pickVendor(vendorRaw),
-        aiSummary: pickAiSummary(payload.aiSummaries?.[link.vendorCode]),
-        // 发布日报时的指标勾选集合；门户按它过滤渲染。老日报无该字段 → null → 前端全量渲染
-        enabledMetricKeys: Array.isArray(payload.enabledMetricKeys) ? strArr(payload.enabledMetricKeys) : null,
+        ranking,
+        aiSummary: pickAiSummary(payload.aiSummaries?.[linkCode] ?? payload.aiSummaries?.[str(vendorRaw.vendorCode)]),
+        enabledMetricKeys,
       },
     })
   } catch {

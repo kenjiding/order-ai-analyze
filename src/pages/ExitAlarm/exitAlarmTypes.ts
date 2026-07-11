@@ -49,3 +49,21 @@ export type WaybillSearchItem = {
   lastScanStationName?: string
   [key: string]: unknown
 }
+
+/** 立即推送后可导出的单票明细 */
+export type ExitAlarmExportWaybillRow = {
+  waybillNo: string
+  routeCode: string
+  deliveryTime: string
+  courier: string
+  courierCode: string
+  status: '达标' | '未达标'
+}
+
+/** 按供应商一张 sheet */
+export type ExitAlarmExportSheet = {
+  vendorName: string
+  metCount: number
+  unmetCount: number
+  rows: ExitAlarmExportWaybillRow[]
+}

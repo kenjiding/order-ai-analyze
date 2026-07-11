@@ -35,6 +35,7 @@ type ServerRow = {
   vendorName: string
   supplierNickname: string
   routeCode: string
+  routeCodeWhitelist: string
   webhookUrl: string
   signingSecret: string | null
   pushDescription: string | null
@@ -49,6 +50,7 @@ function toClient(row: ServerRow): SupplierPushConfig {
     vendorName: row.vendorName,
     supplierNickname: row.supplierNickname,
     routeCode: row.routeCode,
+    routeCodeWhitelist: row.routeCodeWhitelist ?? '',
     webhookUrl: row.webhookUrl,
     signingSecret: row.signingSecret ?? undefined,
     pushDescription: row.pushDescription,

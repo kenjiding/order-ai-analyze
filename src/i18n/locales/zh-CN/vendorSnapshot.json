@@ -33,7 +33,15 @@
     "noLongTail": "无长尾件",
     "alertVendors": "指标预警供应商",
     "vendorsNeedAttention": "{{count}} 家需关注",
-    "allMet": "全部达标"
+    "allMet": "全部达标",
+    "ranking": "综合分榜首",
+    "rankingRange": "榜首 {{top}} · 垫底 {{bottom}} · 中位 {{median}}"
+  },
+  "ranking": {
+    "rankPrefix": "第",
+    "scoreUnit": "分",
+    "sampleInsufficient": "样本不足，仅供参考",
+    "weightHint": "综合排名默认权重：客诉 28% / 24H派签 27% / 11点前出仓 20% / 未处理工单 15% / 长尾 10%。件数按千票密度归一；小样本不参与加权。"
   },
   "legend": {
     "title": "颜色说明",

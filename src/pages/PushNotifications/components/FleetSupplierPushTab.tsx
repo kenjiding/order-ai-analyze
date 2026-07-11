@@ -543,6 +543,19 @@ export function FleetSupplierPushTab({
         width: 120,
         ellipsis: true,
       },
+      {
+        title: '路由码白名单',
+        dataIndex: 'routeCodeWhitelist',
+        key: 'routeCodeWhitelist',
+        width: 140,
+        ellipsis: true,
+        render: (v: string) =>
+          v?.trim() ? (
+            v
+          ) : (
+            <span className="text-slate-400">—</span>
+          ),
+      },
       ...(secretsHidden ? [] : secretCols),
       {
         title: '供应商推送内容',
@@ -782,7 +795,7 @@ export function FleetSupplierPushTab({
                   ? '暂无供应商，可点击「添加供应商」「导入供应商配置」，或在「飞书推送」页维护含 webhook 的完整信息。'
                   : '暂无供应商，请点击「添加供应商」维护路由与 webhook。',
               }}
-              scroll={{ x: secretsHidden ? 720 : 1060 }}
+              scroll={{ x: secretsHidden ? 860 : 1200 }}
             />
           </div>
         </div>

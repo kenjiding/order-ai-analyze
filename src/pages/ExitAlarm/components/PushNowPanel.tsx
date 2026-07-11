@@ -1,5 +1,5 @@
 import { Button, DatePicker } from 'antd'
-import { Send } from 'lucide-react'
+import { Download, Send } from 'lucide-react'
 import dayjs from 'dayjs'
 import { useState } from 'react'
 import { useAppSettings } from '../../../context/AppSettingsContext'
@@ -7,11 +7,19 @@ import { useGlobalFilterStore } from '../../../stores/globalFilterStore'
 import type { SupplierPushConfig } from '../../../shared/supplierPushConfig/types'
 import { showToast } from '../../../utils/toast'
 import { triggerExitAlarmPushNow } from '../exitAlarmApi'
+import type { ExitAlarmExportSheet } from '../exitAlarmTypes'
+import { exportExitAlarmXlsx } from '../exportExitAlarmXlsx'
 
 type Props = {
   disabled?: boolean
   /** 已在「供应商配置」启用的可推送供应商列表 */
   configs: SupplierPushConfig[]
+}
+
+type ExportPayload = {
+  stationCode: string
+  date: string
+  sheets: ExitAlarmExportSheet[]
 }
 
 export function PushNowPanel({ disabled, configs }: Props) {
@@ -20,6 +28,7 @@ export function PushNowPanel({ disabled, configs }: Props) {
   const [date, setDate] = useState<dayjs.Dayjs | null>(dayjs().subtract(1, 'day'))
   const [loading, setLoading] = useState(false)
   const [lastResult, setLastResult] = useState<string | null>(null)
+  const [exportPayload, setExportPayload] = useState<ExportPayload | null>(null)
 
   const stationCode = selectedStations[0] ?? ''
   const pushDisabled = disabled || loading || configs.length === 0
@@ -39,6 +48,7 @@ export function PushNowPanel({ disabled, configs }: Props) {
     }
     setLoading(true)
     setLastResult(null)
+    setExportPayload(null)
     try {
       const res = await triggerExitAlarmPushNow(imileToken, {
         stationCode,
@@ -46,16 +56,34 @@ export function PushNowPanel({ disabled, configs }: Props) {
         configIds: configs.map((c) => c.id),
       })
       if (res.ok) {
-        const { pushedCount, totalConfigs, errors } = res.data
+        const { pushedCount, totalConfigs, errors, exportSheets } = res.data
         const msg = `成功推送 ${pushedCount}/${totalConfigs} 条`
         setLastResult(errors.length > 0 ? `${msg}，失败：${errors.join('；')}` : msg)
         showToast(msg, pushedCount > 0 ? 'success' : 'warning')
+        if (Array.isArray(exportSheets) && exportSheets.length > 0) {
+          setExportPayload({
+            stationCode: res.data.stationCode || stationCode,
+            date: res.data.date || date.format('YYYY-MM-DD'),
+            sheets: exportSheets,
+          })
+        }
       } else {
         setLastResult(`推送失败：${res.error}`)
         showToast(`推送失败: ${res.error}`, 'error')
       }
     } finally {
       setLoading(false)
+    }
+  }
+
+  const handleExport = () => {
+    if (!exportPayload) return
+    try {
+      exportExitAlarmXlsx(exportPayload)
+      showToast('导出成功', 'success')
+    } catch (err) {
+      const reason = err instanceof Error ? err.message : String(err)
+      showToast(`导出失败: ${reason}`, 'error')
     }
   }
 
@@ -67,7 +95,10 @@ export function PushNowPanel({ disabled, configs }: Props) {
           <div className="mb-1 text-xs text-slate-500">数据日期（按当前账号州/区域判断）</div>
           <DatePicker
             value={date}
-            onChange={setDate}
+            onChange={(d) => {
+              setDate(d)
+              setExportPayload(null)
+            }}
             placeholder="选择日期"
             disabledDate={(d) => d.isAfter(dayjs(), 'day')}
             disabled={disabled || loading}
@@ -80,8 +111,17 @@ export function PushNowPanel({ disabled, configs }: Props) {
           disabled={pushDisabled}
           onClick={() => void handlePush()}
         >
-          立即推送告警
+          立即检查并推送
         </Button>
+        {exportPayload && (
+          <Button
+            icon={<Download className="h-3.5 w-3.5" />}
+            disabled={disabled || loading}
+            onClick={handleExport}
+          >
+            导出数据
+          </Button>
+        )}
       </div>
       <div className="px-4 pb-3 text-xs text-slate-400">
         {stationCode

@@ -26,3 +26,303 @@
   background: #fff;
   padding: 0.625rem 0.75rem;
 }
+
+/* ── 综合排名奖牌徽章 ───────────────────────────────────── */
+/*
+ * 竞技奖牌美学：金属渐变 + 光晕 + 皇冠 + 分数 count-up。
+ * 徽章占据标题左侧原序号位，有排名时替换序号数字。
+ */
+.vendor-snapshot-page .vs-rank-badge {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  min-width: 2.25rem;
+  height: 2.375rem;
+  padding: 0.1rem 0.25rem 0.12rem;
+  border-radius: 0.8rem;
+  overflow: hidden;
+  line-height: 1;
+  color: #fff;
+  /* 默认深色（无排名池时不显示，占位用） */
+  background: #1e293b;
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 0.15),
+    inset 0 -1px 0 rgb(0 0 0 / 0.2),
+    0 2px 6px rgb(0 0 0 / 0.18);
+  animation: vs-badge-enter 0.5s cubic-bezier(0.34, 1.3, 0.64, 1) both;
+}
+
+@media (min-width: 640px) {
+  .vendor-snapshot-page .vs-rank-badge {
+  min-width: 2.5rem;
+  height: 2.625rem;
+    border-radius: 0.875rem;
+  }
+}
+
+/* Top3 高度稍高，容纳皇冠 icon */
+.vendor-snapshot-page .vs-rank-badge--crowned {
+  height: auto;
+  min-height: 2.75rem;
+  padding-top: 0.18rem;
+  padding-bottom: 0.2rem;
+  gap: 0.08rem;
+}
+
+@media (min-width: 640px) {
+  .vendor-snapshot-page .vs-rank-badge--crowned {
+    min-height: 3.1rem;
+  }
+}
+
+/* 皇冠 icon */
+.vendor-snapshot-page .vs-rank-badge__crown {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transform-origin: 50% 70%;
+  animation:
+    vs-crown-pop 0.65s cubic-bezier(0.34, 1.5, 0.64, 1) 0.12s both,
+    vs-crown-float 3.2s ease-in-out 0.85s infinite;
+}
+
+/* 名次数字 */
+.vendor-snapshot-page .vs-rank-badge__rank {
+  font-size: 1.2rem;
+  font-weight: 900;
+  letter-spacing: -0.05em;
+  line-height: 1;
+  animation: vs-num-enter 0.45s cubic-bezier(0.22, 1, 0.36, 1) 0.16s both;
+}
+
+.vendor-snapshot-page .vs-rank-badge--crowned .vs-rank-badge__rank {
+  font-size: 1.05rem;
+}
+
+@media (min-width: 640px) {
+  .vendor-snapshot-page .vs-rank-badge__rank { font-size: 1.35rem; }
+  .vendor-snapshot-page .vs-rank-badge--crowned .vs-rank-badge__rank { font-size: 1.15rem; }
+}
+
+/* ── 金牌：琥珀金属渐变 + 流光 + 金色光晕 ────────────── */
+.vendor-snapshot-page .vs-rank-badge--gold {
+  background:
+    linear-gradient(160deg, #fde68a 0%, #f59e0b 38%, #b45309 72%, #78350f 100%);
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 0.42),
+    inset 0 -1px 0 rgb(0 0 0 / 0.28),
+    0 0 0 1px rgb(251 191 36 / 0.35),
+    0 0 18px 2px rgb(245 158 11 / 0.5),
+    0 3px 8px rgb(0 0 0 / 0.22);
+}
+
+/* 流光扫过效果 */
+.vendor-snapshot-page .vs-rank-badge--gold::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: linear-gradient(
+    108deg,
+    transparent 28%,
+    rgb(255 255 255 / 0.45) 46%,
+    rgb(255 255 255 / 0.22) 52%,
+    transparent 70%
+  );
+  animation: vs-shimmer 2.6s ease-in-out 1s infinite;
+  pointer-events: none;
+}
+
+.vendor-snapshot-page .vs-rank-badge--gold .vs-rank-badge__crown {
+  color: rgb(255 255 255 / 0.95);
+  animation:
+    vs-crown-pop 0.7s cubic-bezier(0.34, 1.6, 0.64, 1) 0.1s both,
+    vs-crown-float 3s ease-in-out 0.88s infinite,
+    vs-crown-glow 2.6s ease-in-out 0.9s infinite;
+}
+
+/* ── 银牌：铂金属渐变 + 冷灰光晕 ───────────────────────── */
+.vendor-snapshot-page .vs-rank-badge--silver {
+  background:
+    linear-gradient(160deg, #e2e8f0 0%, #94a3b8 40%, #475569 72%, #1e293b 100%);
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 0.38),
+    inset 0 -1px 0 rgb(0 0 0 / 0.25),
+    0 0 0 1px rgb(148 163 184 / 0.28),
+    0 0 14px 1px rgb(100 116 139 / 0.42),
+    0 3px 8px rgb(0 0 0 / 0.2);
+}
+
+.vendor-snapshot-page .vs-rank-badge--silver::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: linear-gradient(
+    108deg,
+    transparent 28%,
+    rgb(255 255 255 / 0.28) 46%,
+    rgb(255 255 255 / 0.14) 52%,
+    transparent 70%
+  );
+  animation: vs-shimmer 3.1s ease-in-out 1.5s infinite;
+  pointer-events: none;
+}
+
+.vendor-snapshot-page .vs-rank-badge--silver .vs-rank-badge__crown {
+  color: rgb(226 232 240 / 0.9);
+  animation:
+    vs-crown-pop 0.65s cubic-bezier(0.34, 1.4, 0.64, 1) 0.1s both,
+    vs-crown-float 3.4s ease-in-out 0.9s infinite;
+}
+
+/* ── 铜牌：铜红金属渐变 + 暖橙光晕 ─────────────────────── */
+.vendor-snapshot-page .vs-rank-badge--bronze {
+  background:
+    linear-gradient(160deg, #fdba74 0%, #ea580c 42%, #c2410c 70%, #7c2d12 100%);
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 0.3),
+    inset 0 -1px 0 rgb(0 0 0 / 0.26),
+    0 0 0 1px rgb(251 146 60 / 0.28),
+    0 0 14px 1px rgb(194 65 12 / 0.42),
+    0 3px 8px rgb(0 0 0 / 0.22);
+}
+
+.vendor-snapshot-page .vs-rank-badge--bronze::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: linear-gradient(
+    108deg,
+    transparent 28%,
+    rgb(255 255 255 / 0.3) 46%,
+    rgb(255 255 255 / 0.14) 52%,
+    transparent 70%
+  );
+  animation: vs-shimmer 3.6s ease-in-out 2s infinite;
+  pointer-events: none;
+}
+
+.vendor-snapshot-page .vs-rank-badge--bronze .vs-rank-badge__crown {
+  color: rgb(254 215 170 / 0.92);
+  animation:
+    vs-crown-pop 0.65s cubic-bezier(0.34, 1.4, 0.64, 1) 0.1s both,
+    vs-crown-float 3.6s ease-in-out 0.92s infinite;
+}
+
+/* ── 强势（前三分之一）：祖母绿 ─────────────────────────── */
+.vendor-snapshot-page .vs-rank-badge--strong {
+  background: linear-gradient(160deg, #34d399 0%, #059669 50%, #064e3b 100%);
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 0.2),
+    0 0 12px 1px rgb(5 150 105 / 0.38),
+    0 2px 6px rgb(0 0 0 / 0.18);
+}
+
+/* ── 中段：钴蓝 ─────────────────────────────────────────── */
+.vendor-snapshot-page .vs-rank-badge--mid {
+  background: linear-gradient(160deg, #38bdf8 0%, #0284c7 50%, #0c4a6e 100%);
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 0.2),
+    0 0 12px 1px rgb(2 132 199 / 0.38),
+    0 2px 6px rgb(0 0 0 / 0.18);
+}
+
+/* ── 落后（后三分之一）：玫红 ──────────────────────────── */
+.vendor-snapshot-page .vs-rank-badge--weak {
+  background: linear-gradient(160deg, #fb7185 0%, #e11d48 50%, #881337 100%);
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 0.2),
+    0 0 12px 1px rgb(225 29 72 / 0.38),
+    0 2px 6px rgb(0 0 0 / 0.18);
+}
+
+/* ── 样本不足 ────────────────────────────────────────────── */
+.vendor-snapshot-page .vs-rank-badge--muted {
+  background: linear-gradient(160deg, #94a3b8 0%, #475569 100%);
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 0.12),
+    0 2px 6px rgb(0 0 0 / 0.14);
+  opacity: 0.75;
+}
+
+/* ── Keyframes ──────────────────────────────────────────── */
+
+/* 徽章入场：弹性缩放 + 轻微上移 */
+@keyframes vs-badge-enter {
+  0% {
+    opacity: 0;
+    transform: scale(0.55) translateY(4px);
+  }
+  70% {
+    opacity: 1;
+    transform: scale(1.06) translateY(-1px);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+/* 皇冠弹入 */
+@keyframes vs-crown-pop {
+  0% {
+    opacity: 0;
+    transform: scale(0.3) rotate(-25deg) translateY(4px);
+  }
+  65% {
+    opacity: 1;
+    transform: scale(1.18) rotate(8deg) translateY(-1px);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1) rotate(0deg) translateY(0);
+  }
+}
+
+/* 皇冠常驻浮动 */
+@keyframes vs-crown-float {
+  0%, 100% { transform: translateY(0) rotate(-4deg); }
+  50%       { transform: translateY(-2px) rotate(4deg); }
+}
+
+/* 金色皇冠脉冲光晕（仅金牌） */
+@keyframes vs-crown-glow {
+  0%, 100% { filter: drop-shadow(0 0 0 rgb(251 191 36 / 0)); }
+  50%       { filter: drop-shadow(0 0 5px rgb(251 191 36 / 0.9)); }
+}
+
+/* 数字由下淡入 */
+@keyframes vs-num-enter {
+  from {
+    opacity: 0;
+    transform: translateY(5px) scale(0.92);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+/* 流光横扫（Top3 shimmer） */
+@keyframes vs-shimmer {
+  0%        { transform: translateX(-130%); }
+  45%, 100% { transform: translateX(130%); }
+}
+
+/* ── 无障碍：减少动效 ─────────────────────────────────── */
+@media (prefers-reduced-motion: reduce) {
+  .vendor-snapshot-page .vs-rank-badge,
+  .vendor-snapshot-page .vs-rank-badge__crown,
+  .vendor-snapshot-page .vs-rank-badge__rank,
+  .vendor-snapshot-page .vs-rank-badge__score,
+  .vendor-snapshot-page .vs-rank-badge--gold::after,
+  .vendor-snapshot-page .vs-rank-badge--silver::after,
+  .vendor-snapshot-page .vs-rank-badge--bronze::after {
+    animation: none !important;
+  }
+}

@@ -33,7 +33,15 @@
     "noLongTail": "No long-tail items",
     "alertVendors": "Vendors with alerts",
     "vendorsNeedAttention": "{{count}} need attention",
-    "allMet": "All targets met"
+    "allMet": "All targets met",
+    "ranking": "Top composite score",
+    "rankingRange": "Top {{top}} · Bottom {{bottom}} · Median {{median}}"
+  },
+  "ranking": {
+    "rankPrefix": "#",
+    "scoreUnit": "pts",
+    "sampleInsufficient": "Insufficient sample — for reference only",
+    "weightHint": "Default ranking weights: complaints 28% / 24h dispatch 27% / pre-11am exit 20% / open tickets 15% / long-tail 10%. Counts use per-1k density; small samples are excluded from the weighted score."
   },
   "legend": {
     "title": "Color key",

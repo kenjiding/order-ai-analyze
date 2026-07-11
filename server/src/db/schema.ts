@@ -161,6 +161,8 @@ export const fleetSupplierPushConfigs = pgTable(
     /** 推送展示用昵称，可与 iMile 供应商名称不同 */
     supplierNickname: varchar('supplier_nickname', { length: 255 }).notNull().default(''),
     routeCode: varchar('route_code', { length: 1024 }).notNull().default(''),
+    /** 路由码白名单（可选）；多码分隔格式与 routeCode 一致 */
+    routeCodeWhitelist: varchar('route_code_whitelist', { length: 1024 }).notNull().default(''),
     webhookUrl: varchar('webhook_url', { length: 512 }).notNull().default(''),
     signingSecret: varchar('signing_secret', { length: 255 }),
     pushDescription: varchar('push_description', { length: 512 }),
@@ -322,6 +324,53 @@ export const chaseDispatchSchedules = pgTable(
   (table) => [uniqueIndex('chase_dispatch_schedules_user_id_unique').on(table.userId)],
 )
 
+/** 工单推送：定时推送配置（每个账号最多一条，userId 唯一），复用出仓告警/催派推送的供应商配置 catalog */
+export const workOrderPushSchedules = pgTable(
+  'work_order_push_schedules',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    /** 拥有该配置的账号；时区按该账号的 regionCode 判断，未设置兜底阿德莱德 */
+    userId: uuid('user_id').references(() => users.id, { onDelete: 'cascade' }),
+    /** 每天检查的推送时间点列表 [{id, time}]，time 格式 HH:mm（按拥有者账号所属州本地时间）；工单出现时间不可预测，不设星期筛选 */
+    pushTimes: jsonb('push_times').notNull().default([]),
+    isEnabled: boolean('is_enabled').notNull().default(true),
+    /** 定时拉数使用的 iMile token（保存配置时从全局设置同步，不对外返回） */
+    imileToken: varchar('imile_token', { length: 2048 }),
+    updatedBy: uuid('updated_by').references(() => users.id, { onDelete: 'set null' }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [uniqueIndex('work_order_push_schedules_user_id_unique').on(table.userId)],
+)
+
+/**
+ * 24小时派签告警：定时推送配置（每个账号最多一条，userId 唯一）。
+ * 从「供应商数据分析」的 24H 派签率指标封装复用出来的独立告警，配置形状与出仓告警一致。
+ */
+export const dispatchAlarmSchedules = pgTable(
+  'dispatch_alarm_schedules',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    /** 拥有该配置的账号；时区按该账号的 regionCode 判断，未设置兜底阿德莱德 */
+    userId: uuid('user_id').references(() => users.id, { onDelete: 'cascade' }),
+    /** 推送星期，1=周一…7=周日，存为 JSONB 数组 */
+    weekdays: jsonb('weekdays').notNull().default([]),
+    /** 推送时间点列表 [{id, time}]，time 格式 HH:mm（按拥有者账号所属州本地时间） */
+    pushTimes: jsonb('push_times').notNull().default([]),
+    isEnabled: boolean('is_enabled').notNull().default(true),
+    /** 定时推送使用的站点编码（lastScanStationCode） */
+    stationCode: varchar('station_code', { length: 64 }).notNull().default(''),
+    /** 24H 派签率预警阈值（百分比整数）：低于该值的供应商在卡片中标红并列出未达标运单号 */
+    alertThresholdPct: integer('alert_threshold_pct').notNull().default(92),
+    /** 定时拉数使用的 iMile token（保存配置时从全局设置同步，不对外返回） */
+    imileToken: varchar('imile_token', { length: 2048 }),
+    updatedBy: uuid('updated_by').references(() => users.id, { onDelete: 'set null' }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [uniqueIndex('dispatch_alarm_schedules_user_id_unique').on(table.userId)],
+)
+
 /**
  * 站点日到件 waybillNo 索引（inbound/query 预取，供出仓告警、供应商分析等共享）。
  * 主键 (station_code, data_date)；单站单日约 1.5万–6万 条，jsonb 存字符串数组。
@@ -339,6 +388,48 @@ export const stationInboundWaybillIndex = pgTable(
   },
   (table) => [
     uniqueIndex('station_inbound_waybill_index_station_date').on(table.stationCode, table.dataDate),
+  ],
+)
+
+/** 出勤工作时间记录：人员名单（按 regionCode 隔离，同州内姓名唯一；zktEmpCode 预留给后续 ZKT 考勤 API 关联匹配） */
+export const attendanceWorkers = pgTable(
+  'attendance_workers',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    regionCode: varchar('region_code', { length: 16 }).notNull(),
+    name: varchar('name', { length: 128 }).notNull(),
+    zktEmpCode: varchar('zkt_emp_code', { length: 64 }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    uniqueIndex('attendance_workers_region_name_unique').on(table.regionCode, table.name),
+    index('attendance_workers_region_idx').on(table.regionCode),
+  ],
+)
+
+/** 出勤工作时间记录：单人单次工序/岗位工作时长（工序 processCategory + 班次 shift 对应表单的级联选择） */
+export const attendanceWorkRecords = pgTable(
+  'attendance_work_records',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    regionCode: varchar('region_code', { length: 16 }).notNull(),
+    workerId: uuid('worker_id').notNull().references(() => attendanceWorkers.id, { onDelete: 'restrict' }),
+    processCategory: varchar('process_category', { length: 32 }).notNull(),
+    shift: varchar('shift', { length: 16 }).notNull(),
+    zoneCode: varchar('zone_code', { length: 64 }),
+    startTime: timestamp('start_time', { withTimezone: true }).notNull(),
+    endTime: timestamp('end_time', { withTimezone: true }).notNull(),
+    notes: text('notes'),
+    /** 记录来源：manual 手工录入 | zkt_sync 预留给后续 ZKT 考勤 API 同步 */
+    source: varchar('source', { length: 16 }).notNull().default('manual'),
+    createdBy: uuid('created_by').references(() => users.id, { onDelete: 'set null' }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    index('attendance_work_records_region_start_idx').on(table.regionCode, table.startTime),
+    index('attendance_work_records_worker_idx').on(table.workerId),
   ],
 )
 
@@ -368,3 +459,11 @@ export type ChaseDispatchSchedule = typeof chaseDispatchSchedules.$inferSelect
 export type NewChaseDispatchSchedule = typeof chaseDispatchSchedules.$inferInsert
 export type StationInboundWaybillIndex = typeof stationInboundWaybillIndex.$inferSelect
 export type NewStationInboundWaybillIndex = typeof stationInboundWaybillIndex.$inferInsert
+export type WorkOrderPushSchedule = typeof workOrderPushSchedules.$inferSelect
+export type NewWorkOrderPushSchedule = typeof workOrderPushSchedules.$inferInsert
+export type DispatchAlarmSchedule = typeof dispatchAlarmSchedules.$inferSelect
+export type NewDispatchAlarmSchedule = typeof dispatchAlarmSchedules.$inferInsert
+export type AttendanceWorker = typeof attendanceWorkers.$inferSelect
+export type NewAttendanceWorker = typeof attendanceWorkers.$inferInsert
+export type AttendanceWorkRecord = typeof attendanceWorkRecords.$inferSelect
+export type NewAttendanceWorkRecord = typeof attendanceWorkRecords.$inferInsert

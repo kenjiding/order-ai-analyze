@@ -1,46 +1,20 @@
-import { useEffect, useRef } from 'react'
 import { Select } from 'antd'
 import { MapPin } from 'lucide-react'
-import { useAppSettings } from '../../context/AppSettingsContext'
-import { fetchStations } from '../../pages/VendorAnalysis/vendorAnalysisApi'
 import { useGlobalFilterStore } from '../../stores/globalFilterStore'
-import { showToast } from '../../utils/toast'
-
-const STORAGE_KEY = 'global_selected_stations_v1'
+import {
+  GLOBAL_SELECTED_STATIONS_KEY,
+  useGlobalStationBootstrap,
+} from './useGlobalStationBootstrap'
 
 export function GlobalStationSelector() {
-  const { imileToken } = useAppSettings()
-  const { selectedStations, stations, stationsLoading, setSelectedStations, setStations, setStationsLoading } =
-    useGlobalFilterStore()
-  const loadedRef = useRef(false)
-
-  useEffect(() => {
-    try {
-      const raw = localStorage.getItem(STORAGE_KEY)
-      if (raw) {
-        const parsed = JSON.parse(raw) as unknown
-        if (Array.isArray(parsed) && parsed.length > 0) setSelectedStations(parsed as string[])
-      }
-    } catch { /* ignore */ }
-  }, [setSelectedStations])
-
-  useEffect(() => {
-    if (loadedRef.current || !imileToken) return
-    loadedRef.current = true
-    setStationsLoading(true)
-    void fetchStations(imileToken).then((res) => {
-      setStationsLoading(false)
-      if (res.ok) setStations(res.data)
-      else showToast(`站点加载失败: ${res.error}`, 'error')
-    })
-  }, [imileToken, setStations, setStationsLoading])
+  useGlobalStationBootstrap()
+  const { selectedStations, stations, stationsLoading, setSelectedStations } = useGlobalFilterStore()
 
   const handleChange = (value: string | undefined) => {
-    console.log('[GlobalStationSelector] 切换站点 stationCode =', value)
     const next = value ? [value] : []
     setSelectedStations(next)
-    if (next.length > 0) localStorage.setItem(STORAGE_KEY, JSON.stringify(next))
-    else localStorage.removeItem(STORAGE_KEY)
+    if (next.length > 0) localStorage.setItem(GLOBAL_SELECTED_STATIONS_KEY, JSON.stringify(next))
+    else localStorage.removeItem(GLOBAL_SELECTED_STATIONS_KEY)
   }
 
   return (

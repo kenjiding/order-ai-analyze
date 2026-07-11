@@ -10,6 +10,7 @@ export type SupplierPushConfigBody = {
   vendorName?: unknown
   supplierNickname?: unknown
   routeCode?: unknown
+  routeCodeWhitelist?: unknown
   webhookUrl?: unknown
   signingSecret?: unknown
   pushDescription?: unknown
@@ -32,6 +33,7 @@ export function extractSupplierPushConfigFields(body: SupplierPushConfigBody) {
     vendorName: typeof body.vendorName === 'string' ? body.vendorName.trim() : '',
     supplierNickname: typeof body.supplierNickname === 'string' ? body.supplierNickname.trim() : '',
     routeCode: typeof body.routeCode === 'string' ? body.routeCode : '',
+    routeCodeWhitelist: typeof body.routeCodeWhitelist === 'string' ? body.routeCodeWhitelist : '',
     webhookUrl: typeof body.webhookUrl === 'string' ? body.webhookUrl.trim() : '',
     signingSecret:
       typeof body.signingSecret === 'string' && body.signingSecret.trim()
@@ -83,6 +85,19 @@ export async function listSupplierPushConfigs(regionCode?: string): Promise<Flee
         .orderBy(asc(schema.fleetSupplierPushConfigs.createdAt))
     : await query.orderBy(asc(schema.fleetSupplierPushConfigs.createdAt))
   return rows
+}
+
+/** 解析路由码字符串：支持空格、换行、英文逗号、中文逗号分隔 */
+export function parseRouteCodes(raw: string): string[] {
+  return raw
+    .split(/[\s,，]+/)
+    .map((r) => r.trim())
+    .filter(Boolean)
+}
+
+/** 路由码白名单：命中的路由码代表要从该供应商统计中剔除的数据 */
+export function parseRouteCodeWhitelistSet(routeCodeWhitelist: string): Set<string> {
+  return new Set(parseRouteCodes(routeCodeWhitelist))
 }
 
 export function parsePushConfigIds(raw: unknown): string[] {

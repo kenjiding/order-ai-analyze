@@ -17,6 +17,7 @@ function baseInput(overrides: Partial<VendorAnalyzeAggregateInput> = {}): Vendor
     stationCodes: ['S1'],
     tz: AUS_TZ.Adelaide,
     nowMs: new Date('2024-07-05T00:00:00Z').getTime(),
+    routeCodeWhitelistByVendor: new Map(),
     ...overrides,
   }
 }
@@ -82,4 +83,33 @@ test('供应商级：客诉率按站点过滤、11点前/未处理/长尾/归班
   assert.deepEqual(driver.before11UnmetWaybillNos, ['P2'])
   assert.equal(driver.longTailCount, 1)
   assert.equal(driver.returnWarningCount, 1)
+})
+
+test('路由码白名单：命中白名单的运单从运单量/24H派签/11点前统计中整体剔除', () => {
+  const input = baseInput({
+    waybills: [
+      { courierVendorCode: 'V1', consigneeRouteCode: 'R1' }, // 命中白名单，剔除
+      { courierVendorCode: 'V1', consigneeRouteCode: 'R2' },
+    ],
+    driverYesterdayWaybills: [
+      { waybillNo: 'P1', courierCode: 'C1', courierVendorCode: 'V1', courier: 'Cai', consigneeRouteCode: 'R1', before11Exit: false }, // 命中白名单，剔除
+      { waybillNo: 'P2', courierCode: 'C1', courierVendorCode: 'V1', courier: 'Cai', consigneeRouteCode: 'R2', before11Exit: false },
+    ],
+    driverDayBeforeWaybills: [
+      { waybillNo: 'D1', courierCode: 'C1', courierVendorCode: 'V1', lastScanSiteCode: 'S1', consigneeRouteCode: 'R1', deliveryTime: '2024-06-24 10:00:00', signDate: '2024-06-24 12:00:00' }, // 命中白名单，剔除
+      { waybillNo: 'D2', courierCode: 'C1', courierVendorCode: 'V1', lastScanSiteCode: 'S1', consigneeRouteCode: 'R2', deliveryTime: '2024-06-24 10:00:00', signDate: '2024-06-24 12:00:00' },
+    ],
+    routeCodeWhitelistByVendor: new Map([['V1', new Set(['R1'])]]),
+  })
+  const [v] = aggregateVendorAnalysis(input)
+
+  assert.equal(v.waybillCount, 1)
+  assert.equal(v.dispatch24hTotal, 1)
+  assert.deepEqual(v.before11UnmetWaybillNos, ['P2'])
+
+  const driver = v.drivers.find((d) => d.courierCode === 'C1')
+  assert.ok(driver)
+  assert.equal(driver.ofdCount, 1)
+  assert.deepEqual(driver.ofdWaybillNos, ['P2'])
+  assert.equal(driver.totalDispatchCount, 1)
 })

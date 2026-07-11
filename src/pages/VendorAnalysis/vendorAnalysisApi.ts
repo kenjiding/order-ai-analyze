@@ -9,6 +9,7 @@ import {
 } from '../../api/jobsClient'
 import type { StationOption, VendorOption } from './vendorAnalysisTypes'
 import type { VendorAnalyzeSummary } from './vendorAnalysisSummary'
+import type { VendorRankingResult } from '../../../shared/vendorAnalysis/rankingScore'
 
 export { getJobById, listJobs, cancelJobApi, deleteJobApi }
 export type { JobStatus, PublicJob }
@@ -234,8 +235,10 @@ export type VendorPortalDaily = {
   dispatch24hDate: string
   generatedAt: string
   vendor: VendorSnapshotVendor
+  /** 相对发布日报勾选池的综合排名；仅本供应商切片 */
+  ranking: VendorRankingResult | null
   aiSummary: VendorSnapshotAiSummaries[string] | null
-  /** 发布日报时的指标勾选集合；老日报为 null → 全量渲染 */
+  /** 发布日报时的指标勾选集合；缺省为 null → 全量渲染 */
   enabledMetricKeys: string[] | null
 }
 

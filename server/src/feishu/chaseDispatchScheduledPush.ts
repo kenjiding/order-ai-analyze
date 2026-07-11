@@ -7,11 +7,13 @@ import { envFirst } from '../imile/shared'
 import { getRegionNow } from '../imile/inboundWaybillIndex'
 import { resolveRegionTz, type AusTz } from '../imile/ausTimezone'
 import { listPushableConfigsForScope } from '../supplierConfigScopes'
-import { supplierDisplayName } from '../supplierPushConfigs'
+import { parseRouteCodeWhitelistSet, supplierDisplayName } from '../supplierPushConfigs'
 import {
   computeStagnationRange,
+  fetchStagnantWaybillRouteCodes,
   fetchStagnantWaybills,
   isStagnationBucket,
+  type StagnantWaybillRow,
   type StagnationBucket,
 } from '../imile/stagnantWaybills'
 import { aggregateVendorStagnation, type BucketResult } from '../imile/chaseDispatchAggregate'
@@ -117,11 +119,41 @@ export async function executeChaseDispatchPush(params: {
     bucketResults.push({ bucket, rows: res.data })
   }
 
+  // 只有存在非空路由码白名单的供应商配置时，才额外查询运单路由码（避免无谓的接口调用）
+  const whitelistByConfigId = new Map<string, Set<string>>()
+  for (const config of configs) {
+    const whitelist = parseRouteCodeWhitelistSet(config.routeCodeWhitelist)
+    if (whitelist.size > 0) whitelistByConfigId.set(config.id, whitelist)
+  }
+
+  let routeCodeByWaybillNo: Map<string, string> | null = null
+  if (whitelistByConfigId.size > 0) {
+    const allWaybillNos = bucketResults.flatMap((b) => b.rows.map((r) => r.waybillNo ?? ''))
+    const routeCodeResult = await fetchStagnantWaybillRouteCodes(token, allWaybillNos)
+    if (!routeCodeResult.ok) {
+      console.error(`${label} 路由码白名单过滤查询失败: ${routeCodeResult.message}`)
+      return { error: `路由码白名单过滤查询失败: ${routeCodeResult.message}` }
+    }
+    routeCodeByWaybillNo = routeCodeResult.data
+  }
+
+  const excludeWhitelistedRows = (rows: StagnantWaybillRow[], whitelist: Set<string>): StagnantWaybillRow[] => {
+    if (!routeCodeByWaybillNo) return rows
+    return rows.filter((row) => {
+      const routeCode = routeCodeByWaybillNo!.get((row.waybillNo ?? '').trim()) ?? ''
+      return !whitelist.has(routeCode)
+    })
+  }
+
   let pushedCount = 0
   const errors: string[] = []
 
   for (const config of configs) {
-    const summary = aggregateVendorStagnation(bucketResults, config.vendorCode)
+    const whitelist = whitelistByConfigId.get(config.id)
+    const configBucketResults = whitelist
+      ? bucketResults.map((b) => ({ bucket: b.bucket, rows: excludeWhitelistedRows(b.rows, whitelist) }))
+      : bucketResults
+    const summary = aggregateVendorStagnation(configBucketResults, config.vendorCode)
     const card = buildChaseDispatchCard({
       vendorName: supplierDisplayName(config),
       baseDate,
