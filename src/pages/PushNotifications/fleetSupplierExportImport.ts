@@ -35,6 +35,7 @@ export function fleetSupplierRowFromSheetRecord(row: Record<string, unknown>): R
       '路由码白名单',
       'route_code_whitelist',
     ),
+    stationCode: pick('stationCode', '站点编码', 'station_code'),
     webhookUrl: pick('webhookUrl', '飞书 webhook', 'webhook'),
     signingSecret: pick('signingSecret', '密钥', '飞书 webhook 密钥', 'signing_secret'),
     pushContent: pick('pushContent', '供应商推送内容', '推送内容'),
@@ -120,6 +121,7 @@ export function fleetSuppliersToExportRows(
       supplierNickname: s.supplierNickname,
       routeCode: s.routeCode,
       routeCodeWhitelist: s.routeCodeWhitelist,
+      stationCode: s.stationCode,
       pushContent: s.pushContent,
     }
     if (options.includeSecrets) {
@@ -205,6 +207,7 @@ function parseSheetRows(
       supplierName: cellToStr(mapped.supplierName),
       routeCode: cellToStr(mapped.routeCode),
       routeCodeWhitelist: cellToStr(mapped.routeCodeWhitelist),
+      stationCode: cellToStr(mapped.stationCode),
       webhookUrl: cellToStr(mapped.webhookUrl),
       signingSecret: cellToStr(mapped.signingSecret),
       pushContent: cellToStr(mapped.pushContent),

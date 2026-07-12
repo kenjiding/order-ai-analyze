@@ -6,6 +6,7 @@ import { parseFleetRouteCodes } from '../fleetRouteCodeParse'
 import type { FleetSupplierConfig, FleetSupplierConfigDraft } from '../fleetSupplierPushTypes'
 import { FEISHU_WEBHOOK_PREFIX } from '../feishuPushTypes'
 import { FeishuLarkMdEditor } from '../../../components/FeishuLarkMdEditor'
+import { useGlobalFilterStore } from '../../../stores/globalFilterStore'
 
 type VendorOption = {
   vendorCode: string
@@ -17,6 +18,7 @@ type FormValues = {
   supplierNickname: string
   routeCode: string
   routeCodeWhitelist: string
+  stationCode: string
   webhookUrl: string
   signingSecret?: string
   pushContent: string
@@ -44,6 +46,8 @@ export function FleetSupplierEditModal({
   ...rest
 }: Props) {
   const [form] = Form.useForm<FormValues>()
+  const stations = useGlobalFilterStore((s) => s.stations)
+  const stationsLoading = useGlobalFilterStore((s) => s.stationsLoading)
 
   useEffect(() => {
     if (!open) return
@@ -53,6 +57,7 @@ export function FleetSupplierEditModal({
         supplierNickname: editing.supplierNickname,
         routeCode: editing.routeCode,
         routeCodeWhitelist: editing.routeCodeWhitelist ?? '',
+        stationCode: editing.stationCode ?? '',
         pushContent: editing.pushContent,
       }
       if (secretsVisibility === 'full') {
@@ -70,6 +75,7 @@ export function FleetSupplierEditModal({
         supplierNickname: '',
         routeCode: '',
         routeCodeWhitelist: '',
+        stationCode: '',
         webhookUrl: '',
         signingSecret: '',
         pushContent: '',
@@ -80,6 +86,7 @@ export function FleetSupplierEditModal({
         supplierNickname: '',
         routeCode: '',
         routeCodeWhitelist: '',
+        stationCode: '',
         pushContent: '',
       })
     }
@@ -96,6 +103,7 @@ export function FleetSupplierEditModal({
         routeCode: typeof values.routeCode === 'string' ? values.routeCode.trim() : '',
         routeCodeWhitelist:
           typeof values.routeCodeWhitelist === 'string' ? values.routeCodeWhitelist.trim() : '',
+        stationCode: typeof values.stationCode === 'string' ? values.stationCode.trim() : '',
         pushDescription: editing?.pushDescription ?? null,
         pushContent: typeof values.pushContent === 'string' ? values.pushContent : '',
         webhookUrl: editing?.webhookUrl?.trim() ?? '',
@@ -217,6 +225,23 @@ export function FleetSupplierEditModal({
             </Form.Item>
           </>
         ) : null}
+
+        <Form.Item
+          label="所属站点编码"
+          name="stationCode"
+          tooltip="该供应商固定归属的站点，供司机地图等按站点轮询的功能使用；可选"
+        >
+          <Select
+            allowClear
+            showSearch
+            loading={stationsLoading}
+            placeholder="选择站点"
+            filterOption={(input, opt) =>
+              (opt?.label ?? '').toLowerCase().includes(input.toLowerCase())
+            }
+            options={stations.map((s) => ({ label: s.label, value: s.value }))}
+          />
+        </Form.Item>
 
         <Form.Item
           label="供应商推送内容"

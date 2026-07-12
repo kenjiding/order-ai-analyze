@@ -2,7 +2,10 @@ import { requestImileApi } from './client'
 import { buildImilePortalHeaders, IMILE_OC_INTERCEPT_PORTAL } from './portal'
 import { envFirstOr, normalizeImileToken } from './shared'
 import { resolveRegionTz } from './ausTimezone'
-import { fetchWaybillDetailsByInboundIndex } from './inboundWaybillIndex'
+import {
+  listStationDayWaybillRows,
+  syncStationDayWaybillsIncremental,
+} from './stationDayWaybillSync'
 
 const DEFAULT_RETURN_WARNING_URL =
   'https://oc.imile.com/saastms/v1/report/stock/daWaybillInventory'
@@ -38,20 +41,25 @@ export type DriverReturnRow = {
 
 type ApiError = { ok: false; status: number; message: string; rawText?: string }
 
-/** 24小时派签率运单查询：与 11 点前出仓率一致，先取到件 waybillNo 索引，再分批 searchWaybill */
+/**
+ * 24小时派签率运单查询：增量同步站点日缓存后读库。
+ * 已达标 / 已超 24H 窗口的单号不会再次 searchWaybill。
+ */
 export async function fetchDriverWaybills(
   token: string,
   params: { stationCode: string; dateStr: string; regionCode?: string | null },
 ): Promise<{ ok: true; data: DriverWaybillRow[] } | ApiError> {
-  const result = await fetchWaybillDetailsByInboundIndex({
+  const tz = resolveRegionTz(params.regionCode)
+  const synced = await syncStationDayWaybillsIncremental({
     token,
     stationCode: params.stationCode,
-    dateStr: params.dateStr,
+    dataDate: params.dateStr,
+    tz,
     label: '24H派签率运单查询',
-    tz: resolveRegionTz(params.regionCode),
   })
-  if (!result.ok) return { ok: false, status: result.status ?? 502, message: result.message }
-  return { ok: true, data: result.records as DriverWaybillRow[] }
+  if (!synced.ok) return { ok: false, status: 502, message: synced.message }
+  const rows = await listStationDayWaybillRows(params.stationCode, params.dateStr)
+  return { ok: true, data: rows as DriverWaybillRow[] }
 }
 
 export async function fetchDriverReturnWarning(

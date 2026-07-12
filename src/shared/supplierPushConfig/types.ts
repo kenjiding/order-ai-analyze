@@ -13,6 +13,8 @@ export type SupplierPushConfig = {
   routeCode: string
   /** 路由码白名单（可选）；多码分隔格式与 routeCode 一致 */
   routeCodeWhitelist: string
+  /** 该供应商固定归属的站点编码（可选）；司机地图等按站点轮询的业务据此定位站点 */
+  stationCode: string
   webhookUrl: string
   signingSecret?: string
   pushDescription: string | null

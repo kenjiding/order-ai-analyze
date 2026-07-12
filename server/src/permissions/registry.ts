@@ -128,6 +128,14 @@ export const PERMISSION_REGISTRY: PermissionDefinition[] = [
     menuKey: 'exit-alarm',
     sortOrder: 391,
   },
+  {
+    key: 'btn:vendor-analysis:driver-map',
+    type: 'button',
+    label: '司机地图',
+    description: '在供应商数据日报页面查看司机地图动态轨迹模块',
+    menuKey: 'vendor-analysis',
+    sortOrder: 382,
+  },
 ]
 
 /** 可分配给普通用户的权限；超级管理员通过 role 拥有全部能力，不通过 permission 分配用户管理 */

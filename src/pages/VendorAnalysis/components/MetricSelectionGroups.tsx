@@ -69,6 +69,7 @@ function MetricGroup({
 export function MetricSelectionGroups({ selection, onChange }: Props) {
   const vendorMetrics = VENDOR_ANALYSIS_METRICS.filter((m) => m.category === 'vendor')
   const driverMetrics = VENDOR_ANALYSIS_METRICS.filter((m) => m.category === 'driver')
+  const moduleMetrics = VENDOR_ANALYSIS_METRICS.filter((m) => m.category === 'module')
   const selectionSet = useMemo(() => new Set(selection), [selection])
 
   const toggleMetric = (key: string, next: boolean) => {
@@ -92,6 +93,14 @@ export function MetricSelectionGroups({ selection, onChange }: Props) {
         selectionSet={selectionSet}
         onToggleMetric={toggleMetric}
       />
+      {moduleMetrics.length > 0 && (
+        <MetricGroup
+          title="扩展模块"
+          metrics={moduleMetrics}
+          selectionSet={selectionSet}
+          onToggleMetric={toggleMetric}
+        />
+      )}
       <p className="text-[11px] leading-relaxed text-slate-400">
         指标选择即时生效，点击「开始分析」时按此提交。
       </p>

@@ -253,6 +253,27 @@
       "when": 1784800000000,
       "tag": "0035_attendance_work_records_end_time_nullable",
       "breakpoints": true
+    },
+    {
+      "idx": 36,
+      "version": "7",
+      "when": 1784900000000,
+      "tag": "0036_driver_map",
+      "breakpoints": true
+    },
+    {
+      "idx": 37,
+      "version": "7",
+      "when": 1785000000000,
+      "tag": "0037_driver_map_waybill_extra_cols",
+      "breakpoints": true
+    },
+    {
+      "idx": 38,
+      "version": "7",
+      "when": 1785100000000,
+      "tag": "0038_driver_map_problem_reason",
+      "breakpoints": true
     }
   ]
 }

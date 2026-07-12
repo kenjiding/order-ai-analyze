@@ -10,6 +10,7 @@ import {
 import type { StationOption, VendorOption } from './vendorAnalysisTypes'
 import type { VendorAnalyzeSummary } from './vendorAnalysisSummary'
 import type { VendorRankingResult } from '../../../shared/vendorAnalysis/rankingScore'
+import type { DriverMapPointsResponse } from './components/DriverMap/driverMapTypes'
 
 export { getJobById, listJobs, cancelJobApi, deleteJobApi }
 export type { JobStatus, PublicJob }
@@ -251,6 +252,20 @@ export async function fetchVendorPortalDaily(
   token: string,
 ): Promise<{ ok: true; data: VendorPortalDaily } | { ok: false; error: string }> {
   return apiFetch<VendorPortalDaily>(`/api/vendor-portal/daily/${encodeURIComponent(token)}`, {
+    method: 'GET',
+  })
+}
+
+export type VendorPortalDriverMap = DriverMapPointsResponse & { browserMapsKey: string | null }
+
+/**
+ * 供应商日报外部门户的司机地图：每个分享 token 对应一个供应商的点位切片。
+ * 未勾选「司机地图」或日报无站点时 data 为 null（前端不渲染）。
+ */
+export async function fetchVendorPortalDriverMap(
+  token: string,
+): Promise<{ ok: true; data: VendorPortalDriverMap | null } | { ok: false; error: string }> {
+  return apiFetch<VendorPortalDriverMap | null>(`/api/vendor-portal/driver-map/${encodeURIComponent(token)}`, {
     method: 'GET',
   })
 }

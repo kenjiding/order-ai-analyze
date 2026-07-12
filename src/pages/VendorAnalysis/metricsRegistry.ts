@@ -24,7 +24,8 @@ export type VendorAnalysisDataSource = (typeof VENDOR_ANALYSIS_DATA_SOURCES)[num
 
 export type VendorMetricDef = {
   key: string
-  category: 'vendor' | 'driver'
+  /** module: 与供应商/司机指标无关的独立展示模块（如司机地图），不参与 dataSources 抓取 */
+  category: 'vendor' | 'driver' | 'module'
   /** 配置面板展示名（本页 UI 为中文） */
   label: string
   /** 固定指标：勾选框禁用且恒选中 */
@@ -51,6 +52,7 @@ export const VENDOR_ANALYSIS_METRICS: VendorMetricDef[] = [
   { key: 'driver.before11ExitRate', category: 'driver', label: '11点前出率', fixed: false, defaultEnabled: true, dataSources: ['before11'], dateSensitive: true },
   { key: 'driver.returnWarning', category: 'driver', label: '归班预警', fixed: false, defaultEnabled: true, dataSources: ['driverReturn'] },
   { key: 'driver.longTail', category: 'driver', label: '长尾单', fixed: false, defaultEnabled: true, dataSources: ['longTail'] },
+  { key: 'module.driverMap', category: 'module', label: '司机地图', fixed: false, defaultEnabled: true, dataSources: [] },
 ]
 
 /**
@@ -69,10 +71,16 @@ export const ALL_METRIC_KEYS: string[] = VENDOR_ANALYSIS_METRICS.map((m) => m.ke
 const METRIC_BY_KEY = new Map(VENDOR_ANALYSIS_METRICS.map((m) => [m.key, m] as const))
 
 /** 指标 key → 「供应商·客诉率」式展示名，供任务队列的「指标配置」列使用 */
+const CATEGORY_LABEL: Record<VendorMetricDef['category'], string> = {
+  vendor: '供应商',
+  driver: '司机',
+  module: '模块',
+}
+
 export function metricDisplayLabel(key: string): string {
   const m = METRIC_BY_KEY.get(key)
   if (!m) return key
-  return `${m.category === 'vendor' ? '供应商' : '司机'}·${m.label}`
+  return `${CATEGORY_LABEL[m.category]}·${m.label}`
 }
 
 /** 勾选集合 → 需要抓取的数据源并集（去重 + 排序，与后端解析结果一致） */

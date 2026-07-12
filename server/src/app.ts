@@ -20,6 +20,7 @@ import { exitAlarmRouter } from './routes/exitAlarmRouter'
 import { chaseDispatchRouter } from './routes/chaseDispatchRouter'
 import { workOrderPushRouter } from './routes/workOrderPushRouter'
 import { dispatchAlarmRouter } from './routes/dispatchAlarmRouter'
+import { driverMapRouter } from './routes/driverMapRouter'
 import { deliveringNotifyRouter } from './routes/deliveringNotifyRouter'
 import { attendanceWorkTimeRouter } from './routes/attendanceWorkTimeRouter'
 import { supplierConfigScopeRouter } from './routes/supplierConfigScopeRouter'
@@ -74,6 +75,7 @@ app.use('/api/exit-alarm', requireAuth, exitAlarmRouter)
 app.use('/api/chase-dispatch', requireAuth, chaseDispatchRouter)
 app.use('/api/work-order-push', requireAuth, workOrderPushRouter)
 app.use('/api/dispatch-alarm', requireAuth, dispatchAlarmRouter)
+app.use('/api/driver-map', requireAuth, driverMapRouter)
 app.use('/api/delivering-notify', requireAuth, deliveringNotifyRouter)
 app.use('/api/attendance-work-time', requireAuth, attendanceWorkTimeRouter)
 

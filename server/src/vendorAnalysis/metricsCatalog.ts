@@ -24,7 +24,8 @@ export type VendorAiLocale = 'zh-CN' | 'en'
 
 export type VendorAnalysisMetricDef = {
   key: string
-  category: 'vendor' | 'driver'
+  /** module: 与供应商/司机指标无关的独立展示模块（如司机地图），不参与 dataSources 抓取/AI prompt */
+  category: 'vendor' | 'driver' | 'module'
   /** 固定指标不可取消勾选，其 dataSources 永远抓取；当前全部指标均可自由勾选，无固定项 */
   fixed: boolean
   dataSources: VendorAnalysisDataSource[]
@@ -132,6 +133,14 @@ export const VENDOR_ANALYSIS_METRICS: VendorAnalysisMetricDef[] = [
         en: '   - If couriers have high long-tail counts, note follow-up volume and risk',
       },
     },
+  },
+  {
+    key: 'module.driverMap',
+    category: 'module',
+    fixed: false,
+    // 司机地图数据由独立模块按需增量刷新（见 server/src/driverMap/），不接入本 analyze 任务的数据抓取
+    // 也不做后台定时任务；内部页「刷新」按钮与 24H 派签告警共用终态跳过逻辑
+    dataSources: [],
   },
 ]
 

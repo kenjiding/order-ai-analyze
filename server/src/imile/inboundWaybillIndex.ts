@@ -5,6 +5,10 @@
 
 import { and, eq, lt } from 'drizzle-orm'
 import { getDb, schema } from '../db'
+import {
+  selectWaybillNosNeedingRefresh,
+  type Dispatch24hWaybillRow,
+} from '../vendorAnalysis/dispatch24hAggregate'
 import { requestImileApi } from './client'
 import { fetchPaginatedResultRows } from './paginatedQuery'
 import {
@@ -441,4 +445,84 @@ export async function fetchWaybillDetailsByInboundIndex(input: {
     label: input.label,
     tz: input.tz,
   })
+}
+
+export type IncrementalWaybillFetchSuccess = InboundWaybillFetchSuccess & {
+  /** 本次实际重新 searchWaybill 的单号数 */
+  fetchedCount: number
+  /** 因已达标/已超窗口而跳过的单号数 */
+  skippedCount: number
+  fromCacheRecords: InboundWaybillRow[]
+  fetchedRecords: InboundWaybillRow[]
+}
+
+/**
+ * 24H 派签增量拉数：到件索引仍全量（可走 DB 缓存），searchWaybill 只拉「未终态」单号。
+ * 已达标或已超过 24H/周末窗口的单复用 cachedByWaybillNo，供告警多时段推送与司机地图刷新共用。
+ */
+export async function fetchWaybillDetailsIncremental(input: {
+  token: string
+  stationCode: string
+  dateStr: string
+  label: string
+  tz: AusTz
+  cachedByWaybillNo: Map<string, Dispatch24hWaybillRow>
+  nowMs?: number
+}): Promise<IncrementalWaybillFetchSuccess | InboundWaybillFetchError> {
+  const indexResult = await getOrFetchInboundWaybillNos({
+    token: input.token,
+    stationCode: input.stationCode,
+    dateStr: input.dateStr,
+    label: `${input.label} 到件索引`,
+  })
+  if (!indexResult.ok) return indexResult
+
+  const needNos = selectWaybillNosNeedingRefresh(
+    indexResult.waybillNos,
+    input.cachedByWaybillNo,
+    input.tz,
+    input.nowMs,
+  )
+  const needSet = new Set(needNos)
+  const fromCacheRecords: InboundWaybillRow[] = []
+  for (const no of indexResult.waybillNos) {
+    if (needSet.has(no)) continue
+    const cached = input.cachedByWaybillNo.get(no)
+    if (!cached) continue
+    fromCacheRecords.push(cached as InboundWaybillRow)
+  }
+
+  const fetched = await fetchSearchWaybillByNos({
+    token: input.token,
+    stationCode: input.stationCode,
+    dateStr: input.dateStr,
+    waybillNos: needNos,
+    label: input.label,
+    tz: input.tz,
+  })
+  if (!fetched.ok) return fetched
+
+  const byNo = new Map<string, InboundWaybillRow>()
+  for (const row of fromCacheRecords) {
+    const no = typeof row.waybillNo === 'string' ? row.waybillNo.trim() : ''
+    if (no) byNo.set(no, row)
+  }
+  for (const row of fetched.records) {
+    const no = typeof row.waybillNo === 'string' ? row.waybillNo.trim() : ''
+    if (no) byNo.set(no, row)
+  }
+
+  const records = indexResult.waybillNos
+    .map((no) => byNo.get(no))
+    .filter((row): row is InboundWaybillRow => row != null)
+
+  return {
+    ok: true,
+    records,
+    waybillNos: indexResult.waybillNos,
+    fetchedCount: needNos.length,
+    skippedCount: indexResult.waybillNos.length - needNos.length,
+    fromCacheRecords,
+    fetchedRecords: fetched.records,
+  }
 }

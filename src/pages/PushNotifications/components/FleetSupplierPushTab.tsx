@@ -556,6 +556,19 @@ export function FleetSupplierPushTab({
             <span className="text-slate-400">—</span>
           ),
       },
+      {
+        title: '站点编码',
+        dataIndex: 'stationCode',
+        key: 'stationCode',
+        width: 110,
+        ellipsis: true,
+        render: (v: string) =>
+          v?.trim() ? (
+            v
+          ) : (
+            <span className="text-slate-400">—</span>
+          ),
+      },
       ...(secretsHidden ? [] : secretCols),
       {
         title: '供应商推送内容',

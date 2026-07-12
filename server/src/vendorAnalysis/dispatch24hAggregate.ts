@@ -50,23 +50,74 @@ function isWhitelisted(
   return routeCodeWhitelistByVendor.get(vendorCode)?.has(routeCode.trim()) ?? false
 }
 
+/**
+ * 24H 派签窗口截止时刻（本地时区）：
+ * - 周一~四：派件后 24h
+ * - 周五~日：下周一 23:59:59
+ * 无 deliveryTime 时无法判定窗口，返回 null。
+ */
+export function getDispatch24hDeadlineMs(row: Dispatch24hWaybillRow, tz: AusTz): number | null {
+  if (!row.deliveryTime) return null
+  const deliveryMs = iMileStrToMs(row.deliveryTime)
+  const dow = weekdayInTz(deliveryMs, tz) // 0=周日 … 6=周六
+  if (dow >= 1 && dow <= 4) return deliveryMs + DAY_MS
+  const daysToMonday = dow === 0 ? 1 : dow === 5 ? 3 : 2
+  return localDatePlusDaysMs(deliveryMs, tz, daysToMonday, 23, 59, 59)
+}
+
 /** 24H 派签是否达标：周一~四 24h 内签收/问题件即达标；周五~日下周一 23:59:59（本地）前签收/问题件达标 */
 export function isDispatch24hMet(row: Dispatch24hWaybillRow, tz: AusTz): boolean {
-  if (!row.deliveryTime) return false
-  const deliveryMs = iMileStrToMs(row.deliveryTime)
+  const deadlineMs = getDispatch24hDeadlineMs(row, tz)
+  if (deadlineMs == null) return false
   const signMs = row.signDate ? iMileStrToMs(row.signDate) : null
   const problemMs = row.lastProblemDate ? iMileStrToMs(row.lastProblemDate) : null
-  const dow = weekdayInTz(deliveryMs, tz) // 0=周日 … 6=周六
-
-  if (dow >= 1 && dow <= 4) {
-    const within24h = (ms: number | null) => ms != null && ms - deliveryMs <= DAY_MS
-    return within24h(signMs) || within24h(problemMs)
-  }
-  // 周五(5)/周六(6)/周日(0)：下周一 23:59:59（targetTz 本地）前签收或登记问题件达标
-  const daysToMonday = dow === 0 ? 1 : dow === 5 ? 3 : 2
-  const nextMondayMs = localDatePlusDaysMs(deliveryMs, tz, daysToMonday, 23, 59, 59)
-  const beforeDeadline = (ms: number | null) => ms != null && ms <= nextMondayMs
+  const beforeDeadline = (ms: number | null) => ms != null && ms <= deadlineMs
   return beforeDeadline(signMs) || beforeDeadline(problemMs)
+}
+
+/** 派签窗口是否已过（与是否达标无关）；无 deliveryTime 时视为未过期，避免误跳过仍可能补到派件时间的单 */
+export function isDispatch24hWindowExpired(
+  row: Dispatch24hWaybillRow,
+  tz: AusTz,
+  nowMs: number = Date.now(),
+): boolean {
+  const deadlineMs = getDispatch24hDeadlineMs(row, tz)
+  return deadlineMs != null && nowMs > deadlineMs
+}
+
+/**
+ * 终态：已达标，或窗口已过（无论达标与否都无需再拉 searchWaybill）。
+ * 供「24小时派签告警」多时段推送与「司机地图」手动刷新共用，避免已确认结果重复拉数。
+ */
+export function isDispatch24hTerminal(
+  row: Dispatch24hWaybillRow,
+  tz: AusTz,
+  nowMs: number = Date.now(),
+): boolean {
+  if (isDispatch24hMet(row, tz)) return true
+  return isDispatch24hWindowExpired(row, tz, nowMs)
+}
+
+/**
+ * 从到件索引中筛出仍需重新 searchWaybill 的单号：
+ * - 缓存中不存在 → 需要拉
+ * - 缓存存在但未终态（未达标且窗口未过）→ 需要拉
+ * - 已达标 / 已超窗口 → 跳过
+ */
+export function selectWaybillNosNeedingRefresh(
+  indexWaybillNos: string[],
+  cachedByWaybillNo: Map<string, Dispatch24hWaybillRow>,
+  tz: AusTz,
+  nowMs: number = Date.now(),
+): string[] {
+  const need: string[] = []
+  for (const waybillNo of indexWaybillNos) {
+    const no = waybillNo.trim()
+    if (!no) continue
+    const cached = cachedByWaybillNo.get(no)
+    if (!cached || !isDispatch24hTerminal(cached, tz, nowMs)) need.push(no)
+  }
+  return need
 }
 
 /**

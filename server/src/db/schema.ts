@@ -1,5 +1,6 @@
 import {
   boolean,
+  doublePrecision,
   index,
   integer,
   jsonb,
@@ -163,6 +164,8 @@ export const fleetSupplierPushConfigs = pgTable(
     routeCode: varchar('route_code', { length: 1024 }).notNull().default(''),
     /** 路由码白名单（可选）；多码分隔格式与 routeCode 一致 */
     routeCodeWhitelist: varchar('route_code_whitelist', { length: 1024 }).notNull().default(''),
+    /** 该供应商固定归属的站点编码（可选）；司机地图等按站点轮询的业务据此定位站点，不随单次报表变化 */
+    stationCode: varchar('station_code', { length: 64 }).notNull().default(''),
     webhookUrl: varchar('webhook_url', { length: 512 }).notNull().default(''),
     signingSecret: varchar('signing_secret', { length: 255 }),
     pushDescription: varchar('push_description', { length: 512 }),
@@ -433,6 +436,61 @@ export const attendanceWorkRecords = pgTable(
   ],
 )
 
+/**
+ * 站点日运单明细缓存：供「24H 派签增量拉取」与「司机地图」共用。
+ * status: pending（尚无签收/问题件）| completed（有签收）| problem（仅有问题件）。
+ * 终态判定见 isDispatch24hTerminal，不另存字段。
+ */
+export const driverMapWaybillPoints = pgTable(
+  'driver_map_waybill_points',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    waybillNo: varchar('waybill_no', { length: 64 }).notNull(),
+    stationCode: varchar('station_code', { length: 64 }).notNull(),
+    vendorCode: varchar('vendor_code', { length: 64 }).notNull().default(''),
+    courierCode: varchar('courier_code', { length: 64 }).notNull().default(''),
+    courierName: varchar('courier_name', { length: 255 }).notNull().default(''),
+    dataDate: varchar('data_date', { length: 10 }).notNull(),
+    deliveryTime: varchar('delivery_time', { length: 32 }),
+    signDate: varchar('sign_date', { length: 32 }),
+    lastProblemDate: varchar('last_problem_date', { length: 32 }),
+    /** searchWaybill.problemReason：问题件原因文案 */
+    problemReason: varchar('problem_reason', { length: 512 }).notNull().default(''),
+    consigneeRouteCode: varchar('consignee_route_code', { length: 64 }).notNull().default(''),
+    lastScanSiteCode: varchar('last_scan_site_code', { length: 64 }).notNull().default(''),
+    status: varchar('status', { length: 16 }).notNull().default('pending'),
+    addressText: varchar('address_text', { length: 1024 }).notNull().default(''),
+    latitude: doublePrecision('latitude'),
+    longitude: doublePrecision('longitude'),
+    geocodedAt: timestamp('geocoded_at', { withTimezone: true }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    uniqueIndex('driver_map_waybill_points_waybill_date_unique').on(table.waybillNo, table.dataDate),
+    index('driver_map_waybill_points_station_date_idx').on(table.stationCode, table.dataDate),
+    index('driver_map_waybill_points_status_idx').on(table.dataDate, table.status),
+    index('driver_map_waybill_points_courier_idx').on(table.dataDate, table.courierCode),
+  ],
+)
+
+/** 司机地图：地址→坐标地理编码缓存（Google Geocoding 按次收费，跨运单/跨天全局按地址文本复用） */
+export const geocodeCache = pgTable(
+  'geocode_cache',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    addressText: varchar('address_text', { length: 1024 }).notNull(),
+    latitude: doublePrecision('latitude'),
+    longitude: doublePrecision('longitude'),
+    /** ok | not_found | error；失败态也缓存，避免对无效地址反复重试付费 */
+    status: varchar('status', { length: 16 }).notNull().default('ok'),
+    provider: varchar('provider', { length: 32 }).notNull().default('google'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [uniqueIndex('geocode_cache_address_text_unique').on(table.addressText)],
+)
+
 export type User = typeof users.$inferSelect
 export type Region = typeof regions.$inferSelect
 export type Permission = typeof permissions.$inferSelect
@@ -467,3 +525,7 @@ export type AttendanceWorker = typeof attendanceWorkers.$inferSelect
 export type NewAttendanceWorker = typeof attendanceWorkers.$inferInsert
 export type AttendanceWorkRecord = typeof attendanceWorkRecords.$inferSelect
 export type NewAttendanceWorkRecord = typeof attendanceWorkRecords.$inferInsert
+export type DriverMapWaybillPoint = typeof driverMapWaybillPoints.$inferSelect
+export type NewDriverMapWaybillPoint = typeof driverMapWaybillPoints.$inferInsert
+export type GeocodeCacheRow = typeof geocodeCache.$inferSelect
+export type NewGeocodeCacheRow = typeof geocodeCache.$inferInsert

@@ -11,6 +11,7 @@ export type SupplierPushConfigBody = {
   supplierNickname?: unknown
   routeCode?: unknown
   routeCodeWhitelist?: unknown
+  stationCode?: unknown
   webhookUrl?: unknown
   signingSecret?: unknown
   pushDescription?: unknown
@@ -34,6 +35,7 @@ export function extractSupplierPushConfigFields(body: SupplierPushConfigBody) {
     supplierNickname: typeof body.supplierNickname === 'string' ? body.supplierNickname.trim() : '',
     routeCode: typeof body.routeCode === 'string' ? body.routeCode : '',
     routeCodeWhitelist: typeof body.routeCodeWhitelist === 'string' ? body.routeCodeWhitelist : '',
+    stationCode: typeof body.stationCode === 'string' ? body.stationCode.trim() : '',
     webhookUrl: typeof body.webhookUrl === 'string' ? body.webhookUrl.trim() : '',
     signingSecret:
       typeof body.signingSecret === 'string' && body.signingSecret.trim()

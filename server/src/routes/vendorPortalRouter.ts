@@ -7,6 +7,9 @@ import {
   type VendorRankingInput,
   type VendorRankingResult,
 } from '../../../shared/vendorAnalysis/rankingScore'
+import { envFirst } from '../imile/shared'
+import { queryDriverMapPoints, geocodePendingMapPoints, ensureProblemReasons } from '../driverMap/driverMapPointsQuery'
+import { listSupplierPushConfigs } from '../supplierPushConfigs'
 
 /**
  * 供应商日报外部门户（无登录鉴权，仅凭高熵分享 token 访问）。
@@ -94,6 +97,7 @@ type ReportVendor = {
 
 type ReportPayload = {
   reportDate?: unknown
+  stations?: unknown
   complaintDateRange?: unknown
   before11Date?: unknown
   dispatch24hDate?: unknown
@@ -263,6 +267,103 @@ vendorPortalRouter.get('/daily/:token', rateLimit, async (req: Request, res: Res
       },
     })
   } catch {
+    res.status(500).json({ ok: false, error: 'internal_error' })
+  }
+})
+
+/**
+ * 司机地图（分享链接门户）：每个供应商 token 各自一份地图（按 vendorCode 过滤）。
+ * 站点取日报 stations[0]（与内部快照一致），缺省再回退车队配置 stationCode。
+ * 有地址无坐标时按本供应商 geocode 补点；未勾选 module.driverMap 时 data: null。
+ */
+vendorPortalRouter.get('/driver-map/:token', rateLimit, async (req: Request, res: Response) => {
+  const token = String(req.params.token ?? '')
+  if (!SHARE_TOKEN_PATTERN.test(token)) {
+    sendNotFound(res)
+    return
+  }
+
+  try {
+    const db = getDb()
+    const [link] = await db
+      .select()
+      .from(schema.vendorShareLinks)
+      .where(eq(schema.vendorShareLinks.token, token))
+      .limit(1)
+    if (!link || link.isDisabled) {
+      sendNotFound(res)
+      return
+    }
+    if (Date.now() - new Date(link.createdAt).getTime() > SHARE_LINK_TTL_MS) {
+      sendNotFound(res)
+      return
+    }
+
+    const [report] = await db
+      .select({ payload: schema.vendorDailyReports.payload })
+      .from(schema.vendorDailyReports)
+      .where(eq(schema.vendorDailyReports.jobId, link.jobId))
+      .limit(1)
+    if (!report) {
+      sendNotFound(res)
+      return
+    }
+
+    const payload = report.payload as ReportPayload
+    const enabledMetricKeys = strArr(payload.enabledMetricKeys)
+    if (!enabledMetricKeys.includes('module.driverMap')) {
+      res.json({ ok: true, data: null })
+      return
+    }
+
+    const vendorCode = str(link.vendorCode)
+    if (!vendorCode) {
+      res.json({ ok: true, data: null })
+      return
+    }
+
+    const stations = strArr(payload.stations)
+    let stationCode = stations[0]?.trim() ?? ''
+    if (!stationCode) {
+      const configs = await listSupplierPushConfigs()
+      const vendorConfig = configs.find((c) => c.vendorCode.trim() === vendorCode)
+      stationCode = vendorConfig?.stationCode.trim() ?? ''
+    }
+    if (!stationCode) {
+      res.json({ ok: true, data: null })
+      return
+    }
+
+    // 司机地图看「昨天」签收情况，与 11 点前出仓率同一日；不是 24H 派签的前天
+    const dataDate = str(payload.before11Date) || str(payload.reportDate)
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(dataDate)) {
+      res.json({ ok: true, data: null })
+      return
+    }
+
+    // 有地址无坐标时：按本供应商范围把 consignee 地址 geocode 成 lat/lng 再返回
+    await ensureProblemReasons({ stationCode, dataDate, vendorCode })
+    await geocodePendingMapPoints({ stationCode, dataDate, vendorCode })
+
+    const points = await queryDriverMapPoints({
+      stationCode,
+      dataDate,
+      vendorCode,
+    })
+    if (!points.ok) {
+      res.status(502).json({ ok: false, error: points.message })
+      return
+    }
+
+    res.json({
+      ok: true,
+      data: {
+        ...points.data,
+        browserMapsKey: envFirst('GOOGLE_MAPS_BROWSER_API_KEY') ?? null,
+      },
+    })
+  } catch (err) {
+    console.error('[vendor-portal/driver-map]', err)
     res.status(500).json({ ok: false, error: 'internal_error' })
   }
 })
