@@ -559,7 +559,7 @@ export function VendorMetricsPreview({
           </h3>
         </div>
         <div className="ml-auto text-xs text-slate-500">
-          确认数据无误后，点击右上角「供应商数据分析推送」发送至飞书群
+          确认数据无误后，点击上方「截图并推送到飞书」发送至已启用的供应商群
         </div>
       </div>
 

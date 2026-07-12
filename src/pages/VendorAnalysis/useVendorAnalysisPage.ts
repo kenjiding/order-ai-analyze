@@ -4,7 +4,6 @@ import { useAppSettings } from '../../context/AppSettingsContext'
 import { useAuthStore } from '../../stores/authStore'
 import { useGlobalFilterStore } from '../../stores/globalFilterStore'
 import { showToast } from '../../utils/toast'
-import { postFeishuPushCard } from '../PushNotifications/feishuWebhookTestApi'
 import type {
   DriverPerformanceRow,
   VendorMetricRow,
@@ -151,7 +150,6 @@ export function useVendorAnalysisPage() {
   const [fetchedData, setFetchedData] = useState<FetchedData | null>(null)
   const [dataFetching, setDataFetching] = useState(false)
   const [jobError, setJobError] = useState<string | null>(null)
-  const [isPushingAll, setIsPushingAll] = useState(false)
 
   const [activeTab, setActiveTab] = useState<TabId>('analyze')
   const [jobsList, setJobsList] = useState<PublicJob[]>([])
@@ -539,79 +537,6 @@ export function useVendorAnalysisPage() {
     return result
   }, [fetchedData, configs])
 
-  const pushAll = useCallback(async () => {
-    if (!fetchedData) { showToast('请先点击「获取数据」', 'error'); return }
-    if (selectedStations.length === 0) { showToast('请先选择责任站点', 'error'); return }
-
-    const enabledConfigs = selectedPushConfigs
-    if (enabledConfigs.length === 0) {
-      showToast('请先在下方启用要推送的供应商（须已配置 Webhook）', 'error')
-      return
-    }
-
-    setIsPushingAll(true)
-
-    const metricByVendor = new Map(vendorMetrics.map((m) => [m.vendorCode, m]))
-    const fmt = (s: string) => s.slice(5, 10).replace('-', '/')
-    const dateLabel = `${fmt(fetchedData.startTime)}—${fmt(fetchedData.endTime)}`
-    const ticketDateLabel = `${fmt(fetchedData.ticketStartTime)}—${fmt(fetchedData.ticketEndTime)}`
-    const stationLabel = fetchedData.stationCodes.join('、')
-
-    let successCount = 0
-    let failCount = 0
-
-    for (const config of enabledConfigs) {
-      const m = metricByVendor.get(normalizeVendorCode(config.vendorCode))
-      const ratePercent = ((m?.complaintRate ?? 0) * 100).toFixed(2)
-      const before11ExitPercent = m?.before11ExitRate != null
-        ? (m.before11ExitRate * 100).toFixed(2)
-        : '—'
-
-      const card = buildVendorFeishuCard({
-        vendorName: config.vendorName,
-        dateLabel,
-        ticketDateLabel,
-        stationLabel,
-        complaintCount: m?.complaintCount ?? 0,
-        waybillCount: m?.waybillCount ?? 0,
-        ratePercent,
-        before11ExitPercent,
-        before11ExitVolume: m?.before11ExitVolume ?? null,
-        before11TotalReceived: m?.before11TotalReceived ?? null,
-        dispatchRate24hText: m?.dispatchRate24hText ?? null,
-        notMet24hSignCount: m?.notMet24hSignCount ?? null,
-        unprocessedTicketCount: m?.unprocessedTicketCount ?? 0,
-        longTailCount: m?.longTailCount ?? 0,
-        pushDescription: config.pushDescription ?? '',
-      })
-
-      const res = await postFeishuPushCard({
-        pushScope: 'vendor-analysis',
-        webhookUrl: config.webhookUrl,
-        signingSecret: config.signingSecret ?? undefined,
-        card,
-      })
-
-      if (res.ok) {
-        successCount++
-      } else {
-        failCount++
-        const errMsg = 'error' in res ? res.error : '未知错误'
-        console.warn(`[vendor-push] 「${config.vendorName}」推送失败: ${errMsg}`)
-      }
-    }
-
-    setIsPushingAll(false)
-
-    if (failCount === 0) {
-      showToast(`全部 ${successCount} 个配置已成功推送至飞书群`, 'success')
-    } else if (successCount === 0) {
-      showToast(`推送失败，共 ${failCount} 个配置发送异常`, 'error')
-    } else {
-      showToast(`推送完成：${successCount} 成功 · ${failCount} 失败`, 'warning')
-    }
-  }, [fetchedData, vendorMetrics, selectedStations, selectedPushConfigs])
-
   return {
     referenceDate,
     setReferenceDate,
@@ -627,8 +552,6 @@ export function useVendorAnalysisPage() {
     dataFetching,
     jobError,
     fetchData,
-    isPushingAll,
-    pushAll,
     vendorMetrics,
     driverPerformanceByVendor,
     metricSelection,
@@ -655,125 +578,5 @@ export function useVendorAnalysisPage() {
     cancelJobById,
     deleteJobById,
     retryJob,
-  }
-}
-
-function metricColumn(label: string, content: string): Record<string, unknown> {
-  return {
-    tag: 'column',
-    width: 'weighted',
-    weight: 1,
-    elements: [{ tag: 'div', text: { tag: 'lark_md', content: `${label}\n${content}` } }],
-  }
-}
-
-function buildVendorFeishuCard(params: {
-  vendorName: string
-  dateLabel: string
-  ticketDateLabel: string
-  stationLabel: string
-  complaintCount: number
-  waybillCount: number
-  ratePercent: string
-  before11ExitPercent: string
-  before11ExitVolume: number | null
-  before11TotalReceived: number | null
-  dispatchRate24hText: string | null
-  notMet24hSignCount: number | null
-  unprocessedTicketCount: number
-  longTailCount: number
-  pushDescription: string
-}): Record<string, unknown> {
-  const {
-    vendorName, dateLabel, ticketDateLabel, stationLabel,
-    complaintCount, waybillCount, ratePercent, before11ExitPercent,
-    before11ExitVolume, before11TotalReceived,
-    dispatchRate24hText, notMet24hSignCount,
-    unprocessedTicketCount, longTailCount, pushDescription,
-  } = params
-
-  const rateNum = parseFloat(ratePercent)
-  const headerTemplate = rateNum >= 3 ? 'red' : rateNum >= 1 ? 'orange' : 'blue'
-  const rateColor = rateNum >= 3 ? 'red' : rateNum >= 1 ? 'orange' : 'green'
-  const before11Num = before11ExitPercent === '—' ? null : parseFloat(before11ExitPercent)
-  const before11Color = before11Num == null
-    ? 'grey'
-    : before11Num >= 98
-      ? 'green'
-      : before11Num >= 95
-        ? 'orange'
-        : 'red'
-  const dispatch24hRateNum = dispatchRate24hText ? parseFloat(dispatchRate24hText) : null
-  const dispatch24hColor = dispatch24hRateNum == null
-    ? 'grey'
-    : dispatch24hRateNum >= 92
-      ? 'green'
-      : dispatch24hRateNum >= 75
-        ? 'orange'
-        : 'red'
-  const dispatch24hDisplay = dispatchRate24hText ?? '—'
-  const notMet24hDisplay = notMet24hSignCount == null ? '—' : String(notMet24hSignCount)
-  const pendingColor = (n: number) => n > 0 ? 'orange' : 'green'
-
-  const dateLine = ticketDateLabel !== dateLabel
-    ? `📅 应揽量 ${dateLabel} · 客诉统计 ${ticketDateLabel}`
-    : `📅 ${dateLabel}`
-
-  const footerElements: Record<string, unknown>[] = pushDescription
-    ? [{ tag: 'hr' }, { tag: 'note', elements: [{ tag: 'plain_text', content: pushDescription }] }]
-    : []
-
-  return {
-    schema: '2.0',
-    header: {
-      title: { tag: 'plain_text', content: vendorName },
-      subtitle: { tag: 'plain_text', content: '供应商数据分析报告' },
-      template: headerTemplate,
-    },
-    body: {
-      direction: 'vertical',
-      elements: [
-        {
-          tag: 'div',
-          text: { tag: 'lark_md', content: `${dateLine}\n📍 ${stationLabel}` },
-        },
-        { tag: 'hr' },
-        { tag: 'div', text: { tag: 'lark_md', content: '**核心指标**' } },
-        {
-          tag: 'column_set',
-          flex_mode: 'none',
-          background_style: 'grey',
-          columns: [
-            metricColumn(
-              '客诉率',
-              `<font color='${rateColor}'>**${ratePercent}%**</font>\n客诉量 ${complaintCount} 件 · 揽收量 ${waybillCount} 件`,
-            ),
-            metricColumn(
-              '11点前出仓率',
-              `<font color='${before11Color}'>**${before11ExitPercent}${before11ExitPercent === '—' ? '' : '%'}**</font>${before11ExitVolume != null && before11TotalReceived != null ? `\n${before11ExitVolume} / ${before11TotalReceived} 件` : ''}`,
-            ),
-            metricColumn(
-              '24小时派签率',
-              `<font color='${dispatch24hColor}'>**${dispatch24hDisplay}**</font>`,
-            ),
-            metricColumn(
-              '24小时签收未达标',
-              `<font color='${notMet24hSignCount != null && notMet24hSignCount > 0 ? 'orange' : 'green'}'>**${notMet24hDisplay}**</font>${notMet24hSignCount != null ? ' 件' : ''}`,
-            ),
-          ],
-        },
-        { tag: 'div', text: { tag: 'lark_md', content: '**待处理事项**' } },
-        {
-          tag: 'column_set',
-          flex_mode: 'none',
-          background_style: 'grey',
-          columns: [
-            metricColumn('未处理工单', `<font color='${pendingColor(unprocessedTicketCount)}'>**${unprocessedTicketCount}**</font> 件`),
-            metricColumn('长尾单', `<font color='${pendingColor(longTailCount)}'>**${longTailCount}**</font> 件`),
-          ],
-        },
-        ...footerElements,
-      ],
-    },
   }
 }

@@ -16,4 +16,4 @@ export {
   stripEditorContentForPreview,
 } from './feishuEditorContent'
 export { htmlToLarkMd, larkMdToHtml } from './feishuLarkMdConvert'
-export { FEISHU_AT_ALL_LARK, FEISHU_HR_MARKER, feishuImageMarker } from './feishuLarkMdMarkers'
+export { FEISHU_AT_ALL_LARK, FEISHU_HR_MARKER, feishuImageMarker, feishuLinkMarker } from './feishuLarkMdMarkers'

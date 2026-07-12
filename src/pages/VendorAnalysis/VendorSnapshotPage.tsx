@@ -11,7 +11,8 @@ import {
   XCircle,
   Loader2,
 } from 'lucide-react'
-import { toPng } from 'html-to-image'
+import { toJpeg } from 'html-to-image'
+import { FEISHU_PUSH_JPEG_QUALITY } from '../../utils/feishuScreenshotImageSettings'
 import { LocaleSwitcher } from '../../components/I18n/LocaleSwitcher'
 import { getDateTimeLocale } from '../../i18n'
 import { useAppLocale, useVendorSnapshotTranslation } from '../../i18n/hooks'
@@ -33,7 +34,11 @@ import {
   pickVendorAiSummary,
 } from './vendorSnapshotAi'
 import { postFeishuPushRichMessage } from '../PushNotifications/feishuWebhookTestApi'
-import { feishuImageMarker } from '../../components/FeishuLarkMdEditor'
+import {
+  buildVendorFeishuPushContent,
+  buildVendorFeishuPushIntro,
+  type VendorFeishuPushLabels,
+} from './buildVendorFeishuPushContent'
 import './vendorSnapshotPage.css'
 
 function buildVendorShareUrl(token: string): string {
@@ -263,6 +268,14 @@ export default function VendorSnapshotPage() {
     )
   }, [data, enabledSet])
 
+  /** 综合排名对标池 = 推送启用供应商（与分享链接 / webhookConfigs 口径一致） */
+  const pushRankingPool = useMemo(() => {
+    if (!data?.vendors.length) return null
+    const active = data.vendors.filter((v) => !v.isDisabled)
+    if (active.length === 0) return null
+    return rankVendors(active.map((v) => toVendorRankingInput(v)), enabledSet)
+  }, [data, enabledSet])
+
   const sortedVendors = useMemo(() => {
     if (!data?.vendors) return []
     if (!rankingPool || rankingPool.poolSize < 2) return data.vendors
@@ -337,6 +350,23 @@ export default function VendorSnapshotPage() {
     }
   }, [data?.jobId, isMock])
 
+  const pushLabels = useMemo((): VendorFeishuPushLabels => ({
+    introTitleSuffix: t('push.introTitleSuffix'),
+    rankingHeading: t('push.rankingHeading'),
+    rankPrefix: t('ranking.rankPrefix'),
+    scoreUnit: t('ranking.scoreUnit'),
+    sampleInsufficient: t('ranking.sampleInsufficient'),
+    before11ExitRate: t('kpi.before11ExitRate'),
+    dispatch24h: t('kpi.dispatch24h'),
+    complaintRate: t('kpi.complaintRate'),
+    unprocessedTickets: t('kpi.unprocessedTickets'),
+    longTail: t('kpi.longTail'),
+    pieces: (done, total) => t('kpi.pieces', { done, total }),
+    complaintSub: (complaints, waybills) => t('kpi.complaintSub', { complaints, waybills }),
+    ticketsNotMet: (count) => t('kpi.ticketsNotMet', { count }),
+    shareLinkText: t('push.shareLinkText'),
+  }), [t])
+
   const handlePushAll = useCallback(async () => {
     if (!data || pushingRef.current) return
     const enabledConfigs = (data.webhookConfigs ?? []).filter(
@@ -363,7 +393,7 @@ export default function VendorSnapshotPage() {
       setPushState((s) => ({ ...s, [config.vendorCode]: { status: 'capturing' } }))
       let dataUrl: string
       try {
-        dataUrl = await toPng(el, { pixelRatio: 1.5, backgroundColor: '#ffffff' })
+        dataUrl = await toJpeg(el, { pixelRatio: 1.0, quality: FEISHU_PUSH_JPEG_QUALITY, backgroundColor: '#ffffff' })
       } catch (err) {
         setPushState((s) => ({
           ...s,
@@ -378,17 +408,26 @@ export default function VendorSnapshotPage() {
       }
 
       setPushState((s) => ({ ...s, [config.vendorCode]: { status: 'pushing' } }))
-      const contentParts: string[] = [feishuImageMarker(0)]
+      const ranking = pushRankingPool?.byVendorCode.get(config.vendorCode)
+      const intro = buildVendorFeishuPushIntro({
+        vendorName: config.vendorName,
+        vendor,
+        ranking,
+        enabledMetricKeys: enabledSet,
+        labels: pushLabels,
+      })
       const shareToken = shareTokenByVendorRef.current[config.vendorCode]
-      if (shareToken) {
-        contentParts.push(`[${t('push.shareLinkText')}](${buildVendorShareUrl(shareToken)})`)
-      }
+      const content = buildVendorFeishuPushContent({
+        intro,
+        shareUrl: shareToken ? buildVendorShareUrl(shareToken) : undefined,
+        shareLinkText: shareToken ? pushLabels.shareLinkText : undefined,
+      })
 
       const result = await postFeishuPushRichMessage({
         pushScope: 'vendor-analysis',
         webhookUrl: config.webhookUrl,
         signingSecret: config.signingSecret ?? undefined,
-        content: contentParts.join('\n\n'),
+        content,
         images: [dataUrl],
       })
 
@@ -402,7 +441,7 @@ export default function VendorSnapshotPage() {
 
     pushingRef.current = false
     setIsPushing(false)
-  }, [data, t])
+  }, [data, enabledSet, pushLabels, pushRankingPool])
 
   // 检测 ?autoPush=1，页面渲染后自动触发推送
   useEffect(() => {
@@ -446,30 +485,32 @@ export default function VendorSnapshotPage() {
 
         {/* Header card */}
         <div className="mb-5 sm:mb-8 rounded-xl sm:rounded-2xl border border-slate-100 bg-white px-4 py-4 sm:px-6 sm:py-5 shadow-sm">
-          <div className="grid grid-cols-1 md:grid-cols-[minmax(0,1fr)_auto] gap-4 sm:gap-6 items-start">
-            <div className="min-w-0">
-              <div className="text-[10px] sm:text-xs font-black uppercase tracking-[0.16em] sm:tracking-[0.2em] text-indigo-600 mb-2 sm:mb-3">
-                {t('brand')}
-              </div>
-              <h1 className="text-2xl sm:text-[30px] font-black text-slate-900 leading-tight sm:leading-none">{t('title')}</h1>
-              <div className="mt-3 sm:mt-4 flex flex-col min-[420px]:flex-row min-[420px]:flex-wrap gap-2 sm:gap-3">
-                <span className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-slate-50 px-3 py-1.5 text-[12px] font-medium text-slate-600 w-fit max-w-full">
+          <div className="text-[10px] sm:text-xs font-black uppercase tracking-[0.16em] sm:tracking-[0.2em] text-indigo-600 mb-2 sm:mb-3">
+            {t('brand')}
+          </div>
+          <div className="flex items-start justify-between gap-3 sm:gap-4">
+            <h1 className="min-w-0 text-2xl sm:text-[30px] font-black text-slate-900 leading-tight sm:leading-none">
+              {t('title')}
+            </h1>
+            <LocaleSwitcher inline className="vs-locale-switch shrink-0" />
+          </div>
+          <div className="hidden sm:mt-5 sm:grid grid-cols-1 md:grid-cols-[minmax(0,1fr)_auto] gap-4 sm:gap-6 items-start">
+            <div className="min-w-0 flex flex-col min-[420px]:flex-row min-[420px]:flex-wrap gap-2 sm:gap-3">
+                <span className="hidden sm:inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-slate-50 px-3 py-1.5 text-[12px] font-medium text-slate-600 w-fit max-w-full">
                   <Calendar className="h-3.5 w-3.5 shrink-0 text-slate-400" aria-hidden />
                   <span className="truncate">{t('header.referenceDate')} {data.reportDate}</span>
                 </span>
-                <span className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-slate-50 px-3 py-1.5 text-[12px] font-medium text-slate-600 w-fit max-w-full">
+                <span className="hidden sm:inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-slate-50 px-3 py-1.5 text-[12px] font-medium text-slate-600 w-fit max-w-full">
                   <TrendingUp className="h-3.5 w-3.5 shrink-0 text-slate-400" aria-hidden />
                   <span className="truncate">{t('header.complaintStats')} {data.complaintDateRange}</span>
                 </span>
-                <span className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-slate-50 px-3 py-1.5 text-[12px] font-medium text-slate-600 w-fit max-w-full">
+                <span className="hidden sm:inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-slate-50 px-3 py-1.5 text-[12px] font-medium text-slate-600 w-fit max-w-full">
                   <MapPin className="h-3.5 w-3.5 shrink-0 text-slate-400" aria-hidden />
                   <span className="break-all">{data.stations.join(' · ')}</span>
                 </span>
-              </div>
             </div>
 
             <div className="shrink-0 flex flex-col items-stretch gap-3 border-t border-slate-100 pt-4 md:border-t-0 md:pt-0 md:items-end">
-              <LocaleSwitcher compact className="vs-locale-switch w-full md:w-auto md:justify-end" />
               {/* Push button */}
               {!isMock && (
                 <button
@@ -557,7 +598,7 @@ export default function VendorSnapshotPage() {
                   dispatch24hDate={data.dispatch24hDate}
                   complaintDateRange={data.complaintDateRange}
                   enabledMetricKeys={enabledSet}
-                  ranking={rankingPool?.byVendorCode.get(vendor.vendorCode)}
+                  ranking={pushRankingPool?.byVendorCode.get(vendor.vendorCode)}
                 />
                 {ps && <VendorPushBadge status={ps.status} error={ps.error} />}
               </div>

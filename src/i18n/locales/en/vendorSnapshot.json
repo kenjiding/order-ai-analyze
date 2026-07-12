@@ -20,7 +20,9 @@
     "sectionNotFound": "Section not found",
     "captureFailed": "Screenshot failed: {{message}}",
     "unknownError": "Unknown error",
-    "shareLinkText": "View full daily report"
+    "shareLinkText": "View full daily report",
+    "introTitleSuffix": "Daily report",
+    "rankingHeading": "Composite ranking"
   },
   "summary": {
     "vendorCount": "Vendors",

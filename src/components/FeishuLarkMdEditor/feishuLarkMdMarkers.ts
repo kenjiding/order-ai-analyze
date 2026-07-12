@@ -7,5 +7,26 @@ export function feishuImageMarker(index: number, size?: { width: number; height:
   return size ? `[[FEISHU_IMG:${index}|${size.width}x${size.height}]]` : `[[FEISHU_IMG:${index}]]`
 }
 
+/** 飞书卡片按钮样式（Schema 2.0），见 https://open.feishu.cn/document/feishu-cards/card-json-v2-components/interactive-components/button */
+export type FeishuLinkButtonType =
+  | 'default'
+  | 'primary'
+  | 'danger'
+  | 'text'
+  | 'primary_text'
+  | 'danger_text'
+  | 'primary_filled'
+  | 'danger_filled'
+  | 'laser'
+
+/** 外链按钮占位：自定义机器人卡片内 markdown [text](url) 不可点击，后端转为 open_url 按钮 */
+export function feishuLinkMarker(
+  url: string,
+  text: string,
+  buttonType: FeishuLinkButtonType = 'primary_filled',
+): string {
+  return `[[FEISHU_LINK:${url.trim()}|${text.trim()}|${buttonType}]]`
+}
+
 /** 飞书 lark_md @所有人 */
 export const FEISHU_AT_ALL_LARK = '<at id=all></at>'

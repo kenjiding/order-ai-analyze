@@ -89,29 +89,29 @@ export default function VendorPortalPage() {
       <div className="max-w-[980px] mx-auto px-4 py-4 sm:px-6 sm:py-7">
         {/* Header card */}
         <div className="mb-5 sm:mb-8 rounded-xl sm:rounded-2xl border border-slate-100 bg-white px-4 py-4 sm:px-6 sm:py-5 shadow-sm">
-          <div className="grid grid-cols-1 md:grid-cols-[minmax(0,1fr)_auto] gap-4 sm:gap-6 items-start">
-            <div className="min-w-0">
-              <div className="text-[10px] sm:text-xs font-black uppercase tracking-[0.16em] sm:tracking-[0.2em] text-indigo-600 mb-2 sm:mb-3">
-                {t('brand')}
-              </div>
-              <h1 className="text-2xl sm:text-[30px] font-black text-slate-900 leading-tight sm:leading-none">
-                {t('title')}
-              </h1>
-              <div className="mt-1.5 text-sm font-semibold text-slate-500 break-words">{data.vendor.vendorName}</div>
-              <div className="mt-3 sm:mt-4 flex flex-col min-[420px]:flex-row min-[420px]:flex-wrap gap-2 sm:gap-3">
-                <span className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-slate-50 px-3 py-1.5 text-[12px] font-medium text-slate-600 w-fit max-w-full">
+          <div className="text-[10px] sm:text-xs font-black uppercase tracking-[0.16em] sm:tracking-[0.2em] text-indigo-600 mb-2 sm:mb-3">
+            {t('brand')}
+          </div>
+          <div className="flex items-start justify-between gap-3 sm:gap-4">
+            <h1 className="min-w-0 text-2xl sm:text-[30px] font-black text-slate-900 leading-tight sm:leading-none">
+              {t('title')}
+            </h1>
+            <LocaleSwitcher inline className="vs-locale-switch shrink-0" />
+          </div>
+          <div className="hidden sm:block mt-1.5 text-sm font-semibold text-slate-500 break-words">{data.vendor.vendorName}</div>
+          <div className="hidden sm:mt-5 sm:grid grid-cols-1 md:grid-cols-[minmax(0,1fr)_auto] gap-4 sm:gap-6 items-start">
+            <div className="min-w-0 flex flex-col min-[420px]:flex-row min-[420px]:flex-wrap gap-2 sm:gap-3">
+                <span className="hidden sm:inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-slate-50 px-3 py-1.5 text-[12px] font-medium text-slate-600 w-fit max-w-full">
                   <Calendar className="h-3.5 w-3.5 shrink-0 text-slate-400" aria-hidden />
                   <span className="truncate">{t('header.referenceDate')} {data.reportDate}</span>
                 </span>
-                <span className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-slate-50 px-3 py-1.5 text-[12px] font-medium text-slate-600 w-fit max-w-full">
+                <span className="hidden sm:inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-slate-50 px-3 py-1.5 text-[12px] font-medium text-slate-600 w-fit max-w-full">
                   <TrendingUp className="h-3.5 w-3.5 shrink-0 text-slate-400" aria-hidden />
                   <span className="truncate">{t('header.complaintStats')} {data.complaintDateRange}</span>
                 </span>
-              </div>
             </div>
 
             <div className="shrink-0 flex flex-col items-stretch gap-3 border-t border-slate-100 pt-4 md:border-t-0 md:pt-0 md:items-end">
-              <LocaleSwitcher compact className="vs-locale-switch w-full md:w-auto md:justify-end" />
               <div className="flex items-center gap-1.5 text-[11px] text-slate-400">
                 <Clock className="h-3 w-3 shrink-0" aria-hidden />
                 <span>{t('header.generatedAt', { time: timeStr })}</span>

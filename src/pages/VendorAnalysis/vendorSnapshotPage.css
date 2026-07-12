@@ -4,10 +4,21 @@
   -webkit-text-size-adjust: 100%;
 }
 
-@media (max-width: 767px) {
-  .vendor-snapshot-page .vs-locale-switch .ant-select {
-    width: 100% !important;
-  }
+.vendor-snapshot-page .vs-locale-select-inline.ant-select {
+  width: auto !important;
+  min-width: 0;
+}
+
+.vendor-snapshot-page .vs-locale-select-inline .ant-select-selector {
+  padding-inline: 0 1.25rem !important;
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: #64748b;
+}
+
+.vendor-snapshot-page .vs-locale-select-inline.ant-select:hover .ant-select-selector,
+.vendor-snapshot-page .vs-locale-select-inline.ant-select-focused .ant-select-selector {
+  color: #475569;
 }
 
 @media (min-width: 768px) {
