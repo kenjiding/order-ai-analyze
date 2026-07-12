@@ -43,6 +43,22 @@ test('24H派签：周一24h内签收达标、超24h不达标、周五按下周�
   assert.deepEqual(v.dispatch24hUnmetWaybillNos, ['W2'])
 })
 
+test('24H派签：周五~日问题件在下周一23:59:59前达标，超截止或不登记问题件不达标', () => {
+  const rows = [
+    // 周五 10:00 派件，无签收，下周一 18:00 登记问题件 → 达标
+    { waybillNo: 'W5', courierCode: 'C1', courierVendorCode: 'V1', lastScanSiteCode: 'S1', deliveryTime: '2024-06-28 10:00:00', lastProblemDate: '2024-07-01 18:00:00' },
+    // 周六 10:00 派件，无签收，下周二登记问题件 → 超截止不达标
+    { waybillNo: 'W6', courierCode: 'C1', courierVendorCode: 'V1', lastScanSiteCode: 'S1', deliveryTime: '2024-06-29 10:00:00', lastProblemDate: '2024-07-02 10:00:00' },
+    // 周日 10:00 派件，无签收无问题件 → 不达标
+    { waybillNo: 'W7', courierCode: 'C1', courierVendorCode: 'V1', lastScanSiteCode: 'S1', deliveryTime: '2024-06-30 10:00:00' },
+  ]
+  const [v] = aggregateVendorAnalysis(baseInput({ driverDayBeforeWaybills: rows }))
+
+  assert.equal(v.dispatch24hTotal, 3)
+  assert.equal(v.dispatch24hCount, 1)
+  assert.deepEqual(v.dispatch24hUnmetWaybillNos, ['W6', 'W7'])
+})
+
 test('供应商级：客诉率按站点过滤、11点前/未处理/长尾/归班汇总正确', () => {
   const input = baseInput({
     tickets: [

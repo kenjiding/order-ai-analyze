@@ -1,4 +1,8 @@
 import { useRef, useState } from 'react'
+import { Button, Field } from 'react-vant'
+import 'react-vant/es/button/style/index.css'
+import 'react-vant/es/field/style/index.css'
+import type { FieldInstance } from 'react-vant'
 import {
   BellRing,
   CircleCheck,
@@ -41,7 +45,7 @@ export default function DeliveringNotifyPage({
   const [errorMsg, setErrorMsg] = useState('')
   const [result, setResult] = useState<DeliveringNotifyPushData | null>(null)
   const [menuOpen, setMenuOpen] = useState(false)
-  const inputRef = useRef<HTMLInputElement>(null)
+  const inputRef = useRef<FieldInstance>(null)
 
   const handleCommitScan = () => {
     const value = inputValue.trim()
@@ -140,18 +144,18 @@ export default function DeliveringNotifyPage({
                   <GlobalStationSelector />
                 </div>
               </div>
-              <button
-                type="button"
+              <Button
+                plain
+                block
+                icon={<LogOut className="h-4 w-4 shrink-0 text-zinc-400" aria-hidden strokeWidth={2} />}
                 onClick={() => {
                   setMenuOpen(false)
                   onLogout()
                 }}
-                className="flex w-full items-center gap-2 rounded-lg px-2 py-2 text-left active:bg-blue-50"
               >
-                <LogOut className="h-4 w-4 shrink-0 text-zinc-400" aria-hidden strokeWidth={2} />
-                <span className="min-w-0 flex-1 truncate text-sm font-medium text-zinc-700">{displayName}</span>
+                <span className="min-w-0 flex-1 truncate text-sm text-zinc-700">{displayName}</span>
                 <span className="shrink-0 text-xs text-zinc-400">退出</span>
-              </button>
+              </Button>
             </div>
           </div>
         </>
@@ -176,23 +180,20 @@ export default function DeliveringNotifyPage({
           </div>
         )}
 
-        <div className="space-y-1">
-          <label htmlFor="waybill-scan-input" className="block text-xs font-medium text-zinc-600">
-            扫码或输入运单号
-          </label>
-          <input
-            id="waybill-scan-input"
+        <div className="overflow-hidden rounded-xl border-2 border-zinc-200 bg-white focus-within:border-blue-600 focus-within:ring-4 focus-within:ring-blue-100">
+          <Field
             ref={inputRef}
             autoFocus
             inputMode="text"
-            placeholder="等待扫描..."
+            label="运单号"
+            placeholder="扫码或输入运单号"
             value={inputValue}
-            onChange={(e) => setInputValue(e.target.value)}
-            onKeyDown={(e) => {
+            onChange={setInputValue}
+            disabled={!stationCode}
+            onKeyDown={(e: React.KeyboardEvent) => {
               if (e.key === 'Enter') handleCommitScan()
             }}
-            disabled={!stationCode}
-            className="h-12 w-full rounded-xl border-2 border-zinc-200 bg-white px-3 font-mono text-base tracking-wide text-zinc-900 outline-none placeholder:font-sans placeholder:text-sm placeholder:font-normal placeholder:text-zinc-400 focus:border-blue-600 focus:ring-4 focus:ring-blue-100 disabled:cursor-not-allowed disabled:bg-zinc-100 disabled:opacity-60"
+            style={{ '--rv-field-label-width': '3.5em' } as React.CSSProperties}
           />
         </div>
 
@@ -219,14 +220,13 @@ export default function DeliveringNotifyPage({
                     {index + 1}
                   </span>
                   <span className="min-w-0 flex-1 truncate font-mono text-sm text-zinc-800">{no}</span>
-                  <button
-                    type="button"
+                  <Button
+                    plain
+                    type="danger"
+                    icon={<Trash2 size={14} aria-hidden strokeWidth={2} />}
                     onClick={() => handleRemove(no)}
                     aria-label={`删除 ${no}`}
-                    className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-zinc-400 active:scale-[0.95] active:bg-red-50 active:text-red-600"
-                  >
-                    <Trash2 className="h-4 w-4" aria-hidden strokeWidth={2} />
-                  </button>
+                  />
                 </li>
               ))}
             </ul>
@@ -356,22 +356,16 @@ export default function DeliveringNotifyPage({
 
       {/* 底部固定操作栏：flex 底栏 + 视口高度锁定，不随列表滚动 */}
       <div className="z-20 shrink-0 border-t border-zinc-200/80 bg-white/95 px-2.5 pb-[max(env(safe-area-inset-bottom),0.5rem)] pt-2 backdrop-blur-sm">
-        <button
-          type="button"
+        <Button
+          type="primary"
+          block
+          loading={pushing}
+          disabled={!!disabledReason}
           onClick={() => void handlePush()}
-          disabled={!!disabledReason || pushing}
-          title={disabledReason || undefined}
-          className="flex h-12 w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 text-sm font-semibold text-white shadow-lg shadow-blue-600/30 transition active:scale-[0.98] disabled:cursor-not-allowed disabled:bg-none disabled:bg-zinc-200 disabled:text-zinc-400 disabled:shadow-none"
+          nativeType="button"
         >
-          {pushing ? (
-            <>
-              <Loader2 className="h-4 w-4 animate-spin" aria-hidden strokeWidth={2} />
-              推送中...
-            </>
-          ) : (
-            `推送给供应商（${scannedList.length}）`
-          )}
-        </button>
+          {pushing ? '推送中...' : `推送给供应商（${scannedList.length}）`}
+        </Button>
       </div>
     </div>
   )

@@ -419,7 +419,7 @@ export const attendanceWorkRecords = pgTable(
     shift: varchar('shift', { length: 16 }).notNull(),
     zoneCode: varchar('zone_code', { length: 64 }),
     startTime: timestamp('start_time', { withTimezone: true }).notNull(),
-    endTime: timestamp('end_time', { withTimezone: true }).notNull(),
+    endTime: timestamp('end_time', { withTimezone: true }),
     notes: text('notes'),
     /** 记录来源：manual 手工录入 | zkt_sync 预留给后续 ZKT 考勤 API 同步 */
     source: varchar('source', { length: 16 }).notNull().default('manual'),

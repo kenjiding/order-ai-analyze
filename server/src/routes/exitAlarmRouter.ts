@@ -12,6 +12,7 @@ import {
   computeBefore11ThresholdMs,
   isBefore11Exit,
 } from '../imile/before11Exit'
+import { lastSortingWorkdayOnOrBefore } from '../imile/sortingWorkday'
 import { buildExitAlarmCard } from '../feishu/buildExitAlarmCard'
 import { hasExitAlarmImileToken } from '../feishu/exitAlarmScheduledPush'
 import { computeFeishuWebhookSign, parseSafeWebhookUrl } from '../feishuWebhookHelpers'
@@ -213,7 +214,8 @@ exitAlarmRouter.post('/push-now', async (req: AuthenticatedRequest, res: Respons
   }
 
   const stationCode = body.stationCode.trim()
-  const date = body.date.trim()
+  // 目标日避开周末（周六/日不分拣、无数据）：用户所选日期往前取第一个工作日
+  const date = lastSortingWorkdayOnOrBefore(body.date.trim())
   const tz = resolveRegionTz(req.authUser?.regionCode)
   const { timeHHmm: pushTime } = getRegionNow(tz)
 

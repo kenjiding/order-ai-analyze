@@ -33,6 +33,21 @@ export default function VendorAnalysisPage() {
   const newAnalysisPushCount = v.scopeBinding.enabledPushable.length
   const canTriggerPush = !!v.fetchedData && v.selectedStations.length > 0 && selectedPushCount > 0
 
+  // 指标预览只展示「推送供应商配置」中已勾选的供应商；无勾选时（老任务兜底）展示全部
+  const previewMetrics = useMemo(() => {
+    if (v.viewedPushEnabledIds.length === 0) return v.vendorMetrics
+    const enabledSet = new Set(v.viewedPushEnabledIds)
+    return v.vendorMetrics.filter((m) => enabledSet.has(m.id))
+  }, [v.vendorMetrics, v.viewedPushEnabledIds])
+
+  const previewDriverPerformanceByVendor = useMemo(() => {
+    if (v.viewedPushEnabledIds.length === 0) return v.driverPerformanceByVendor
+    const enabledVendorCodes = new Set(previewMetrics.map((m) => m.vendorCode))
+    return Object.fromEntries(
+      Object.entries(v.driverPerformanceByVendor).filter(([code]) => enabledVendorCodes.has(code)),
+    )
+  }, [v.driverPerformanceByVendor, v.viewedPushEnabledIds, previewMetrics])
+
   const stationOptions = useGlobalFilterStore((s) => s.stations)
   const stationNameMap = useMemo(
     () => Object.fromEntries(stationOptions.map((s) => [s.value, s.label])),
@@ -240,12 +255,12 @@ export default function VendorAnalysisPage() {
               )}
             </div>
 
-            {/* 指标预览（含各供应商的司机派件表现） */}
+            {/* 指标预览（仅展示推送供应商配置中已勾选的供应商） */}
             <VendorMetricsPreview
-              metrics={v.vendorMetrics}
+              metrics={previewMetrics}
               fetchedData={v.fetchedData}
               hasStations={v.selectedStations.length > 0}
-              driverPerformanceByVendor={v.driverPerformanceByVendor}
+              driverPerformanceByVendor={previewDriverPerformanceByVendor}
               enabledMetricKeys={v.viewedMetricSet}
             />
           </>

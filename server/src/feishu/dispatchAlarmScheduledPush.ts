@@ -10,6 +10,7 @@ import { fetchDriverWaybills } from '../imile/driverPerformance'
 import { listPushableConfigsForScope } from '../supplierConfigScopes'
 import { parseRouteCodeWhitelistSet, supplierDisplayName } from '../supplierPushConfigs'
 import { aggregateDispatch24hByVendor, type Dispatch24hWaybillRow } from '../vendorAnalysis/dispatch24hAggregate'
+import { lastSortingWorkdayOnOrBefore } from '../imile/sortingWorkday'
 import { claimScheduledSlot } from '../jobs/scheduledClaim'
 
 const DISPATCH_ALARM_SCOPE = 'dispatch-alarm.scheduled' as const
@@ -194,7 +195,9 @@ async function runOneScheduledPush(schedule: DispatchAlarmSchedule, regionCode: 
     return
   }
 
-  console.log(`${label} 命中推送时间 weekday=${weekday} time=${timeHHmm} date=${prevDateStr}`)
+  // 目标日避开周末（周六/日不分拣、无数据）：从前一日往前取第一个工作日
+  const targetDate = lastSortingWorkdayOnOrBefore(prevDateStr)
+  console.log(`${label} 命中推送时间 weekday=${weekday} time=${timeHHmm} date=${targetDate}`)
 
   const configs = await listPushableConfigsForScope(DISPATCH_ALARM_SCOPE)
   if (configs.length === 0) {
@@ -205,7 +208,7 @@ async function runOneScheduledPush(schedule: DispatchAlarmSchedule, regionCode: 
   const result = await executeDispatchAlarmPush({
     token,
     stationCode,
-    date: prevDateStr,
+    date: targetDate,
     pushTime: timeHHmm,
     alertThresholdPct: schedule.alertThresholdPct,
     configs,

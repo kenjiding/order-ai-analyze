@@ -239,6 +239,20 @@
       "when": 1784600000000,
       "tag": "0033_dispatch_alarm_schedules",
       "breakpoints": true
+    },
+    {
+      "idx": 34,
+      "version": "7",
+      "when": 1784700000000,
+      "tag": "0034_attendance_work_time",
+      "breakpoints": true
+    },
+    {
+      "idx": 35,
+      "version": "7",
+      "when": 1784800000000,
+      "tag": "0035_attendance_work_records_end_time_nullable",
+      "breakpoints": true
     }
   ]
 }

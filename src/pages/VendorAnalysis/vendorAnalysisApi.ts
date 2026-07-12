@@ -165,7 +165,12 @@ export async function postDailyReport(
   jobId: string,
   snapshot: VendorSnapshotData,
 ): Promise<{ ok: true; data: { id: string; createdAt: string } } | { ok: false; error: string }> {
-  // 白名单构造，确保 webhookConfigs（含 webhook 地址与签名密钥）不上传
+  // 对外日报与分享链接仅含「推送供应商配置」范围内供应商（与快照页 webhookConfigs / isDisabled 口径一致）
+  const vendors = snapshot.vendors.filter((v) => !v.isDisabled)
+  const enabledCodes = new Set(vendors.map((v) => v.vendorCode))
+  const aiSummaries = snapshot.aiSummaries
+    ? Object.fromEntries(Object.entries(snapshot.aiSummaries).filter(([code]) => enabledCodes.has(code)))
+    : undefined
   const payload = {
     jobId,
     reportDate: snapshot.reportDate,
@@ -174,8 +179,8 @@ export async function postDailyReport(
     before11Date: snapshot.before11Date,
     dispatch24hDate: snapshot.dispatch24hDate,
     generatedAt: snapshot.generatedAt,
-    vendors: snapshot.vendors,
-    aiSummaries: snapshot.aiSummaries,
+    vendors,
+    aiSummaries: aiSummaries && Object.keys(aiSummaries).length > 0 ? aiSummaries : undefined,
     enabledMetricKeys: snapshot.enabledMetricKeys,
   }
   return apiFetch<{ id: string; createdAt: string }>('/api/vendor-analysis/daily-reports', {

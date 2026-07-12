@@ -1,0 +1,51 @@
+/*
+ * react-vant 的 Popup 默认 teleport 到 document.body，脱离本页面的 DOM 子树，
+ * 用 React 层的 ConfigProvider 包一层无法覆盖到弹出层内部（不在同一 DOM 树），
+ * 所以直接在 :root 上覆盖用到的 CSS 变量，让主色与本项目品牌色（teal）保持一致。
+ * 目前仅本页面引入 react-vant，全局覆盖不影响其他页面。
+ */
+:root {
+  --rv-primary-color: #2f8f87;
+  --rv-success-color: #2f8f87;
+  --rv-button-primary-background-color: #2f8f87;
+  --rv-button-primary-border-color: #2f8f87;
+  --rv-cascader-active-color: #2f8f87;
+  --rv-picker-confirm-action-color: #2f8f87;
+}
+
+.attendance-work-time-page {
+  /* 为底部固定操作栏预留空间，避免遮住列表最后一项 */
+  padding-bottom: calc(72px + env(safe-area-inset-bottom));
+}
+
+.attendance-work-time-page--mobile {
+  /* 移动端现场记录页：无标题无筛选，列表直接顶到状态栏下方 */
+  padding-top: calc(12px + env(safe-area-inset-top));
+  padding-left: 12px;
+  padding-right: 12px;
+  min-height: 100vh;
+  background: var(--admin-bg, #f7fbff);
+}
+
+.attendance-work-time-add-bar {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 100;
+  padding: 10px 16px calc(10px + env(safe-area-inset-bottom));
+  background: rgba(255, 255, 255, 0.92);
+  backdrop-filter: blur(6px);
+  border-top: 1px solid rgba(0, 0, 0, 0.06);
+}
+
+@media (min-width: 768px) {
+  .attendance-work-time-add-bar {
+    display: flex;
+    justify-content: center;
+  }
+
+  .attendance-work-time-add-btn {
+    max-width: 320px;
+  }
+}

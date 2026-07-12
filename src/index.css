@@ -459,3 +459,16 @@ body::before {
 .wage-antd-table .ant-table-tbody > tr:hover > td.ant-table-cell-fix-right {
   background: rgb(241 245 249) !important;
 }
+
+/*
+ * iOS Safari 会在聚焦 font-size < 16px 的表单控件时自动放大页面，且失焦后不会自动缩回。
+ * 移动端统一将原生及第三方组件库（antd / MUI）渲染出的输入控件字号提到 16px 以规避该行为；
+ * 仅在 md 断点（768px）以下生效，不影响桌面端现有视觉。
+ */
+@media (max-width: 767px) {
+  input,
+  textarea,
+  select {
+    font-size: 16px !important;
+  }
+}

@@ -7,6 +7,7 @@ import { envFirst } from '../imile/shared'
 import { fetchWaybillDetailsByInboundIndex, getRegionNow } from '../imile/inboundWaybillIndex'
 import { resolveRegionTz } from '../imile/ausTimezone'
 import { buildExitAlarmZoneBreakdown, computeBefore11ThresholdMs } from '../imile/before11Exit'
+import { lastSortingWorkdayOnOrBefore } from '../imile/sortingWorkday'
 import { listPushableConfigsForScope } from '../supplierConfigScopes'
 import { parseRouteCodes, parseRouteCodeWhitelistSet, supplierDisplayName } from '../supplierPushConfigs'
 import { claimScheduledSlot } from '../jobs/scheduledClaim'
@@ -129,7 +130,9 @@ async function runOneScheduledPush(schedule: ExitAlarmSchedule, regionCode: stri
     return
   }
 
-  console.log(`${label} 命中推送时间 weekday=${weekday} time=${timeHHmm} date=${prevDateStr}`)
+  // 目标日避开周末（周六/日不分拣、无数据）：从前一日往前取第一个工作日
+  const targetDate = lastSortingWorkdayOnOrBefore(prevDateStr)
+  console.log(`${label} 命中推送时间 weekday=${weekday} time=${timeHHmm} date=${targetDate}`)
 
   const configs = await listPushableConfigsForScope('exit-alarm.scheduled')
   if (configs.length === 0) {
@@ -140,7 +143,7 @@ async function runOneScheduledPush(schedule: ExitAlarmSchedule, regionCode: stri
   const result = await fetchWaybillDetailsByInboundIndex({
     token: rawToken,
     stationCode,
-    dateStr: prevDateStr,
+    dateStr: targetDate,
     tz,
     label: '出仓告警定时推送',
   })
@@ -151,7 +154,7 @@ async function runOneScheduledPush(schedule: ExitAlarmSchedule, regionCode: stri
   }
 
   const waybills = result.records
-  const before11ThresholdMs = computeBefore11ThresholdMs(prevDateStr, tz)
+  const before11ThresholdMs = computeBefore11ThresholdMs(targetDate, tz)
 
   let pushedCount = 0
   for (const config of configs) {
@@ -171,7 +174,7 @@ async function runOneScheduledPush(schedule: ExitAlarmSchedule, regionCode: stri
     const card = buildExitAlarmCard({
       vendorName: supplierDisplayName(config),
       stationCode,
-      date: prevDateStr,
+      date: targetDate,
       pushTime: timeHHmm,
       zoneBreakdown,
       totalPending,

@@ -29,6 +29,7 @@ import {
 } from '../../shared/supplierPushConfig'
 import { fleetConfigsToVendorPushConfigs } from '../PushNotifications/supplierConfigAdapter'
 import { ALL_METRIC_KEYS } from './metricsRegistry'
+import { prevWorkday } from './sortingWorkday'
 
 const VENDOR_ANALYSIS_PUSH_SCOPE = 'vendor-analysis.push' as const
 import { nowIn, resolveRegionTz } from '../../utils/ausTimezone'
@@ -195,9 +196,11 @@ export function useVendorAnalysisPage() {
     const startTime = complaintDateRange[0].format('YYYY-MM-DD 00:00:00')
     const endTime = complaintDateRange[1].format('YYYY-MM-DD 23:59:59')
 
-    // 参考日期作为"今天"，推导昨天、前天
-    const yesterday = referenceDate.subtract(1, 'day')
-    const dayBefore = referenceDate.subtract(2, 'day')
+    // 参考日期作为"今天"，推导两个日期敏感指标的目标日：
+    // 出仓率目标日 = 往前第一个工作日；派签率目标日 = 出仓率目标日再往前一个工作日。
+    // 避开周六/日（不分拣、无数据）导致周一/周二取到空数据。详见 sortingWorkday.ts。
+    const yesterday = prevWorkday(referenceDate)
+    const dayBefore = prevWorkday(yesterday)
     // 未处理工单：参考日期上周周一 00:00:00 ~ 昨天 23:59:59
     const lastMonday = referenceDate.startOf('week').subtract(6, 'day')
 
@@ -636,6 +639,7 @@ export function useVendorAnalysisPage() {
     viewedAiSummaryEnabled,
     // 预览展示的这份任务 id（发布日报 / 分享链接按它绑定）
     viewedJobId,
+    viewedPushEnabledIds,
     viewedMetricKeys,
     viewedMetricSet,
     isReferenceDateToday,

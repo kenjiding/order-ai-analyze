@@ -27,6 +27,7 @@ import VendorPortalPage from './pages/VendorPortal/VendorPortalPage'
 import ExitAlarmPage from './pages/ExitAlarm/ExitAlarmPage'
 import ChaseDispatchPage from './pages/ChaseDispatch/ChaseDispatchPage'
 import WorkOrderPushPage from './pages/WorkOrderPush/WorkOrderPushPage'
+import AttendanceWorkTimePage from './pages/AttendanceWorkTime/AttendanceWorkTimePage'
 import { getDefaultRouteForPermissions } from './components/Layout/sidebarMenu'
 import { useAuthStore } from './stores/authStore'
 import { ToastBridge } from './utils/toast'
@@ -152,6 +153,14 @@ function KeptWorkOrderPushPage() {
   )
 }
 
+function KeptAttendanceWorkTimePage() {
+  return (
+    <KeepAlive cacheKey="page-attendance-work-time" name="attendance-work-time" autoFreeze={false}>
+      <AttendanceWorkTimePage />
+    </KeepAlive>
+  )
+}
+
 function KeptVendorAnalysisPage() {
   return (
     <KeepAlive cacheKey="page-vendor-analysis" name="vendor-analysis" autoFreeze={false}>
@@ -206,6 +215,7 @@ function AppRoutes() {
           <Route path="/work-order-push" element={<KeptWorkOrderPushPage />} />
           <Route path="/push-notifications" element={<KeptPushNotificationsPage />} />
           <Route path="/warehouse-safety" element={<KeptWarehouseSafetyInspectionPage />} />
+          <Route path="/attendance-work-time" element={<KeptAttendanceWorkTimePage />} />
           <Route path="/system/users" element={<KeptSystemUsersPage />} />
         </Route>
       </Route>

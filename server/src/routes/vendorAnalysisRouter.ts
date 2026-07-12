@@ -1,6 +1,6 @@
 import crypto from 'node:crypto'
 import { Router, type Response } from 'express'
-import { eq } from 'drizzle-orm'
+import { eq, inArray } from 'drizzle-orm'
 import { requirePermission, type AuthenticatedRequest } from '../auth/middleware'
 import { getDb, schema } from '../db'
 import { createDeepSeekClient } from '../openaiClient'
@@ -371,6 +371,35 @@ type DailyReportBody = {
   enabledMetricKeys?: unknown
 }
 
+type DailyReportVendor = { vendorCode?: unknown; vendorName?: unknown; isDisabled?: unknown }
+
+function readPushEnabledIds(payload: unknown): string[] {
+  if (!payload || typeof payload !== 'object') return []
+  const ids = (payload as Record<string, unknown>).pushEnabledIds
+  return Array.isArray(ids) ? ids.filter((s): s is string => typeof s === 'string') : []
+}
+
+/** pushEnabledIds 为空时返回 null（老任务兜底：不按配置 id 再过滤） */
+async function resolvePushScopeVendorCodes(pushEnabledIds: string[]): Promise<Set<string> | null> {
+  if (pushEnabledIds.length === 0) return null
+  const db = getDb()
+  const rows = await db
+    .select({ vendorCode: schema.fleetSupplierPushConfigs.vendorCode })
+    .from(schema.fleetSupplierPushConfigs)
+    .where(inArray(schema.fleetSupplierPushConfigs.id, pushEnabledIds))
+  return new Set(rows.map((r) => r.vendorCode.trim()).filter(Boolean))
+}
+
+function filterVendorsInPushScope(vendors: DailyReportVendor[], pushScope: Set<string> | null): DailyReportVendor[] {
+  return vendors.filter((v) => {
+    const vendorCode = typeof v.vendorCode === 'string' ? v.vendorCode.trim() : ''
+    if (!vendorCode) return false
+    if (v.isDisabled === true) return false
+    if (pushScope && !pushScope.has(vendorCode)) return false
+    return true
+  })
+}
+
 /**
  * 保存 openSnapshot 生成的日报快照（VendorSnapshotData 去掉 webhookConfigs）。
  * 只透传白名单字段入库，webhook 地址与签名密钥永不落到该表。
@@ -386,7 +415,8 @@ vendorAnalysisRouter.post('/daily-reports', async (req: AuthenticatedRequest, re
     res.status(400).json({ ok: false, error: '缺少 reportDate' })
     return
   }
-  if (!Array.isArray(body.vendors) || body.vendors.length === 0) {
+  const vendorsRaw = Array.isArray(body.vendors) ? (body.vendors as DailyReportVendor[]) : []
+  if (vendorsRaw.length === 0) {
     res.status(400).json({ ok: false, error: '缺少 vendors 数据' })
     return
   }
@@ -396,6 +426,12 @@ vendorAnalysisRouter.post('/daily-reports', async (req: AuthenticatedRequest, re
     sendJobAccessDenied(res)
     return
   }
+  const pushScope = await resolvePushScopeVendorCodes(readPushEnabledIds(job.payload))
+  const vendors = filterVendorsInPushScope(vendorsRaw, pushScope)
+  if (vendors.length === 0) {
+    res.status(400).json({ ok: false, error: '无推送范围内的供应商，请先在推送供应商配置中勾选供应商' })
+    return
+  }
   const payload = {
     reportDate: body.reportDate.trim(),
     stations: Array.isArray(body.stations) ? body.stations : [],
@@ -403,7 +439,7 @@ vendorAnalysisRouter.post('/daily-reports', async (req: AuthenticatedRequest, re
     before11Date: typeof body.before11Date === 'string' ? body.before11Date : '',
     dispatch24hDate: typeof body.dispatch24hDate === 'string' ? body.dispatch24hDate : '',
     generatedAt: typeof body.generatedAt === 'string' ? body.generatedAt : new Date().toISOString(),
-    vendors: body.vendors,
+    vendors,
     aiSummaries: body.aiSummaries && typeof body.aiSummaries === 'object' ? body.aiSummaries : undefined,
     // 发布时的指标勾选集合；外部门户按它过滤渲染，缺省（老日报）视为全量
     enabledMetricKeys:
@@ -477,13 +513,20 @@ vendorAnalysisRouter.get('/share-links', requireShare, async (req: Authenticated
     return
   }
   try {
+    const job = await getJobById(jobId)
+    if (!job || !canAccessJob(req, job)) {
+      sendJobAccessDenied(res)
+      return
+    }
+    const pushScope = await resolvePushScopeVendorCodes(readPushEnabledIds(job.payload))
     const db = getDb()
     const rows = await db
       .select()
       .from(schema.vendorShareLinks)
       .where(eq(schema.vendorShareLinks.jobId, jobId))
       .orderBy(schema.vendorShareLinks.vendorName)
-    res.json({ ok: true, data: rows })
+    const data = pushScope ? rows.filter((row) => pushScope.has(row.vendorCode)) : rows
+    res.json({ ok: true, data })
   } catch {
     res.status(500).json({ ok: false, error: '读取分享链接失败' })
   }

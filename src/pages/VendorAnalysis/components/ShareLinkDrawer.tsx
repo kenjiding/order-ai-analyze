@@ -174,8 +174,8 @@ export function ShareLinkDrawer({ open, onClose, jobId }: Props) {
     >
       <div className="space-y-4">
         <Typography.Paragraph type="secondary" className="!mb-0 text-xs leading-relaxed">
-          每个供应商一条对外链接（无需登录，凭链接访问本任务的日报），保留一周有效期。
-          链接在「数据预览 → 预览快照 / 截图推送」发布日报时自动开通。
+          每个已启用推送的供应商一条对外链接（无需登录，凭链接访问本任务的日报），保留一周有效期。
+          链接在「数据预览 → 预览快照 / 截图推送」发布日报时，按任务的「推送供应商配置」自动开通。
         </Typography.Paragraph>
         {links.length === 0 && !loading ? (
           <div className="rounded-lg border border-amber-200 bg-amber-50 px-3.5 py-2.5 text-xs leading-relaxed text-amber-700">

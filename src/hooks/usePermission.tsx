@@ -83,4 +83,5 @@ export const PERMISSION_KEYS = {
   btnExitAlarmDispatchAlarm: 'btn:exit-alarm:dispatch-alarm',
   menuChaseDispatch: 'menu:chase-dispatch',
   menuWorkOrderPush: 'menu:work-order-push',
+  menuAttendanceWorkTime: 'menu:attendance-work-time',
 } as const

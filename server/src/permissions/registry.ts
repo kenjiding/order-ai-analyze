@@ -34,6 +34,13 @@ export const PERMISSION_REGISTRY: PermissionDefinition[] = [
   { key: 'menu:work-order-push', type: 'menu', label: '工单推送', description: '未处理工单定时推送提醒供应商', sortOrder: 39 },
   { key: 'menu:push-notifications', type: 'menu', label: '推送功能', description: '飞书群机器人推送配置', sortOrder: 40 },
   { key: 'menu:warehouse-safety', type: 'menu', label: '仓库安全日常检查', description: '安全自查表填写与导出', sortOrder: 50 },
+  {
+    key: 'menu:attendance-work-time',
+    type: 'menu',
+    label: '出勤工作时间记录',
+    description: '按工序/岗位记录员工出勤工作时长，用于计算各工序人效',
+    sortOrder: 55,
+  },
   { key: 'menu:system-users', type: 'menu', label: '用户管理', description: '系统用户与权限管理', sortOrder: 60 },
   {
     key: 'btn:wage-salary:export',

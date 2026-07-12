@@ -50,7 +50,7 @@ function isWhitelisted(
   return routeCodeWhitelistByVendor.get(vendorCode)?.has(routeCode.trim()) ?? false
 }
 
-/** 24H 派签是否达标：周一~四 24h 内签收/问题件即达标；周五~日下周一 23:59:59（本地）前签收达标 */
+/** 24H 派签是否达标：周一~四 24h 内签收/问题件即达标；周五~日下周一 23:59:59（本地）前签收/问题件达标 */
 export function isDispatch24hMet(row: Dispatch24hWaybillRow, tz: AusTz): boolean {
   if (!row.deliveryTime) return false
   const deliveryMs = iMileStrToMs(row.deliveryTime)
@@ -62,10 +62,11 @@ export function isDispatch24hMet(row: Dispatch24hWaybillRow, tz: AusTz): boolean
     const within24h = (ms: number | null) => ms != null && ms - deliveryMs <= DAY_MS
     return within24h(signMs) || within24h(problemMs)
   }
-  // 周五(5)/周六(6)/周日(0)：下周一 23:59:59（targetTz 本地）前签收达标
+  // 周五(5)/周六(6)/周日(0)：下周一 23:59:59（targetTz 本地）前签收或登记问题件达标
   const daysToMonday = dow === 0 ? 1 : dow === 5 ? 3 : 2
   const nextMondayMs = localDatePlusDaysMs(deliveryMs, tz, daysToMonday, 23, 59, 59)
-  return signMs != null && signMs <= nextMondayMs
+  const beforeDeadline = (ms: number | null) => ms != null && ms <= nextMondayMs
+  return beforeDeadline(signMs) || beforeDeadline(problemMs)
 }
 
 /**

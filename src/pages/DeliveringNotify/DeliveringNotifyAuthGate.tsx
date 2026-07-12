@@ -1,4 +1,8 @@
 import { useEffect, useState } from 'react'
+import { Button, Field, Form } from 'react-vant'
+import 'react-vant/es/form/style/index.css'
+import 'react-vant/es/field/style/index.css'
+import 'react-vant/es/button/style/index.css'
 import { BellRing, CircleX, Eye, EyeOff, KeyRound, Loader2, User } from 'lucide-react'
 import { fetchAuthMe, fetchLogin, fetchLogout } from '../../api/authApi'
 import { useAppSettings } from '../../context/AppSettingsContext'
@@ -77,8 +81,8 @@ export function DeliveringNotifyAuthGate() {
           className="pointer-events-none absolute -left-20 bottom-10 h-56 w-56 rounded-full bg-indigo-400/10 blur-3xl"
           aria-hidden
         />
-        <div className="relative z-10 w-full max-w-sm space-y-3 rounded-2xl border border-zinc-200 bg-white/95 p-4 shadow-xl shadow-blue-900/10 backdrop-blur-sm">
-          <div className="flex flex-col items-center gap-1.5 text-center">
+        <div className="relative z-10 w-full max-w-sm overflow-hidden rounded-2xl border border-zinc-200 bg-white/95 shadow-xl shadow-blue-900/10 backdrop-blur-sm">
+          <div className="flex flex-col items-center gap-1.5 px-4 pb-2 pt-5 text-center">
             <span className="flex h-11 w-11 items-center justify-center rounded-xl bg-gradient-to-br from-blue-600 to-indigo-600 shadow-sm shadow-blue-600/30">
               <BellRing className="h-5 w-5 text-white" aria-hidden strokeWidth={2} />
             </span>
@@ -86,82 +90,55 @@ export function DeliveringNotifyAuthGate() {
             <p className="text-xs text-zinc-500">派送中包裹通知</p>
           </div>
 
-          <div className="space-y-2">
-            <div className="space-y-1">
-              <label htmlFor="dn-username" className="block text-xs font-medium text-zinc-600">
-                用户名
-              </label>
-              <div className="relative">
-                <User
-                  className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-zinc-400"
-                  aria-hidden
-                  strokeWidth={2}
-                />
-                <input
-                  id="dn-username"
-                  autoFocus
-                  value={username}
-                  onChange={(e) => setUsername(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') void handleLogin()
-                  }}
-                  className="h-11 w-full rounded-xl border-2 border-zinc-200 bg-white pl-9 pr-3 text-sm text-zinc-900 outline-none focus:border-blue-600 focus:ring-4 focus:ring-blue-100"
-                />
-              </div>
-            </div>
-
-            <div className="space-y-1">
-              <label htmlFor="dn-password" className="block text-xs font-medium text-zinc-600">
-                密码
-              </label>
-              <div className="relative">
-                <KeyRound
-                  className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-zinc-400"
-                  aria-hidden
-                  strokeWidth={2}
-                />
-                <input
-                  id="dn-password"
-                  type={showPassword ? 'text' : 'password'}
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') void handleLogin()
-                  }}
-                  className="h-11 w-full rounded-xl border-2 border-zinc-200 bg-white pl-9 pr-9 text-sm text-zinc-900 outline-none focus:border-blue-600 focus:ring-4 focus:ring-blue-100"
-                />
+          <Form onFinish={() => void handleLogin()}>
+            <Field
+              label={<User className="h-4 w-4 text-zinc-400" aria-hidden strokeWidth={2} />}
+              name="username"
+              placeholder="用户名"
+              value={username}
+              onChange={setUsername}
+              autoFocus
+            />
+            <Field
+              label={<KeyRound className="h-4 w-4 text-zinc-400" aria-hidden strokeWidth={2} />}
+              name="password"
+              type={showPassword ? 'text' : 'password'}
+              placeholder="密码"
+              value={password}
+              onChange={setPassword}
+              rightIcon={
                 <button
                   type="button"
                   onClick={() => setShowPassword((v) => !v)}
                   aria-label={showPassword ? '隐藏密码' : '显示密码'}
-                  className="absolute right-1 top-1/2 flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-full text-zinc-400 active:bg-zinc-100"
                 >
                   {showPassword ? (
-                    <EyeOff className="h-4 w-4" aria-hidden strokeWidth={2} />
+                    <EyeOff className="h-4 w-4 text-zinc-400" aria-hidden strokeWidth={2} />
                   ) : (
-                    <Eye className="h-4 w-4" aria-hidden strokeWidth={2} />
+                    <Eye className="h-4 w-4 text-zinc-400" aria-hidden strokeWidth={2} />
                   )}
                 </button>
-              </div>
-            </div>
-          </div>
+              }
+            />
+          </Form>
 
           {loginError && (
-            <div className="flex items-center gap-1.5 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-xs font-medium text-red-700">
+            <div className="mx-4 mb-2 flex items-center gap-1.5 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-xs font-medium text-red-700">
               <CircleX className="h-3.5 w-3.5 shrink-0" aria-hidden strokeWidth={2} />
               {loginError}
             </div>
           )}
 
-          <button
-            type="button"
-            onClick={() => void handleLogin()}
-            disabled={loggingIn}
-            className="flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 text-sm font-semibold text-white shadow-lg shadow-blue-600/30 transition active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-70"
-          >
-            {loggingIn ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden strokeWidth={2} /> : null}
-            登录
-          </button>
+          <div className="p-4 pt-2">
+            <Button
+              type="primary"
+              block
+              loading={loggingIn}
+              onClick={() => void handleLogin()}
+            >
+              登录
+            </Button>
+          </div>
         </div>
       </div>
     )

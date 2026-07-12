@@ -10,6 +10,7 @@ import { resolveRegionTz } from '../imile/ausTimezone'
 import { listPushableSupplierPushConfigsByIds, parsePushConfigIds } from '../supplierPushConfigs'
 import { dispatchAlarmScheduledScope } from '../supplierConfigScopes/dispatchAlarmScheduled'
 import { executeDispatchAlarmPush, hasDispatchAlarmImileToken } from '../feishu/dispatchAlarmScheduledPush'
+import { lastSortingWorkdayOnOrBefore } from '../imile/sortingWorkday'
 
 export const dispatchAlarmRouter = Router()
 
@@ -223,7 +224,8 @@ dispatchAlarmRouter.post('/push-now', async (req: AuthenticatedRequest, res: Res
   }
 
   const stationCode = body.stationCode.trim()
-  const date = body.date.trim()
+  // 目标日避开周末（周六/日不分拣、无数据）：用户所选日期往前取第一个工作日
+  const date = lastSortingWorkdayOnOrBefore(body.date.trim())
   const alertThresholdPct = normalizeAlertThresholdPct(body.alertThresholdPct)
   const tz = resolveRegionTz(req.authUser?.regionCode)
   const { timeHHmm: pushTime } = getRegionNow(tz)

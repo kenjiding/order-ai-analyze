@@ -27,7 +27,7 @@ export function GlobalStationSelector() {
         options={stations.map((s) => ({ label: s.label, value: s.value }))}
         loading={stationsLoading}
         placeholder="责任站点"
-        className="w-30"
+        popupMatchSelectWidth={false}
       />
     </div>
   )
