@@ -4,6 +4,7 @@ import {
   VENDOR_ANALYSIS_DATA_SOURCES,
   VENDOR_ANALYSIS_METRICS,
   buildVendorAiSystemPrompt,
+  mergeModuleMetricKeys,
   parseVendorAnalysisDataSources,
   resolveVendorAnalysisDataSources,
 } from './metricsCatalog'
@@ -62,10 +63,15 @@ const LEGACY_SYSTEM_PROMPTS: Record<'zh-CN' | 'en', string> = {
 Return strict JSON (UTF-8, no markdown wrapper): {"summaries":{"<vendorCode>":"<analysis>",...}}`,
 }
 
-test('metricKeys=null（老客户端）→ 全量 7 个源且有序', () => {
+test('metricKeys=null（老客户端）→ 全量 8 个源且有序', () => {
   const { dataSources, unknownKeys } = resolveVendorAnalysisDataSources(null)
   assert.deepEqual(dataSources, [...VENDOR_ANALYSIS_DATA_SOURCES].sort())
   assert.deepEqual(unknownKeys, [])
+})
+
+test('勾选司机地图 → 抓取 driverMap（出仓日 before11Date）', () => {
+  const { dataSources } = resolveVendorAnalysisDataSources(['module.driverMap'])
+  assert.deepEqual(dataSources, ['driverMap'])
 })
 
 test('空勾选 → 无数据源（所有指标均可自由取消，无固定项）', () => {
@@ -130,4 +136,28 @@ test('AI prompt：仅勾选 24H派签率 时只出现对应基准线与司机 bu
   assert.ok(prompt.includes('点名24H派签率最低的2~3名司机'))
   assert.ok(!prompt.includes('11点前出仓率：≥99%'))
   assert.ok(!prompt.includes('客诉率：≤0.025%'))
+})
+
+test('mergeModuleMetricKeys：只覆盖扩展模块，供应商/司机指标保持不变', () => {
+  const existing = [
+    'vendor.before11ExitRate',
+    'driver.todayPickup',
+    'module.driverMap',
+  ]
+  const withoutMap = mergeModuleMetricKeys(existing, [])
+  assert.deepEqual(withoutMap, ['vendor.before11ExitRate', 'driver.todayPickup'])
+
+  const withMap = mergeModuleMetricKeys(withoutMap, ['module.driverMap', 'vendor.complaintRate'])
+  assert.ok(withMap.includes('module.driverMap'))
+  assert.ok(withMap.includes('vendor.before11ExitRate'))
+  assert.ok(withMap.includes('driver.todayPickup'))
+  // 请求里夹带的非 module key 不得新增进结果
+  assert.ok(!withMap.includes('vendor.complaintRate'))
+})
+
+test('mergeModuleMetricKeys：existing=null（老任务）按全量起算后再覆盖 module', () => {
+  const allKeys = VENDOR_ANALYSIS_METRICS.map((m) => m.key)
+  const withoutModules = mergeModuleMetricKeys(null, [])
+  assert.equal(withoutModules.length, allKeys.filter((k) => !k.startsWith('module.')).length)
+  assert.ok(!withoutModules.includes('module.driverMap'))
 })

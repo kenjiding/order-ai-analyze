@@ -328,7 +328,9 @@ export async function getOrFetchInboundWaybillNos(input: {
 }): Promise<{ ok: true; waybillNos: string[]; fromCache: boolean } | InboundWaybillFetchError> {
   if (!input.forceRefresh) {
     const cached = await loadInboundWaybillIndex(input.stationCode, input.dateStr)
-    if (cached) {
+    // 空数组也是「有行」：曾在到件尚未入库时被写入 count=0，之后会永久短路真实 inbound。
+    // 仅非空缓存视为命中；空缓存一律现场重拉（真正无到件日会多打一次 inbound，可接受）。
+    if (cached && cached.length > 0) {
       logInboundIndexPrefetch({
         label: input.label,
         stationCode: input.stationCode,

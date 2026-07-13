@@ -1,9 +1,10 @@
 /**
- * 司机地图：从站点日运单缓存读已签收/问题件点位；刷新走与 24H 派签告警相同的增量同步，再补地理编码。
+ * 司机地图：从站点日运单缓存读点位（签收/未签收/问题件）。
+ * 数据日与「11点前出仓」一致（before11Date）；分析任务首次同步，手动「刷新」对未终态增量再拉。
  */
 import { and, eq, inArray, isNotNull, isNull, ne, or, sql } from 'drizzle-orm'
 import { getDb, schema } from '../db'
-import { AUS_TZ, iMileStrToMs } from '../imile/ausTimezone'
+import { AUS_TZ, iMileStrToMs, type AusTz } from '../imile/ausTimezone'
 import { syncStationDayWaybillsIncremental } from '../imile/stationDayWaybillSync'
 import { fetchSearchWaybillByNos } from '../imile/inboundWaybillIndex'
 import { envFirst } from '../imile/shared'
@@ -309,13 +310,15 @@ function buildDriversFromRows(
 
   for (const row of plottable) {
     if (row.latitude == null || row.longitude == null) continue
-    const time =
+    const rawTime =
       row.status === 'completed'
         ? row.signDate
         : row.status === 'problem'
           ? row.lastProblemDate
-          : row.deliveryTime || '1970-01-01 00:00:00'
-    if (!time && row.status !== 'pending') continue
+          : row.deliveryTime
+    if (!rawTime && row.status !== 'pending') continue
+    // pending 无派送时间时用哨兵，保证 time 恒为 string 且排序稳定
+    const time = rawTime || '1970-01-01 00:00:00'
     geocodedCount += 1
 
     const key = row.courierCode || `unknown:${row.vendorCode}`
@@ -411,10 +414,12 @@ export async function ensureProblemReasons(input: {
   stationCode: string
   dataDate: string
   vendorCode?: string
+  /** 未传则回退 24H 派签告警已保存的 token */
+  token?: string
 }): Promise<number> {
   const { stationCode, dataDate, vendorCode } = input
   const db = getDb()
-  const token = await readDriverMapImileToken()
+  const token = input.token?.trim() || (await readDriverMapImileToken())
   if (!token) return 0
 
   const rows = await db
@@ -480,6 +485,7 @@ export async function ensureProblemReasons(input: {
 /**
  * 手动增量刷新：同步未终态运单 → 为已签收/问题件补地理编码 → 返回最新点位。
  * 不做定时任务；由前端「刷新」按钮触发。
+ * 数据日应与「11点前出仓」一致（before11Date）；逻辑与分析任务 driverMap 阶段相同。
  */
 export async function refreshDriverMapPoints(input: {
   stationCode: string
@@ -492,16 +498,41 @@ export async function refreshDriverMapPoints(input: {
     return { ok: false, message: '未配置 iMile token，请先在「24小时派签告警」页面保存一次 token' }
   }
 
-  const synced = await syncStationDayWaybillsIncremental({
+  return populateDriverMapCache({
     token,
     stationCode,
     dataDate,
     tz: AUS_TZ.Adelaide,
+    vendorCode,
     label: '司机地图增量刷新',
+  })
+}
+
+/**
+ * 将某站点某日运单增量写入司机地图缓存并补地理编码。
+ * 分析任务（出仓日 before11Date）与手动「刷新」共用。
+ */
+export async function populateDriverMapCache(input: {
+  token: string
+  stationCode: string
+  dataDate: string
+  tz: AusTz
+  vendorCode?: string
+  label?: string
+}): Promise<{ ok: true; data: DriverMapRefreshResult } | { ok: false; message: string }> {
+  const { token, stationCode, dataDate, vendorCode, tz } = input
+  const label = input.label ?? '司机地图同步'
+
+  const synced = await syncStationDayWaybillsIncremental({
+    token,
+    stationCode,
+    dataDate,
+    tz,
+    label,
   })
   if (!synced.ok) return synced
 
-  await ensureProblemReasons({ stationCode, dataDate, vendorCode })
+  await ensureProblemReasons({ stationCode, dataDate, vendorCode, token })
   const geocodedUpdated = await geocodePendingMapPoints({ stationCode, dataDate, vendorCode })
   const points = await queryDriverMapPoints({ stationCode, dataDate, vendorCode })
   if (!points.ok) return points

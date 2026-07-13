@@ -17,6 +17,7 @@ export const AU_REGIONS: RegionDefinition[] = [
   { code: 'TAS', name: '塔斯马尼亚州', nameEn: 'Tasmania', sortOrder: 60 },
   { code: 'ACT', name: '首都领地', nameEn: 'Australian Capital Territory', sortOrder: 70 },
   { code: 'NT', name: '北领地', nameEn: 'Northern Territory', sortOrder: 80 },
+  { code: 'NZ', name: '新西兰', nameEn: 'New Zealand', sortOrder: 90 },
 ]
 
 export const SYSTEM_REGION: RegionDefinition = {

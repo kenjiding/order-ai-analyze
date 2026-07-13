@@ -43,7 +43,7 @@ export function buildStatusPinIconUrl(status: keyof typeof STATUS_COLORS, sequen
   const fill = STATUS_COLORS[status]
   const label =
     typeof sequence === 'number' && sequence > 0
-      ? String(sequence > 99 ? '99+' : sequence)
+      ? String(sequence > 999 ? '999+' : sequence)
       : ''
   const fontSize = label.length >= 3 ? 13 : label.length === 2 ? 16 : 20
 

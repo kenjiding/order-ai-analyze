@@ -16,6 +16,8 @@ export const VENDOR_ANALYSIS_DATA_SOURCES = [
   'waybills',
   'driverWaybills',
   'driverReturn',
+  /** 司机地图：与 before11 同一天（before11Date），写入 driver_map_waybill_points */
+  'driverMap',
 ] as const
 
 export type VendorAnalysisDataSource = (typeof VENDOR_ANALYSIS_DATA_SOURCES)[number]
@@ -24,7 +26,7 @@ export type VendorAiLocale = 'zh-CN' | 'en'
 
 export type VendorAnalysisMetricDef = {
   key: string
-  /** module: 与供应商/司机指标无关的独立展示模块（如司机地图），不参与 dataSources 抓取/AI prompt */
+  /** module: 与供应商/司机指标无关的独立展示模块（如司机地图）；仍可声明 dataSources */
   category: 'vendor' | 'driver' | 'module'
   /** 固定指标不可取消勾选，其 dataSources 永远抓取；当前全部指标均可自由勾选，无固定项 */
   fixed: boolean
@@ -138,13 +140,34 @@ export const VENDOR_ANALYSIS_METRICS: VendorAnalysisMetricDef[] = [
     key: 'module.driverMap',
     category: 'module',
     fixed: false,
-    // 司机地图数据由独立模块按需增量刷新（见 server/src/driverMap/），不接入本 analyze 任务的数据抓取
-    // 也不做后台定时任务；内部页「刷新」按钮与 24H 派签告警共用终态跳过逻辑
-    dataSources: [],
+    // 与「11点前出仓」同一数据日（before11Date）：分析任务同步站点日运单入缓存；
+    // 门户「刷新」对未终态增量再拉（见 server/src/driverMap/）
+    dataSources: ['driverMap'],
   },
 ]
 
 const METRIC_BY_KEY = new Map(VENDOR_ANALYSIS_METRICS.map((m) => [m.key, m]))
+
+const ALL_METRIC_KEYS: string[] = VENDOR_ANALYSIS_METRICS.map((m) => m.key)
+const MODULE_METRIC_KEY_SET = new Set(
+  VENDOR_ANALYSIS_METRICS.filter((m) => m.category === 'module').map((m) => m.key),
+)
+
+/**
+ * 用请求里的扩展模块勾选覆盖已有 metricKeys 中的 module 项；供应商/司机指标保持不变。
+ * existing 为 null（老任务未落库）时按全量指标起算。只取 catalog 中已知的 module key。
+ */
+export function mergeModuleMetricKeys(
+  existing: string[] | null,
+  requestedMetricKeys: readonly string[],
+): string[] {
+  const base = existing ?? ALL_METRIC_KEYS
+  const selectedModules = new Set(
+    requestedMetricKeys.filter((k) => MODULE_METRIC_KEY_SET.has(k)),
+  )
+  const nonModule = base.filter((k) => !MODULE_METRIC_KEY_SET.has(k))
+  return ALL_METRIC_KEYS.filter((k) => nonModule.includes(k) || selectedModules.has(k))
+}
 
 /**
  * 解析勾选指标需要的数据抓取阶段。

@@ -18,8 +18,9 @@ services:
 
   warehouse-server:
     build:
-      context: .
-      dockerfile: Containerfile
+      # 需包含 ../shared（前后端共用 rankingScore 等）
+      context: ..
+      dockerfile: server/Containerfile
     image: warehouse-server:latest
     container_name: warehouse-server
     restart: unless-stopped
@@ -47,8 +48,8 @@ services:
 
   warehouse-worker:
     build:
-      context: .
-      dockerfile: Containerfile
+      context: ..
+      dockerfile: server/Containerfile
     image: warehouse-server:latest
     container_name: warehouse-worker
     restart: unless-stopped

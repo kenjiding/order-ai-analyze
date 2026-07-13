@@ -7,7 +7,6 @@ import {
   BellRing,
   CircleCheck,
   CircleX,
-  Loader2,
   LogOut,
   Menu,
   PackageSearch,
@@ -184,13 +183,12 @@ export default function DeliveringNotifyPage({
           <Field
             ref={inputRef}
             autoFocus
-            inputMode="text"
             label="运单号"
             placeholder="扫码或输入运单号"
             value={inputValue}
             onChange={setInputValue}
             disabled={!stationCode}
-            onKeyDown={(e: React.KeyboardEvent) => {
+            onKeyPress={(e: React.KeyboardEvent) => {
               if (e.key === 'Enter') handleCommitScan()
             }}
             style={{ '--rv-field-label-width': '3.5em' } as React.CSSProperties}

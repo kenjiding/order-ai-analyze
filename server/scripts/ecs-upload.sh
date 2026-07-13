@@ -142,12 +142,28 @@ upload_via_tar() {
   | run_ssh "mkdir -p ${ECS_REMOTE_DIR} && tar xzf - -C ${ECS_REMOTE_DIR} 2>/dev/null"
 }
 
+# 前后端共用模块（如 rankingScore）；镜像 build context 为 server 的父目录
+upload_shared_via_tar() {
+  local shared_dir="$ROOT/../shared"
+  if [[ ! -d "$shared_dir" ]]; then
+    echo "缺少 shared/ 目录（$shared_dir），容器无法解析 ../../../shared 导入" >&2
+    exit 1
+  fi
+  local remote_parent remote_shared
+  remote_parent="$(dirname "${ECS_REMOTE_DIR}")"
+  remote_shared="${remote_parent}/shared"
+  echo "==> 同步 shared/ → ${remote_shared}"
+  COPYFILE_DISABLE=1 tar czf - -C "$(cd "$shared_dir/.." && pwd)" shared \
+  | run_ssh "mkdir -p ${remote_parent} && tar xzf - -C ${remote_parent} 2>/dev/null"
+}
+
 echo "==> 目标: ${ECS_USER}@${ECS_HOST}:${ECS_REMOTE_DIR}"
 
 echo "==> 创建远端目录"
 run_ssh "mkdir -p ${ECS_REMOTE_DIR}"
 
 upload_via_tar
+upload_shared_via_tar
 
 SHOULD_UPLOAD_ENV=false
 if $WITH_ENV || $DEPLOY; then

@@ -3,7 +3,7 @@ import type { RegionOption } from '../../api/authApi'
 // 1=周一, 2=周二, ..., 6=周六, 7=周日
 export type WeekdayNum = 1 | 2 | 3 | 4 | 5 | 6 | 7
 
-/** 澳洲州/区域静态列表，对齐 server/src/regions/registry.ts 的 AU_REGIONS（不走 /api/admin 接口，避免要求超管权限） */
+/** 州/区域静态列表，对齐 server/src/regions/registry.ts 的 AU_REGIONS（不走 /api/admin 接口，避免要求超管权限） */
 export const AU_REGIONS: RegionOption[] = [
   { code: 'NSW', name: '新南威尔士州', nameEn: 'New South Wales', sortOrder: 10 },
   { code: 'VIC', name: '维多利亚州', nameEn: 'Victoria', sortOrder: 20 },
@@ -13,6 +13,7 @@ export const AU_REGIONS: RegionOption[] = [
   { code: 'TAS', name: '塔斯马尼亚州', nameEn: 'Tasmania', sortOrder: 60 },
   { code: 'ACT', name: '首都领地', nameEn: 'Australian Capital Territory', sortOrder: 70 },
   { code: 'NT', name: '北领地', nameEn: 'Northern Territory', sortOrder: 80 },
+  { code: 'NZ', name: '新西兰', nameEn: 'New Zealand', sortOrder: 90 },
 ]
 
 export type PushTimeSlot = {

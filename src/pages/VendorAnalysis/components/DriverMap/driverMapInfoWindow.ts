@@ -212,7 +212,7 @@ export function buildPointInfoWindowHtml(input: {
   const statusLabel = STATUS_LABELS[input.status]
   const seq =
     typeof input.sequence === 'number'
-      ? `<span class="dm-iw__seq">${input.sequence > 99 ? '99+' : input.sequence}</span>`
+      ? `<span class="dm-iw__seq">${input.sequence > 999 ? '999+' : input.sequence}</span>`
       : ''
   const reasonRow =
     input.status === 'problem'

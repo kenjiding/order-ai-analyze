@@ -96,10 +96,10 @@ export async function postVendorAnalyzeAsync(
   })
 }
 
-/** 编辑某任务的输出配置：推送供应商范围 + AI 总结开关（不重跑分析）。 */
+/** 编辑某任务的输出配置：推送供应商范围 + AI 总结开关 + 扩展模块（不重跑分析）。 */
 export async function updateVendorAnalyzeConfig(
   jobId: string,
-  config: { pushEnabledIds?: string[]; aiSummaryEnabled?: boolean },
+  config: { pushEnabledIds?: string[]; aiSummaryEnabled?: boolean; metricKeys?: string[] },
 ): Promise<{ ok: true } | { ok: false; error: string }> {
   return apiFetch<undefined>(`/api/vendor-analysis/analyze-jobs/${encodeURIComponent(jobId)}/config`, {
     method: 'PATCH',

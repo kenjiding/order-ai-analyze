@@ -18,13 +18,14 @@ export const VENDOR_ANALYSIS_DATA_SOURCES = [
   'waybills',
   'driverWaybills',
   'driverReturn',
+  'driverMap',
 ] as const
 
 export type VendorAnalysisDataSource = (typeof VENDOR_ANALYSIS_DATA_SOURCES)[number]
 
 export type VendorMetricDef = {
   key: string
-  /** module: 与供应商/司机指标无关的独立展示模块（如司机地图），不参与 dataSources 抓取 */
+  /** module: 与供应商/司机指标无关的独立展示模块（如司机地图）；仍可声明 dataSources */
   category: 'vendor' | 'driver' | 'module'
   /** 配置面板展示名（本页 UI 为中文） */
   label: string
@@ -52,7 +53,16 @@ export const VENDOR_ANALYSIS_METRICS: VendorMetricDef[] = [
   { key: 'driver.before11ExitRate', category: 'driver', label: '11点前出率', fixed: false, defaultEnabled: true, dataSources: ['before11'], dateSensitive: true },
   { key: 'driver.returnWarning', category: 'driver', label: '归班预警', fixed: false, defaultEnabled: true, dataSources: ['driverReturn'] },
   { key: 'driver.longTail', category: 'driver', label: '长尾单', fixed: false, defaultEnabled: true, dataSources: ['longTail'] },
-  { key: 'module.driverMap', category: 'module', label: '司机地图', fixed: false, defaultEnabled: true, dataSources: [] },
+  {
+    key: 'module.driverMap',
+    category: 'module',
+    label: '司机地图',
+    fixed: false,
+    defaultEnabled: true,
+    // 与 11 点前出仓同一天（before11Date）；分析任务写入缓存，刷新做未终态增量
+    dataSources: ['driverMap'],
+    dateSensitive: true,
+  },
 ]
 
 /**
@@ -68,7 +78,28 @@ export function enabledDateSensitiveLabels(enabledKeys: readonly string[]): stri
 /** 全部指标 key，顺序与 registry 一致。新建分析时的默认全选集合。 */
 export const ALL_METRIC_KEYS: string[] = VENDOR_ANALYSIS_METRICS.map((m) => m.key)
 
+/** 扩展模块 key（不参与 dataSources 抓取，任务创建后仍可改） */
+export const MODULE_METRICS: VendorMetricDef[] = VENDOR_ANALYSIS_METRICS.filter((m) => m.category === 'module')
+export const MODULE_METRIC_KEYS: string[] = MODULE_METRICS.map((m) => m.key)
+
 const METRIC_BY_KEY = new Map(VENDOR_ANALYSIS_METRICS.map((m) => [m.key, m] as const))
+
+/**
+ * 用新的扩展模块勾选覆盖已有 metricKeys 中的 module 项；供应商/司机指标保持不变。
+ * existing 为 null（老任务未落库）时按全量指标起算。
+ */
+export function mergeModuleMetricKeys(
+  existing: string[] | null,
+  selectedModuleKeys: readonly string[],
+): string[] {
+  const base = existing ?? ALL_METRIC_KEYS
+  const moduleSet = new Set(MODULE_METRIC_KEYS)
+  const selectedModules = new Set(
+    selectedModuleKeys.filter((k) => moduleSet.has(k)),
+  )
+  const nonModule = base.filter((k) => !moduleSet.has(k))
+  return ALL_METRIC_KEYS.filter((k) => nonModule.includes(k) || selectedModules.has(k))
+}
 
 /** 指标 key → 「供应商·客诉率」式展示名，供任务队列的「指标配置」列使用 */
 const CATEGORY_LABEL: Record<VendorMetricDef['category'], string> = {

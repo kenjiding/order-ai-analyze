@@ -1,4 +1,4 @@
-import { Button, DatePicker, Drawer, Switch, Tooltip, Typography } from 'antd'
+import { Button, DatePicker, Drawer, Tooltip, Typography } from 'antd'
 import type { Dayjs } from 'dayjs'
 import {
   AlertTriangle,
@@ -7,7 +7,6 @@ import {
   ExternalLink,
   MapPin,
   SlidersHorizontal,
-  Sparkles,
   Truck,
 } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
@@ -92,7 +91,7 @@ function FormSection({
 
 /**
  * 「新建分析任务」抽屉：右侧弹出，集中配置一次分析所需的全部参数
- * （数据参考日期 / 客诉成立量时间 / 推送供应商配置 / 指标配置 / AI 分析总结），
+ * （数据参考日期 / 客诉成立量时间 / 推送供应商配置 / 指标配置含扩展模块与 AI），
  * 点击「开始分析」提交并触发既有的异步获取数据流程。
  */
 export function NewAnalysisDrawer({
@@ -259,6 +258,8 @@ export function NewAnalysisDrawer({
           <MetricSelectionGroups
             selection={metricSelection}
             onChange={onMetricSelectionChange}
+            aiSummaryEnabled={aiSummaryEnabled}
+            onAiSummaryEnabledChange={onAiSummaryEnabledChange}
           />
         </FormSection>
 
@@ -299,19 +300,6 @@ export function NewAnalysisDrawer({
               </Link>
             </span>
           </div>
-        </FormSection>
-
-        <FormSection
-          icon={Sparkles}
-          title="AI 分析总结"
-          description="开启后生成快照时调用 AI 生成分析段落；关闭则落地页不展示分析总结。"
-          action={<Switch checked={aiSummaryEnabled} onChange={onAiSummaryEnabledChange} />}
-        >
-          <p className="text-xs leading-relaxed text-slate-500">
-            {aiSummaryEnabled
-              ? 'AI 分析总结已开启：预览快照 / 截图推送时会等待 AI 生成结果。'
-              : 'AI 分析总结已关闭：不会调用 AI，快照与推送更快，但落地页无分析段落。'}
-          </p>
         </FormSection>
       </div>
     </Drawer>

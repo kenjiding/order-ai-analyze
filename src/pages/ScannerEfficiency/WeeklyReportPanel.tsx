@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Select } from 'antd'
+import { copyTextToClipboard } from '../../utils/clipboard'
 import type { ScanAggregate, AttendanceEfficiencyResult, ScannerEfficiencyResult } from './aggregates'
 import type { ScanSettings } from './constants'
 import { formatDateTime } from './formatAndParse'
@@ -212,12 +213,8 @@ export default function WeeklyReportPanel({
 
   const handleCopyWeeklyReport = async () => {
     if (!weeklyReportHtml) return
-    try {
-      await navigator.clipboard.writeText(weeklyReportHtml)
-      setWeeklyReportHint('周报 HTML 已复制到剪贴板。')
-    } catch {
-      setWeeklyReportHint('复制失败，请改用下载功能。')
-    }
+    const ok = await copyTextToClipboard(weeklyReportHtml)
+    setWeeklyReportHint(ok ? '周报 HTML 已复制到剪贴板。' : '复制失败，请改用下载功能。')
   }
 
   const handleDownloadWeeklyReport = () => {

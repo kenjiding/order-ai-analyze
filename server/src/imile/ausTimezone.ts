@@ -7,6 +7,7 @@ export const AUS_TZ = {
   Canberra: 'Australia/ACT',
   Darwin: 'Australia/Darwin',
   Hobart: 'Australia/Hobart',
+  Auckland: 'Pacific/Auckland',
 } as const
 
 export type AusTz = (typeof AUS_TZ)[keyof typeof AUS_TZ]
@@ -24,6 +25,7 @@ const REGION_TZ: Record<string, AusTz> = {
   TAS: AUS_TZ.Hobart,
   ACT: AUS_TZ.Canberra,
   NT: AUS_TZ.Darwin,
+  NZ: AUS_TZ.Auckland,
 }
 
 export function resolveRegionTz(regionCode: string | null | undefined): AusTz {

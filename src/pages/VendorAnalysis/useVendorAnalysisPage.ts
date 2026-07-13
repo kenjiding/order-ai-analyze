@@ -436,14 +436,18 @@ export function useVendorAnalysisPage() {
     }
   }, [applyArtifact, selectedStations, applyJobOutputConfig])
 
-  // 编辑某任务的输出配置（推送供应商范围 + AI 开关），不重跑分析；若正在预览该任务则同步生效。
+  // 编辑某任务的输出配置（推送供应商范围 + AI 开关 + 扩展模块），不重跑分析；若正在预览该任务则同步生效。
   const updateJobConfig = useCallback(
-    async (jobId: string, config: { pushEnabledIds: string[]; aiSummaryEnabled: boolean }) => {
+    async (
+      jobId: string,
+      config: { pushEnabledIds: string[]; aiSummaryEnabled: boolean; metricKeys: string[] },
+    ) => {
       const res = await updateVendorAnalyzeConfig(jobId, config)
       if (!res.ok) { showToast(`保存失败: ${res.error}`, 'error'); return false }
       if (jobId === viewedJobId) {
         setViewedPushEnabledIds(config.pushEnabledIds)
         setViewedAiSummaryEnabled(config.aiSummaryEnabled)
+        setViewedMetricKeys(config.metricKeys)
       }
       await refreshJobs(true)
       showToast('已保存', 'success')

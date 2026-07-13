@@ -1,7 +1,8 @@
-import { App as AntdApp, Button, Drawer, Popconfirm, Table, Tag, Tooltip, Typography } from 'antd'
+import { App as AntdApp, Button, Drawer, Popconfirm, Table, Tag, Typography } from 'antd'
 import type { ColumnsType } from 'antd/es/table'
 import { Copy, RotateCcw } from 'lucide-react'
 import { useEffect, useState } from 'react'
+import { copyTextToClipboard } from '../../../utils/clipboard'
 import { listShareLinks, resetShareLink, updateShareLink, type VendorShareLink } from '../vendorAnalysisApi'
 
 /** 分享链接有效期：一周（与后端 retention / portal 校验一致） */
@@ -9,25 +10,6 @@ const SHARE_LINK_TTL_MS = 7 * 24 * 60 * 60 * 1000
 
 function buildShareUrl(token: string): string {
   return `${window.location.origin}/vendor-daily/${token}`
-}
-
-/** navigator.clipboard 仅在安全上下文（HTTPS/localhost）可用，线上非 HTTPS 场景需要这个降级方案 */
-function fallbackCopy(text: string): boolean {
-  const textarea = document.createElement('textarea')
-  textarea.value = text
-  textarea.style.position = 'fixed'
-  textarea.style.opacity = '0'
-  document.body.appendChild(textarea)
-  textarea.focus()
-  textarea.select()
-  let ok = false
-  try {
-    ok = document.execCommand('copy')
-  } catch {
-    ok = false
-  }
-  document.body.removeChild(textarea)
-  return ok
 }
 
 function formatExpiry(createdAt: string): string {
@@ -65,17 +47,9 @@ export function ShareLinkDrawer({ open, onClose, jobId }: Props) {
 
   const copy = async (link: VendorShareLink) => {
     const url = buildShareUrl(link.token)
-    try {
-      if (!navigator.clipboard) throw new Error('clipboard API unavailable')
-      await navigator.clipboard.writeText(url)
-      message.success('分享链接已复制')
-    } catch {
-      if (fallbackCopy(url)) {
-        message.success('分享链接已复制')
-      } else {
-        message.error('复制失败，请手动复制')
-      }
-    }
+    const ok = await copyTextToClipboard(url)
+    if (ok) message.success('分享链接已复制')
+    else message.error('复制失败，请手动复制')
   }
 
   const run = async (id: string, action: () => Promise<void>) => {
@@ -134,11 +108,16 @@ export function ShareLinkDrawer({ open, onClose, jobId }: Props) {
         const otherBusy = busyId != null && !isBusy
         return (
           <div className="flex flex-nowrap items-center gap-1">
-            <Tooltip title={buildShareUrl(link.token)}>
-              <Button type="link" className="!px-1" icon={<Copy className="h-3.5 w-3.5" />} disabled={isBusy} onClick={() => void copy(link)}>
-                复制
-              </Button>
-            </Tooltip>
+            <Button
+              type="link"
+              className="!px-1"
+              icon={<Copy className="h-3.5 w-3.5" />}
+              disabled={isBusy}
+              title={buildShareUrl(link.token)}
+              onClick={() => void copy(link)}
+            >
+              复制
+            </Button>
             <Popconfirm
               title="确认重置分享链接？旧链接将立即失效。"
               okText="重置"

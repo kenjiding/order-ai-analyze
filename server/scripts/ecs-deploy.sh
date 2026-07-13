@@ -24,7 +24,9 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
 
 IMAGE="${IMAGE:-warehouse-server:latest}"
+# -f 相对当前目录（server/）；COPY 路径相对 BUILD_CONTEXT（仓库根）
 CONTAINERFILE="${CONTAINERFILE:-Containerfile}"
+BUILD_CONTEXT="${BUILD_CONTEXT:-..}"
 ACR_REGISTRY="${ACR_REGISTRY:-}"
 ACR_IMAGE="${ACR_IMAGE:-warehouse-server}"
 ACR_TAG="${ACR_TAG:-latest}"
@@ -67,7 +69,7 @@ cmd="${1:-up}"
 
 case "$cmd" in
   build)
-    podman build -t "$IMAGE" -f "$CONTAINERFILE" .
+    podman build -t "$IMAGE" -f "$CONTAINERFILE" "$BUILD_CONTEXT"
     ;;
   up)
     ensure_env
@@ -85,7 +87,17 @@ case "$cmd" in
     echo "[deploy] 构建镜像..."
     compose build warehouse-server
     echo "[deploy] 重建应用容器（postgres 保持运行，不重启）..."
-    compose up -d --force-recreate --no-deps warehouse-server warehouse-worker
+    # podman-compose 1.x 的 --no-deps 不可靠，会连 postgres 一起 recreate；
+    # 用 podman 直接只重建 app 容器，避免数据库短暂不可用。
+    if podman container exists warehouse-worker 2>/dev/null; then
+      podman stop -t 10 warehouse-worker || true
+      podman rm warehouse-worker || true
+    fi
+    if podman container exists warehouse-server 2>/dev/null; then
+      podman stop -t 10 warehouse-server || true
+      podman rm warehouse-server || true
+    fi
+    compose up -d --no-deps warehouse-server warehouse-worker
     compose ps
     echo ""
     _port="${PORT:-8787}"
@@ -117,11 +129,11 @@ case "$cmd" in
   push)
     if [[ -z "$ACR_REGISTRY" ]]; then
       echo "未设置 ACR_REGISTRY，仅本地构建 $IMAGE" >&2
-      podman build -t "$IMAGE" -f "$CONTAINERFILE" .
+      podman build -t "$IMAGE" -f "$CONTAINERFILE" "$BUILD_CONTEXT"
       exit 0
     fi
     remote="$(acr_image)"
-    podman build -t "$IMAGE" -f "$CONTAINERFILE" .
+    podman build -t "$IMAGE" -f "$CONTAINERFILE" "$BUILD_CONTEXT"
     podman tag "$IMAGE" "$remote"
     echo "推送 $remote （需先 podman login ${ACR_REGISTRY%%/*}）"
     podman push "$remote"

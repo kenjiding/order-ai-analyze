@@ -208,7 +208,7 @@ export async function deleteJob(jobId: string): Promise<boolean> {
 
 /**
  * 把 patch 合并进任务的 payload（浅合并，仅覆盖 patch 里的键）。
- * 用于任务创建后编辑「输出配置」类字段（不参与分析、不影响幂等/结果），如推送供应商范围、AI 开关。
+ * 用于任务创建后编辑「输出配置」类字段（不参与分析、不影响幂等/结果），如推送供应商范围、AI 开关、扩展模块。
  */
 export async function updateJobPayload(jobId: string, patch: Record<string, unknown>): Promise<Job | null> {
   const db = getDb()

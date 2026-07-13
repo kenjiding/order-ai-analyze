@@ -1,13 +1,17 @@
+# Build context 必须是仓库根（含 server/ 与 shared/）。
+# compose: context: ..  dockerfile: server/Containerfile
 FROM node:22-alpine
-WORKDIR /app
+WORKDIR /workspace/server
 
 # 与 lockfile v6 兼容的 pnpm 版本
 RUN corepack enable && corepack prepare pnpm@8.15.9 --activate
 
-COPY package.json pnpm-lock.yaml drizzle.config.ts ./
+COPY server/package.json server/pnpm-lock.yaml server/drizzle.config.ts ./
 RUN pnpm install --frozen-lockfile --prod
 
-COPY src ./src
+COPY server/src ./src
+# 相对路径 ../../../shared（自 src/routes）解析到 /workspace/shared
+COPY shared /workspace/shared
 
 ENV NODE_ENV=production
 ENV PORT=8787

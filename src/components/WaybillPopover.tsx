@@ -1,41 +1,11 @@
 import { App as AntdApp, Button, Popover } from 'antd'
 import { Copy } from 'lucide-react'
 import type React from 'react'
+import { copyTextToClipboard } from '../utils/clipboard'
 
 const MAX_NOS = 50
 
 type Placement = 'bottom' | 'bottomLeft' | 'bottomRight' | 'top' | 'topLeft' | 'topRight' | 'left' | 'right'
-
-function fallbackCopyText(text: string): boolean {
-  const textarea = document.createElement('textarea')
-  textarea.value = text
-  textarea.style.position = 'fixed'
-  textarea.style.opacity = '0'
-  document.body.appendChild(textarea)
-  textarea.focus()
-  textarea.select()
-  let ok = false
-  try {
-    ok = document.execCommand('copy')
-  } catch {
-    ok = false
-  }
-  document.body.removeChild(textarea)
-  return ok
-}
-
-async function copyAllNos(nos: string[]): Promise<boolean> {
-  const text = nos.join('\n')
-  try {
-    if (navigator.clipboard) {
-      await navigator.clipboard.writeText(text)
-      return true
-    }
-  } catch {
-    // fall through to execCommand
-  }
-  return fallbackCopyText(text)
-}
 
 function PopoverContent({ nos, title }: { nos: string[]; title: string }) {
   const { message } = AntdApp.useApp()
@@ -43,7 +13,7 @@ function PopoverContent({ nos, title }: { nos: string[]; title: string }) {
 
   const handleCopyAll = async (event: React.MouseEvent) => {
     event.stopPropagation()
-    const ok = await copyAllNos(nos)
+    const ok = await copyTextToClipboard(nos.join('\n'))
     if (ok) {
       message.success(`已复制 ${nos.length} 条单号`)
     } else {

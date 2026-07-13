@@ -20,6 +20,7 @@ import { resolveRegionTz } from '../../imile/ausTimezone'
 import type { JobHandler } from '../types'
 import { VENDOR_ANALYSIS_DATA_SOURCES, type VendorAnalysisDataSource } from '../../vendorAnalysis/metricsCatalog'
 import { aggregateVendorAnalysis, type VendorAnalyzeSummary } from '../../vendorAnalysis/aggregate'
+import { populateDriverMapCache } from '../../driverMap/driverMapPointsQuery'
 
 export const VENDOR_ANALYZE_JOB_TYPE = 'vendor.analyze'
 
@@ -241,6 +242,24 @@ export const vendorAnalyzeHandler: JobHandler = {
           const res = await fetchDriverReturnWarning(imileToken, { stationCodes: params.stationCodes })
           if (!res.ok) throw new Error(`司机归班预警获取失败: ${res.message}`)
           driverReturnRows = res.data
+        },
+      },
+      {
+        source: 'driverMap',
+        phase: 'driverMap',
+        // 与 before11 同一天：签收/未签收/问题件写入司机地图缓存；后续「刷新」只增量更新未终态
+        message: '同步司机地图(出仓日)',
+        run: async () => {
+          const res = await waybillSearchSemaphore.run(() =>
+            populateDriverMapCache({
+              token: imileToken,
+              stationCode: requireBefore11StationCode(),
+              dataDate: params.before11Date,
+              tz: resolveRegionTz(ctx.job.regionCode),
+              label: '司机地图(分析任务出仓日)',
+            }),
+          )
+          if (!res.ok) throw new Error(`司机地图同步失败: ${res.message}`)
         },
       },
     ]

@@ -13,6 +13,7 @@ import { listSupplierPushConfigs, parseRouteCodes } from '../supplierPushConfigs
 import { purgeOldVendorDailyData } from '../vendorAnalysis/retention'
 import {
   buildVendorAiSystemPrompt,
+  mergeModuleMetricKeys,
   parseVendorAnalysisDataSources,
   resolveVendorAnalysisDataSources,
   type VendorAnalysisDataSource,
@@ -308,8 +309,9 @@ vendorAnalysisRouter.get('/analyze-jobs/:jobId/snapshot', async (req: Authentica
   res.json({ ok: true, data: snapshot.payload })
 })
 
-// 编辑任务的「输出配置」：仅推送供应商范围 + AI 分析总结开关。这两项不参与分析、不影响结果与幂等，
-// 因此任务创建后可自由修改（浅合并进 payload），不需要重跑 worker。
+// 编辑任务的「输出配置」：推送供应商范围 + AI 分析总结开关 + 扩展模块。
+// 这些项不参与数据分析抓取、不影响幂等，因此任务创建后可自由修改（浅合并进 payload），不需要重跑 worker。
+// metricKeys 仅允许改 category=module 的项；供应商/司机指标仍固化，需新建任务才能变更。
 vendorAnalysisRouter.patch('/analyze-jobs/:jobId/config', async (req: AuthenticatedRequest, res: Response) => {
   const jobId = String(req.params.jobId ?? '').trim()
   const job = await getJobById(jobId)
@@ -326,7 +328,7 @@ vendorAnalysisRouter.patch('/analyze-jobs/:jobId/config', async (req: Authentica
     return
   }
 
-  const body = req.body as { pushEnabledIds?: unknown; aiSummaryEnabled?: unknown }
+  const body = req.body as { pushEnabledIds?: unknown; aiSummaryEnabled?: unknown; metricKeys?: unknown }
   const patch: Record<string, unknown> = {}
   if (body.pushEnabledIds !== undefined) {
     if (!Array.isArray(body.pushEnabledIds) || body.pushEnabledIds.some((s) => typeof s !== 'string')) {
@@ -341,6 +343,17 @@ vendorAnalysisRouter.patch('/analyze-jobs/:jobId/config', async (req: Authentica
       return
     }
     patch.aiSummaryEnabled = body.aiSummaryEnabled
+  }
+  if (body.metricKeys !== undefined) {
+    if (!Array.isArray(body.metricKeys) || body.metricKeys.some((s) => typeof s !== 'string')) {
+      res.status(400).json({ ok: false, error: '无效的 metricKeys' })
+      return
+    }
+    const payload = job.payload as Record<string, unknown>
+    const existing = Array.isArray(payload.metricKeys)
+      ? (payload.metricKeys as unknown[]).filter((k): k is string => typeof k === 'string')
+      : null
+    patch.metricKeys = mergeModuleMetricKeys(existing, body.metricKeys as string[])
   }
   if (Object.keys(patch).length === 0) {
     res.status(400).json({ ok: false, error: '无可更新字段' })

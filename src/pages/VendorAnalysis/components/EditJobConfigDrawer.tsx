@@ -1,8 +1,19 @@
-import { Button, Checkbox, Drawer, Switch, Tooltip, Typography } from 'antd'
-import { SlidersHorizontal, Sparkles, Truck } from 'lucide-react'
+import { Button, Checkbox, Drawer, Tooltip, Typography } from 'antd'
+import { Layers, SlidersHorizontal, Truck } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { isSupplierPushEligible, type SupplierPushConfig } from '../../../shared/supplierPushConfig'
+import {
+  ALL_METRIC_KEYS,
+  MODULE_METRICS,
+  mergeModuleMetricKeys,
+} from '../metricsRegistry'
 import type { PublicJob } from '../vendorAnalysisApi'
+
+type JobOutputConfig = {
+  pushEnabledIds: string[]
+  aiSummaryEnabled: boolean
+  metricKeys: string[]
+}
 
 type Props = {
   open: boolean
@@ -10,26 +21,32 @@ type Props = {
   /** 正在编辑的任务；null 时抽屉不渲染内容 */
   job: PublicJob | null
   catalogConfigs: SupplierPushConfig[]
-  /** 保存这两项输出配置；返回 true 表示成功（由此关闭抽屉） */
-  onSave: (jobId: string, config: { pushEnabledIds: string[]; aiSummaryEnabled: boolean }) => Promise<boolean>
+  /** 保存输出配置；返回 true 表示成功（由此关闭抽屉） */
+  onSave: (jobId: string, config: JobOutputConfig) => Promise<boolean>
 }
 
 /** 从任务 payload 读取当前输出配置，供编辑抽屉预填 */
-function readConfig(job: PublicJob): { pushEnabledIds: string[]; aiSummaryEnabled: boolean } {
+function readConfig(job: PublicJob): JobOutputConfig {
   const p = job.payload
   const pushEnabledIds = Array.isArray(p.pushEnabledIds)
     ? (p.pushEnabledIds as unknown[]).filter((s): s is string => typeof s === 'string')
     : []
-  return { pushEnabledIds, aiSummaryEnabled: p.aiSummaryEnabled !== false }
+  const metricKeys = Array.isArray(p.metricKeys)
+    ? (p.metricKeys as unknown[]).filter((k): k is string => typeof k === 'string')
+    : ALL_METRIC_KEYS
+  return { pushEnabledIds, aiSummaryEnabled: p.aiSummaryEnabled !== false, metricKeys }
 }
 
 /**
- * 任务队列「编辑」抽屉：只编辑任务的两项「输出配置」——推送供应商范围 + AI 分析总结开关。
- * 这两项不参与数据分析，改动通过 PATCH 落库、不重跑 worker。
+ * 任务队列「编辑」抽屉：编辑不参与数据分析抓取的输出配置——
+ * 推送供应商范围、AI 分析总结、扩展模块。改动通过 PATCH 落库、不重跑 worker。
+ * 供应商/司机指标已固化，如需变更请新建分析任务。
  */
 export function EditJobConfigDrawer({ open, onClose, job, catalogConfigs, onSave }: Props) {
   const [enabledIds, setEnabledIds] = useState<Set<string>>(new Set())
   const [aiSummaryEnabled, setAiSummaryEnabled] = useState(true)
+  const [moduleKeys, setModuleKeys] = useState<Set<string>>(new Set())
+  const [baseMetricKeys, setBaseMetricKeys] = useState<string[]>(ALL_METRIC_KEYS)
   const [saving, setSaving] = useState(false)
   const [syncedKey, setSyncedKey] = useState<string | null>(null)
 
@@ -42,6 +59,8 @@ export function EditJobConfigDrawer({ open, onClose, job, catalogConfigs, onSave
       const cfg = readConfig(job)
       setEnabledIds(new Set(cfg.pushEnabledIds))
       setAiSummaryEnabled(cfg.aiSummaryEnabled)
+      setBaseMetricKeys(cfg.metricKeys)
+      setModuleKeys(new Set(MODULE_METRICS.filter((m) => cfg.metricKeys.includes(m.key)).map((m) => m.key)))
     }
   }
 
@@ -58,11 +77,25 @@ export function EditJobConfigDrawer({ open, onClose, job, catalogConfigs, onSave
     })
   }
 
+  const toggleModule = (key: string, next: boolean) => {
+    setModuleKeys((prev) => {
+      const set = new Set(prev)
+      if (next) set.add(key)
+      else set.delete(key)
+      return set
+    })
+  }
+
   const handleSave = async () => {
     if (!job) return
     setSaving(true)
     try {
-      const ok = await onSave(job.id, { pushEnabledIds: [...enabledIds], aiSummaryEnabled })
+      const metricKeys = mergeModuleMetricKeys(baseMetricKeys, [...moduleKeys])
+      const ok = await onSave(job.id, {
+        pushEnabledIds: [...enabledIds],
+        aiSummaryEnabled,
+        metricKeys,
+      })
       if (ok) onClose()
     } finally {
       setSaving(false)
@@ -84,15 +117,15 @@ export function EditJobConfigDrawer({ open, onClose, job, catalogConfigs, onSave
       }
       footer={
         <div className="flex items-center justify-end gap-2">
-          <Button size="small" onClick={onClose} disabled={saving}>取消</Button>
-          <Button size="small" type="primary" loading={saving} onClick={() => void handleSave()}>保存</Button>
+          <Button onClick={onClose} disabled={saving}>取消</Button>
+          <Button type="primary" loading={saving} onClick={() => void handleSave()}>保存</Button>
         </div>
       }
     >
       <div className="space-y-5">
         <Typography.Paragraph type="secondary" className="!mb-0 text-xs leading-relaxed">
-          仅可编辑「推送供应商配置」和「AI 分析总结」——这两项不参与数据分析，修改后无需重新获取数据；
-          分析结果（各项指标）已固化，如需变更请新建分析任务。
+          可编辑「推送供应商配置」和「扩展模块」（含 AI 分析总结）——这些不参与数据分析抓取，修改后无需重新获取数据；
+          供应商/司机指标已固化，如需变更请新建分析任务。
         </Typography.Paragraph>
 
         <section className="rounded-xl border border-[var(--admin-line)] bg-white">
@@ -104,13 +137,13 @@ export function EditJobConfigDrawer({ open, onClose, job, catalogConfigs, onSave
               <h4 className="text-sm font-semibold text-slate-800">推送供应商配置</h4>
             </div>
             <div className="flex items-center gap-2">
-              <Button size="small"
+              <Button
                 disabled={allEligibleSelected || eligibleConfigs.length === 0}
                 onClick={() => setEnabledIds(new Set(eligibleConfigs.map((c) => c.id)))}
               >
                 全选
               </Button>
-              <Button size="small" disabled={selectedCount === 0} onClick={() => setEnabledIds(new Set())}>清空</Button>
+              <Button disabled={selectedCount === 0} onClick={() => setEnabledIds(new Set())}>清空</Button>
             </div>
           </header>
           <div className="px-4 py-4">
@@ -180,17 +213,53 @@ export function EditJobConfigDrawer({ open, onClose, job, catalogConfigs, onSave
           <header className="flex items-center justify-between gap-3 border-b border-[var(--admin-line)] bg-[var(--admin-surface-soft)] px-4 py-3">
             <div className="flex items-center gap-2.5">
               <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-[var(--admin-accent-soft)] text-[var(--admin-accent)]">
-                <Sparkles className="h-4 w-4" aria-hidden />
+                <Layers className="h-4 w-4" aria-hidden />
               </span>
-              <h4 className="text-sm font-semibold text-slate-800">AI 分析总结</h4>
+              <h4 className="text-sm font-semibold text-slate-800">扩展模块</h4>
             </div>
-            <Switch checked={aiSummaryEnabled} onChange={setAiSummaryEnabled} />
+            <span className="text-[11px] tabular-nums text-slate-400">
+              已启用 {moduleKeys.size + (aiSummaryEnabled ? 1 : 0)} / {MODULE_METRICS.length + 1}
+            </span>
           </header>
           <div className="px-4 py-4">
-            <p className="text-xs leading-relaxed text-slate-500">
-              {aiSummaryEnabled
-                ? 'AI 分析总结已开启：预览快照 / 截图推送时会等待 AI 生成结果。'
-                : 'AI 分析总结已关闭：不会调用 AI，快照与推送更快，但落地页无分析段落。'}
+            <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+              {MODULE_METRICS.map((metric) => {
+                const checked = moduleKeys.has(metric.key)
+                return (
+                  <label
+                    key={metric.key}
+                    className={`flex cursor-pointer items-center gap-2 rounded-lg border px-3 py-2.5 transition-colors ${
+                      checked
+                        ? 'border-[var(--admin-accent)] bg-[var(--admin-accent-soft)]'
+                        : 'border-[var(--admin-line)] bg-white hover:bg-slate-50'
+                    }`}
+                  >
+                    <Checkbox
+                      checked={checked}
+                      onChange={(e) => toggleModule(metric.key, e.target.checked)}
+                    >
+                      <span className="text-[13px] text-slate-700">{metric.label}</span>
+                    </Checkbox>
+                  </label>
+                )
+              })}
+              <label
+                className={`flex cursor-pointer items-center gap-2 rounded-lg border px-3 py-2.5 transition-colors ${
+                  aiSummaryEnabled
+                    ? 'border-[var(--admin-accent)] bg-[var(--admin-accent-soft)]'
+                    : 'border-[var(--admin-line)] bg-white hover:bg-slate-50'
+                }`}
+              >
+                <Checkbox
+                  checked={aiSummaryEnabled}
+                  onChange={(e) => setAiSummaryEnabled(e.target.checked)}
+                >
+                  <span className="text-[13px] text-slate-700">AI 分析总结</span>
+                </Checkbox>
+              </label>
+            </div>
+            <p className="mt-3 border-t border-[var(--admin-line)] pt-3 text-[11px] text-slate-400">
+              扩展模块独立于指标抓取（如司机地图、AI 分析总结），开关即时生效；已发布的外部分享链接需重新打开快照/发布日报后才会更新。
             </p>
           </div>
         </section>
