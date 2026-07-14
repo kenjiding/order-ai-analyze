@@ -1,6 +1,5 @@
 export type DriverMapConfig = {
   enabledVendors: Array<{ vendorCode: string; vendorName: string; stationCode: string }>
-  hasBrowserMapsKey: boolean
 }
 
 export type DriverMapPointStatus = 'completed' | 'problem' | 'pending'

@@ -1,30 +1,11 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useMemo, useState } from 'react'
 import { Alert, Button, Card, Empty, Spin, message } from 'antd'
 import { RefreshCw } from 'lucide-react'
 import { PermissionGate, PERMISSION_KEYS } from '../../../../hooks/usePermission'
-import { useGoogleMapsLoader } from './useGoogleMapsLoader'
 import { useDriverMapData } from './useDriverMapData'
-import { getDriverMapBrowserKey } from './driverMapApi'
 import { DriverMapView } from './DriverMapView'
 import { DriverMapLegend } from './DriverMapLegend'
 import { DriverFilterBar } from './DriverFilterBar'
-
-/** 内部授权页面自行拉取受限浏览器端 key（外部分享链接门户走自己的公开接口，不复用这个 hook） */
-function useAuthedBrowserMapsKey(): string | null | undefined {
-  const [browserKey, setBrowserKey] = useState<string | null | undefined>(undefined)
-  useEffect(() => {
-    let cancelled = false
-    void (async () => {
-      const res = await getDriverMapBrowserKey()
-      if (cancelled) return
-      setBrowserKey(res.ok ? res.data.browserKey : null)
-    })()
-    return () => {
-      cancelled = true
-    }
-  }, [])
-  return browserKey
-}
 
 function DriverMapBody({
   stationCode,
@@ -39,8 +20,6 @@ function DriverMapBody({
   onRefresh: () => Promise<boolean>
   dataState: ReturnType<typeof useDriverMapData>
 }) {
-  const browserKey = useAuthedBrowserMapsKey()
-  const loaderState = useGoogleMapsLoader(browserKey)
   const [courierCode, setCourierCode] = useState<string | undefined>(undefined)
 
   const driverOptions = useMemo(() => {
@@ -48,13 +27,7 @@ function DriverMapBody({
     return dataState.data.drivers.map((d) => ({ courierCode: d.courierCode, courierName: d.courierName }))
   }, [dataState])
 
-  if (loaderState.status === 'no-key') {
-    return <Alert type="warning" showIcon message="地图功能未配置" description="请联系管理员在后端配置 Google Maps API Key 后再使用司机地图。" />
-  }
-  if (loaderState.status === 'error') {
-    return <Alert type="error" showIcon message="地图加载失败" description={loaderState.message} />
-  }
-  if (loaderState.status === 'loading' || dataState.status === 'loading') {
+  if (dataState.status === 'loading') {
     return (
       <div className="flex items-center justify-center py-16">
         <Spin />
@@ -82,7 +55,7 @@ function DriverMapBody({
           type="warning"
           showIcon
           message={`已有 ${totalCount} 单签收/问题件，但未能解析出地图坐标`}
-          description="请确认后端已配置可用的 Google Geocoding Key（GOOGLE_MAPS_SERVER_API_KEY），然后再次点击「刷新」。地址较多时需多次刷新逐步补全坐标。"
+          description="请确认后端已配置可用的地理编码 Key（LOCATIONIQ_API_KEY），然后再次点击「刷新」。地址较多时需多次刷新逐步补全坐标。"
         />
       )
     }

@@ -177,6 +177,30 @@ server {
     root /var/www/app/dist;
     index index.html;
 
+    # gzip：文本类资源传输前压缩，首屏体积明显下降
+    gzip on;
+    gzip_vary on;
+    gzip_comp_level 6;
+    gzip_min_length 1024;
+    gzip_types
+        text/plain
+        text/css
+        text/xml
+        text/javascript
+        application/javascript
+        application/json
+        application/xml
+        image/svg+xml
+        font/ttf
+        font/otf
+        application/wasm;
+    # text/html 无需加入 gzip_types，nginx 默认总是压缩它
+
+    # 如 ECS 装了 nginx-mod-brotli（Alibaba Cloud Linux 需 EPEL），可再叠加 brotli（压缩率更高）：
+    # brotli on;
+    # brotli_comp_level 5;
+    # brotli_types text/plain text/css application/javascript application/json image/svg+xml font/ttf font/otf application/wasm;
+
     location /api/ {
         proxy_pass http://127.0.0.1:8787;
         proxy_http_version 1.1;
@@ -191,17 +215,26 @@ server {
         proxy_pass http://127.0.0.1:8787/health;
     }
 
+    # 带内容 hash 的构建产物（main-xxxx.js 等）：内容不变文件名就不变，强缓存一年，
+    # 浏览器命中缓存直接用，连协商请求都不用发
     location /assets/ {
         try_files $uri =404;
         expires 1y;
         add_header Cache-Control "public, immutable";
     }
 
+    # index.html 等入口页面 / 无 hash 的静态文件（favicon、riv 动画等）：不能强缓存，
+    # 否则发版后用户还停在旧版本、引用的 hash 资源已经被换掉会直接空白。
+    # no-cache 走协商缓存——每次问一下服务器，配合 nginx 默认的 ETag，没变就 304，
+    # 省流量的同时保证发版后立刻生效
     location / {
         try_files $uri $uri/ /index.html;
+        add_header Cache-Control "no-cache";
     }
 }
 ```
+
+> `add_header` 有个常见坑：同一个 `location` 块里只要自己写了 `add_header`，就会**丢弃**从父级（`server`/`http`）继承来的所有 `add_header`（不是叠加）。以后如果在 `server` 层加了别的响应头（比如 CSP、`X-Frame-Options`），记得在 `/assets/` 和 `location /` 这两个已经自带 `add_header` 的块里把它们也重复写一遍，否则会被静默吞掉。
 
 查看当前 Nginx 配置：
 

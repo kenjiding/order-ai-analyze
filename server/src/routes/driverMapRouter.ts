@@ -1,6 +1,5 @@
 import { Router, type Response } from 'express'
 import { requirePermission, type AuthenticatedRequest } from '../auth/middleware'
-import { envFirst } from '../imile/shared'
 import { listSupplierPushConfigs } from '../supplierPushConfigs'
 import { queryDriverMapPoints, refreshDriverMapPoints } from '../driverMap/driverMapPointsQuery'
 
@@ -18,16 +17,8 @@ driverMapRouter.get('/config', requireDriverMap, async (_req: AuthenticatedReque
     .sort((a, b) => a.vendorName.localeCompare(b.vendorName))
   res.json({
     ok: true,
-    data: {
-      enabledVendors,
-      hasBrowserMapsKey: !!envFirst('GOOGLE_MAPS_BROWSER_API_KEY'),
-    },
+    data: { enabledVendors },
   })
-})
-
-driverMapRouter.get('/maps-key', requireDriverMap, async (_req: AuthenticatedRequest, res: Response) => {
-  const browserKey = envFirst('GOOGLE_MAPS_BROWSER_API_KEY') ?? null
-  res.json({ ok: true, data: { browserKey } })
 })
 
 // ─── 点位查询：读缓存表，按司机分组 ───────────────────────────────────────────────

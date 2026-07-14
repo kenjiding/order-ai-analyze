@@ -7,7 +7,7 @@ import {
   type JobStatus,
   type PublicJob,
 } from '../../api/jobsClient'
-import type { StationOption, VendorOption } from './vendorAnalysisTypes'
+import type { VendorOption } from './vendorAnalysisTypes'
 import type { VendorAnalyzeSummary } from './vendorAnalysisSummary'
 import type { VendorRankingResult } from '../../../shared/vendorAnalysis/rankingScore'
 import type { DriverMapPointsResponse } from './components/DriverMap/driverMapTypes'
@@ -32,15 +32,6 @@ async function apiFetch<T>(
     if (err instanceof Error && err.name === 'AbortError') throw err
     return { ok: false, error: `无法访问后端 (${path})` }
   }
-}
-
-export async function fetchStations(
-  imileToken: string,
-): Promise<{ ok: true; data: StationOption[] } | { ok: false; error: string }> {
-  return apiFetch<StationOption[]>('/api/vendor-analysis/stations', {
-    method: 'GET',
-    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${imileToken}` },
-  })
 }
 
 export async function fetchVendors(
@@ -255,7 +246,7 @@ export async function fetchVendorPortalDaily(
   })
 }
 
-export type VendorPortalDriverMap = DriverMapPointsResponse & { browserMapsKey: string | null }
+export type VendorPortalDriverMap = DriverMapPointsResponse
 
 /**
  * 供应商日报外部门户的司机地图：每个分享 token 对应一个供应商的点位切片。

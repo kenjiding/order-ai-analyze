@@ -1,6 +1,6 @@
 import { useEffect } from 'react'
 import { useAppSettings } from '../../context/AppSettingsContext'
-import { fetchStations } from '../../pages/VendorAnalysis/vendorAnalysisApi'
+import { fetchStations } from '../../pages/VendorAnalysis/stationsApi'
 import { useGlobalFilterStore } from '../../stores/globalFilterStore'
 import { showToast } from '../../utils/toast'
 

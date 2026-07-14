@@ -7,7 +7,6 @@ import {
   type VendorRankingInput,
   type VendorRankingResult,
 } from '../../../shared/vendorAnalysis/rankingScore'
-import { envFirst } from '../imile/shared'
 import { queryDriverMapPoints, geocodePendingMapPoints, ensureProblemReasons } from '../driverMap/driverMapPointsQuery'
 import { listSupplierPushConfigs } from '../supplierPushConfigs'
 
@@ -341,7 +340,7 @@ vendorPortalRouter.get('/driver-map/:token', rateLimit, async (req: Request, res
       return
     }
 
-    // 有地址无坐标时：按本供应商范围把 consignee 地址 geocode 成 lat/lng 再返回
+    // 有地址无坐标时：按本供应商范围把 consignee 地址 geocode 成 lat/lng（有时间预算，可多次打开继续补）
     await ensureProblemReasons({ stationCode, dataDate, vendorCode })
     await geocodePendingMapPoints({ stationCode, dataDate, vendorCode })
 
@@ -355,13 +354,7 @@ vendorPortalRouter.get('/driver-map/:token', rateLimit, async (req: Request, res
       return
     }
 
-    res.json({
-      ok: true,
-      data: {
-        ...points.data,
-        browserMapsKey: envFirst('GOOGLE_MAPS_BROWSER_API_KEY') ?? null,
-      },
-    })
+    res.json({ ok: true, data: points.data })
   } catch (err) {
     console.error('[vendor-portal/driver-map]', err)
     res.status(500).json({ ok: false, error: 'internal_error' })

@@ -124,7 +124,8 @@ export function EditJobConfigDrawer({ open, onClose, job, catalogConfigs, onSave
     >
       <div className="space-y-5">
         <Typography.Paragraph type="secondary" className="!mb-0 text-xs leading-relaxed">
-          可编辑「推送供应商配置」和「扩展模块」（含 AI 分析总结）——这些不参与数据分析抓取，修改后无需重新获取数据；
+          可编辑「推送供应商配置」和「扩展模块」。其中「AI 分析总结」仅影响展示/推送，改完无需重跑分析；
+          「司机地图」若分析时未勾选，事后打开只会显示空地图——必须新建任务并勾选后重新分析才会同步运单坐标。
           供应商/司机指标已固化，如需变更请新建分析任务。
         </Typography.Paragraph>
 
@@ -259,7 +260,7 @@ export function EditJobConfigDrawer({ open, onClose, job, catalogConfigs, onSave
               </label>
             </div>
             <p className="mt-3 border-t border-[var(--admin-line)] pt-3 text-[11px] text-slate-400">
-              扩展模块独立于指标抓取（如司机地图、AI 分析总结），开关即时生效；已发布的外部分享链接需重新打开快照/发布日报后才会更新。
+              AI 总结开关即时生效；司机地图依赖分析任务里的同步阶段，仅改开关不会补数据。已发布的外部分享链接需重新打开快照/发布日报后才会更新展示配置。
             </p>
           </div>
         </section>

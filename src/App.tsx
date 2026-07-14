@@ -1,5 +1,5 @@
-import { useEffect, type ReactNode } from 'react'
-import { App as AntdApp, ConfigProvider } from 'antd'
+import { lazy, Suspense, useEffect, type ReactNode } from 'react'
+import { App as AntdApp, ConfigProvider, Spin } from 'antd'
 import enUS from 'antd/locale/en_US'
 import zhCN from 'antd/locale/zh_CN'
 import { AliveScope, KeepAlive } from 'react-activation'
@@ -11,27 +11,47 @@ import { AppSettingsProvider } from './context/AppSettingsContext'
 import { I18nProvider } from './i18n/I18nProvider'
 import AppLayout from './components/AppLayout'
 import ProtectedRoute from './components/ProtectedRoute'
-import NewMerchantMonitorPage from './pages/NewMerchantMonitor/NewMerchantMonitorPage'
-import OrderExceptionManagementPage from './pages/OrderExceptionManagement/OrderExceptionManagementPage'
-import ProblemPackageAuditPage from './pages/ProblemPackageAudit/ProblemPackageAuditPage'
-import VendorAnalysisPage from './pages/VendorAnalysis/VendorAnalysisPage'
-import ScannerEfficiencyPage from './pages/ScannerEfficiency/ScannerEfficiencyPage'
-import EfficiencyAttendanceRecordsPage from './pages/EfficiencyAttendanceRecords/EfficiencyAttendanceRecordsPage'
-import PushNotificationsPage from './pages/PushNotifications/PushNotificationsPage'
-import WageSalaryPage from './pages/WageSalary/WageSalaryPage'
-import WarehouseSafetyInspectionPage from './pages/WarehouseSafetyInspection/WarehouseSafetyInspectionPage'
-import SystemUsersPage from './pages/SystemUsers/SystemUsersPage'
-import LoginPage from './pages/Login/LoginPage'
-import VendorSnapshotPage from './pages/VendorAnalysis/VendorSnapshotPage'
-import VendorPortalPage from './pages/VendorPortal/VendorPortalPage'
-import ChaseDispatchSharePage from './pages/ChaseDispatchShare/ChaseDispatchSharePage'
-import ExitAlarmPage from './pages/ExitAlarm/ExitAlarmPage'
-import ChaseDispatchPage from './pages/ChaseDispatch/ChaseDispatchPage'
-import WorkOrderPushPage from './pages/WorkOrderPush/WorkOrderPushPage'
-import AttendanceWorkTimePage from './pages/AttendanceWorkTime/AttendanceWorkTimePage'
 import { getDefaultRouteForPermissions } from './components/Layout/sidebarMenu'
 import { useAuthStore } from './stores/authStore'
 import { ToastBridge } from './utils/toast'
+
+// 各页面按路由懒加载，避免所有页面的代码被打进同一个入口 chunk
+const NewMerchantMonitorPage = lazy(() => import('./pages/NewMerchantMonitor/NewMerchantMonitorPage'))
+const OrderExceptionManagementPage = lazy(() => import('./pages/OrderExceptionManagement/OrderExceptionManagementPage'))
+const ProblemPackageAuditPage = lazy(() => import('./pages/ProblemPackageAudit/ProblemPackageAuditPage'))
+const VendorAnalysisPage = lazy(() => import('./pages/VendorAnalysis/VendorAnalysisPage'))
+const ScannerEfficiencyPage = lazy(() => import('./pages/ScannerEfficiency/ScannerEfficiencyPage'))
+const EfficiencyAttendanceRecordsPage = lazy(
+  () => import('./pages/EfficiencyAttendanceRecords/EfficiencyAttendanceRecordsPage'),
+)
+const PushNotificationsPage = lazy(() => import('./pages/PushNotifications/PushNotificationsPage'))
+const WageSalaryPage = lazy(() => import('./pages/WageSalary/WageSalaryPage'))
+const WarehouseSafetyInspectionPage = lazy(
+  () => import('./pages/WarehouseSafetyInspection/WarehouseSafetyInspectionPage'),
+)
+const SystemUsersPage = lazy(() => import('./pages/SystemUsers/SystemUsersPage'))
+const LoginPage = lazy(() => import('./pages/Login/LoginPage'))
+const VendorSnapshotPage = lazy(() => import('./pages/VendorAnalysis/VendorSnapshotPage'))
+const VendorPortalPage = lazy(() => import('./pages/VendorPortal/VendorPortalPage'))
+const ChaseDispatchSharePage = lazy(() => import('./pages/ChaseDispatchShare/ChaseDispatchSharePage'))
+const ExitAlarmPage = lazy(() => import('./pages/ExitAlarm/ExitAlarmPage'))
+const ChaseDispatchPage = lazy(() => import('./pages/ChaseDispatch/ChaseDispatchPage'))
+const WorkOrderPushPage = lazy(() => import('./pages/WorkOrderPush/WorkOrderPushPage'))
+const AttendanceWorkTimePage = lazy(() => import('./pages/AttendanceWorkTime/AttendanceWorkTimePage'))
+
+function RouteLoadingFallback() {
+  return (
+    <div className="flex min-h-screen items-center justify-center bg-slate-50">
+      <Spin />
+    </div>
+  )
+}
+
+/** 懒加载页面的 Suspense 边界。不可包在 KeepAlive 外侧——react-activation 自带 Suspense 桥，
+ * 外层再包一层会导致 onSuspenseEnd → setState 死循环（React #185）。 */
+function LazyBoundary({ children }: { children: ReactNode }) {
+  return <Suspense fallback={<RouteLoadingFallback />}>{children}</Suspense>
+}
 
 function AuthBootstrap({ children }: { children: ReactNode }) {
   const refreshMe = useAuthStore((s) => s.refreshMe)
@@ -62,110 +82,18 @@ function AntdLocaleBridge({ children }: { children: ReactNode }) {
   )
 }
 
-function KeptScannerEfficiencyPage() {
+function KeptPage({
+  cacheKey,
+  name,
+  children,
+}: {
+  cacheKey: string
+  name: string
+  children: ReactNode
+}) {
   return (
-    <KeepAlive
-      cacheKey="page-scanner-efficiency"
-      name="scanner-efficiency"
-      autoFreeze={false}
-    >
-      <ScannerEfficiencyPage />
-    </KeepAlive>
-  )
-}
-
-function KeptWageSalaryPage() {
-  return (
-    <KeepAlive cacheKey="page-wage-salary" name="wage-salary" autoFreeze={false}>
-      <WageSalaryPage />
-    </KeepAlive>
-  )
-}
-
-function KeptOrderExceptionPage() {
-  return (
-    <KeepAlive cacheKey="page-order-exception" name="order-exception" autoFreeze={false}>
-      <OrderExceptionManagementPage />
-    </KeepAlive>
-  )
-}
-
-function KeptNewMerchantMonitorPage() {
-  return (
-    <KeepAlive cacheKey="page-new-merchant-monitor" name="new-merchant-monitor" autoFreeze={false}>
-      <NewMerchantMonitorPage />
-    </KeepAlive>
-  )
-}
-
-function KeptProblemPackageAuditPage() {
-  return (
-    <KeepAlive cacheKey="page-problem-package-audit" name="problem-package-audit" autoFreeze={false}>
-      <ProblemPackageAuditPage />
-    </KeepAlive>
-  )
-}
-
-function KeptPushNotificationsPage() {
-  return (
-    <KeepAlive cacheKey="page-push-notifications" name="push-notifications" autoFreeze={false}>
-      <PushNotificationsPage />
-    </KeepAlive>
-  )
-}
-
-function KeptWarehouseSafetyInspectionPage() {
-  return (
-    <KeepAlive cacheKey="page-warehouse-safety" name="warehouse-safety" autoFreeze={false}>
-      <WarehouseSafetyInspectionPage />
-    </KeepAlive>
-  )
-}
-
-function KeptSystemUsersPage() {
-  return (
-    <KeepAlive cacheKey="page-system-users" name="system-users" autoFreeze={false}>
-      <SystemUsersPage />
-    </KeepAlive>
-  )
-}
-
-function KeptExitAlarmPage() {
-  return (
-    <KeepAlive cacheKey="page-exit-alarm" name="exit-alarm" autoFreeze={false}>
-      <ExitAlarmPage />
-    </KeepAlive>
-  )
-}
-
-function KeptChaseDispatchPage() {
-  return (
-    <KeepAlive cacheKey="page-chase-dispatch" name="chase-dispatch" autoFreeze={false}>
-      <ChaseDispatchPage />
-    </KeepAlive>
-  )
-}
-
-function KeptWorkOrderPushPage() {
-  return (
-    <KeepAlive cacheKey="page-work-order-push" name="work-order-push" autoFreeze={false}>
-      <WorkOrderPushPage />
-    </KeepAlive>
-  )
-}
-
-function KeptAttendanceWorkTimePage() {
-  return (
-    <KeepAlive cacheKey="page-attendance-work-time" name="attendance-work-time" autoFreeze={false}>
-      <AttendanceWorkTimePage />
-    </KeepAlive>
-  )
-}
-
-function KeptVendorAnalysisPage() {
-  return (
-    <KeepAlive cacheKey="page-vendor-analysis" name="vendor-analysis" autoFreeze={false}>
-      <VendorAnalysisPage />
+    <KeepAlive cacheKey={cacheKey} name={name} autoFreeze={false}>
+      <LazyBoundary>{children}</LazyBoundary>
     </KeepAlive>
   )
 }
@@ -197,29 +125,127 @@ function DefaultHomeRedirect() {
 function AppRoutes() {
   return (
     <Routes>
-      <Route path="/login" element={<LoginPage />} />
+      <Route path="/login" element={<LazyBoundary><LoginPage /></LazyBoundary>} />
       {/* 供应商日报外部分享页：凭链接 token 访问，无需登录 */}
-      <Route path="/vendor-daily/:token" element={<VendorPortalPage />} />
+      <Route path="/vendor-daily/:token" element={<LazyBoundary><VendorPortalPage /></LazyBoundary>} />
       {/* 催派推送外部分享页：飞书群内打开，查看/复制滞留运单号 */}
-      <Route path="/chase-dispatch-share/:token" element={<ChaseDispatchSharePage />} />
+      <Route path="/chase-dispatch-share/:token" element={<LazyBoundary><ChaseDispatchSharePage /></LazyBoundary>} />
       <Route element={<ProtectedRoute />}>
-        <Route path="/vendor-snapshot" element={<VendorSnapshotPage />} />
+        <Route path="/vendor-snapshot" element={<LazyBoundary><VendorSnapshotPage /></LazyBoundary>} />
         <Route element={<AuthenticatedShell />}>
           <Route path="/" element={<DefaultHomeRedirect />} />
-          <Route path="/efficiency" element={<KeptScannerEfficiencyPage />} />
-          <Route path="/efficiency-records" element={<EfficiencyAttendanceRecordsPage />} />
-          <Route path="/wage-salary" element={<KeptWageSalaryPage />} />
-          <Route path="/order-exception" element={<KeptOrderExceptionPage />} />
-          <Route path="/new-merchant-monitor" element={<KeptNewMerchantMonitorPage />} />
-          <Route path="/problem-package-audit" element={<KeptProblemPackageAuditPage />} />
-          <Route path="/vendor-analysis" element={<KeptVendorAnalysisPage />} />
-          <Route path="/exit-alarm" element={<KeptExitAlarmPage />} />
-          <Route path="/chase-dispatch" element={<KeptChaseDispatchPage />} />
-          <Route path="/work-order-push" element={<KeptWorkOrderPushPage />} />
-          <Route path="/push-notifications" element={<KeptPushNotificationsPage />} />
-          <Route path="/warehouse-safety" element={<KeptWarehouseSafetyInspectionPage />} />
-          <Route path="/attendance-work-time" element={<KeptAttendanceWorkTimePage />} />
-          <Route path="/system/users" element={<KeptSystemUsersPage />} />
+          <Route
+            path="/efficiency"
+            element={
+              <KeptPage cacheKey="page-scanner-efficiency" name="scanner-efficiency">
+                <ScannerEfficiencyPage />
+              </KeptPage>
+            }
+          />
+          <Route
+            path="/efficiency-records"
+            element={
+              <LazyBoundary>
+                <EfficiencyAttendanceRecordsPage />
+              </LazyBoundary>
+            }
+          />
+          <Route
+            path="/wage-salary"
+            element={
+              <KeptPage cacheKey="page-wage-salary" name="wage-salary">
+                <WageSalaryPage />
+              </KeptPage>
+            }
+          />
+          <Route
+            path="/order-exception"
+            element={
+              <KeptPage cacheKey="page-order-exception" name="order-exception">
+                <OrderExceptionManagementPage />
+              </KeptPage>
+            }
+          />
+          <Route
+            path="/new-merchant-monitor"
+            element={
+              <KeptPage cacheKey="page-new-merchant-monitor" name="new-merchant-monitor">
+                <NewMerchantMonitorPage />
+              </KeptPage>
+            }
+          />
+          <Route
+            path="/problem-package-audit"
+            element={
+              <KeptPage cacheKey="page-problem-package-audit" name="problem-package-audit">
+                <ProblemPackageAuditPage />
+              </KeptPage>
+            }
+          />
+          <Route
+            path="/vendor-analysis"
+            element={
+              <KeptPage cacheKey="page-vendor-analysis" name="vendor-analysis">
+                <VendorAnalysisPage />
+              </KeptPage>
+            }
+          />
+          <Route
+            path="/exit-alarm"
+            element={
+              <KeptPage cacheKey="page-exit-alarm" name="exit-alarm">
+                <ExitAlarmPage />
+              </KeptPage>
+            }
+          />
+          <Route
+            path="/chase-dispatch"
+            element={
+              <KeptPage cacheKey="page-chase-dispatch" name="chase-dispatch">
+                <ChaseDispatchPage />
+              </KeptPage>
+            }
+          />
+          <Route
+            path="/work-order-push"
+            element={
+              <KeptPage cacheKey="page-work-order-push" name="work-order-push">
+                <WorkOrderPushPage />
+              </KeptPage>
+            }
+          />
+          <Route
+            path="/push-notifications"
+            element={
+              <KeptPage cacheKey="page-push-notifications" name="push-notifications">
+                <PushNotificationsPage />
+              </KeptPage>
+            }
+          />
+          <Route
+            path="/warehouse-safety"
+            element={
+              <KeptPage cacheKey="page-warehouse-safety" name="warehouse-safety">
+                <WarehouseSafetyInspectionPage />
+              </KeptPage>
+            }
+          />
+          <Route
+            path="/attendance-work-time"
+            element={
+              <KeptPage cacheKey="page-attendance-work-time" name="attendance-work-time">
+                <AttendanceWorkTimePage />
+              </KeptPage>
+            }
+          />
+          <Route
+            path="/system/users"
+            element={
+              <KeptPage cacheKey="page-system-users" name="system-users">
+                <SystemUsersPage />
+              </KeptPage>
+            }
+          />
         </Route>
       </Route>
       <Route path="*" element={<DefaultHomeRedirect />} />

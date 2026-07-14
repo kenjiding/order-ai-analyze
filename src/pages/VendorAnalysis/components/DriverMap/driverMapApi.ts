@@ -23,10 +23,6 @@ export function getDriverMapConfig() {
   return apiFetch<DriverMapConfig>('/api/driver-map/config')
 }
 
-export function getDriverMapBrowserKey() {
-  return apiFetch<{ browserKey: string | null }>('/api/driver-map/maps-key')
-}
-
 export function getDriverMapPoints(params: { stationCode: string; dataDate: string; vendorCode?: string }) {
   const search = new URLSearchParams({ stationCode: params.stationCode, dataDate: params.dataDate })
   if (params.vendorCode) search.set('vendorCode', params.vendorCode)

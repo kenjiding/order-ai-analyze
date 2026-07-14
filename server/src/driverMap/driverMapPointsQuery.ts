@@ -9,14 +9,26 @@ import { syncStationDayWaybillsIncremental } from '../imile/stationDayWaybillSyn
 import { fetchSearchWaybillByNos } from '../imile/inboundWaybillIndex'
 import { envFirst } from '../imile/shared'
 
-/** 全站刷新时限制新 API 调用；供应商门户按 vendor 范围不套此上限 */
-const GEOCODE_API_CALLS_PER_STATION_REFRESH = 800
-/** 门户按供应商补坐标时的并发（单供应商通常 1k 级唯一地址） */
-const GEOCODE_VENDOR_CONCURRENCY = 8
+/** 全站分析/刷新时每轮最多新打多少次 LocationIQ（地址已在 geocode_cache 的不占此额度） */
+const GEOCODE_API_CALLS_PER_STATION_REFRESH = 1500
+/** LocationIQ 免费档约 2 次/秒；串行 + 间隔，避免 429 后整批中止导致地图「飘忽」 */
+const GEOCODE_MIN_INTERVAL_MS = 550
+/** 门户单次请求的 geocode 时间预算：先返回已有点，剩余靠刷新继续补 */
+const GEOCODE_PORTAL_BUDGET_MS = 20_000
 
-/** 服务端地理编码优先用 SERVER key；未配置时回退 BROWSER key（本地常只配了一个） */
-function readGoogleMapsGeocodeKey(): string {
-  return envFirst('GOOGLE_MAPS_SERVER_API_KEY') ?? envFirst('GOOGLE_MAPS_BROWSER_API_KEY') ?? ''
+function readLocationIqKey(): string {
+  return envFirst('LOCATIONIQ_API_KEY') ?? ''
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms))
+}
+
+/** 终态（签收/问题件）优先于未签收，避免 2 万 pending 抢光额度后地图长期空白 */
+function geocodeStatusPriority(status: string): number {
+  if (status === 'completed') return 0
+  if (status === 'problem') return 1
+  return 2
 }
 
 export type DriverMapPointDto = {
@@ -70,28 +82,34 @@ type GeocodeApiOutcome =
   | { kind: 'not_found' }
   | { kind: 'retryable'; status: string }
 
+/** LocationIQ 免费额度 5000次/天，覆盖 AU/NZ 成熟；接口结构与 Google Geocoding 类似（address -> lat/lng） */
 async function geocodeAddress(addressText: string): Promise<GeocodeApiOutcome | { kind: 'error' }> {
-  const apiKey = readGoogleMapsGeocodeKey()
+  const apiKey = readLocationIqKey()
   if (!apiKey) return { kind: 'error' }
   try {
-    const url = `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(addressText)}&key=${apiKey}`
-    const resp = await fetch(url)
-    const json = (await resp.json()) as {
-      status?: string
-      error_message?: string
-      results?: Array<{ geometry?: { location?: { lat?: number; lng?: number } } }>
+    const params = new URLSearchParams({
+      key: apiKey,
+      q: addressText,
+      format: 'json',
+      countrycodes: 'au,nz',
+      limit: '1',
+    })
+    const resp = await fetch(`https://us1.locationiq.com/v1/search?${params.toString()}`)
+    if (resp.status === 404) return { kind: 'not_found' }
+    if (resp.status === 401 || resp.status === 429) {
+      console.warn(`[driver-map/geocode] status=${resp.status} addr=${addressText.slice(0, 60)}`)
+      return { kind: 'retryable', status: String(resp.status) }
     }
-    if (json.status === 'OK') {
-      const loc = json.results?.[0]?.geometry?.location
-      if (typeof loc?.lat !== 'number' || typeof loc?.lng !== 'number') return { kind: 'not_found' }
-      return { kind: 'ok', data: { latitude: loc.lat, longitude: loc.lng } }
+    if (!resp.ok) {
+      console.warn(`[driver-map/geocode] status=${resp.status} addr=${addressText.slice(0, 60)}`)
+      return { kind: 'retryable', status: String(resp.status) }
     }
-    if (json.status === 'ZERO_RESULTS') return { kind: 'not_found' }
-    // REQUEST_DENIED / OVER_QUERY_LIMIT 等不可写入 not_found 缓存，否则修好 Key 后也不会重试
-    console.warn(
-      `[driver-map/geocode] status=${json.status ?? 'unknown'} msg=${json.error_message ?? ''} addr=${addressText.slice(0, 60)}`,
-    )
-    return { kind: 'retryable', status: json.status ?? 'unknown' }
+    const json = (await resp.json()) as Array<{ lat?: string; lon?: string }>
+    const hit = json[0]
+    const lat = hit?.lat ? Number(hit.lat) : NaN
+    const lon = hit?.lon ? Number(hit.lon) : NaN
+    if (!Number.isFinite(lat) || !Number.isFinite(lon)) return { kind: 'not_found' }
+    return { kind: 'ok', data: { latitude: lat, longitude: lon } }
   } catch (err) {
     console.error('[driver-map/geocode] 请求异常:', err)
     return { kind: 'error' }
@@ -180,47 +198,42 @@ async function applyGeocodeCacheHits(stationCode: string, dataDate: string, vend
   return Number((result as { rowCount?: number }).rowCount ?? 0)
 }
 
-async function mapPool<T>(items: T[], concurrency: number, worker: (item: T) => Promise<void>): Promise<void> {
-  if (items.length === 0) return
-  let cursor = 0
-  const runners = Array.from({ length: Math.min(concurrency, items.length) }, async () => {
-    while (cursor < items.length) {
-      const idx = cursor
-      cursor += 1
-      await worker(items[idx]!)
-    }
-  })
-  await Promise.all(runners)
-}
-
 /**
- * 为尚无坐标的签收/问题件补地理编码（地址已由 consignee* 字段拼好）。
- * - 先批量落 geocodeCache 命中
- * - 未命中再调 Google；传 vendorCode 时只处理该供应商（门户用）
+ * 为尚无坐标的运单补地理编码（地址已由 consignee* 字段拼好）。
+ * - 先批量灌 geocode_cache 命中
+ * - 未命中再调 LocationIQ：签收/问题件地址优先，串行限速，429 退避重试（不再整批中止）
+ * - 传 vendorCode 时只处理该供应商（门户用）；可设 budgetMs 避免拖垮 HTTP 请求
  */
 export async function geocodePendingMapPoints(input: {
   stationCode: string
   dataDate: string
   vendorCode?: string
-  /** 未传 vendorCode 时生效，防止全站一次打爆 */
+  /** 未传 vendorCode 时生效，防止全站一次打爆日额度 */
   maxApiCalls?: number
-  concurrency?: number
+  /** 本轮墙钟时间上限（门户用）；超时后已写入的坐标仍保留，下次打开继续补 */
+  budgetMs?: number
 }): Promise<number> {
   const { stationCode, dataDate, vendorCode } = input
-  const maxApiCalls = vendorCode ? Number.POSITIVE_INFINITY : (input.maxApiCalls ?? GEOCODE_API_CALLS_PER_STATION_REFRESH)
-  const concurrency = input.concurrency ?? (vendorCode ? GEOCODE_VENDOR_CONCURRENCY : 1)
+  const maxApiCalls = vendorCode
+    ? (input.maxApiCalls ?? Number.POSITIVE_INFINITY)
+    : (input.maxApiCalls ?? GEOCODE_API_CALLS_PER_STATION_REFRESH)
+  const budgetMs = input.budgetMs ?? (vendorCode ? GEOCODE_PORTAL_BUDGET_MS : undefined)
+  const startedAt = Date.now()
 
   const db = getDb()
-  const apiKey = readGoogleMapsGeocodeKey()
+  const apiKey = readLocationIqKey()
   if (!apiKey) {
-    console.warn('[driver-map/geocode] 未配置 GOOGLE_MAPS_SERVER_API_KEY / GOOGLE_MAPS_BROWSER_API_KEY，跳过地理编码')
+    console.warn('[driver-map/geocode] 未配置 LOCATIONIQ_API_KEY，跳过地理编码')
     return 0
   }
 
   let updated = await applyGeocodeCacheHits(stationCode, dataDate, vendorCode)
 
   const rows = await db
-    .select({ addressText: schema.driverMapWaybillPoints.addressText })
+    .select({
+      addressText: schema.driverMapWaybillPoints.addressText,
+      status: schema.driverMapWaybillPoints.status,
+    })
     .from(schema.driverMapWaybillPoints)
     .where(
       and(
@@ -240,7 +253,18 @@ export async function geocodePendingMapPoints(input: {
     return updated
   }
 
-  const uniqueAddresses = [...new Set(rows.map((r) => r.addressText).filter(Boolean))]
+  // 同一地址取最高优先级（completed < problem < pending）
+  const bestPriority = new Map<string, number>()
+  for (const row of rows) {
+    if (!row.addressText) continue
+    const pri = geocodeStatusPriority(row.status)
+    const prev = bestPriority.get(row.addressText)
+    if (prev == null || pri < prev) bestPriority.set(row.addressText, pri)
+  }
+  const uniqueAddresses = [...bestPriority.entries()]
+    .sort((a, b) => a[1] - b[1] || a[0].localeCompare(b[0]))
+    .map(([addressText]) => addressText)
+
   const needApi: string[] = []
   for (const addressText of uniqueAddresses) {
     const cached = await db
@@ -256,6 +280,7 @@ export async function geocodePendingMapPoints(input: {
           longitude: c.longitude,
         }, vendorCode)
       }
+      // not_found / 其它失败态已缓存：跳过，避免反复打 API
       continue
     }
     needApi.push(addressText)
@@ -263,25 +288,50 @@ export async function geocodePendingMapPoints(input: {
 
   const toCall = needApi.slice(0, Number.isFinite(maxApiCalls) ? maxApiCalls : needApi.length)
   let apiCalls = 0
-  let stopApi = false
+  let stoppedForAuth = false
+  let stoppedForBudget = false
+  let lastCallAt = 0
 
-  await mapPool(toCall, concurrency, async (addressText) => {
-    if (stopApi) return
-    const geocoded = await geocodeAddress(addressText)
+  for (const addressText of toCall) {
+    if (budgetMs != null && Date.now() - startedAt >= budgetMs) {
+      stoppedForBudget = true
+      break
+    }
+    if (stoppedForAuth) break
+
+    const wait = GEOCODE_MIN_INTERVAL_MS - (Date.now() - lastCallAt)
+    if (lastCallAt > 0 && wait > 0) await sleep(wait)
+
+    let geocoded = await geocodeAddress(addressText)
+    lastCallAt = Date.now()
     apiCalls += 1
+
+    // 429：退避后最多再试 2 次，仍失败则跳过该地址继续后续（不再 stopApi 整批放弃）
+    if (geocoded.kind === 'retryable' && geocoded.status === '429') {
+      for (const backoff of [1500, 3000]) {
+        await sleep(backoff)
+        geocoded = await geocodeAddress(addressText)
+        lastCallAt = Date.now()
+        apiCalls += 1
+        if (geocoded.kind !== 'retryable' || geocoded.status !== '429') break
+      }
+    }
+
     if (geocoded.kind === 'ok') {
       await writeGeocodeCache(addressText, geocoded.data, 'ok')
       updated += await applyGeocodeToPoints(stationCode, dataDate, addressText, geocoded.data, vendorCode)
     } else if (geocoded.kind === 'not_found') {
       await writeGeocodeCache(addressText, null, 'not_found')
-    } else if (geocoded.kind === 'retryable' && (geocoded.status === 'REQUEST_DENIED' || geocoded.status === 'OVER_QUERY_LIMIT')) {
-      console.warn(`[driver-map/geocode] 中止本轮 API 调用 status=${geocoded.status}`)
-      stopApi = true
+    } else if (geocoded.kind === 'retryable' && geocoded.status === '401') {
+      console.warn('[driver-map/geocode] LOCATIONIQ_API_KEY 无效，中止本轮')
+      stoppedForAuth = true
+    } else if (geocoded.kind === 'retryable' && geocoded.status === '429') {
+      console.warn(`[driver-map/geocode] 429 持续，跳过地址继续下一轮 addr=${addressText.slice(0, 60)}`)
     }
-  })
+  }
 
   console.info(
-    `[driver-map/geocode] station=${stationCode} date=${dataDate} vendor=${vendorCode ?? '*'} unique=${uniqueAddresses.length} needApi=${needApi.length} apiCalls=${apiCalls} updatedRows=${updated}`,
+    `[driver-map/geocode] station=${stationCode} date=${dataDate} vendor=${vendorCode ?? '*'} unique=${uniqueAddresses.length} needApi=${needApi.length} apiCalls=${apiCalls} updatedRows=${updated} budgetStop=${stoppedForBudget} authStop=${stoppedForAuth}`,
   )
   return updated
 }

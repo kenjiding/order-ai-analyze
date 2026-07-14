@@ -3,14 +3,14 @@ import type { DriverMapPointStatus } from './driverMapTypes'
 
 const STYLE_ID = 'driver-map-infowindow-skin'
 
-/** 覆盖 Google InfoWindow 默认白框，做成干净的运营卡片 */
+/** 覆盖 MapLibre Popup 默认白框，做成干净的运营卡片 */
 export function ensureDriverMapInfoWindowStyles(): void {
   if (typeof document === 'undefined') return
   if (document.getElementById(STYLE_ID)) return
   const style = document.createElement('style')
   style.id = STYLE_ID
   style.textContent = `
-    .gm-style .gm-style-iw-c {
+    .maplibregl-popup-content {
       padding: 0 !important;
       border-radius: 14px !important;
       box-shadow:
@@ -18,31 +18,6 @@ export function ensureDriverMapInfoWindowStyles(): void {
         0 18px 40px -18px rgba(15, 23, 42, 0.45) !important;
       overflow: hidden !important;
       background: transparent !important;
-    }
-    .gm-style .gm-style-iw-d {
-      overflow: hidden !important;
-      max-height: none !important;
-    }
-    .gm-style .gm-style-iw-tc::after {
-      background: #f8fafc !important;
-      box-shadow: none !important;
-    }
-    .gm-style button.gm-ui-hover-effect {
-      top: 6px !important;
-      right: 6px !important;
-      width: 28px !important;
-      height: 28px !important;
-      border-radius: 999px !important;
-      background: rgba(15, 23, 42, 0.04) !important;
-      opacity: 1 !important;
-    }
-    .gm-style button.gm-ui-hover-effect:hover {
-      background: rgba(15, 23, 42, 0.08) !important;
-    }
-    .gm-style button.gm-ui-hover-effect > span {
-      margin: 6px !important;
-      width: 16px !important;
-      height: 16px !important;
     }
     .dm-iw {
       width: 292px;
