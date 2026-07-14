@@ -1,5 +1,7 @@
 /** 工资可视化聚合：优先按「昵称」合并为一名员工；无昵称时按人员编号。 */
 
+import { pickEmployeeChartLabel } from './employeeDisplayName'
+
 export type WageRecordLike = {
   employeeId: string | number
   nickname?: string
@@ -28,15 +30,24 @@ function employeeGroupKey(r: WageRecordLike): string {
   return id ? `emp:${id}` : 'emp:__unknown__'
 }
 
+function readRecordText(r: WageRecordLike, key: string, aliases: string[]): string {
+  const o = r as unknown as Record<string, unknown>
+  for (const k of [key, ...aliases]) {
+    const v = o[k]
+    if (v != null && String(v).trim()) return String(v).trim()
+  }
+  return ''
+}
+
 function displayLabelForRecord(r: WageRecordLike): string {
-  const nick = nicknameFromRecord(r)
-  if (nick) return nick
+  const label = pickEmployeeChartLabel({
+    name: readRecordText(r, 'name', ['姓名', 'Name']),
+    surname: readRecordText(r, 'surname', ['姓氏', 'Surname']),
+    nickname: readRecordText(r, 'nickname', ['昵称', 'Nickname', 'nickName']),
+  })
+  if (label) return label
   const id = String(r.employeeId ?? '').trim()
-  if (id) return `（无昵称）${id}`
-  const name = String(r.name ?? '').trim()
-  const sur = String(r.surname ?? '').trim()
-  const cn = `${sur}${name}`.trim()
-  if (cn) return cn
+  if (id) return id
   return '未知'
 }
 

@@ -117,7 +117,7 @@ function mergeOrderedUniqueFiles(prev: File[], next: File[]): File[] {
 /** 与工资页上传表默认一致：未勾选「分拣班次 / 公众假期」时的映射口径 */
 
 export function useScannerEfficiencyPage() {
-  const { imileToken, imilePortal, zktAttendance } = useAppSettings()
+  const { imileToken, zktAttendance } = useAppSettings()
   const location = useLocation()
   const navigate = useNavigate()
   const [settings, setSettings] = useState<ScanSettings>(() => ({ ...DEFAULT_SETTINGS }))
@@ -647,7 +647,6 @@ export function useScannerEfficiencyPage() {
         imileToken: token,
         startDate,
         endDate,
-        imilePortal,
       })
 
       console.group(`[ScannerEfficiency] iMile 前台分配 API 原始数据 ${startDate} ~ ${endDate}`)
@@ -733,7 +732,6 @@ export function useScannerEfficiencyPage() {
         imileToken: token,
         startDate,
         endDate,
-        imilePortal,
       })
 
       console.group(`[ScannerEfficiency] 细分错误率分析 API 原始数据 ${startDate} ~ ${endDate}`)
@@ -920,7 +918,6 @@ export function useScannerEfficiencyPage() {
         imileToken: token,
         startDate,
         endDate,
-        imilePortal,
       })
 
       console.group(`[ScannerEfficiency] iMile 到件 API 原始数据 ${startDate} ~ ${endDate}`)

@@ -4,11 +4,7 @@
 
 import { requestImileApi } from './client'
 import { fetchPaginatedResultRows } from './paginatedQuery'
-import {
-  buildImilePortalHeaders,
-  IMILE_DS_SAAS_TMS_PORTAL,
-  type ImilePortalOverrides,
-} from './portal'
+import { buildImilePortalHeaders, IMILE_DS_SAAS_TMS_PORTAL } from './portal'
 import { envFirstOr, IMILE_DEFAULT_HUBCODE, isRecord, mergeBatchRaw, normalizeImileToken, sleep } from './shared'
 
 const DEFAULT_CANCEL_SCAN_URL =
@@ -45,15 +41,15 @@ export type CancelScanAnalysisError = {
   rawText?: string
 }
 
-function makeSaasTmsHeaders(token: string, portal?: ImilePortalOverrides): Record<string, string> {
+function makeSaasTmsHeaders(token: string): Record<string, string> {
   return buildImilePortalHeaders({
     token,
     envPrefix: 'IMILE_CANCEL_SCAN',
     defaults: IMILE_DS_SAAS_TMS_PORTAL,
     sharedEnvPrefixes: ['IMILE_TRACK'],
     injectUserCode: true,
-    // 取消扫描 / 运单查询固定 hubcode，不受全局门户 hubcode 覆盖
-    overrides: { ...portal, hubcode: IMILE_DEFAULT_HUBCODE },
+    // 取消扫描 / 运单查询固定 hubcode，不受站点选择器覆盖
+    overrides: { hubcode: IMILE_DEFAULT_HUBCODE },
   })
 }
 
@@ -289,11 +285,10 @@ export async function queryCancelScanRecordsByScanNumbers(input: {
   imileToken: string
   scanNumbers: string[]
   scanStationCode?: string
-  portal?: ImilePortalOverrides
 }): Promise<CancelScanRecordsByScanNumbersSuccess | CancelScanRecordsByScanNumbersError> {
   const token = normalizeImileToken(input.imileToken)
   const cancelScanUrl = envFirstOr(['IMILE_CANCEL_SCAN_URL'], DEFAULT_CANCEL_SCAN_URL)
-  const headers = makeSaasTmsHeaders(token, input.portal)
+  const headers = makeSaasTmsHeaders(token)
   const scanStationCode =
     input.scanStationCode?.trim() ||
     envFirstOr(['IMILE_CANCEL_SCAN_STATION_CODE'], IMILE_DEFAULT_HUBCODE)
@@ -359,12 +354,11 @@ export async function analyzeCancelScan(input: {
   startTime: string
   endTime: string
   scanStationCode?: string
-  portal?: ImilePortalOverrides
 }): Promise<CancelScanAnalysisSuccess | CancelScanAnalysisError> {
   const token = normalizeImileToken(input.imileToken)
   const cancelScanUrl = envFirstOr(['IMILE_CANCEL_SCAN_URL'], DEFAULT_CANCEL_SCAN_URL)
   const searchWaybillUrl = envFirstOr(['IMILE_SEARCH_WAYBILL_URL'], DEFAULT_SEARCH_WAYBILL_URL)
-  const headers = makeSaasTmsHeaders(token, input.portal)
+  const headers = makeSaasTmsHeaders(token)
   const scanStationCode =
     input.scanStationCode?.trim() ||
     envFirstOr(['IMILE_CANCEL_SCAN_STATION_CODE'], IMILE_DEFAULT_HUBCODE)

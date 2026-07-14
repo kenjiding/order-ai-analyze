@@ -1,5 +1,7 @@
 /** iMile 开放平台 HTTP 调用公共能力（轨迹、阻断日志等接口共用）。业务模块请通过 client.requestImileApi 发请求，勿直接调用 imileRequestJson。 */
 
+import { AsyncLocalStorage } from 'node:async_hooks'
+
 export const IMILE_DEFAULT_FRONT_SEC = JSON.stringify({
   orgId: 10,
   entId: 10,
@@ -61,13 +63,29 @@ export function readDefaultImileHubcode(): string {
   return envFirst('IMILE_TRACK_HUBCODE', 'IMILE_INTERCEPT_HUBCODE') ?? IMILE_DEFAULT_HUBCODE
 }
 
+/**
+ * 请求级 hubcode 上下文：由 imileHubcodeMiddleware 在进入路由前，
+ * 以前端「站点选择器」传来的 hubcode 请求头填充，供 buildImileAuthHeaders 统一取用。
+ * 定时任务等无 HTTP 请求上下文的调用不受影响，仍走 env/默认值兜底。
+ */
+const imileHubcodeStorage = new AsyncLocalStorage<string>()
+
+export function runWithImileHubcode<T>(hubcode: string, fn: () => T): T {
+  return imileHubcodeStorage.run(hubcode, fn)
+}
+
+export function getRequestImileHubcode(): string | undefined {
+  return imileHubcodeStorage.getStore()
+}
+
 export function buildImileAuthHeaders(config: ImileAuthHeaderConfig): Record<string, string> {
   const token = normalizeImileToken(config.token)
   const headers: Record<string, string> = {
     Accept: 'application/json, text/plain, */*',
     Authorization: `Bearer ${token}`,
     'front-sec': envFirst(...(config.frontSecEnvKeys ?? [])) ?? IMILE_DEFAULT_FRONT_SEC,
-    hubcode: envFirst(...(config.hubcodeEnvKeys ?? [])) ?? IMILE_DEFAULT_HUBCODE,
+    hubcode:
+      getRequestImileHubcode() || envFirst(...(config.hubcodeEnvKeys ?? [])) || IMILE_DEFAULT_HUBCODE,
     lang: envFirst(...(config.langEnvKeys ?? [])) ?? IMILE_DEFAULT_LANG,
     timezone: envFirst(...(config.timezoneEnvKeys ?? [])) ?? IMILE_DEFAULT_TIMEZONE,
     'resource-code': config.resourceCode,

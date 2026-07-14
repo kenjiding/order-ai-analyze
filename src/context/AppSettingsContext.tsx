@@ -1,11 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react'
 import { getUserPreference, putUserPreference } from '../api/userPreferencesApi'
 import {
-  DEFAULT_IMILE_PORTAL_SETTINGS,
-  normalizeImilePortalSettings,
-  type ImilePortalSettings,
-} from '../imile/imilePortalSettings'
-import {
   DEFAULT_ZKT_ATTENDANCE_SETTINGS,
   normalizeZktAttendanceSettings,
   type ZktAttendanceSettings,
@@ -19,27 +14,23 @@ const APP_SETTINGS_PREF_KEY = 'app-settings'
 
 export type StoredAppSettings = {
   imileToken: string
-  imilePortal: ImilePortalSettings
   zktAttendance: ZktAttendanceSettings
 }
 
 const DEFAULT_APP_SETTINGS: StoredAppSettings = {
   imileToken: '',
-  imilePortal: { ...DEFAULT_IMILE_PORTAL_SETTINGS },
   zktAttendance: { ...DEFAULT_ZKT_ATTENDANCE_SETTINGS },
 }
 
 function normalizeStoredAppSettings(raw: Partial<StoredAppSettings> | null | undefined): StoredAppSettings {
   return {
     imileToken: String(raw?.imileToken ?? ''),
-    imilePortal: normalizeImilePortalSettings(raw?.imilePortal),
     zktAttendance: normalizeZktAttendanceSettings(raw?.zktAttendance),
   }
 }
 
 export type AppSettingsContextValue = {
   imileToken: string
-  imilePortal: ImilePortalSettings
   zktAttendance: ZktAttendanceSettings
   /** 服务端首次拉取是否已完成；拉取完成前 imileToken 等字段可能仍是默认值 */
   settingsLoaded: boolean
@@ -86,7 +77,6 @@ export function AppSettingsProvider({ children }: { children: React.ReactNode })
   const value = useMemo<AppSettingsContextValue>(
     () => ({
       imileToken: settings.imileToken,
-      imilePortal: settings.imilePortal,
       zktAttendance: settings.zktAttendance,
       settingsLoaded,
       updateSettings,

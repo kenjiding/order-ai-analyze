@@ -1,5 +1,6 @@
 import type { ZktAttendanceSettings } from '../imile/zktAttendanceSettings'
 import { toZktAttendanceInput } from '../imile/zktAttendanceSettings'
+import type { ZktDepartmentNode } from '../imile/zktDepartmentTree'
 import { backendFetch } from './httpClient'
 
 const JSON_HEADERS = { 'Content-Type': 'application/json' } as const
@@ -37,6 +38,21 @@ export type FetchZktAttendanceResult = {
       page_size: number
     }
   }
+}
+
+export async function fetchZktDepartments(payload: {
+  username: string
+  password: string
+}): Promise<ZktDepartmentNode[]> {
+  const res = await backendFetch('/api/scanner-efficiency/zkt-departments', {
+    method: 'POST',
+    headers: JSON_HEADERS,
+    body: JSON.stringify(payload),
+  })
+  const text = await res.text()
+  if (!res.ok) throw new Error(await readHttpError(res, text))
+  const parsed = JSON.parse(text) as { departments?: ZktDepartmentNode[] }
+  return Array.isArray(parsed.departments) ? parsed.departments : []
 }
 
 export async function fetchZktAttendance(payload: {

@@ -1,6 +1,4 @@
 import { backendFetch } from '../../api/httpClient'
-import type { ImilePortalSettings } from '../../imile/imilePortalSettings'
-import { toImilePortalOverrides } from '../../imile/imilePortalSettings'
 
 const JSON_HEADERS = { 'Content-Type': 'application/json' } as const
 
@@ -30,7 +28,6 @@ export async function fetchNewMerchantWaybills(payload: {
   clientCodes: string[]
   startDate: string
   endDate: string
-  imilePortal?: ImilePortalSettings
 }): Promise<FetchNewMerchantWaybillsResult> {
   const res = await backendFetch('/api/new-merchant/waybills', {
     method: 'POST',
@@ -40,7 +37,6 @@ export async function fetchNewMerchantWaybills(payload: {
       clientCodes: payload.clientCodes,
       startDate: payload.startDate,
       endDate: payload.endDate,
-      imilePortal: payload.imilePortal ? toImilePortalOverrides(payload.imilePortal) : undefined,
     }),
   })
   const text = await res.text()

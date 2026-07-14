@@ -1,6 +1,7 @@
 // @ts-nocheck
 import { Table } from 'antd'
 import { Edit2, Save, Trash2, X } from 'lucide-react'
+import { formatEmployeeDisplayName } from '../employeeDisplayName'
 import { WageAntdTable } from './WageAntdTable'
 
 export function WageRecordsTable({
@@ -35,12 +36,11 @@ export function WageRecordsTable({
       ellipsis: true,
     },
     {
-      title: '昵称',
-      dataIndex: 'nickname',
-      key: 'nickname',
-      width: 100,
+      title: '姓名/姓氏/昵称',
+      key: 'displayName',
+      width: 160,
       ellipsis: true,
-      render: (v) => v || '-',
+      render: (_, record) => formatEmployeeDisplayName(record),
     },
     {
       title: '日期',

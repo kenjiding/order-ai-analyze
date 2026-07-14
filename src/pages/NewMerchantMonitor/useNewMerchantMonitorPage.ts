@@ -49,7 +49,7 @@ function parseClientCodes(raw: string): string[] {
 }
 
 export function useNewMerchantMonitorPage(): UseNewMerchantMonitorPage {
-  const { imileToken, imilePortal } = useAppSettings()
+  const { imileToken } = useAppSettings()
   const [clientCodesText, setClientCodesText] = useState('')
   const [dateRange, setDateRange] = useState<[Dayjs, Dayjs] | null>(null)
   const [loading, setLoading] = useState(false)
@@ -93,7 +93,6 @@ export function useNewMerchantMonitorPage(): UseNewMerchantMonitorPage {
         clientCodes,
         startDate,
         endDate,
-        imilePortal,
       })
       setRecords(result.records as WaybillRecord[])
       setLastQueryMeta(result.meta)
@@ -105,7 +104,7 @@ export function useNewMerchantMonitorPage(): UseNewMerchantMonitorPage {
     } finally {
       setLoading(false)
     }
-  }, [clientCodesText, dateRange, imilePortal, imileToken])
+  }, [clientCodesText, dateRange, imileToken])
 
   return {
     clientCodesText,

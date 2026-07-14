@@ -7,6 +7,7 @@ import {
   buildImileAuthHeaders,
   envFirst,
   envFirstOr,
+  getRequestImileHubcode,
   IMILE_DEFAULT_FRONT_SEC,
   IMILE_DEFAULT_HUBCODE,
   IMILE_DEFAULT_LANG,
@@ -140,7 +141,8 @@ export function buildImilePortalHeaders(input: BuildImilePortalHeadersInput): Re
   )
   headers.hubcode = resolvePortalField(
     pickOverride(overrides.hubcode),
-    readPortalEnv(input.envPrefix, 'HUBCODE', shared, defaults.hubcode ?? IMILE_DEFAULT_HUBCODE),
+    getRequestImileHubcode() ||
+      readPortalEnv(input.envPrefix, 'HUBCODE', shared, defaults.hubcode ?? IMILE_DEFAULT_HUBCODE),
     defaults.hubcode ?? IMILE_DEFAULT_HUBCODE,
   )
   headers.lang = readPortalEnv(input.envPrefix, 'LANG', shared, IMILE_DEFAULT_LANG)

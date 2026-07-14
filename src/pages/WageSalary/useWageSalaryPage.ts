@@ -38,6 +38,7 @@ import {
 } from './uploadSubmit'
 import { parseFinanceLedgerRows } from '../../payroll/financeLedgerMapping'
 import { fetchZktAttendance } from '../../api/zktAttendanceApi'
+import { toZktAttendanceInput } from '../../imile/zktAttendanceSettings'
 import { mapZktTimeCardToAttendanceSheetRows } from '../../payroll/zktTimeCardSheetMapping'
 import { useAppSettings } from '../../context/AppSettingsContext'
 import {
@@ -303,6 +304,24 @@ export function useWageSalaryPage() {
 
     setIsLoadingZktAttendance(true)
     try {
+      const zktInput = toZktAttendanceInput(zktAttendance)
+      const requestParams = {
+        username: zktInput.username,
+        departmentId: zktInput.departmentId,
+        startDate,
+        endDate,
+        zktQuery: {
+          start_date: startDate,
+          end_date: endDate,
+          departments: zktInput.departmentId,
+          areas: '-1',
+          groups: '-1',
+          employees: '-1',
+          page_size: 10_000,
+        },
+      }
+      console.log('[工资结算] 获取考勤 — 请求参数', requestParams)
+
       const result = await fetchZktAttendance({
         zktAttendance,
         startDate,

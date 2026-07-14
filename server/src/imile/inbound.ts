@@ -5,7 +5,7 @@
 
 import { requestImileApi } from './client'
 import { fetchPaginatedResultRows } from './paginatedQuery'
-import { buildImilePortalHeaders, IMILE_DC_SCAN_QUERY_PORTAL, type ImilePortalOverrides } from './portal'
+import { buildImilePortalHeaders, IMILE_DC_SCAN_QUERY_PORTAL } from './portal'
 import { envFirstOr, normalizeImileToken } from './shared'
 
 const DEFAULT_INBOUND_URL = 'https://dc.imile.com/lm/express/ops/v1/biz/inbound/query'
@@ -36,14 +36,13 @@ export type InboundQueryError = {
   rawText?: string
 }
 
-function makeInboundHeaders(token: string, portal?: ImilePortalOverrides): Record<string, string> {
+function makeInboundHeaders(token: string): Record<string, string> {
   return buildImilePortalHeaders({
     token,
     envPrefix: 'IMILE_INBOUND',
     defaults: IMILE_DC_SCAN_QUERY_PORTAL,
     sharedEnvPrefixes: ['IMILE_TRACK'],
     injectUserCode: true,
-    overrides: portal,
   })
 }
 
@@ -66,11 +65,10 @@ export async function queryImileInboundScans(input: {
   imileToken: string
   startTime: string
   endTime: string
-  portal?: ImilePortalOverrides
 }): Promise<InboundQuerySuccess | InboundQueryError> {
   const token = normalizeImileToken(input.imileToken)
   const url = envFirstOr(['IMILE_INBOUND_URL'], DEFAULT_INBOUND_URL)
-  const headers = makeInboundHeaders(token, input.portal)
+  const headers = makeInboundHeaders(token)
 
   const result = await fetchPaginatedResultRows({
     label: '到件查询',

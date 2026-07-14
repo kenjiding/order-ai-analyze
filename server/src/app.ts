@@ -3,6 +3,7 @@ import cors from 'cors'
 import express from 'express'
 import { requireAuth } from './auth/middleware'
 import { pingDatabase } from './db'
+import { imileHubcodeMiddleware } from './imile/hubcodeMiddleware'
 import { adminUsersRouter } from './routes/adminUsersRouter'
 import { authRouter } from './routes/authRouter'
 import { feishuWebhookTestRouter } from './routes/feishuWebhookTestRouter'
@@ -49,6 +50,7 @@ app.use(
 )
 app.use(cookieParser())
 app.use(express.json({ limit: '50mb' }))
+app.use(imileHubcodeMiddleware)
 
 app.get('/health', async (_req, res) => {
   const dbOk = await pingDatabase().catch(() => false)

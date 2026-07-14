@@ -4,11 +4,7 @@
 
 import { requestImileApi } from './client'
 import { fetchPaginatedResultRows } from './paginatedQuery'
-import {
-  buildImilePortalHeaders,
-  IMILE_DS_BOX_ASSIGNED_PORTAL,
-  type ImilePortalOverrides,
-} from './portal'
+import { buildImilePortalHeaders, IMILE_DS_BOX_ASSIGNED_PORTAL } from './portal'
 import { envFirstOr, IMILE_DEFAULT_HUBCODE, normalizeImileToken } from './shared'
 
 const DEFAULT_ASSIGNED_LIST_URL =
@@ -31,17 +27,13 @@ export type BoxAssignedListQueryError = {
   rawText?: string
 }
 
-function makeAssignedListHeaders(
-  token: string,
-  portal?: ImilePortalOverrides,
-): Record<string, string> {
+function makeAssignedListHeaders(token: string): Record<string, string> {
   return buildImilePortalHeaders({
     token,
     envPrefix: 'IMILE_BOX_ASSIGNED',
     defaults: IMILE_DS_BOX_ASSIGNED_PORTAL,
     sharedEnvPrefixes: ['IMILE_TRACK'],
     injectUserCode: true,
-    overrides: portal,
   })
 }
 
@@ -75,11 +67,10 @@ export async function queryImileBoxAssignedList(input: {
   country?: string
   pendingHubCode?: string
   pendingHubName?: string
-  portal?: ImilePortalOverrides
 }): Promise<BoxAssignedListQuerySuccess | BoxAssignedListQueryError> {
   const token = normalizeImileToken(input.imileToken)
   const url = envFirstOr(['IMILE_BOX_ASSIGNED_URL'], DEFAULT_ASSIGNED_LIST_URL)
-  const headers = makeAssignedListHeaders(token, input.portal)
+  const headers = makeAssignedListHeaders(token)
 
   const country = input.country?.trim() || envFirstOr(['IMILE_BOX_ASSIGNED_COUNTRY'], 'AUS')
   const pendingHubCode =

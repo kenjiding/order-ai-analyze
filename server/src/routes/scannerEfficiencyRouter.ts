@@ -6,7 +6,7 @@ import { efficiencyAttendanceDailyRecords } from '../db/schema'
 import { queryImileBoxAssignedList } from '../imile/boxAssignedList'
 import { analyzeCancelScan } from '../imile/cancelScanAnalysis'
 import { queryImileInboundScans } from '../imile/inbound'
-import type { ImilePortalOverrides } from '../imile/portal'
+import { queryZktDepartmentTree } from '../zkt/departmentTree'
 import { queryZktTimeCardReport } from '../zkt/timeCardReport'
 import { readImileTokenFromRequest } from './imileAuth'
 
@@ -34,20 +34,6 @@ function diffDaysInclusive(start: string, end: string): number {
   const startMs = Date.UTC(sy, sm - 1, sd)
   const endMs = Date.UTC(ey, em - 1, ed)
   return Math.floor((endMs - startMs) / 86_400_000) + 1
-}
-
-function parseImilePortalOverrides(raw: unknown): ImilePortalOverrides | undefined {
-  if (!raw || typeof raw !== 'object') return undefined
-  const input = raw as Record<string, unknown>
-  const hubcode = String(input.hubcode ?? '').trim()
-  const resourceCode = String(input.resourceCode ?? '').trim()
-  const userCode = String(input.userCode ?? '').trim()
-  if (!hubcode && !resourceCode && !userCode) return undefined
-  return {
-    ...(hubcode ? { hubcode } : {}),
-    ...(resourceCode ? { resourceCode } : {}),
-    ...(userCode ? { userCode } : {}),
-  }
 }
 
 function resolveRegionCode(req: AuthenticatedRequest): string {
@@ -254,7 +240,6 @@ scannerEfficiencyRouter.post('/inbound-scans', async (req: Request, res: Respons
       imileToken?: string
       startDate?: string
       endDate?: string
-      imilePortal?: unknown
     }>(req)
     const token = readImileTokenFromRequest(req, body.imileToken)
     const startDate = parseDateKey(body.startDate)
@@ -283,7 +268,6 @@ scannerEfficiencyRouter.post('/inbound-scans', async (req: Request, res: Respons
       imileToken: token,
       startTime: `${startDate} 00:00:00`,
       endTime: `${endDate} 23:59:59`,
-      portal: parseImilePortalOverrides(body.imilePortal),
     })
 
     if (!result.ok) {
@@ -319,7 +303,6 @@ scannerEfficiencyRouter.post('/box-assigned-list', async (req: Request, res: Res
       country?: string
       pendingHubCode?: string
       pendingHubName?: string
-      imilePortal?: unknown
     }>(req)
     const token = readImileTokenFromRequest(req, body.imileToken)
     const startDate = parseDateKey(body.startDate)
@@ -344,8 +327,6 @@ scannerEfficiencyRouter.post('/box-assigned-list', async (req: Request, res: Res
       return
     }
 
-    const portal = parseImilePortalOverrides(body.imilePortal)
-
     const result = await queryImileBoxAssignedList({
       imileToken: token,
       startTime: `${startDate} 00:00:00`,
@@ -353,7 +334,6 @@ scannerEfficiencyRouter.post('/box-assigned-list', async (req: Request, res: Res
       country: String(body.country ?? '').trim() || undefined,
       pendingHubCode: String(body.pendingHubCode ?? '').trim() || undefined,
       pendingHubName: String(body.pendingHubName ?? '').trim() || undefined,
-      portal,
     })
 
     if (!result.ok) {
@@ -377,6 +357,33 @@ scannerEfficiencyRouter.post('/box-assigned-list', async (req: Request, res: Res
     })
   } catch (e) {
     res.status(500).json({ error: (e as Error).message || '前台箱号分配拉取失败' })
+  }
+})
+
+scannerEfficiencyRouter.post('/zkt-departments', async (req: Request, res: Response) => {
+  try {
+    const body = readJson<{ username?: string; password?: string }>(req)
+    const username = String(body.username ?? '').trim()
+    const password = String(body.password ?? '')
+
+    if (!username || !password) {
+      res.status(400).json({ error: '缺少 ZKT 考勤账号或密码，请在系统设置中配置' })
+      return
+    }
+
+    const result = await queryZktDepartmentTree({ username, password })
+    if (!result.ok) {
+      res.status(502).json({
+        error: result.message,
+        status: result.status,
+        rawText: result.rawText,
+      })
+      return
+    }
+
+    res.json({ departments: result.departments })
+  } catch (e) {
+    res.status(500).json({ error: (e as Error).message || 'ZKT 部门树拉取失败' })
   }
 })
 
@@ -475,7 +482,6 @@ scannerEfficiencyRouter.post('/cancel-scan-analysis', async (req: Request, res: 
       startDate?: string
       endDate?: string
       scanStationCode?: string
-      imilePortal?: unknown
     }>(req)
     const token = readImileTokenFromRequest(req, body.imileToken)
     const startDate = parseDateKey(body.startDate)
@@ -500,7 +506,6 @@ scannerEfficiencyRouter.post('/cancel-scan-analysis', async (req: Request, res: 
       return
     }
 
-    const portal = parseImilePortalOverrides(body.imilePortal)
     const scanStationCode = String(body.scanStationCode ?? '').trim() || undefined
 
     const result = await analyzeCancelScan({
@@ -508,7 +513,6 @@ scannerEfficiencyRouter.post('/cancel-scan-analysis', async (req: Request, res: 
       startTime: `${startDate} 00:00:00`,
       endTime: `${endDate} 23:59:59`,
       scanStationCode,
-      portal,
     })
 
     if (!result.ok) {

@@ -1,7 +1,9 @@
+import { formatDepartmentIds, parseDepartmentIds } from './zktDepartmentTree'
+
 export type ZktAttendanceSettings = {
   username: string
   password: string
-  /** ZKT departments 参数，如 AUS ADL 对应 23 */
+  /** ZKT departments 参数，多选时为逗号分隔 ID，如 16,27 */
   departmentId: string
 }
 
@@ -21,9 +23,12 @@ export function normalizeZktAttendanceSettings(
   return {
     username: String(raw?.username ?? '').trim(),
     password: String(raw?.password ?? ''),
-    departmentId:
-      String(raw?.departmentId ?? DEFAULT_ZKT_ATTENDANCE_SETTINGS.departmentId).trim() ||
-      DEFAULT_ZKT_ATTENDANCE_SETTINGS.departmentId,
+    departmentId: (() => {
+      const normalized = formatDepartmentIds(
+        parseDepartmentIds(String(raw?.departmentId ?? DEFAULT_ZKT_ATTENDANCE_SETTINGS.departmentId)),
+      )
+      return normalized || DEFAULT_ZKT_ATTENDANCE_SETTINGS.departmentId
+    })(),
   }
 }
 

@@ -1,5 +1,6 @@
 // @ts-nocheck
 import { Trash2 } from 'lucide-react'
+import { formatEmployeeDisplayName } from '../employeeDisplayName'
 import { WageAntdTable } from './WageAntdTable'
 
 export function UploadPreviewTable({
@@ -23,12 +24,11 @@ export function UploadPreviewTable({
       ellipsis: true,
     },
     {
-      title: '昵称',
-      dataIndex: 'nickname',
-      key: 'nickname',
-      width: 100,
+      title: '姓名/姓氏/昵称',
+      key: 'displayName',
+      width: 160,
       ellipsis: true,
-      render: (v) => v || '-',
+      render: (_, record) => formatEmployeeDisplayName(record),
     },
     {
       title: '部门',

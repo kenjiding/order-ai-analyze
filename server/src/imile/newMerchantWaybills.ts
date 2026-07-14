@@ -4,11 +4,7 @@
 
 import { requestImileApi } from './client'
 import { fetchPaginatedResultRows } from './paginatedQuery'
-import {
-  buildImilePortalHeaders,
-  IMILE_DS_SAAS_TMS_PORTAL,
-  type ImilePortalOverrides,
-} from './portal'
+import { buildImilePortalHeaders, IMILE_DS_SAAS_TMS_PORTAL } from './portal'
 import { envFirstOr, IMILE_DEFAULT_HUBCODE, normalizeImileToken } from './shared'
 
 const DEFAULT_SEARCH_WAYBILL_URL =
@@ -31,14 +27,15 @@ export type NewMerchantWaybillsError = {
   rawText?: string
 }
 
-function makeSaasTmsHeaders(token: string, portal?: ImilePortalOverrides): Record<string, string> {
+function makeSaasTmsHeaders(token: string): Record<string, string> {
   return buildImilePortalHeaders({
     token,
     envPrefix: 'IMILE_NEW_MERCHANT',
     defaults: IMILE_DS_SAAS_TMS_PORTAL,
     sharedEnvPrefixes: ['IMILE_CANCEL_SCAN', 'IMILE_TRACK'],
     injectUserCode: true,
-    overrides: { ...portal, hubcode: IMILE_DEFAULT_HUBCODE },
+    // 新商户运单查询固定 hubcode，不受站点选择器覆盖
+    overrides: { hubcode: IMILE_DEFAULT_HUBCODE },
   })
 }
 
@@ -70,11 +67,10 @@ export async function fetchNewMerchantWaybills(input: {
   clientCodes: string[]
   startTime: string
   endTime: string
-  portal?: ImilePortalOverrides
 }): Promise<NewMerchantWaybillsSuccess | NewMerchantWaybillsError> {
   const token = normalizeImileToken(input.imileToken)
   const url = envFirstOr(['IMILE_SEARCH_WAYBILL_URL'], DEFAULT_SEARCH_WAYBILL_URL)
-  const headers = makeSaasTmsHeaders(token, input.portal)
+  const headers = makeSaasTmsHeaders(token)
 
   const result = await fetchPaginatedResultRows({
     label: '新商家运单查询',

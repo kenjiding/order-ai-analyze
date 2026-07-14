@@ -96,7 +96,7 @@ export function WageEmployeeTotalBarChart({ rows, className }: Props) {
       <div className="mb-2 text-xs font-medium text-slate-600">
         <span className="inline-flex items-center gap-2">
           <span className="h-2.5 w-6 rounded-full" style={{ backgroundColor: FILL }} />
-          员工总工资排名（按昵称汇总，第 1 名为最高，当前筛选，最多 30 人）
+          员工总工资排名（按姓名/姓氏/昵称展示，第 1 名为最高，当前筛选，最多 30 人）
         </span>
       </div>
       <div

@@ -1,6 +1,5 @@
 import { Router, type Request, type Response } from 'express'
 import { fetchNewMerchantWaybills } from '../imile/newMerchantWaybills'
-import type { ImilePortalOverrides } from '../imile/portal'
 import { readImileTokenFromRequest } from './imileAuth'
 
 export const newMerchantRouter = Router()
@@ -30,20 +29,6 @@ function diffDaysInclusive(start: string, end: string): number {
   return Math.floor((endMs - startMs) / 86_400_000) + 1
 }
 
-function parseImilePortalOverrides(raw: unknown): ImilePortalOverrides | undefined {
-  if (!raw || typeof raw !== 'object') return undefined
-  const input = raw as Record<string, unknown>
-  const hubcode = String(input.hubcode ?? '').trim()
-  const resourceCode = String(input.resourceCode ?? '').trim()
-  const userCode = String(input.userCode ?? '').trim()
-  if (!hubcode && !resourceCode && !userCode) return undefined
-  return {
-    ...(hubcode ? { hubcode } : {}),
-    ...(resourceCode ? { resourceCode } : {}),
-    ...(userCode ? { userCode } : {}),
-  }
-}
-
 function parseClientCodes(raw: unknown): string[] | null {
   if (!Array.isArray(raw)) return null
   const cleaned = new Set<string>()
@@ -61,7 +46,6 @@ newMerchantRouter.post('/waybills', async (req: Request, res: Response) => {
       clientCodes?: unknown
       startDate?: string
       endDate?: string
-      imilePortal?: unknown
     }>(req)
 
     const token = readImileTokenFromRequest(req, body.imileToken)
@@ -96,7 +80,6 @@ newMerchantRouter.post('/waybills', async (req: Request, res: Response) => {
       return
     }
 
-    const portal = parseImilePortalOverrides(body.imilePortal)
     const startTime = `${startDate} 00:00:00`
     const endTime = `${endDate} 23:59:59`
 
@@ -105,7 +88,6 @@ newMerchantRouter.post('/waybills', async (req: Request, res: Response) => {
       clientCodes,
       startTime,
       endTime,
-      portal,
     })
 
     if (!result.ok) {

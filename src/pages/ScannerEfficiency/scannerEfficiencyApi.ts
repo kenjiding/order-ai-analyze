@@ -1,6 +1,4 @@
 import { backendFetch } from '../../api/httpClient'
-import type { ImilePortalSettings } from '../../imile/imilePortalSettings'
-import { toImilePortalOverrides } from '../../imile/imilePortalSettings'
 export { fetchZktAttendance, type FetchZktAttendanceResult } from '../../api/zktAttendanceApi'
 
 const JSON_HEADERS = { 'Content-Type': 'application/json' } as const
@@ -32,7 +30,6 @@ export async function fetchInboundScans(payload: {
   imileToken: string
   startDate: string
   endDate: string
-  imilePortal?: ImilePortalSettings
 }): Promise<FetchInboundScansResult> {
   const res = await backendFetch('/api/scanner-efficiency/inbound-scans', {
     method: 'POST',
@@ -41,7 +38,6 @@ export async function fetchInboundScans(payload: {
       imileToken: payload.imileToken,
       startDate: payload.startDate,
       endDate: payload.endDate,
-      imilePortal: payload.imilePortal ? toImilePortalOverrides(payload.imilePortal) : undefined,
     }),
   })
   const text = await res.text()
@@ -64,7 +60,6 @@ export async function fetchBoxAssignedList(payload: {
   imileToken: string
   startDate: string
   endDate: string
-  imilePortal?: ImilePortalSettings
   pendingHubCode?: string
   pendingHubName?: string
   country?: string
@@ -76,7 +71,6 @@ export async function fetchBoxAssignedList(payload: {
       imileToken: payload.imileToken,
       startDate: payload.startDate,
       endDate: payload.endDate,
-      imilePortal: payload.imilePortal ? toImilePortalOverrides(payload.imilePortal) : undefined,
       pendingHubCode: payload.pendingHubCode,
       pendingHubName: payload.pendingHubName,
       country: payload.country,
@@ -112,7 +106,6 @@ export async function fetchCancelScanAnalysis(payload: {
   imileToken: string
   startDate: string
   endDate: string
-  imilePortal?: ImilePortalSettings
   scanStationCode?: string
 }): Promise<FetchCancelScanAnalysisResult> {
   const res = await backendFetch('/api/scanner-efficiency/cancel-scan-analysis', {
@@ -122,7 +115,6 @@ export async function fetchCancelScanAnalysis(payload: {
       imileToken: payload.imileToken,
       startDate: payload.startDate,
       endDate: payload.endDate,
-      imilePortal: payload.imilePortal ? toImilePortalOverrides(payload.imilePortal) : undefined,
       scanStationCode: payload.scanStationCode,
     }),
   })

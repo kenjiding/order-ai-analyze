@@ -3,15 +3,10 @@ import { Truck, Info } from 'lucide-react'
 import Modal from '../Modal'
 import { useAppSettings } from '../../context/AppSettingsContext'
 import {
-  DEFAULT_IMILE_PORTAL_SETTINGS,
-  normalizeImilePortalSettings,
-  type ImilePortalSettings,
-} from '../../imile/imilePortalSettings'
-import {
-  DEFAULT_ZKT_ATTENDANCE_SETTINGS,
   normalizeZktAttendanceSettings,
   type ZktAttendanceSettings,
 } from '../../imile/zktAttendanceSettings'
+import { ZktDepartmentCascader } from './ZktDepartmentCascader'
 import { showToast } from '../../utils/toast'
 import { confirmDialog } from '../../utils/confirmDialog'
 
@@ -24,23 +19,12 @@ const SECTIONS: { id: SettingsSectionId; label: string; icon: typeof Truck }[] =
 
 type ImileSettingsDraft = {
   imileToken: string
-  imilePortal: ImilePortalSettings
   zktAttendance: ZktAttendanceSettings
 }
 
 type Props = {
   isOpen: boolean
   onClose: () => void
-}
-
-function portalDraftEqual(a: ImilePortalSettings, b: ImilePortalSettings): boolean {
-  const left = normalizeImilePortalSettings(a)
-  const right = normalizeImilePortalSettings(b)
-  return (
-    left.hubcode === right.hubcode &&
-    left.resourceCode === right.resourceCode &&
-    left.userCode === right.userCode
-  )
 }
 
 function zktDraftEqual(a: ZktAttendanceSettings, b: ZktAttendanceSettings): boolean {
@@ -55,40 +39,37 @@ function zktDraftEqual(a: ZktAttendanceSettings, b: ZktAttendanceSettings): bool
 
 function buildDraftFromSettings(input: {
   imileToken: string
-  imilePortal: ImilePortalSettings
   zktAttendance: ZktAttendanceSettings
 }): ImileSettingsDraft {
   return {
     imileToken: input.imileToken,
-    imilePortal: normalizeImilePortalSettings(input.imilePortal),
     zktAttendance: normalizeZktAttendanceSettings(input.zktAttendance),
   }
 }
 
 export function GlobalSettingsModal({ isOpen, onClose }: Props) {
-  const { imileToken, imilePortal, zktAttendance, updateSettings } = useAppSettings()
+  const { imileToken, zktAttendance, updateSettings } = useAppSettings()
   const [activeSection, setActiveSection] = useState<SettingsSectionId>('imile')
   const [draft, setDraft] = useState<ImileSettingsDraft>(() =>
-    buildDraftFromSettings({ imileToken, imilePortal, zktAttendance }),
+    buildDraftFromSettings({ imileToken, zktAttendance }),
   )
   const wasOpenRef = useRef(false)
 
   useEffect(() => {
     if (isOpen && !wasOpenRef.current) {
-      setDraft(buildDraftFromSettings({ imileToken, imilePortal, zktAttendance }))
+      setDraft(buildDraftFromSettings({ imileToken, zktAttendance }))
       setActiveSection('imile')
     }
     wasOpenRef.current = isOpen
-  }, [isOpen, imileToken, imilePortal, zktAttendance])
+  }, [isOpen, imileToken, zktAttendance])
 
   const savedDraft = useMemo(
-    () => buildDraftFromSettings({ imileToken, imilePortal, zktAttendance }),
-    [imileToken, imilePortal, zktAttendance],
+    () => buildDraftFromSettings({ imileToken, zktAttendance }),
+    [imileToken, zktAttendance],
   )
 
   const isDirty = useMemo(() => {
     if (draft.imileToken !== savedDraft.imileToken) return true
-    if (!portalDraftEqual(draft.imilePortal, savedDraft.imilePortal)) return true
     return !zktDraftEqual(draft.zktAttendance, savedDraft.zktAttendance)
   }, [draft, savedDraft])
 
@@ -185,7 +166,7 @@ export function GlobalSettingsModal({ isOpen, onClose }: Props) {
                 />
               </label>
               <p className="text-xs text-slate-500">
-                Token、门户与考勤 API 配置将保存到服务器并绑定当前账号，用同一账号在其他电脑登录后自动生效。
+                Token 与考勤 API 配置将保存到服务器并绑定当前账号，用同一账号在其他电脑登录后自动生效。
               </p>
 
               <div className="border-t border-slate-200 pt-4">
@@ -225,76 +206,23 @@ export function GlobalSettingsModal({ isOpen, onClose }: Props) {
                       className="mt-1.5 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm focus:border-[#2f8f87] focus:outline-none focus:ring-2 focus:ring-[#2f8f87]/25"
                     />
                   </label>
-                  <label className="block text-sm font-medium text-slate-700 sm:col-span-2">
-                    departments（部门 ID）
-                    <input
-                      type="text"
-                      autoComplete="off"
+                  <div className="sm:col-span-2">
+                    <span className="block text-sm font-medium text-slate-700">departments（部门）</span>
+                    <ZktDepartmentCascader
+                      username={draft.zktAttendance.username}
+                      password={draft.zktAttendance.password}
                       value={draft.zktAttendance.departmentId}
-                      onChange={(e) =>
+                      onChange={(departmentId) =>
                         setDraft((prev) => ({
                           ...prev,
-                          zktAttendance: { ...prev.zktAttendance, departmentId: e.target.value },
+                          zktAttendance: { ...prev.zktAttendance, departmentId },
                         }))
                       }
-                      placeholder={DEFAULT_ZKT_ATTENDANCE_SETTINGS.departmentId}
-                      className="mt-1.5 w-full rounded-md border border-slate-300 bg-white px-3 py-2 font-mono text-sm text-slate-900 shadow-sm focus:border-[#2f8f87] focus:outline-none focus:ring-2 focus:ring-[#2f8f87]/25"
                     />
-                  </label>
-                </div>
-              </div>
-
-              <div className="border-t border-slate-200 pt-4">
-                <h4 className="text-base font-semibold text-slate-950">iMile 门户上下文</h4>
-                <div className="mt-3 grid max-w-xl gap-3 sm:grid-cols-2">
-                  <label className="block text-sm font-medium text-slate-700 sm:col-span-2">
-                    hubcode
-                    <input
-                      type="text"
-                      autoComplete="off"
-                      value={draft.imilePortal.hubcode}
-                      onChange={(e) =>
-                        setDraft((prev) => ({
-                          ...prev,
-                          imilePortal: { ...prev.imilePortal, hubcode: e.target.value },
-                        }))
-                      }
-                      placeholder={DEFAULT_IMILE_PORTAL_SETTINGS.hubcode}
-                      className="mt-1.5 w-full rounded-md border border-slate-300 bg-white px-3 py-2 font-mono text-sm text-slate-900 shadow-sm focus:border-[#2f8f87] focus:outline-none focus:ring-2 focus:ring-[#2f8f87]/25"
-                    />
-                  </label>
-                  <label className="block text-sm font-medium text-slate-700">
-                    resource-code
-                    <input
-                      type="text"
-                      autoComplete="off"
-                      value={draft.imilePortal.resourceCode}
-                      onChange={(e) =>
-                        setDraft((prev) => ({
-                          ...prev,
-                          imilePortal: { ...prev.imilePortal, resourceCode: e.target.value },
-                        }))
-                      }
-                      placeholder={DEFAULT_IMILE_PORTAL_SETTINGS.resourceCode}
-                      className="mt-1.5 w-full rounded-md border border-slate-300 bg-white px-3 py-2 font-mono text-sm text-slate-900 shadow-sm focus:border-[#2f8f87] focus:outline-none focus:ring-2 focus:ring-[#2f8f87]/25"
-                    />
-                  </label>
-                  <label className="block text-sm font-medium text-slate-700">
-                    userCode（front-sec）
-                    <input
-                      type="text"
-                      autoComplete="off"
-                      value={draft.imilePortal.userCode}
-                      onChange={(e) =>
-                        setDraft((prev) => ({
-                          ...prev,
-                          imilePortal: { ...prev.imilePortal, userCode: e.target.value },
-                        }))
-                      }
-                      placeholder="如 2106851401"
-                      className="mt-1.5 w-full rounded-md border border-slate-300 bg-white px-3 py-2 font-mono text-sm text-slate-900 shadow-sm focus:border-[#2f8f87] focus:outline-none focus:ring-2 focus:ring-[#2f8f87]/25"
-                    />
-                  </label>
+                    <p className="mt-1 text-xs text-slate-500">
+                      多选部门将以逗号分隔 ID 传给考勤接口，例如 16,27。
+                    </p>
+                  </div>
                 </div>
               </div>
             </div>
