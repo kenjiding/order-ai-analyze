@@ -1,4 +1,4 @@
-import { getApiBaseUrl } from '../utils/apiBaseUrl'
+import { backendFetch } from './httpClient'
 
 export type UserPreferencePayload<T> = { value: T | null; updatedAt: string | null }
 
@@ -7,8 +7,7 @@ async function apiFetch<T>(
   options?: RequestInit,
 ): Promise<{ ok: true; data: T } | { ok: false; error: string }> {
   try {
-    const res = await fetch(`${getApiBaseUrl()}${path}`, {
-      credentials: 'include',
+    const res = await backendFetch(path, {
       headers: { 'Content-Type': 'application/json' },
       ...options,
     })

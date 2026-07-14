@@ -85,7 +85,7 @@ export function PortalDriverMapSection({ token }: { token: string }) {
 
   if (state.status === 'loading' || loaderState.status === 'loading') {
     return (
-      <Card title="司机地图" extra={statusExtra} className="mb-6">
+      <Card title="司机地图" extra={statusExtra} className="mt-6 sm:mt-8 mb-6">
         <div className="flex flex-col items-center justify-center gap-3 py-16">
           <Spin />
           <div className="text-sm text-slate-500">正在解析收件地址坐标，请稍候…</div>
@@ -96,7 +96,7 @@ export function PortalDriverMapSection({ token }: { token: string }) {
 
   if (loaderState.status === 'no-key' || loaderState.status === 'error') {
     return (
-      <Card title="司机地图" extra={statusExtra} className="mb-6">
+      <Card title="司机地图" extra={statusExtra} className="mt-6 sm:mt-8 mb-6">
         <Empty description="地图未能加载，请稍后刷新重试" />
       </Card>
     )
@@ -105,7 +105,7 @@ export function PortalDriverMapSection({ token }: { token: string }) {
   if (state.data.drivers.length === 0) {
     const { totalCount, geocodedCount } = state.data
     return (
-      <Card title="司机地图" extra={statusExtra} className="mb-6">
+      <Card title="司机地图" extra={statusExtra} className="mt-6 sm:mt-8 mb-6">
         <Empty
           description={
             totalCount > 0 && geocodedCount === 0
@@ -118,7 +118,7 @@ export function PortalDriverMapSection({ token }: { token: string }) {
   }
 
   return (
-    <Card title="司机地图" extra={statusExtra} className="mb-6">
+    <Card title="司机地图" extra={statusExtra} className="mt-6 sm:mt-8 mb-6">
       <div className="flex flex-col gap-3">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <DriverMapLegend />

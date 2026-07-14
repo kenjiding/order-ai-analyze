@@ -13,6 +13,8 @@ export type VendorStagnationBucketDriverStat = {
   driverName: string
   driverCode: string
   count: number
+  /** 该司机在本区间的运单号（已去重，按出现顺序） */
+  waybillNos: string[]
 }
 
 export type VendorStagnationBucketStat = {
@@ -50,10 +52,12 @@ export function aggregateVendorStagnation(
     const bucketSeen = new Set<string>()
     const driverSeen = new Map<string, Set<string>>()
     const driverMeta = new Map<string, { driverName: string; driverCode: string }>()
+    const driverWaybillNos = new Map<string, string[]>()
 
     rows.forEach((row, index) => {
       if ((row.driverVendorCode ?? '').trim() !== target) return
       const key = waybillKey(row, index)
+      const waybillNo = (row.waybillNo ?? '').trim()
       bucketSeen.add(key)
       totalSeen.add(key)
 
@@ -62,8 +66,12 @@ export function aggregateVendorStagnation(
       if (!driverSeen.has(driverCode)) {
         driverSeen.set(driverCode, new Set())
         driverMeta.set(driverCode, { driverName, driverCode })
+        driverWaybillNos.set(driverCode, [])
       }
-      driverSeen.get(driverCode)!.add(key)
+      const seen = driverSeen.get(driverCode)!
+      if (seen.has(key)) return
+      seen.add(key)
+      if (waybillNo) driverWaybillNos.get(driverCode)!.push(waybillNo)
     })
 
     const drivers: VendorStagnationBucketDriverStat[] = [...driverSeen.entries()]
@@ -71,6 +79,7 @@ export function aggregateVendorStagnation(
         driverName: driverMeta.get(driverCode)!.driverName,
         driverCode,
         count: keys.size,
+        waybillNos: driverWaybillNos.get(driverCode) ?? [],
       }))
       .sort((a, b) => b.count - a.count)
 

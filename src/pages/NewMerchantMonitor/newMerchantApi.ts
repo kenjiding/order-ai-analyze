@@ -1,9 +1,8 @@
-import { getApiBaseUrl } from '../../utils/apiBaseUrl'
+import { backendFetch } from '../../api/httpClient'
 import type { ImilePortalSettings } from '../../imile/imilePortalSettings'
 import { toImilePortalOverrides } from '../../imile/imilePortalSettings'
 
 const JSON_HEADERS = { 'Content-Type': 'application/json' } as const
-const newMerchantApi = `${getApiBaseUrl()}/api/new-merchant`
 
 async function readHttpError(res: Response, text: string): Promise<string> {
   try {
@@ -33,10 +32,9 @@ export async function fetchNewMerchantWaybills(payload: {
   endDate: string
   imilePortal?: ImilePortalSettings
 }): Promise<FetchNewMerchantWaybillsResult> {
-  const res = await fetch(`${newMerchantApi}/waybills`, {
+  const res = await backendFetch('/api/new-merchant/waybills', {
     method: 'POST',
     headers: JSON_HEADERS,
-    credentials: 'include',
     body: JSON.stringify({
       imileToken: payload.imileToken,
       clientCodes: payload.clientCodes,

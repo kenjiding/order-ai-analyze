@@ -1,4 +1,4 @@
-import { getApiBaseUrl } from '../utils/apiBaseUrl'
+import { backendFetch } from './httpClient'
 import type { AuthUser, RegionOption } from './authApi'
 
 export type PermissionDefinition = {
@@ -23,8 +23,7 @@ async function parseJson<T>(res: Response): Promise<T> {
 }
 
 async function adminFetch<T>(path: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(`${getApiBaseUrl()}/api/admin/users${path}`, {
-    credentials: 'include',
+  const res = await backendFetch(`/api/admin/users${path}`, {
     ...init,
     headers: {
       'Content-Type': 'application/json',

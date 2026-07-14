@@ -3,23 +3,23 @@ import assert from 'node:assert/strict'
 import { computeStagnationRange } from './stagnantWaybills'
 import { aggregateVendorStagnation, type BucketResult } from './chaseDispatchAggregate'
 
-// 需求给定：基准日 2026-07-05 时各区间的 start/end
-test('computeStagnationRange 对齐需求给定的映射表（基准日 2026-07-05）', () => {
-  const D = '2026-07-05'
-  assert.deepEqual(computeStagnationRange(D, '0-1'), { start: '2026-07-05', end: '' })
-  assert.deepEqual(computeStagnationRange(D, '1-2'), { start: '2026-07-04', end: '2026-07-05' })
-  assert.deepEqual(computeStagnationRange(D, '2-3'), { start: '2026-07-03', end: '2026-07-04' })
-  assert.deepEqual(computeStagnationRange(D, '3-4'), { start: '2026-07-02', end: '2026-07-03' })
-  assert.deepEqual(computeStagnationRange(D, '4-5'), { start: '2026-07-01', end: '2026-07-02' })
-  assert.deepEqual(computeStagnationRange(D, '5-6'), { start: '2026-06-30', end: '2026-07-01' })
-  assert.deepEqual(computeStagnationRange(D, '6-7'), { start: '2026-06-29', end: '2026-06-30' })
-  assert.deepEqual(computeStagnationRange(D, '7+'), { start: '', end: '2026-06-29' })
+// 需求给定：基准日 2026-07-14 时各区间的 start/end
+test('computeStagnationRange 对齐需求给定的映射表（基准日 2026-07-14）', () => {
+  const D = '2026-07-14'
+  assert.deepEqual(computeStagnationRange(D, '0-1'), { start: '2026-07-14', end: '' })
+  assert.deepEqual(computeStagnationRange(D, '1-2'), { start: '2026-07-12', end: '2026-07-13' })
+  assert.deepEqual(computeStagnationRange(D, '2-3'), { start: '2026-07-11', end: '2026-07-12' })
+  assert.deepEqual(computeStagnationRange(D, '3-4'), { start: '2026-07-10', end: '2026-07-11' })
+  assert.deepEqual(computeStagnationRange(D, '4-5'), { start: '2026-07-09', end: '2026-07-10' })
+  assert.deepEqual(computeStagnationRange(D, '5-6'), { start: '2026-07-08', end: '2026-07-09' })
+  assert.deepEqual(computeStagnationRange(D, '6-7'), { start: '2026-07-07', end: '2026-07-08' })
+  assert.deepEqual(computeStagnationRange(D, '7+'), { start: '', end: '2026-07-07' })
 })
 
 test('computeStagnationRange 跨月边界正确', () => {
   assert.deepEqual(computeStagnationRange('2026-03-01', '1-2'), {
-    start: '2026-02-28',
-    end: '2026-03-01',
+    start: '2026-02-27',
+    end: '2026-02-28',
   })
 })
 
@@ -56,6 +56,13 @@ test('aggregateVendorStagnation 按 driverVendorCode 过滤并跨区间去重', 
     [
       ['0-1', [['D1', 1], ['D2', 1]]],
       ['1-2', [['D1', 2]]],
+    ],
+  )
+  assert.deepEqual(
+    summary.buckets.map((b) => [b.bucket, b.drivers.map((d) => [d.driverCode, d.waybillNos])]),
+    [
+      ['0-1', [['D1', ['W1']], ['D2', ['W2']]]],
+      ['1-2', [['D1', ['W1', 'W3']]]],
     ],
   )
 })

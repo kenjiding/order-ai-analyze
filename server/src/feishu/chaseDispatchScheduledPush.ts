@@ -7,7 +7,7 @@ import { envFirst } from '../imile/shared'
 import { getRegionNow } from '../imile/inboundWaybillIndex'
 import { resolveRegionTz, type AusTz } from '../imile/ausTimezone'
 import { listPushableConfigsForScope } from '../supplierConfigScopes'
-import { parseRouteCodeWhitelistSet, supplierDisplayName } from '../supplierPushConfigs'
+import { parseRouteCodes, supplierDisplayName } from '../supplierPushConfigs'
 import {
   computeStagnationRange,
   fetchStagnantWaybillRouteCodes,
@@ -18,6 +18,7 @@ import {
 } from '../imile/stagnantWaybills'
 import { aggregateVendorStagnation, type BucketResult } from '../imile/chaseDispatchAggregate'
 import { claimScheduledSlot } from '../jobs/scheduledClaim'
+import { createChaseDispatchShareSnapshot } from './chaseDispatchShareSnapshot'
 
 const CHASE_DISPATCH_SCOPE = 'chase-dispatch.scheduled' as const
 
@@ -89,8 +90,8 @@ export type ChaseDispatchPushResult = {
 }
 
 /**
- * 催派推送核心：按选中的滞留区间分别拉数，再按每个供应商聚合并推送飞书卡片。
- * 供定时任务与「立即推送」复用。
+ * 催派推送核心：按滞留区间拉数 → searchWaybill 查路由码 → 按供应商 vendorCode + routeCode 筛选后推送。
+ * 供定时任务与「立即推送」复用。不使用路由码白名单。
  */
 export async function executeChaseDispatchPush(params: {
   token: string
@@ -119,29 +120,27 @@ export async function executeChaseDispatchPush(params: {
     bucketResults.push({ bucket, rows: res.data })
   }
 
-  // 只有存在非空路由码白名单的供应商配置时，才额外查询运单路由码（避免无谓的接口调用）
-  const whitelistByConfigId = new Map<string, Set<string>>()
-  for (const config of configs) {
-    const whitelist = parseRouteCodeWhitelistSet(config.routeCodeWhitelist)
-    if (whitelist.size > 0) whitelistByConfigId.set(config.id, whitelist)
+  // 先按启用供应商的 vendorCode 收窄，再收集运单号查 searchWaybill 路由码
+  const enabledVendorCodes = new Set(
+    configs.map((c) => c.vendorCode.trim()).filter((code) => code.length > 0),
+  )
+  const vendorScopedWaybillNos = bucketResults.flatMap((b) =>
+    b.rows
+      .filter((row) => enabledVendorCodes.has((row.driverVendorCode ?? '').trim()))
+      .map((row) => row.waybillNo ?? ''),
+  )
+  const routeCodeResult = await fetchStagnantWaybillRouteCodes(token, vendorScopedWaybillNos)
+  if (!routeCodeResult.ok) {
+    console.error(`${label} 路由码查询失败: ${routeCodeResult.message}`)
+    return { error: `路由码查询失败: ${routeCodeResult.message}` }
   }
+  const routeCodeByWaybillNo = routeCodeResult.data
 
-  let routeCodeByWaybillNo: Map<string, string> | null = null
-  if (whitelistByConfigId.size > 0) {
-    const allWaybillNos = bucketResults.flatMap((b) => b.rows.map((r) => r.waybillNo ?? ''))
-    const routeCodeResult = await fetchStagnantWaybillRouteCodes(token, allWaybillNos)
-    if (!routeCodeResult.ok) {
-      console.error(`${label} 路由码白名单过滤查询失败: ${routeCodeResult.message}`)
-      return { error: `路由码白名单过滤查询失败: ${routeCodeResult.message}` }
-    }
-    routeCodeByWaybillNo = routeCodeResult.data
-  }
-
-  const excludeWhitelistedRows = (rows: StagnantWaybillRow[], whitelist: Set<string>): StagnantWaybillRow[] => {
-    if (!routeCodeByWaybillNo) return rows
+  const filterRowsByRouteCode = (rows: StagnantWaybillRow[], allowed: Set<string>): StagnantWaybillRow[] => {
+    if (allowed.size === 0) return []
     return rows.filter((row) => {
-      const routeCode = routeCodeByWaybillNo!.get((row.waybillNo ?? '').trim()) ?? ''
-      return !whitelist.has(routeCode)
+      const routeCode = routeCodeByWaybillNo.get((row.waybillNo ?? '').trim()) ?? ''
+      return allowed.has(routeCode)
     })
   }
 
@@ -149,23 +148,38 @@ export async function executeChaseDispatchPush(params: {
   const errors: string[] = []
 
   for (const config of configs) {
-    const whitelist = whitelistByConfigId.get(config.id)
-    const configBucketResults = whitelist
-      ? bucketResults.map((b) => ({ bucket: b.bucket, rows: excludeWhitelistedRows(b.rows, whitelist) }))
-      : bucketResults
+    const vendorCode = config.vendorCode.trim()
+    const allowedRouteCodes = new Set(parseRouteCodes(config.routeCode))
+    // 该供应商明细：vendorCode 归属 → routeCode 纳入（不用路由码白名单）
+    const configBucketResults = bucketResults.map((b) => {
+      const byVendor = b.rows.filter((row) => (row.driverVendorCode ?? '').trim() === vendorCode)
+      return { bucket: b.bucket, rows: filterRowsByRouteCode(byVendor, allowedRouteCodes) }
+    })
+    const vendorName = supplierDisplayName(config)
     const summary = aggregateVendorStagnation(configBucketResults, config.vendorCode)
+    const share =
+      summary.totalStagnant > 0
+        ? await createChaseDispatchShareSnapshot({
+            vendorCode: config.vendorCode,
+            vendorName,
+            baseDate,
+            pushTime,
+            summary,
+          })
+        : null
     const card = buildChaseDispatchCard({
-      vendorName: supplierDisplayName(config),
+      vendorName,
       baseDate,
       pushTime,
       summary,
       pushDescription: config.pushDescription,
+      detailUrl: share?.url ?? null,
     })
     const ok = await pushCardToWebhook(config.webhookUrl, config.signingSecret, card)
     if (ok) {
       pushedCount++
     } else {
-      errors.push(`${supplierDisplayName(config)}: 飞书推送失败`)
+      errors.push(`${vendorName}: 飞书推送失败`)
     }
   }
 

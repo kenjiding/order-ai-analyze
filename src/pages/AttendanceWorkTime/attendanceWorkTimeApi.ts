@@ -1,12 +1,11 @@
-import { getApiBaseUrl } from '../../utils/apiBaseUrl'
+import { backendFetch } from '../../api/httpClient'
 import type { AttendanceWorkRecord, AttendanceWorkRecordDraft, AttendanceWorkerSuggestion } from './attendanceWorkTimeTypes'
 
 type ApiResult<T> = { ok: true; data: T } | { ok: false; error: string }
 
 async function apiFetch<T>(path: string, options?: RequestInit): Promise<ApiResult<T>> {
   try {
-    const res = await fetch(`${getApiBaseUrl()}${path}`, {
-      credentials: 'include',
+    const res = await backendFetch(path, {
       headers: { 'Content-Type': 'application/json' },
       ...options,
     })

@@ -44,19 +44,21 @@ export function stagnationBucketLabel(bucket: StagnationBucket): string {
 
 /**
  * 各区间相对基准日 D 的日期偏移（天）。null 表示该端不设界（传空串）。
- * 以 2026-07-05 为例：
- *   '0-1' → start=D(07-05) end=''；'1-2' → start=D-1(07-04) end=D(07-05)；
- *   '7+'  → start='' end=D-6(06-29)。
+ * 以 2026-07-14 为例：
+ *   '0-1' → start=D(07-14) end=''；
+ *   '1-2' → start=D-2(07-12) end=D-1(07-13)；
+ *   '3-4' → start=D-4(07-10) end=D-3(07-11)；
+ *   '7+'  → start='' end=D-7(07-07)。
  */
 const BUCKET_OFFSETS: Record<StagnationBucket, { start: number | null; end: number | null }> = {
   '0-1': { start: 0, end: null },
-  '1-2': { start: 1, end: 0 },
-  '2-3': { start: 2, end: 1 },
-  '3-4': { start: 3, end: 2 },
-  '4-5': { start: 4, end: 3 },
-  '5-6': { start: 5, end: 4 },
-  '6-7': { start: 6, end: 5 },
-  '7+': { start: null, end: 6 },
+  '1-2': { start: 2, end: 1 },
+  '2-3': { start: 3, end: 2 },
+  '3-4': { start: 4, end: 3 },
+  '4-5': { start: 5, end: 4 },
+  '5-6': { start: 6, end: 5 },
+  '6-7': { start: 7, end: 6 },
+  '7+': { start: null, end: 7 },
 }
 
 /** 基于基准日字符串（YYYY-MM-DD）按天数偏移得到新的 YYYY-MM-DD（纯日历运算，与时区无关） */
@@ -173,7 +175,7 @@ function wideRouteCodeSearchWindow(): { startTime: string; endTime: string } {
 }
 
 /**
- * 按 waybillNo 批量查询 searchWaybill，只提取路由码（consigneeRouteCode），供路由码白名单过滤使用。
+ * 按 waybillNo 批量查询 searchWaybill，只提取路由码（consigneeRouteCode），供催派按供应商 routeCode 二次筛选。
  * 返回 waybillNo -> consigneeRouteCode 映射；查不到的单号不出现在结果里。
  */
 export async function fetchStagnantWaybillRouteCodes(

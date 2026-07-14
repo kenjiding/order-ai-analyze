@@ -1,10 +1,9 @@
-import { getApiBaseUrl } from '../../utils/apiBaseUrl'
+import { backendFetch } from '../../api/httpClient'
 import type { ImilePortalSettings } from '../../imile/imilePortalSettings'
 import { toImilePortalOverrides } from '../../imile/imilePortalSettings'
 export { fetchZktAttendance, type FetchZktAttendanceResult } from '../../api/zktAttendanceApi'
 
 const JSON_HEADERS = { 'Content-Type': 'application/json' } as const
-const scannerEfficiencyApi = `${getApiBaseUrl()}/api/scanner-efficiency`
 
 async function readHttpError(res: Response, text: string): Promise<string> {
   try {
@@ -35,10 +34,9 @@ export async function fetchInboundScans(payload: {
   endDate: string
   imilePortal?: ImilePortalSettings
 }): Promise<FetchInboundScansResult> {
-  const res = await fetch(`${scannerEfficiencyApi}/inbound-scans`, {
+  const res = await backendFetch('/api/scanner-efficiency/inbound-scans', {
     method: 'POST',
     headers: JSON_HEADERS,
-    credentials: 'include',
     body: JSON.stringify({
       imileToken: payload.imileToken,
       startDate: payload.startDate,
@@ -71,10 +69,9 @@ export async function fetchBoxAssignedList(payload: {
   pendingHubName?: string
   country?: string
 }): Promise<FetchBoxAssignedListResult> {
-  const res = await fetch(`${scannerEfficiencyApi}/box-assigned-list`, {
+  const res = await backendFetch('/api/scanner-efficiency/box-assigned-list', {
     method: 'POST',
     headers: JSON_HEADERS,
-    credentials: 'include',
     body: JSON.stringify({
       imileToken: payload.imileToken,
       startDate: payload.startDate,
@@ -118,10 +115,9 @@ export async function fetchCancelScanAnalysis(payload: {
   imilePortal?: ImilePortalSettings
   scanStationCode?: string
 }): Promise<FetchCancelScanAnalysisResult> {
-  const res = await fetch(`${scannerEfficiencyApi}/cancel-scan-analysis`, {
+  const res = await backendFetch('/api/scanner-efficiency/cancel-scan-analysis', {
     method: 'POST',
     headers: JSON_HEADERS,
-    credentials: 'include',
     body: JSON.stringify({
       imileToken: payload.imileToken,
       startDate: payload.startDate,
@@ -146,28 +142,23 @@ export type DailyEfficiencyRecordsListResponse = {
 }
 
 export async function fetchDailyEfficiencyRecords(): Promise<DailyEfficiencyRecordsListResponse> {
-  const res = await fetch(`${scannerEfficiencyApi}/daily-records`, {
-    credentials: 'include',
-  })
+  const res = await backendFetch('/api/scanner-efficiency/daily-records')
   const text = await res.text()
   if (!res.ok) throw new Error(await readHttpError(res, text))
   return JSON.parse(text) as DailyEfficiencyRecordsListResponse
 }
 
 export async function fetchDailyEfficiencyRecord(date: string): Promise<DailyEfficiencyRecordResponse> {
-  const res = await fetch(`${scannerEfficiencyApi}/daily-records/${encodeURIComponent(date)}`, {
-    credentials: 'include',
-  })
+  const res = await backendFetch(`/api/scanner-efficiency/daily-records/${encodeURIComponent(date)}`)
   const text = await res.text()
   if (!res.ok) throw new Error(await readHttpError(res, text))
   return JSON.parse(text) as DailyEfficiencyRecordResponse
 }
 
 export async function saveDailyEfficiencyRecords(records: unknown[]): Promise<{ savedCount: number }> {
-  const res = await fetch(`${scannerEfficiencyApi}/daily-records`, {
+  const res = await backendFetch('/api/scanner-efficiency/daily-records', {
     method: 'POST',
     headers: JSON_HEADERS,
-    credentials: 'include',
     body: JSON.stringify({ records }),
   })
   const text = await res.text()
@@ -176,9 +167,8 @@ export async function saveDailyEfficiencyRecords(records: unknown[]): Promise<{ 
 }
 
 export async function deleteDailyEfficiencyRecord(date: string): Promise<void> {
-  const res = await fetch(`${scannerEfficiencyApi}/daily-records/${encodeURIComponent(date)}`, {
+  const res = await backendFetch(`/api/scanner-efficiency/daily-records/${encodeURIComponent(date)}`, {
     method: 'DELETE',
-    credentials: 'include',
   })
   const text = await res.text()
   if (!res.ok) throw new Error(await readHttpError(res, text))
@@ -187,10 +177,9 @@ export async function deleteDailyEfficiencyRecord(date: string): Promise<void> {
 export async function deleteDailyEfficiencyRecords(
   dates: string[],
 ): Promise<{ deletedCount: number; deletedDates: string[] }> {
-  const res = await fetch(`${scannerEfficiencyApi}/daily-records/batch-delete`, {
+  const res = await backendFetch('/api/scanner-efficiency/daily-records/batch-delete', {
     method: 'POST',
     headers: JSON_HEADERS,
-    credentials: 'include',
     body: JSON.stringify({ dates }),
   })
   const text = await res.text()

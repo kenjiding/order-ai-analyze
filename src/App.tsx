@@ -24,6 +24,7 @@ import SystemUsersPage from './pages/SystemUsers/SystemUsersPage'
 import LoginPage from './pages/Login/LoginPage'
 import VendorSnapshotPage from './pages/VendorAnalysis/VendorSnapshotPage'
 import VendorPortalPage from './pages/VendorPortal/VendorPortalPage'
+import ChaseDispatchSharePage from './pages/ChaseDispatchShare/ChaseDispatchSharePage'
 import ExitAlarmPage from './pages/ExitAlarm/ExitAlarmPage'
 import ChaseDispatchPage from './pages/ChaseDispatch/ChaseDispatchPage'
 import WorkOrderPushPage from './pages/WorkOrderPush/WorkOrderPushPage'
@@ -199,6 +200,8 @@ function AppRoutes() {
       <Route path="/login" element={<LoginPage />} />
       {/* 供应商日报外部分享页：凭链接 token 访问，无需登录 */}
       <Route path="/vendor-daily/:token" element={<VendorPortalPage />} />
+      {/* 催派推送外部分享页：飞书群内打开，查看/复制滞留运单号 */}
+      <Route path="/chase-dispatch-share/:token" element={<ChaseDispatchSharePage />} />
       <Route element={<ProtectedRoute />}>
         <Route path="/vendor-snapshot" element={<VendorSnapshotPage />} />
         <Route element={<AuthenticatedShell />}>

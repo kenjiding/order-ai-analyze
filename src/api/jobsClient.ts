@@ -1,4 +1,4 @@
-import { getApiBaseUrl } from '../utils/apiBaseUrl'
+import { backendFetch } from './httpClient'
 
 export type JobStatus = 'pending' | 'running' | 'succeeded' | 'failed' | 'cancelled'
 
@@ -32,8 +32,7 @@ export async function listJobs(params?: { type?: string; limit?: number }): Prom
   const qs = new URLSearchParams()
   if (params?.type) qs.set('type', params.type)
   if (params?.limit != null) qs.set('limit', String(params.limit))
-  const res = await fetch(`${getApiBaseUrl()}/api/jobs?${qs.toString()}`, {
-    credentials: 'include',
+  const res = await backendFetch(`/api/jobs?${qs.toString()}`, {
     cache: 'no-store',
   })
   const text = await res.text()
@@ -42,9 +41,8 @@ export async function listJobs(params?: { type?: string; limit?: number }): Prom
 }
 
 export async function deleteJobApi(jobId: string): Promise<void> {
-  const res = await fetch(`${getApiBaseUrl()}/api/jobs/${encodeURIComponent(jobId)}`, {
+  const res = await backendFetch(`/api/jobs/${encodeURIComponent(jobId)}`, {
     method: 'DELETE',
-    credentials: 'include',
   })
   if (!res.ok) {
     const text = await res.text()
@@ -53,8 +51,7 @@ export async function deleteJobApi(jobId: string): Promise<void> {
 }
 
 export async function getJobById(jobId: string): Promise<PublicJob> {
-  const res = await fetch(`${getApiBaseUrl()}/api/jobs/${encodeURIComponent(jobId)}`, {
-    credentials: 'include',
+  const res = await backendFetch(`/api/jobs/${encodeURIComponent(jobId)}`, {
     cache: 'no-store',
   })
   const text = await res.text()
@@ -63,8 +60,7 @@ export async function getJobById(jobId: string): Promise<PublicJob> {
 }
 
 export async function getJobArtifact<T>(jobId: string): Promise<T> {
-  const res = await fetch(`${getApiBaseUrl()}/api/jobs/${encodeURIComponent(jobId)}/artifact`, {
-    credentials: 'include',
+  const res = await backendFetch(`/api/jobs/${encodeURIComponent(jobId)}/artifact`, {
     cache: 'no-store',
   })
   const text = await res.text()
@@ -73,9 +69,8 @@ export async function getJobArtifact<T>(jobId: string): Promise<T> {
 }
 
 export async function cancelJobApi(jobId: string): Promise<PublicJob> {
-  const res = await fetch(`${getApiBaseUrl()}/api/jobs/${encodeURIComponent(jobId)}/cancel`, {
+  const res = await backendFetch(`/api/jobs/${encodeURIComponent(jobId)}/cancel`, {
     method: 'POST',
-    credentials: 'include',
     headers: { 'Content-Type': 'application/json' },
     body: '{}',
   })

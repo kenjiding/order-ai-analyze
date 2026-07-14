@@ -1,7 +1,7 @@
-import { getApiBaseUrl } from '../../../utils/apiBaseUrl'
+import { backendFetch } from '../../../api/httpClient'
 import type { WarehouseConfigDto } from './types'
 
-const warehouseConfigApi = `${getApiBaseUrl()}/api/order-exception/warehouse-config`
+const warehouseConfigApi = '/api/order-exception/warehouse-config'
 
 async function readHttpError(res: Response, text: string): Promise<string> {
   try {
@@ -14,7 +14,7 @@ async function readHttpError(res: Response, text: string): Promise<string> {
 }
 
 export async function fetchWarehouseConfig(): Promise<WarehouseConfigDto | null> {
-  const res = await fetch(warehouseConfigApi)
+  const res = await backendFetch(warehouseConfigApi)
   const text = await res.text()
   if (!res.ok) throw new Error(await readHttpError(res, text))
   const json = JSON.parse(text) as { config: WarehouseConfigDto | null }
@@ -22,7 +22,7 @@ export async function fetchWarehouseConfig(): Promise<WarehouseConfigDto | null>
 }
 
 export async function saveWarehouseConfigApi(config: WarehouseConfigDto): Promise<void> {
-  const res = await fetch(warehouseConfigApi, {
+  const res = await backendFetch(warehouseConfigApi, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ payload: config }),

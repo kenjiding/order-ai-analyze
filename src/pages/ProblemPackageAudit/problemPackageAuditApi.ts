@@ -1,7 +1,7 @@
-import { getApiBaseUrl } from '../../utils/apiBaseUrl'
+import { backendFetch } from '../../api/httpClient'
 import type { DaCodeItem, PackageAuditResult, ProblemPackageDetail, ProblemPackageListItem } from './types'
 
-const BASE = `${getApiBaseUrl()}/api/problem-audit`
+const BASE = '/api/problem-audit'
 
 async function readHttpError(res: Response, text: string): Promise<string> {
   try {
@@ -14,10 +14,9 @@ async function readHttpError(res: Response, text: string): Promise<string> {
 }
 
 async function postJson<T>(path: string, body: unknown): Promise<T> {
-  const res = await fetch(`${BASE}${path}`, {
+  const res = await backendFetch(`${BASE}${path}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    credentials: 'include',
     body: JSON.stringify(body),
   })
   const text = await res.text()

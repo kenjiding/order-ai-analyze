@@ -1,9 +1,8 @@
-import { getApiBaseUrl } from '../utils/apiBaseUrl'
 import type { ZktAttendanceSettings } from '../imile/zktAttendanceSettings'
 import { toZktAttendanceInput } from '../imile/zktAttendanceSettings'
+import { backendFetch } from './httpClient'
 
 const JSON_HEADERS = { 'Content-Type': 'application/json' } as const
-const zktAttendanceApi = `${getApiBaseUrl()}/api/scanner-efficiency/zkt-attendance`
 
 async function readHttpError(res: Response, text: string): Promise<string> {
   try {
@@ -45,10 +44,9 @@ export async function fetchZktAttendance(payload: {
   startDate: string
   endDate: string
 }): Promise<FetchZktAttendanceResult> {
-  const res = await fetch(zktAttendanceApi, {
+  const res = await backendFetch('/api/scanner-efficiency/zkt-attendance', {
     method: 'POST',
     headers: JSON_HEADERS,
-    credentials: 'include',
     body: JSON.stringify({
       ...toZktAttendanceInput(payload.zktAttendance),
       startDate: payload.startDate,

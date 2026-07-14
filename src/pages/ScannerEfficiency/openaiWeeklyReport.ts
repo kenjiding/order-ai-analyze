@@ -1,4 +1,4 @@
-import { getApiBaseUrl } from '../../utils/apiBaseUrl'
+import { backendFetch } from '../../api/httpClient'
 import type { WeeklyReportSnapshot } from './weeklyReportSnapshot'
 
 export type WeeklyAiAnalysis = {
@@ -29,7 +29,7 @@ const asStringArray = (value: unknown): string[] => {
 }
 
 export async function generateWeeklyAiAnalysis(payload: WeeklyAiRequestPayload): Promise<WeeklyAiAnalysis> {
-  const response = await fetch(`${getApiBaseUrl()}/api/weekly-report-insight`, {
+  const response = await backendFetch('/api/weekly-report-insight', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload),

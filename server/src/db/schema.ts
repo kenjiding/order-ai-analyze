@@ -491,6 +491,30 @@ export const geocodeCache = pgTable(
   (table) => [uniqueIndex('geocode_cache_address_text_unique').on(table.addressText)],
 )
 
+/**
+ * 催派推送外部分享快照：推送时落库，群内链接凭高熵 token 无登录查看运单明细。
+ * 保留 3 天（按 createdAt 判定过期并清理）；payload 为白名单结构，不含 webhook/token。
+ */
+export const chaseDispatchShareSnapshots = pgTable(
+  'chase_dispatch_share_snapshots',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    token: varchar('token', { length: 128 }).notNull(),
+    vendorCode: varchar('vendor_code', { length: 64 }).notNull(),
+    vendorName: varchar('vendor_name', { length: 255 }).notNull(),
+    baseDate: varchar('base_date', { length: 10 }).notNull(),
+    pushTime: varchar('push_time', { length: 8 }).notNull(),
+    /** 催派门户页展示用完整明细（区间 / 司机 / 运单号） */
+    payload: jsonb('payload').notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    lastAccessedAt: timestamp('last_accessed_at', { withTimezone: true }),
+  },
+  (table) => [
+    uniqueIndex('chase_dispatch_share_snapshots_token_unique').on(table.token),
+    index('chase_dispatch_share_snapshots_created_at_idx').on(table.createdAt),
+  ],
+)
+
 export type User = typeof users.$inferSelect
 export type Region = typeof regions.$inferSelect
 export type Permission = typeof permissions.$inferSelect
@@ -527,5 +551,7 @@ export type AttendanceWorkRecord = typeof attendanceWorkRecords.$inferSelect
 export type NewAttendanceWorkRecord = typeof attendanceWorkRecords.$inferInsert
 export type DriverMapWaybillPoint = typeof driverMapWaybillPoints.$inferSelect
 export type NewDriverMapWaybillPoint = typeof driverMapWaybillPoints.$inferInsert
+export type ChaseDispatchShareSnapshot = typeof chaseDispatchShareSnapshots.$inferSelect
+export type NewChaseDispatchShareSnapshot = typeof chaseDispatchShareSnapshots.$inferInsert
 export type GeocodeCacheRow = typeof geocodeCache.$inferSelect
 export type NewGeocodeCacheRow = typeof geocodeCache.$inferInsert

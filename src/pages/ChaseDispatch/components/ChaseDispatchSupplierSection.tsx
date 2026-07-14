@@ -35,8 +35,8 @@ export function ChaseDispatchSupplierSection({ page }: Props) {
             供应商配置
           </h3>
           <p className="mt-1 text-xs text-slate-500">
-            在「飞书推送 → 车队供应商推送」统一维护 Webhook 与供应商代码；勾选控制定时催派推送范围，
-            与上方「定时推送配置」共用「编辑/保存」。
+            在「飞书推送 → 车队供应商推送」统一维护 Webhook、供应商代码与路由码；催派按供应商代码归属后再按路由码筛选，
+            勾选控制定时推送范围，与上方「定时推送配置」共用「编辑/保存」。
           </p>
         </div>
         {editing && (

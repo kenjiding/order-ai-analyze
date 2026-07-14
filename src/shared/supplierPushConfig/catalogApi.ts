@@ -1,4 +1,4 @@
-import { getApiBaseUrl } from '../../utils/apiBaseUrl'
+import { backendFetch } from '../../api/httpClient'
 import type { SupplierPushConfig, SupplierPushConfigDraft } from './types'
 
 /** 导入用一条待写入的供应商：regionCode 由服务端按当前账号所属州决定，不从导入文件读取 */
@@ -9,8 +9,7 @@ async function apiFetch<T>(
   options?: RequestInit,
 ): Promise<{ ok: true; data: T; meta?: { imported: number; skipped: number } } | { ok: false; error: string }> {
   try {
-    const res = await fetch(`${getApiBaseUrl()}${path}`, {
-      credentials: 'include',
+    const res = await backendFetch(path, {
       headers: { 'Content-Type': 'application/json' },
       ...options,
     })

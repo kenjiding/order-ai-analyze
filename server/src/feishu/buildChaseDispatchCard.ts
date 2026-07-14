@@ -19,6 +19,21 @@ function colored(value: string, color: MarkColor): string {
   return `<font color='${color}'>${value}</font>`
 }
 
+/** 自定义机器人 v1 卡片：用 action + button.url 打开落地页（markdown 链接不可跳转） */
+function openUrlAction(url: string, label: string): CardEl {
+  return {
+    tag: 'action',
+    actions: [
+      {
+        tag: 'button',
+        text: { tag: 'plain_text', content: label },
+        type: 'primary',
+        url,
+      },
+    ],
+  }
+}
+
 /** 构建催派推送飞书卡片（webhook interactive card v1）。一家供应商一张卡片 */
 export function buildChaseDispatchCard(params: {
   vendorName: string
@@ -26,8 +41,10 @@ export function buildChaseDispatchCard(params: {
   pushTime: string
   summary: VendorStagnationSummary
   pushDescription?: string | null
+  /** 无登录落地页：查看并复制运单号 */
+  detailUrl?: string | null
 }): Record<string, unknown> {
-  const { vendorName, baseDate, pushTime, summary, pushDescription } = params
+  const { vendorName, baseDate, pushTime, summary, pushDescription, detailUrl } = params
   const { totalStagnant, buckets } = summary
   const elements: CardEl[] = []
 
@@ -65,6 +82,11 @@ export function buildChaseDispatchCard(params: {
       return `**${b.bucket} days:**\n${driverLines}`
     })
     elements.push(div(`**By driver**\n${bucketBlocks.join('\n')}`))
+  }
+
+  if (detailUrl && totalStagnant > 0) {
+    elements.push(hr())
+    elements.push(openUrlAction(detailUrl, 'View & copy waybills'))
   }
 
   if (totalStagnant === 0) {

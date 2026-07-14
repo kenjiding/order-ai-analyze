@@ -1,4 +1,4 @@
-import { getApiBaseUrl } from '../utils/apiBaseUrl'
+import { backendFetch } from './httpClient'
 
 export type UserRole = 'super_admin' | 'user'
 
@@ -34,9 +34,7 @@ async function parseJson<T>(res: Response): Promise<T> {
 }
 
 export async function fetchAuthMe(): Promise<AuthSession | null> {
-  const res = await fetch(`${getApiBaseUrl()}/api/auth/me`, {
-    credentials: 'include',
-  })
+  const res = await backendFetch('/api/auth/me')
   if (res.status === 401) return null
   if (!res.ok) {
     const body = await parseJson<ApiErrorBody>(res)
@@ -48,9 +46,8 @@ export async function fetchAuthMe(): Promise<AuthSession | null> {
 export async function fetchLogin(username: string, password: string): Promise<AuthSession> {
   let res: Response
   try {
-    res = await fetch(`${getApiBaseUrl()}/api/auth/login`, {
+    res = await backendFetch('/api/auth/login', {
       method: 'POST',
-      credentials: 'include',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ username, password }),
     })
@@ -72,8 +69,7 @@ export async function fetchLogin(username: string, password: string): Promise<Au
 }
 
 export async function fetchLogout(): Promise<void> {
-  await fetch(`${getApiBaseUrl()}/api/auth/logout`, {
+  await backendFetch('/api/auth/logout', {
     method: 'POST',
-    credentials: 'include',
   })
 }

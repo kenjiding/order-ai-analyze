@@ -1,4 +1,4 @@
-import { getApiBaseUrl } from '../../utils/apiBaseUrl'
+import { backendFetch } from '../../api/httpClient'
 
 export type DeliveringNotifyCourierGroup = {
   courier: string
@@ -38,11 +38,10 @@ export async function pushDeliveringNotify(params: {
   stationCode: string
   waybillNos: string[]
 }): Promise<{ ok: true; data: DeliveringNotifyPushData } | DeliveringNotifyPushFail> {
-  const url = `${getApiBaseUrl()}/api/delivering-notify/push`
+  const path = '/api/delivering-notify/push'
   try {
-    const res = await fetch(url, {
+    const res = await backendFetch(path, {
       method: 'POST',
-      credentials: 'include',
       headers: {
         'Content-Type': 'application/json',
         Authorization: `Bearer ${params.imileToken}`,
@@ -57,6 +56,6 @@ export async function pushDeliveringNotify(params: {
     if (parsed.ok === true && parsed.data) return { ok: true, data: parsed.data }
     return { ok: false, error: typeof parsed.error === 'string' ? parsed.error : '推送失败' }
   } catch {
-    return { ok: false, error: `无法访问后端 (${url})。请确认已运行 server 或检查 VITE_API_BASE。` }
+    return { ok: false, error: `无法访问后端 (${path})。请确认已运行 server 或检查 VITE_API_BASE。` }
   }
 }

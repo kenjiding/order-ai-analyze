@@ -19,6 +19,7 @@ import {
 } from '../imile/inboundWaybillIndexScheduler'
 import { INBOUND_INDEX_ADELAIDE_TZ } from '../imile/inboundWaybillIndex'
 import { purgeOldVendorDailyData } from '../vendorAnalysis/retention'
+import { purgeOldChaseDispatchShareSnapshots } from '../feishu/chaseDispatchShareSnapshot'
 import { readJobSchedulerEnabled } from './config'
 
 export function startJobScheduler(): { stop: () => void } {
@@ -139,7 +140,7 @@ export function startJobScheduler(): { stop: () => void } {
   )
   void logInboundIndexSchedulerReadiness()
 
-  // 供应商日报/分享链接保留期清理：每日 06:30 阿德莱德，删除超过 7 天的旧数据
+  // 供应商日报/分享链接 + 催派分享快照保留期清理：每日 06:30 阿德莱德
   const vendorReportRetentionCron = process.env.VENDOR_REPORT_RETENTION_CRON?.trim() || '30 6 * * *'
   const vendorReportRetentionCronValid = cron.validate(vendorReportRetentionCron)
     ? vendorReportRetentionCron
@@ -158,12 +159,20 @@ export function startJobScheduler(): { stop: () => void } {
       } catch (err) {
         console.error('[scheduler/vendor-report-retention] 清理异常:', err)
       }
+      try {
+        const purged = await purgeOldChaseDispatchShareSnapshots()
+        if (purged > 0) {
+          console.log(`[scheduler/chase-dispatch-share-retention] 已清理 ${purged} 条催派分享快照`)
+        }
+      } catch (err) {
+        console.error('[scheduler/chase-dispatch-share-retention] 清理异常:', err)
+      }
     },
     { timezone: INBOUND_INDEX_ADELAIDE_TZ },
   )
   tasks.push(vendorReportRetentionTask)
   console.log(
-    `[scheduler] 已启动供应商日报保留期清理任务 cron="${vendorReportRetentionCronValid}" timezone="${INBOUND_INDEX_ADELAIDE_TZ}"`,
+    `[scheduler] 已启动供应商日报/催派分享保留期清理任务 cron="${vendorReportRetentionCronValid}" timezone="${INBOUND_INDEX_ADELAIDE_TZ}"`,
   )
 
   return {

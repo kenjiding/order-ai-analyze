@@ -1,11 +1,7 @@
-import { getApiBaseUrl } from '../../utils/apiBaseUrl'
+import { backendFetch } from '../../api/httpClient'
 import type { TrackEvent } from './types'
 
 const JSON_HEADERS = { 'Content-Type': 'application/json' } as const
-
-const orderExceptionApi = `${getApiBaseUrl()}/api/order-exception`
-const jobsApi = `${getApiBaseUrl()}/api/jobs`
-const feishuWebhookApi = `${getApiBaseUrl()}/api/feishu-webhook`
 
 async function readHttpError(res: Response, text: string): Promise<string> {
   try {
@@ -144,7 +140,7 @@ export type ClosureVendorOption = {
 }
 
 export async function listRegressionCases(): Promise<{ cases: RegressionCaseListItem[] }> {
-  const res = await fetch(`${orderExceptionApi}/regression/cases`)
+  const res = await backendFetch(`/api/order-exception/regression/cases`)
   const text = await res.text()
   if (!res.ok) throw new Error(await readHttpError(res, text))
   return JSON.parse(text) as { cases: RegressionCaseListItem[] }
@@ -155,7 +151,7 @@ export async function captureRegressionCase(payload: {
   orderNo: string
   expected: RegressionExpectedInput
 }): Promise<{ case: RegressionCaseListItem & { tracks?: unknown[] } }> {
-  const res = await fetch(`${orderExceptionApi}/regression/capture`, {
+  const res = await backendFetch(`/api/order-exception/regression/capture`, {
     method: 'POST',
     headers: JSON_HEADERS,
     body: JSON.stringify(payload),
@@ -166,7 +162,7 @@ export async function captureRegressionCase(payload: {
 }
 
 export async function deleteRegressionCase(id: string): Promise<void> {
-  const res = await fetch(`${orderExceptionApi}/regression/cases/${encodeURIComponent(id)}`, {
+  const res = await backendFetch(`/api/order-exception/regression/cases/${encodeURIComponent(id)}`, {
     method: 'DELETE',
   })
   const text = await res.text()
@@ -177,7 +173,7 @@ export async function runRegression(payload?: {
   caseIds?: string[]
   aiProvider?: OrderAnalyzeAiProvider
 }): Promise<RegressionRunReport> {
-  const res = await fetch(`${orderExceptionApi}/regression/run`, {
+  const res = await backendFetch(`/api/order-exception/regression/run`, {
     method: 'POST',
     headers: JSON_HEADERS,
     body: JSON.stringify({
@@ -204,7 +200,7 @@ export async function postOrderExceptionPrefetch(payload: {
     interceptErrors: Array<{ orderNo: string; message: string }>
   }
 }> {
-  const res = await fetch(`${orderExceptionApi}/prefetch`, {
+  const res = await backendFetch(`/api/order-exception/prefetch`, {
     method: 'POST',
     headers: JSON_HEADERS,
     body: JSON.stringify(payload),
@@ -295,7 +291,7 @@ export async function postOrderExceptionAnalyze(payload: {
   trackFacts?: Record<string, OrderTrackFacts>
   cancelScanRecheck?: CancelScanRecheckMeta
 }> {
-  const res = await fetch(`${orderExceptionApi}/analyze`, {
+  const res = await backendFetch(`/api/order-exception/analyze`, {
     method: 'POST',
     headers: JSON_HEADERS,
     body: JSON.stringify({
@@ -323,7 +319,7 @@ export async function getClosureVendors(payload: { imileToken: string }): Promis
   vendors: ClosureVendorOption[]
   defaultStationCode: string
 }> {
-  const res = await fetch(`${orderExceptionApi}/closure/vendors`, {
+  const res = await backendFetch(`/api/order-exception/closure/vendors`, {
     method: 'GET',
     headers: {
       Authorization: `Bearer ${payload.imileToken}`,
@@ -345,7 +341,7 @@ export async function postClosureDriverVendor(payload: {
   stationCode: string
   result: { driverId: string; vendorCode: string; vendorName: string } | null
 }> {
-  const res = await fetch(`${orderExceptionApi}/closure/driver-vendor`, {
+  const res = await backendFetch(`/api/order-exception/closure/driver-vendor`, {
     method: 'POST',
     headers: JSON_HEADERS,
     body: JSON.stringify(payload),
@@ -398,7 +394,7 @@ export async function postOrderExceptionAnalyzeAsync(payload: {
   enableAiExplain?: boolean
   scanStationCode?: string
 }): Promise<{ jobId: string; status: JobStatus; orderCount: number }> {
-  const res = await fetch(`${orderExceptionApi}/analyze-async`, {
+  const res = await backendFetch(`/api/order-exception/analyze-async`, {
     method: 'POST',
     headers: JSON_HEADERS,
     body: JSON.stringify({
@@ -412,7 +408,7 @@ export async function postOrderExceptionAnalyzeAsync(payload: {
 }
 
 export async function getJobById(jobId: string): Promise<PublicJob> {
-  const res = await fetch(`${jobsApi}/${encodeURIComponent(jobId)}`, { cache: 'no-store' })
+  const res = await backendFetch(`/api/jobs/${encodeURIComponent(jobId)}`, { cache: 'no-store' })
   const text = await res.text()
   if (!res.ok) throw new Error(await readHttpError(res, text))
   const parsed = JSON.parse(text) as { job: PublicJob }
@@ -420,7 +416,7 @@ export async function getJobById(jobId: string): Promise<PublicJob> {
 }
 
 export async function getJobArtifact(jobId: string): Promise<AnalyzeJobArtifact> {
-  const res = await fetch(`${jobsApi}/${encodeURIComponent(jobId)}/artifact`, { cache: 'no-store' })
+  const res = await backendFetch(`/api/jobs/${encodeURIComponent(jobId)}/artifact`, { cache: 'no-store' })
   const text = await res.text()
   if (!res.ok) throw new Error(await readHttpError(res, text))
   const parsed = JSON.parse(text) as { artifact: AnalyzeJobArtifact }
@@ -434,15 +430,15 @@ export async function listJobsApi(params?: {
   const qs = new URLSearchParams()
   if (params?.type) qs.set('type', params.type)
   if (params?.limit != null) qs.set('limit', String(params.limit))
-  const url = `${jobsApi}?${qs.toString()}`
-  const res = await fetch(url, { cache: 'no-store' })
+  const url = `/api/jobs?${qs.toString()}`
+  const res = await backendFetch(url, { cache: 'no-store' })
   const text = await res.text()
   if (!res.ok) throw new Error(await readHttpError(res, text))
   return JSON.parse(text) as { jobs: PublicJob[]; total: number }
 }
 
 export async function deleteJobApi(jobId: string): Promise<void> {
-  const res = await fetch(`${jobsApi}/${encodeURIComponent(jobId)}`, { method: 'DELETE' })
+  const res = await backendFetch(`/api/jobs/${encodeURIComponent(jobId)}`, { method: 'DELETE' })
   if (!res.ok) {
     const text = await res.text()
     throw new Error(await readHttpError(res, text))
@@ -450,7 +446,7 @@ export async function deleteJobApi(jobId: string): Promise<void> {
 }
 
 export async function cancelJobApi(jobId: string): Promise<PublicJob> {
-  const res = await fetch(`${jobsApi}/${encodeURIComponent(jobId)}/cancel`, {
+  const res = await backendFetch(`/api/jobs/${encodeURIComponent(jobId)}/cancel`, {
     method: 'POST',
     headers: JSON_HEADERS,
     body: JSON.stringify({}),
@@ -485,7 +481,7 @@ export async function postFeishuPushOrderException(payload: {
   analysisDate: string
   aiProvider: 'deepseek' | 'openai'
 }): Promise<OrderExceptionPushResult> {
-  const res = await fetch(`${feishuWebhookApi}/push-order-exception`, {
+  const res = await backendFetch(`/api/feishu-webhook/push-order-exception`, {
     method: 'POST',
     headers: JSON_HEADERS,
     body: JSON.stringify(payload),

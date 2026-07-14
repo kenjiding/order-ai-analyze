@@ -1,4 +1,4 @@
-import { getApiBaseUrl } from '../../utils/apiBaseUrl'
+import { backendFetch } from '../../api/httpClient'
 import type { AttendanceEfficiencyResult, ScannerEfficiencyResult } from './aggregates'
 import { selectTopPerformers, type ScannerTotalEfficiencyRow } from './sortingLookup'
 
@@ -21,7 +21,7 @@ export async function generateWarehouseInsight(
   aiProvider: EfficiencyInsightAiProvider = 'deepseek',
 ): Promise<EfficiencyAiAnalysis> {
   const s = attendanceResult.summary
-  const response = await fetch(`${getApiBaseUrl()}/api/efficiency-insight`, {
+  const response = await backendFetch('/api/efficiency-insight', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
@@ -75,7 +75,7 @@ export async function generateScannerInsight(
     scannerTotalEfficiencyRows ?? [],
   )
 
-  const response = await fetch(`${getApiBaseUrl()}/api/efficiency-insight`, {
+  const response = await backendFetch('/api/efficiency-insight', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
@@ -142,7 +142,7 @@ export async function generateCompareInsight(
   efficiencyGapPct: number,
   aiProvider: EfficiencyInsightAiProvider = 'deepseek',
 ): Promise<EfficiencyAiAnalysis> {
-  const response = await fetch(`${getApiBaseUrl()}/api/efficiency-insight`, {
+  const response = await backendFetch('/api/efficiency-insight', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({

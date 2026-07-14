@@ -1,4 +1,4 @@
-import { getApiBaseUrl } from '../../utils/apiBaseUrl'
+import { backendFetch } from '../../api/httpClient'
 import type { PushApiScope } from '../../permissions/pushNotificationAccess'
 
 export type FeishuPushTestPayload = {
@@ -45,9 +45,9 @@ export type FeishuPushImageFail = {
 }
 
 export async function postFeishuPushTest(payload: FeishuPushTestPayload): Promise<FeishuPushTestOk | FeishuPushTestFail> {
-  const url = `${getApiBaseUrl()}/api/feishu-webhook/test`
+  const path = '/api/feishu-webhook/test'
   try {
-    const res = await fetch(url, {
+    const res = await backendFetch(path, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
@@ -72,7 +72,7 @@ export async function postFeishuPushTest(payload: FeishuPushTestPayload): Promis
     }
     return { ok: false, httpStatus: res.status, error: '无法解析服务端响应。' }
   } catch {
-    return { ok: false, error: `无法访问后端 (${url})。请确认已运行 server（如 pnpm dev:server）或检查 VITE_API_BASE。` }
+    return { ok: false, error: `无法访问后端 (${path})。请确认已运行 server（如 pnpm dev:server）或检查 VITE_API_BASE。` }
   }
 }
 
@@ -82,9 +82,9 @@ export async function postFeishuPushText(payload: {
   signingSecret?: string
   text: string
 }): Promise<FeishuPushTestOk | FeishuPushTestFail> {
-  const url = `${getApiBaseUrl()}/api/feishu-webhook/push-text`
+  const path = '/api/feishu-webhook/push-text'
   try {
-    const res = await fetch(url, {
+    const res = await backendFetch(path, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -114,7 +114,7 @@ export async function postFeishuPushText(payload: {
     }
     return { ok: false, httpStatus: res.status, error: '无法解析服务端响应。' }
   } catch {
-    return { ok: false, error: `无法访问后端 (${url})。请确认已运行 server 或检查 VITE_API_BASE。` }
+    return { ok: false, error: `无法访问后端 (${path})。请确认已运行 server 或检查 VITE_API_BASE。` }
   }
 }
 
@@ -124,9 +124,9 @@ export async function postFeishuPushCard(payload: {
   signingSecret?: string
   card: Record<string, unknown>
 }): Promise<FeishuPushTestOk | FeishuPushTestFail> {
-  const url = `${getApiBaseUrl()}/api/feishu-webhook/push-card`
+  const path = '/api/feishu-webhook/push-card'
   try {
-    const res = await fetch(url, {
+    const res = await backendFetch(path, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -151,7 +151,7 @@ export async function postFeishuPushCard(payload: {
     }
     return { ok: false, httpStatus: res.status, error: '无法解析服务端响应。' }
   } catch {
-    return { ok: false, error: `无法访问后端 (${url})。请确认已运行 server 或检查 VITE_API_BASE。` }
+    return { ok: false, error: `无法访问后端 (${path})。请确认已运行 server 或检查 VITE_API_BASE。` }
   }
 }
 
@@ -162,9 +162,9 @@ export async function postFeishuPushRichMessage(payload: {
   content: string
   images: string[]
 }): Promise<FeishuPushTestOk | FeishuPushTestFail> {
-  const url = `${getApiBaseUrl()}/api/feishu-webhook/push-rich-message`
+  const path = '/api/feishu-webhook/push-rich-message'
   try {
-    const res = await fetch(url, {
+    const res = await backendFetch(path, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -190,7 +190,7 @@ export async function postFeishuPushRichMessage(payload: {
     }
     return { ok: false, httpStatus: res.status, error: '无法解析服务端响应。' }
   } catch {
-    return { ok: false, error: `无法访问后端 (${url})。请确认已运行 server 或检查 VITE_API_BASE。` }
+    return { ok: false, error: `无法访问后端 (${path})。请确认已运行 server 或检查 VITE_API_BASE。` }
   }
 }
 
@@ -204,16 +204,16 @@ export async function fetchDeliveryWeatherLarkMd(params: {
     lng: String(params.lng),
     label: params.label,
   })
-  const url = `${getApiBaseUrl()}/api/feishu-webhook/delivery-weather?${qs.toString()}`
+  const path = `/api/feishu-webhook/delivery-weather?${qs.toString()}`
   try {
-    const res = await fetch(url, { credentials: 'include' })
+    const res = await backendFetch(path)
     const parsed = (await res.json()) as { ok?: boolean; data?: { larkMd?: string }; error?: string }
     if (parsed?.ok === true && typeof parsed.data?.larkMd === 'string') {
       return { ok: true, larkMd: parsed.data.larkMd }
     }
     return { ok: false, error: typeof parsed?.error === 'string' ? parsed.error : '获取天气预报失败。' }
   } catch {
-    return { ok: false, error: `无法访问后端 (${url})。` }
+    return { ok: false, error: `无法访问后端 (${path})。` }
   }
 }
 
@@ -229,9 +229,9 @@ export function summarizeFeishuTestFailure(result: FeishuPushTestFail): string {
 export async function postFeishuPushImage(
   payload: FeishuPushImagePayload,
 ): Promise<FeishuPushImageOk | FeishuPushImageFail> {
-  const url = `${getApiBaseUrl()}/api/feishu-webhook/push-image`
+  const path = '/api/feishu-webhook/push-image'
   try {
-    const res = await fetch(url, {
+    const res = await backendFetch(path, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -279,7 +279,7 @@ export async function postFeishuPushImage(
   } catch {
     return {
       ok: false,
-      error: `无法访问后端 (${url})。请确认已运行 server 或检查 VITE_API_BASE。`,
+      error: `无法访问后端 (${path})。请确认已运行 server 或检查 VITE_API_BASE。`,
     }
   }
 }
