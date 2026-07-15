@@ -483,7 +483,7 @@ export function buildScannerTotalEfficiencyColumns(): DataTableColumn[] {
 
 export function buildScannerPersonColumns(): DataTableColumn[] {
   return [
-    { key: 'scanner', title: '扫描员' },
+    { key: 'scanner', title: '扫描员', width: 160 },
     {
       key: 'scanCount',
       title: '总扫描量',

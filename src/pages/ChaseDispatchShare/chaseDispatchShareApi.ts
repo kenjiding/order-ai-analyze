@@ -38,3 +38,39 @@ export async function fetchChaseDispatchShare(
     return { ok: false, error: 'network' }
   }
 }
+
+export type DispatchAlarmShareDriver = {
+  courierCode: string
+  courierName: string
+  total: number
+  met: number
+  unmetNos: string[]
+}
+
+export type DispatchAlarmShareView = {
+  vendorCode: string
+  vendorName: string
+  stationCode: string
+  date: string
+  pushTime: string
+  total: number
+  met: number
+  alertThresholdPct: number
+  drivers: DispatchAlarmShareDriver[]
+  createdAt: string
+}
+
+/** 无登录态；与催派推送门户共用同一落地页组件，仅数据源不同 */
+export async function fetchDispatchAlarmShare(
+  token: string,
+): Promise<{ ok: true; data: DispatchAlarmShareView } | { ok: false; error: string }> {
+  try {
+    const path = `/api/dispatch-alarm-portal/${encodeURIComponent(token)}`
+    const res = await backendFetch(path, { headers: { Accept: 'application/json' } })
+    const json = (await res.json()) as { ok?: boolean; data?: DispatchAlarmShareView; error?: string }
+    if (json.ok === true && json.data) return { ok: true, data: json.data }
+    return { ok: false, error: typeof json.error === 'string' ? json.error : 'not_found' }
+  } catch {
+    return { ok: false, error: 'network' }
+  }
+}

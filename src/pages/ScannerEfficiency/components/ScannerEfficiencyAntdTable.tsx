@@ -17,6 +17,7 @@ function toAntdColumns(columns: DataTableColumn[]): ColumnsType<DataTableRow> {
     key: col.key,
     dataIndex: col.key,
     title: col.title,
+    width: col.width,
     render: col.render
       ? (_value, record) => col.render!(record)
       : (value) => (value == null || value === '' ? '—' : String(value)),

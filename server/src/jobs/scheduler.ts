@@ -20,6 +20,7 @@ import {
 import { INBOUND_INDEX_ADELAIDE_TZ } from '../imile/inboundWaybillIndex'
 import { purgeOldVendorDailyData } from '../vendorAnalysis/retention'
 import { purgeOldChaseDispatchShareSnapshots } from '../feishu/chaseDispatchShareSnapshot'
+import { purgeOldDispatchAlarmShareSnapshots } from '../feishu/dispatchAlarmShareSnapshot'
 import { readJobSchedulerEnabled } from './config'
 
 export function startJobScheduler(): { stop: () => void } {
@@ -166,6 +167,14 @@ export function startJobScheduler(): { stop: () => void } {
         }
       } catch (err) {
         console.error('[scheduler/chase-dispatch-share-retention] 清理异常:', err)
+      }
+      try {
+        const purged = await purgeOldDispatchAlarmShareSnapshots()
+        if (purged > 0) {
+          console.log(`[scheduler/dispatch-alarm-share-retention] 已清理 ${purged} 条派签告警分享快照`)
+        }
+      } catch (err) {
+        console.error('[scheduler/dispatch-alarm-share-retention] 清理异常:', err)
       }
     },
     { timezone: INBOUND_INDEX_ADELAIDE_TZ },

@@ -2,6 +2,7 @@ import { eq } from 'drizzle-orm'
 import { getDb, schema } from '../db'
 import type { DispatchAlarmSchedule, FleetSupplierPushConfig } from '../db/schema'
 import { buildDispatchAlarmCard } from './buildDispatchAlarmCard'
+import { createDispatchAlarmShareSnapshot } from './dispatchAlarmShareSnapshot'
 import { computeFeishuWebhookSign, parseSafeWebhookUrl } from '../feishuWebhookHelpers'
 import { envFirst } from '../imile/shared'
 import { getRegionNow } from '../imile/inboundWaybillIndex'
@@ -117,8 +118,24 @@ export async function executeDispatchAlarmPush(params: {
     const stat = statsByVendor.get(config.vendorCode)
     if (!stat || stat.total === 0) continue // 无数据不推送
 
+    const vendorName = supplierDisplayName(config)
+    const share =
+      stat.total - stat.met > 0
+        ? await createDispatchAlarmShareSnapshot({
+            vendorCode: config.vendorCode,
+            vendorName,
+            stationCode,
+            date,
+            pushTime,
+            total: stat.total,
+            met: stat.met,
+            alertThresholdPct,
+            drivers: stat.drivers,
+          })
+        : null
+
     const card = buildDispatchAlarmCard({
-      vendorName: supplierDisplayName(config),
+      vendorName,
       stationCode,
       date,
       pushTime,
@@ -127,6 +144,7 @@ export async function executeDispatchAlarmPush(params: {
       drivers: stat.drivers,
       alertThresholdPct,
       pushDescription: config.pushDescription,
+      detailUrl: share?.url ?? null,
     })
     const ok = await pushCardToWebhook(config.webhookUrl, config.signingSecret, card)
     if (ok) {

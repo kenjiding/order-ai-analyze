@@ -1,23 +1,121 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { useParams } from 'react-router-dom'
+import { useLocation, useParams } from 'react-router-dom'
 import { copyTextToClipboard } from '../../utils/clipboard'
 import {
   fetchChaseDispatchShare,
-  type ChaseDispatchShareBucket,
+  fetchDispatchAlarmShare,
   type ChaseDispatchShareView,
+  type DispatchAlarmShareView,
 } from './chaseDispatchShareApi'
 import './chaseDispatchSharePage.css'
 
 /**
- * 催派推送外部分享页：飞书群内链接打开，无登录，仅查看/复制滞留运单号。
- * Reading: operational public share for fleet operators; cold industrial utility; Linear restraint.
+ * 外部分享落地页：飞书群内链接打开，无登录，查看/复制运单号。
+ * 催派推送（/chase-dispatch-share）与 24 小时派签告警（/dispatch-alarm-share）共用同一个组件与视觉设计，
+ * 仅按路径区分数据源、归一化成统一的 groups 视图模型渲染。
  */
 
-function collectAllWaybillNos(buckets: ChaseDispatchShareBucket[]): string[] {
+type ShareKind = 'chase-dispatch' | 'dispatch-alarm'
+
+type ShareDriverRow = {
+  key: string
+  name: string
+  code: string
+  count: number
+  waybillNos: string[]
+}
+
+type ShareGroup = {
+  key: string
+  title: string
+  count: number
+  drivers: ShareDriverRow[]
+}
+
+type ShareViewModel = {
+  kind: ShareKind
+  brand: string
+  vendorName: string
+  subtitle: string
+  metricLabel: string
+  metricValue: number
+  groups: ShareGroup[]
+  emptyMessage: string
+}
+
+const BRAND_BY_KIND: Record<ShareKind, string> = {
+  'chase-dispatch': 'Chase Dispatch',
+  'dispatch-alarm': '24H Delivery Alert',
+}
+
+function resolveKind(pathname: string): ShareKind {
+  return pathname.startsWith('/dispatch-alarm-share') ? 'dispatch-alarm' : 'chase-dispatch'
+}
+
+function toChaseDispatchViewModel(data: ChaseDispatchShareView): ShareViewModel {
+  return {
+    kind: 'chase-dispatch',
+    brand: BRAND_BY_KIND['chase-dispatch'],
+    vendorName: data.vendorName,
+    subtitle: `${data.baseDate} ${data.pushTime} · Stagnant parcels pending delivery`,
+    metricLabel: 'Total stagnant',
+    metricValue: data.totalStagnant,
+    groups: data.buckets
+      .filter((b) => b.count > 0 && b.drivers.length > 0)
+      .map((b) => ({
+        key: b.bucket,
+        title: `${b.bucket} days`,
+        count: b.count,
+        drivers: b.drivers.map((d) => ({
+          key: d.driverCode,
+          name: d.driverName,
+          code: d.driverCode,
+          count: d.count,
+          waybillNos: d.waybillNos,
+        })),
+      })),
+    emptyMessage: 'No stagnant parcels — nothing to chase.',
+  }
+}
+
+function toDispatchAlarmViewModel(data: DispatchAlarmShareView): ShareViewModel {
+  const unmetDrivers = data.drivers.filter((d) => d.total - d.met > 0)
+  const unmetTotal = data.total - data.met
+  const rate = data.total > 0 ? (data.met / data.total) * 100 : 0
+  const rateText = data.total > 0 ? `${rate.toFixed(1)}%` : '—'
+  return {
+    kind: 'dispatch-alarm',
+    brand: BRAND_BY_KIND['dispatch-alarm'],
+    vendorName: data.vendorName,
+    subtitle: `Station ${data.stationCode} · ${data.date} ${data.pushTime} · 24H rate ${rateText} (threshold ${data.alertThresholdPct}%)`,
+    metricLabel: 'Not signed within 24H',
+    metricValue: unmetTotal,
+    groups:
+      unmetDrivers.length > 0
+        ? [
+            {
+              key: 'unmet',
+              title: 'Not signed within 24H',
+              count: unmetTotal,
+              drivers: unmetDrivers.map((d) => ({
+                key: d.courierCode,
+                name: d.courierName,
+                code: d.courierCode,
+                count: d.total - d.met,
+                waybillNos: d.unmetNos,
+              })),
+            },
+          ]
+        : [],
+    emptyMessage: 'All waybills signed within 24H.',
+  }
+}
+
+function collectAllWaybillNos(groups: ShareGroup[]): string[] {
   const seen = new Set<string>()
   const out: string[] = []
-  for (const bucket of buckets) {
-    for (const driver of bucket.drivers) {
+  for (const group of groups) {
+    for (const driver of group.drivers) {
       for (const no of driver.waybillNos) {
         const trimmed = no.trim()
         if (!trimmed || seen.has(trimmed)) continue
@@ -50,19 +148,29 @@ function useCopyToast() {
 
 export default function ChaseDispatchSharePage() {
   const { token } = useParams<{ token: string }>()
-  const [data, setData] = useState<ChaseDispatchShareView | null>(null)
+  const location = useLocation()
+  const kind = useMemo(() => resolveKind(location.pathname), [location.pathname])
+
+  const [view, setView] = useState<ShareViewModel | null>(null)
   const [status, setStatus] = useState<'loading' | 'ready' | 'error'>(token ? 'loading' : 'error')
-  /** 展开的滞留区间；默认全部折叠 */
-  const [expandedBuckets, setExpandedBuckets] = useState<Set<string>>(() => new Set())
+  /** 展开的司机（`${groupKey}::${driverKey}`）；默认全部折叠，仅剩一位司机时自动展开 */
+  const [expandedDrivers, setExpandedDrivers] = useState<Set<string>>(() => new Set())
   const { toast, show } = useCopyToast()
 
   useEffect(() => {
     if (!token) return
     let cancelled = false
-    void fetchChaseDispatchShare(token).then((result) => {
+    const load =
+      kind === 'dispatch-alarm'
+        ? fetchDispatchAlarmShare(token).then((r) => (r.ok ? toDispatchAlarmViewModel(r.data) : null))
+        : fetchChaseDispatchShare(token).then((r) => (r.ok ? toChaseDispatchViewModel(r.data) : null))
+    void load.then((vm) => {
       if (cancelled) return
-      if (result.ok) {
-        setData(result.data)
+      if (vm) {
+        setView(vm)
+        const allDriverKeys = vm.groups.flatMap((g) => g.drivers.map((d) => `${g.key}::${d.key}`))
+        // 仅一位司机时无需再多点一次展开
+        if (allDriverKeys.length === 1) setExpandedDrivers(new Set(allDriverKeys))
         setStatus('ready')
       } else {
         setStatus('error')
@@ -71,27 +179,23 @@ export default function ChaseDispatchSharePage() {
     return () => {
       cancelled = true
     }
-  }, [token])
+  }, [token, kind])
 
-  // 外部分享页关闭全局后台网格，避免浅色纹理压在深色画布上
+  // 外部分享页关闭全局后台网格，避免浅色纹理压在明亮画布上
   useEffect(() => {
-    document.documentElement.dataset.cdsShare = '1'
+    document.documentElement.dataset.shareShell = '1'
     return () => {
-      delete document.documentElement.dataset.cdsShare
+      delete document.documentElement.dataset.shareShell
     }
   }, [])
 
-  const allNos = useMemo(() => (data ? collectAllWaybillNos(data.buckets) : []), [data])
-  const activeBuckets = useMemo(
-    () => (data ? data.buckets.filter((b) => b.count > 0 && b.drivers.length > 0) : []),
-    [data],
-  )
+  const allNos = useMemo(() => (view ? collectAllWaybillNos(view.groups) : []), [view])
 
-  const toggleBucket = (bucketKey: string) => {
-    setExpandedBuckets((prev) => {
+  const toggleDriver = (driverKey: string) => {
+    setExpandedDrivers((prev) => {
       const next = new Set(prev)
-      if (next.has(bucketKey)) next.delete(bucketKey)
-      else next.add(bucketKey)
+      if (next.has(driverKey)) next.delete(driverKey)
+      else next.add(driverKey)
       return next
     })
   }
@@ -107,22 +211,22 @@ export default function ChaseDispatchSharePage() {
 
   if (status === 'loading') {
     return (
-      <div className="cds-share">
-        <div className="cds-share__state" role="status">
-          <div className="cds-share__spinner" aria-hidden />
-          <p className="cds-share__state-hint">Loading stagnant waybills…</p>
+      <div className="wbs-share">
+        <div className="wbs-share__state" role="status">
+          <div className="wbs-share__spinner" aria-hidden />
+          <p className="wbs-share__state-hint">Loading waybills…</p>
         </div>
       </div>
     )
   }
 
-  if (status === 'error' || !data) {
+  if (status === 'error' || !view) {
     return (
-      <div className="cds-share">
-        <div className="cds-share__state">
-          <p className="cds-share__brand">Chase Dispatch</p>
-          <h1 className="cds-share__state-title">Link unavailable</h1>
-          <p className="cds-share__state-hint">
+      <div className="wbs-share">
+        <div className="wbs-share__state">
+          <p className="wbs-share__brand">{BRAND_BY_KIND[kind]}</p>
+          <h1 className="wbs-share__state-title">Link unavailable</h1>
+          <p className="wbs-share__state-hint">
             This share link is invalid or has expired (links stay open for 3 days). Ask the warehouse team to push again.
           </p>
         </div>
@@ -130,23 +234,27 @@ export default function ChaseDispatchSharePage() {
     )
   }
 
+  const metricPositive = view.metricValue > 0
+
   return (
-    <div className="cds-share">
-      <div className="cds-share__frame">
-        <header className="cds-share__hero">
-          <p className="cds-share__brand">Chase Dispatch</p>
-          <h1 className="cds-share__title">{data.vendorName}</h1>
-          <p className="cds-share__meta">
-            {data.baseDate} {data.pushTime} · Stagnant parcels pending delivery
-          </p>
-          <div className="cds-share__stats">
+    <div className="wbs-share">
+      <div className="wbs-share__frame">
+        <header className="wbs-share__hero">
+          <p className="wbs-share__brand">{view.brand}</p>
+          <h1 className="wbs-share__title">{view.vendorName}</h1>
+          <p className="wbs-share__meta">{view.subtitle}</p>
+          <div className="wbs-share__stats">
             <div>
-              <p className="cds-share__total-label">Total stagnant</p>
-              <p className="cds-share__total">{data.totalStagnant}</p>
+              <p className="wbs-share__total-label">{view.metricLabel}</p>
+              <p
+                className={`wbs-share__total${metricPositive ? ' wbs-share__total--alert' : ' wbs-share__total--ok'}`}
+              >
+                {view.metricValue}
+              </p>
             </div>
             <button
               type="button"
-              className="cds-share__copy-all"
+              className="wbs-share__copy-all"
               disabled={allNos.length === 0}
               onClick={() => void copyNos(allNos, 'all')}
             >
@@ -155,76 +263,94 @@ export default function ChaseDispatchSharePage() {
           </div>
         </header>
 
-        <div className="cds-share__buckets">
-          {activeBuckets.map((bucket, bucketIndex) => {
-            const open = expandedBuckets.has(bucket.bucket)
-            const panelId = `cds-bucket-${bucket.bucket}`
-            return (
+        {view.groups.length === 0 && !metricPositive ? (
+          <p className="wbs-share__clear">✅ {view.emptyMessage}</p>
+        ) : (
+          <div className="wbs-share__groups">
+            {view.groups.map((group, groupIndex) => (
               <section
-                key={bucket.bucket}
-                className={`cds-share__bucket${open ? ' cds-share__bucket--open' : ''}`}
-                style={{ animationDelay: `${0.06 + bucketIndex * 0.05}s` }}
+                key={group.key}
+                className="wbs-share__group"
+                style={{ animationDelay: `${0.06 + groupIndex * 0.05}s` }}
               >
-                <button
-                  type="button"
-                  className="cds-share__bucket-head"
-                  aria-expanded={open}
-                  aria-controls={panelId}
-                  onClick={() => toggleBucket(bucket.bucket)}
-                >
-                  <span className="cds-share__bucket-chevron" aria-hidden />
-                  <h2 className="cds-share__bucket-title">{bucket.bucket} days</h2>
-                  <span className="cds-share__bucket-count">{bucket.count}</span>
-                </button>
+                <div className="wbs-share__group-head">
+                  <h2 className="wbs-share__group-title">{group.title}</h2>
+                  <span className="wbs-share__group-count">{group.count}</span>
+                </div>
 
-                {open ? (
-                  <div id={panelId} className="cds-share__bucket-body">
-                    {bucket.drivers.map((driver) => (
-                      <div key={`${bucket.bucket}-${driver.driverCode}`} className="cds-share__driver">
-                        <div className="cds-share__driver-head">
-                          <div className="cds-share__driver-name">
-                            {driver.driverName}
-                            <span className="cds-share__driver-code">{driver.driverCode}</span>
+                <div className="wbs-share__group-body">
+                  {group.drivers.map((driver) => {
+                    const driverKey = `${group.key}::${driver.key}`
+                    const open = expandedDrivers.has(driverKey)
+                    const panelId = `wbs-driver-${driverKey}`
+                    return (
+                      <div key={driverKey} className={`wbs-share__driver${open ? ' wbs-share__driver--open' : ''}`}>
+                        <div
+                          className="wbs-share__driver-head"
+                          role="button"
+                          tabIndex={0}
+                          aria-expanded={open}
+                          aria-controls={panelId}
+                          onClick={() => toggleDriver(driverKey)}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter' || e.key === ' ') {
+                              e.preventDefault()
+                              toggleDriver(driverKey)
+                            }
+                          }}
+                        >
+                          <span className="wbs-share__driver-chevron" aria-hidden />
+                          <div className="wbs-share__driver-name">
+                            {driver.name}
+                            <span className="wbs-share__driver-code">{driver.code}</span>
                           </div>
-                          <div className="cds-share__driver-actions">
-                            <span className="cds-share__pill">{driver.count}</span>
+                          <div className="wbs-share__driver-actions">
+                            <span className="wbs-share__pill">{driver.count}</span>
                             <button
                               type="button"
-                              className="cds-share__copy"
-                              onClick={() => void copyNos(driver.waybillNos, driver.driverName)}
+                              className="wbs-share__copy"
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                void copyNos(driver.waybillNos, driver.name)
+                              }}
                             >
                               Copy
                             </button>
                           </div>
                         </div>
-                        {driver.waybillNos.length > 0 ? (
-                          <ul className="cds-share__nos">
-                            {driver.waybillNos.map((no) => (
-                              <li key={no} className="cds-share__no">
-                                {no}
-                              </li>
-                            ))}
-                          </ul>
-                        ) : (
-                          <p className="cds-share__empty-nos">No waybill numbers in this group</p>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                ) : null}
-              </section>
-            )
-          })}
-        </div>
 
-        <p className="cds-share__foot">
-          Snapshot from the chase-dispatch push. Copy waybills into your TMS or clipboard as needed. Link expires after 3
-          days.
+                        {open ? (
+                          <div id={panelId} className="wbs-share__driver-body">
+                            {driver.waybillNos.length > 0 ? (
+                              <ul className="wbs-share__nos">
+                                {driver.waybillNos.map((no) => (
+                                  <li key={no} className="wbs-share__no">
+                                    {no}
+                                  </li>
+                                ))}
+                              </ul>
+                            ) : (
+                              <p className="wbs-share__empty-nos">No waybill numbers in this group</p>
+                            )}
+                          </div>
+                        ) : null}
+                      </div>
+                    )
+                  })}
+                </div>
+              </section>
+            ))}
+          </div>
+        )}
+
+        <p className="wbs-share__foot">
+          Snapshot from the {view.brand.toLowerCase()} push. Copy waybills into your TMS or clipboard as needed. Link
+          expires after 3 days.
         </p>
       </div>
 
       <div
-        className={`cds-share__toast${toast ? ' cds-share__toast--show cds-share__toast--ok' : ''}`}
+        className={`wbs-share__toast${toast ? ' wbs-share__toast--show' : ''}`}
         role="status"
         aria-live="polite"
       >

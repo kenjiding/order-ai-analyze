@@ -115,6 +115,8 @@ export type DataTableRow = Record<string, unknown>
 export type DataTableColumn = {
   key: string
   title: string
+  /** antd Table 列宽（px）；仅 ScannerEfficiencyAntdTable 等消费方使用 */
+  width?: number
   /** 自定义表头渲染；优先于 title */
   renderTitle?: () => ReactNode
   render?: (row: DataTableRow) => ReactNode

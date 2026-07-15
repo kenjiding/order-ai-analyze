@@ -24,3 +24,10 @@ export function buildChaseDispatchShareUrl(token: string): string | null {
   if (!origin) return null
   return `${origin}/chase-dispatch-share/${encodeURIComponent(token)}`
 }
+
+/** 24小时派签告警分享落地页完整 URL；origin 未配置时返回 null（卡片不带按钮） */
+export function buildDispatchAlarmShareUrl(token: string): string | null {
+  const origin = resolvePublicWebOrigin()
+  if (!origin) return null
+  return `${origin}/dispatch-alarm-share/${encodeURIComponent(token)}`
+}

@@ -25,6 +25,21 @@ function columnSet(columns: CardEl[]): CardEl {
   return { tag: 'column_set', flex_mode: 'bisect', background_style: 'default', columns }
 }
 
+/** 自定义机器人 v1 卡片：用 action + button.url 打开落地页（markdown 链接不可跳转） */
+function openUrlAction(url: string, label: string): CardEl {
+  return {
+    tag: 'action',
+    actions: [
+      {
+        tag: 'button',
+        text: { tag: 'plain_text', content: label },
+        type: 'primary',
+        url,
+      },
+    ],
+  }
+}
+
 function summaryTile(label: string, value: string, sub: string, valueColor: MarkColor): CardEl {
   return {
     tag: 'column',
@@ -53,8 +68,10 @@ export function buildDispatchAlarmCard(params: {
   drivers: Dispatch24hDriverStat[]
   alertThresholdPct: number
   pushDescription?: string | null
+  /** 无登录落地页：查看并复制未达标运单号 */
+  detailUrl?: string | null
 }): Record<string, unknown> {
-  const { vendorName, stationCode, date, pushTime, total, met, drivers, alertThresholdPct, pushDescription } = params
+  const { vendorName, stationCode, date, pushTime, total, met, drivers, alertThresholdPct, pushDescription, detailUrl } = params
   const elements: CardEl[] = []
 
   const unmet = total - met
@@ -100,6 +117,11 @@ export function buildDispatchAlarmCard(params: {
     elements.push(
       div(`🚨 **Drivers with waybills not signed within 24H (${unmetDrivers.length})**\n${lines.join('\n')}`),
     )
+  }
+
+  if (detailUrl && unmet > 0) {
+    elements.push(hr())
+    elements.push(openUrlAction(detailUrl, 'View & copy waybills'))
   }
 
   elements.push(hr())

@@ -128,8 +128,9 @@ function AppRoutes() {
       <Route path="/login" element={<LazyBoundary><LoginPage /></LazyBoundary>} />
       {/* 供应商日报外部分享页：凭链接 token 访问，无需登录 */}
       <Route path="/vendor-daily/:token" element={<LazyBoundary><VendorPortalPage /></LazyBoundary>} />
-      {/* 催派推送外部分享页：飞书群内打开，查看/复制滞留运单号 */}
+      {/* 催派推送 / 24小时派签告警 共用同一个外部分享页组件：飞书群内打开，按路径区分数据源 */}
       <Route path="/chase-dispatch-share/:token" element={<LazyBoundary><ChaseDispatchSharePage /></LazyBoundary>} />
+      <Route path="/dispatch-alarm-share/:token" element={<LazyBoundary><ChaseDispatchSharePage /></LazyBoundary>} />
       <Route element={<ProtectedRoute />}>
         <Route path="/vendor-snapshot" element={<LazyBoundary><VendorSnapshotPage /></LazyBoundary>} />
         <Route element={<AuthenticatedShell />}>
