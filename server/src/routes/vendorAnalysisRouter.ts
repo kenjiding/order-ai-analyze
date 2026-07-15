@@ -61,6 +61,27 @@ function normalizeVendorAnalyzeCode(code: string): string {
  * v1 → v2：老 key 永不再命中，避免命中无 dataSources 字段的历史任务。
  * v2 → v3：供应商/数据源列表改为 sha256，避免 jobs.idempotency_key varchar(255) 溢出。
  */
+function serializeRouteCodeMap(map: Record<string, string[]>): string {
+  return Object.entries(map)
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([vendor, codes]) => `${vendor}:${[...codes].sort().join(',')}`)
+    .join(';')
+}
+
+/** 同一 vendorCode 多条配置时合并路由码（并集），避免后写覆盖前写 */
+function mergeRouteCodesInto(
+  target: Record<string, string[]>,
+  vendorCode: string,
+  codes: string[],
+): void {
+  if (codes.length === 0) return
+  const key = normalizeVendorAnalyzeCode(vendorCode)
+  if (!key) return
+  const merged = new Set(target[key] ?? [])
+  for (const code of codes) merged.add(code)
+  target[key] = [...merged]
+}
+
 function buildVendorAnalyzeIdempotencyKey(input: {
   regionCode: string | null
   stationCodes: string[]
@@ -69,22 +90,21 @@ function buildVendorAnalyzeIdempotencyKey(input: {
   complaintEnd: string
   vendorCodes: string[]
   dataSources: VendorAnalysisDataSource[]
+  routeCodesByVendor: Record<string, string[]>
   routeCodeWhitelistByVendor: Record<string, string[]>
 }): string {
   const region = input.regionCode ?? '_global_'
   const stations = [...new Set(input.stationCodes.map((s) => s.trim()).filter(Boolean))].sort().join(',')
   const vendors = [...new Set(input.vendorCodes.map((s) => s.trim()).filter(Boolean))].sort().join(',')
-  // 白名单变化会改变统计口径，需参与幂等 key，避免编辑白名单后复用旧结果
-  const whitelistText = Object.entries(input.routeCodeWhitelistByVendor)
-    .sort(([a], [b]) => a.localeCompare(b))
-    .map(([vendor, codes]) => `${vendor}:${[...codes].sort().join(',')}`)
-    .join(';')
+  // 纳入名单 / 白名单变化会改变 24H 派签等统计口径，需参与幂等 key
+  const routeCodesText = serializeRouteCodeMap(input.routeCodesByVendor)
+  const whitelistText = serializeRouteCodeMap(input.routeCodeWhitelistByVendor)
   const scopeHash = crypto
     .createHash('sha256')
-    .update(`${vendors}\0${input.dataSources.join(',')}\0${whitelistText}`)
+    .update(`${vendors}\0${input.dataSources.join(',')}\0${routeCodesText}\0${whitelistText}`)
     .digest('hex')
   return [
-    'vendor.analyze:v3',
+    'vendor.analyze:v4',
     region,
     stations,
     input.referenceDate,
@@ -197,11 +217,12 @@ vendorAnalysisRouter.post('/analyze-async', async (req: AuthenticatedRequest, re
   const configRows = await listSupplierPushConfigs(regionResult ?? undefined)
   const vendorCodes = [...new Set(configRows.map((c) => normalizeVendorAnalyzeCode(c.vendorCode)).filter(Boolean))]
 
-  // 路由码白名单：命中的路由码代表要从该供应商统计中剔除的数据，随任务 payload 冻结
+  // 路由码纳入名单 / 白名单：随任务 payload 冻结；同 vendorCode 多配置取并集
+  const routeCodesByVendor: Record<string, string[]> = {}
   const routeCodeWhitelistByVendor: Record<string, string[]> = {}
   for (const c of configRows) {
-    const codes = parseRouteCodes(c.routeCodeWhitelist)
-    if (codes.length > 0) routeCodeWhitelistByVendor[normalizeVendorAnalyzeCode(c.vendorCode)] = codes
+    mergeRouteCodesInto(routeCodesByVendor, c.vendorCode, parseRouteCodes(c.routeCode))
+    mergeRouteCodesInto(routeCodeWhitelistByVendor, c.vendorCode, parseRouteCodes(c.routeCodeWhitelist))
   }
 
   const force = body.force === true
@@ -215,6 +236,7 @@ vendorAnalysisRouter.post('/analyze-async', async (req: AuthenticatedRequest, re
         complaintEnd: body.complaintEnd as string,
         vendorCodes,
         dataSources,
+        routeCodesByVendor,
         routeCodeWhitelistByVendor,
       })
 
@@ -222,6 +244,7 @@ vendorAnalysisRouter.post('/analyze-async', async (req: AuthenticatedRequest, re
     imileToken: token,
     stationCodes,
     vendorCodes,
+    routeCodesByVendor,
     routeCodeWhitelistByVendor,
     referenceDate: body.referenceDate,
     startTime: body.startTime,

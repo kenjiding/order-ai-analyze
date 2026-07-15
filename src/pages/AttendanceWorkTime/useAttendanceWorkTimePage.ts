@@ -10,10 +10,11 @@ import {
   searchAttendanceWorkers,
   updateAttendanceWorkRecord,
 } from './attendanceWorkTimeApi'
-import type {
-  AttendanceWorkRecord,
-  AttendanceWorkRecordDraft,
-  AttendanceWorkerSuggestion,
+import {
+  AU_REGIONS,
+  type AttendanceWorkRecord,
+  type AttendanceWorkRecordDraft,
+  type AttendanceWorkerSuggestion,
 } from './attendanceWorkTimeTypes'
 
 export type AttendanceFilters = {
@@ -23,7 +24,10 @@ export type AttendanceFilters = {
 
 export function useAttendanceWorkTimePage(isMobile: boolean) {
   const { user, isSuperAdmin } = useAuthStore()
-  const ownRegionCode = user?.regionCode ?? null
+  // 超管账号的 regionCode 是 'system' 哨兵值，不对应真实州/区域；仅当命中真实州/区域列表时才作为“本人所属州”使用，
+  // 否则移动端「现场记录」筛选/创建会把 'system' 当作真实州传给后端，被 isAssignableRegionCode 拒绝为“无效的州/区域”
+  const rawRegionCode = user?.regionCode ?? null
+  const ownRegionCode = rawRegionCode && AU_REGIONS.some((r) => r.code === rawRegionCode) ? rawRegionCode : null
 
   const [records, setRecords] = useState<AttendanceWorkRecord[]>([])
   const [loading, setLoading] = useState(false)

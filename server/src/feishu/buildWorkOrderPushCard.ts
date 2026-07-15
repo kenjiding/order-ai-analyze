@@ -89,7 +89,7 @@ export function buildWorkOrderPushCard(params: {
   }
 
   elements.push(hr())
-  elements.push(div(colored('请尽快处理，逾期可能产生赔偿', 'red')))
+  elements.push(div(colored('⚠️ 逾期未处理将产生罚款/赔偿费用，请尽快处理', 'red')))
   elements.push(note(`${baseDate} ${pushTime} · Work order push · iMile Warehouse Management System`))
 
   return {

@@ -17,12 +17,18 @@ import './chaseDispatchSharePage.css'
 
 type ShareKind = 'chase-dispatch' | 'dispatch-alarm'
 
+type ShareRouteGroup = {
+  routeCode: string
+  waybillNos: string[]
+}
+
 type ShareDriverRow = {
   key: string
   name: string
   code: string
   count: number
   waybillNos: string[]
+  routes: ShareRouteGroup[]
 }
 
 type ShareGroup = {
@@ -44,12 +50,29 @@ type ShareViewModel = {
 }
 
 const BRAND_BY_KIND: Record<ShareKind, string> = {
-  'chase-dispatch': 'Chase Dispatch',
+  'chase-dispatch': 'Long time - No return warehouse or Overdue Deliveries',
   'dispatch-alarm': '24H Delivery Alert',
 }
 
 function resolveKind(pathname: string): ShareKind {
   return pathname.startsWith('/dispatch-alarm-share') ? 'dispatch-alarm' : 'chase-dispatch'
+}
+
+/** 按路由码分组运单号，组内保持出现顺序，组间按单量从多到少排序 */
+function groupByRoute(waybills: { waybillNo: string; routeCode: string }[]): ShareRouteGroup[] {
+  const order: string[] = []
+  const nosByRoute = new Map<string, string[]>()
+  for (const { waybillNo, routeCode } of waybills) {
+    const code = routeCode.trim() || 'Unknown route'
+    if (!nosByRoute.has(code)) {
+      nosByRoute.set(code, [])
+      order.push(code)
+    }
+    nosByRoute.get(code)!.push(waybillNo)
+  }
+  return order
+    .map((routeCode) => ({ routeCode, waybillNos: nosByRoute.get(routeCode)! }))
+    .sort((a, b) => b.waybillNos.length - a.waybillNos.length)
 }
 
 function toChaseDispatchViewModel(data: ChaseDispatchShareView): ShareViewModel {
@@ -71,7 +94,8 @@ function toChaseDispatchViewModel(data: ChaseDispatchShareView): ShareViewModel 
           name: d.driverName,
           code: d.driverCode,
           count: d.count,
-          waybillNos: d.waybillNos,
+          waybillNos: d.waybills.map((w) => w.waybillNo),
+          routes: groupByRoute(d.waybills),
         })),
       })),
     emptyMessage: 'No stagnant parcels — nothing to chase.',
@@ -102,7 +126,8 @@ function toDispatchAlarmViewModel(data: DispatchAlarmShareView): ShareViewModel 
                 name: d.courierName,
                 code: d.courierCode,
                 count: d.total - d.met,
-                waybillNos: d.unmetNos,
+                waybillNos: d.unmetWaybills.map((w) => w.waybillNo),
+                routes: groupByRoute(d.unmetWaybills),
               })),
             },
           ]
@@ -321,14 +346,22 @@ export default function ChaseDispatchSharePage() {
 
                         {open ? (
                           <div id={panelId} className="wbs-share__driver-body">
-                            {driver.waybillNos.length > 0 ? (
-                              <ul className="wbs-share__nos">
-                                {driver.waybillNos.map((no) => (
-                                  <li key={no} className="wbs-share__no">
-                                    {no}
-                                  </li>
-                                ))}
-                              </ul>
+                            {driver.routes.length > 0 ? (
+                              driver.routes.map((route) => (
+                                <div key={route.routeCode} className="wbs-share__route-group">
+                                  <p className="wbs-share__route-label">
+                                    {route.routeCode}
+                                    <span className="wbs-share__route-count">{route.waybillNos.length}</span>
+                                  </p>
+                                  <ul className="wbs-share__nos">
+                                    {route.waybillNos.map((no) => (
+                                      <li key={no} className="wbs-share__no">
+                                        {no}
+                                      </li>
+                                    ))}
+                                  </ul>
+                                </div>
+                              ))
                             ) : (
                               <p className="wbs-share__empty-nos">No waybill numbers in this group</p>
                             )}

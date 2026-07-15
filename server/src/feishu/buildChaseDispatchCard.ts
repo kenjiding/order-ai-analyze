@@ -86,25 +86,30 @@ export function buildChaseDispatchCard(params: {
 
   if (detailUrl && totalStagnant > 0) {
     elements.push(hr())
-    elements.push(openUrlAction(detailUrl, 'View & copy waybills'))
+    elements.push(openUrlAction(detailUrl, 'Click to View Details'))
   }
 
   if (totalStagnant === 0) {
     elements.push(hr())
     elements.push(div(colored('✅ No stagnant orders', 'green')))
+  } else {
+    elements.push(hr())
+    elements.push(div(colored('⚠️ Overdue parcels will incur fees. Please dispatch or return immediately.', 'red')))
   }
 
   elements.push(hr())
-  elements.push(note(`${baseDate} ${pushTime} · Chase dispatch · iMile Warehouse Management System`))
+  elements.push(note(`${baseDate} ${pushTime} · Long time - No return warehouse or Overdue Deliveries · iMile Warehouse Management System`))
 
   const isUrgent = totalStagnant > 0
   return {
     config: { wide_screen_mode: true },
     header: {
-      template: isUrgent ? 'orange' : 'green',
+      template: isUrgent ? 'red' : 'green',
       title: {
         tag: 'plain_text',
-        content: isUrgent ? `🚚 Chase dispatch - ${vendorName}` : `✅ No stagnant orders - ${vendorName}`,
+        content: isUrgent
+          ? `🚚 Long time - No return warehouse or Overdue Deliveries - ${vendorName}`
+          : `✅ No stagnant orders - ${vendorName}`,
       },
     },
     elements,

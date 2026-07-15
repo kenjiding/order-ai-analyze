@@ -59,10 +59,30 @@ test('aggregateVendorStagnation 按 driverVendorCode 过滤并跨区间去重', 
     ],
   )
   assert.deepEqual(
-    summary.buckets.map((b) => [b.bucket, b.drivers.map((d) => [d.driverCode, d.waybillNos])]),
+    summary.buckets.map((b) => [
+      b.bucket,
+      b.drivers.map((d) => [d.driverCode, d.waybills.map((w) => w.waybillNo)]),
+    ]),
     [
       ['0-1', [['D1', ['W1']], ['D2', ['W2']]]],
       ['1-2', [['D1', ['W1', 'W3']]]],
     ],
   )
+})
+
+test('aggregateVendorStagnation 按 routeCodeByWaybillNo 附加路由码，未命中回退未知路由', () => {
+  const bucketResults: BucketResult[] = [
+    {
+      bucket: '0-1',
+      rows: [
+        { waybillNo: 'W1', driverVendorCode: 'V1', driverCode: 'D1', driverName: '张三' },
+        { waybillNo: 'W2', driverVendorCode: 'V1', driverCode: 'D1', driverName: '张三' },
+      ],
+    },
+  ]
+  const summary = aggregateVendorStagnation(bucketResults, 'V1', new Map([['W1', 'R-A']]))
+  assert.deepEqual(summary.buckets[0].drivers[0].waybills, [
+    { waybillNo: 'W1', routeCode: 'R-A' },
+    { waybillNo: 'W2', routeCode: '未知路由' },
+  ])
 })

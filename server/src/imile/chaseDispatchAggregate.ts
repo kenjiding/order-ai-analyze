@@ -9,12 +9,17 @@ export type BucketResult = {
   rows: StagnantWaybillRow[]
 }
 
+export type VendorStagnationWaybill = {
+  waybillNo: string
+  routeCode: string
+}
+
 export type VendorStagnationBucketDriverStat = {
   driverName: string
   driverCode: string
   count: number
-  /** 该司机在本区间的运单号（已去重，按出现顺序） */
-  waybillNos: string[]
+  /** 该司机在本区间的运单（已去重，按出现顺序，带路由码） */
+  waybills: VendorStagnationWaybill[]
 }
 
 export type VendorStagnationBucketStat = {
@@ -42,6 +47,7 @@ function waybillKey(row: StagnantWaybillRow, index: number): string {
 export function aggregateVendorStagnation(
   bucketResults: BucketResult[],
   vendorCode: string,
+  routeCodeByWaybillNo: Map<string, string> = new Map(),
 ): VendorStagnationSummary {
   const target = vendorCode.trim()
   const totalSeen = new Set<string>()
@@ -52,7 +58,7 @@ export function aggregateVendorStagnation(
     const bucketSeen = new Set<string>()
     const driverSeen = new Map<string, Set<string>>()
     const driverMeta = new Map<string, { driverName: string; driverCode: string }>()
-    const driverWaybillNos = new Map<string, string[]>()
+    const driverWaybills = new Map<string, VendorStagnationWaybill[]>()
 
     rows.forEach((row, index) => {
       if ((row.driverVendorCode ?? '').trim() !== target) return
@@ -66,12 +72,15 @@ export function aggregateVendorStagnation(
       if (!driverSeen.has(driverCode)) {
         driverSeen.set(driverCode, new Set())
         driverMeta.set(driverCode, { driverName, driverCode })
-        driverWaybillNos.set(driverCode, [])
+        driverWaybills.set(driverCode, [])
       }
       const seen = driverSeen.get(driverCode)!
       if (seen.has(key)) return
       seen.add(key)
-      if (waybillNo) driverWaybillNos.get(driverCode)!.push(waybillNo)
+      if (waybillNo) {
+        const routeCode = routeCodeByWaybillNo.get(waybillNo) || '未知路由'
+        driverWaybills.get(driverCode)!.push({ waybillNo, routeCode })
+      }
     })
 
     const drivers: VendorStagnationBucketDriverStat[] = [...driverSeen.entries()]
@@ -79,7 +88,7 @@ export function aggregateVendorStagnation(
         driverName: driverMeta.get(driverCode)!.driverName,
         driverCode,
         count: keys.size,
-        waybillNos: driverWaybillNos.get(driverCode) ?? [],
+        waybills: driverWaybills.get(driverCode) ?? [],
       }))
       .sort((a, b) => b.count - a.count)
 

@@ -17,6 +17,7 @@ function baseInput(overrides: Partial<VendorAnalyzeAggregateInput> = {}): Vendor
     stationCodes: ['S1'],
     tz: AUS_TZ.Adelaide,
     nowMs: new Date('2024-07-05T00:00:00Z').getTime(),
+    routeCodesByVendor: new Map(),
     routeCodeWhitelistByVendor: new Map(),
     ...overrides,
   }
@@ -128,4 +129,30 @@ test('路由码白名单：命中白名单的运单从运单量/24H派签/11点�
   assert.equal(driver.ofdCount, 1)
   assert.deepEqual(driver.ofdWaybillNos, ['P2'])
   assert.equal(driver.totalDispatchCount, 1)
+})
+
+test('24H派签：routeCode 纳入筛选后只统计配置路由；白名单再剔除', () => {
+  const rows = [
+    { waybillNo: 'A1', courierCode: 'C1', courierVendorCode: 'V1', lastScanSiteCode: 'S1', consigneeRouteCode: 'R-A', deliveryTime: '2024-06-24 10:00:00', signDate: '2024-06-24 12:00:00' },
+    { waybillNo: 'B1', courierCode: 'C1', courierVendorCode: 'V1', lastScanSiteCode: 'S1', consigneeRouteCode: 'R-B', deliveryTime: '2024-06-24 10:00:00', signDate: '2024-06-24 12:00:00' },
+    { waybillNo: 'C1', courierCode: 'C1', courierVendorCode: 'V1', lastScanSiteCode: 'S1', consigneeRouteCode: 'R-C', deliveryTime: '2024-06-24 10:00:00', signDate: '2024-06-24 12:00:00' }, // 不在纳入名单
+    { waybillNo: 'A2', courierCode: 'C1', courierVendorCode: 'V1', lastScanSiteCode: 'S1', consigneeRouteCode: 'R-A', deliveryTime: '2024-06-24 10:00:00' }, // 纳入但未达标；若在白名单则剔除
+  ]
+  const [v] = aggregateVendorAnalysis(
+    baseInput({
+      driverDayBeforeWaybills: rows,
+      routeCodesByVendor: new Map([['V1', new Set(['R-A', 'R-B'])]]),
+      routeCodeWhitelistByVendor: new Map([['V1', new Set(['R-A'])]]),
+    }),
+  )
+
+  // 仅 R-B 的 B1 计入（R-A 被白名单剔除，R-C 未纳入）
+  assert.equal(v.dispatch24hTotal, 1)
+  assert.equal(v.dispatch24hCount, 1)
+  assert.deepEqual(v.dispatch24hUnmetWaybillNos, [])
+
+  const driver = v.drivers.find((d) => d.courierCode === 'C1')
+  assert.ok(driver)
+  assert.equal(driver.totalDispatchCount, 1)
+  assert.equal(driver.dispatch24hCount, 1)
 })

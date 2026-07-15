@@ -9,7 +9,7 @@ import { getRegionNow } from '../imile/inboundWaybillIndex'
 import { resolveRegionTz, type AusTz } from '../imile/ausTimezone'
 import { fetchDriverWaybills } from '../imile/driverPerformance'
 import { listPushableConfigsForScope } from '../supplierConfigScopes'
-import { parseRouteCodeWhitelistSet, supplierDisplayName } from '../supplierPushConfigs'
+import { parseRouteCodes, parseRouteCodeWhitelistSet, supplierDisplayName } from '../supplierPushConfigs'
 import { aggregateDispatch24hByVendor, type Dispatch24hWaybillRow } from '../vendorAnalysis/dispatch24hAggregate'
 import { lastSortingWorkdayOnOrBefore } from '../imile/sortingWorkday'
 import { claimScheduledSlot } from '../jobs/scheduledClaim'
@@ -77,8 +77,9 @@ export type DispatchAlarmPushResult = {
 }
 
 /**
- * 24H 派签告警核心：拉前一日司机运单 → 按供应商聚合达标情况（复用 vendorAnalysis/dispatch24hAggregate）
- * → 按供应商逐个推送（无数据则跳过该供应商）。供定时任务与「立即推送」复用。
+ * 24H 派签告警核心：拉前一日司机运单 → 按「本配置」vendorCode + routeCode 纳入 + 白名单剔除后聚合
+ * （复用 vendorAnalysis/dispatch24hAggregate）→ 逐配置推送（无数据则跳过）。
+ * 同一 vendorCode、不同 routeCode 的多条配置各自独立统计，互不混算。
  */
 export async function executeDispatchAlarmPush(params: {
   token: string
@@ -99,23 +100,25 @@ export async function executeDispatchAlarmPush(params: {
     return { error: `运单查询失败: ${result.message}` }
   }
 
-  const routeCodeWhitelistByVendor = new Map<string, Set<string>>()
-  for (const config of configs) {
-    routeCodeWhitelistByVendor.set(config.vendorCode, parseRouteCodeWhitelistSet(config.routeCodeWhitelist))
-  }
-
-  const statsByVendor = aggregateDispatch24hByVendor({
-    rows: result.data as Dispatch24hWaybillRow[],
-    stationCodes: [stationCode],
-    tz,
-    routeCodeWhitelistByVendor,
-  })
-
+  const rows = result.data as Dispatch24hWaybillRow[]
   let pushedCount = 0
   const errors: string[] = []
 
   for (const config of configs) {
-    const stat = statsByVendor.get(config.vendorCode)
+    const vendorCode = config.vendorCode.trim()
+    if (!vendorCode) continue
+
+    // 按配置独立过滤：避免同供应商多区域（不同 routeCode）共用一份聚合结果
+    const statsByVendor = aggregateDispatch24hByVendor({
+      rows,
+      stationCodes: [stationCode],
+      tz,
+      routeCodesByVendor: new Map([[vendorCode, new Set(parseRouteCodes(config.routeCode))]]),
+      routeCodeWhitelistByVendor: new Map([
+        [vendorCode, parseRouteCodeWhitelistSet(config.routeCodeWhitelist)],
+      ]),
+    })
+    const stat = statsByVendor.get(vendorCode)
     if (!stat || stat.total === 0) continue // 无数据不推送
 
     const vendorName = supplierDisplayName(config)

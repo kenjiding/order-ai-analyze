@@ -21,12 +21,17 @@ export type Dispatch24hWaybillRow = {
   lastProblemDate?: string
 }
 
+export type Dispatch24hUnmetWaybill = {
+  waybillNo: string
+  routeCode: string
+}
+
 export type Dispatch24hDriverStat = {
   courierCode: string
   courierName: string
   total: number
   met: number
-  unmetNos: string[]
+  unmetWaybills: Dispatch24hUnmetWaybill[]
 }
 
 export type Dispatch24hVendorStat = {
@@ -48,6 +53,21 @@ function isWhitelisted(
   routeCodeWhitelistByVendor: Map<string, Set<string>>,
 ): boolean {
   return routeCodeWhitelistByVendor.get(vendorCode)?.has(routeCode.trim()) ?? false
+}
+
+/**
+ * 路由码纳入名单：供应商配置了 routeCode 时，只保留命中的运单。
+ * - map 无该供应商 → 不按路由码收窄（兼容老任务 / 未配置供应商）
+ * - map 有该供应商但集合为空 → 无匹配
+ */
+export function isRouteCodeAllowed(
+  vendorCode: string,
+  routeCode: string,
+  routeCodesByVendor: Map<string, Set<string>>,
+): boolean {
+  const allowed = routeCodesByVendor.get(vendorCode)
+  if (!allowed) return true
+  return allowed.has(routeCode.trim())
 }
 
 /**
@@ -121,17 +141,26 @@ export function selectWaybillNosNeedingRefresh(
 }
 
 /**
- * 按供应商（courierVendorCode）聚合 24H 派签达标情况：按站点（lastScanSiteCode）
- * 与路由码白名单过滤后，统计达标/未达标运单；同时按司机（courierCode）细分未达标数，
- * 供告警卡片展示司机维度明细。口径与「供应商数据分析」大盘一致。
+ * 按供应商（courierVendorCode）聚合 24H 派签达标情况：
+ * courierVendorCode → routeCode 纳入 → 路由码白名单剔除 → 站点（lastScanSiteCode）→ 达标判定；
+ * 同时按司机（courierCode）细分未达标数，供告警卡片展示司机维度明细。
+ * 口径与「供应商数据分析」大盘 / 「24小时派签告警」一致。
  */
 export function aggregateDispatch24hByVendor(input: {
   rows: Dispatch24hWaybillRow[]
   stationCodes: string[]
   tz: AusTz
+  /** 路由码纳入名单；缺省空 map = 不按路由码收窄 */
+  routeCodesByVendor?: Map<string, Set<string>>
   routeCodeWhitelistByVendor: Map<string, Set<string>>
 }): Map<string, Dispatch24hVendorStat> {
-  const { rows, stationCodes, tz, routeCodeWhitelistByVendor } = input
+  const {
+    rows,
+    stationCodes,
+    tz,
+    routeCodesByVendor = new Map(),
+    routeCodeWhitelistByVendor,
+  } = input
   const stationSet = new Set(stationCodes.map((s) => s.trim()).filter(Boolean))
   const inStation = (code: string | undefined) => stationSet.size === 0 || stationSet.has(norm(code))
 
@@ -141,7 +170,9 @@ export function aggregateDispatch24hByVendor(input: {
   for (const row of rows) {
     const vendorCode = norm(row.courierVendorCode)
     if (!vendorCode) continue
-    if (isWhitelisted(vendorCode, norm(row.consigneeRouteCode), routeCodeWhitelistByVendor)) continue
+    const consigneeRouteCode = norm(row.consigneeRouteCode)
+    if (!isRouteCodeAllowed(vendorCode, consigneeRouteCode, routeCodesByVendor)) continue
+    if (isWhitelisted(vendorCode, consigneeRouteCode, routeCodeWhitelistByVendor)) continue
     if (!inStation(row.lastScanSiteCode)) continue
     if (!row.deliveryTime) continue
     const met = isDispatch24hMet(row, tz)
@@ -168,14 +199,20 @@ export function aggregateDispatch24hByVendor(input: {
     }
     let driverStat = driverMap.get(courierCode)
     if (!driverStat) {
-      driverStat = { courierCode, courierName: row.courier?.trim() || courierCode, total: 0, met: 0, unmetNos: [] }
+      driverStat = {
+        courierCode,
+        courierName: row.courier?.trim() || courierCode,
+        total: 0,
+        met: 0,
+        unmetWaybills: [],
+      }
       driverMap.set(courierCode, driverStat)
     }
     driverStat.total += 1
     if (met) {
       driverStat.met += 1
     } else if (wbNo) {
-      driverStat.unmetNos.push(wbNo)
+      driverStat.unmetWaybills.push({ waybillNo: wbNo, routeCode: consigneeRouteCode || '未知路由' })
     }
   }
 

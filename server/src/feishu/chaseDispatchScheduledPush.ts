@@ -156,7 +156,7 @@ export async function executeChaseDispatchPush(params: {
       return { bucket: b.bucket, rows: filterRowsByRouteCode(byVendor, allowedRouteCodes) }
     })
     const vendorName = supplierDisplayName(config)
-    const summary = aggregateVendorStagnation(configBucketResults, config.vendorCode)
+    const summary = aggregateVendorStagnation(configBucketResults, config.vendorCode, routeCodeByWaybillNo)
     const share =
       summary.totalStagnant > 0
         ? await createChaseDispatchShareSnapshot({

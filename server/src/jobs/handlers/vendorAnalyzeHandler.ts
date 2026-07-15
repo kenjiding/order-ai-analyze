@@ -44,6 +44,7 @@ type VendorAnalyzePayload = {
   before11Date: string
   dayBeforeDate: string
   dataSources: VendorAnalysisDataSource[]
+  routeCodesByVendor: Map<string, Set<string>>
   routeCodeWhitelistByVendor: Map<string, Set<string>>
 }
 
@@ -58,8 +59,8 @@ function parseDataSources(raw: unknown): VendorAnalysisDataSource[] {
   return parsed.length > 0 ? parsed : [...VENDOR_ANALYSIS_DATA_SOURCES]
 }
 
-/** 老任务 payload 无 routeCodeWhitelistByVendor 字段 → 视为无白名单（改造前行为） */
-function parseRouteCodeWhitelistByVendor(raw: unknown): Map<string, Set<string>> {
+/** 老任务 payload 无对应字段 → 空 map（不收窄 / 无白名单，改造前行为） */
+function parseRouteCodeSetByVendor(raw: unknown): Map<string, Set<string>> {
   const map = new Map<string, Set<string>>()
   if (!raw || typeof raw !== 'object') return map
   for (const [vendorCode, codes] of Object.entries(raw as Record<string, unknown>)) {
@@ -99,7 +100,8 @@ function parsePayload(raw: Record<string, unknown>): VendorAnalyzePayload | null
     before11Date: raw.before11Date as string,
     dayBeforeDate: raw.dayBeforeDate as string,
     dataSources: parseDataSources(raw.dataSources),
-    routeCodeWhitelistByVendor: parseRouteCodeWhitelistByVendor(raw.routeCodeWhitelistByVendor),
+    routeCodesByVendor: parseRouteCodeSetByVendor(raw.routeCodesByVendor),
+    routeCodeWhitelistByVendor: parseRouteCodeSetByVendor(raw.routeCodeWhitelistByVendor),
   }
 }
 
@@ -299,6 +301,7 @@ export const vendorAnalyzeHandler: JobHandler = {
       stationCodes: params.stationCodes,
       tz: resolveRegionTz(ctx.job.regionCode),
       nowMs,
+      routeCodesByVendor: params.routeCodesByVendor,
       routeCodeWhitelistByVendor: params.routeCodeWhitelistByVendor,
     })
 

@@ -13,7 +13,7 @@
  */
 import { iMileStrToMs, type AusTz } from '../imile/ausTimezone'
 import type { Before11ExitRateResult, SlimPickupRow } from '../imile/vendorAnalysis'
-import { aggregateDispatch24hByVendor, isDispatch24hMet } from './dispatch24hAggregate'
+import { aggregateDispatch24hByVendor, isDispatch24hMet, isRouteCodeAllowed } from './dispatch24hAggregate'
 
 // ── 输入行类型：只声明聚合真正读取的字段（运行时行还带其它字段，此处不关心） ──
 
@@ -85,6 +85,11 @@ export type VendorAnalyzeAggregateInput = {
   tz: AusTz
   /** worker 完成时刻，用作归班预警 48h 的基准 */
   nowMs: number
+  /**
+   * 路由码纳入名单（24H 派签）：供应商配置了 routeCode 时只统计命中路由。
+   * 同一 vendorCode 多条配置时取并集；map 无该供应商则不收窄。
+   */
+  routeCodesByVendor: Map<string, Set<string>>
   /** 路由码白名单：命中的路由码代表要从该供应商统计中剔除的数据 */
   routeCodeWhitelistByVendor: Map<string, Set<string>>
 }
@@ -173,6 +178,7 @@ export function aggregateVendorAnalysis(input: VendorAnalyzeAggregateInput): Ven
     stationCodes,
     tz,
     nowMs,
+    routeCodesByVendor,
     routeCodeWhitelistByVendor,
   } = input
 
@@ -221,11 +227,12 @@ export function aggregateVendorAnalysis(input: VendorAnalyzeAggregateInput): Ven
     addUnprocessed(norm(t.responsibleDeptCode), t.orderCode)
   }
 
-  // 24H派签率：前天运单，按最新派件网点（lastScanSiteCode）过滤后按供应商统计
+  // 24H派签率：前天运单 → vendorCode → routeCode 纳入 → 白名单剔除 → 站点过滤
   const dispatch24hByVendor = aggregateDispatch24hByVendor({
     rows: driverDayBeforeWaybills,
     stationCodes,
     tz,
+    routeCodesByVendor,
     routeCodeWhitelistByVendor,
   })
 
@@ -320,6 +327,7 @@ function buildDriverSummaries(
     driverReturnRows,
     stationCodes,
     tz,
+    routeCodesByVendor,
     routeCodeWhitelistByVendor,
   } = input
   const stationSet = new Set(stationCodes.map((s) => s.trim()).filter(Boolean))
@@ -350,12 +358,14 @@ function buildDriverSummaries(
     }
   }
 
-  // 24H派签率：前天运单，按站点+供应商过滤，按司机聚合达标情况
+  // 24H派签率：前天运单，口径与 aggregateDispatch24hByVendor 一致（含 routeCode 纳入）
   type DispatchAgg = { total: number; completed: number; routeCode: string; unmetNos: string[] }
   const dispatchMap = new Map<string, DispatchAgg>()
   for (const row of driverDayBeforeWaybills) {
     if (!row.courierCode || norm(row.courierVendorCode) !== vendorCode) continue
-    if (isWhitelisted(vendorCode, norm(row.consigneeRouteCode), routeCodeWhitelistByVendor)) continue
+    const consigneeRouteCode = norm(row.consigneeRouteCode)
+    if (!isRouteCodeAllowed(vendorCode, consigneeRouteCode, routeCodesByVendor)) continue
+    if (isWhitelisted(vendorCode, consigneeRouteCode, routeCodeWhitelistByVendor)) continue
     if (!row.deliveryTime) continue
     if (!inStation(row.lastScanSiteCode)) continue
     const completed = isDispatch24hMet(row, tz)

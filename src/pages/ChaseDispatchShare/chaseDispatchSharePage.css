@@ -328,12 +328,36 @@ html[data-share-shell] body::before {
   border-top: 1px solid var(--wbs-line);
 }
 
+/* 路由分组：司机面板内按路由码再拆一层 */
+.wbs-share__route-group + .wbs-share__route-group {
+  margin-top: 0.75rem;
+}
+
+.wbs-share__route-label {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  margin: 0.75rem 0 0;
+  font-family: var(--wbs-mono);
+  font-size: 0.92rem;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  color: var(--wbs-text);
+}
+
+.wbs-share__route-count {
+  font-family: var(--wbs-sans);
+  font-size: 0.68rem;
+  font-weight: 700;
+  color: var(--wbs-accent);
+}
+
 /* 单号区：白底面板，与司机卡片的浅底明显分离 */
 .wbs-share__nos {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(152px, 1fr));
   gap: 0.4rem;
-  margin: 0.75rem 0 0;
+  margin: 0.4rem 0 0;
   padding: 0.65rem;
   list-style: none;
   background: var(--wbs-surface);

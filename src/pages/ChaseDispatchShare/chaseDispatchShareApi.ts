@@ -1,10 +1,15 @@
 import { backendFetch } from '../../api/httpClient'
 
+export type ChaseDispatchShareWaybill = {
+  waybillNo: string
+  routeCode: string
+}
+
 export type ChaseDispatchShareDriver = {
   driverName: string
   driverCode: string
   count: number
-  waybillNos: string[]
+  waybills: ChaseDispatchShareWaybill[]
 }
 
 export type ChaseDispatchShareBucket = {
@@ -39,12 +44,17 @@ export async function fetchChaseDispatchShare(
   }
 }
 
+export type DispatchAlarmShareWaybill = {
+  waybillNo: string
+  routeCode: string
+}
+
 export type DispatchAlarmShareDriver = {
   courierCode: string
   courierName: string
   total: number
   met: number
-  unmetNos: string[]
+  unmetWaybills: DispatchAlarmShareWaybill[]
 }
 
 export type DispatchAlarmShareView = {

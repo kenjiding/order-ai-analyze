@@ -55,7 +55,8 @@ function summaryTile(label: string, value: string, sub: string, valueColor: Mark
  * 构建 24 小时签收率告警飞书卡片（webhook interactive card v1）。
  * “派签率”口径实为“24小时内签收率”（deliveryTime 起 24h 内 signDate/lastProblemDate），
  * 卡片英文措辞按“delivery/signed”表达，不用字面 dispatch。
- * 达标数据来自「供应商数据分析」封装复用出来的 aggregateDispatch24hByVendor，一家供应商一张卡片，
+ * 达标数据来自「供应商数据分析」封装复用出来的 aggregateDispatch24hByVendor
+ * （按配置 vendorCode + routeCode 纳入 + 白名单），一条配置一张卡片；
  * 明细按司机（courierCode）汇总未达标数，而非罗列单个运单号，便于定位具体司机。
  */
 export function buildDispatchAlarmCard(params: {
@@ -121,7 +122,7 @@ export function buildDispatchAlarmCard(params: {
 
   if (detailUrl && unmet > 0) {
     elements.push(hr())
-    elements.push(openUrlAction(detailUrl, 'View & copy waybills'))
+    elements.push(openUrlAction(detailUrl, 'Click to View Details'))
   }
 
   elements.push(hr())
@@ -130,10 +131,10 @@ export function buildDispatchAlarmCard(params: {
   return {
     config: { wide_screen_mode: true },
     header: {
-      template: isAlert ? 'red' : 'green',
+      template: isAlert ? 'orange' : 'green',
       title: {
         tag: 'plain_text',
-        content: isAlert ? `🚨 24H delivery alert - ${vendorName}` : `✅ 24H delivery on track - ${vendorName}`,
+        content: isAlert ? `🚨 24-Hour Delivery Alert - ${vendorName}` : `✅ 24H delivery on track - ${vendorName}`,
       },
     },
     elements,

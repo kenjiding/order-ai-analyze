@@ -50,7 +50,7 @@ function zoneTile(
     pending === 0
       ? colored('✅ All exited by 11:00', 'green')
       : colored(`**${pending} not exited by 11:00**`, pendingColor),
-    colored(`Exited by 11:00 ${exited} / ${total} total · ${rate}%`, 'grey'),
+    colored(`${exited} / ${total} total · ${rate}%`, 'grey'),
   ]
   return {
     tag: 'column',
@@ -154,7 +154,7 @@ export function buildExitAlarmCard(params: {
   return {
     config: { wide_screen_mode: true },
     header: {
-      template: isUrgent ? 'red' : 'green',
+      template: isUrgent ? 'orange' : 'green',
       title: {
         tag: 'plain_text',
         content: isUrgent ? `🚨 Dispatch alert - ${vendorName}` : `✅ Dispatch on track - ${vendorName}`,
