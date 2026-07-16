@@ -18,6 +18,9 @@ export type ImileBusinessFailure = {
   message: string
 }
 
+/** 单次 iMile 请求超时（毫秒）：避免上游挂起导致定时任务无限期卡住 */
+export const DEFAULT_IMILE_REQUEST_TIMEOUT_MS = 30_000
+
 export type ImileRequestJsonResult =
   | { readOk: true; httpOk: boolean; status: number; json: unknown; text: string }
   | { readOk: false; status: number; text: string; networkError?: boolean }
@@ -106,6 +109,7 @@ export async function imileRequestJson(options: {
   method: 'GET' | 'POST'
   headers: Record<string, string>
   body?: string
+  timeoutMs?: number
 }): Promise<ImileRequestJsonResult> {
   let response: Response
   try {
@@ -113,12 +117,14 @@ export async function imileRequestJson(options: {
       method: options.method,
       headers: options.headers,
       body: options.body,
+      signal: AbortSignal.timeout(options.timeoutMs ?? DEFAULT_IMILE_REQUEST_TIMEOUT_MS),
     })
   } catch (e) {
+    const timedOut = e instanceof Error && e.name === 'TimeoutError'
     return {
       readOk: false,
       status: 502,
-      text: (e as Error).message || '网络异常',
+      text: timedOut ? '请求超时' : (e as Error).message || '网络异常',
       networkError: true,
     }
   }

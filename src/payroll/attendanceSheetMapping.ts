@@ -61,6 +61,10 @@ function resolveRoleByPositionTitle(positionTitle: string): string | null {
   if (!posNorm) return null
 
   if (posNorm.includes('level 2-28')) {
+    return 'seniorWorker'
+  }
+
+  if (posNorm.includes('level 2-26')) {
     return 'worker'
   }
 
@@ -77,15 +81,16 @@ function resolveRoleByPositionTitle(positionTitle: string): string | null {
 function resolveRoleByPositionCode(positionCodeRaw: string): string | null {
   if (!positionCodeRaw) return null
   const digits = positionCodeRaw.match(/\d+/)?.[0] ?? ''
-  if (digits === '28') return 'worker'
+  if (digits === '28') return 'seniorWorker'
+  if (digits === '26') return 'worker'
   if (digits === '30') return 'forklift'
   return null
 }
 
 /**
  * 考勤行 → 用于 `calculateHourlyRate` 的角色键。
- * - 「职位名称」有值时：按职位名称判定（LEVEL 2-28=worker，LEVEL 2-30=forklift/receptionist）
- * - 「职位名称」为空时：按「职位编号」判定（28=worker，30=forklift）
+ * - 「职位名称」有值时：按职位名称判定（LEVEL 2-28=seniorWorker，LEVEL 2-26=worker，LEVEL 2-30=forklift/receptionist）
+ * - 「职位名称」为空时：按「职位编号」判定（28=seniorWorker，26=worker，30=forklift）
  * - 其余回退到员工表默认角色，无则 worker
  */
 export function resolveRoleFromAttendanceRow(

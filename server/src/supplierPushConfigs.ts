@@ -121,3 +121,57 @@ export async function listSupplierPushConfigsByIds(ids: string[]): Promise<Fleet
 export async function listPushableSupplierPushConfigsByIds(ids: string[]): Promise<FleetSupplierPushConfig[]> {
   return listSupplierPushConfigsByIds(ids)
 }
+
+function isRegionAccessible(configRegionCode: string, requestRegionCode: string | null | undefined): boolean {
+  if (configRegionCode === LEGACY_GLOBAL_SUPPLIER_REGION_CODE) return true
+  return !!requestRegionCode && configRegionCode === requestRegionCode
+}
+
+/**
+ * 按已保存的 config id 解析可推送供应商。
+ * 同一 vendorCode 可有多条配置（路由码 / webhook 不同），按 id 匹配，绝不按编码去重。
+ * stationCode 仅表示供应商在司机地图等场景的归属站点，不参与定时推送筛选。
+ */
+export async function listPushableSupplierPushConfigsForSchedule(
+  ids: string[],
+  scope: { regionCode: string | null | undefined; stationCode: string },
+): Promise<FleetSupplierPushConfig[]> {
+  if (!ids.length) return []
+  const idSet = new Set(ids)
+  // stationCode 仍由调用方保证（查数需要站点）；此处不再用它过滤供应商配置
+  if (!scope.stationCode.trim()) return []
+
+  const rows = await listSupplierPushConfigs()
+  return rows.filter(
+    (config) =>
+      idSet.has(config.id) &&
+      isSupplierWebhookConfigured(config.webhookUrl) &&
+      isRegionAccessible(config.regionCode, scope.regionCode),
+  )
+}
+
+/**
+ * 保存/立刻推送前校验：所选 id 必须存在、有 Webhook、且属于当前账号可见州。
+ */
+export async function validatePushConfigIdsForSchedule(
+  ids: string[],
+  scope: { regionCode: string | null | undefined; stationCode: string },
+): Promise<string | null> {
+  const normalizedIds = parsePushConfigIds(ids)
+  if (normalizedIds.length === 0) return '请至少选择一个供应商'
+  if (!scope.stationCode.trim()) return '缺少必填字段: stationCode'
+
+  const pushable = await listPushableSupplierPushConfigsForSchedule(normalizedIds, scope)
+  if (pushable.length > 0) return null
+
+  const idSet = new Set(normalizedIds)
+  const rows = (await listSupplierPushConfigs()).filter((c) => idSet.has(c.id))
+  if (rows.length === 0) return '所选供应商配置不存在或已删除'
+  if (!rows.some((c) => isSupplierWebhookConfigured(c.webhookUrl))) {
+    return '请至少选择一个已配置 Webhook 的供应商'
+  }
+  if (!rows.some((c) => isRegionAccessible(c.regionCode, scope.regionCode))) {
+    return '所选供应商不属于当前账号所在州，无法推送'
+  }
+  return '请至少选择一个已配置 Webhook 的供应商'
+}

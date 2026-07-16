@@ -26,11 +26,11 @@ export type ExitAlarmScheduleDraft = {
   pushTimes: PushTimeSlot[]
   isEnabled: boolean
   stationCode: string
+  pushConfigIds: string[]
 }
 
 export type ExitAlarmSchedule = ExitAlarmScheduleDraft & {
   id: string
-  pushConfigIds: string[]
   updatedAt: string
   /** 服务端是否已具备定时拉数所需的 iMile token */
   hasImileToken: boolean
@@ -49,22 +49,4 @@ export type WaybillSearchItem = {
   lastScanStationCode?: string
   lastScanStationName?: string
   [key: string]: unknown
-}
-
-/** 立即推送后可导出的单票明细 */
-export type ExitAlarmExportWaybillRow = {
-  waybillNo: string
-  routeCode: string
-  deliveryTime: string
-  courier: string
-  courierCode: string
-  status: '达标' | '未达标'
-}
-
-/** 按供应商一张 sheet */
-export type ExitAlarmExportSheet = {
-  vendorName: string
-  metCount: number
-  unmetCount: number
-  rows: ExitAlarmExportWaybillRow[]
 }

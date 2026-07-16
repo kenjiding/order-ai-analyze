@@ -1,5 +1,5 @@
 import { Checkbox, Tooltip } from 'antd'
-import type { ReactNode } from 'react'
+import { useMemo, type ReactNode } from 'react'
 import { isSupplierPushEligible } from '../selection'
 import type { SupplierPushConfig } from '../types'
 
@@ -35,9 +35,22 @@ export function SupplierPushSelectionGrid({
   emptyText = '暂无供应商配置，请前往「飞书推送」维护。',
   columns = 4,
 }: Props) {
+  const duplicateVendorCodeSet = useMemo(() => {
+    const counts = new Map<string, number>()
+    for (const config of configs) {
+      const code = config.vendorCode.trim()
+      if (!code) continue
+      counts.set(code, (counts.get(code) ?? 0) + 1)
+    }
+    return new Set(
+      [...counts.entries()].filter(([, count]) => count > 1).map(([code]) => code),
+    )
+  }, [configs])
+
   if (configs.length === 0) {
     return <p className="text-xs text-slate-400">{emptyText}</p>
   }
+
   return (
     <div className={`grid grid-cols-2 gap-2 ${COLUMNS_CLASS[columns]}`}>
       {configs.map((c) => {
@@ -49,6 +62,12 @@ export function SupplierPushSelectionGrid({
         const nickname = c.supplierNickname?.trim()
         const primary = nickname || c.vendorName || '未知供应商'
         const showVendorLine = !!nickname && c.vendorName.trim().length > 0
+        const isDuplicateVendor = duplicateVendorCodeSet.has(c.vendorCode.trim())
+        const routeCode = c.routeCode.trim()
+        const stationCode = c.stationCode?.trim() ?? ''
+        // 同编码多条时展示路由/站点，避免勾错后推送被服务端按站点过滤掉
+        const showRouteLine = isDuplicateVendor && routeCode.length > 0
+        const showStationLine = isDuplicateVendor && stationCode.length > 0
 
         const checkboxNode = (
           <Checkbox
@@ -67,6 +86,20 @@ export function SupplierPushSelectionGrid({
                 <Tooltip title={c.vendorName}>
                   <span className={`truncate text-[11px] font-medium ${eligible ? 'text-[var(--admin-accent)]' : 'text-slate-400'}`}>
                     {c.vendorName}
+                  </span>
+                </Tooltip>
+              )}
+              {showStationLine && (
+                <Tooltip title={stationCode}>
+                  <span className={`truncate text-[10px] ${eligible ? 'text-slate-500' : 'text-slate-400'}`}>
+                    站点 {stationCode}
+                  </span>
+                </Tooltip>
+              )}
+              {showRouteLine && (
+                <Tooltip title={routeCode}>
+                  <span className={`truncate text-[10px] ${eligible ? 'text-slate-500' : 'text-slate-400'}`}>
+                    路由 {routeCode}
                   </span>
                 </Tooltip>
               )}

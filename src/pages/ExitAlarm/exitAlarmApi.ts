@@ -1,6 +1,5 @@
 import { backendFetch } from '../../api/httpClient'
 import type {
-  ExitAlarmExportSheet,
   ExitAlarmSchedule,
   ExitAlarmScheduleDraft,
   WaybillSearchItem,
@@ -26,34 +25,62 @@ async function apiFetch<T>(
 }
 
 // 定时推送配置
-export async function loadExitAlarmSchedule(): Promise<
-  { ok: true; data: ExitAlarmSchedule | null } | { ok: false; error: string }
+export async function loadExitAlarmSchedules(): Promise<
+  { ok: true; data: ExitAlarmSchedule[] } | { ok: false; error: string }
 > {
-  return apiFetch<ExitAlarmSchedule | null>('/api/exit-alarm/schedule', { method: 'GET' })
+  return apiFetch<ExitAlarmSchedule[]>('/api/exit-alarm/schedules', { method: 'GET' })
 }
 
-export async function saveExitAlarmSchedule(
+function withImileTokenHeaders(imileToken: string): HeadersInit {
+  return imileToken
+    ? { 'Content-Type': 'application/json', Authorization: `Bearer ${imileToken}` }
+    : { 'Content-Type': 'application/json' }
+}
+
+export async function createExitAlarmSchedule(
   draft: ExitAlarmScheduleDraft,
   imileToken: string,
 ): Promise<{ ok: true; data: ExitAlarmSchedule } | { ok: false; error: string }> {
-  return apiFetch<ExitAlarmSchedule>('/api/exit-alarm/schedule', {
-    method: 'PUT',
+  return apiFetch<ExitAlarmSchedule>('/api/exit-alarm/schedules', {
+    method: 'POST',
     body: JSON.stringify({ ...draft, imileToken }),
-    headers: imileToken
-      ? {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${imileToken}`,
-        }
-      : { 'Content-Type': 'application/json' },
+    headers: withImileTokenHeaders(imileToken),
   })
 }
 
-export async function saveExitAlarmScheduledPushConfigIds(
-  pushConfigIds: string[],
+export async function updateExitAlarmSchedule(
+  id: string,
+  draft: ExitAlarmScheduleDraft,
+  imileToken: string,
 ): Promise<{ ok: true; data: ExitAlarmSchedule } | { ok: false; error: string }> {
-  return apiFetch<ExitAlarmSchedule>('/api/exit-alarm/schedule/push-config-ids', {
+  return apiFetch<ExitAlarmSchedule>(`/api/exit-alarm/schedules/${id}`, {
     method: 'PUT',
-    body: JSON.stringify({ pushConfigIds }),
+    body: JSON.stringify({ ...draft, imileToken }),
+    headers: withImileTokenHeaders(imileToken),
+  })
+}
+
+export async function deleteExitAlarmSchedule(
+  id: string,
+): Promise<{ ok: true; data: null } | { ok: false; error: string }> {
+  return apiFetch<null>(`/api/exit-alarm/schedules/${id}`, { method: 'DELETE' })
+}
+
+export type ExitAlarmPushNowResult = {
+  pushedCount: number
+  totalConfigs: number
+  errors: string[]
+  stationCode: string
+  date: string
+}
+
+/** 立刻推送：使用该条目已保存配置，不校验推送时间 */
+export async function triggerExitAlarmSchedulePushNow(
+  id: string,
+): Promise<{ ok: true; data: ExitAlarmPushNowResult } | { ok: false; error: string }> {
+  return apiFetch<ExitAlarmPushNowResult>(`/api/exit-alarm/schedules/${id}/push-now`, {
+    method: 'POST',
+    body: JSON.stringify({}),
   })
 }
 
@@ -68,36 +95,6 @@ export async function searchExitAlarmWaybills(
   signal?: AbortSignal,
 ): Promise<{ ok: true; data: WaybillSearchItem[] } | { ok: false; error: string }> {
   return apiFetch<WaybillSearchItem[]>('/api/exit-alarm/search-waybills', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${imileToken}`,
-    },
-    body: JSON.stringify(params),
-    signal,
-  })
-}
-
-// 立即触发一次推送（测试用）
-export type ExitAlarmPushNowResult = {
-  pushedCount: number
-  totalConfigs: number
-  errors: string[]
-  stationCode: string
-  date: string
-  exportSheets: ExitAlarmExportSheet[]
-}
-
-export async function triggerExitAlarmPushNow(
-  imileToken: string,
-  params: {
-    stationCode: string
-    date: string // "YYYY-MM-DD" 按当前账号州/区域
-    configIds: string[]
-  },
-  signal?: AbortSignal,
-): Promise<{ ok: true; data: ExitAlarmPushNowResult } | { ok: false; error: string }> {
-  return apiFetch<ExitAlarmPushNowResult>('/api/exit-alarm/push-now', {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',

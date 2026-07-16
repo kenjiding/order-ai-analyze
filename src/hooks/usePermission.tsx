@@ -81,7 +81,7 @@ export const PERMISSION_KEYS = {
   btnVendorAnalysisShare: 'btn:vendor-analysis:share',
   btnVendorAnalysisDriverMap: 'btn:vendor-analysis:driver-map',
   menuExitAlarm: 'menu:exit-alarm',
-  btnExitAlarmDispatchAlarm: 'btn:exit-alarm:dispatch-alarm',
+  menuDispatchAlarm: 'menu:dispatch-alarm',
   menuChaseDispatch: 'menu:chase-dispatch',
   menuWorkOrderPush: 'menu:work-order-push',
   menuAttendanceWorkTime: 'menu:attendance-work-time',

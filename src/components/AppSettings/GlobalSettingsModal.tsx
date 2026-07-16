@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Truck, Info } from 'lucide-react'
 import Modal from '../Modal'
 import { useAppSettings } from '../../context/AppSettingsContext'
@@ -8,7 +8,6 @@ import {
 } from '../../imile/zktAttendanceSettings'
 import { ZktDepartmentCascader } from './ZktDepartmentCascader'
 import { showToast } from '../../utils/toast'
-import { confirmDialog } from '../../utils/confirmDialog'
 
 export type SettingsSectionId = 'imile' | 'general'
 
@@ -27,16 +26,6 @@ type Props = {
   onClose: () => void
 }
 
-function zktDraftEqual(a: ZktAttendanceSettings, b: ZktAttendanceSettings): boolean {
-  const left = normalizeZktAttendanceSettings(a)
-  const right = normalizeZktAttendanceSettings(b)
-  return (
-    left.username === right.username &&
-    left.password === right.password &&
-    left.departmentId === right.departmentId
-  )
-}
-
 function buildDraftFromSettings(input: {
   imileToken: string
   zktAttendance: ZktAttendanceSettings
@@ -53,71 +42,54 @@ export function GlobalSettingsModal({ isOpen, onClose }: Props) {
   const [draft, setDraft] = useState<ImileSettingsDraft>(() =>
     buildDraftFromSettings({ imileToken, zktAttendance }),
   )
+  const [saving, setSaving] = useState(false)
   const wasOpenRef = useRef(false)
 
   useEffect(() => {
     if (isOpen && !wasOpenRef.current) {
       setDraft(buildDraftFromSettings({ imileToken, zktAttendance }))
       setActiveSection('imile')
+      setSaving(false)
     }
     wasOpenRef.current = isOpen
   }, [isOpen, imileToken, zktAttendance])
 
-  const savedDraft = useMemo(
-    () => buildDraftFromSettings({ imileToken, zktAttendance }),
-    [imileToken, zktAttendance],
-  )
-
-  const isDirty = useMemo(() => {
-    if (draft.imileToken !== savedDraft.imileToken) return true
-    return !zktDraftEqual(draft.zktAttendance, savedDraft.zktAttendance)
-  }, [draft, savedDraft])
-
-  const handleRequestClose = async () => {
-    if (isDirty) {
-      const confirmed = await confirmDialog({
-        title: '放弃未保存的修改？',
-        content: '有未保存的修改，确定放弃吗？',
-        okText: '放弃',
-        cancelText: '继续编辑',
-        danger: true,
-      })
-      if (!confirmed) return
+  const handleSave = async () => {
+    if (saving) return
+    setSaving(true)
+    try {
+      const result = await updateSettings(draft)
+      if (!result.ok) {
+        showToast(result.error || '设置保存失败', 'error')
+        return
+      }
+      showToast('设置已保存', 'success')
+      onClose()
+    } finally {
+      setSaving(false)
     }
-    onClose()
-  }
-
-  const handleSave = () => {
-    updateSettings(draft)
-    showToast('设置已保存', 'success')
-    onClose()
   }
 
   return (
     <Modal
       isOpen={isOpen}
-      onClose={() => void handleRequestClose()}
+      onClose={onClose}
       title="系统设置"
       maxWidth="max-w-4xl"
       showCloseButton
       footer={
-        <div className="flex items-center justify-between gap-3 border-t border-slate-200 bg-slate-50/80 px-5 py-4 sm:px-6">
-          <p className="text-xs text-slate-500">
-            {isDirty ? '有未保存的修改' : '已与当前配置同步'}
-          </p>
-          <div className="flex items-center gap-2">
-            <button type="button" onClick={() => void handleRequestClose()} className="admin-btn px-4 py-2">
-              取消
-            </button>
-            <button
-              type="button"
-              disabled={!isDirty}
-              onClick={handleSave}
-              className="admin-btn admin-btn-primary px-5 py-2 disabled:cursor-not-allowed disabled:opacity-60"
-            >
-              保存
-            </button>
-          </div>
+        <div className="flex items-center justify-end gap-2 border-t border-slate-200 bg-slate-50/80 px-5 py-4 sm:px-6">
+          <button type="button" onClick={onClose} disabled={saving} className="admin-btn px-4 py-2">
+            取消
+          </button>
+          <button
+            type="button"
+            onClick={() => void handleSave()}
+            disabled={saving}
+            className="admin-btn admin-btn-primary px-5 py-2 disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            {saving ? '保存中…' : '保存'}
+          </button>
         </div>
       }
     >

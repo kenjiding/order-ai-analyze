@@ -1,5 +1,5 @@
 import { Router, type Response } from 'express'
-import { eq } from 'drizzle-orm'
+import { and, desc, eq } from 'drizzle-orm'
 import type { AuthenticatedRequest } from '../auth/middleware'
 import { getDb, schema } from '../db'
 import type { ChaseDispatchSchedule } from '../db/schema'
@@ -7,18 +7,18 @@ import { readImileTokenFromRequest } from './imileAuth'
 import { normalizeImileToken } from '../imile/shared'
 import { getRegionNow } from '../imile/inboundWaybillIndex'
 import { resolveRegionTz } from '../imile/ausTimezone'
-import { listPushableSupplierPushConfigsByIds, parsePushConfigIds } from '../supplierPushConfigs'
-import { chaseDispatchScheduledScope } from '../supplierConfigScopes/chaseDispatchScheduled'
+import { listPushableSupplierPushConfigsForSchedule, parsePushConfigIds, validatePushConfigIdsForSchedule } from '../supplierPushConfigs'
 import {
   executeChaseDispatchPush,
   hasChaseDispatchImileToken,
   parseStagnationBuckets,
+  readChaseDispatchImileToken,
 } from '../feishu/chaseDispatchScheduledPush'
 import { isStagnationBucket, type StagnationBucket } from '../imile/stagnantWaybills'
 
 export const chaseDispatchRouter = Router()
 
-// ─── 定时推送配置（按账号隔离，每个账号最多一条） ────────────────────────────────
+// ─── 定时推送配置（按账号隔离，一个账号可有多条，按站点区分） ────────────────────
 
 type ScheduleBody = {
   weekdays?: unknown
@@ -26,6 +26,7 @@ type ScheduleBody = {
   stagnationBuckets?: unknown
   isEnabled?: unknown
   stationCode?: unknown
+  pushConfigIds?: unknown
   imileToken?: unknown
 }
 
@@ -36,17 +37,13 @@ type PublicChaseDispatchSchedule = {
   stagnationBuckets: StagnationBucket[]
   isEnabled: boolean
   stationCode: string
-  regionCode: string | null
   pushConfigIds: string[]
+  regionCode: string | null
   updatedAt: Date
   hasImileToken: boolean
 }
 
-async function toPublicSchedule(
-  row: ChaseDispatchSchedule,
-  regionCode: string | null,
-): Promise<PublicChaseDispatchSchedule> {
-  const pushConfigIds = await chaseDispatchScheduledScope.loadEnabledConfigIds()
+function toPublicSchedule(row: ChaseDispatchSchedule, regionCode: string | null): PublicChaseDispatchSchedule {
   return {
     id: row.id,
     weekdays: row.weekdays,
@@ -54,8 +51,8 @@ async function toPublicSchedule(
     stagnationBuckets: parseStagnationBuckets(row.stagnationBuckets),
     isEnabled: row.isEnabled,
     stationCode: row.stationCode,
+    pushConfigIds: parsePushConfigIds(row.pushConfigIds),
     regionCode,
-    pushConfigIds,
     updatedAt: row.updatedAt,
     hasImileToken: hasChaseDispatchImileToken(row),
   }
@@ -64,16 +61,31 @@ async function toPublicSchedule(
 async function loadOwnScheduleRow(
   db: ReturnType<typeof getDb>,
   userId: string,
+  id: string,
 ): Promise<ChaseDispatchSchedule | null> {
   const rows = await db
     .select()
     .from(schema.chaseDispatchSchedules)
-    .where(eq(schema.chaseDispatchSchedules.userId, userId))
+    .where(and(eq(schema.chaseDispatchSchedules.id, id), eq(schema.chaseDispatchSchedules.userId, userId)))
     .limit(1)
   return rows[0] ?? null
 }
 
-chaseDispatchRouter.get('/schedule', async (req: AuthenticatedRequest, res: Response) => {
+function extractScheduleFields(body: ScheduleBody) {
+  const stagnationBuckets = Array.isArray(body.stagnationBuckets)
+    ? body.stagnationBuckets.filter(isStagnationBucket)
+    : []
+  return {
+    weekdays: Array.isArray(body.weekdays) ? body.weekdays : [],
+    pushTimes: Array.isArray(body.pushTimes) ? body.pushTimes : [],
+    stagnationBuckets,
+    isEnabled: body.isEnabled !== false,
+    stationCode: typeof body.stationCode === 'string' ? body.stationCode.trim() : '',
+    pushConfigIds: parsePushConfigIds(body.pushConfigIds),
+  }
+}
+
+chaseDispatchRouter.get('/schedules', async (req: AuthenticatedRequest, res: Response) => {
   const userId = req.authUser?.id
   if (!userId) {
     res.status(401).json({ ok: false, error: '未登录' })
@@ -81,14 +93,18 @@ chaseDispatchRouter.get('/schedule', async (req: AuthenticatedRequest, res: Resp
   }
   try {
     const db = getDb()
-    const row = await loadOwnScheduleRow(db, userId)
-    res.json({ ok: true, data: row ? await toPublicSchedule(row, req.authUser?.regionCode ?? null) : null })
+    const rows = await db
+      .select()
+      .from(schema.chaseDispatchSchedules)
+      .where(eq(schema.chaseDispatchSchedules.userId, userId))
+      .orderBy(desc(schema.chaseDispatchSchedules.createdAt))
+    res.json({ ok: true, data: rows.map((row) => toPublicSchedule(row, req.authUser?.regionCode ?? null)) })
   } catch {
-    res.status(500).json({ ok: false, error: '读取定时配置失败' })
+    res.status(500).json({ ok: false, error: '读取催派推送配置失败' })
   }
 })
 
-chaseDispatchRouter.put('/schedule', async (req: AuthenticatedRequest, res: Response) => {
+chaseDispatchRouter.post('/schedules', async (req: AuthenticatedRequest, res: Response) => {
   const userId = req.authUser?.id
   if (!userId) {
     res.status(401).json({ ok: false, error: '未登录' })
@@ -99,152 +115,212 @@ chaseDispatchRouter.put('/schedule', async (req: AuthenticatedRequest, res: Resp
     res.status(400).json({ ok: false, error: '缺少必填字段: weekdays, pushTimes' })
     return
   }
-  const stagnationBuckets = Array.isArray(body.stagnationBuckets)
-    ? body.stagnationBuckets.filter(isStagnationBucket)
-    : []
+  const fields = extractScheduleFields(body)
+  if (!fields.stationCode) {
+    res.status(400).json({ ok: false, error: '缺少必填字段: stationCode' })
+    return
+  }
+
+  const tokenFromBody = typeof body.imileToken === 'string' ? body.imileToken.trim() : ''
+  const tokenFromHeader = readImileTokenFromRequest(req, body.imileToken)
+  const nextImileToken = tokenFromBody || tokenFromHeader
+
+  const willEnable =
+    fields.isEnabled && fields.pushTimes.length > 0 && fields.weekdays.length > 0 && fields.stagnationBuckets.length > 0
+  if (willEnable && !nextImileToken) {
+    res.status(400).json({ ok: false, error: '启用定时推送需要 iMile token，请在全局设置中配置后重新保存' })
+    return
+  }
+
   try {
-    const db = getDb()
-    const existing = await loadOwnScheduleRow(db, userId)
-
-    const stationCode = typeof body.stationCode === 'string' ? body.stationCode.trim() : ''
-    const tokenFromBody = typeof body.imileToken === 'string' ? body.imileToken.trim() : ''
-    const tokenFromHeader = readImileTokenFromRequest(req, body.imileToken)
-    const nextImileToken = tokenFromBody || tokenFromHeader
-
-    const isEnabled = body.isEnabled !== false
-    const willEnable =
-      isEnabled && body.pushTimes.length > 0 && body.weekdays.length > 0 && stagnationBuckets.length > 0
-    const existingToken = existing?.imileToken?.trim() ?? ''
-    if (willEnable && !nextImileToken && !existingToken && !hasChaseDispatchImileToken(existing)) {
-      res.status(400).json({
-        ok: false,
-        error: '启用定时推送需要 iMile token，请在全局设置中配置后重新保存',
+    if (fields.isEnabled) {
+      const pushConfigError = await validatePushConfigIdsForSchedule(fields.pushConfigIds, {
+        regionCode: req.authUser?.regionCode,
+        stationCode: fields.stationCode,
       })
-      return
+      if (pushConfigError) {
+        res.status(400).json({ ok: false, error: pushConfigError })
+        return
+      }
     }
 
-    let row: ChaseDispatchSchedule
-    if (existing) {
-      const [updated] = await db
-        .update(schema.chaseDispatchSchedules)
-        .set({
-          weekdays: body.weekdays,
-          pushTimes: body.pushTimes,
-          stagnationBuckets,
-          isEnabled,
-          stationCode,
-          ...(nextImileToken ? { imileToken: normalizeImileToken(nextImileToken) } : {}),
-          updatedBy: userId,
-          updatedAt: new Date(),
-        })
-        .where(eq(schema.chaseDispatchSchedules.id, existing.id))
-        .returning()
-      row = updated
-    } else {
-      const [created] = await db
-        .insert(schema.chaseDispatchSchedules)
-        .values({
-          userId,
-          weekdays: body.weekdays,
-          pushTimes: body.pushTimes,
-          stagnationBuckets,
-          isEnabled,
-          stationCode,
-          imileToken: nextImileToken ? normalizeImileToken(nextImileToken) : null,
-          updatedBy: userId,
-        })
-        .returning()
-      row = created
-    }
-    res.json({ ok: true, data: await toPublicSchedule(row, req.authUser?.regionCode ?? null) })
+    const db = getDb()
+    const [created] = await db
+      .insert(schema.chaseDispatchSchedules)
+      .values({
+        userId,
+        weekdays: fields.weekdays,
+        pushTimes: fields.pushTimes,
+        stagnationBuckets: fields.stagnationBuckets,
+        isEnabled: fields.isEnabled,
+        stationCode: fields.stationCode,
+        pushConfigIds: fields.pushConfigIds,
+        imileToken: nextImileToken ? normalizeImileToken(nextImileToken) : null,
+        updatedBy: userId,
+      })
+      .returning()
+    res.json({ ok: true, data: toPublicSchedule(created, req.authUser?.regionCode ?? null) })
   } catch {
-    res.status(500).json({ ok: false, error: '保存定时配置失败' })
+    res.status(500).json({ ok: false, error: '新增催派推送配置失败' })
   }
 })
 
-chaseDispatchRouter.put('/schedule/push-config-ids', async (req: AuthenticatedRequest, res: Response) => {
+chaseDispatchRouter.put('/schedules/:id', async (req: AuthenticatedRequest, res: Response) => {
   const userId = req.authUser?.id
   if (!userId) {
     res.status(401).json({ ok: false, error: '未登录' })
     return
   }
-  const body = req.body as { pushConfigIds?: unknown }
-  const pushConfigIds = parsePushConfigIds(body.pushConfigIds)
-  try {
-    await chaseDispatchScheduledScope.saveEnabledConfigIds(pushConfigIds)
-    const db = getDb()
-    const row = await loadOwnScheduleRow(db, userId)
-    if (!row) {
-      res.status(500).json({ ok: false, error: '保存定时推送供应商失败' })
-      return
-    }
-    res.json({ ok: true, data: await toPublicSchedule(row, req.authUser?.regionCode ?? null) })
-  } catch {
-    res.status(500).json({ ok: false, error: '保存定时推送供应商失败' })
-  }
-})
-
-// ─── 立即推送催派 ─────────────────────────────────────────────────────────────
-
-chaseDispatchRouter.post('/push-now', async (req: AuthenticatedRequest, res: Response) => {
-  const token = readImileTokenFromRequest(req)
-  if (!token) {
-    res.status(401).json({ ok: false, error: '缺少 iMile token' })
+  const body = req.body as ScheduleBody
+  if (!Array.isArray(body.weekdays) || !Array.isArray(body.pushTimes)) {
+    res.status(400).json({ ok: false, error: '缺少必填字段: weekdays, pushTimes' })
     return
   }
-
-  type PushNowBody = {
-    stationCode?: unknown
-    stagnationBuckets?: unknown
-    configIds?: unknown
-  }
-  const body = req.body as PushNowBody
-
-  if (typeof body.stationCode !== 'string' || !body.stationCode.trim()) {
+  const fields = extractScheduleFields(body)
+  if (!fields.stationCode) {
     res.status(400).json({ ok: false, error: '缺少必填字段: stationCode' })
     return
   }
 
-  const buckets = Array.isArray(body.stagnationBuckets)
-    ? body.stagnationBuckets.filter(isStagnationBucket)
-    : []
-  if (buckets.length === 0) {
-    res.status(400).json({ ok: false, error: '请至少选择一个滞留时间' })
+  try {
+    if (fields.isEnabled) {
+      const pushConfigError = await validatePushConfigIdsForSchedule(fields.pushConfigIds, {
+        regionCode: req.authUser?.regionCode,
+        stationCode: fields.stationCode,
+      })
+      if (pushConfigError) {
+        res.status(400).json({ ok: false, error: pushConfigError })
+        return
+      }
+    }
+
+    const db = getDb()
+    const existing = await loadOwnScheduleRow(db, userId, String(req.params.id ?? '').trim())
+    if (!existing) {
+      res.status(404).json({ ok: false, error: '配置不存在' })
+      return
+    }
+
+    const tokenFromBody = typeof body.imileToken === 'string' ? body.imileToken.trim() : ''
+    const tokenFromHeader = readImileTokenFromRequest(req, body.imileToken)
+    const nextImileToken = tokenFromBody || tokenFromHeader
+
+    const willEnable =
+      fields.isEnabled && fields.pushTimes.length > 0 && fields.weekdays.length > 0 && fields.stagnationBuckets.length > 0
+    const existingToken = existing.imileToken?.trim() ?? ''
+    if (willEnable && !nextImileToken && !existingToken) {
+      res.status(400).json({ ok: false, error: '启用定时推送需要 iMile token，请在全局设置中配置后重新保存' })
+      return
+    }
+
+    const [updated] = await db
+      .update(schema.chaseDispatchSchedules)
+      .set({
+        weekdays: fields.weekdays,
+        pushTimes: fields.pushTimes,
+        stagnationBuckets: fields.stagnationBuckets,
+        isEnabled: fields.isEnabled,
+        stationCode: fields.stationCode,
+        pushConfigIds: fields.pushConfigIds,
+        ...(nextImileToken ? { imileToken: normalizeImileToken(nextImileToken) } : {}),
+        updatedBy: userId,
+        updatedAt: new Date(),
+      })
+      .where(eq(schema.chaseDispatchSchedules.id, existing.id))
+      .returning()
+    res.json({ ok: true, data: toPublicSchedule(updated, req.authUser?.regionCode ?? null) })
+  } catch {
+    res.status(500).json({ ok: false, error: '保存催派推送配置失败' })
+  }
+})
+
+chaseDispatchRouter.delete('/schedules/:id', async (req: AuthenticatedRequest, res: Response) => {
+  const userId = req.authUser?.id
+  if (!userId) {
+    res.status(401).json({ ok: false, error: '未登录' })
     return
   }
+  try {
+    const db = getDb()
+    const existing = await loadOwnScheduleRow(db, userId, String(req.params.id ?? '').trim())
+    if (!existing) {
+      res.status(404).json({ ok: false, error: '配置不存在' })
+      return
+    }
+    await db.delete(schema.chaseDispatchSchedules).where(eq(schema.chaseDispatchSchedules.id, existing.id))
+    res.json({ ok: true, data: null })
+  } catch {
+    res.status(500).json({ ok: false, error: '删除催派推送配置失败' })
+  }
+})
 
-  const configIds = Array.isArray(body.configIds)
-    ? body.configIds
-        .filter((id): id is string => typeof id === 'string' && id.trim().length > 0)
-        .map((id) => id.trim())
-    : []
-  if (configIds.length === 0) {
-    res.status(400).json({ ok: false, error: '请至少选择一个供应商配置' })
+/** 立刻推送：按该条目已保存的站点/供应商/滞留区间执行，不校验 weekdays / pushTimes */
+chaseDispatchRouter.post('/schedules/:id/push-now', async (req: AuthenticatedRequest, res: Response) => {
+  const userId = req.authUser?.id
+  if (!userId) {
+    res.status(401).json({ ok: false, error: '未登录' })
     return
   }
+  try {
+    const db = getDb()
+    const schedule = await loadOwnScheduleRow(db, userId, String(req.params.id ?? '').trim())
+    if (!schedule) {
+      res.status(404).json({ ok: false, error: '配置不存在' })
+      return
+    }
 
-  const stationCode = body.stationCode.trim()
-  const tz = resolveRegionTz(req.authUser?.regionCode)
-  const { dateStr: baseDate, timeHHmm: pushTime } = getRegionNow(tz)
+    const stationCode = schedule.stationCode?.trim()
+    if (!stationCode) {
+      res.status(400).json({ ok: false, error: '该配置未设置站点' })
+      return
+    }
 
-  const configs = await listPushableSupplierPushConfigsByIds(configIds)
-  if (configs.length === 0) {
-    res.status(400).json({ ok: false, error: '所选供应商均不可用（未配置 Webhook）' })
-    return
+    const buckets = parseStagnationBuckets(schedule.stagnationBuckets)
+    if (buckets.length === 0) {
+      res.status(400).json({ ok: false, error: '该配置未选择滞留时间' })
+      return
+    }
+
+    const token = readChaseDispatchImileToken(schedule)
+    if (!token) {
+      res.status(400).json({ ok: false, error: '缺少 iMile token，请编辑该配置并重新保存' })
+      return
+    }
+
+    const configs = await listPushableSupplierPushConfigsForSchedule(parsePushConfigIds(schedule.pushConfigIds), {
+      regionCode: req.authUser?.regionCode,
+      stationCode,
+    })
+    if (configs.length === 0) {
+      const detail = await validatePushConfigIdsForSchedule(parsePushConfigIds(schedule.pushConfigIds), {
+        regionCode: req.authUser?.regionCode,
+        stationCode,
+      })
+      res.status(400).json({
+        ok: false,
+        error: detail ?? '请至少选择一个已配置 Webhook 的供应商',
+      })
+      return
+    }
+
+    const tz = resolveRegionTz(req.authUser?.regionCode)
+    const { dateStr: baseDate, timeHHmm: pushTime } = getRegionNow(tz)
+
+    const result = await executeChaseDispatchPush({
+      token,
+      stationCode,
+      baseDate,
+      pushTime,
+      buckets,
+      configs,
+      label: `[chase-dispatch/push-now schedule=${schedule.id}]`,
+    })
+    if ('error' in result) {
+      res.status(502).json({ ok: false, error: result.error })
+      return
+    }
+    res.json({ ok: true, data: result })
+  } catch {
+    res.status(500).json({ ok: false, error: '立刻推送失败' })
   }
-
-  const result = await executeChaseDispatchPush({
-    token,
-    stationCode,
-    baseDate,
-    pushTime,
-    buckets,
-    configs,
-    label: '催派立即推送',
-  })
-  if ('error' in result) {
-    res.status(502).json({ ok: false, error: result.error })
-    return
-  }
-  res.json({ ok: true, data: result })
 })

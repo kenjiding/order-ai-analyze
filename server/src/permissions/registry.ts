@@ -26,8 +26,15 @@ export const PERMISSION_REGISTRY: PermissionDefinition[] = [
   {
     key: 'menu:exit-alarm',
     type: 'menu',
-    label: '出仓 / 派签告警',
-    description: '监控供应商11点前出仓率、24小时派签率并定时推送告警',
+    label: '11点前出仓告警',
+    description: '监控供应商11点前出仓率并定时推送告警',
+    sortOrder: 39,
+  },
+  {
+    key: 'menu:dispatch-alarm',
+    type: 'menu',
+    label: '24小时派签告警',
+    description: '监控供应商24小时派签率并定时推送告警',
     sortOrder: 39,
   },
   { key: 'menu:chase-dispatch', type: 'menu', label: '催派推送', description: '按滞留时间统计供应商滞留订单并定时推送催派', sortOrder: 39 },
@@ -119,14 +126,6 @@ export const PERMISSION_REGISTRY: PermissionDefinition[] = [
     label: '导出检查表',
     menuKey: 'warehouse-safety',
     sortOrder: 510,
-  },
-  {
-    key: 'btn:exit-alarm:dispatch-alarm',
-    type: 'button',
-    label: '24小时派签告警',
-    description: '在「出仓 / 派签告警」页面查看并操作24小时派签率告警 Tab',
-    menuKey: 'exit-alarm',
-    sortOrder: 391,
   },
   {
     key: 'btn:vendor-analysis:driver-map',

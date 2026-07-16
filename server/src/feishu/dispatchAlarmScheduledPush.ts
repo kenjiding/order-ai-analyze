@@ -5,16 +5,19 @@ import { buildDispatchAlarmCard } from './buildDispatchAlarmCard'
 import { createDispatchAlarmShareSnapshot } from './dispatchAlarmShareSnapshot'
 import { computeFeishuWebhookSign, parseSafeWebhookUrl } from '../feishuWebhookHelpers'
 import { envFirst } from '../imile/shared'
-import { getRegionNow } from '../imile/inboundWaybillIndex'
 import { resolveRegionTz, type AusTz } from '../imile/ausTimezone'
 import { fetchDriverWaybills } from '../imile/driverPerformance'
-import { listPushableConfigsForScope } from '../supplierConfigScopes'
-import { parseRouteCodes, parseRouteCodeWhitelistSet, supplierDisplayName } from '../supplierPushConfigs'
+import {
+  listPushableSupplierPushConfigsForSchedule,
+  parsePushConfigIds,
+  parseRouteCodes,
+  parseRouteCodeWhitelistSet,
+  supplierDisplayName,
+} from '../supplierPushConfigs'
 import { aggregateDispatch24hByVendor, type Dispatch24hWaybillRow } from '../vendorAnalysis/dispatch24hAggregate'
 import { lastSortingWorkdayOnOrBefore } from '../imile/sortingWorkday'
-import { claimScheduledSlot } from '../jobs/scheduledClaim'
-
-const DISPATCH_ALARM_SCOPE = 'dispatch-alarm.scheduled' as const
+import { claimScheduledSlot, formatScheduledPushSlotKey, releaseScheduledSlot } from '../jobs/scheduledClaim'
+import { resolveDueScheduledSlots } from '../jobs/scheduledDueSlots'
 
 type EnabledSchedule = { schedule: DispatchAlarmSchedule; regionCode: string | null }
 
@@ -169,7 +172,6 @@ export async function logDispatchAlarmSchedulerReadiness(): Promise<void> {
       console.log(`${label} 尚无已启用的定时配置，等待各账号页面保存后生效`)
       return
     }
-    const scopedConfigs = await listPushableConfigsForScope(DISPATCH_ALARM_SCOPE)
     for (const { schedule, regionCode } of enabled) {
       if (!schedule.stationCode?.trim()) {
         console.warn(`${label} 配置 ${schedule.id} 已启用，但未保存站点编码 stationCode`)
@@ -180,8 +182,9 @@ export async function logDispatchAlarmSchedulerReadiness(): Promise<void> {
       }
       const pushTimes = schedule.pushTimes as Array<{ id: string; time: string }>
       const weekdays = schedule.weekdays as number[]
+      const scopedCount = parsePushConfigIds(schedule.pushConfigIds).length
       console.log(
-        `${label} 就绪 user=${schedule.userId} weekdays=[${weekdays.join(',')}] times=[${pushTimes.map((s) => s.time).join(',')}] station=${schedule.stationCode} threshold=${schedule.alertThresholdPct}% region=${regionCode ?? '(默认阿德莱德)'} scheduledSuppliers=${scopedConfigs.length}`,
+        `${label} 就绪 user=${schedule.userId} weekdays=[${weekdays.join(',')}] times=[${pushTimes.map((s) => s.time).join(',')}] station=${schedule.stationCode} threshold=${schedule.alertThresholdPct}% region=${regionCode ?? '(默认阿德莱德)'} scheduledSuppliers=${scopedCount}`,
       )
     }
   } catch (err) {
@@ -196,62 +199,85 @@ async function runOneScheduledPush(schedule: DispatchAlarmSchedule, regionCode: 
   if (!stationCode) return
 
   const tz = resolveRegionTz(regionCode)
-  const { weekday, timeHHmm, prevDateStr } = getRegionNow(tz)
   const weekdays = schedule.weekdays as number[]
-  if (!weekdays.includes(weekday)) return
-
   const pushTimes = schedule.pushTimes as Array<{ id: string; time: string }>
-  const matchedSlot = pushTimes.find((s) => s.time === timeHHmm)
-  if (!matchedSlot) return
+  const dueSlots = resolveDueScheduledSlots({ tz, weekdays, pushTimes })
+  if (dueSlots.length === 0) return
 
-  const claimed = await claimScheduledSlot(`dispatch-alarm:${schedule.id}`, `${prevDateStr}|${timeHHmm}`)
-  if (!claimed) {
-    console.log(`${label} 时间槽 date=${prevDateStr} time=${timeHHmm} 已被推送过（其他 worker 抢先处理），跳过`)
-    return
+  for (const slot of dueSlots) {
+    const { weekday, timeHHmm, prevDateStr } = slot
+    const jobKey = `dispatch-alarm:${schedule.id}`
+    const slotKey = formatScheduledPushSlotKey(slot)
+
+    const token = readDispatchAlarmImileToken(schedule)
+    if (!token) {
+      console.warn(`${label} 命中推送时间 weekday=${weekday} time=${timeHHmm}，但缺少 iMile token，无法拉数推送`)
+      continue
+    }
+
+    const configs = await listPushableSupplierPushConfigsForSchedule(parsePushConfigIds(schedule.pushConfigIds), {
+      regionCode,
+      stationCode,
+    })
+    if (configs.length === 0) {
+      console.log(`${label} 无参与定时推送的供应商，跳过（请在该条目的「供应商配置」启用供应商）`)
+      continue
+    }
+
+    const claimed = await claimScheduledSlot(jobKey, slotKey)
+    if (!claimed) {
+      console.log(`${label} 时间槽 date=${slot.dateStr} time=${timeHHmm} 已被推送过（其他 worker 抢先处理），跳过`)
+      continue
+    }
+
+    // 目标日避开周末（周六/日不分拣、无数据）：从前一日往前取第一个工作日
+    const targetDate = lastSortingWorkdayOnOrBefore(prevDateStr)
+    console.log(`${label} 命中推送时间 weekday=${weekday} time=${timeHHmm} date=${targetDate}`)
+
+    const result = await executeDispatchAlarmPush({
+      token,
+      stationCode,
+      date: targetDate,
+      pushTime: timeHHmm,
+      alertThresholdPct: schedule.alertThresholdPct,
+      configs,
+      tz,
+      label,
+    })
+    if ('error' in result) {
+      await releaseScheduledSlot(jobKey, slotKey)
+      console.error(`${label} 推送失败: ${result.error}`)
+      continue
+    }
+    if (result.pushedCount === 0 && result.errors.length > 0) {
+      await releaseScheduledSlot(jobKey, slotKey)
+      console.error(`${label} 全部推送失败: ${result.errors.join('; ')}`)
+      continue
+    }
+    console.log(`${label} 完成 ${result.pushedCount}/${result.totalConfigs} 条`)
   }
-
-  const token = readDispatchAlarmImileToken(schedule)
-  if (!token) {
-    console.warn(`${label} 命中推送时间 weekday=${weekday} time=${timeHHmm}，但缺少 iMile token，无法拉数推送`)
-    return
-  }
-
-  // 目标日避开周末（周六/日不分拣、无数据）：从前一日往前取第一个工作日
-  const targetDate = lastSortingWorkdayOnOrBefore(prevDateStr)
-  console.log(`${label} 命中推送时间 weekday=${weekday} time=${timeHHmm} date=${targetDate}`)
-
-  const configs = await listPushableConfigsForScope(DISPATCH_ALARM_SCOPE)
-  if (configs.length === 0) {
-    console.log(`${label} 无参与定时推送的供应商，跳过（请在「24小时派签告警」启用供应商）`)
-    return
-  }
-
-  const result = await executeDispatchAlarmPush({
-    token,
-    stationCode,
-    date: targetDate,
-    pushTime: timeHHmm,
-    alertThresholdPct: schedule.alertThresholdPct,
-    configs,
-    tz,
-    label,
-  })
-  if ('error' in result) {
-    console.error(`${label} 推送失败: ${result.error}`)
-    return
-  }
-  console.log(`${label} 完成 ${result.pushedCount}/${result.totalConfigs} 条`)
 }
+
+let isRunning = false
 
 /** 每分钟由 scheduler 调用；遍历所有已启用的账号级定时配置，各自独立判断是否命中推送 */
 export async function runDispatchAlarmScheduledPush(): Promise<void> {
   const label = '[dispatch-alarm/scheduler]'
-  const enabled = await listEnabledSchedules()
-  for (const { schedule, regionCode } of enabled) {
-    try {
-      await runOneScheduledPush(schedule, regionCode)
-    } catch (err) {
-      console.error(`${label} 配置 ${schedule.id}（user=${schedule.userId}）推送异常:`, err)
+  if (isRunning) {
+    console.warn(`${label} 上一次执行仍在进行中，跳过本次触发`)
+    return
+  }
+  isRunning = true
+  try {
+    const enabled = await listEnabledSchedules()
+    for (const { schedule, regionCode } of enabled) {
+      try {
+        await runOneScheduledPush(schedule, regionCode)
+      } catch (err) {
+        console.error(`${label} 配置 ${schedule.id}（user=${schedule.userId}）推送异常:`, err)
+      }
     }
+  } finally {
+    isRunning = false
   }
 }

@@ -36,6 +36,7 @@ export async function requestImileApi(options: {
   retryBusy?: boolean
   busyRetryDelayMs?: number
   busyRetryMax?: number
+  timeoutMs?: number
 }): Promise<ImileClientSuccess | ImileClientError> {
   const retryBusy = options.retryBusy ?? true
   const busyRetryDelayMs = options.busyRetryDelayMs ?? DEFAULT_BUSY_RETRY_DELAY_MS
@@ -49,6 +50,7 @@ export async function requestImileApi(options: {
       method: options.method,
       headers: options.headers,
       body,
+      timeoutMs: options.timeoutMs,
     })
 
     if (!res.readOk) {

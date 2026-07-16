@@ -9,10 +9,8 @@ import {
   saveEmployeesToStorage,
   loadRateSettingsFromStorage,
   saveRateSettingsToStorage,
-  clearRateSettingsStorage,
   loadActualWorkerRateSettingsFromStorage,
   saveActualWorkerRateSettingsToStorage,
-  clearActualWorkerRateSettingsStorage,
 } from './storage'
 import { DEFAULT_RATE_SETTINGS, DEFAULT_ACTUAL_WORKER_RATE_SETTINGS, ROLE_MAP, ROLES } from './constants'
 import {
@@ -41,6 +39,7 @@ import { fetchZktAttendance } from '../../api/zktAttendanceApi'
 import { toZktAttendanceInput } from '../../imile/zktAttendanceSettings'
 import { mapZktTimeCardToAttendanceSheetRows } from '../../payroll/zktTimeCardSheetMapping'
 import { useAppSettings } from '../../context/AppSettingsContext'
+import { useAuthStore } from '../../stores/authStore'
 import {
   reconcileFinanceWithWageRecords,
   buildReconciliationExportRows,
@@ -123,6 +122,7 @@ function appendOriginalWorkbookSheets(targetBook, sourceBook) {
 
 export function useWageSalaryPage() {
   const { zktAttendance } = useAppSettings()
+  const authUserId = useAuthStore((s) => s.user?.id ?? null)
   const [activeTab, setActiveTab] = useState('upload')
   const [employees, setEmployees] = useState([])
   const [wageRecords, setWageRecords] = useState([])
@@ -167,6 +167,7 @@ export function useWageSalaryPage() {
   )
 
   useEffect(() => {
+    if (!authUserId) return
     void (async () => {
       const [emps, rates, actual] = await Promise.all([
         loadEmployeesFromStorage(),
@@ -177,7 +178,7 @@ export function useWageSalaryPage() {
       setRateSettings(rates)
       setActualWorkerRateSettings(actual)
     })()
-  }, [])
+  }, [authUserId])
 
   const statistics = useMemo(() => {
     if (!wageRecords.length) return null
@@ -205,7 +206,7 @@ export function useWageSalaryPage() {
   const resetRateSettings = useCallback(async () => {
     setRateSettings(DEFAULT_RATE_SETTINGS)
     try {
-      await clearRateSettingsStorage()
+      await saveRateSettingsToStorage(DEFAULT_RATE_SETTINGS)
     } catch (e) {
       console.error(e)
     }
@@ -230,9 +231,10 @@ export function useWageSalaryPage() {
   )
 
   const resetActualWorkerRateSettings = useCallback(async () => {
-    setActualWorkerRateSettings(JSON.parse(JSON.stringify(DEFAULT_ACTUAL_WORKER_RATE_SETTINGS)))
+    const defaults = JSON.parse(JSON.stringify(DEFAULT_ACTUAL_WORKER_RATE_SETTINGS))
+    setActualWorkerRateSettings(defaults)
     try {
-      await clearActualWorkerRateSettingsStorage()
+      await saveActualWorkerRateSettingsToStorage(defaults)
     } catch (e) {
       console.error(e)
     }

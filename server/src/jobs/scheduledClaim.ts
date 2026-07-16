@@ -1,4 +1,10 @@
+import { and, eq } from 'drizzle-orm'
 import { getDb, schema } from '../db'
+
+/** 定时推送幂等键：以「触发日 + 配置时刻」标识一次应发生的推送。 */
+export function formatScheduledPushSlotKey(slot: { dateStr: string; timeHHmm: string }): string {
+  return `${slot.dateStr}|${slot.timeHHmm}`
+}
 
 /**
  * 抢占一个 (jobKey, slotKey) 定时任务时间槽：插入成功才允许继续执行推送等副作用。
@@ -15,4 +21,15 @@ export async function claimScheduledSlot(jobKey: string, slotKey: string): Promi
     .onConflictDoNothing()
     .returning({ id: schema.scheduledJobClaims.id })
   return inserted.length > 0
+}
+
+/**
+ * 推送失败时释放已抢占的时间槽，使补跑窗口内可以重试。
+ * 仅在「确认需要重试」时调用；全部 webhook 已成功或业务上确定无需再推时不要释放。
+ */
+export async function releaseScheduledSlot(jobKey: string, slotKey: string): Promise<void> {
+  const db = getDb()
+  await db
+    .delete(schema.scheduledJobClaims)
+    .where(and(eq(schema.scheduledJobClaims.jobKey, jobKey), eq(schema.scheduledJobClaims.slotKey, slotKey)))
 }

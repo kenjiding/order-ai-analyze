@@ -288,6 +288,27 @@
       "when": 1785300000000,
       "tag": "0040_dispatch_alarm_share_snapshots",
       "breakpoints": true
+    },
+    {
+      "idx": 41,
+      "version": "7",
+      "when": 1785400000000,
+      "tag": "0041_chase_dispatch_schedules_list",
+      "breakpoints": true
+    },
+    {
+      "idx": 42,
+      "version": "7",
+      "when": 1785500000000,
+      "tag": "0042_exit_alarm_schedules_list",
+      "breakpoints": true
+    },
+    {
+      "idx": 43,
+      "version": "7",
+      "when": 1785600000000,
+      "tag": "0043_dispatch_alarm_schedules_list",
+      "breakpoints": true
     }
   ]
 }

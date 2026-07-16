@@ -150,12 +150,15 @@ export async function fetchStagnantWaybills(
   return { ok: true, data: pageResult.records as StagnantWaybillRow[] }
 }
 
-function makeRouteCodeHeaders(token: string): Record<string, string> {
+function makeRouteCodeHeaders(token: string, hubcode: string): Record<string, string> {
   return buildImilePortalHeaders({
     token,
     envPrefix: 'IMILE_CHASE_DISPATCH_ROUTE_CODE',
     defaults: IMILE_DS_SAAS_TMS_PORTAL,
     sharedEnvPrefixes: ['IMILE_STAGNANT_WAYBILL', 'IMILE_CANCEL_SCAN', 'IMILE_TRACK'],
+    // hubcode 必须与查询站点一致，否则接口成功但 results 为空（默认 hub 是阿德莱德）；
+    // 定时任务无 HTTP 请求上下文，不能依赖 getRequestImileHubcode() 兜底
+    overrides: { hubcode },
   })
 }
 
@@ -181,6 +184,7 @@ function wideRouteCodeSearchWindow(): { startTime: string; endTime: string } {
 export async function fetchStagnantWaybillRouteCodes(
   token: string,
   waybillNos: string[],
+  stationCode: string,
 ): Promise<{ ok: true; data: Map<string, string> } | ApiError> {
   const uniqueNos = [...new Set(waybillNos.filter((no) => typeof no === 'string' && no.trim().length > 0))]
   const result = new Map<string, string>()
@@ -188,7 +192,7 @@ export async function fetchStagnantWaybillRouteCodes(
 
   const normalizedToken = normalizeImileToken(token)
   const url = envFirstOr(['IMILE_CHASE_DISPATCH_ROUTE_CODE_URL'], DEFAULT_SEARCH_WAYBILL_URL)
-  const headers = makeRouteCodeHeaders(normalizedToken)
+  const headers = makeRouteCodeHeaders(normalizedToken, stationCode)
   const { startTime, endTime } = wideRouteCodeSearchWindow()
   const batches = chunkArray(uniqueNos, ROUTE_CODE_QUERY_BATCH_SIZE)
 

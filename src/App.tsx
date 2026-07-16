@@ -35,6 +35,7 @@ const VendorSnapshotPage = lazy(() => import('./pages/VendorAnalysis/VendorSnaps
 const VendorPortalPage = lazy(() => import('./pages/VendorPortal/VendorPortalPage'))
 const ChaseDispatchSharePage = lazy(() => import('./pages/ChaseDispatchShare/ChaseDispatchSharePage'))
 const ExitAlarmPage = lazy(() => import('./pages/ExitAlarm/ExitAlarmPage'))
+const DispatchAlarmPage = lazy(() => import('./pages/DispatchAlarm/DispatchAlarmPage'))
 const ChaseDispatchPage = lazy(() => import('./pages/ChaseDispatch/ChaseDispatchPage'))
 const WorkOrderPushPage = lazy(() => import('./pages/WorkOrderPush/WorkOrderPushPage'))
 const AttendanceWorkTimePage = lazy(() => import('./pages/AttendanceWorkTime/AttendanceWorkTimePage'))
@@ -196,6 +197,14 @@ function AppRoutes() {
             element={
               <KeptPage cacheKey="page-exit-alarm" name="exit-alarm">
                 <ExitAlarmPage />
+              </KeptPage>
+            }
+          />
+          <Route
+            path="/dispatch-alarm"
+            element={
+              <KeptPage cacheKey="page-dispatch-alarm" name="dispatch-alarm">
+                <DispatchAlarmPage />
               </KeptPage>
             }
           />

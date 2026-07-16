@@ -1,10 +1,11 @@
-import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react'
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react'
 import { getUserPreference, putUserPreference } from '../api/userPreferencesApi'
 import {
   DEFAULT_ZKT_ATTENDANCE_SETTINGS,
   normalizeZktAttendanceSettings,
   type ZktAttendanceSettings,
 } from '../imile/zktAttendanceSettings'
+import { useAuthStore } from '../stores/authStore'
 
 /* Context 模块同时导出 Provider 与 hooks，故关闭 react-refresh 的仅导出组件规则。 */
 /* eslint-disable react-refresh/only-export-components */
@@ -29,13 +30,15 @@ function normalizeStoredAppSettings(raw: Partial<StoredAppSettings> | null | und
   }
 }
 
+export type UpdateSettingsResult = { ok: true } | { ok: false; error: string }
+
 export type AppSettingsContextValue = {
   imileToken: string
   zktAttendance: ZktAttendanceSettings
   /** 服务端首次拉取是否已完成；拉取完成前 imileToken 等字段可能仍是默认值 */
   settingsLoaded: boolean
-  /** 整体覆盖式保存，落地到当前登录账号的服务端偏好 */
-  updateSettings: (partial: Partial<StoredAppSettings>) => void
+  /** 整体覆盖式保存，落地到当前登录账号的服务端偏好；成功后才更新本地状态 */
+  updateSettings: (partial: Partial<StoredAppSettings>) => Promise<UpdateSettingsResult>
   /** 登录成功后调用，从服务端重新拉取当前账号的设置 */
   refreshSettings: () => Promise<void>
 }
@@ -45,33 +48,46 @@ const AppSettingsContext = createContext<AppSettingsContextValue | null>(null)
 export function AppSettingsProvider({ children }: { children: React.ReactNode }) {
   const [settings, setSettings] = useState<StoredAppSettings>(DEFAULT_APP_SETTINGS)
   const [settingsLoaded, setSettingsLoaded] = useState(false)
+  const settingsRef = useRef(settings)
+  settingsRef.current = settings
+  /** 递增后作废进行中的 GET，避免旧响应用空/旧数据盖住刚保存的结果 */
+  const revisionRef = useRef(0)
+
+  const authLoading = useAuthStore((s) => s.loading)
+  const isAuthenticated = useAuthStore((s) => s.isAuthenticated)
 
   const refreshSettings = useCallback(async () => {
+    const revision = ++revisionRef.current
     const result = await getUserPreference<Partial<StoredAppSettings>>(APP_SETTINGS_PREF_KEY)
+    if (revision !== revisionRef.current) return
     setSettings(normalizeStoredAppSettings(result.ok ? result.data.value : null))
     setSettingsLoaded(true)
   }, [])
 
   useEffect(() => {
-    let ignore = false
-    async function bootstrap() {
-      const result = await getUserPreference<Partial<StoredAppSettings>>(APP_SETTINGS_PREF_KEY)
-      if (ignore) return
-      setSettings(normalizeStoredAppSettings(result.ok ? result.data.value : null))
-      setSettingsLoaded(true)
-    }
-    void bootstrap()
-    return () => {
-      ignore = true
-    }
-  }, [])
+    if (authLoading) return
 
-  const updateSettings = useCallback((partial: Partial<StoredAppSettings>) => {
-    setSettings((prev) => {
-      const next = normalizeStoredAppSettings({ ...prev, ...partial })
-      void putUserPreference(APP_SETTINGS_PREF_KEY, next)
-      return next
-    })
+    if (!isAuthenticated) {
+      revisionRef.current += 1
+      setSettings(DEFAULT_APP_SETTINGS)
+      setSettingsLoaded(true)
+      return
+    }
+
+    void refreshSettings()
+  }, [authLoading, isAuthenticated, refreshSettings])
+
+  const updateSettings = useCallback(async (partial: Partial<StoredAppSettings>): Promise<UpdateSettingsResult> => {
+    const next = normalizeStoredAppSettings({ ...settingsRef.current, ...partial })
+    // 先作废进行中的 GET，再写入，防止「保存后旧拉取回来把本地盖掉」
+    revisionRef.current += 1
+    const result = await putUserPreference(APP_SETTINGS_PREF_KEY, next)
+    if (!result.ok) {
+      return { ok: false, error: result.error }
+    }
+    setSettings(next)
+    settingsRef.current = next
+    return { ok: true }
   }, [])
 
   const value = useMemo<AppSettingsContextValue>(

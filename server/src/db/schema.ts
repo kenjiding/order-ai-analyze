@@ -262,28 +262,26 @@ export const vendorShareLinks = pgTable(
   ],
 )
 
-/** 11点前出仓告警：定时推送配置（每个账号最多一条，userId 唯一） */
-export const exitAlarmSchedules = pgTable(
-  'exit_alarm_schedules',
-  {
-    id: uuid('id').primaryKey().defaultRandom(),
-    /** 拥有该配置的账号；时区按该账号的 regionCode 判断，未设置兜底阿德莱德 */
-    userId: uuid('user_id').references(() => users.id, { onDelete: 'cascade' }),
-    /** 推送星期，1=周一…7=周日，存为 JSONB 数组 */
-    weekdays: jsonb('weekdays').notNull().default([]),
-    /** 推送时间点列表 [{id, time}]，time 格式 HH:mm（按拥有者账号所属州本地时间） */
-    pushTimes: jsonb('push_times').notNull().default([]),
-    isEnabled: boolean('is_enabled').notNull().default(true),
-    /** 定时推送使用的站点编码（lastScanStationCode） */
-    stationCode: varchar('station_code', { length: 64 }).notNull().default(''),
-    /** 定时拉数使用的 iMile token（保存配置时从全局设置同步，不对外返回） */
-    imileToken: varchar('imile_token', { length: 2048 }),
-    updatedBy: uuid('updated_by').references(() => users.id, { onDelete: 'set null' }),
-    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
-    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
-  },
-  (table) => [uniqueIndex('exit_alarm_schedules_user_id_unique').on(table.userId)],
-)
+/** 11点前出仓告警：定时推送配置（一个账号可有多条，按站点区分） */
+export const exitAlarmSchedules = pgTable('exit_alarm_schedules', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  /** 拥有该配置的账号；时区按该账号的 regionCode 判断，未设置兜底阿德莱德 */
+  userId: uuid('user_id').references(() => users.id, { onDelete: 'cascade' }),
+  /** 推送星期，1=周一…7=周日，存为 JSONB 数组 */
+  weekdays: jsonb('weekdays').notNull().default([]),
+  /** 推送时间点列表 [{id, time}]，time 格式 HH:mm（按拥有者账号所属州本地时间） */
+  pushTimes: jsonb('push_times').notNull().default([]),
+  isEnabled: boolean('is_enabled').notNull().default(true),
+  /** 定时推送使用的站点编码（lastScanStationCode） */
+  stationCode: varchar('station_code', { length: 64 }).notNull().default(''),
+  /** 本条配置启用的供应商配置 id 列表，取代原来全局共享的 supplierConfigScopeBindings */
+  pushConfigIds: jsonb('push_config_ids').notNull().default([]),
+  /** 定时拉数使用的 iMile token（保存配置时从全局设置同步，不对外返回） */
+  imileToken: varchar('imile_token', { length: 2048 }),
+  updatedBy: uuid('updated_by').references(() => users.id, { onDelete: 'set null' }),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+})
 
 /**
  * 定时任务幂等抢占记录：所有轮询式定时推送（出仓告警/催派推送/飞书日报等）共用。
@@ -302,30 +300,28 @@ export const scheduledJobClaims = pgTable(
   (table) => [uniqueIndex('scheduled_job_claims_job_slot_unique').on(table.jobKey, table.slotKey)],
 )
 
-/** 催派推送：定时推送配置（每个账号最多一条，userId 唯一），复用出仓告警的供应商配置 catalog */
-export const chaseDispatchSchedules = pgTable(
-  'chase_dispatch_schedules',
-  {
-    id: uuid('id').primaryKey().defaultRandom(),
-    /** 拥有该配置的账号；时区按该账号的 regionCode 判断，未设置兜底阿德莱德 */
-    userId: uuid('user_id').references(() => users.id, { onDelete: 'cascade' }),
-    /** 推送星期，1=周一…7=周日，存为 JSONB 数组 */
-    weekdays: jsonb('weekdays').notNull().default([]),
-    /** 推送时间点列表 [{id, time}]，time 格式 HH:mm（按拥有者账号所属州本地时间） */
-    pushTimes: jsonb('push_times').notNull().default([]),
-    /** 滞留时间区间多选，值如 '0-1' '1-2' … '7+'，存为 JSONB 字符串数组 */
-    stagnationBuckets: jsonb('stagnation_buckets').notNull().default([]),
-    isEnabled: boolean('is_enabled').notNull().default(true),
-    /** 定时推送使用的站点编码（stockStationCodes） */
-    stationCode: varchar('station_code', { length: 64 }).notNull().default(''),
-    /** 定时拉数使用的 iMile token（保存配置时从全局设置同步，不对外返回） */
-    imileToken: varchar('imile_token', { length: 2048 }),
-    updatedBy: uuid('updated_by').references(() => users.id, { onDelete: 'set null' }),
-    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
-    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
-  },
-  (table) => [uniqueIndex('chase_dispatch_schedules_user_id_unique').on(table.userId)],
-)
+/** 催派推送：定时推送配置（一个账号可有多条，按站点区分），复用出仓告警的供应商配置 catalog */
+export const chaseDispatchSchedules = pgTable('chase_dispatch_schedules', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  /** 拥有该配置的账号；时区按该账号的 regionCode 判断，未设置兜底阿德莱德 */
+  userId: uuid('user_id').references(() => users.id, { onDelete: 'cascade' }),
+  /** 推送星期，1=周一…7=周日，存为 JSONB 数组 */
+  weekdays: jsonb('weekdays').notNull().default([]),
+  /** 推送时间点列表 [{id, time}]，time 格式 HH:mm（按拥有者账号所属州本地时间） */
+  pushTimes: jsonb('push_times').notNull().default([]),
+  /** 滞留时间区间多选，值如 '0-1' '1-2' … '7+'，存为 JSONB 字符串数组 */
+  stagnationBuckets: jsonb('stagnation_buckets').notNull().default([]),
+  isEnabled: boolean('is_enabled').notNull().default(true),
+  /** 定时推送使用的站点编码（stockStationCodes） */
+  stationCode: varchar('station_code', { length: 64 }).notNull().default(''),
+  /** 本条配置启用的供应商配置 id 列表，取代原来全局共享的 supplierConfigScopeBindings */
+  pushConfigIds: jsonb('push_config_ids').notNull().default([]),
+  /** 定时拉数使用的 iMile token（保存配置时从全局设置同步，不对外返回） */
+  imileToken: varchar('imile_token', { length: 2048 }),
+  updatedBy: uuid('updated_by').references(() => users.id, { onDelete: 'set null' }),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+})
 
 /** 工单推送：定时推送配置（每个账号最多一条，userId 唯一），复用出仓告警/催派推送的供应商配置 catalog */
 export const workOrderPushSchedules = pgTable(
@@ -347,32 +343,30 @@ export const workOrderPushSchedules = pgTable(
 )
 
 /**
- * 24小时派签告警：定时推送配置（每个账号最多一条，userId 唯一）。
+ * 24小时派签告警：定时推送配置（一个账号可有多条，按站点区分）。
  * 从「供应商数据分析」的 24H 派签率指标封装复用出来的独立告警，配置形状与出仓告警一致。
  */
-export const dispatchAlarmSchedules = pgTable(
-  'dispatch_alarm_schedules',
-  {
-    id: uuid('id').primaryKey().defaultRandom(),
-    /** 拥有该配置的账号；时区按该账号的 regionCode 判断，未设置兜底阿德莱德 */
-    userId: uuid('user_id').references(() => users.id, { onDelete: 'cascade' }),
-    /** 推送星期，1=周一…7=周日，存为 JSONB 数组 */
-    weekdays: jsonb('weekdays').notNull().default([]),
-    /** 推送时间点列表 [{id, time}]，time 格式 HH:mm（按拥有者账号所属州本地时间） */
-    pushTimes: jsonb('push_times').notNull().default([]),
-    isEnabled: boolean('is_enabled').notNull().default(true),
-    /** 定时推送使用的站点编码（lastScanStationCode） */
-    stationCode: varchar('station_code', { length: 64 }).notNull().default(''),
-    /** 24H 派签率预警阈值（百分比整数）：低于该值的供应商在卡片中标红并列出未达标运单号 */
-    alertThresholdPct: integer('alert_threshold_pct').notNull().default(92),
-    /** 定时拉数使用的 iMile token（保存配置时从全局设置同步，不对外返回） */
-    imileToken: varchar('imile_token', { length: 2048 }),
-    updatedBy: uuid('updated_by').references(() => users.id, { onDelete: 'set null' }),
-    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
-    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
-  },
-  (table) => [uniqueIndex('dispatch_alarm_schedules_user_id_unique').on(table.userId)],
-)
+export const dispatchAlarmSchedules = pgTable('dispatch_alarm_schedules', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  /** 拥有该配置的账号；时区按该账号的 regionCode 判断，未设置兜底阿德莱德 */
+  userId: uuid('user_id').references(() => users.id, { onDelete: 'cascade' }),
+  /** 推送星期，1=周一…7=周日，存为 JSONB 数组 */
+  weekdays: jsonb('weekdays').notNull().default([]),
+  /** 推送时间点列表 [{id, time}]，time 格式 HH:mm（按拥有者账号所属州本地时间） */
+  pushTimes: jsonb('push_times').notNull().default([]),
+  isEnabled: boolean('is_enabled').notNull().default(true),
+  /** 定时推送使用的站点编码（lastScanStationCode） */
+  stationCode: varchar('station_code', { length: 64 }).notNull().default(''),
+  /** 24H 派签率预警阈值（百分比整数）：低于该值的供应商在卡片中标红并列出未达标运单号 */
+  alertThresholdPct: integer('alert_threshold_pct').notNull().default(92),
+  /** 本条配置启用的供应商配置 id 列表，取代原来全局共享的 supplierConfigScopeBindings */
+  pushConfigIds: jsonb('push_config_ids').notNull().default([]),
+  /** 定时拉数使用的 iMile token（保存配置时从全局设置同步，不对外返回） */
+  imileToken: varchar('imile_token', { length: 2048 }),
+  updatedBy: uuid('updated_by').references(() => users.id, { onDelete: 'set null' }),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+})
 
 /**
  * 站点日到件 waybillNo 索引（inbound/query 预取，供出仓告警、供应商分析等共享）。

@@ -1,5 +1,4 @@
 export type { SupplierConfigScopeKey, SupplierConfigScopeStore } from './types'
-export { exitAlarmScheduledScope } from './exitAlarmScheduled'
 export {
   getSupplierConfigScopeStore,
   isSupplierConfigScopeKey,

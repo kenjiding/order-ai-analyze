@@ -2,6 +2,7 @@
 import { Table } from 'antd'
 import { Edit2, Save, Trash2, X } from 'lucide-react'
 import { formatEmployeeDisplayName } from '../employeeDisplayName'
+import { roleBadgeClassName } from '../constants'
 import { WageAntdTable } from './WageAntdTable'
 
 export function WageRecordsTable({
@@ -182,15 +183,7 @@ export function WageRecordsTable({
           )
         }
         return (
-          <span
-            className={`rounded px-2 py-1 text-xs font-medium ${
-              record.role === 'worker'
-                ? 'bg-blue-100 text-blue-800'
-                : record.role === 'forklift'
-                  ? 'bg-purple-100 text-purple-800'
-                  : 'bg-green-100 text-green-800'
-            }`}
-          >
+          <span className={`rounded px-2 py-1 text-xs font-medium ${roleBadgeClassName(record.role)}`}>
             {roleMap[record.role]}
           </span>
         )

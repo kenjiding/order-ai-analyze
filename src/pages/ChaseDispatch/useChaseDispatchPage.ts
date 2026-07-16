@@ -1,122 +1,172 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useAppSettings } from '../../context/AppSettingsContext'
-import { useGlobalFilterStore } from '../../stores/globalFilterStore'
 import { showToast } from '../../utils/toast'
-import {
-  useSupplierConfigScopeBinding,
-  useSupplierPushCatalog,
-} from '../../shared/supplierPushConfig'
+import { useSupplierPushCatalog } from '../../shared/supplierPushConfig'
 import type { ChaseDispatchSchedule, ChaseDispatchScheduleDraft } from './chaseDispatchTypes'
-import { loadChaseDispatchSchedule, saveChaseDispatchSchedule } from './chaseDispatchApi'
-
-const CHASE_DISPATCH_SCHEDULED_SCOPE = 'chase-dispatch.scheduled' as const
+import {
+  createChaseDispatchSchedule,
+  deleteChaseDispatchSchedule,
+  loadChaseDispatchSchedules,
+  triggerChaseDispatchSchedulePushNow,
+  updateChaseDispatchSchedule,
+} from './chaseDispatchApi'
 
 export function useChaseDispatchPage() {
   const { imileToken } = useAppSettings()
-  const { selectedStations } = useGlobalFilterStore()
 
   const catalog = useSupplierPushCatalog()
-  const scopeBinding = useSupplierConfigScopeBinding(CHASE_DISPATCH_SCHEDULED_SCOPE, catalog.configs)
 
-  const [schedule, setSchedule] = useState<ChaseDispatchSchedule | null>(null)
-  const [scheduleLoading, setScheduleLoading] = useState(false)
-  const [scheduleSaving, setScheduleSaving] = useState(false)
+  const [schedules, setSchedules] = useState<ChaseDispatchSchedule[]>([])
+  const [schedulesLoading, setSchedulesLoading] = useState(false)
+  const [saving, setSaving] = useState(false)
+  const [pushingId, setPushingId] = useState<string | null>(null)
 
-  // 「编辑」统一驱动定时推送配置与供应商配置（多选）：未加载出配置前默认可编辑，
-  // 加载完成后进入只读态，点击「编辑」才能同时修改两者，点击「保存」一并提交。
-  const [editing, setEditing] = useState(true)
-  const [pendingSupplierIds, setPendingSupplierIdsState] = useState<string[]>([])
-
-  useEffect(() => {
-    if (schedule) setEditing(false)
-  }, [schedule])
-
-  // 首次加载完成后（不论是否已有 schedule）先同步一次已启用供应商，
-  // 之后仅在非编辑态同步，避免覆盖用户正在编辑中的多选。
-  const supplierSyncedRef = useRef(false)
-  useEffect(() => {
-    if (scopeBinding.loading) return
-    if (supplierSyncedRef.current && editing) return
-    supplierSyncedRef.current = true
-    setPendingSupplierIdsState(scopeBinding.enabledIds)
-  }, [scopeBinding.enabledIds, scopeBinding.loading, editing])
-
-  const startEditing = useCallback(() => setEditing(true), [])
-
-  const cancelEditing = useCallback(() => {
-    setPendingSupplierIdsState(scopeBinding.enabledIds)
-    setEditing(false)
-  }, [scopeBinding.enabledIds])
+  const [drawerOpen, setDrawerOpen] = useState(false)
+  const [editingSchedule, setEditingSchedule] = useState<ChaseDispatchSchedule | null>(null)
 
   const initRef = useRef(false)
+
+  const reload = useCallback(async () => {
+    setSchedulesLoading(true)
+    const res = await loadChaseDispatchSchedules()
+    setSchedulesLoading(false)
+    if (res.ok) {
+      setSchedules(res.data)
+    } else {
+      showToast(`催派推送配置加载失败: ${res.error}`, 'error')
+    }
+  }, [])
 
   useEffect(() => {
     if (initRef.current) return
     initRef.current = true
-    setScheduleLoading(true)
-    void loadChaseDispatchSchedule().then((scheduleRes) => {
-      setScheduleLoading(false)
-      if (scheduleRes.ok) {
-        setSchedule(scheduleRes.data)
-      } else {
-        showToast(`定时配置加载失败: ${scheduleRes.error}`, 'error')
-      }
-    })
+    void reload()
+  }, [reload])
+
+  const openCreateDrawer = useCallback(() => {
+    setEditingSchedule(null)
+    setDrawerOpen(true)
   }, [])
 
-  const saveSchedule = useCallback(
+  const openEditDrawer = useCallback((schedule: ChaseDispatchSchedule) => {
+    setEditingSchedule(schedule)
+    setDrawerOpen(true)
+  }, [])
+
+  const closeDrawer = useCallback(() => {
+    setDrawerOpen(false)
+    setEditingSchedule(null)
+  }, [])
+
+  const submitDrawer = useCallback(
     async (draft: ChaseDispatchScheduleDraft): Promise<boolean> => {
       if (!imileToken.trim()) {
-        showToast('请先在全局设置中配置 iMile token，再保存定时推送', 'error')
+        showToast('请先在全局设置中配置 iMile token，再保存催派推送', 'error')
         return false
       }
-      setScheduleSaving(true)
+      setSaving(true)
       try {
-        const res = await saveChaseDispatchSchedule(draft, imileToken)
+        const res = editingSchedule
+          ? await updateChaseDispatchSchedule(editingSchedule.id, draft, imileToken)
+          : await createChaseDispatchSchedule(draft, imileToken)
         if (res.ok) {
-          setSchedule(res.data)
-          showToast('定时推送配置已保存', 'success')
+          showToast(editingSchedule ? '催派推送已更新' : '催派推送已添加', 'success')
+          await reload()
           return true
         }
         showToast(`保存失败: ${res.error}`, 'error')
         return false
       } finally {
-        setScheduleSaving(false)
+        setSaving(false)
       }
     },
-    [imileToken],
+    [editingSchedule, imileToken, reload],
   )
 
-  // 「编辑」同时作用于定时推送配置与供应商配置：保存时先提交定时配置，
-  // 再提交多选的供应商范围，两者都成功才退出编辑态。
-  const saveAll = useCallback(
-    async (draft: ChaseDispatchScheduleDraft): Promise<boolean> => {
-      const scheduleOk = await saveSchedule(draft)
-      if (!scheduleOk) return false
-      const supplierOk = await scopeBinding.persist(pendingSupplierIds)
-      if (!supplierOk) return false
-      setEditing(false)
-      return true
+  const toggleEnabled = useCallback(
+    async (schedule: ChaseDispatchSchedule, isEnabled: boolean) => {
+      const draft: ChaseDispatchScheduleDraft = {
+        weekdays: schedule.weekdays,
+        pushTimes: schedule.pushTimes,
+        stagnationBuckets: schedule.stagnationBuckets,
+        isEnabled,
+        stationCode: schedule.stationCode,
+        pushConfigIds: schedule.pushConfigIds,
+      }
+      const res = await updateChaseDispatchSchedule(schedule.id, draft, imileToken)
+      if (res.ok) {
+        await reload()
+      } else {
+        showToast(`更新失败: ${res.error}`, 'error')
+      }
     },
-    [saveSchedule, scopeBinding, pendingSupplierIds],
+    [imileToken, reload],
   )
+
+  const removeSchedule = useCallback(
+    async (id: string) => {
+      const res = await deleteChaseDispatchSchedule(id)
+      if (res.ok) {
+        showToast('已删除', 'success')
+        await reload()
+      } else {
+        showToast(`删除失败: ${res.error}`, 'error')
+      }
+    },
+    [reload],
+  )
+
+  const pushNow = useCallback(async (schedule: ChaseDispatchSchedule) => {
+    if (!schedule.hasImileToken) {
+      showToast('缺少 iMile token，请编辑该配置并重新保存', 'error')
+      return
+    }
+    if (schedule.pushConfigIds.length === 0) {
+      showToast('请先为该配置选择供应商', 'error')
+      return
+    }
+    if (schedule.stagnationBuckets.length === 0) {
+      showToast('请先为该配置选择滞留时间', 'error')
+      return
+    }
+    setPushingId(schedule.id)
+    try {
+      const res = await triggerChaseDispatchSchedulePushNow(schedule.id)
+      if (!res.ok) {
+        showToast(`推送失败: ${res.error}`, 'error')
+        return
+      }
+      const { pushedCount, totalConfigs, errors } = res.data
+      if (errors.length > 0) {
+        showToast(
+          `已推送 ${pushedCount}/${totalConfigs}，部分失败: ${errors.slice(0, 2).join('；')}`,
+          'error',
+        )
+      } else {
+        showToast(`推送完成 ${pushedCount}/${totalConfigs}`, 'success')
+      }
+    } finally {
+      setPushingId(null)
+    }
+  }, [])
 
   const pushableConfigs = catalog.configs.filter((c) => c.webhookUrl.trim().length > 0)
 
   return {
     catalog,
-    scopeBinding,
-    scheduledPushConfigs: scopeBinding.enabledPushable,
+    schedules,
+    schedulesLoading,
+    saving,
+    pushingId,
+    drawerOpen,
+    editingSchedule,
+    openCreateDrawer,
+    openEditDrawer,
+    closeDrawer,
+    submitDrawer,
+    toggleEnabled,
+    removeSchedule,
+    pushNow,
     pushableConfigs,
-    schedule,
-    scheduleLoading,
-    scheduleSaving,
-    selectedStations,
-    editing,
-    startEditing,
-    cancelEditing,
-    pendingSupplierIds,
-    setPendingSupplierIds: setPendingSupplierIdsState,
-    saveAll,
   }
 }

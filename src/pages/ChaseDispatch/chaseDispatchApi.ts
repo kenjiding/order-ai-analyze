@@ -2,7 +2,6 @@ import { backendFetch } from '../../api/httpClient'
 import type {
   ChaseDispatchSchedule,
   ChaseDispatchScheduleDraft,
-  StagnationBucket,
 } from './chaseDispatchTypes'
 
 async function apiFetch<T>(
@@ -24,51 +23,59 @@ async function apiFetch<T>(
   }
 }
 
-export async function loadChaseDispatchSchedule(): Promise<
-  { ok: true; data: ChaseDispatchSchedule | null } | { ok: false; error: string }
+export async function loadChaseDispatchSchedules(): Promise<
+  { ok: true; data: ChaseDispatchSchedule[] } | { ok: false; error: string }
 > {
-  return apiFetch<ChaseDispatchSchedule | null>('/api/chase-dispatch/schedule', { method: 'GET' })
+  return apiFetch<ChaseDispatchSchedule[]>('/api/chase-dispatch/schedules', { method: 'GET' })
 }
 
-export async function saveChaseDispatchSchedule(
+function withImileTokenHeaders(imileToken: string): HeadersInit {
+  return imileToken
+    ? { 'Content-Type': 'application/json', Authorization: `Bearer ${imileToken}` }
+    : { 'Content-Type': 'application/json' }
+}
+
+export async function createChaseDispatchSchedule(
   draft: ChaseDispatchScheduleDraft,
   imileToken: string,
 ): Promise<{ ok: true; data: ChaseDispatchSchedule } | { ok: false; error: string }> {
-  return apiFetch<ChaseDispatchSchedule>('/api/chase-dispatch/schedule', {
-    method: 'PUT',
+  return apiFetch<ChaseDispatchSchedule>('/api/chase-dispatch/schedules', {
+    method: 'POST',
     body: JSON.stringify({ ...draft, imileToken }),
-    headers: imileToken
-      ? {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${imileToken}`,
-        }
-      : { 'Content-Type': 'application/json' },
+    headers: withImileTokenHeaders(imileToken),
   })
 }
 
-// 立即触发一次催派推送（测试用）
+export async function updateChaseDispatchSchedule(
+  id: string,
+  draft: ChaseDispatchScheduleDraft,
+  imileToken: string,
+): Promise<{ ok: true; data: ChaseDispatchSchedule } | { ok: false; error: string }> {
+  return apiFetch<ChaseDispatchSchedule>(`/api/chase-dispatch/schedules/${id}`, {
+    method: 'PUT',
+    body: JSON.stringify({ ...draft, imileToken }),
+    headers: withImileTokenHeaders(imileToken),
+  })
+}
+
+export async function deleteChaseDispatchSchedule(
+  id: string,
+): Promise<{ ok: true; data: null } | { ok: false; error: string }> {
+  return apiFetch<null>(`/api/chase-dispatch/schedules/${id}`, { method: 'DELETE' })
+}
+
 export type ChaseDispatchPushNowResult = {
   pushedCount: number
   totalConfigs: number
   errors: string[]
 }
 
-export async function triggerChaseDispatchPushNow(
-  imileToken: string,
-  params: {
-    stationCode: string
-    stagnationBuckets: StagnationBucket[]
-    configIds: string[]
-  },
-  signal?: AbortSignal,
+/** 立刻推送：使用该条目已保存配置，不校验推送时间 */
+export async function triggerChaseDispatchSchedulePushNow(
+  id: string,
 ): Promise<{ ok: true; data: ChaseDispatchPushNowResult } | { ok: false; error: string }> {
-  return apiFetch<ChaseDispatchPushNowResult>('/api/chase-dispatch/push-now', {
+  return apiFetch<ChaseDispatchPushNowResult>(`/api/chase-dispatch/schedules/${id}/push-now`, {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${imileToken}`,
-    },
-    body: JSON.stringify(params),
-    signal,
+    body: JSON.stringify({}),
   })
 }

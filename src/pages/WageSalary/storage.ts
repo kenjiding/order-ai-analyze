@@ -1,8 +1,13 @@
+import { getUserPreference, putUserPreference } from '../../api/userPreferencesApi'
 import type { RateSettings } from '../../payroll/wageRateCalculation'
 
 async function wageIdb() {
   return import('./wageSalaryRepository.idb')
 }
+
+/** 绑定登录账号，存服务端 user_preferences 表 */
+export const WAGE_RATE_SETTINGS_PREF_KEY = 'wage-rate-settings'
+export const WAGE_ACTUAL_WORKER_RATE_SETTINGS_PREF_KEY = 'wage-actual-worker-rate-settings'
 
 export type StoredEmployee = {
   _id: string
@@ -26,28 +31,38 @@ export function mergeRateSettings(saved: Partial<RateSettings> | null, defaults:
   return out
 }
 
+async function loadRateSettingsFromServer(
+  prefKey: string,
+  defaults: RateSettings,
+): Promise<RateSettings> {
+  const result = await getUserPreference<Partial<RateSettings>>(prefKey)
+  if (!result.ok || result.data.value === null) {
+    return defaults
+  }
+  return mergeRateSettings(result.data.value, defaults)
+}
+
+async function saveRateSettingsToServer(prefKey: string, settings: RateSettings): Promise<void> {
+  const result = await putUserPreference(prefKey, settings)
+  if (!result.ok) {
+    throw new Error(result.error || '保存时薪设置失败')
+  }
+}
+
 export async function loadRateSettingsFromStorage(defaults: RateSettings): Promise<RateSettings> {
-  return (await wageIdb()).loadRateSettingsFromIdb(defaults)
+  return loadRateSettingsFromServer(WAGE_RATE_SETTINGS_PREF_KEY, defaults)
 }
 
 export async function saveRateSettingsToStorage(settings: RateSettings): Promise<void> {
-  return (await wageIdb()).saveRateSettingsToIdb(settings)
-}
-
-export async function clearRateSettingsStorage(): Promise<void> {
-  return (await wageIdb()).clearRateSettingsIdb()
+  await saveRateSettingsToServer(WAGE_RATE_SETTINGS_PREF_KEY, settings)
 }
 
 export async function loadActualWorkerRateSettingsFromStorage(defaults: RateSettings): Promise<RateSettings> {
-  return (await wageIdb()).loadActualWorkerRateSettingsFromIdb(defaults)
+  return loadRateSettingsFromServer(WAGE_ACTUAL_WORKER_RATE_SETTINGS_PREF_KEY, defaults)
 }
 
 export async function saveActualWorkerRateSettingsToStorage(settings: RateSettings): Promise<void> {
-  return (await wageIdb()).saveActualWorkerRateSettingsToIdb(settings)
-}
-
-export async function clearActualWorkerRateSettingsStorage(): Promise<void> {
-  return (await wageIdb()).clearActualWorkerRateSettingsIdb()
+  await saveRateSettingsToServer(WAGE_ACTUAL_WORKER_RATE_SETTINGS_PREF_KEY, settings)
 }
 
 export async function loadEmployeesFromStorage(): Promise<StoredEmployee[]> {

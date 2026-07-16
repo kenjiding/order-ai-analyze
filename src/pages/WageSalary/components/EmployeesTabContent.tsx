@@ -1,5 +1,6 @@
 // @ts-nocheck
 import { Edit2, Save, Trash2, Users, X } from 'lucide-react'
+import { roleBadgeClassName } from '../constants'
 
 export function EmployeesTabContent({
   employees,
@@ -75,13 +76,7 @@ export function EmployeesTabContent({
                     ) : (
                       <div className="flex items-center gap-2">
                         <span
-                          className={`px-3 py-1 rounded-full text-xs font-medium ${
-                            employee.role === 'worker'
-                              ? 'bg-blue-100 text-blue-800'
-                              : employee.role === 'forklift'
-                                ? 'bg-purple-100 text-purple-800'
-                                : 'bg-green-100 text-green-800'
-                          }`}
+                          className={`rounded-full px-3 py-1 text-xs font-medium ${roleBadgeClassName(employee.role)}`}
                         >
                           {roleMap[employee.role]}
                         </span>

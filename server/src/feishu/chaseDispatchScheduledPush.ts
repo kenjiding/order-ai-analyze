@@ -4,10 +4,13 @@ import type { ChaseDispatchSchedule, FleetSupplierPushConfig } from '../db/schem
 import { buildChaseDispatchCard } from './buildChaseDispatchCard'
 import { computeFeishuWebhookSign, parseSafeWebhookUrl } from '../feishuWebhookHelpers'
 import { envFirst } from '../imile/shared'
-import { getRegionNow } from '../imile/inboundWaybillIndex'
 import { resolveRegionTz, type AusTz } from '../imile/ausTimezone'
-import { listPushableConfigsForScope } from '../supplierConfigScopes'
-import { parseRouteCodes, supplierDisplayName } from '../supplierPushConfigs'
+import {
+  listPushableSupplierPushConfigsForSchedule,
+  parsePushConfigIds,
+  parseRouteCodes,
+  supplierDisplayName,
+} from '../supplierPushConfigs'
 import {
   computeStagnationRange,
   fetchStagnantWaybillRouteCodes,
@@ -17,10 +20,9 @@ import {
   type StagnationBucket,
 } from '../imile/stagnantWaybills'
 import { aggregateVendorStagnation, type BucketResult } from '../imile/chaseDispatchAggregate'
-import { claimScheduledSlot } from '../jobs/scheduledClaim'
+import { claimScheduledSlot, formatScheduledPushSlotKey, releaseScheduledSlot } from '../jobs/scheduledClaim'
+import { resolveDueScheduledSlots } from '../jobs/scheduledDueSlots'
 import { createChaseDispatchShareSnapshot } from './chaseDispatchShareSnapshot'
-
-const CHASE_DISPATCH_SCOPE = 'chase-dispatch.scheduled' as const
 
 type EnabledSchedule = { schedule: ChaseDispatchSchedule; regionCode: string | null }
 
@@ -91,7 +93,7 @@ export type ChaseDispatchPushResult = {
 
 /**
  * 催派推送核心：按滞留区间拉数 → searchWaybill 查路由码 → 按供应商 vendorCode + routeCode 筛选后推送。
- * 供定时任务与「立即推送」复用。不使用路由码白名单。
+ * 供定时任务复用。不使用路由码白名单。
  */
 export async function executeChaseDispatchPush(params: {
   token: string
@@ -129,7 +131,7 @@ export async function executeChaseDispatchPush(params: {
       .filter((row) => enabledVendorCodes.has((row.driverVendorCode ?? '').trim()))
       .map((row) => row.waybillNo ?? ''),
   )
-  const routeCodeResult = await fetchStagnantWaybillRouteCodes(token, vendorScopedWaybillNos)
+  const routeCodeResult = await fetchStagnantWaybillRouteCodes(token, vendorScopedWaybillNos, stationCode)
   if (!routeCodeResult.ok) {
     console.error(`${label} 路由码查询失败: ${routeCodeResult.message}`)
     return { error: `路由码查询失败: ${routeCodeResult.message}` }
@@ -195,7 +197,6 @@ export async function logChaseDispatchSchedulerReadiness(): Promise<void> {
       console.log(`${label} 尚无已启用的定时配置，等待各账号页面保存后生效`)
       return
     }
-    const scopedConfigs = await listPushableConfigsForScope(CHASE_DISPATCH_SCOPE)
     for (const { schedule, regionCode } of enabled) {
       if (!schedule.stationCode?.trim()) {
         console.warn(`${label} 配置 ${schedule.id} 已启用，但未保存站点编码 stationCode`)
@@ -207,12 +208,13 @@ export async function logChaseDispatchSchedulerReadiness(): Promise<void> {
       const pushTimes = schedule.pushTimes as Array<{ id: string; time: string }>
       const weekdays = schedule.weekdays as number[]
       const buckets = parseStagnationBuckets(schedule.stagnationBuckets)
+      const scopedCount = parsePushConfigIds(schedule.pushConfigIds).length
       console.log(
         `${label} 就绪 user=${schedule.userId} weekdays=[${weekdays.join(',')}] times=[${pushTimes
           .map((s) => s.time)
           .join(',')}] buckets=[${buckets.join(',')}] station=${schedule.stationCode} region=${
           regionCode ?? '(默认阿德莱德)'
-        } scopedSuppliers=${scopedConfigs.length}`,
+        } scopedSuppliers=${scopedCount}`,
       )
     }
   } catch (err) {
@@ -227,64 +229,88 @@ async function runOneScheduledPush(schedule: ChaseDispatchSchedule, regionCode: 
   if (!stationCode) return
 
   const tz: AusTz = resolveRegionTz(regionCode)
-  const { weekday, timeHHmm, dateStr } = getRegionNow(tz)
   const weekdays = schedule.weekdays as number[]
-  if (!weekdays.includes(weekday)) return
-
   const pushTimes = schedule.pushTimes as Array<{ id: string; time: string }>
-  if (!pushTimes.some((s) => s.time === timeHHmm)) return
+  const dueSlots = resolveDueScheduledSlots({ tz, weekdays, pushTimes })
+  if (dueSlots.length === 0) return
 
-  const claimed = await claimScheduledSlot(`chase-dispatch:${schedule.id}`, `${dateStr}|${timeHHmm}`)
-  if (!claimed) {
-    console.log(`${label} 时间槽 date=${dateStr} time=${timeHHmm} 已被推送过（其他 worker 抢先处理），跳过`)
-    return
+  for (const slot of dueSlots) {
+    const { weekday, timeHHmm, dateStr } = slot
+    const jobKey = `chase-dispatch:${schedule.id}`
+    const slotKey = formatScheduledPushSlotKey(slot)
+
+    const buckets = parseStagnationBuckets(schedule.stagnationBuckets)
+    if (buckets.length === 0) {
+      console.log(`${label} 命中推送时间但未选择滞留时间，跳过`)
+      continue
+    }
+
+    const token = readChaseDispatchImileToken(schedule)
+    if (!token) {
+      console.warn(`${label} 命中推送时间 weekday=${weekday} time=${timeHHmm}，但缺少 iMile token`)
+      continue
+    }
+
+    const configs = await listPushableSupplierPushConfigsForSchedule(parsePushConfigIds(schedule.pushConfigIds), {
+      regionCode,
+      stationCode,
+    })
+    if (configs.length === 0) {
+      console.log(`${label} 无参与催派推送的供应商，跳过（请在该条目的「供应商配置」启用供应商）`)
+      continue
+    }
+
+    const claimed = await claimScheduledSlot(jobKey, slotKey)
+    if (!claimed) {
+      console.log(`${label} 时间槽 date=${dateStr} time=${timeHHmm} 已被推送过（其他 worker 抢先处理），跳过`)
+      continue
+    }
+
+    console.log(`${label} 命中推送时间 weekday=${weekday} time=${timeHHmm} baseDate=${dateStr}`)
+
+    const result = await executeChaseDispatchPush({
+      token,
+      stationCode,
+      baseDate: dateStr,
+      pushTime: timeHHmm,
+      buckets,
+      configs,
+      label,
+    })
+    if ('error' in result) {
+      await releaseScheduledSlot(jobKey, slotKey)
+      console.error(`${label} 推送失败: ${result.error}`)
+      continue
+    }
+    if (result.pushedCount === 0 && result.errors.length > 0) {
+      await releaseScheduledSlot(jobKey, slotKey)
+      console.error(`${label} 全部推送失败: ${result.errors.join('; ')}`)
+      continue
+    }
+    console.log(`${label} 完成 ${result.pushedCount}/${result.totalConfigs} 条`)
   }
-
-  const buckets = parseStagnationBuckets(schedule.stagnationBuckets)
-  if (buckets.length === 0) {
-    console.log(`${label} 命中推送时间但未选择滞留时间，跳过`)
-    return
-  }
-
-  const token = readChaseDispatchImileToken(schedule)
-  if (!token) {
-    console.warn(`${label} 命中推送时间 weekday=${weekday} time=${timeHHmm}，但缺少 iMile token`)
-    return
-  }
-
-  console.log(`${label} 命中推送时间 weekday=${weekday} time=${timeHHmm} baseDate=${dateStr}`)
-
-  const configs = await listPushableConfigsForScope(CHASE_DISPATCH_SCOPE)
-  if (configs.length === 0) {
-    console.log(`${label} 无参与催派推送的供应商，跳过（请在「催派推送」启用供应商）`)
-    return
-  }
-
-  const result = await executeChaseDispatchPush({
-    token,
-    stationCode,
-    baseDate: dateStr,
-    pushTime: timeHHmm,
-    buckets,
-    configs,
-    label,
-  })
-  if ('error' in result) {
-    console.error(`${label} 推送失败: ${result.error}`)
-    return
-  }
-  console.log(`${label} 完成 ${result.pushedCount}/${result.totalConfigs} 条`)
 }
+
+let isRunning = false
 
 /** 每分钟由 scheduler 调用 */
 export async function runChaseDispatchScheduledPush(): Promise<void> {
   const label = '[chase-dispatch/scheduler]'
-  const enabled = await listEnabledSchedules()
-  for (const { schedule, regionCode } of enabled) {
-    try {
-      await runOneScheduledPush(schedule, regionCode)
-    } catch (err) {
-      console.error(`${label} 配置 ${schedule.id}（user=${schedule.userId}）推送异常:`, err)
+  if (isRunning) {
+    console.warn(`${label} 上一次执行仍在进行中，跳过本次触发`)
+    return
+  }
+  isRunning = true
+  try {
+    const enabled = await listEnabledSchedules()
+    for (const { schedule, regionCode } of enabled) {
+      try {
+        await runOneScheduledPush(schedule, regionCode)
+      } catch (err) {
+        console.error(`${label} 配置 ${schedule.id}（user=${schedule.userId}）推送异常:`, err)
+      }
     }
+  } finally {
+    isRunning = false
   }
 }

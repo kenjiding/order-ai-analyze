@@ -23,11 +23,11 @@ export type ChaseDispatchScheduleDraft = {
   stagnationBuckets: StagnationBucket[]
   isEnabled: boolean
   stationCode: string
+  pushConfigIds: string[]
 }
 
 export type ChaseDispatchSchedule = ChaseDispatchScheduleDraft & {
   id: string
-  pushConfigIds: string[]
   updatedAt: string
   /** 服务端是否已具备定时拉数所需的 iMile token */
   hasImileToken: boolean

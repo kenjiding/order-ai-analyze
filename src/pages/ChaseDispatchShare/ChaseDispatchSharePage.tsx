@@ -189,18 +189,25 @@ export default function ChaseDispatchSharePage() {
       kind === 'dispatch-alarm'
         ? fetchDispatchAlarmShare(token).then((r) => (r.ok ? toDispatchAlarmViewModel(r.data) : null))
         : fetchChaseDispatchShare(token).then((r) => (r.ok ? toChaseDispatchViewModel(r.data) : null))
-    void load.then((vm) => {
-      if (cancelled) return
-      if (vm) {
-        setView(vm)
-        const allDriverKeys = vm.groups.flatMap((g) => g.drivers.map((d) => `${g.key}::${d.key}`))
-        // 仅一位司机时无需再多点一次展开
-        if (allDriverKeys.length === 1) setExpandedDrivers(new Set(allDriverKeys))
-        setStatus('ready')
-      } else {
+    void load
+      .then((vm) => {
+        if (cancelled) return
+        if (vm) {
+          setView(vm)
+          const allDriverKeys = vm.groups.flatMap((g) => g.drivers.map((d) => `${g.key}::${d.key}`))
+          // 仅一位司机时无需再多点一次展开
+          if (allDriverKeys.length === 1) setExpandedDrivers(new Set(allDriverKeys))
+          setStatus('ready')
+        } else {
+          setStatus('error')
+        }
+      })
+      .catch((err) => {
+        if (cancelled) return
+        // 快照是推送时落库的冻结数据，字段可能早于最新前端代码；渲染失败时要落到错误态而非无限转圈
+        console.error('[share] failed to load or render snapshot:', err)
         setStatus('error')
-      }
-    })
+      })
     return () => {
       cancelled = true
     }

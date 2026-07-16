@@ -22,10 +22,27 @@ function colored(value: string, color: MarkColor): string {
   return `<font color='${color}'>${value}</font>`
 }
 
+const PCS_TICKET_WORKBENCH_URL = 'https://pcs.imile.com/#/PCSTicketWorkbench'
+
+/** 自定义机器人 v1 卡片：用 action + button.url 打开 PCS 工单工作台（markdown 链接不可跳转） */
+function openUrlAction(url: string, label: string): CardEl {
+  return {
+    tag: 'action',
+    actions: [
+      {
+        tag: 'button',
+        text: { tag: 'plain_text', content: label },
+        type: 'primary',
+        url,
+      },
+    ],
+  }
+}
+
 const TYPE_LABEL: Record<string, string> = {
-  normal: '普通',
-  complaint: '客诉',
-  arbitration: '仲裁',
+  normal: 'Normal Ticket',
+  complaint: 'Complaint Ticket',
+  arbitration: 'Dispute Ticket',
 }
 
 function isOverdue(expectHandleTime: string, nowMs: number): boolean {
@@ -57,16 +74,16 @@ export function buildWorkOrderPushCard(params: {
   }
 
   const breakdown = [
-    normalCount > 0 ? `普通: ${colored(String(normalCount), 'red')}` : '',
-    complaintCount > 0 ? `客诉: ${colored(String(complaintCount), 'red')}` : '',
-    arbitrationCount > 0 ? `仲裁: ${colored(String(arbitrationCount), 'red')}` : '',
+    normalCount > 0 ? `Normal: ${colored(String(normalCount), 'red')}` : '',
+    complaintCount > 0 ? `Complaint: ${colored(String(complaintCount), 'red')}` : '',
+    arbitrationCount > 0 ? `Dispute: ${colored(String(arbitrationCount), 'red')}` : '',
   ]
     .filter(Boolean)
     .join(' ｜ ')
 
   elements.push(
     div(
-      [`**未处理工单合计** ${colored(`**${totalCount}**`, 'red')}`, breakdown]
+      [`**Unresolved tickets** ${colored(`**${totalCount}**`, 'red')}`, breakdown]
         .filter(Boolean)
         .join(' ｜ '),
     ),
@@ -74,23 +91,34 @@ export function buildWorkOrderPushCard(params: {
 
   if (tickets.length > 0) {
     elements.push(hr())
-    const shown = tickets.slice(0, MAX_TICKET_LINES)
-    const lines = shown.map((t) => {
-      const overdue = isOverdue(t.expectHandleTime, nowMs)
-      const deadline = t.expectHandleTime
-        ? colored(t.expectHandleTime, overdue ? 'red' : 'grey')
-        : colored('未设置', 'grey')
-      return `· [${TYPE_LABEL[t.type] ?? t.type}] ${t.orderCode || '(无工单号)'} 运单 ${t.waybillNo} · 最晚处理: ${deadline}`
-    })
-    if (tickets.length > MAX_TICKET_LINES) {
-      lines.push(`及其他 ${tickets.length - MAX_TICKET_LINES} 条`)
+    const byType = new Map<string, typeof tickets>()
+    for (const t of tickets) {
+      if (!byType.has(t.type)) byType.set(t.type, [])
+      byType.get(t.type)!.push(t)
     }
-    elements.push(div(lines.join('\n')))
+    const blocks = (['normal', 'complaint', 'arbitration'] as const)
+      .filter((type) => byType.has(type))
+      .map((type) => {
+        const group = byType.get(type)!
+        const shown = group.slice(0, MAX_TICKET_LINES)
+        const lines = shown.map((t) => {
+          const overdue = isOverdue(t.expectHandleTime, nowMs)
+          const deadlineValue = t.expectHandleTime || 'Not set'
+          const deadline = colored(deadlineValue, overdue ? 'red' : 'grey')
+          return `· ${t.orderCode || '(no ticket no.)'} **Waybill** ${t.waybillNo} · **Deadline** ${deadline}`
+        })
+        if (group.length > MAX_TICKET_LINES) {
+          lines.push(`+ ${group.length - MAX_TICKET_LINES} more`)
+        }
+        return `**${TYPE_LABEL[type]} (${group.length})**\n${lines.join('\n')}`
+      })
+    elements.push(div(blocks.join('\n\n')))
   }
 
   elements.push(hr())
-  elements.push(div(colored('⚠️ 逾期未处理将产生罚款/赔偿费用，请尽快处理', 'red')))
-  elements.push(note(`${baseDate} ${pushTime} · Work order push · iMile Warehouse Management System`))
+  elements.push(div(colored('⚠️ Overdue tickets will incur penalty/compensation fees. Please handle immediately.', 'red')))
+  elements.push(openUrlAction(PCS_TICKET_WORKBENCH_URL, 'Click to Resolve Tickets'))
+  elements.push(note(`${baseDate} ${pushTime} · Ticket push · iMile Warehouse Management System`))
 
   return {
     config: { wide_screen_mode: true },
@@ -98,7 +126,7 @@ export function buildWorkOrderPushCard(params: {
       template: 'red',
       title: {
         tag: 'plain_text',
-        content: `⚠️ 未处理工单提醒 - ${vendorName}`,
+        content: `⚠️ Unresolved Ticket Alert - ${vendorName}`,
       },
     },
     elements,

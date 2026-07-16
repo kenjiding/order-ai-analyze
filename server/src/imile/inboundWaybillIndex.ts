@@ -155,14 +155,13 @@ export function utcMsToLocalStr(ms: number, tz: string): string {
   return `${g('year')}-${g('month')}-${g('day')} ${hour}:${g('minute')}:${g('second')}`
 }
 
-export function getRegionNow(tz: AusTz = AUS_TZ.Adelaide): {
+export function getRegionNow(tz: AusTz = AUS_TZ.Adelaide, now: Date = new Date()): {
   weekday: number
   timeHHmm: string
   dateStr: string
   prevDateStr: string
   dayBeforeDateStr: string
 } {
-  const now = new Date()
   const parts = new Intl.DateTimeFormat('en-CA', {
     timeZone: tz,
     year: 'numeric',

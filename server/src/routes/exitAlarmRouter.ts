@@ -1,5 +1,5 @@
 import { Router, type Response } from 'express'
-import { eq } from 'drizzle-orm'
+import { and, desc, eq } from 'drizzle-orm'
 import type { AuthenticatedRequest } from '../auth/middleware'
 import { getDb, schema } from '../db'
 import type { ExitAlarmSchedule } from '../db/schema'
@@ -7,33 +7,24 @@ import { readImileTokenFromRequest } from './imileAuth'
 import { normalizeImileToken } from '../imile/shared'
 import { fetchWaybillDetailsByInboundIndex, getRegionNow } from '../imile/inboundWaybillIndex'
 import { resolveRegionTz } from '../imile/ausTimezone'
-import {
-  buildExitAlarmZoneBreakdown,
-  computeBefore11ThresholdMs,
-  isBefore11Exit,
-} from '../imile/before11Exit'
 import { lastSortingWorkdayOnOrBefore } from '../imile/sortingWorkday'
-import { buildExitAlarmCard } from '../feishu/buildExitAlarmCard'
-import { hasExitAlarmImileToken } from '../feishu/exitAlarmScheduledPush'
-import { computeFeishuWebhookSign, parseSafeWebhookUrl } from '../feishuWebhookHelpers'
 import {
-  listPushableSupplierPushConfigsByIds,
-  parsePushConfigIds,
-  parseRouteCodes,
-  parseRouteCodeWhitelistSet,
-  supplierDisplayName,
-} from '../supplierPushConfigs'
-import { exitAlarmScheduledScope } from '../supplierConfigScopes/exitAlarmScheduled'
+  executeExitAlarmPush,
+  hasExitAlarmImileToken,
+  readExitAlarmImileToken,
+} from '../feishu/exitAlarmScheduledPush'
+import { listPushableSupplierPushConfigsForSchedule, parsePushConfigIds, validatePushConfigIdsForSchedule } from '../supplierPushConfigs'
 
 export const exitAlarmRouter = Router()
 
-// ─── 定时推送配置（按账号隔离，每个账号最多一条） ────────────────────────────────
+// ─── 定时推送配置（按账号隔离，一个账号可有多条，按站点区分） ────────────────────
 
 type ScheduleBody = {
   weekdays?: unknown
   pushTimes?: unknown
   isEnabled?: unknown
   stationCode?: unknown
+  pushConfigIds?: unknown
   imileToken?: unknown
 }
 
@@ -43,23 +34,22 @@ type PublicExitAlarmSchedule = {
   pushTimes: ExitAlarmSchedule['pushTimes']
   isEnabled: boolean
   stationCode: string
+  pushConfigIds: string[]
   /** 拥有该配置的账号所属州/区域，决定 pushTimes/weekdays 按哪个时区判断；只读，随账号信息变化 */
   regionCode: string | null
-  pushConfigIds: string[]
   updatedAt: Date
   hasImileToken: boolean
 }
 
-async function toPublicSchedule(row: ExitAlarmSchedule, regionCode: string | null): Promise<PublicExitAlarmSchedule> {
-  const pushConfigIds = await exitAlarmScheduledScope.loadEnabledConfigIds()
+function toPublicSchedule(row: ExitAlarmSchedule, regionCode: string | null): PublicExitAlarmSchedule {
   return {
     id: row.id,
     weekdays: row.weekdays,
     pushTimes: row.pushTimes,
     isEnabled: row.isEnabled,
     stationCode: row.stationCode,
+    pushConfigIds: parsePushConfigIds(row.pushConfigIds),
     regionCode,
-    pushConfigIds,
     updatedAt: row.updatedAt,
     hasImileToken: hasExitAlarmImileToken(row),
   }
@@ -68,16 +58,27 @@ async function toPublicSchedule(row: ExitAlarmSchedule, regionCode: string | nul
 async function loadOwnScheduleRow(
   db: ReturnType<typeof getDb>,
   userId: string,
+  id: string,
 ): Promise<ExitAlarmSchedule | null> {
   const rows = await db
     .select()
     .from(schema.exitAlarmSchedules)
-    .where(eq(schema.exitAlarmSchedules.userId, userId))
+    .where(and(eq(schema.exitAlarmSchedules.id, id), eq(schema.exitAlarmSchedules.userId, userId)))
     .limit(1)
   return rows[0] ?? null
 }
 
-exitAlarmRouter.get('/schedule', async (req: AuthenticatedRequest, res: Response) => {
+function extractScheduleFields(body: ScheduleBody) {
+  return {
+    weekdays: Array.isArray(body.weekdays) ? body.weekdays : [],
+    pushTimes: Array.isArray(body.pushTimes) ? body.pushTimes : [],
+    isEnabled: body.isEnabled !== false,
+    stationCode: typeof body.stationCode === 'string' ? body.stationCode.trim() : '',
+    pushConfigIds: parsePushConfigIds(body.pushConfigIds),
+  }
+}
+
+exitAlarmRouter.get('/schedules', async (req: AuthenticatedRequest, res: Response) => {
   const userId = req.authUser?.id
   if (!userId) {
     res.status(401).json({ ok: false, error: '未登录' })
@@ -85,14 +86,18 @@ exitAlarmRouter.get('/schedule', async (req: AuthenticatedRequest, res: Response
   }
   try {
     const db = getDb()
-    const row = await loadOwnScheduleRow(db, userId)
-    res.json({ ok: true, data: row ? await toPublicSchedule(row, req.authUser?.regionCode ?? null) : null })
+    const rows = await db
+      .select()
+      .from(schema.exitAlarmSchedules)
+      .where(eq(schema.exitAlarmSchedules.userId, userId))
+      .orderBy(desc(schema.exitAlarmSchedules.createdAt))
+    res.json({ ok: true, data: rows.map((row) => toPublicSchedule(row, req.authUser?.regionCode ?? null)) })
   } catch {
-    res.status(500).json({ ok: false, error: '读取定时配置失败' })
+    res.status(500).json({ ok: false, error: '读取出仓告警配置失败' })
   }
 })
 
-exitAlarmRouter.put('/schedule', async (req: AuthenticatedRequest, res: Response) => {
+exitAlarmRouter.post('/schedules', async (req: AuthenticatedRequest, res: Response) => {
   const userId = req.authUser?.id
   if (!userId) {
     res.status(401).json({ ok: false, error: '未登录' })
@@ -103,267 +108,205 @@ exitAlarmRouter.put('/schedule', async (req: AuthenticatedRequest, res: Response
     res.status(400).json({ ok: false, error: '缺少必填字段: weekdays, pushTimes' })
     return
   }
+  const fields = extractScheduleFields(body)
+  if (!fields.stationCode) {
+    res.status(400).json({ ok: false, error: '缺少必填字段: stationCode' })
+    return
+  }
+
+  const tokenFromBody = typeof body.imileToken === 'string' ? body.imileToken.trim() : ''
+  const tokenFromHeader = readImileTokenFromRequest(req, body.imileToken)
+  const nextImileToken = tokenFromBody || tokenFromHeader
+
+  const willEnable = fields.isEnabled && fields.pushTimes.length > 0 && fields.weekdays.length > 0
+  if (willEnable && !nextImileToken) {
+    res.status(400).json({ ok: false, error: '启用定时推送需要 iMile token，请在全局设置中配置后重新保存' })
+    return
+  }
+
   try {
-    const db = getDb()
-    const existing = await loadOwnScheduleRow(db, userId)
-
-    const stationCode = typeof body.stationCode === 'string' ? body.stationCode.trim() : ''
-    const tokenFromBody = typeof body.imileToken === 'string' ? body.imileToken.trim() : ''
-    const tokenFromHeader = readImileTokenFromRequest(req, body.imileToken)
-    const nextImileToken = tokenFromBody || tokenFromHeader
-
-    const isEnabled = body.isEnabled !== false
-    const willEnable = isEnabled && body.pushTimes.length > 0 && body.weekdays.length > 0
-    const existingToken = existing?.imileToken?.trim() ?? ''
-    if (willEnable && !nextImileToken && !existingToken && !hasExitAlarmImileToken(existing)) {
-      res.status(400).json({
-        ok: false,
-        error: '启用定时推送需要 iMile token，请在全局设置中配置后重新保存',
+    if (fields.isEnabled) {
+      const pushConfigError = await validatePushConfigIdsForSchedule(fields.pushConfigIds, {
+        regionCode: req.authUser?.regionCode,
+        stationCode: fields.stationCode,
       })
-      return
+      if (pushConfigError) {
+        res.status(400).json({ ok: false, error: pushConfigError })
+        return
+      }
     }
 
-    let row: ExitAlarmSchedule
-    if (existing) {
-      const [updated] = await db
-        .update(schema.exitAlarmSchedules)
-        .set({
-          weekdays: body.weekdays,
-          pushTimes: body.pushTimes,
-          isEnabled,
-          stationCode,
-          ...(nextImileToken ? { imileToken: normalizeImileToken(nextImileToken) } : {}),
-          updatedBy: userId,
-          updatedAt: new Date(),
-        })
-        .where(eq(schema.exitAlarmSchedules.id, existing.id))
-        .returning()
-      row = updated
-    } else {
-      const [created] = await db
-        .insert(schema.exitAlarmSchedules)
-        .values({
-          userId,
-          weekdays: body.weekdays,
-          pushTimes: body.pushTimes,
-          isEnabled,
-          stationCode,
-          imileToken: nextImileToken ? normalizeImileToken(nextImileToken) : null,
-          updatedBy: userId,
-        })
-        .returning()
-      row = created
-    }
-    res.json({ ok: true, data: await toPublicSchedule(row, req.authUser?.regionCode ?? null) })
+    const db = getDb()
+    const [created] = await db
+      .insert(schema.exitAlarmSchedules)
+      .values({
+        userId,
+        weekdays: fields.weekdays,
+        pushTimes: fields.pushTimes,
+        isEnabled: fields.isEnabled,
+        stationCode: fields.stationCode,
+        pushConfigIds: fields.pushConfigIds,
+        imileToken: nextImileToken ? normalizeImileToken(nextImileToken) : null,
+        updatedBy: userId,
+      })
+      .returning()
+    res.json({ ok: true, data: toPublicSchedule(created, req.authUser?.regionCode ?? null) })
   } catch {
-    res.status(500).json({ ok: false, error: '保存定时配置失败' })
+    res.status(500).json({ ok: false, error: '新增出仓告警配置失败' })
   }
 })
 
-exitAlarmRouter.put('/schedule/push-config-ids', async (req: AuthenticatedRequest, res: Response) => {
+exitAlarmRouter.put('/schedules/:id', async (req: AuthenticatedRequest, res: Response) => {
   const userId = req.authUser?.id
   if (!userId) {
     res.status(401).json({ ok: false, error: '未登录' })
     return
   }
-  const body = req.body as { pushConfigIds?: unknown }
-  const pushConfigIds = parsePushConfigIds(body.pushConfigIds)
-  try {
-    await exitAlarmScheduledScope.saveEnabledConfigIds(pushConfigIds)
-    const db = getDb()
-    const row = await loadOwnScheduleRow(db, userId)
-    if (!row) {
-      res.status(500).json({ ok: false, error: '保存定时推送供应商失败' })
-      return
-    }
-    res.json({ ok: true, data: await toPublicSchedule(row, req.authUser?.regionCode ?? null) })
-  } catch {
-    res.status(500).json({ ok: false, error: '保存定时推送供应商失败' })
-  }
-})
-
-// ─── 立即推送出仓告警 ─────────────────────────────────────────────────────────
-
-exitAlarmRouter.post('/push-now', async (req: AuthenticatedRequest, res: Response) => {
-  const token = readImileTokenFromRequest(req)
-  if (!token) {
-    res.status(401).json({ ok: false, error: '缺少 iMile token' })
+  const body = req.body as ScheduleBody
+  if (!Array.isArray(body.weekdays) || !Array.isArray(body.pushTimes)) {
+    res.status(400).json({ ok: false, error: '缺少必填字段: weekdays, pushTimes' })
     return
   }
-
-  type PushNowBody = { stationCode?: unknown; date?: unknown; configIds?: unknown }
-  const body = req.body as PushNowBody
-
-  if (typeof body.stationCode !== 'string' || !body.stationCode.trim()) {
+  const fields = extractScheduleFields(body)
+  if (!fields.stationCode) {
     res.status(400).json({ ok: false, error: '缺少必填字段: stationCode' })
     return
   }
-  if (typeof body.date !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(body.date.trim())) {
-    res.status(400).json({ ok: false, error: 'date 格式应为 YYYY-MM-DD' })
-    return
-  }
 
-  const configIds = Array.isArray(body.configIds)
-    ? body.configIds
-        .filter((id): id is string => typeof id === 'string' && id.trim().length > 0)
-        .map((id) => id.trim())
-    : []
-  if (configIds.length === 0) {
-    res.status(400).json({ ok: false, error: '请至少选择一个供应商配置' })
-    return
-  }
-
-  const stationCode = body.stationCode.trim()
-  // 目标日避开周末（周六/日不分拣、无数据）：用户所选日期往前取第一个工作日
-  const date = lastSortingWorkdayOnOrBefore(body.date.trim())
-  const tz = resolveRegionTz(req.authUser?.regionCode)
-  const { timeHHmm: pushTime } = getRegionNow(tz)
-
-  const configs = await listPushableSupplierPushConfigsByIds(configIds)
-
-  if (configs.length === 0) {
-    res.status(400).json({ ok: false, error: '所选供应商均不可用（未配置 Webhook）' })
-    return
-  }
-
-  // 获取运单数据（先到件取 waybillNo，再分批 searchWaybill）
-  const result = await fetchWaybillDetailsByInboundIndex({
-    token,
-    stationCode,
-    dateStr: date,
-    tz,
-    label: '出仓告警立即推送',
-  })
-
-  if (!result.ok) {
-    res.status(502).json({ ok: false, error: `运单查询失败: ${result.message}` })
-    return
-  }
-
-  type WaybillRow = {
-    waybillNo?: string | null
-    deliveryTime?: string | null
-    consigneeRouteCode?: string | null
-    courier?: string | null
-    courierCode?: string | null
-    courierVendorCode?: string | null
-    [key: string]: unknown
-  }
-  const waybills = result.records as WaybillRow[]
-  const before11ThresholdMs = computeBefore11ThresholdMs(date, tz)
-
-  type ExportWaybillRow = {
-    waybillNo: string
-    routeCode: string
-    deliveryTime: string
-    courier: string
-    courierCode: string
-    status: '达标' | '未达标'
-  }
-  type ExportSheet = {
-    vendorName: string
-    metCount: number
-    unmetCount: number
-    rows: ExportWaybillRow[]
-  }
-
-  // 逐配置推送；同时组装导出明细（按供应商分 sheet）
-  let pushedCount = 0
-  const errors: string[] = []
-  const exportSheets: ExportSheet[] = []
-
-  for (const config of configs) {
-    const routeCodes = parseRouteCodes(config.routeCode)
-    const whitelist = parseRouteCodeWhitelistSet(config.routeCodeWhitelist)
-    const vendorName = supplierDisplayName(config)
-
-    const vendorWaybills = waybills.filter((w) => {
-      const code = (w.consigneeRouteCode ?? '').trim()
-      if (routeCodes.length > 0 && !routeCodes.includes(code)) return false
-      if (whitelist.has(code)) return false
-      return true
-    })
-
-    const zoneBreakdown = buildExitAlarmZoneBreakdown(vendorWaybills, before11ThresholdMs)
-
-    const totalPending = Object.values(zoneBreakdown).reduce((s, v) => s + v.pending, 0)
-    const totalWaybills = vendorWaybills.length
-
-    const unmetRows: ExportWaybillRow[] = []
-    const metRows: ExportWaybillRow[] = []
-    for (const w of vendorWaybills) {
-      const deliveryTime = typeof w.deliveryTime === 'string' && w.deliveryTime ? w.deliveryTime : ''
-      const met = isBefore11Exit(deliveryTime || null, before11ThresholdMs)
-      const row: ExportWaybillRow = {
-        waybillNo: typeof w.waybillNo === 'string' ? w.waybillNo.trim() : '',
-        routeCode: (w.consigneeRouteCode ?? '').trim() || 'Unknown route',
-        deliveryTime,
-        courier: typeof w.courier === 'string' ? w.courier.trim() : '',
-        courierCode: typeof w.courierCode === 'string' ? w.courierCode.trim() : '',
-        status: met ? '达标' : '未达标',
+  try {
+    if (fields.isEnabled) {
+      const pushConfigError = await validatePushConfigIdsForSchedule(fields.pushConfigIds, {
+        regionCode: req.authUser?.regionCode,
+        stationCode: fields.stationCode,
+      })
+      if (pushConfigError) {
+        res.status(400).json({ ok: false, error: pushConfigError })
+        return
       }
-      if (met) metRows.push(row)
-      else unmetRows.push(row)
     }
-    exportSheets.push({
-      vendorName,
-      metCount: metRows.length,
-      unmetCount: unmetRows.length,
-      // 未达标在前，便于告警核对
-      rows: [...unmetRows, ...metRows],
-    })
 
-    // 无运单也推送（告知已全部正常或无数据）
-    const card = buildExitAlarmCard({
-      vendorName,
+    const db = getDb()
+    const existing = await loadOwnScheduleRow(db, userId, String(req.params.id ?? '').trim())
+    if (!existing) {
+      res.status(404).json({ ok: false, error: '配置不存在' })
+      return
+    }
+
+    const tokenFromBody = typeof body.imileToken === 'string' ? body.imileToken.trim() : ''
+    const tokenFromHeader = readImileTokenFromRequest(req, body.imileToken)
+    const nextImileToken = tokenFromBody || tokenFromHeader
+
+    const willEnable = fields.isEnabled && fields.pushTimes.length > 0 && fields.weekdays.length > 0
+    const existingToken = existing.imileToken?.trim() ?? ''
+    if (willEnable && !nextImileToken && !existingToken) {
+      res.status(400).json({ ok: false, error: '启用定时推送需要 iMile token，请在全局设置中配置后重新保存' })
+      return
+    }
+
+    const [updated] = await db
+      .update(schema.exitAlarmSchedules)
+      .set({
+        weekdays: fields.weekdays,
+        pushTimes: fields.pushTimes,
+        isEnabled: fields.isEnabled,
+        stationCode: fields.stationCode,
+        pushConfigIds: fields.pushConfigIds,
+        ...(nextImileToken ? { imileToken: normalizeImileToken(nextImileToken) } : {}),
+        updatedBy: userId,
+        updatedAt: new Date(),
+      })
+      .where(eq(schema.exitAlarmSchedules.id, existing.id))
+      .returning()
+    res.json({ ok: true, data: toPublicSchedule(updated, req.authUser?.regionCode ?? null) })
+  } catch {
+    res.status(500).json({ ok: false, error: '保存出仓告警配置失败' })
+  }
+})
+
+exitAlarmRouter.delete('/schedules/:id', async (req: AuthenticatedRequest, res: Response) => {
+  const userId = req.authUser?.id
+  if (!userId) {
+    res.status(401).json({ ok: false, error: '未登录' })
+    return
+  }
+  try {
+    const db = getDb()
+    const existing = await loadOwnScheduleRow(db, userId, String(req.params.id ?? '').trim())
+    if (!existing) {
+      res.status(404).json({ ok: false, error: '配置不存在' })
+      return
+    }
+    await db.delete(schema.exitAlarmSchedules).where(eq(schema.exitAlarmSchedules.id, existing.id))
+    res.json({ ok: true, data: null })
+  } catch {
+    res.status(500).json({ ok: false, error: '删除出仓告警配置失败' })
+  }
+})
+
+/** 立刻推送：按该条目已保存的站点/供应商执行，不校验 weekdays / pushTimes */
+exitAlarmRouter.post('/schedules/:id/push-now', async (req: AuthenticatedRequest, res: Response) => {
+  const userId = req.authUser?.id
+  if (!userId) {
+    res.status(401).json({ ok: false, error: '未登录' })
+    return
+  }
+  try {
+    const db = getDb()
+    const schedule = await loadOwnScheduleRow(db, userId, String(req.params.id ?? '').trim())
+    if (!schedule) {
+      res.status(404).json({ ok: false, error: '配置不存在' })
+      return
+    }
+
+    const stationCode = schedule.stationCode?.trim()
+    if (!stationCode) {
+      res.status(400).json({ ok: false, error: '该配置未设置站点' })
+      return
+    }
+
+    const token = readExitAlarmImileToken(schedule)
+    if (!token) {
+      res.status(400).json({ ok: false, error: '缺少 iMile token，请编辑该配置并重新保存' })
+      return
+    }
+
+    const configs = await listPushableSupplierPushConfigsForSchedule(parsePushConfigIds(schedule.pushConfigIds), {
+      regionCode: req.authUser?.regionCode,
+      stationCode,
+    })
+    if (configs.length === 0) {
+      const detail = await validatePushConfigIdsForSchedule(parsePushConfigIds(schedule.pushConfigIds), {
+        regionCode: req.authUser?.regionCode,
+        stationCode,
+      })
+      res.status(400).json({
+        ok: false,
+        error: detail ?? '请至少选择一个已配置 Webhook 的供应商',
+      })
+      return
+    }
+
+    const tz = resolveRegionTz(req.authUser?.regionCode)
+    const { prevDateStr, timeHHmm: pushTime } = getRegionNow(tz)
+    const date = lastSortingWorkdayOnOrBefore(prevDateStr)
+
+    const result = await executeExitAlarmPush({
+      token,
       stationCode,
       date,
       pushTime,
-      zoneBreakdown,
-      totalPending,
-      totalWaybills,
-      pushDescription: config.pushDescription,
+      configs,
+      tz,
+      label: `[exit-alarm/push-now schedule=${schedule.id}]`,
     })
-
-    try {
-      const webhookHref = parseSafeWebhookUrl(config.webhookUrl).href
-      const payload: Record<string, unknown> = { msg_type: 'interactive', card }
-      if (config.signingSecret) {
-        const timestampSec = Math.floor(Date.now() / 1000)
-        payload.timestamp = String(timestampSec)
-        payload.sign = computeFeishuWebhookSign(config.signingSecret, timestampSec)
-      }
-      const upstream = await fetch(webhookHref, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-      })
-      const feishuData = (await upstream.json().catch(() => ({}))) as Record<string, unknown>
-      const code = feishuData.code
-      if (upstream.ok && typeof code === 'number' && code === 0) {
-        pushedCount++
-      } else {
-        errors.push(`${vendorName}: 飞书返回 code=${String(code)}`)
-      }
-    } catch (err) {
-      const cause = err instanceof Error ? (err.cause as { code?: string } | undefined)?.code : undefined
-      const reason = cause ?? (err instanceof Error ? err.message : String(err))
-      console.error(`[exit-alarm/push-now] ${vendorName} 推送异常:`, err)
-      errors.push(`${vendorName}: 网络错误(${reason})`)
+    if ('error' in result) {
+      res.status(502).json({ ok: false, error: result.error })
+      return
     }
+    res.json({ ok: true, data: result })
+  } catch {
+    res.status(500).json({ ok: false, error: '立刻推送失败' })
   }
-
-  res.json({
-    ok: true,
-    data: {
-      pushedCount,
-      totalConfigs: configs.length,
-      errors,
-      stationCode,
-      date,
-      exportSheets,
-    },
-  })
 })
 
 // ─── 运单查询（代理 iMile DS searchWaybill） ─────────────────────────────────
