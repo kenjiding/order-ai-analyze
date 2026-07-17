@@ -39,7 +39,10 @@ export type Dispatch24hDriverStat = {
   neverSignedCount: number
   /** 未达标中：有签收记录但超过 24H 窗口才签收的件数 */
   lateSignedCount: number
-  unmetWaybills: Dispatch24hUnmetWaybill[]
+  /** 从未签收的运单明细，供告警落地页按运单号展示 */
+  neverSignedWaybills: Dispatch24hUnmetWaybill[]
+  /** 签收但超过 24H 窗口才签收的运单明细，供告警落地页按运单号展示 */
+  lateSignedWaybills: Dispatch24hUnmetWaybill[]
   /** 问题件运单明细，供落地页按运单号展示 */
   problemWaybills: Dispatch24hUnmetWaybill[]
 }
@@ -133,41 +136,33 @@ export function isDispatch24hWindowExpired(
 
 /**
  * 终态：已达标 —— 永久成立，无需再拉。
- * 或者窗口已过 **且** 缓存本身是在窗口过后才真正同步到的 —— 此时缓存已经拿到了截止时刻的最终结果。
- * 若窗口过了但最后一次同步仍是窗口过期前的旧快照（signDate 当时可能还没来得及更新），
- * 不能直接判定终态，必须再补拉一次拿到窗口截止时刻的真实结果，否则会把「当时还没签收」
- * 错误地永久冻结成「未达标」，即使实际签收发生在截止时刻之前。
+ * 或者已经拿到签收时间（不论是否超窗口）—— signDate 一旦写入就不会再变化，达标/超时的结论已经确定。
+ * 窗口已过但仍未拿到签收时间时，**不能**视为终态：iMile 侧的签收记录可能在窗口过后才姗姗来迟写入
+ * （即「签收超时」而非「未签收」），必须持续重新拉取直到真正拿到 signDate，否则会把「当时还没签收」
+ * 永久误判成「永远不会签收」。
  * 供「24小时派签告警」多时段推送与「司机地图」手动刷新共用，避免已确认结果重复拉数。
  */
-export function isDispatch24hTerminal(
-  row: Dispatch24hWaybillRow,
-  tz: AusTz,
-  nowMs: number = Date.now(),
-): boolean {
-  if (isDispatch24hMet(row, tz)) return true
-  const deadlineMs = getDispatch24hDeadlineMs(row, tz)
-  if (deadlineMs == null || nowMs <= deadlineMs) return false
-  return row.syncedAtMs != null && row.syncedAtMs >= deadlineMs
+export function isDispatch24hTerminal(row: Dispatch24hWaybillRow, tz: AusTz): boolean {
+  return isDispatch24hMet(row, tz) || Boolean(row.signDate)
 }
 
 /**
  * 从到件索引中筛出仍需重新 searchWaybill 的单号：
  * - 缓存中不存在 → 需要拉
- * - 缓存存在但未终态（未达标且窗口未过）→ 需要拉
- * - 已达标 / 已超窗口 → 跳过
+ * - 缓存存在但未终态（未达标且尚未拿到签收时间）→ 需要拉
+ * - 已达标 / 已拿到签收时间 → 跳过
  */
 export function selectWaybillNosNeedingRefresh(
   indexWaybillNos: string[],
   cachedByWaybillNo: Map<string, Dispatch24hWaybillRow>,
   tz: AusTz,
-  nowMs: number = Date.now(),
 ): string[] {
   const need: string[] = []
   for (const waybillNo of indexWaybillNos) {
     const no = waybillNo.trim()
     if (!no) continue
     const cached = cachedByWaybillNo.get(no)
-    if (!cached || !isDispatch24hTerminal(cached, tz, nowMs)) need.push(no)
+    if (!cached || !isDispatch24hTerminal(cached, tz)) need.push(no)
   }
   return need
 }
@@ -245,7 +240,8 @@ export function aggregateDispatch24hByVendor(input: {
         problemCount: 0,
         neverSignedCount: 0,
         lateSignedCount: 0,
-        unmetWaybills: [],
+        neverSignedWaybills: [],
+        lateSignedWaybills: [],
         problemWaybills: [],
       }
       driverMap.set(courierCode, driverStat)
@@ -254,7 +250,9 @@ export function aggregateDispatch24hByVendor(input: {
     if (met) {
       driverStat.met += 1
     } else if (wbNo) {
-      driverStat.unmetWaybills.push({ waybillNo: wbNo, routeCode: consigneeRouteCode || '未知路由' })
+      const waybill = { waybillNo: wbNo, routeCode: consigneeRouteCode || '未知路由' }
+      if (neverSigned) driverStat.neverSignedWaybills.push(waybill)
+      if (lateSigned) driverStat.lateSignedWaybills.push(waybill)
     }
     if (hasProblem) {
       driverStat.problemCount += 1

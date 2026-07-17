@@ -116,9 +116,8 @@ export async function syncStationDayWaybillsIncremental(input: {
   dataDate: string
   tz: AusTz
   label: string
-  nowMs?: number
 }): Promise<StationDayWaybillSyncResult | { ok: false; message: string }> {
-  const { token, stationCode, dataDate, tz, label, nowMs } = input
+  const { token, stationCode, dataDate, tz, label } = input
   const cachedByWaybillNo = await loadStationDayWaybillCache(stationCode, dataDate)
 
   const fetched = await fetchWaybillDetailsIncremental({
@@ -128,7 +127,6 @@ export async function syncStationDayWaybillsIncremental(input: {
     label,
     tz,
     cachedByWaybillNo,
-    nowMs,
   })
   if (!fetched.ok) return { ok: false, message: fetched.message }
 

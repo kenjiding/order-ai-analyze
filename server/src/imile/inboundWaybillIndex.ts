@@ -468,7 +468,6 @@ export async function fetchWaybillDetailsIncremental(input: {
   label: string
   tz: AusTz
   cachedByWaybillNo: Map<string, Dispatch24hWaybillRow>
-  nowMs?: number
 }): Promise<IncrementalWaybillFetchSuccess | InboundWaybillFetchError> {
   const indexResult = await getOrFetchInboundWaybillNos({
     token: input.token,
@@ -482,7 +481,6 @@ export async function fetchWaybillDetailsIncremental(input: {
     indexResult.waybillNos,
     input.cachedByWaybillNo,
     input.tz,
-    input.nowMs,
   )
   const needSet = new Set(needNos)
   const fromCacheRecords: InboundWaybillRow[] = []

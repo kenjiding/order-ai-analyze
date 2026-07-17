@@ -24,7 +24,7 @@ test('isDispatch24hTerminal：已达标视为终态，无需再拉', () => {
   assert.equal(isDispatch24hTerminal(row, tz), true)
 })
 
-test('isDispatch24hTerminal：窗口内未达标仍需刷新；超窗口但快照仍是窗口前的旧数据，需补拉一次才视为终态', () => {
+test('isDispatch24hTerminal：未拿到签收时间时，即使窗口已过、缓存已是窗口后同步的，也不能锁定终态；signDate 一旦写入即为终态', () => {
   const row: Dispatch24hWaybillRow = {
     waybillNo: 'W2',
     deliveryTime: '2024-06-24 10:00:00',
@@ -35,20 +35,22 @@ test('isDispatch24hTerminal：窗口内未达标仍需刷新；超窗口但快�
   const afterWindow = deadline + 60_000
 
   assert.equal(isDispatch24hWindowExpired(row, tz, withinWindow), false)
-  assert.equal(isDispatch24hTerminal(row, tz, withinWindow), false)
+  assert.equal(isDispatch24hTerminal(row, tz), false)
   assert.equal(isDispatch24hMet(row, tz), false)
   assert.equal(isDispatch24hWindowExpired(row, tz, afterWindow), true)
 
-  // 没有 syncedAtMs（从未同步过）：窗口过了也不能锁定终态，还得再拉一次确认
-  assert.equal(isDispatch24hTerminal(row, tz, afterWindow), false)
+  // 窗口已过，但 signDate 仍为空：iMile 可能之后才补上签收记录（签收超时），不能锁定终态，必须继续拉
+  const staleSynced: Dispatch24hWaybillRow = { ...row, syncedAtMs: afterWindow }
+  assert.equal(isDispatch24hTerminal(staleSynced, tz), false)
 
-  // 最后一次同步是在 deadline 之前的旧快照：仍需补拉，不能直接冻结
-  const staleSynced: Dispatch24hWaybillRow = { ...row, syncedAtMs: deadline - 30_000 }
-  assert.equal(isDispatch24hTerminal(staleSynced, tz, afterWindow), false)
-
-  // 最后一次同步已经在 deadline 之后：拿到的就是最终结果，可以锁定终态
-  const freshSynced: Dispatch24hWaybillRow = { ...row, syncedAtMs: deadline + 10_000 }
-  assert.equal(isDispatch24hTerminal(freshSynced, tz, afterWindow), true)
+  // 窗口过后才补上的签收记录（签收超时）：signDate 一旦写入就不会再变，视为终态
+  const lateSigned: Dispatch24hWaybillRow = {
+    ...row,
+    signDate: '2024-06-26 09:00:00',
+    syncedAtMs: afterWindow,
+  }
+  assert.equal(isDispatch24hMet(lateSigned, tz), false)
+  assert.equal(isDispatch24hTerminal(lateSigned, tz), true)
 })
 
 test('selectWaybillNosNeedingRefresh：只返回未终态单号', () => {
@@ -62,36 +64,32 @@ test('selectWaybillNosNeedingRefresh：只返回未终态单号', () => {
     deliveryTime: '2024-06-24 10:00:00',
   }
   const deadline = getDispatch24hDeadlineMs(open, tz)!
-  // 窗口过后才补拉过一次，无需再刷新
+  // 窗口已过、缓存也是窗口后同步的，但 signDate 仍为空：不能锁定终态，仍需刷新（防止漏掉签收超时的单）
   const expiredSynced: Dispatch24hWaybillRow = {
     waybillNo: 'C',
     deliveryTime: '2024-06-24 10:00:00',
     syncedAtMs: deadline + 10_000,
   }
-  // 窗口已过，但最后一次同步还是窗口前的旧快照，仍需刷新
-  const expiredStale: Dispatch24hWaybillRow = {
+  // 窗口过后才补上的签收记录：signDate 已写入，视为终态，无需再刷新
+  const lateSigned: Dispatch24hWaybillRow = {
     waybillNo: 'E',
     deliveryTime: '2024-06-24 10:00:00',
-    syncedAtMs: deadline - 30_000,
+    signDate: '2024-06-26 09:00:00',
+    syncedAtMs: deadline + 10_000,
   }
-  const withinWindow = deadline - 60_000
-  const afterWindow = deadline + 60_000
   const cached = new Map<string, Dispatch24hWaybillRow>([
     ['A', met],
     ['B', open],
     ['C', expiredSynced],
-    ['E', expiredStale],
+    ['E', lateSigned],
   ])
 
-  assert.deepEqual(selectWaybillNosNeedingRefresh(['A', 'B', 'C', 'D'], cached, tz, withinWindow), [
+  assert.deepEqual(selectWaybillNosNeedingRefresh(['A', 'B', 'C', 'D'], cached, tz), ['B', 'C', 'D'])
+  assert.deepEqual(selectWaybillNosNeedingRefresh(['A', 'B', 'C', 'D', 'E'], cached, tz), [
     'B',
     'C',
     'D',
   ])
-  assert.deepEqual(
-    selectWaybillNosNeedingRefresh(['A', 'B', 'C', 'D', 'E'], cached, tz, afterWindow),
-    ['B', 'D', 'E'],
-  )
 })
 
 test('isDispatch24hProblem：问题件时间需晚于派件时间才算本次派送产生的问题件', () => {
@@ -224,4 +222,57 @@ test('aggregateDispatch24hByVendor：problemCount 按供应商与司机两级统
     ['P1'],
   )
   assert.deepEqual(c2?.problemWaybills, [])
+})
+
+test('aggregateDispatch24hByVendor：未达标运单按 neverSigned/lateSigned 分别收集运单号，不再混进同一个列表', () => {
+  const rows: Dispatch24hWaybillRow[] = [
+    // 从未签收
+    {
+      waybillNo: 'N1',
+      courierCode: 'C1',
+      courierVendorCode: 'V1',
+      lastScanSiteCode: 'S1',
+      consigneeRouteCode: 'R-A',
+      deliveryTime: '2024-06-24 10:00:00',
+    },
+    // 签收但超过 24H 窗口
+    {
+      waybillNo: 'L1',
+      courierCode: 'C1',
+      courierVendorCode: 'V1',
+      lastScanSiteCode: 'S1',
+      consigneeRouteCode: 'R-B',
+      deliveryTime: '2024-06-24 10:00:00',
+      signDate: '2024-06-26 09:00:00',
+    },
+    // 窗口内签收，达标
+    {
+      waybillNo: 'M1',
+      courierCode: 'C1',
+      courierVendorCode: 'V1',
+      lastScanSiteCode: 'S1',
+      consigneeRouteCode: 'R-A',
+      deliveryTime: '2024-06-24 10:00:00',
+      signDate: '2024-06-24 12:00:00',
+    },
+  ]
+
+  const stat = aggregateDispatch24hByVendor({
+    rows,
+    stationCodes: ['S1'],
+    tz,
+    routeCodeWhitelistByVendor: new Map(),
+  }).get('V1')
+  const c1 = stat?.drivers.find((d) => d.courierCode === 'C1')
+
+  assert.equal(c1?.neverSignedCount, 1)
+  assert.equal(c1?.lateSignedCount, 1)
+  assert.deepEqual(
+    c1?.neverSignedWaybills.map((w) => w.waybillNo),
+    ['N1'],
+  )
+  assert.deepEqual(
+    c1?.lateSignedWaybills.map((w) => w.waybillNo),
+    ['L1'],
+  )
 })

@@ -55,7 +55,8 @@ export type DispatchAlarmShareDriver = {
   total: number
   met: number
   problemCount: number
-  unmetWaybills: DispatchAlarmShareWaybill[]
+  neverSignedWaybills: DispatchAlarmShareWaybill[]
+  lateSignedWaybills: DispatchAlarmShareWaybill[]
   problemWaybills: DispatchAlarmShareWaybill[]
 }
 

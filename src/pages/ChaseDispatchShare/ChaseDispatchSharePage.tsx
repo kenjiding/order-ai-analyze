@@ -105,25 +105,41 @@ function toChaseDispatchViewModel(data: ChaseDispatchShareView): ShareViewModel 
 }
 
 function toDispatchAlarmViewModel(data: DispatchAlarmShareView): ShareViewModel {
-  const unmetDrivers = data.drivers.filter((d) => d.total - d.met > 0)
+  const neverSignedDrivers = data.drivers.filter((d) => d.neverSignedWaybills.length > 0)
+  const lateSignedDrivers = data.drivers.filter((d) => d.lateSignedWaybills.length > 0)
   const problemDrivers = data.drivers.filter((d) => d.problemCount > 0)
   const unmetTotal = data.total - data.met
   const rate = data.total > 0 ? (data.met / data.total) * 100 : 0
   const rateText = data.total > 0 ? `${rate.toFixed(1)}%` : '—'
 
   const groups: ShareGroup[] = []
-  if (unmetDrivers.length > 0) {
+  if (neverSignedDrivers.length > 0) {
     groups.push({
-      key: 'unmet',
-      title: 'Not signed within 24H',
-      count: unmetTotal,
-      drivers: unmetDrivers.map((d) => ({
+      key: 'never-signed',
+      title: 'Not signed',
+      count: neverSignedDrivers.reduce((sum, d) => sum + d.neverSignedWaybills.length, 0),
+      drivers: neverSignedDrivers.map((d) => ({
         key: d.courierCode,
         name: d.courierName,
         code: d.courierCode,
-        count: d.total - d.met,
-        waybillNos: d.unmetWaybills.map((w) => w.waybillNo),
-        routes: groupByRoute(d.unmetWaybills),
+        count: d.neverSignedWaybills.length,
+        waybillNos: d.neverSignedWaybills.map((w) => w.waybillNo),
+        routes: groupByRoute(d.neverSignedWaybills),
+      })),
+    })
+  }
+  if (lateSignedDrivers.length > 0) {
+    groups.push({
+      key: 'late-signed',
+      title: 'Signed late (over 24H)',
+      count: lateSignedDrivers.reduce((sum, d) => sum + d.lateSignedWaybills.length, 0),
+      drivers: lateSignedDrivers.map((d) => ({
+        key: d.courierCode,
+        name: d.courierName,
+        code: d.courierCode,
+        count: d.lateSignedWaybills.length,
+        waybillNos: d.lateSignedWaybills.map((w) => w.waybillNo),
+        routes: groupByRoute(d.lateSignedWaybills),
       })),
     })
   }
@@ -149,7 +165,7 @@ function toDispatchAlarmViewModel(data: DispatchAlarmShareView): ShareViewModel 
     brand: BRAND_BY_KIND['dispatch-alarm'],
     vendorName: data.vendorName,
     subtitle: `Station ${data.stationCode} · ${data.date} ${data.pushTime} · 24H rate ${rateText} (threshold ${data.alertThresholdPct}%)`,
-    metricLabel: 'Not signed within 24H',
+    metricLabel: 'Not met within 24H',
     metricValue: unmetTotal,
     groups,
     emptyMessage: 'All waybills signed within 24H, no problem parcels.',

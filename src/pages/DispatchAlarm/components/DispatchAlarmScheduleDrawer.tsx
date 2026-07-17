@@ -173,12 +173,13 @@ export function DispatchAlarmScheduleDrawer({
                   format="YYYY-MM-DD"
                   allowClear={false}
                   disabled={saving}
+                  disabledDate={(current) => Boolean(current) && current.format('YYYY-MM-DD') >= dayjs().format('YYYY-MM-DD')}
                   onChange={(val) => {
                     if (val) setArrivalScanDate(val.format('YYYY-MM-DD'))
                   }}
                 />
               </div>
-              <span className="text-xs text-slate-400">到件扫描时间只影响立即推送</span>
+              <span className="text-xs text-slate-400">到件扫描时间只影响立即推送，今天的分拣扫描尚未完成，只能选今天之前的日期</span>
             </div>
           </div>
         </FormSection>

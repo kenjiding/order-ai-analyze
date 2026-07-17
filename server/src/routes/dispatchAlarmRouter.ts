@@ -63,6 +63,11 @@ function normalizeArrivalScanDate(raw: unknown): string | null {
   return DATE_STR_RE.test(s) ? s : null
 }
 
+/** 今天的分拣扫描尚未结束，到件数据仍在变化中，只允许选今天之前的日期 */
+function isArrivalScanDateBeforeToday(dateStr: string, regionCode: string | null | undefined): boolean {
+  return dateStr < getRegionNow(resolveRegionTz(regionCode)).dateStr
+}
+
 function toPublicSchedule(row: DispatchAlarmSchedule, regionCode: string | null): PublicDispatchAlarmSchedule {
   return {
     id: row.id,
@@ -139,6 +144,10 @@ dispatchAlarmRouter.post('/schedules', async (req: AuthenticatedRequest, res: Re
     res.status(400).json({ ok: false, error: '缺少必填字段: stationCode' })
     return
   }
+  if (fields.arrivalScanDate && !isArrivalScanDateBeforeToday(fields.arrivalScanDate, req.authUser?.regionCode)) {
+    res.status(400).json({ ok: false, error: '到件扫描时间只能选今天之前的日期' })
+    return
+  }
 
   const tokenFromBody = typeof body.imileToken === 'string' ? body.imileToken.trim() : ''
   const tokenFromHeader = readImileTokenFromRequest(req, body.imileToken)
@@ -198,6 +207,10 @@ dispatchAlarmRouter.put('/schedules/:id', async (req: AuthenticatedRequest, res:
   const fields = extractScheduleFields(body)
   if (!fields.stationCode) {
     res.status(400).json({ ok: false, error: '缺少必填字段: stationCode' })
+    return
+  }
+  if (fields.arrivalScanDate && !isArrivalScanDateBeforeToday(fields.arrivalScanDate, req.authUser?.regionCode)) {
+    res.status(400).json({ ok: false, error: '到件扫描时间只能选今天之前的日期' })
     return
   }
 
