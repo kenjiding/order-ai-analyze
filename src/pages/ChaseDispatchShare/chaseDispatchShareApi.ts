@@ -54,7 +54,9 @@ export type DispatchAlarmShareDriver = {
   courierName: string
   total: number
   met: number
+  problemCount: number
   unmetWaybills: DispatchAlarmShareWaybill[]
+  problemWaybills: DispatchAlarmShareWaybill[]
 }
 
 export type DispatchAlarmShareView = {
@@ -65,6 +67,7 @@ export type DispatchAlarmShareView = {
   pushTime: string
   total: number
   met: number
+  problemCount: number
   alertThresholdPct: number
   drivers: DispatchAlarmShareDriver[]
   createdAt: string

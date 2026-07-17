@@ -92,6 +92,7 @@ export function useDispatchAlarmPage() {
         stationCode: schedule.stationCode,
         alertThresholdPct: schedule.alertThresholdPct,
         pushConfigIds: schedule.pushConfigIds,
+        arrivalScanDate: schedule.arrivalScanDate,
       }
       const res = await updateDispatchAlarmSchedule(schedule.id, draft, imileToken)
       if (res.ok) {

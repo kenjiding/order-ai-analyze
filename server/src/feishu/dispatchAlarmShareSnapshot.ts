@@ -5,7 +5,7 @@ import type { Dispatch24hDriverStat } from '../vendorAnalysis/dispatch24hAggrega
 import { buildDispatchAlarmShareUrl } from './publicWebOrigin'
 
 /** 派签告警分享快照保留天数（读时校验 + 定时/顺带清理一致） */
-export const DISPATCH_ALARM_SHARE_RETENTION_DAYS = 3
+export const DISPATCH_ALARM_SHARE_RETENTION_DAYS = 1
 export const DISPATCH_ALARM_SHARE_TTL_MS = DISPATCH_ALARM_SHARE_RETENTION_DAYS * 24 * 60 * 60 * 1000
 
 export type DispatchAlarmSharePayload = {
@@ -16,6 +16,8 @@ export type DispatchAlarmSharePayload = {
   pushTime: string
   total: number
   met: number
+  /** 问题件数：见 aggregateDispatch24hByVendor 的 isDispatch24hProblem 口径 */
+  problemCount: number
   alertThresholdPct: number
   drivers: Dispatch24hDriverStat[]
 }
@@ -46,10 +48,12 @@ export async function createDispatchAlarmShareSnapshot(params: {
   pushTime: string
   total: number
   met: number
+  problemCount: number
   alertThresholdPct: number
   drivers: Dispatch24hDriverStat[]
 }): Promise<{ token: string; url: string } | null> {
-  const { vendorCode, vendorName, stationCode, date, pushTime, total, met, alertThresholdPct, drivers } = params
+  const { vendorCode, vendorName, stationCode, date, pushTime, total, met, problemCount, alertThresholdPct, drivers } =
+    params
   const urlProbe = buildDispatchAlarmShareUrl('probe')
   if (!urlProbe) {
     console.warn('[dispatch-alarm/share] PUBLIC_WEB_ORIGIN / CORS_ORIGIN 未配置，跳过落地页链接')
@@ -65,6 +69,7 @@ export async function createDispatchAlarmShareSnapshot(params: {
     pushTime,
     total,
     met,
+    problemCount,
     alertThresholdPct,
     drivers,
   }
@@ -133,6 +138,7 @@ export async function loadDispatchAlarmShareSnapshot(
     pushTime: String(payload.pushTime ?? row.pushTime),
     total: typeof payload.total === 'number' ? payload.total : 0,
     met: typeof payload.met === 'number' ? payload.met : 0,
+    problemCount: typeof payload.problemCount === 'number' ? payload.problemCount : 0,
     alertThresholdPct: typeof payload.alertThresholdPct === 'number' ? payload.alertThresholdPct : 0,
     drivers: Array.isArray(payload.drivers) ? payload.drivers : [],
     createdAt: new Date(row.createdAt).toISOString(),

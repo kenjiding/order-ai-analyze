@@ -9,6 +9,8 @@ export type DispatchAlarmScheduleDraft = {
   /** 24H 派签率预警阈值（百分比整数）：低于该值的供应商在推送卡片中标红 */
   alertThresholdPct: number
   pushConfigIds: string[]
+  /** 「立刻推送」使用的到件扫描日期 YYYY-MM-DD；为空时按自动计算的最近工作日兜底，不影响自动定时推送 */
+  arrivalScanDate: string | null
 }
 
 export type DispatchAlarmSchedule = DispatchAlarmScheduleDraft & {

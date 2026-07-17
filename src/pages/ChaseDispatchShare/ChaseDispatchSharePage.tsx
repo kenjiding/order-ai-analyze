@@ -36,6 +36,8 @@ type ShareGroup = {
   title: string
   count: number
   drivers: ShareDriverRow[]
+  /** 'alert' 时分组标题/计数用红色区别于其它分组（如问题件） */
+  tone?: 'alert'
 }
 
 type ShareViewModel = {
@@ -104,9 +106,44 @@ function toChaseDispatchViewModel(data: ChaseDispatchShareView): ShareViewModel 
 
 function toDispatchAlarmViewModel(data: DispatchAlarmShareView): ShareViewModel {
   const unmetDrivers = data.drivers.filter((d) => d.total - d.met > 0)
+  const problemDrivers = data.drivers.filter((d) => d.problemCount > 0)
   const unmetTotal = data.total - data.met
   const rate = data.total > 0 ? (data.met / data.total) * 100 : 0
   const rateText = data.total > 0 ? `${rate.toFixed(1)}%` : '—'
+
+  const groups: ShareGroup[] = []
+  if (unmetDrivers.length > 0) {
+    groups.push({
+      key: 'unmet',
+      title: 'Not signed within 24H',
+      count: unmetTotal,
+      drivers: unmetDrivers.map((d) => ({
+        key: d.courierCode,
+        name: d.courierName,
+        code: d.courierCode,
+        count: d.total - d.met,
+        waybillNos: d.unmetWaybills.map((w) => w.waybillNo),
+        routes: groupByRoute(d.unmetWaybills),
+      })),
+    })
+  }
+  if (problemDrivers.length > 0) {
+    groups.push({
+      key: 'problem',
+      title: 'Problem parcels',
+      count: data.problemCount,
+      tone: 'alert',
+      drivers: problemDrivers.map((d) => ({
+        key: d.courierCode,
+        name: d.courierName,
+        code: d.courierCode,
+        count: d.problemCount,
+        waybillNos: d.problemWaybills.map((w) => w.waybillNo),
+        routes: groupByRoute(d.problemWaybills),
+      })),
+    })
+  }
+
   return {
     kind: 'dispatch-alarm',
     brand: BRAND_BY_KIND['dispatch-alarm'],
@@ -114,25 +151,8 @@ function toDispatchAlarmViewModel(data: DispatchAlarmShareView): ShareViewModel 
     subtitle: `Station ${data.stationCode} · ${data.date} ${data.pushTime} · 24H rate ${rateText} (threshold ${data.alertThresholdPct}%)`,
     metricLabel: 'Not signed within 24H',
     metricValue: unmetTotal,
-    groups:
-      unmetDrivers.length > 0
-        ? [
-            {
-              key: 'unmet',
-              title: 'Not signed within 24H',
-              count: unmetTotal,
-              drivers: unmetDrivers.map((d) => ({
-                key: d.courierCode,
-                name: d.courierName,
-                code: d.courierCode,
-                count: d.total - d.met,
-                waybillNos: d.unmetWaybills.map((w) => w.waybillNo),
-                routes: groupByRoute(d.unmetWaybills),
-              })),
-            },
-          ]
-        : [],
-    emptyMessage: 'All waybills signed within 24H.',
+    groups,
+    emptyMessage: 'All waybills signed within 24H, no problem parcels.',
   }
 }
 
@@ -259,7 +279,7 @@ export default function ChaseDispatchSharePage() {
           <p className="wbs-share__brand">{BRAND_BY_KIND[kind]}</p>
           <h1 className="wbs-share__state-title">Link unavailable</h1>
           <p className="wbs-share__state-hint">
-            This share link is invalid or has expired (links stay open for 3 days). Ask the warehouse team to push again.
+            This share link is invalid or has expired (links stay open for 1 day). Ask the warehouse team to push again.
           </p>
         </div>
       </div>
@@ -302,7 +322,7 @@ export default function ChaseDispatchSharePage() {
             {view.groups.map((group, groupIndex) => (
               <section
                 key={group.key}
-                className="wbs-share__group"
+                className={`wbs-share__group${group.tone === 'alert' ? ' wbs-share__group--alert' : ''}`}
                 style={{ animationDelay: `${0.06 + groupIndex * 0.05}s` }}
               >
                 <div className="wbs-share__group-head">
@@ -385,7 +405,7 @@ export default function ChaseDispatchSharePage() {
 
         <p className="wbs-share__foot">
           Snapshot from the {view.brand.toLowerCase()} push. Copy waybills into your TMS or clipboard as needed. Link
-          expires after 3 days.
+          expires after 1 day.
         </p>
       </div>
 

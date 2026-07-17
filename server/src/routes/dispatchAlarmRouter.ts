@@ -30,6 +30,7 @@ type ScheduleBody = {
   stationCode?: unknown
   alertThresholdPct?: unknown
   pushConfigIds?: unknown
+  arrivalScanDate?: unknown
   imileToken?: unknown
 }
 
@@ -41,6 +42,8 @@ type PublicDispatchAlarmSchedule = {
   stationCode: string
   alertThresholdPct: number
   pushConfigIds: string[]
+  /** 「立刻推送」使用的到件扫描日期 YYYY-MM-DD；为空时按自动计算的最近工作日兜底 */
+  arrivalScanDate: string | null
   /** 拥有该配置的账号所属州/区域，决定 pushTimes/weekdays 按哪个时区判断；只读，随账号信息变化 */
   regionCode: string | null
   updatedAt: Date
@@ -53,6 +56,13 @@ function normalizeAlertThresholdPct(raw: unknown): number {
   return Math.min(MAX_ALERT_THRESHOLD_PCT, Math.max(MIN_ALERT_THRESHOLD_PCT, Math.round(n)))
 }
 
+const DATE_STR_RE = /^\d{4}-\d{2}-\d{2}$/
+
+function normalizeArrivalScanDate(raw: unknown): string | null {
+  const s = typeof raw === 'string' ? raw.trim() : ''
+  return DATE_STR_RE.test(s) ? s : null
+}
+
 function toPublicSchedule(row: DispatchAlarmSchedule, regionCode: string | null): PublicDispatchAlarmSchedule {
   return {
     id: row.id,
@@ -62,6 +72,7 @@ function toPublicSchedule(row: DispatchAlarmSchedule, regionCode: string | null)
     stationCode: row.stationCode,
     alertThresholdPct: row.alertThresholdPct,
     pushConfigIds: parsePushConfigIds(row.pushConfigIds),
+    arrivalScanDate: row.arrivalScanDate ?? null,
     regionCode,
     updatedAt: row.updatedAt,
     hasImileToken: hasDispatchAlarmImileToken(row),
@@ -89,6 +100,7 @@ function extractScheduleFields(body: ScheduleBody) {
     stationCode: typeof body.stationCode === 'string' ? body.stationCode.trim() : '',
     alertThresholdPct: normalizeAlertThresholdPct(body.alertThresholdPct),
     pushConfigIds: parsePushConfigIds(body.pushConfigIds),
+    arrivalScanDate: normalizeArrivalScanDate(body.arrivalScanDate),
   }
 }
 
@@ -161,6 +173,7 @@ dispatchAlarmRouter.post('/schedules', async (req: AuthenticatedRequest, res: Re
         stationCode: fields.stationCode,
         alertThresholdPct: fields.alertThresholdPct,
         pushConfigIds: fields.pushConfigIds,
+        arrivalScanDate: fields.arrivalScanDate,
         imileToken: nextImileToken ? normalizeImileToken(nextImileToken) : null,
         updatedBy: userId,
       })
@@ -227,6 +240,7 @@ dispatchAlarmRouter.put('/schedules/:id', async (req: AuthenticatedRequest, res:
         stationCode: fields.stationCode,
         alertThresholdPct: fields.alertThresholdPct,
         pushConfigIds: fields.pushConfigIds,
+        arrivalScanDate: fields.arrivalScanDate,
         ...(nextImileToken ? { imileToken: normalizeImileToken(nextImileToken) } : {}),
         updatedBy: userId,
         updatedAt: new Date(),
@@ -304,7 +318,8 @@ dispatchAlarmRouter.post('/schedules/:id/push-now', async (req: AuthenticatedReq
 
     const tz = resolveRegionTz(req.authUser?.regionCode)
     const { prevDateStr, timeHHmm: pushTime } = getRegionNow(tz)
-    const date = lastSortingWorkdayOnOrBefore(prevDateStr)
+    // 已保存到件扫描日期则按该日期拉数（用户手动指定，不做工作日兜底）；否则沿用自动计算的最近工作日
+    const date = schedule.arrivalScanDate?.trim() || lastSortingWorkdayOnOrBefore(prevDateStr)
 
     const result = await executeDispatchAlarmPush({
       token,
@@ -314,6 +329,7 @@ dispatchAlarmRouter.post('/schedules/:id/push-now', async (req: AuthenticatedReq
       alertThresholdPct: schedule.alertThresholdPct,
       configs,
       tz,
+      regionCode: req.authUser?.regionCode ?? null,
       label: `[dispatch-alarm/push-now schedule=${schedule.id}]`,
     })
     if ('error' in result) {

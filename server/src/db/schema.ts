@@ -361,6 +361,8 @@ export const dispatchAlarmSchedules = pgTable('dispatch_alarm_schedules', {
   alertThresholdPct: integer('alert_threshold_pct').notNull().default(92),
   /** 本条配置启用的供应商配置 id 列表，取代原来全局共享的 supplierConfigScopeBindings */
   pushConfigIds: jsonb('push_config_ids').notNull().default([]),
+  /** 「立刻推送」使用的到件扫描日期 YYYY-MM-DD；为空时按自动计算的最近工作日兜底，不影响自动定时推送 */
+  arrivalScanDate: varchar('arrival_scan_date', { length: 10 }),
   /** 定时拉数使用的 iMile token（保存配置时从全局设置同步，不对外返回） */
   imileToken: varchar('imile_token', { length: 2048 }),
   updatedBy: uuid('updated_by').references(() => users.id, { onDelete: 'set null' }),

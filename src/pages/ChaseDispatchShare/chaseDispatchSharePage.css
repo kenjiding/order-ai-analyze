@@ -215,6 +215,16 @@ html[data-share-shell] body::before {
   flex-shrink: 0;
 }
 
+/* 问题件等需要额外提醒的分组：标题与计数用告警红区别于普通分组 */
+.wbs-share__group--alert .wbs-share__group-title {
+  color: var(--wbs-alert);
+}
+
+.wbs-share__group--alert .wbs-share__group-count {
+  color: var(--wbs-alert);
+  background: var(--wbs-alert-soft);
+}
+
 .wbs-share__group-body {
   padding: 0.75rem 0.75rem 0.75rem;
   border-top: 1px solid var(--wbs-line);

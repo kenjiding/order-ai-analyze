@@ -19,7 +19,7 @@ import { readImileTokenFromRequest } from './imileAuth'
 import { getDb } from '../db'
 import { orderExceptionPostFilterConfigs, orderExceptionWarehouseConfigs } from '../db/schema'
 import { DEFAULT_WAREHOUSE_CONFIG } from '../orderAnalyze/warehouseProfiles'
-import type { AuthenticatedRequest } from '../auth/middleware'
+import { requirePermission, type AuthenticatedRequest } from '../auth/middleware'
 import { enqueueJob } from '../jobs/queue'
 import { ORDER_ANALYZE_JOB_TYPE } from '../jobs/handlers'
 
@@ -248,39 +248,43 @@ orderExceptionRouter.get('/warehouse-config', async (_req: Request, res: Respons
   }
 })
 
-orderExceptionRouter.post('/warehouse-config', async (req: Request, res: Response) => {
-  try {
-    const { payload } = req.body as { payload: unknown }
-    if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
-      res.status(400).json({ error: '无效的仓库配置' })
-      return
-    }
-    const now = new Date()
-    const authReq = req as AuthenticatedRequest
-    const db = getDb()
-    const [result] = await db
-      .insert(orderExceptionWarehouseConfigs)
-      .values({
-        configKey: 'global',
-        payload,
-        savedBy: authReq.authUser?.id ?? null,
-        createdAt: now,
-        updatedAt: now,
-      })
-      .onConflictDoUpdate({
-        target: orderExceptionWarehouseConfigs.configKey,
-        set: {
+orderExceptionRouter.post(
+  '/warehouse-config',
+  requirePermission('btn:order-exception:config-edit'),
+  async (req: Request, res: Response) => {
+    try {
+      const { payload } = req.body as { payload: unknown }
+      if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
+        res.status(400).json({ error: '无效的仓库配置' })
+        return
+      }
+      const now = new Date()
+      const authReq = req as AuthenticatedRequest
+      const db = getDb()
+      const [result] = await db
+        .insert(orderExceptionWarehouseConfigs)
+        .values({
+          configKey: 'global',
           payload,
           savedBy: authReq.authUser?.id ?? null,
+          createdAt: now,
           updatedAt: now,
-        },
-      })
-      .returning()
-    res.json({ config: result.payload, updatedAt: result.updatedAt.toISOString() })
-  } catch (e) {
-    res.status(500).json({ error: (e as Error).message || '保存仓库配置失败' })
+        })
+        .onConflictDoUpdate({
+          target: orderExceptionWarehouseConfigs.configKey,
+          set: {
+            payload,
+            savedBy: authReq.authUser?.id ?? null,
+            updatedAt: now,
+          },
+        })
+        .returning()
+      res.json({ config: result.payload, updatedAt: result.updatedAt.toISOString() })
+    } catch (e) {
+      res.status(500).json({ error: (e as Error).message || '保存仓库配置失败' })
+    }
   }
-})
+)
 
 orderExceptionRouter.post('/analyze', async (req: Request, res: Response) => {
   try {

@@ -1,4 +1,4 @@
-import { Button, Checkbox, Drawer, InputNumber, TimePicker } from 'antd'
+import { Button, Checkbox, DatePicker, Drawer, InputNumber, TimePicker } from 'antd'
 import dayjs from 'dayjs'
 import { Clock, Gauge, Plus, Save, Truck, X } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
@@ -26,6 +26,10 @@ const DEFAULT_ALERT_THRESHOLD_PCT = 92
 
 function generateId(): string {
   return `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`
+}
+
+function yesterday(): string {
+  return dayjs().subtract(1, 'day').format('YYYY-MM-DD')
 }
 
 type Props = {
@@ -79,6 +83,7 @@ export function DispatchAlarmScheduleDrawer({
   const [pushTimes, setPushTimes] = useState<PushTimeSlot[]>([])
   const [alertThresholdPct, setAlertThresholdPct] = useState<number | null>(DEFAULT_ALERT_THRESHOLD_PCT)
   const [pushConfigIds, setPushConfigIds] = useState<string[]>([])
+  const [arrivalScanDate, setArrivalScanDate] = useState<string>(yesterday())
 
   useEffect(() => {
     if (!open) return
@@ -87,6 +92,7 @@ export function DispatchAlarmScheduleDrawer({
     setPushTimes(editingSchedule?.pushTimes ?? [])
     setAlertThresholdPct(editingSchedule?.alertThresholdPct ?? DEFAULT_ALERT_THRESHOLD_PCT)
     setPushConfigIds(editingSchedule?.pushConfigIds ?? [])
+    setArrivalScanDate(editingSchedule?.arrivalScanDate ?? yesterday())
   }, [open, editingSchedule])
 
   const handleAddTime = () => setPushTimes((prev) => [...prev, { id: generateId(), time: '09:30' }])
@@ -122,6 +128,7 @@ export function DispatchAlarmScheduleDrawer({
       stationCode,
       alertThresholdPct: alertThresholdPct ?? DEFAULT_ALERT_THRESHOLD_PCT,
       pushConfigIds: scopedPushConfigIds,
+      arrivalScanDate,
     }
     const ok = await onSubmit(draft)
     if (ok) onClose()
@@ -152,8 +159,28 @@ export function DispatchAlarmScheduleDrawer({
       }
     >
       <div className="space-y-5">
-        <FormSection icon={Gauge} title="站点">
-          <StationSelect value={stationCode} onChange={setStationCode} disabled={saving} />
+        <FormSection icon={Gauge} title="基础配置">
+          <div className="flex flex-wrap items-center justify-between gap-4">
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-medium text-slate-500">站点</span>
+              <StationSelect value={stationCode} onChange={setStationCode} disabled={saving} />
+            </div>
+            <div className="flex flex-col items-end gap-1">
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-medium text-slate-500">到件扫描时间</span>
+                <DatePicker
+                  value={dayjs(arrivalScanDate, 'YYYY-MM-DD')}
+                  format="YYYY-MM-DD"
+                  allowClear={false}
+                  disabled={saving}
+                  onChange={(val) => {
+                    if (val) setArrivalScanDate(val.format('YYYY-MM-DD'))
+                  }}
+                />
+              </div>
+              <span className="text-xs text-slate-400">到件扫描时间只影响立即推送</span>
+            </div>
+          </div>
         </FormSection>
 
         <FormSection icon={Clock} title="定时推送配置" description="推送星期 / 推送时间点 / 预警阈值">

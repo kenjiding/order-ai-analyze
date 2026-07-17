@@ -93,11 +93,13 @@ export async function executeDispatchAlarmPush(params: {
   alertThresholdPct: number
   configs: FleetSupplierPushConfig[]
   tz: AusTz
+  /** 与 tz 同源的账号 regionCode；透传给 fetchDriverWaybills，避免其内部缓存终态判定兜底成阿德莱德、与本次聚合口径的 tz 不一致 */
+  regionCode: string | null
   label: string
 }): Promise<DispatchAlarmPushResult | { error: string }> {
-  const { token, stationCode, date, pushTime, alertThresholdPct, configs, tz, label } = params
+  const { token, stationCode, date, pushTime, alertThresholdPct, configs, tz, regionCode, label } = params
 
-  const result = await fetchDriverWaybills(token, { stationCode, dateStr: date })
+  const result = await fetchDriverWaybills(token, { stationCode, dateStr: date, regionCode })
   if (!result.ok) {
     console.error(`${label} 运单查询失败: ${result.message}`)
     return { error: `运单查询失败: ${result.message}` }
@@ -126,7 +128,7 @@ export async function executeDispatchAlarmPush(params: {
 
     const vendorName = supplierDisplayName(config)
     const share =
-      stat.total - stat.met > 0
+      stat.total - stat.met > 0 || stat.problemCount > 0
         ? await createDispatchAlarmShareSnapshot({
             vendorCode: config.vendorCode,
             vendorName,
@@ -135,6 +137,7 @@ export async function executeDispatchAlarmPush(params: {
             pushTime,
             total: stat.total,
             met: stat.met,
+            problemCount: stat.problemCount,
             alertThresholdPct,
             drivers: stat.drivers,
           })
@@ -147,6 +150,7 @@ export async function executeDispatchAlarmPush(params: {
       pushTime,
       total: stat.total,
       met: stat.met,
+      problemCount: stat.problemCount,
       drivers: stat.drivers,
       alertThresholdPct,
       pushDescription: config.pushDescription,
@@ -242,6 +246,7 @@ async function runOneScheduledPush(schedule: DispatchAlarmSchedule, regionCode: 
       alertThresholdPct: schedule.alertThresholdPct,
       configs,
       tz,
+      regionCode,
       label,
     })
     if ('error' in result) {

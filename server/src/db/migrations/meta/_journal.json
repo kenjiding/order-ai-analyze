@@ -309,6 +309,13 @@
       "when": 1785600000000,
       "tag": "0043_dispatch_alarm_schedules_list",
       "breakpoints": true
+    },
+    {
+      "idx": 44,
+      "version": "7",
+      "when": 1785700000000,
+      "tag": "0044_dispatch_alarm_arrival_scan_date",
+      "breakpoints": true
     }
   ]
 }

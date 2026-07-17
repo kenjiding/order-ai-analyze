@@ -19,6 +19,8 @@ export type Dispatch24hWaybillRow = {
   deliveryTime?: string
   lastScanSiteCode?: string
   lastProblemDate?: string
+  /** 该行数据最后一次真正从 searchWaybill 同步的时间；仅缓存行携带，用于终态判定 */
+  syncedAtMs?: number
 }
 
 export type Dispatch24hUnmetWaybill = {
@@ -31,12 +33,26 @@ export type Dispatch24hDriverStat = {
   courierName: string
   total: number
   met: number
+  /** 问题件数：见 isDispatch24hProblem 口径 */
+  problemCount: number
+  /** 未达标中：完全没有签收记录（signDate 为空）的件数 */
+  neverSignedCount: number
+  /** 未达标中：有签收记录但超过 24H 窗口才签收的件数 */
+  lateSignedCount: number
   unmetWaybills: Dispatch24hUnmetWaybill[]
+  /** 问题件运单明细，供落地页按运单号展示 */
+  problemWaybills: Dispatch24hUnmetWaybill[]
 }
 
 export type Dispatch24hVendorStat = {
   total: number
   met: number
+  /** 问题件数：见 isDispatch24hProblem 口径 */
+  problemCount: number
+  /** 未达标中：完全没有签收记录（signDate 为空）的件数 */
+  neverSignedCount: number
+  /** 未达标中：有签收记录但超过 24H 窗口才签收的件数 */
+  lateSignedCount: number
   unmetNos: string[]
   /** 按司机（courierCode）细分的达标情况，按未达标数从高到低排序 */
   drivers: Dispatch24hDriverStat[]
@@ -85,12 +101,22 @@ export function getDispatch24hDeadlineMs(row: Dispatch24hWaybillRow, tz: AusTz):
   return localDatePlusDaysMs(deliveryMs, tz, daysToMonday, 23, 59, 59)
 }
 
+/**
+ * 问题件是否属于「本次派送」：lastProblemDate 严格晚于 deliveryTime 才算数。
+ * 包裹第一次派送失败上报问题件后，可能被重新派送（第二次 deliveryTime 会晚于那次问题件时间）；
+ * 这种情况下旧的问题件记录跟当前这次派送无关，不能算作本次派送产生的问题件。
+ */
+export function isDispatch24hProblem(row: Dispatch24hWaybillRow): boolean {
+  if (!row.lastProblemDate || !row.deliveryTime) return false
+  return iMileStrToMs(row.lastProblemDate) > iMileStrToMs(row.deliveryTime)
+}
+
 /** 24H 派签是否达标：周一~四 24h 内签收/问题件即达标；周五~日下周一 23:59:59（本地）前签收/问题件达标 */
 export function isDispatch24hMet(row: Dispatch24hWaybillRow, tz: AusTz): boolean {
   const deadlineMs = getDispatch24hDeadlineMs(row, tz)
   if (deadlineMs == null) return false
   const signMs = row.signDate ? iMileStrToMs(row.signDate) : null
-  const problemMs = row.lastProblemDate ? iMileStrToMs(row.lastProblemDate) : null
+  const problemMs = isDispatch24hProblem(row) ? iMileStrToMs(row.lastProblemDate as string) : null
   const beforeDeadline = (ms: number | null) => ms != null && ms <= deadlineMs
   return beforeDeadline(signMs) || beforeDeadline(problemMs)
 }
@@ -106,7 +132,11 @@ export function isDispatch24hWindowExpired(
 }
 
 /**
- * 终态：已达标，或窗口已过（无论达标与否都无需再拉 searchWaybill）。
+ * 终态：已达标 —— 永久成立，无需再拉。
+ * 或者窗口已过 **且** 缓存本身是在窗口过后才真正同步到的 —— 此时缓存已经拿到了截止时刻的最终结果。
+ * 若窗口过了但最后一次同步仍是窗口过期前的旧快照（signDate 当时可能还没来得及更新），
+ * 不能直接判定终态，必须再补拉一次拿到窗口截止时刻的真实结果，否则会把「当时还没签收」
+ * 错误地永久冻结成「未达标」，即使实际签收发生在截止时刻之前。
  * 供「24小时派签告警」多时段推送与「司机地图」手动刷新共用，避免已确认结果重复拉数。
  */
 export function isDispatch24hTerminal(
@@ -115,7 +145,9 @@ export function isDispatch24hTerminal(
   nowMs: number = Date.now(),
 ): boolean {
   if (isDispatch24hMet(row, tz)) return true
-  return isDispatch24hWindowExpired(row, tz, nowMs)
+  const deadlineMs = getDispatch24hDeadlineMs(row, tz)
+  if (deadlineMs == null || nowMs <= deadlineMs) return false
+  return row.syncedAtMs != null && row.syncedAtMs >= deadlineMs
 }
 
 /**
@@ -176,11 +208,14 @@ export function aggregateDispatch24hByVendor(input: {
     if (!inStation(row.lastScanSiteCode)) continue
     if (!row.deliveryTime) continue
     const met = isDispatch24hMet(row, tz)
+    const hasProblem = isDispatch24hProblem(row)
+    const neverSigned = !met && !row.signDate
+    const lateSigned = !met && Boolean(row.signDate)
     const wbNo = row.waybillNo ?? ''
 
     let stat = result.get(vendorCode)
     if (!stat) {
-      stat = { total: 0, met: 0, unmetNos: [], drivers: [] }
+      stat = { total: 0, met: 0, problemCount: 0, neverSignedCount: 0, lateSignedCount: 0, unmetNos: [], drivers: [] }
       result.set(vendorCode, stat)
     }
     stat.total += 1
@@ -189,6 +224,9 @@ export function aggregateDispatch24hByVendor(input: {
     } else if (wbNo) {
       stat.unmetNos.push(wbNo)
     }
+    if (hasProblem) stat.problemCount += 1
+    if (neverSigned) stat.neverSignedCount += 1
+    if (lateSigned) stat.lateSignedCount += 1
 
     const courierCode = norm(row.courierCode)
     if (!courierCode) continue
@@ -204,7 +242,11 @@ export function aggregateDispatch24hByVendor(input: {
         courierName: row.courier?.trim() || courierCode,
         total: 0,
         met: 0,
+        problemCount: 0,
+        neverSignedCount: 0,
+        lateSignedCount: 0,
         unmetWaybills: [],
+        problemWaybills: [],
       }
       driverMap.set(courierCode, driverStat)
     }
@@ -214,6 +256,12 @@ export function aggregateDispatch24hByVendor(input: {
     } else if (wbNo) {
       driverStat.unmetWaybills.push({ waybillNo: wbNo, routeCode: consigneeRouteCode || '未知路由' })
     }
+    if (hasProblem) {
+      driverStat.problemCount += 1
+      if (wbNo) driverStat.problemWaybills.push({ waybillNo: wbNo, routeCode: consigneeRouteCode || '未知路由' })
+    }
+    if (neverSigned) driverStat.neverSignedCount += 1
+    if (lateSigned) driverStat.lateSignedCount += 1
   }
 
   for (const [vendorCode, driverMap] of driverMapByVendor) {

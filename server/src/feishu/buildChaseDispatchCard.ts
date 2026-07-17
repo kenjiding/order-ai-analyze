@@ -108,8 +108,8 @@ export function buildChaseDispatchCard(params: {
       title: {
         tag: 'plain_text',
         content: isUrgent
-          ? `🚚 Long time - No return warehouse or Overdue Deliveries - ${vendorName}`
-          : `✅ No stagnant orders - ${vendorName}`,
+          ? `🚚⚠️ Long time - No return warehouse or Overdue Deliveries - ${vendorName}`
+          : `🚚✅ No stagnant orders - ${vendorName}`,
       },
     },
     elements,

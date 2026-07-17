@@ -21,8 +21,17 @@ function colored(value: string, color: MarkColor): string {
   return `<font color='${color}'>${value}</font>`
 }
 
+/**
+ * 司机名原始格式类似 "MEL-KM-8857-Yanping ZHOU"，按 "-" 分隔取最后一段展示，避免推送内容过长。
+ * 仅用于飞书卡片展示，落地页保留原始全名。
+ */
+function shortDriverName(courierName: string): string {
+  const parts = courierName.split('-')
+  return parts[parts.length - 1].trim() || courierName
+}
+
 function columnSet(columns: CardEl[]): CardEl {
-  return { tag: 'column_set', flex_mode: 'bisect', background_style: 'default', columns }
+  return { tag: 'column_set', flex_mode: 'trisect', background_style: 'default', columns }
 }
 
 /** 自定义机器人 v1 卡片：用 action + button.url 打开落地页（markdown 链接不可跳转） */
@@ -66,13 +75,27 @@ export function buildDispatchAlarmCard(params: {
   pushTime: string
   total: number
   met: number
+  /** 问题件数：见 aggregateDispatch24hByVendor 的 isDispatch24hProblem 口径 */
+  problemCount: number
   drivers: Dispatch24hDriverStat[]
   alertThresholdPct: number
   pushDescription?: string | null
   /** 无登录落地页：查看并复制未达标运单号 */
   detailUrl?: string | null
 }): Record<string, unknown> {
-  const { vendorName, stationCode, date, pushTime, total, met, drivers, alertThresholdPct, pushDescription, detailUrl } = params
+  const {
+    vendorName,
+    stationCode,
+    date,
+    pushTime,
+    total,
+    met,
+    problemCount,
+    drivers,
+    alertThresholdPct,
+    pushDescription,
+    detailUrl,
+  } = params
   const elements: CardEl[] = []
 
   const unmet = total - met
@@ -98,6 +121,7 @@ export function buildDispatchAlarmCard(params: {
     columnSet([
       summaryTile('24H delivery rate', rateText, `Threshold ${alertThresholdPct}%`, isAlert ? 'red' : 'green'),
       summaryTile('Not signed within 24H', `${unmet}`, `${total} waybills total`, unmet > 0 ? 'red' : 'green'),
+      summaryTile('Problem parcels', `${problemCount}`, `${total} waybills total`, problemCount > 0 ? 'orange' : 'green'),
     ]),
   )
 
@@ -109,8 +133,11 @@ export function buildDispatchAlarmCard(params: {
   } else {
     const shown = unmetDrivers.slice(0, MAX_DRIVER_LINES)
     const lines = shown.map((d) => {
-      const driverUnmet = d.total - d.met
-      return `· **${d.courierName}** (${d.courierCode}) ${colored(`${driverUnmet} not signed`, 'red')} / ${d.total} total`
+      const unmetParts: string[] = []
+      if (d.neverSignedCount > 0) unmetParts.push(colored(`${d.neverSignedCount} not signed`, 'red'))
+      if (d.lateSignedCount > 0) unmetParts.push(colored(`${d.lateSignedCount} signed late`, 'orange'))
+      const problemSuffix = d.problemCount > 0 ? `. ${colored(`${d.problemCount} problem`, 'orange')}` : ''
+      return `· **${shortDriverName(d.courierName)}** (${d.courierCode}) ${unmetParts.join(', ')} / ${d.total} total${problemSuffix}`
     })
     if (unmetDrivers.length > MAX_DRIVER_LINES) {
       lines.push(`及其他 ${unmetDrivers.length - MAX_DRIVER_LINES} 位司机`)
@@ -120,7 +147,7 @@ export function buildDispatchAlarmCard(params: {
     )
   }
 
-  if (detailUrl && unmet > 0) {
+  if (detailUrl && (unmet > 0 || problemCount > 0)) {
     elements.push(hr())
     elements.push(openUrlAction(detailUrl, 'Click to View Details'))
   }
@@ -131,10 +158,12 @@ export function buildDispatchAlarmCard(params: {
   return {
     config: { wide_screen_mode: true },
     header: {
-      template: isAlert ? 'orange' : 'green',
+      template: isAlert ? 'blue' : 'green',
       title: {
         tag: 'plain_text',
-        content: isAlert ? `🚨 24-Hour Delivery Alert - ${vendorName}` : `✅ 24H delivery on track - ${vendorName}`,
+        content: isAlert
+          ? `24-Hour Delivery Alert - ${vendorName}`
+          : `24-Hour Delivery on track - ${vendorName}`,
       },
     },
     elements,

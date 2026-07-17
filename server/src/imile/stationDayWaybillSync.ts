@@ -73,6 +73,7 @@ function toCacheRow(row: typeof schema.driverMapWaybillPoints.$inferSelect): Dis
     deliveryTime: row.deliveryTime ?? undefined,
     signDate: row.signDate ?? undefined,
     lastProblemDate: row.lastProblemDate ?? undefined,
+    syncedAtMs: row.updatedAt.getTime(),
   }
 }
 

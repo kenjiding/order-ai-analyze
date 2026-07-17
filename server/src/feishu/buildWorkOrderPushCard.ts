@@ -123,10 +123,10 @@ export function buildWorkOrderPushCard(params: {
   return {
     config: { wide_screen_mode: true },
     header: {
-      template: 'red',
+      template: 'purple',
       title: {
         tag: 'plain_text',
-        content: `⚠️ Unresolved Ticket Alert - ${vendorName}`,
+        content: `Unresolved Ticket Alert - ${vendorName}`,
       },
     },
     elements,

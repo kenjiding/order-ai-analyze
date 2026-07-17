@@ -71,6 +71,7 @@ export function ExitAlarmScheduleList({
                 cancelText="取消"
               >
                 <Button
+                  type="primary"
                   icon={<Send className="h-3.5 w-3.5" />}
                   loading={isPushing}
                   disabled={Boolean(pushingId) && !isPushing}

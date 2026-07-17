@@ -5,7 +5,7 @@ import type { VendorStagnationSummary } from '../imile/chaseDispatchAggregate'
 import { buildChaseDispatchShareUrl } from './publicWebOrigin'
 
 /** 催派分享快照保留天数（读时校验 + 定时/顺带清理一致） */
-export const CHASE_DISPATCH_SHARE_RETENTION_DAYS = 3
+export const CHASE_DISPATCH_SHARE_RETENTION_DAYS = 1
 export const CHASE_DISPATCH_SHARE_TTL_MS = CHASE_DISPATCH_SHARE_RETENTION_DAYS * 24 * 60 * 60 * 1000
 
 export type ChaseDispatchSharePayload = {

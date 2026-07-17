@@ -157,7 +157,9 @@ export function buildExitAlarmCard(params: {
       template: isUrgent ? 'orange' : 'green',
       title: {
         tag: 'plain_text',
-        content: isUrgent ? `🚨 Dispatch alert - ${vendorName}` : `✅ Dispatch on track - ${vendorName}`,
+        content: isUrgent
+          ? `11 am Dispatch alert - ${vendorName}`
+          : `11 am Dispatch on track - ${vendorName}`,
       },
     },
     elements,
