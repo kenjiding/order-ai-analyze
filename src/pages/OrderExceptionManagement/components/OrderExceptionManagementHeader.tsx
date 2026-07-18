@@ -1,4 +1,4 @@
-import { ClipboardList, Layers, PackageSearch, Settings2 } from 'lucide-react'
+import { ClipboardList, Layers, PackageSearch, Settings2, Warehouse } from 'lucide-react'
 import { PageSectionTabs } from '../../../components/PageSectionTabs'
 import type { PageSectionTabItem } from '../../../components/PageSectionTabs'
 import type { TabId } from '../useOrderExceptionManagementPage'
@@ -16,6 +16,7 @@ export function OrderExceptionManagementHeader({
 }: Props) {
   const tabItems: PageSectionTabItem[] = [
     { id: 'analyze', label: 'AI异常订单分析', icon: PackageSearch },
+    { id: 'in-hub', label: '库内异常订单分析', icon: Warehouse },
     {
       id: 'jobs',
       label: '任务队列',

@@ -9,7 +9,8 @@ import { readImileTokenFromRequest } from './imileAuth'
 import { enqueueJob, getJobById, updateJobPayload } from '../jobs/queue'
 import { VENDOR_ANALYZE_JOB_TYPE } from '../jobs/handlers'
 import { canAccessJob, resolveEnqueueRegionCode, sendJobAccessDenied } from '../jobs/access'
-import { listSupplierPushConfigs, parseRouteCodes } from '../supplierPushConfigs'
+import { listSupplierPushConfigs } from '../supplierPushConfigs'
+import { buildScopeRecordsFromConfigs } from '../vendorAnalysis/supplierScope'
 import { purgeOldVendorDailyData } from '../vendorAnalysis/retention'
 import {
   buildVendorAiSystemPrompt,
@@ -66,20 +67,6 @@ function serializeRouteCodeMap(map: Record<string, string[]>): string {
     .sort(([a], [b]) => a.localeCompare(b))
     .map(([vendor, codes]) => `${vendor}:${[...codes].sort().join(',')}`)
     .join(';')
-}
-
-/** 同一 vendorCode 多条配置时合并路由码（并集），避免后写覆盖前写 */
-function mergeRouteCodesInto(
-  target: Record<string, string[]>,
-  vendorCode: string,
-  codes: string[],
-): void {
-  if (codes.length === 0) return
-  const key = normalizeVendorAnalyzeCode(vendorCode)
-  if (!key) return
-  const merged = new Set(target[key] ?? [])
-  for (const code of codes) merged.add(code)
-  target[key] = [...merged]
 }
 
 function buildVendorAnalyzeIdempotencyKey(input: {
@@ -217,13 +204,8 @@ vendorAnalysisRouter.post('/analyze-async', async (req: AuthenticatedRequest, re
   const configRows = await listSupplierPushConfigs(regionResult ?? undefined)
   const vendorCodes = [...new Set(configRows.map((c) => normalizeVendorAnalyzeCode(c.vendorCode)).filter(Boolean))]
 
-  // 路由码纳入名单 / 白名单：随任务 payload 冻结；同 vendorCode 多配置取并集
-  const routeCodesByVendor: Record<string, string[]> = {}
-  const routeCodeWhitelistByVendor: Record<string, string[]> = {}
-  for (const c of configRows) {
-    mergeRouteCodesInto(routeCodesByVendor, c.vendorCode, parseRouteCodes(c.routeCode))
-    mergeRouteCodesInto(routeCodeWhitelistByVendor, c.vendorCode, parseRouteCodes(c.routeCodeWhitelist))
-  }
+  // 路由码纳入名单 / 白名单：随任务 payload 冻结；同 vendorCode 多配置取并集（统一走 supplierScope 构建）
+  const { routeCodesByVendor, routeCodeWhitelistByVendor } = buildScopeRecordsFromConfigs(configRows)
 
   const force = body.force === true
   const idempotencyKey = force

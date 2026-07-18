@@ -315,6 +315,23 @@ export async function postOrderExceptionAnalyze(payload: {
   }
 }
 
+/** 按库内滞留天数区间查询在库运单号（inHubWaybillInbentory），供「库内异常订单分析」Tab 取号源。 */
+export async function postInHubWaybillQuery(payload: {
+  imileToken: string
+  stationCode: string
+  greaterDays: number
+  lessDays: number
+}): Promise<{ waybillNos: string[]; start: string; end: string; totalResult: number }> {
+  const res = await backendFetch(`/api/order-exception/in-hub-waybills`, {
+    method: 'POST',
+    headers: JSON_HEADERS,
+    body: JSON.stringify(payload),
+  })
+  const text = await res.text()
+  if (!res.ok) throw new Error(await readHttpError(res, text))
+  return JSON.parse(text) as { waybillNos: string[]; start: string; end: string; totalResult: number }
+}
+
 export async function getClosureVendors(payload: { imileToken: string }): Promise<{
   vendors: ClosureVendorOption[]
   defaultStationCode: string

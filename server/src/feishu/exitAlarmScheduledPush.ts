@@ -6,13 +6,13 @@ import { computeFeishuWebhookSign, parseSafeWebhookUrl } from '../feishuWebhookH
 import { envFirst } from '../imile/shared'
 import { fetchWaybillDetailsByInboundIndex } from '../imile/inboundWaybillIndex'
 import { resolveRegionTz, type AusTz } from '../imile/ausTimezone'
-import { buildExitAlarmZoneBreakdown, computeBefore11ThresholdMs } from '../imile/before11Exit'
+import { computeBefore11ThresholdMs } from '../imile/before11Exit'
+import { projectBefore11ZoneBreakdown, tagBefore11Rows } from '../vendorAnalysis/before11Aggregate'
+import { buildScopeMapsFromConfig } from '../vendorAnalysis/supplierScope'
 import { lastSortingWorkdayOnOrBefore } from '../imile/sortingWorkday'
 import {
   listPushableSupplierPushConfigsForSchedule,
   parsePushConfigIds,
-  parseRouteCodes,
-  parseRouteCodeWhitelistSet,
   supplierDisplayName,
 } from '../supplierPushConfigs'
 import { claimScheduledSlot, formatScheduledPushSlotKey, releaseScheduledSlot } from '../jobs/scheduledClaim'
@@ -148,18 +148,17 @@ export async function executeExitAlarmPush(params: {
   const errors: string[] = []
 
   for (const config of configs) {
-    const routeCodes = parseRouteCodes(config.routeCode)
-    const whitelist = parseRouteCodeWhitelistSet(config.routeCodeWhitelist)
     const vendorName = supplierDisplayName(config)
 
-    const vendorWaybills = waybills.filter((w) => {
-      const code = (w.consigneeRouteCode ?? '').trim()
-      if (routeCodes.length > 0 && !routeCodes.includes(code)) return false
-      if (whitelist.has(code)) return false
-      return true
+    // 与「供应商数据分析」同一套归属口径：courierVendorCode 归属 → routeCode 纳入 → 白名单剔除
+    const vendorWaybills = tagBefore11Rows({
+      rows: waybills as Array<Record<string, unknown>>,
+      before11ThresholdMs,
+      scope: buildScopeMapsFromConfig(config),
+      vendorCode: config.vendorCode,
     })
 
-    const zoneBreakdown = buildExitAlarmZoneBreakdown(vendorWaybills, before11ThresholdMs)
+    const zoneBreakdown = projectBefore11ZoneBreakdown(vendorWaybills)
     const totalPending = Object.values(zoneBreakdown).reduce((s, v) => s + v.pending, 0)
     const card = buildExitAlarmCard({
       vendorName,

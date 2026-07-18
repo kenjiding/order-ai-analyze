@@ -158,8 +158,8 @@ export function buildExitAlarmCard(params: {
       title: {
         tag: 'plain_text',
         content: isUrgent
-          ? `11 am Dispatch alert - ${vendorName}`
-          : `11 am Dispatch on track - ${vendorName}`,
+          ? `11 Am Dispatch alert - ${vendorName}`
+          : `11 Am Dispatch on track - ${vendorName}`,
       },
     },
     elements,

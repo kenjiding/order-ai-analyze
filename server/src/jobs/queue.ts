@@ -129,11 +129,15 @@ export async function claimNextJob(workerId: string): Promise<Job | null> {
 
 export async function updateJobProgress(jobId: string, progress: JobProgress): Promise<void> {
   const db = getDb()
+  const now = new Date()
   await db
     .update(jobs)
     .set({
       progress,
-      updatedAt: new Date(),
+      // 进度上报兼作存活心跳：lockedAt 不刷新的话，长任务跑到 staleLockMinutes 就会被误判死锁、
+      // 重置回 pending 后被另一个 worker 槽位重复执行
+      lockedAt: now,
+      updatedAt: now,
     })
     .where(eq(jobs.id, jobId))
 }
@@ -227,25 +231,49 @@ export async function recoverStaleRunningJobs(staleLockMinutes: number): Promise
   const db = getDb()
   const cutoff = new Date(Date.now() - staleLockMinutes * 60 * 1000)
   const stale = await db
-    .select({ id: jobs.id })
+    .select({ id: jobs.id, attemptCount: jobs.attemptCount, maxAttempts: jobs.maxAttempts })
     .from(jobs)
     .where(and(eq(jobs.status, 'running'), lt(jobs.lockedAt, cutoff)))
 
   if (!stale.length) return 0
 
-  const ids = stale.map((row) => row.id)
+  // 还有重试余额的回 pending 等待重新认领；已耗尽的直接终结为 failed，
+  // 否则会卡成永远无人认领的僵尸 pending（claimNextJob 要求 attemptCount < maxAttempts）
+  const retryIds = stale.filter((row) => row.attemptCount < row.maxAttempts).map((row) => row.id)
+  const exhaustedIds = stale.filter((row) => row.attemptCount >= row.maxAttempts).map((row) => row.id)
   const now = new Date()
-  const updated = await db
-    .update(jobs)
-    .set({
-      status: 'pending',
-      lockedBy: null,
-      lockedAt: null,
-      updatedAt: now,
-      error: 'stale lock recovered',
-    })
-    .where(inArray(jobs.id, ids))
-    .returning({ id: jobs.id })
+  let recovered = 0
 
-  return updated.length
+  if (retryIds.length) {
+    const updated = await db
+      .update(jobs)
+      .set({
+        status: 'pending',
+        lockedBy: null,
+        lockedAt: null,
+        updatedAt: now,
+        error: 'stale lock recovered',
+      })
+      .where(inArray(jobs.id, retryIds))
+      .returning({ id: jobs.id })
+    recovered += updated.length
+  }
+
+  if (exhaustedIds.length) {
+    const updated = await db
+      .update(jobs)
+      .set({
+        status: 'failed',
+        lockedBy: null,
+        lockedAt: null,
+        finishedAt: now,
+        updatedAt: now,
+        error: 'stale lock recovered: max attempts exhausted',
+      })
+      .where(inArray(jobs.id, exhaustedIds))
+      .returning({ id: jobs.id })
+    recovered += updated.length
+  }
+
+  return recovered
 }

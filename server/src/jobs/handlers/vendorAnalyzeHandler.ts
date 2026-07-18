@@ -145,12 +145,13 @@ export const vendorAnalyzeHandler: JobHandler = {
       return code
     }
 
-    // 与 metricsCatalog 的 dataSource key 一一对应；按勾选指标解析出的并集过滤后顺序执行
+    // 与 metricsCatalog 的 dataSource key 一一对应；按勾选指标解析出的并集过滤后顺序执行。
+    // run 收到 report 回调，可在长阶段内部持续上报进度（同时刷新任务心跳，避免被误判 stale）
     const stages: Array<{
       source: VendorAnalysisDataSource
       phase: string
       message: string
-      run: () => Promise<void>
+      run: (report: (message: string) => Promise<void>) => Promise<void>
     }> = [
       {
         source: 'tickets',
@@ -200,6 +201,7 @@ export const vendorAnalyzeHandler: JobHandler = {
               dateStr: params.before11Date,
               vendorCodes: params.vendorCodes,
               regionCode: ctx.job.regionCode,
+              routeCodesByVendor: params.routeCodesByVendor,
               routeCodeWhitelistByVendor: params.routeCodeWhitelistByVendor,
             }),
           )
@@ -251,16 +253,18 @@ export const vendorAnalyzeHandler: JobHandler = {
         phase: 'driverMap',
         // 与 before11 同一天：签收/未签收/问题件写入司机地图缓存；后续「刷新」只增量更新未终态
         message: '同步司机地图(出仓日)',
-        run: async () => {
-          const res = await waybillSearchSemaphore.run(() =>
-            populateDriverMapCache({
-              token: imileToken,
-              stationCode: requireBefore11StationCode(),
-              dataDate: params.before11Date,
-              tz: resolveRegionTz(ctx.job.regionCode),
-              label: '司机地图(分析任务出仓日)',
-            }),
-          )
+        run: async (report) => {
+          const res = await populateDriverMapCache({
+            token: imileToken,
+            stationCode: requireBefore11StationCode(),
+            dataDate: params.before11Date,
+            tz: resolveRegionTz(ctx.job.regionCode),
+            label: '司机地图(分析任务出仓日)',
+            // 信号量只限 iMile 请求；地理编码（LocationIQ + DB 写入）不能占住闸门拖死其他任务
+            imileGate: (fn) => waybillSearchSemaphore.run(fn),
+            onGeocodeProgress: (done, total) =>
+              report(`同步司机地图(出仓日)：地理编码 ${done}/${total}`),
+          })
           if (!res.ok) throw new Error(`司机地图同步失败: ${res.message}`)
         },
       },
@@ -268,14 +272,16 @@ export const vendorAnalyzeHandler: JobHandler = {
 
     const enabledStages = stages.filter((stage) => enabledSources.has(stage.source))
     for (const [index, stage] of enabledStages.entries()) {
-      await ctx.reportProgress({
+      const base = {
         phase: stage.phase,
-        message: stage.message,
         percent: Math.round((index / enabledStages.length) * 95),
         step: index + 1,
         totalSteps: enabledStages.length,
+      }
+      await ctx.reportProgress({ ...base, message: stage.message })
+      await stage.run(async (message) => {
+        await ctx.reportProgress({ ...base, message })
       })
-      await stage.run()
     }
 
     await ctx.reportProgress({

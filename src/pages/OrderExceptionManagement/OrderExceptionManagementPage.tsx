@@ -1,4 +1,5 @@
 import { AnalysisTabContent } from './components/AnalysisTabContent'
+import { InHubExceptionTabContent } from './components/InHubExceptionTabContent'
 import { JobsTabContent } from './components/JobsTabContent'
 import { RegressionTestTabContent } from './components/RegressionTestTabContent'
 import { WarehouseConfigTabContent } from './components/WarehouseConfigTabContent'
@@ -45,6 +46,18 @@ export default function OrderExceptionManagementPage() {
           onPostFilterDraftChange={v.setPostFilterDraft}
           appliedPostFilter={v.appliedPostFilter}
           onRunPostFilter={v.runPostFilter}
+        />
+      )}
+
+      {v.activeTab === 'in-hub' && (
+        <InHubExceptionTabContent
+          greaterDays={v.inHubGreaterDays}
+          onGreaterDaysChange={v.setInHubGreaterDays}
+          lessDays={v.inHubLessDays}
+          onLessDaysChange={v.setInHubLessDays}
+          isQuerying={v.isQueryingInHub}
+          queryMeta={v.inHubQueryMeta}
+          onAnalyze={v.onAnalyzeInHub}
         />
       )}
 

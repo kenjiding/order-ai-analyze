@@ -10,10 +10,9 @@ import { fetchDriverWaybills } from '../imile/driverPerformance'
 import {
   listPushableSupplierPushConfigsForSchedule,
   parsePushConfigIds,
-  parseRouteCodes,
-  parseRouteCodeWhitelistSet,
   supplierDisplayName,
 } from '../supplierPushConfigs'
+import { buildScopeMapsFromConfig } from '../vendorAnalysis/supplierScope'
 import { aggregateDispatch24hByVendor, type Dispatch24hWaybillRow } from '../vendorAnalysis/dispatch24hAggregate'
 import { lastSortingWorkdayOnOrBefore } from '../imile/sortingWorkday'
 import { claimScheduledSlot, formatScheduledPushSlotKey, releaseScheduledSlot } from '../jobs/scheduledClaim'
@@ -114,14 +113,13 @@ export async function executeDispatchAlarmPush(params: {
     if (!vendorCode) continue
 
     // 按配置独立过滤：避免同供应商多区域（不同 routeCode）共用一份聚合结果
+    const scope = buildScopeMapsFromConfig(config)
     const statsByVendor = aggregateDispatch24hByVendor({
       rows,
       stationCodes: [stationCode],
       tz,
-      routeCodesByVendor: new Map([[vendorCode, new Set(parseRouteCodes(config.routeCode))]]),
-      routeCodeWhitelistByVendor: new Map([
-        [vendorCode, parseRouteCodeWhitelistSet(config.routeCodeWhitelist)],
-      ]),
+      routeCodesByVendor: scope.routeCodesByVendor,
+      routeCodeWhitelistByVendor: scope.routeCodeWhitelistByVendor,
     })
     const stat = statsByVendor.get(vendorCode)
     if (!stat || stat.total === 0) continue // 无数据不推送

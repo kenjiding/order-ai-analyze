@@ -9,6 +9,7 @@ import {
   listJobsApi,
   postOrderExceptionAnalyze,
   postOrderExceptionAnalyzeAsync,
+  postInHubWaybillQuery,
   getJobById,
   getJobArtifact,
   runRegression,
@@ -65,7 +66,13 @@ function readStoredBatchAnalyze(): boolean {
   }
 }
 
-export type TabId = 'analyze' | 'jobs' | 'regression' | 'warehouse-config'
+export type TabId = 'analyze' | 'jobs' | 'regression' | 'warehouse-config' | 'in-hub'
+
+export type InHubQueryMeta = {
+  start: string
+  end: string
+  totalResult: number
+}
 
 export type SubmittedJobBanner = {
   jobId: string
@@ -330,6 +337,11 @@ export function useOrderExceptionManagementPage() {
   const [postFilterDraft, setPostFilterDraft] = useState<PostFilterConfig>(DEFAULT_POST_FILTER_CONFIG)
   const [appliedPostFilter, setAppliedPostFilter] = useState<PostFilterConfig>(DEFAULT_POST_FILTER_CONFIG)
 
+  const [inHubGreaterDays, setInHubGreaterDays] = useState<number | null>(null)
+  const [inHubLessDays, setInHubLessDays] = useState<number | null>(null)
+  const [isQueryingInHub, setIsQueryingInHub] = useState(false)
+  const [inHubQueryMeta, setInHubQueryMeta] = useState<InHubQueryMeta | null>(null)
+
   useEffect(() => {
     try {
       localStorage.setItem(ANALYZE_AI_PROVIDER_KEY, analyzeAiProvider)
@@ -536,10 +548,10 @@ export function useOrderExceptionManagementPage() {
 
   const activeJobCount = jobsList.filter((j) => j.status === 'pending' || j.status === 'running').length
 
-  const onAnalyze = useCallback(async () => {
+  const onAnalyze = useCallback(async (explicitOrderNos?: string[]) => {
     const token = ensureToken()
     if (!token) return
-    const orderNos = parseOrderNumbersUnique(
+    const orderNos = explicitOrderNos ?? parseOrderNumbersUnique(
       [analyzeOrderText, importedAnalyzeOrders?.orderNos.join('\n') ?? ''].filter(Boolean).join('\n')
     )
     if (!orderNos.length) {
@@ -702,6 +714,57 @@ export function useOrderExceptionManagementPage() {
     warehouseSavedConfig,
   ])
   // Note: warehouseSavedConfig kept in deps to detect unsaved-changes warning only
+
+  const onAnalyzeInHub = useCallback(async () => {
+    const token = ensureToken()
+    if (!token) return
+    if (!scanStationCode) {
+      showToast('请先在右上角选择责任站点', 'error')
+      return
+    }
+    if (
+      inHubGreaterDays == null ||
+      inHubLessDays == null ||
+      !Number.isFinite(inHubGreaterDays) ||
+      !Number.isFinite(inHubLessDays) ||
+      inHubGreaterDays < 0 ||
+      inHubLessDays < 0
+    ) {
+      showToast('请填写合法的天数区间', 'error')
+      return
+    }
+    if (inHubLessDays <= inHubGreaterDays) {
+      showToast('"小于"天数须大于"大于"天数', 'error')
+      return
+    }
+
+    setIsQueryingInHub(true)
+    try {
+      const { waybillNos, start, end, totalResult } = await postInHubWaybillQuery({
+        imileToken: token,
+        stationCode: scanStationCode,
+        greaterDays: inHubGreaterDays,
+        lessDays: inHubLessDays,
+      })
+      setInHubQueryMeta({ start, end, totalResult })
+
+      if (!waybillNos.length) {
+        showToast('未查询到库内运单，无需分析', 'error')
+        return
+      }
+
+      setImportedAnalyzeOrders({
+        fileName: `库内异常订单查询（${start}~${end}）`,
+        orderNos: waybillNos,
+      })
+      setActiveTab('analyze')
+      await onAnalyze(waybillNos)
+    } catch (e) {
+      showToast((e as Error).message || '库内运单查询失败', 'error')
+    } finally {
+      setIsQueryingInHub(false)
+    }
+  }, [ensureToken, scanStationCode, inHubGreaterDays, inHubLessDays, onAnalyze])
 
   const onAnalyzeOrderFileUpload = useCallback(
     async (file: File) => {
@@ -873,5 +936,12 @@ export function useOrderExceptionManagementPage() {
     appliedPostFilter,
     runPostFilter,
     filteredAnalysisRows,
+    inHubGreaterDays,
+    setInHubGreaterDays,
+    inHubLessDays,
+    setInHubLessDays,
+    isQueryingInHub,
+    inHubQueryMeta,
+    onAnalyzeInHub,
   }
 }

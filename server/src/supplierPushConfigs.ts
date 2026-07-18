@@ -97,11 +97,6 @@ export function parseRouteCodes(raw: string): string[] {
     .filter(Boolean)
 }
 
-/** 路由码白名单：命中的路由码代表要从该供应商统计中剔除的数据 */
-export function parseRouteCodeWhitelistSet(routeCodeWhitelist: string): Set<string> {
-  return new Set(parseRouteCodes(routeCodeWhitelist))
-}
-
 export function parsePushConfigIds(raw: unknown): string[] {
   if (!Array.isArray(raw)) return []
   return raw

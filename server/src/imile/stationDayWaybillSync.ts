@@ -2,7 +2,7 @@
  * 站点日运单增量同步：写入 driver_map_waybill_points，供 24H 派签告警与司机地图共用。
  * 已达标 / 已超窗口的单号跳过 searchWaybill，只拉未终态子集。
  */
-import { and, eq } from 'drizzle-orm'
+import { and, eq, sql } from 'drizzle-orm'
 import { getDb, schema } from '../db'
 import type { AusTz } from './ausTimezone'
 import {
@@ -132,94 +132,72 @@ export async function syncStationDayWaybillsIncremental(input: {
 
   const db = getDb()
   const now = new Date()
-  let upsertedCount = 0
 
+  // 同批内同单号去重（保留后出现的行）：同一条 INSERT 内重复冲突键会报 "cannot affect row a second time"
+  const rowsByWaybillNo = new Map<string, typeof schema.driverMapWaybillPoints.$inferInsert>()
   for (const row of fetched.fetchedRecords) {
     const waybillNo = readText(row, 'waybillNo')
     if (!waybillNo) continue
     const signDate = readText(row, 'signDate') || null
     const lastProblemDate = readText(row, 'lastProblemDate') || null
-    const deliveryTime = readText(row, 'deliveryTime') || null
-    const vendorCode = readText(row, 'courierVendorCode')
-    const courierCode = readText(row, 'courierCode')
-    const courierName = readText(row, 'courier')
-    const consigneeRouteCode = readText(row, 'consigneeRouteCode')
-    const lastScanSiteCode = readText(row, 'lastScanSiteCode') || stationCode
-    const addressText = buildAddressText(row)
-    const problemReason =
-      readText(row, 'problemReason') ||
-      readText(row, 'problemReasonDesc') ||
-      readText(row, 'lastProblemReason') ||
-      ''
     const status = resolvePointStatus(signDate ?? '', lastProblemDate ?? '')
 
-    const existing = await db
-      .select({
-        addressText: schema.driverMapWaybillPoints.addressText,
-        latitude: schema.driverMapWaybillPoints.latitude,
-        longitude: schema.driverMapWaybillPoints.longitude,
-        geocodedAt: schema.driverMapWaybillPoints.geocodedAt,
-      })
-      .from(schema.driverMapWaybillPoints)
-      .where(
-        and(
-          eq(schema.driverMapWaybillPoints.waybillNo, waybillNo),
-          eq(schema.driverMapWaybillPoints.dataDate, dataDate),
-        ),
-      )
-      .limit(1)
+    rowsByWaybillNo.set(waybillNo, {
+      waybillNo,
+      stationCode,
+      vendorCode: readText(row, 'courierVendorCode'),
+      courierCode: readText(row, 'courierCode'),
+      courierName: readText(row, 'courier'),
+      dataDate,
+      deliveryTime: readText(row, 'deliveryTime') || null,
+      signDate,
+      lastProblemDate,
+      problemReason:
+        readText(row, 'problemReason') ||
+        readText(row, 'problemReasonDesc') ||
+        readText(row, 'lastProblemReason') ||
+        '',
+      consigneeRouteCode: readText(row, 'consigneeRouteCode'),
+      lastScanSiteCode: readText(row, 'lastScanSiteCode') || stationCode,
+      status,
+      addressText: buildAddressText(row),
+      latitude: null,
+      longitude: null,
+      geocodedAt: null,
+      updatedAt: now,
+    })
+  }
 
-    const prev = existing[0]
-    const addressChanged = !prev || prev.addressText !== addressText
-
+  // 分块批量 upsert，替代逐行「SELECT + UPSERT」（上万单 = 数万次串行 DB 往返，拖慢整个阶段）。
+  // 地址没变则保留已解析坐标，变了置空待重新 geocode——原逐行逻辑用 SQL CASE 就地表达。
+  const p = schema.driverMapWaybillPoints
+  const toUpsert = [...rowsByWaybillNo.values()]
+  const upsertedCount = toUpsert.length
+  for (let i = 0; i < toUpsert.length; i += 500) {
     await db
-      .insert(schema.driverMapWaybillPoints)
-      .values({
-        waybillNo,
-        stationCode,
-        vendorCode,
-        courierCode,
-        courierName,
-        dataDate,
-        deliveryTime,
-        signDate,
-        lastProblemDate,
-        problemReason,
-        consigneeRouteCode,
-        lastScanSiteCode,
-        status,
-        addressText,
-        latitude: null,
-        longitude: null,
-        geocodedAt: null,
-        updatedAt: now,
-      })
+      .insert(p)
+      .values(toUpsert.slice(i, i + 500))
       .onConflictDoUpdate({
-        target: [schema.driverMapWaybillPoints.waybillNo, schema.driverMapWaybillPoints.dataDate],
+        target: [p.waybillNo, p.dataDate],
         set: {
-          stationCode,
-          vendorCode,
-          courierCode,
-          courierName,
-          deliveryTime,
-          signDate,
-          lastProblemDate,
-          problemReason,
-          consigneeRouteCode,
-          lastScanSiteCode,
-          status,
-          addressText,
-          ...(addressChanged
-            ? { latitude: null, longitude: null, geocodedAt: null }
-            : {
-                latitude: prev?.latitude ?? null,
-                longitude: prev?.longitude ?? null,
-                geocodedAt: prev?.geocodedAt ?? null,
-              }),
-          updatedAt: now,
+          stationCode: sql`excluded.station_code`,
+          vendorCode: sql`excluded.vendor_code`,
+          courierCode: sql`excluded.courier_code`,
+          courierName: sql`excluded.courier_name`,
+          deliveryTime: sql`excluded.delivery_time`,
+          signDate: sql`excluded.sign_date`,
+          lastProblemDate: sql`excluded.last_problem_date`,
+          problemReason: sql`excluded.problem_reason`,
+          consigneeRouteCode: sql`excluded.consignee_route_code`,
+          lastScanSiteCode: sql`excluded.last_scan_site_code`,
+          status: sql`excluded.status`,
+          latitude: sql`CASE WHEN ${p.addressText} = excluded.address_text THEN ${p.latitude} ELSE NULL END`,
+          longitude: sql`CASE WHEN ${p.addressText} = excluded.address_text THEN ${p.longitude} ELSE NULL END`,
+          geocodedAt: sql`CASE WHEN ${p.addressText} = excluded.address_text THEN ${p.geocodedAt} ELSE NULL END`,
+          addressText: sql`excluded.address_text`,
+          updatedAt: sql`excluded.updated_at`,
         },
       })
-    upsertedCount += 1
   }
 
   console.log(

@@ -9,8 +9,14 @@ import {
 } from './portal'
 import { envFirstOr, normalizeImileToken } from './shared'
 import { resolveRegionTz } from './ausTimezone'
-import { computeBefore11ThresholdMs, isBefore11Exit } from './before11Exit'
+import { computeBefore11ThresholdMs } from './before11Exit'
 import { fetchWaybillDetailsByInboundIndex } from './inboundWaybillIndex'
+import {
+  projectBefore11RatesByVendor,
+  tagBefore11Rows,
+  type Before11RateResult,
+  type Before11TaggedRow,
+} from '../vendorAnalysis/before11Aggregate'
 
 const DEFAULT_STATION_URL =
   'https://ds.imile.com/lm/express/base/v1/search/auth/permission/station'
@@ -324,27 +330,15 @@ function sevenDaysAgo(): string {
   return d.toISOString().slice(0, 10)
 }
 
-export type Before11ExitRateResult = {
-  before11ExitRate: number
-  before11ExitVolume: number
-  totalReceived: number
-}
+/** 出仓率结果与打标行：核心实现统一在 vendorAnalysis/before11Aggregate，这里保留类型别名 */
+export type Before11ExitRateResult = Before11RateResult
 
-export type SlimPickupRow = {
-  waybillNo: string
-  courierCode: string
-  courierVendorCode: string
-  courier: string
-  consigneeRouteCode: string
-  before11Exit: boolean
-}
+export type SlimPickupRow = Before11TaggedRow
 
 export type Before11ExitRatesData = {
   ratesByVendor: Record<string, Before11ExitRateResult>
   pickupRows: SlimPickupRow[]
 }
-
-
 
 export async function fetchBefore11ExitRates(
   token: string,
@@ -353,6 +347,7 @@ export async function fetchBefore11ExitRates(
     dateStr: string
     vendorCodes: string[]
     regionCode?: string | null
+    routeCodesByVendor?: Map<string, Set<string>>
     routeCodeWhitelistByVendor?: Map<string, Set<string>>
   },
 ): Promise<VendorAnalysisSuccess<Before11ExitRatesData> | VendorAnalysisError> {
@@ -365,55 +360,24 @@ export async function fetchBefore11ExitRates(
   })
   if (!result.ok) return { ok: false, status: result.status ?? 502, message: result.message }
 
-  const rows = result.records as Record<string, unknown>[]
+  // 供应商范围过滤（routeCode 纳入 + 白名单剔除）在源头做一次，
+  // pickupRows 下游（今日取件/司机维度）不再重复过滤
+  const tagged = tagBefore11Rows({
+    rows: result.records as Array<Record<string, unknown>>,
+    before11ThresholdMs: computeBefore11ThresholdMs(params.dateStr, tz),
+    scope: {
+      routeCodesByVendor: params.routeCodesByVendor ?? new Map(),
+      routeCodeWhitelistByVendor: params.routeCodeWhitelistByVendor ?? new Map(),
+    },
+  })
 
-  const before11ThresholdMs = computeBefore11ThresholdMs(params.dateStr, tz)
-
-  const vendorSet = new Set(params.vendorCodes)
-  const routeCodeWhitelistByVendor = params.routeCodeWhitelistByVendor ?? new Map<string, Set<string>>()
-  const stats = new Map<string, { before11: number; total: number }>()
-  const pickupRows: SlimPickupRow[] = []
-
-  for (const row of rows) {
-    const courierCode = typeof row.courierCode === 'string' ? row.courierCode : ''
-    const courierVendorCode = typeof row.courierVendorCode === 'string' ? row.courierVendorCode : ''
-    const consigneeRouteCode = typeof row.consigneeRouteCode === 'string' ? row.consigneeRouteCode : ''
-    const deliveryTime = typeof row.deliveryTime === 'string' && row.deliveryTime
-      ? row.deliveryTime
-      : null
-
-    // 路由码白名单命中：该供应商的这条数据要整行剔除，不参与任何统计
-    if (routeCodeWhitelistByVendor.get(courierVendorCode)?.has(consigneeRouteCode)) continue
-
-    const before11Exit = isBefore11Exit(deliveryTime, before11ThresholdMs)
-
-    pickupRows.push({
-      waybillNo: typeof row.waybillNo === 'string' ? row.waybillNo : '',
-      courierCode,
-      courierVendorCode,
-      courier: typeof row.courier === 'string' ? row.courier : '',
-      consigneeRouteCode,
-      before11Exit,
-    })
-
-    if (!vendorSet.has(courierVendorCode)) continue
-
-    let s = stats.get(courierVendorCode)
-    if (!s) { s = { before11: 0, total: 0 }; stats.set(courierVendorCode, s) }
-    s.total += 1
-    if (before11Exit) s.before11 += 1
+  return {
+    ok: true,
+    data: {
+      ratesByVendor: projectBefore11RatesByVendor(tagged, params.vendorCodes),
+      pickupRows: tagged,
+    },
   }
-
-  const ratesByVendor: Record<string, Before11ExitRateResult> = {}
-  for (const [vendorCode, s] of stats.entries()) {
-    ratesByVendor[vendorCode] = {
-      before11ExitRate: s.total > 0 ? s.before11 / s.total : 0,
-      before11ExitVolume: s.before11,
-      totalReceived: s.total,
-    }
-  }
-
-  return { ok: true, data: { ratesByVendor, pickupRows } }
 }
 
 export async function fetchLongTailOrders(

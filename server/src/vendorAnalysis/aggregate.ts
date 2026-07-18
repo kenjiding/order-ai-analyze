@@ -13,7 +13,8 @@
  */
 import { iMileStrToMs, type AusTz } from '../imile/ausTimezone'
 import type { Before11ExitRateResult, SlimPickupRow } from '../imile/vendorAnalysis'
-import { aggregateDispatch24hByVendor, isDispatch24hMet, isRouteCodeAllowed } from './dispatch24hAggregate'
+import { aggregateDispatch24hByVendor, type Dispatch24hDriverStat } from './dispatch24hAggregate'
+import { isWhitelisted } from './supplierScope'
 
 // ── 输入行类型：只声明聚合真正读取的字段（运行时行还带其它字段，此处不关心） ──
 
@@ -156,15 +157,6 @@ function norm(code: unknown): string {
   return typeof code === 'string' ? code.trim() : ''
 }
 
-/** 路由码白名单命中：该供应商这条数据要剔除，不参与统计 */
-function isWhitelisted(
-  vendorCode: string,
-  routeCode: string,
-  routeCodeWhitelistByVendor: Map<string, Set<string>>,
-): boolean {
-  return routeCodeWhitelistByVendor.get(vendorCode)?.has(routeCode.trim()) ?? false
-}
-
 export function aggregateVendorAnalysis(input: VendorAnalyzeAggregateInput): VendorSummary[] {
   const {
     tickets,
@@ -236,13 +228,13 @@ export function aggregateVendorAnalysis(input: VendorAnalyzeAggregateInput): Ven
     routeCodeWhitelistByVendor,
   })
 
-  // 11点前未出仓单号：按供应商聚合（无站点过滤，与 before11ExitRate 口径一致）
+  // 11点前未出仓单号：按供应商聚合（无站点过滤，与 before11ExitRate 口径一致）。
+  // driverYesterdayWaybills 已在源头（fetchBefore11ExitRates → tagBefore11Rows）按供应商范围过滤，无需重复过滤
   const before11UnmetByVendor = new Map<string, string[]>()
   for (const row of driverYesterdayWaybills) {
     if (row.before11Exit) continue
     const vendorCode = norm(row.courierVendorCode)
     if (!vendorCode) continue
-    if (isWhitelisted(vendorCode, norm(row.consigneeRouteCode), routeCodeWhitelistByVendor)) continue
     const wbNo = row.waybillNo ?? ''
     if (!wbNo) continue
     let arr = before11UnmetByVendor.get(vendorCode)
@@ -279,7 +271,12 @@ export function aggregateVendorAnalysis(input: VendorAnalyzeAggregateInput): Ven
 
   const summaries: VendorSummary[] = []
   for (const vendorCode of vendorCodes) {
-    const drivers = buildDriverSummaries(vendorCode, input, returnWarningByDriver)
+    const drivers = buildDriverSummaries(
+      vendorCode,
+      input,
+      returnWarningByDriver,
+      dispatch24hByVendor.get(vendorCode)?.drivers ?? [],
+    )
 
     const complaint = complaintByVendor.get(vendorCode)
     const complaintCount = complaint?.count ?? 0
@@ -314,31 +311,29 @@ export function aggregateVendorAnalysis(input: VendorAnalyzeAggregateInput): Ven
   return summaries
 }
 
-/** 某供应商下的司机绩效行：合并取件 + 24H派签 + 归班预警 + 长尾 四个来源 */
+/**
+ * 某供应商下的司机绩效行：合并取件 + 24H派签 + 归班预警 + 长尾 四个来源。
+ * 24H 派签司机维度直接消费 aggregateDispatch24hByVendor 的 drivers 输出，
+ * 不再重抄过滤条件——口径一致由代码保证，而非注释约定。
+ */
 function buildDriverSummaries(
   vendorCode: string,
   input: VendorAnalyzeAggregateInput,
   returnWarningByDriver: Map<string, { count: number; waybillNos: string[] }>,
+  dispatchDrivers: Dispatch24hDriverStat[],
 ): DriverSummary[] {
   const {
     driverYesterdayWaybills,
-    driverDayBeforeWaybills,
     longTailOrders,
     driverReturnRows,
-    stationCodes,
-    tz,
-    routeCodesByVendor,
-    routeCodeWhitelistByVendor,
   } = input
-  const stationSet = new Set(stationCodes.map((s) => s.trim()).filter(Boolean))
-  const inStation = (code: string | undefined) => stationSet.size === 0 || stationSet.has(norm(code))
 
   // 今日取件量：昨日运单，按 courierVendorCode 匹配，按 courierCode 计数
+  // （行集已在源头按供应商范围过滤，此处只做归属匹配）
   type PickupAgg = { courierName: string; routeCode: string; count: number; before11Count: number; waybillNos: string[]; before11UnmetWaybillNos: string[] }
   const pickupMap = new Map<string, PickupAgg>()
   for (const row of driverYesterdayWaybills) {
     if (!row.courierCode || norm(row.courierVendorCode) !== vendorCode) continue
-    if (isWhitelisted(vendorCode, norm(row.consigneeRouteCode), routeCodeWhitelistByVendor)) continue
     const wbNo = row.waybillNo ?? ''
     const agg = pickupMap.get(row.courierCode)
     if (agg) {
@@ -358,32 +353,8 @@ function buildDriverSummaries(
     }
   }
 
-  // 24H派签率：前天运单，口径与 aggregateDispatch24hByVendor 一致（含 routeCode 纳入）
-  type DispatchAgg = { total: number; completed: number; routeCode: string; unmetNos: string[] }
-  const dispatchMap = new Map<string, DispatchAgg>()
-  for (const row of driverDayBeforeWaybills) {
-    if (!row.courierCode || norm(row.courierVendorCode) !== vendorCode) continue
-    const consigneeRouteCode = norm(row.consigneeRouteCode)
-    if (!isRouteCodeAllowed(vendorCode, consigneeRouteCode, routeCodesByVendor)) continue
-    if (isWhitelisted(vendorCode, consigneeRouteCode, routeCodeWhitelistByVendor)) continue
-    if (!row.deliveryTime) continue
-    if (!inStation(row.lastScanSiteCode)) continue
-    const completed = isDispatch24hMet(row, tz)
-    const wbNo = row.waybillNo ?? ''
-    const agg = dispatchMap.get(row.courierCode)
-    if (agg) {
-      agg.total += 1
-      if (completed) agg.completed += 1
-      else if (wbNo) agg.unmetNos.push(wbNo)
-    } else {
-      dispatchMap.set(row.courierCode, {
-        total: 1,
-        completed: completed ? 1 : 0,
-        routeCode: row.consigneeRouteCode ?? '',
-        unmetNos: !completed && wbNo ? [wbNo] : [],
-      })
-    }
-  }
+  // 24H派签率：直接消费共享聚合器的司机维度输出（过滤口径唯一实现在 aggregateDispatch24hByVendor）
+  const dispatchByCourier = new Map(dispatchDrivers.map((d) => [d.courierCode, d]))
 
   // 长尾单：按司机 driverCode 聚合（与当前供应商匹配）
   type LongTailAgg = { count: number; waybillNos: string[] }
@@ -403,7 +374,7 @@ function buildDriverSummaries(
   // 合并四个来源的司机集合
   const allCourierCodes = new Set<string>([
     ...pickupMap.keys(),
-    ...dispatchMap.keys(),
+    ...dispatchByCourier.keys(),
     ...longTailByDriver.keys(),
     ...[...returnWarningByDriver.keys()].filter((code) =>
       driverReturnRows.some((r) => norm(r.driverCode) === code && norm(r.driverVendorCode) === vendorCode),
@@ -413,13 +384,11 @@ function buildDriverSummaries(
   const drivers: DriverSummary[] = []
   for (const courierCode of allCourierCodes) {
     const pickup = pickupMap.get(courierCode)
-    const dispatch = dispatchMap.get(courierCode)
+    const dispatch = dispatchByCourier.get(courierCode)
 
     let courierName = pickup?.courierName ?? ''
-    if (!courierName) {
-      courierName = driverDayBeforeWaybills.find(
-        (r) => r.courierCode === courierCode && norm(r.courierVendorCode) === vendorCode,
-      )?.courier ?? ''
+    if (!courierName && dispatch && dispatch.courierName !== dispatch.courierCode) {
+      courierName = dispatch.courierName
     }
     if (!courierName) {
       courierName = driverReturnRows.find(
@@ -433,7 +402,7 @@ function buildDriverSummaries(
     }
 
     const totalDispatch = dispatch?.total ?? 0
-    const dispatch24hCount = dispatch?.completed ?? 0
+    const dispatch24hCount = dispatch?.met ?? 0
 
     drivers.push({
       courierCode,
@@ -448,7 +417,9 @@ function buildDriverSummaries(
       dispatch24hCount,
       totalDispatchCount: totalDispatch,
       dispatchRate24h: totalDispatch > 0 ? dispatch24hCount / totalDispatch : null,
-      dispatch24hUnmetWaybillNos: dispatch?.unmetNos ?? [],
+      dispatch24hUnmetWaybillNos: dispatch
+        ? [...dispatch.neverSignedWaybills, ...dispatch.lateSignedWaybills].map((w) => w.waybillNo)
+        : [],
       longTailCount: longTailByDriver.get(courierCode)?.count ?? 0,
       longTailWaybillNos: longTailByDriver.get(courierCode)?.waybillNos ?? [],
     })

@@ -20,24 +20,5 @@ export function isBefore11Exit(
   return iMileStrToMs(deliveryTime) <= before11ThresholdMs
 }
 
-export type ExitAlarmWaybillRow = {
-  deliveryTime?: string | null
-  consigneeRouteCode?: string | null
-}
-
-/** 出仓告警：pending = 未在 11 点前出仓（含无派件时间、派件晚于 11 点） */
-export function buildExitAlarmZoneBreakdown(
-  waybills: ExitAlarmWaybillRow[],
-  before11ThresholdMs: number,
-): Record<string, { pending: number; total: number }> {
-  const zoneBreakdown: Record<string, { pending: number; total: number }> = {}
-  for (const w of waybills) {
-    const zone = (w.consigneeRouteCode ?? '').trim() || 'Unknown route'
-    if (!zoneBreakdown[zone]) zoneBreakdown[zone] = { pending: 0, total: 0 }
-    zoneBreakdown[zone].total++
-    if (!isBefore11Exit(w.deliveryTime, before11ThresholdMs)) {
-      zoneBreakdown[zone].pending++
-    }
-  }
-  return zoneBreakdown
-}
+// 出仓告警的分区聚合已并入 vendorAnalysis/before11Aggregate（projectBefore11ZoneBreakdown），
+// 与「供应商数据分析」共用同一套过滤 + 打标核心；本文件只保留阈值/单件判定原语。

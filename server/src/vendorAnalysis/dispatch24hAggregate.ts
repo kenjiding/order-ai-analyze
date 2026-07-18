@@ -6,6 +6,7 @@
  * 不重复实现。
  */
 import { iMileStrToMs, localDatePlusDaysMs, weekdayInTz, type AusTz } from '../imile/ausTimezone'
+import { isRowInVendorScope } from './supplierScope'
 
 const DAY_MS = 24 * 60 * 60 * 1000
 
@@ -31,6 +32,8 @@ export type Dispatch24hUnmetWaybill = {
 export type Dispatch24hDriverStat = {
   courierCode: string
   courierName: string
+  /** 该司机首条运单的路由码，供分析页司机行展示 */
+  routeCode: string
   total: number
   met: number
   /** 问题件数：见 isDispatch24hProblem 口径 */
@@ -63,30 +66,6 @@ export type Dispatch24hVendorStat = {
 
 function norm(code: unknown): string {
   return typeof code === 'string' ? code.trim() : ''
-}
-
-/** 路由码白名单命中：该供应商这条数据要剔除，不参与统计 */
-function isWhitelisted(
-  vendorCode: string,
-  routeCode: string,
-  routeCodeWhitelistByVendor: Map<string, Set<string>>,
-): boolean {
-  return routeCodeWhitelistByVendor.get(vendorCode)?.has(routeCode.trim()) ?? false
-}
-
-/**
- * 路由码纳入名单：供应商配置了 routeCode 时，只保留命中的运单。
- * - map 无该供应商 → 不按路由码收窄（兼容老任务 / 未配置供应商）
- * - map 有该供应商但集合为空 → 无匹配
- */
-export function isRouteCodeAllowed(
-  vendorCode: string,
-  routeCode: string,
-  routeCodesByVendor: Map<string, Set<string>>,
-): boolean {
-  const allowed = routeCodesByVendor.get(vendorCode)
-  if (!allowed) return true
-  return allowed.has(routeCode.trim())
 }
 
 /**
@@ -198,8 +177,7 @@ export function aggregateDispatch24hByVendor(input: {
     const vendorCode = norm(row.courierVendorCode)
     if (!vendorCode) continue
     const consigneeRouteCode = norm(row.consigneeRouteCode)
-    if (!isRouteCodeAllowed(vendorCode, consigneeRouteCode, routeCodesByVendor)) continue
-    if (isWhitelisted(vendorCode, consigneeRouteCode, routeCodeWhitelistByVendor)) continue
+    if (!isRowInVendorScope(vendorCode, consigneeRouteCode, { routeCodesByVendor, routeCodeWhitelistByVendor })) continue
     if (!inStation(row.lastScanSiteCode)) continue
     if (!row.deliveryTime) continue
     const met = isDispatch24hMet(row, tz)
@@ -235,6 +213,7 @@ export function aggregateDispatch24hByVendor(input: {
       driverStat = {
         courierCode,
         courierName: row.courier?.trim() || courierCode,
+        routeCode: consigneeRouteCode,
         total: 0,
         met: 0,
         problemCount: 0,

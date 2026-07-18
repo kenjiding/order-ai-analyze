@@ -14,6 +14,7 @@ import {
   prefetchOrderExceptionData,
   queryTracksWithCache,
 } from './orderExceptionData'
+import { computeInHubStockRange, fetchInHubWaybillInventory } from '../imile/inHubWaybillInventory'
 import { registerOrderExceptionRegressionRoutes } from './orderExceptionRegressionRouter'
 import { readImileTokenFromRequest } from './imileAuth'
 import { getDb } from '../db'
@@ -183,6 +184,61 @@ orderExceptionRouter.post('/prefetch', async (req: Request, res: Response) => {
     })
   } catch (e) {
     res.status(500).json({ error: (e as Error).message || '预取失败' })
+  }
+})
+
+/** 按库内滞留天数区间查询在库运单号（inHubWaybillInbentory），供「库内异常订单分析」Tab 取号源。 */
+orderExceptionRouter.post('/in-hub-waybills', async (req: Request, res: Response) => {
+  try {
+    const body = readJson<{
+      imileToken?: string
+      stationCode?: string
+      greaterDays?: number
+      lessDays?: number
+    }>(req)
+    const token = readImileToken(req, body.imileToken)
+    const stationCode = String(body.stationCode ?? '').trim()
+    const greaterDays = Number(body.greaterDays)
+    const lessDays = Number(body.lessDays)
+
+    if (!token) {
+      res.status(400).json({ error: '缺少 imileToken' })
+      return
+    }
+    if (!stationCode) {
+      res.status(400).json({ error: '缺少责任站点编码' })
+      return
+    }
+    if (!Number.isFinite(greaterDays) || !Number.isFinite(lessDays) || greaterDays < 0 || lessDays < 0) {
+      res.status(400).json({ error: '请提供合法的天数区间' })
+      return
+    }
+    if (lessDays <= greaterDays) {
+      res.status(400).json({ error: '"小于"天数须大于"大于"天数' })
+      return
+    }
+
+    const todayStr = new Date().toISOString().slice(0, 10)
+    const { start, end } = computeInHubStockRange(todayStr, greaterDays, lessDays)
+
+    const result = await fetchInHubWaybillInventory(token, { stationCode, start, end })
+    if (!result.ok) {
+      res.status(502).json({
+        error: result.message,
+        status: result.status,
+        rawText: result.rawText,
+      })
+      return
+    }
+
+    res.json({
+      waybillNos: result.data,
+      start,
+      end,
+      totalResult: result.data.length,
+    })
+  } catch (e) {
+    res.status(500).json({ error: (e as Error).message || '库内异常订单查询失败' })
   }
 })
 

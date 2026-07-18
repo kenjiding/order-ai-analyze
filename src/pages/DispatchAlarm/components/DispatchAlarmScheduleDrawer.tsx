@@ -160,13 +160,13 @@ export function DispatchAlarmScheduleDrawer({
     >
       <div className="space-y-5">
         <FormSection icon={Gauge} title="基础配置">
-          <div className="flex flex-wrap items-center justify-between gap-4">
-            <div className="flex items-center gap-2">
-              <span className="text-xs font-medium text-slate-500">站点</span>
-              <StationSelect value={stationCode} onChange={setStationCode} disabled={saving} />
-            </div>
-            <div className="flex flex-col items-end gap-1">
-              <div className="flex items-center gap-2">
+          <div className="space-y-1">
+            <div className="flex items-center justify-between gap-4">
+              <div className="flex shrink-0 items-center gap-2">
+                <span className="text-xs font-medium text-slate-500">站点</span>
+                <StationSelect value={stationCode} onChange={setStationCode} disabled={saving} />
+              </div>
+              <div className="flex shrink-0 items-center gap-2">
                 <span className="text-xs font-medium text-slate-500">到件扫描时间</span>
                 <DatePicker
                   value={dayjs(arrivalScanDate, 'YYYY-MM-DD')}
@@ -179,8 +179,10 @@ export function DispatchAlarmScheduleDrawer({
                   }}
                 />
               </div>
-              <span className="text-xs text-slate-400">到件扫描时间只影响立即推送，今天的分拣扫描尚未完成，只能选今天之前的日期</span>
             </div>
+            <p className="text-right text-xs text-slate-400">
+              到件扫描时间只影响立即推送
+            </p>
           </div>
         </FormSection>
 
