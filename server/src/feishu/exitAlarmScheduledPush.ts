@@ -7,7 +7,11 @@ import { envFirst } from '../imile/shared'
 import { fetchWaybillDetailsByInboundIndex } from '../imile/inboundWaybillIndex'
 import { resolveRegionTz, type AusTz } from '../imile/ausTimezone'
 import { computeBefore11ThresholdMs } from '../imile/before11Exit'
-import { projectBefore11ZoneBreakdown, tagBefore11Rows } from '../vendorAnalysis/before11Aggregate'
+import {
+  filterBefore11RowsByScope,
+  projectBefore11ZoneBreakdown,
+  tagBefore11Rows,
+} from '../vendorAnalysis/before11Aggregate'
 import { buildScopeMapsFromConfig } from '../vendorAnalysis/supplierScope'
 import { lastSortingWorkdayOnOrBefore } from '../imile/sortingWorkday'
 import {
@@ -144,6 +148,11 @@ export async function executeExitAlarmPush(params: {
 
   const waybills = result.records
   const before11ThresholdMs = computeBefore11ThresholdMs(date, tz)
+  // 取数层：全量打标；过滤留给各配置业务侧（与供应商分析对称）
+  const taggedRows = tagBefore11Rows({
+    rows: waybills as Array<Record<string, unknown>>,
+    before11ThresholdMs,
+  })
   let pushedCount = 0
   const errors: string[] = []
 
@@ -151,12 +160,11 @@ export async function executeExitAlarmPush(params: {
     const vendorName = supplierDisplayName(config)
 
     // 与「供应商数据分析」同一套归属口径：courierVendorCode 归属 → routeCode 纳入 → 白名单剔除
-    const vendorWaybills = tagBefore11Rows({
-      rows: waybills as Array<Record<string, unknown>>,
-      before11ThresholdMs,
-      scope: buildScopeMapsFromConfig(config),
-      vendorCode: config.vendorCode,
-    })
+    const vendorWaybills = filterBefore11RowsByScope(
+      taggedRows,
+      buildScopeMapsFromConfig(config),
+      config.vendorCode,
+    )
 
     const zoneBreakdown = projectBefore11ZoneBreakdown(vendorWaybills)
     const totalPending = Object.values(zoneBreakdown).reduce((s, v) => s + v.pending, 0)

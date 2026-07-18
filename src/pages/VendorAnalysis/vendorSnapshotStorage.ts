@@ -10,6 +10,7 @@ export type VendorSnapshotDriver = {
   routeCode: string
   ofdCount: number
   ofdWaybillNos: string[]
+  before11TotalCount: number
   before11OfdCount: number
   before11UnmetWaybillNos: string[]
   returnWarningCount: number
@@ -167,6 +168,7 @@ export function buildVendorSnapshot(params: {
         routeCode: d.routeCode,
         ofdCount: d.ofdCount,
         ofdWaybillNos: d.ofdWaybillNos,
+        before11TotalCount: d.before11TotalCount,
         before11OfdCount: d.before11OfdCount,
         before11UnmetWaybillNos: d.before11UnmetWaybillNos,
         returnWarningCount: d.returnWarningCount,

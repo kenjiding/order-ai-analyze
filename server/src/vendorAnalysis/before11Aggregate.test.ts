@@ -3,6 +3,7 @@ import test from 'node:test'
 import { AUS_TZ } from '../imile/ausTimezone'
 import { computeBefore11ThresholdMs } from '../imile/before11Exit'
 import {
+  filterBefore11RowsByScope,
   projectBefore11RatesByVendor,
   projectBefore11ZoneBreakdown,
   tagBefore11Rows,
@@ -23,38 +24,30 @@ const rows: Array<Record<string, unknown>> = [
 ]
 
 const v1Config = { vendorCode: 'V1', routeCode: 'R1 R2', routeCodeWhitelist: 'RW' }
+const taggedAll = tagBefore11Rows({ rows, before11ThresholdMs: thresholdMs })
 
-test('tagBefore11Rows: 归属按 courierVendorCode，纳入收窄 + 白名单剔除', () => {
-  const tagged = tagBefore11Rows({
-    rows,
-    before11ThresholdMs: thresholdMs,
-    scope: buildScopeMapsFromConfig(v1Config),
-    vendorCode: 'V1',
-  })
-  assert.deepEqual(tagged.map((r) => r.waybillNo), ['W1', 'W2', 'W3'])
-  assert.deepEqual(tagged.map((r) => r.before11Exit), [true, false, false])
+test('tagBefore11Rows: 全量打标，不做范围过滤', () => {
+  assert.deepEqual(taggedAll.map((r) => r.waybillNo), ['W1', 'W2', 'W3', 'W4', 'W5'])
+  assert.deepEqual(taggedAll.map((r) => r.before11Exit), [true, false, false, false, true])
+})
+
+test('filterBefore11RowsByScope: 归属按 courierVendorCode，纳入收窄 + 白名单剔除', () => {
+  const scoped = filterBefore11RowsByScope(taggedAll, buildScopeMapsFromConfig(v1Config), 'V1')
+  assert.deepEqual(scoped.map((r) => r.waybillNo), ['W1', 'W2', 'W3'])
+  assert.deepEqual(scoped.map((r) => r.before11Exit), [true, false, false])
 })
 
 test('不传 vendorCode 时保留全部供应商，各按自身范围过滤', () => {
-  const tagged = tagBefore11Rows({
-    rows,
-    before11ThresholdMs: thresholdMs,
-    scope: buildScopeMapsFromConfig(v1Config),
-  })
+  const scoped = filterBefore11RowsByScope(taggedAll, buildScopeMapsFromConfig(v1Config))
   // V9 无配置 → 不收窄整行保留；V1 的 RW 行被白名单剔除
-  assert.deepEqual(tagged.map((r) => r.waybillNo), ['W1', 'W2', 'W3', 'W4'])
+  assert.deepEqual(scoped.map((r) => r.waybillNo), ['W1', 'W2', 'W3', 'W4'])
 })
 
 test('率投影与分区投影基于同一集合：total/unmet 恒等', () => {
-  const tagged = tagBefore11Rows({
-    rows,
-    before11ThresholdMs: thresholdMs,
-    scope: buildScopeMapsFromConfig(v1Config),
-    vendorCode: 'V1',
-  })
+  const scoped = filterBefore11RowsByScope(taggedAll, buildScopeMapsFromConfig(v1Config), 'V1')
 
-  const rates = projectBefore11RatesByVendor(tagged, ['V1'])
-  const zones = projectBefore11ZoneBreakdown(tagged)
+  const rates = projectBefore11RatesByVendor(scoped, ['V1'])
+  const zones = projectBefore11ZoneBreakdown(scoped)
 
   const zoneTotal = Object.values(zones).reduce((s, z) => s + z.total, 0)
   const zonePending = Object.values(zones).reduce((s, z) => s + z.pending, 0)
@@ -69,7 +62,7 @@ test('率投影与分区投影基于同一集合：total/unmet 恒等', () => {
 })
 
 test('projectBefore11RatesByVendor: 只统计列出的供应商', () => {
-  const tagged = tagBefore11Rows({ rows, before11ThresholdMs: thresholdMs, scope: buildScopeMapsFromConfig(v1Config) })
-  const rates = projectBefore11RatesByVendor(tagged, ['V1'])
+  const scoped = filterBefore11RowsByScope(taggedAll, buildScopeMapsFromConfig(v1Config))
+  const rates = projectBefore11RatesByVendor(scoped, ['V1'])
   assert.equal('V9' in rates, false)
 })

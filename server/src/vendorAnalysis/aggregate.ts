@@ -12,9 +12,10 @@
  *   截止」依赖 targetTz。nowMs = worker 完成时刻。
  */
 import { iMileStrToMs, type AusTz } from '../imile/ausTimezone'
-import type { Before11ExitRateResult, SlimPickupRow } from '../imile/vendorAnalysis'
+import type { SlimPickupRow } from '../imile/vendorAnalysis'
 import { aggregateDispatch24hByVendor, type Dispatch24hDriverStat } from './dispatch24hAggregate'
-import { isWhitelisted } from './supplierScope'
+import { filterBefore11RowsByScope, projectBefore11RatesByVendor } from './before11Aggregate'
+import { isRowInVendorScope } from './supplierScope'
 
 // ── 输入行类型：只声明聚合真正读取的字段（运行时行还带其它字段，此处不关心） ──
 
@@ -78,7 +79,7 @@ export type VendorAnalyzeAggregateInput = {
     arbitrationTickets: HubUnprocessedTicketRow[]
   }
   longTailOrders: LongTailOrderRow[]
-  before11ExitRateByVendor: Record<string, Before11ExitRateResult>
+  /** 11点前出仓运单：全量原始打标行；出仓率/未出仓单号的白名单过滤与投影在本文件业务层实现 */
   driverYesterdayWaybills: SlimPickupRow[]
   driverDayBeforeWaybills: DriverWaybillRow[]
   driverReturnRows: DriverReturnRow[]
@@ -103,6 +104,8 @@ export type DriverSummary = {
   routeCode: string
   ofdCount: number
   ofdWaybillNos: string[]
+  /** 11点前出率分母：过滤白名单/纳入后的取件数（≠ ofdCount，出率 = before11OfdCount / before11TotalCount） */
+  before11TotalCount: number
   before11OfdCount: number
   before11UnmetWaybillNos: string[]
   returnWarningCount: number
@@ -163,7 +166,6 @@ export function aggregateVendorAnalysis(input: VendorAnalyzeAggregateInput): Ven
     waybills,
     unprocessedTickets,
     longTailOrders,
-    before11ExitRateByVendor,
     driverYesterdayWaybills,
     driverDayBeforeWaybills,
     driverReturnRows,
@@ -189,10 +191,11 @@ export function aggregateVendorAnalysis(input: VendorAnalyzeAggregateInput): Ven
     if (code) agg.orderCodes.push(code)
   }
 
+  // 客诉率分母（揽收量）刻意不做路由白名单剔除：分子（客诉量）本就不按白名单过滤，
+  // 分母若剔除白名单路由会让两者口径不一致、虚高客诉率。白名单只作用于 24H派签 / 11点前出仓。
   const waybillCountByVendor = new Map<string, number>()
   for (const w of waybills) {
     const key = norm(w.courierVendorCode)
-    if (isWhitelisted(key, norm(w.consigneeRouteCode), routeCodeWhitelistByVendor)) continue
     waybillCountByVendor.set(key, (waybillCountByVendor.get(key) ?? 0) + 1)
   }
 
@@ -228,10 +231,18 @@ export function aggregateVendorAnalysis(input: VendorAnalyzeAggregateInput): Ven
     routeCodeWhitelistByVendor,
   })
 
-  // 11点前未出仓单号：按供应商聚合（无站点过滤，与 before11ExitRate 口径一致）。
-  // driverYesterdayWaybills 已在源头（fetchBefore11ExitRates → tagBefore11Rows）按供应商范围过滤，无需重复过滤
+  // 11点前出仓率 & 未出仓单号：都属于「11点前出仓」口径，按供应商范围（routeCode 纳入 + 白名单剔除）过滤。
+  // driverYesterdayWaybills 是 fetchBefore11ExitRates 出的全量原始打标行；过滤 + 投影都在业务层做（与 24H派签对称）。
+  const scopedBefore11Rows = filterBefore11RowsByScope(driverYesterdayWaybills, {
+    routeCodesByVendor,
+    routeCodeWhitelistByVendor,
+  })
+  const before11RateByVendor = projectBefore11RatesByVendor(
+    scopedBefore11Rows,
+    [...new Set(scopedBefore11Rows.map((r) => norm(r.courierVendorCode)).filter(Boolean))],
+  )
   const before11UnmetByVendor = new Map<string, string[]>()
-  for (const row of driverYesterdayWaybills) {
+  for (const row of scopedBefore11Rows) {
     if (row.before11Exit) continue
     const vendorCode = norm(row.courierVendorCode)
     if (!vendorCode) continue
@@ -263,7 +274,6 @@ export function aggregateVendorAnalysis(input: VendorAnalyzeAggregateInput): Ven
   for (const k of unprocessedByVendor.keys()) if (k) vendorCodes.add(k)
   for (const k of dispatch24hByVendor.keys()) if (k) vendorCodes.add(k)
   for (const k of before11UnmetByVendor.keys()) if (k) vendorCodes.add(k)
-  for (const k of Object.keys(before11ExitRateByVendor)) if (norm(k)) vendorCodes.add(norm(k))
   for (const r of driverYesterdayWaybills) if (norm(r.courierVendorCode)) vendorCodes.add(norm(r.courierVendorCode))
   for (const r of driverDayBeforeWaybills) if (norm(r.courierVendorCode)) vendorCodes.add(norm(r.courierVendorCode))
   for (const r of longTailOrders) if (norm(r.driverVendorCode)) vendorCodes.add(norm(r.driverVendorCode))
@@ -282,7 +292,7 @@ export function aggregateVendorAnalysis(input: VendorAnalyzeAggregateInput): Ven
     const complaintCount = complaint?.count ?? 0
     const waybillCount = waybillCountByVendor.get(vendorCode) ?? 0
     const dispatch = dispatch24hByVendor.get(vendorCode)
-    const before11 = before11ExitRateByVendor[vendorCode]
+    const before11 = before11RateByVendor[vendorCode]
 
     summaries.push({
       vendorCode,
@@ -326,30 +336,29 @@ function buildDriverSummaries(
     driverYesterdayWaybills,
     longTailOrders,
     driverReturnRows,
+    routeCodesByVendor,
+    routeCodeWhitelistByVendor,
   } = input
 
-  // 今日取件量：昨日运单，按 courierVendorCode 匹配，按 courierCode 计数
-  // （行集已在源头按供应商范围过滤，此处只做归属匹配）
-  type PickupAgg = { courierName: string; routeCode: string; count: number; before11Count: number; waybillNos: string[]; before11UnmetWaybillNos: string[] }
+  // 今日取件量(count)按全量统计；11点前出率的分子(before11Count)/分母(before11Total)/未出仓单号
+  // 属于「11点前出仓」口径，只统计过滤白名单/纳入后的行。driverYesterdayWaybills 是全量原始打标行。
+  type PickupAgg = { courierName: string; routeCode: string; count: number; before11Total: number; before11Count: number; waybillNos: string[]; before11UnmetWaybillNos: string[] }
   const pickupMap = new Map<string, PickupAgg>()
   for (const row of driverYesterdayWaybills) {
     if (!row.courierCode || norm(row.courierVendorCode) !== vendorCode) continue
     const wbNo = row.waybillNo ?? ''
-    const agg = pickupMap.get(row.courierCode)
-    if (agg) {
-      agg.count += 1
+    const scoped = isRowInVendorScope(vendorCode, norm(row.consigneeRouteCode), { routeCodesByVendor, routeCodeWhitelistByVendor })
+    let agg = pickupMap.get(row.courierCode)
+    if (!agg) {
+      agg = { courierName: row.courier ?? '', routeCode: row.consigneeRouteCode ?? '', count: 0, before11Total: 0, before11Count: 0, waybillNos: [], before11UnmetWaybillNos: [] }
+      pickupMap.set(row.courierCode, agg)
+    }
+    agg.count += 1
+    if (wbNo) agg.waybillNos.push(wbNo)
+    if (scoped) {
+      agg.before11Total += 1
       if (row.before11Exit) agg.before11Count += 1
       else if (wbNo) agg.before11UnmetWaybillNos.push(wbNo)
-      if (wbNo) agg.waybillNos.push(wbNo)
-    } else {
-      pickupMap.set(row.courierCode, {
-        courierName: row.courier ?? '',
-        routeCode: row.consigneeRouteCode ?? '',
-        count: 1,
-        before11Count: row.before11Exit ? 1 : 0,
-        waybillNos: wbNo ? [wbNo] : [],
-        before11UnmetWaybillNos: !row.before11Exit && wbNo ? [wbNo] : [],
-      })
     }
   }
 
@@ -410,6 +419,7 @@ function buildDriverSummaries(
       routeCode: pickup?.routeCode || dispatch?.routeCode || '',
       ofdCount: pickup?.count ?? 0,
       ofdWaybillNos: pickup?.waybillNos ?? [],
+      before11TotalCount: pickup?.before11Total ?? 0,
       before11OfdCount: pickup?.before11Count ?? 0,
       before11UnmetWaybillNos: pickup?.before11UnmetWaybillNos ?? [],
       returnWarningCount: returnWarningByDriver.get(courierCode)?.count ?? 0,

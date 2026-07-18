@@ -201,7 +201,7 @@ function DriverStatCell({ label, value, sub, tone }: { label: string; value: str
 function DriverMobileCard({ driver, flags }: { driver: VendorSnapshotDriver; flags: MetricFlags }) {
   const { t } = useVendorSnapshotTranslation()
   const dTone = driverDispatchTone(driver.dispatchRate24h)
-  const before11Rate = driver.ofdCount > 0 ? driver.before11OfdCount / driver.ofdCount : null
+  const before11Rate = driver.before11TotalCount > 0 ? driver.before11OfdCount / driver.before11TotalCount : null
   const b11Tone = before11Tone(before11Rate)
 
   // 归班预警 / 长尾单共用一格：两者都启用时合并展示，只启用一个时单独展示
@@ -257,7 +257,7 @@ function DriverMobileCard({ driver, flags }: { driver: VendorSnapshotDriver; fla
               <DriverStatCell
                 label={t('driverTable.before11ExitRate')}
                 value={before11Rate != null ? `${(before11Rate * 100).toFixed(1)}%` : '-'}
-                sub={driver.ofdCount > 0 ? `${driver.before11OfdCount}/${driver.ofdCount}` : undefined}
+                sub={driver.before11TotalCount > 0 ? `${driver.before11OfdCount}/${driver.before11TotalCount}` : undefined}
                 tone={b11Tone}
               />
             </div>
@@ -305,7 +305,7 @@ function DriverRow({ driver, isOdd, flags }: { driver: VendorSnapshotDriver; isO
   const { t } = useVendorSnapshotTranslation()
   const dTone = driverDispatchTone(driver.dispatchRate24h)
   const { value: dClass } = toneClasses(dTone)
-  const before11Rate = driver.ofdCount > 0 ? driver.before11OfdCount / driver.ofdCount : null
+  const before11Rate = driver.before11TotalCount > 0 ? driver.before11OfdCount / driver.before11TotalCount : null
   const b11Tone = before11Tone(before11Rate)
   const { value: b11Class } = toneClasses(b11Tone)
   const rowBg = isOdd ? 'bg-amber-50/40' : 'bg-white'
@@ -339,7 +339,7 @@ function DriverRow({ driver, isOdd, flags }: { driver: VendorSnapshotDriver; isO
       )}
       {flags.driverBefore11 && (
         <td className="px-4 py-3.5 text-center border-b border-slate-100">
-          {driver.ofdCount > 0 ? (
+          {driver.before11TotalCount > 0 ? (
             <div>
               <WaybillListPopover nos={driver.before11UnmetWaybillNos} title={t('driverTable.tooltip.before11Unmet')}>
                 <span className={`text-[18px] font-black tabular-nums ${b11Class}${driver.before11UnmetWaybillNos.length > 0 ? ' cursor-help' : ''}`}>
@@ -347,7 +347,7 @@ function DriverRow({ driver, isOdd, flags }: { driver: VendorSnapshotDriver; isO
                 </span>
               </WaybillListPopover>
               <div className="text-[13px] text-slate-400 mt-0.5 tabular-nums">
-                {driver.before11OfdCount}/{driver.ofdCount}
+                {driver.before11OfdCount}/{driver.before11TotalCount}
               </div>
             </div>
           ) : (

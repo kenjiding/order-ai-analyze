@@ -200,13 +200,13 @@ function buildDriverColumns(enabled: ReadonlySet<string>): ColumnsType<DriverPer
             key: 'before11Rate',
             width: 140,
             sorter: (a, b) =>
-              (a.ofdCount > 0 ? a.before11OfdCount / a.ofdCount : -1) -
-              (b.ofdCount > 0 ? b.before11OfdCount / b.ofdCount : -1),
+              (a.before11TotalCount > 0 ? a.before11OfdCount / a.before11TotalCount : -1) -
+              (b.before11TotalCount > 0 ? b.before11OfdCount / b.before11TotalCount : -1),
             render: (_, row) => (
               <Before11RateBadge
-                rate={row.ofdCount > 0 ? row.before11OfdCount / row.ofdCount : null}
+                rate={row.before11TotalCount > 0 ? row.before11OfdCount / row.before11TotalCount : null}
                 count={row.before11OfdCount}
-                total={row.ofdCount}
+                total={row.before11TotalCount}
                 unmetWaybillNos={row.before11UnmetWaybillNos}
               />
             ),

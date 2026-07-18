@@ -164,6 +164,8 @@ export type DriverPerformanceRow = {
   routeCode: string
   ofdCount: number
   ofdWaybillNos: string[]
+  /** 11点前出率分母：过滤白名单/纳入后的取件数（≠ ofdCount，出率 = before11OfdCount / before11TotalCount） */
+  before11TotalCount: number
   before11OfdCount: number
   /** 11点前未出仓单号列表（hover tooltip 用） */
   before11UnmetWaybillNos: string[]

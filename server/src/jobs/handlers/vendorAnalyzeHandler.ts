@@ -4,7 +4,6 @@ import {
   fetchLongTailOrders,
   fetchUnprocessedTickets,
   fetchVendorWaybills,
-  type Before11ExitRateResult,
   type SlimPickupRow,
   type UnprocessedTicketsResult,
 } from '../../imile/vendorAnalysis'
@@ -133,7 +132,6 @@ export const vendorAnalyzeHandler: JobHandler = {
     let tickets: unknown[] = []
     let unprocessedTickets: UnprocessedTicketsResult = { normalTickets: [], complaintTickets: [], arbitrationTickets: [] }
     let longTailOrders: unknown[] = []
-    let before11ExitRateByVendor: Record<string, Before11ExitRateResult> = {}
     let driverYesterdayWaybills: SlimPickupRow[] = []
     let slimmedWaybills: Record<string, unknown>[] = []
     let driverDayBeforeWaybills: DriverWaybillRow[] = []
@@ -199,15 +197,11 @@ export const vendorAnalyzeHandler: JobHandler = {
             fetchBefore11ExitRates(imileToken, {
               stationCode: requireBefore11StationCode(),
               dateStr: params.before11Date,
-              vendorCodes: params.vendorCodes,
               regionCode: ctx.job.regionCode,
-              routeCodesByVendor: params.routeCodesByVendor,
-              routeCodeWhitelistByVendor: params.routeCodeWhitelistByVendor,
             }),
           )
           if (!res.ok) throw new Error(`11点前出仓率获取失败: ${res.message}`)
-          before11ExitRateByVendor = res.data.ratesByVendor
-          driverYesterdayWaybills = res.data.pickupRows
+          driverYesterdayWaybills = res.data
         },
       },
       {
@@ -300,7 +294,6 @@ export const vendorAnalyzeHandler: JobHandler = {
       waybills: slimmedWaybills as never,
       unprocessedTickets: unprocessedTickets as never,
       longTailOrders: longTailOrders as never,
-      before11ExitRateByVendor,
       driverYesterdayWaybills,
       driverDayBeforeWaybills: driverDayBeforeWaybills as never,
       driverReturnRows: driverReturnRows as never,

@@ -12,9 +12,7 @@ import { resolveRegionTz } from './ausTimezone'
 import { computeBefore11ThresholdMs } from './before11Exit'
 import { fetchWaybillDetailsByInboundIndex } from './inboundWaybillIndex'
 import {
-  projectBefore11RatesByVendor,
   tagBefore11Rows,
-  type Before11RateResult,
   type Before11TaggedRow,
 } from '../vendorAnalysis/before11Aggregate'
 
@@ -330,27 +328,18 @@ function sevenDaysAgo(): string {
   return d.toISOString().slice(0, 10)
 }
 
-/** 出仓率结果与打标行：核心实现统一在 vendorAnalysis/before11Aggregate，这里保留类型别名 */
-export type Before11ExitRateResult = Before11RateResult
-
+/** 11点前打标行：核心实现统一在 vendorAnalysis/before11Aggregate，这里保留类型别名 */
 export type SlimPickupRow = Before11TaggedRow
 
-export type Before11ExitRatesData = {
-  ratesByVendor: Record<string, Before11ExitRateResult>
-  pickupRows: SlimPickupRow[]
-}
-
+/**
+ * 11点前出仓运单：只出【全量原始打标行】(before11Exit 按时间打标，不做任何范围过滤)。
+ * 出仓率/未出仓单号/司机出率的白名单过滤与投影全部在业务层（aggregate.ts）实现——
+ * 取数层保持数据干净，与「24H派签」由 aggregateDispatch24hByVendor 在业务层统计对称。
+ */
 export async function fetchBefore11ExitRates(
   token: string,
-  params: {
-    stationCode: string
-    dateStr: string
-    vendorCodes: string[]
-    regionCode?: string | null
-    routeCodesByVendor?: Map<string, Set<string>>
-    routeCodeWhitelistByVendor?: Map<string, Set<string>>
-  },
-): Promise<VendorAnalysisSuccess<Before11ExitRatesData> | VendorAnalysisError> {
+  params: { stationCode: string; dateStr: string; regionCode?: string | null },
+): Promise<VendorAnalysisSuccess<SlimPickupRow[]> | VendorAnalysisError> {
   const tz = resolveRegionTz(params.regionCode)
   const result = await fetchWaybillDetailsByInboundIndex({
     token,
@@ -360,24 +349,12 @@ export async function fetchBefore11ExitRates(
   })
   if (!result.ok) return { ok: false, status: result.status ?? 502, message: result.message }
 
-  // 供应商范围过滤（routeCode 纳入 + 白名单剔除）在源头做一次，
-  // pickupRows 下游（今日取件/司机维度）不再重复过滤
-  const tagged = tagBefore11Rows({
+  const pickupRows = tagBefore11Rows({
     rows: result.records as Array<Record<string, unknown>>,
     before11ThresholdMs: computeBefore11ThresholdMs(params.dateStr, tz),
-    scope: {
-      routeCodesByVendor: params.routeCodesByVendor ?? new Map(),
-      routeCodeWhitelistByVendor: params.routeCodeWhitelistByVendor ?? new Map(),
-    },
   })
 
-  return {
-    ok: true,
-    data: {
-      ratesByVendor: projectBefore11RatesByVendor(tagged, params.vendorCodes),
-      pickupRows: tagged,
-    },
-  }
+  return { ok: true, data: pickupRows }
 }
 
 export async function fetchLongTailOrders(

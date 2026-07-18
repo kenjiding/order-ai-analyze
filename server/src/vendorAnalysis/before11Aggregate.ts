@@ -1,9 +1,11 @@
 /**
- * 11点前出仓 —— 过滤 + 打标核心。
+ * 11点前出仓 —— 打标与投影。
  *
- * 「供应商数据分析」的出仓率与「11点前出仓告警」的分区未出仓件数都是本文件
- * tagBefore11Rows 产出行集的投影：两边永远基于同一集合，数学上不可能对不上。
- * 供应商归属统一走 supplierScope（courierVendorCode 归属 → routeCode 纳入 → 白名单剔除）。
+ * 分层约定：
+ * - tagBefore11Rows：只按 deliveryTime 打 before11Exit，不做供应商范围过滤（取数层用）。
+ * - filterBefore11RowsByScope：业务方按纳入/白名单（及可选 vendorCode）收窄（分析 / 告警用）。
+ * 「供应商数据分析」出仓率与「11点前出仓告警」分区未出仓件数都是同一套打标行的投影，
+ * 过滤口径统一走 supplierScope。
  */
 import { isBefore11Exit } from '../imile/before11Exit'
 import { isRowInVendorScope, normCode, type VendorScopeMaps } from './supplierScope'
@@ -23,38 +25,41 @@ export type Before11RateResult = {
   totalReceived: number
 }
 
-/**
- * 过滤 + 打标：每行按自身 courierVendorCode 归属，套用该供应商的范围（纳入收窄 + 白名单剔除）；
- * scope 无该供应商时整行保留（未配置供应商不收窄）。
- * 传 vendorCode 时只保留该供应商的运单（告警按配置逐条推送用）。
- */
+/** 纯打标：全量行按阈值贴 before11Exit，不做范围过滤 */
 export function tagBefore11Rows(input: {
   rows: Array<Record<string, unknown>>
   before11ThresholdMs: number
-  scope: VendorScopeMaps
-  vendorCode?: string
 }): Before11TaggedRow[] {
-  const targetVendor = normCode(input.vendorCode)
   const tagged: Before11TaggedRow[] = []
-
   for (const row of input.rows) {
-    const courierVendorCode = normCode(row.courierVendorCode)
-    if (targetVendor && courierVendorCode !== targetVendor) continue
-    const consigneeRouteCode = typeof row.consigneeRouteCode === 'string' ? row.consigneeRouteCode : ''
-    if (!isRowInVendorScope(courierVendorCode, consigneeRouteCode, input.scope)) continue
-
     const deliveryTime =
       typeof row.deliveryTime === 'string' && row.deliveryTime ? row.deliveryTime : null
     tagged.push({
       waybillNo: typeof row.waybillNo === 'string' ? row.waybillNo : '',
       courierCode: typeof row.courierCode === 'string' ? row.courierCode : '',
-      courierVendorCode,
+      courierVendorCode: normCode(row.courierVendorCode),
       courier: typeof row.courier === 'string' ? row.courier : '',
-      consigneeRouteCode,
+      consigneeRouteCode: typeof row.consigneeRouteCode === 'string' ? row.consigneeRouteCode : '',
       before11Exit: isBefore11Exit(deliveryTime, input.before11ThresholdMs),
     })
   }
   return tagged
+}
+
+/**
+ * 业务层过滤：按 courierVendorCode 归属套用纳入收窄 + 白名单剔除；
+ * scope 无该供应商时整行保留。传 vendorCode 时只保留该供应商（告警按配置逐条推送）。
+ */
+export function filterBefore11RowsByScope(
+  rows: Before11TaggedRow[],
+  scope: VendorScopeMaps,
+  vendorCode?: string,
+): Before11TaggedRow[] {
+  const targetVendor = normCode(vendorCode)
+  return rows.filter((row) => {
+    if (targetVendor && row.courierVendorCode !== targetVendor) return false
+    return isRowInVendorScope(row.courierVendorCode, row.consigneeRouteCode, scope)
+  })
 }
 
 /** 分析投影：按供应商统计出仓率（仅统计 vendorCodes 中列出的供应商） */

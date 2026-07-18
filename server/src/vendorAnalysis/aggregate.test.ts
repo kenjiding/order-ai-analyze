@@ -10,7 +10,6 @@ function baseInput(overrides: Partial<VendorAnalyzeAggregateInput> = {}): Vendor
     waybills: [],
     unprocessedTickets: { normalTickets: [], complaintTickets: [], arbitrationTickets: [] },
     longTailOrders: [],
-    before11ExitRateByVendor: {},
     driverYesterdayWaybills: [],
     driverDayBeforeWaybills: [],
     driverReturnRows: [],
@@ -73,7 +72,7 @@ test('供应商级：客诉率按站点过滤、11点前/未处理/长尾/归班
       arbitrationTickets: [],
     },
     longTailOrders: [{ driverCode: 'C1', driverVendorCode: 'V1', waybillNo: 'L1', driverName: 'Cai' }],
-    before11ExitRateByVendor: { V1: { before11ExitRate: 0.8, before11ExitVolume: 8, totalReceived: 10 } },
+    // 出仓率由业务层从 driverYesterdayWaybills 投影：P1 出仓、P2 未出仓 → 1/2 = 0.5
     driverYesterdayWaybills: [
       { waybillNo: 'P1', courierCode: 'C1', courierVendorCode: 'V1', courier: 'Cai', consigneeRouteCode: 'R1', before11Exit: true },
       { waybillNo: 'P2', courierCode: 'C1', courierVendorCode: 'V1', courier: 'Cai', consigneeRouteCode: 'R1', before11Exit: false },
@@ -90,7 +89,9 @@ test('供应商级：客诉率按站点过滤、11点前/未处理/长尾/归班
   assert.deepEqual(v.complaintOrderCodes, ['O1'])
   assert.equal(v.unprocessedTicketCount, 1)
   assert.equal(v.longTailCount, 1)
-  assert.equal(v.before11ExitRate, 0.8)
+  assert.equal(v.before11ExitRate, 0.5) // 业务层投影：P1 出仓 / (P1+P2) = 1/2
+  assert.equal(v.before11ExitVolume, 1)
+  assert.equal(v.before11TotalReceived, 2)
   assert.deepEqual(v.before11UnmetWaybillNos, ['P2'])
 
   const driver = v.drivers.find((d) => d.courierCode === 'C1')
@@ -102,14 +103,14 @@ test('供应商级：客诉率按站点过滤、11点前/未处理/长尾/归班
   assert.equal(driver.returnWarningCount, 1)
 })
 
-test('路由码白名单：命中白名单的运单从运单量/24H派签/11点前统计中整体剔除', () => {
+test('路由码白名单：11点前出仓/24H派签口径剔除（含未出仓单号、司机出率分母）；客诉率分母与今日取件量按全量', () => {
   const input = baseInput({
     waybills: [
-      { courierVendorCode: 'V1', consigneeRouteCode: 'R1' }, // 命中白名单，剔除
+      { courierVendorCode: 'V1', consigneeRouteCode: 'R1' }, // 命中白名单，但揽收量不剔除
       { courierVendorCode: 'V1', consigneeRouteCode: 'R2' },
     ],
     driverYesterdayWaybills: [
-      { waybillNo: 'P1', courierCode: 'C1', courierVendorCode: 'V1', courier: 'Cai', consigneeRouteCode: 'R1', before11Exit: false }, // 命中白名单，剔除
+      { waybillNo: 'P1', courierCode: 'C1', courierVendorCode: 'V1', courier: 'Cai', consigneeRouteCode: 'R1', before11Exit: false }, // 命中白名单，但取件量/未出仓不剔除
       { waybillNo: 'P2', courierCode: 'C1', courierVendorCode: 'V1', courier: 'Cai', consigneeRouteCode: 'R2', before11Exit: false },
     ],
     driverDayBeforeWaybills: [
@@ -120,15 +121,20 @@ test('路由码白名单：命中白名单的运单从运单量/24H派签/11点�
   })
   const [v] = aggregateVendorAnalysis(input)
 
-  assert.equal(v.waybillCount, 1)
-  assert.equal(v.dispatch24hTotal, 1)
-  assert.deepEqual(v.before11UnmetWaybillNos, ['P2'])
+  assert.equal(v.waybillCount, 2) // 客诉率分母：不剔除白名单，R1、R2 都计入
+  assert.equal(v.dispatch24hTotal, 1) // 24H派签：剔除白名单，只剩 D2
+  assert.equal(v.before11ExitRate, 0) // 出仓率剔除白名单后只剩 P2(未出仓) → 0/1
+  assert.equal(v.before11TotalReceived, 1)
+  assert.deepEqual(v.before11UnmetWaybillNos, ['P2']) // 未出仓单号属于11点前出仓口径：剔除白名单 R1
 
   const driver = v.drivers.find((d) => d.courierCode === 'C1')
   assert.ok(driver)
-  assert.equal(driver.ofdCount, 1)
-  assert.deepEqual(driver.ofdWaybillNos, ['P2'])
-  assert.equal(driver.totalDispatchCount, 1)
+  assert.equal(driver.ofdCount, 2) // 今日取件量：不剔除白名单，P1、P2 都计入
+  assert.deepEqual(driver.ofdWaybillNos, ['P1', 'P2'])
+  assert.equal(driver.before11TotalCount, 1) // 11点前出率分母：剔除白名单，只剩 P2
+  assert.equal(driver.before11OfdCount, 0) // P2 未在11点前出仓
+  assert.deepEqual(driver.before11UnmetWaybillNos, ['P2']) // 出率钻取：剔除白名单 R1
+  assert.equal(driver.totalDispatchCount, 1) // 24H派签：剔除白名单
 })
 
 test('24H派签：routeCode 纳入筛选后只统计配置路由；白名单再剔除', () => {

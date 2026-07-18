@@ -12,6 +12,7 @@
     "build": "tsc -b && vite build",
     "ecs:upload-web": "bash scripts/ecs-upload-web.sh",
     "ecs:deploy-web": "bash scripts/ecs-upload-web.sh --reload-nginx",
+    "ecs:deploy-all": "pnpm --dir server ecs:deploy && pnpm ecs:deploy-web",
     "lint": "eslint .",
     "preview": "vite preview"
   },

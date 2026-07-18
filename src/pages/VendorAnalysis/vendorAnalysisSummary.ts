@@ -12,6 +12,8 @@ export type DriverSummary = {
   routeCode: string
   ofdCount: number
   ofdWaybillNos: string[]
+  /** 11点前出率分母：过滤白名单/纳入后的取件数（≠ ofdCount，出率 = before11OfdCount / before11TotalCount） */
+  before11TotalCount: number
   before11OfdCount: number
   before11UnmetWaybillNos: string[]
   returnWarningCount: number
