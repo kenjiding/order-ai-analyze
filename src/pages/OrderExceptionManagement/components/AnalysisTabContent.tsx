@@ -1,7 +1,8 @@
 import { Select, Tag, Tooltip } from 'antd'
 import { saveAs } from 'file-saver'
-import { CheckSquare, ChevronDown, Loader2, Settings2, Upload, X } from 'lucide-react'
+import { CheckSquare, ChevronDown, Loader2, Play, Settings2, Upload, X } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent, type ReactNode } from 'react'
+import { createPortal } from 'react-dom'
 import * as XLSX from 'xlsx-js-style'
 import { PERMISSION_KEYS, usePermission } from '../../../hooks/usePermission'
 import { applySheetCenterAlignment } from '../../../utils/xlsxCenteredSheet'
@@ -24,6 +25,8 @@ type ColumnFilters = {
   lossScope: string[]
   categoryName: string[]
   currentResponsibilityParty: string[]
+  latestResponsibilityPerson: string[]
+  latestResponsibilityAction: string[]
 }
 
 function FilterableHeader({
@@ -38,30 +41,34 @@ function FilterableHeader({
   onChange: (next: string[]) => void
 }) {
   const [open, setOpen] = useState(false)
-  const ref = useRef<HTMLDivElement>(null)
+  const [menuPos, setMenuPos] = useState<{ left: number; top: number } | null>(null)
+  const buttonRef = useRef<HTMLButtonElement>(null)
+  const menuRef = useRef<HTMLDivElement>(null)
+
+  const updateMenuPos = useCallback(() => {
+    const rect = buttonRef.current?.getBoundingClientRect()
+    if (!rect) return
+    setMenuPos({ left: rect.left, top: rect.bottom + 6 })
+  }, [])
 
   useEffect(() => {
     if (!open) return
-    const handle = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false)
+    updateMenuPos()
+    const handleClickOutside = (e: MouseEvent) => {
+      const target = e.target as Node
+      if (buttonRef.current?.contains(target)) return
+      if (menuRef.current?.contains(target)) return
+      setOpen(false)
     }
-    document.addEventListener('mousedown', handle)
-    return () => document.removeEventListener('mousedown', handle)
-  }, [open])
-
-  // 打开时把最近的 <th> 层级临时提升，使下拉框能盖过兄弟列头
-  useEffect(() => {
-    const th = ref.current?.closest('th') as HTMLElement | null
-    if (!th) return
-    if (open) {
-      th.style.zIndex = '20'
-    } else {
-      th.style.zIndex = ''
-    }
+    document.addEventListener('mousedown', handleClickOutside)
+    window.addEventListener('scroll', updateMenuPos, true)
+    window.addEventListener('resize', updateMenuPos)
     return () => {
-      th.style.zIndex = ''
+      document.removeEventListener('mousedown', handleClickOutside)
+      window.removeEventListener('scroll', updateMenuPos, true)
+      window.removeEventListener('resize', updateMenuPos)
     }
-  }, [open])
+  }, [open, updateMenuPos])
 
   const isActive = selected.length > 0
 
@@ -70,8 +77,9 @@ function FilterableHeader({
   }
 
   return (
-    <div ref={ref} className="relative inline-block">
+    <div className="relative inline-block">
       <button
+        ref={buttonRef}
         type="button"
         onClick={() => setOpen((o) => !o)}
         className={[
@@ -92,49 +100,55 @@ function FilterableHeader({
         )}
       </button>
 
-      {open && (
-        <div className="absolute left-0 top-full z-50 mt-1.5 min-w-[148px] rounded-md border border-slate-200 bg-white shadow-lg">
-          <div className="flex items-center justify-between border-b border-slate-100 px-2.5 py-1.5">
-            <button
-              type="button"
-              onClick={() => onChange(options)}
-              className="text-[11px] text-slate-500 hover:text-slate-800"
-            >
-              全选
-            </button>
-            <button
-              type="button"
-              onClick={() => onChange([])}
-              className={[
-                'text-[11px] transition-colors',
-                isActive ? 'text-[#1f6f68] hover:text-[#2f8f87]' : 'text-slate-400',
-              ].join(' ')}
-            >
-              清除
-            </button>
-          </div>
-          <div className="max-h-52 overflow-y-auto py-1">
-            {options.length === 0 ? (
-              <p className="px-3 py-2 text-[11px] text-slate-400">暂无数据</p>
-            ) : (
-              options.map((opt) => (
-                <label
-                  key={opt}
-                  className="flex cursor-pointer items-center gap-2 px-2.5 py-1.5 text-[11px] font-normal normal-case tracking-normal text-slate-700 transition-colors hover:bg-slate-50"
-                >
-                  <input
-                    type="checkbox"
-                    checked={selected.includes(opt)}
-                    onChange={() => toggleOption(opt)}
-                    className="h-3.5 w-3.5 shrink-0 rounded border-slate-300 accent-[#1f6f68]"
-                  />
-                  <span className="truncate">{opt || '(空)'}</span>
-                </label>
-              ))
-            )}
-          </div>
-        </div>
-      )}
+      {open && menuPos &&
+        createPortal(
+          <div
+            ref={menuRef}
+            style={{ position: 'fixed', left: menuPos.left, top: menuPos.top }}
+            className="z-50 min-w-[148px] rounded-md border border-slate-200 bg-white shadow-lg"
+          >
+            <div className="flex items-center justify-between border-b border-slate-100 px-2.5 py-1.5">
+              <button
+                type="button"
+                onClick={() => onChange(options)}
+                className="text-[11px] text-slate-500 hover:text-slate-800"
+              >
+                全选
+              </button>
+              <button
+                type="button"
+                onClick={() => onChange([])}
+                className={[
+                  'text-[11px] transition-colors',
+                  isActive ? 'text-[#1f6f68] hover:text-[#2f8f87]' : 'text-slate-400',
+                ].join(' ')}
+              >
+                清除
+              </button>
+            </div>
+            <div className="max-h-52 overflow-y-auto py-1">
+              {options.length === 0 ? (
+                <p className="px-3 py-2 text-[11px] text-slate-400">暂无数据</p>
+              ) : (
+                options.map((opt) => (
+                  <label
+                    key={opt}
+                    className="flex cursor-pointer items-center gap-2 px-2.5 py-1.5 text-[11px] font-normal normal-case tracking-normal text-slate-700 transition-colors hover:bg-slate-50"
+                  >
+                    <input
+                      type="checkbox"
+                      checked={selected.includes(opt)}
+                      onChange={() => toggleOption(opt)}
+                      className="h-3.5 w-3.5 shrink-0 rounded border-slate-300 accent-[#1f6f68]"
+                    />
+                    <span className="truncate">{opt || '(空)'}</span>
+                  </label>
+                ))
+              )}
+            </div>
+          </div>,
+          document.body,
+        )}
     </div>
   )
 }
@@ -211,6 +225,8 @@ function buildColumns(
   lossScopeOptions: string[],
   categoryNameOptions: string[],
   responsibilityOptions: string[],
+  latestResponsibilityPersonOptions: string[],
+  latestResponsibilityActionOptions: string[],
 ): DataTableColumn[] {
   return [
     {
@@ -274,11 +290,71 @@ function buildColumns(
       },
     },
     {
-      key: 'currentResponsibilityParty',
-      title: '当前责任方',
+      key: 'noOperationDays',
+      title: '无操作天数',
+      render: (row) => {
+        const r = row as unknown as Row
+        if (r.status === 'pending' || r.status === 'analyzing') {
+          return <span className="text-slate-400">—</span>
+        }
+        return <span>{String(r.noOperationDays ?? '—')}</span>
+      },
+    },
+    {
+      key: 'latestResponsibilityPerson',
+      title: '最新责任人',
       renderTitle: () => (
         <FilterableHeader
-          title="当前责任方"
+          title="最新责任人"
+          options={latestResponsibilityPersonOptions}
+          selected={columnFilters.latestResponsibilityPerson}
+          onChange={(next) => onColumnFilterChange('latestResponsibilityPerson', next)}
+        />
+      ),
+      render: (row) => {
+        const r = row as unknown as Row
+        if (r.status === 'pending' || r.status === 'analyzing') {
+          return <span className="text-slate-400">—</span>
+        }
+        return <span>{extractLatestResponsibilityDetail(r).person}</span>
+      },
+    },
+    {
+      key: 'latestResponsibilityAction',
+      title: '最新责任操作',
+      renderTitle: () => (
+        <FilterableHeader
+          title="最新责任操作"
+          options={latestResponsibilityActionOptions}
+          selected={columnFilters.latestResponsibilityAction}
+          onChange={(next) => onColumnFilterChange('latestResponsibilityAction', next)}
+        />
+      ),
+      render: (row) => {
+        const r = row as unknown as Row
+        if (r.status === 'pending' || r.status === 'analyzing') {
+          return <span className="text-slate-400">—</span>
+        }
+        return <span>{extractLatestResponsibilityDetail(r).action}</span>
+      },
+    },
+    {
+      key: 'latestResponsibilityTime',
+      title: '最新责任时间',
+      render: (row) => {
+        const r = row as unknown as Row
+        if (r.status === 'pending' || r.status === 'analyzing') {
+          return <span className="text-slate-400">—</span>
+        }
+        return <span>{extractLatestResponsibilityDetail(r).time}</span>
+      },
+    },
+    {
+      key: 'currentResponsibilityParty',
+      title: '当前责任站点',
+      renderTitle: () => (
+        <FilterableHeader
+          title="当前责任站点"
           options={responsibilityOptions}
           selected={columnFilters.currentResponsibilityParty}
           onChange={(next) => onColumnFilterChange('currentResponsibilityParty', next)}
@@ -360,6 +436,9 @@ type Props = {
   onClearImportedAnalyzeOrders: () => void
   importedAnalyzeOrders: ImportedAnalyzeOrders | null
   isAnalyzing: boolean
+  isPaused: boolean
+  onPauseAnalyze: () => void
+  onResumeAnalyze: () => void
   rows: Row[]
   filteredRows: Row[]
   totalDoneRowCount: number
@@ -383,8 +462,45 @@ const CROSS_CHECKED_LABEL: Record<string, string> = {
   deepseek: 'DeepSeek',
 }
 
-/** 与 onExportResults 列顺序一致：订单号、异常类型、子类型、当前责任方、置信度、判定依据、是否需复核、交叉验证模型 */
-const ANALYZE_EXPORT_COLUMN_WIDTHS = [24, 14, 16, 28, 10, 80, 12, 16] as const
+/**
+ * 与 onExportResults 列顺序一致：订单号、异常类型、子类型、当前责任站点、置信度、判定依据、
+ * 是否需复核、交叉验证模型、最新责任人、最新责任时间、最新责任操作、无操作天数
+ */
+const ANALYZE_EXPORT_COLUMN_WIDTHS = [24, 14, 16, 28, 10, 80, 12, 16, 20, 20, 24, 14] as const
+
+/** 轨迹文案里紧跟在“操作员【xxx】”前的动作短语，如“已盘点，库位编号[01]”→“盘点” */
+const TRACK_OPERATOR_RE = /操作员[【[]([^】\]]*)[】\]]/
+const TRACK_ACTION_DELIMITER_RE = /[，,。(（[【]/
+
+function extractLatestResponsibilityDetail(row: Row): {
+  person: string
+  time: string
+  action: string
+} {
+  const fallback = { person: '—', time: '—', action: '—' }
+  const marker = row.latestResponsibilityTrackMarker
+  if (!marker) return fallback
+
+  if (marker.source === 'track') {
+    const evt = row.trackEvents.find((e) => e.time === marker.time)
+    if (!evt) return fallback
+    const operatorMatch = TRACK_OPERATOR_RE.exec(evt.content)
+    const person = operatorMatch?.[1]?.trim() || '—'
+    const beforeOperator = evt.content.slice(0, operatorMatch?.index ?? evt.content.length)
+    const afterSiteTag = beforeOperator.replace(/^[【[][^】\]]*[】\]]/, '')
+    const afterDone = afterSiteTag.includes('已') ? afterSiteTag.slice(afterSiteTag.indexOf('已') + 1) : afterSiteTag
+    const action = afterDone.split(TRACK_ACTION_DELIMITER_RE)[0]?.trim() || '—'
+    return { person, time: evt.time, action }
+  }
+
+  const log = row.interceptLogs.find((l) => l.gmtIntercept === marker.time)
+  if (!log) return fallback
+  return {
+    person: log.scanUserName || log.scanUserCode || '—',
+    time: log.gmtScan || log.gmtIntercept || '—',
+    action: log.scanTypeDesc || '—',
+  }
+}
 
 export function AnalysisTabContent({
   analyzeOrderText,
@@ -398,6 +514,9 @@ export function AnalysisTabContent({
   onClearImportedAnalyzeOrders,
   importedAnalyzeOrders,
   isAnalyzing,
+  isPaused,
+  onPauseAnalyze,
+  onResumeAnalyze,
   rows,
   filteredRows,
   totalDoneRowCount,
@@ -422,6 +541,8 @@ export function AnalysisTabContent({
     lossScope: [],
     categoryName: [],
     currentResponsibilityParty: [],
+    latestResponsibilityPerson: [],
+    latestResponsibilityAction: [],
   })
 
   const onColumnFilterChange = useCallback((key: keyof ColumnFilters, next: string[]) => {
@@ -443,16 +564,37 @@ export function AnalysisTabContent({
       [...new Set(doneRows.map((r) => r.currentResponsibilityParty ?? '').filter((v) => v && v !== '—'))].sort(),
     [doneRows],
   )
+  const latestResponsibilityPersonOptions = useMemo(
+    () =>
+      [...new Set(doneRows.map((r) => extractLatestResponsibilityDetail(r).person).filter((v) => v && v !== '—'))].sort(),
+    [doneRows],
+  )
+  const latestResponsibilityActionOptions = useMemo(
+    () =>
+      [...new Set(doneRows.map((r) => extractLatestResponsibilityDetail(r).action).filter((v) => v && v !== '—'))].sort(),
+    [doneRows],
+  )
 
   const columnFilteredRows = useMemo(() => {
-    const { lossScope, categoryName, currentResponsibilityParty } = columnFilters
-    const hasFilter = lossScope.length > 0 || categoryName.length > 0 || currentResponsibilityParty.length > 0
+    const { lossScope, categoryName, currentResponsibilityParty, latestResponsibilityPerson, latestResponsibilityAction } =
+      columnFilters
+    const hasFilter =
+      lossScope.length > 0 ||
+      categoryName.length > 0 ||
+      currentResponsibilityParty.length > 0 ||
+      latestResponsibilityPerson.length > 0 ||
+      latestResponsibilityAction.length > 0
     if (!hasFilter) return filteredRows
     return filteredRows.filter((r) => {
       if (r.status !== 'done') return true
       if (lossScope.length > 0 && !lossScope.includes(r.lossScope ?? '')) return false
       if (categoryName.length > 0 && !categoryName.includes(r.categoryName ?? '')) return false
       if (currentResponsibilityParty.length > 0 && !currentResponsibilityParty.includes(r.currentResponsibilityParty ?? '')) return false
+      if (latestResponsibilityPerson.length > 0 || latestResponsibilityAction.length > 0) {
+        const detail = extractLatestResponsibilityDetail(r)
+        if (latestResponsibilityPerson.length > 0 && !latestResponsibilityPerson.includes(detail.person)) return false
+        if (latestResponsibilityAction.length > 0 && !latestResponsibilityAction.includes(detail.action)) return false
+      }
       return true
     })
   }, [filteredRows, columnFilters])
@@ -501,8 +643,20 @@ export function AnalysisTabContent({
         lossScopeOptions,
         categoryNameOptions,
         responsibilityOptions,
+        latestResponsibilityPersonOptions,
+        latestResponsibilityActionOptions,
       ),
-    [handleOpenOrderDetail, visitedOrders, columnFilters, onColumnFilterChange, lossScopeOptions, categoryNameOptions, responsibilityOptions],
+    [
+      handleOpenOrderDetail,
+      visitedOrders,
+      columnFilters,
+      onColumnFilterChange,
+      lossScopeOptions,
+      categoryNameOptions,
+      responsibilityOptions,
+      latestResponsibilityPersonOptions,
+      latestResponsibilityActionOptions,
+    ],
   )
   const tableRows: Record<string, unknown>[] = columnFilteredRows.map((r) => ({
     ...r,
@@ -511,16 +665,23 @@ export function AnalysisTabContent({
 
   const onExportResults = useCallback(() => {
     if (exportableRows.length === 0) return
-    const data = exportableRows.map((r) => ({
-      订单号: r.orderNo,
-      异常类型: r.lossScope,
-      子类型: r.categoryName,
-      当前责任方: r.currentResponsibilityParty,
-      置信度: r.confidence,
-      判定依据: r.reason,
-      是否需复核: r.needsReview ? '是' : '否',
-      交叉验证模型: r.crossCheckedBy ? (CROSS_CHECKED_LABEL[r.crossCheckedBy] ?? r.crossCheckedBy) : '—',
-    }))
+    const data = exportableRows.map((r) => {
+      const { person, time, action } = extractLatestResponsibilityDetail(r)
+      return {
+        订单号: r.orderNo,
+        异常类型: r.lossScope,
+        子类型: r.categoryName,
+        当前责任站点: r.currentResponsibilityParty,
+        置信度: r.confidence,
+        判定依据: r.reason,
+        是否需复核: r.needsReview ? '是' : '否',
+        交叉验证模型: r.crossCheckedBy ? (CROSS_CHECKED_LABEL[r.crossCheckedBy] ?? r.crossCheckedBy) : '—',
+        最新责任人: person,
+        最新责任时间: time,
+        最新责任操作: action,
+        无操作天数: r.noOperationDays ?? '—',
+      }
+    })
     const ws = XLSX.utils.json_to_sheet(data)
     applySheetCenterAlignment(ws)
     ws['!cols'] = ANALYZE_EXPORT_COLUMN_WIDTHS.map((wch) => ({ wch }))
@@ -596,12 +757,26 @@ export function AnalysisTabContent({
             <Tooltip title={!canAnalyze ? '无操作权限' : undefined}>
               <button
                 type="button"
-                disabled={isAnalyzing || !canAnalyze}
-                onClick={onAnalyze}
-                className="admin-btn admin-btn-primary inline-flex items-center gap-2 disabled:cursor-not-allowed disabled:opacity-50"
+                disabled={!canAnalyze || (isAnalyzing && batchAnalyze)}
+                onClick={() => {
+                  if (!isAnalyzing) {
+                    void onAnalyze()
+                  } else if (isPaused) {
+                    onResumeAnalyze()
+                  } else {
+                    onPauseAnalyze()
+                  }
+                }}
+                className={[
+                  'admin-btn inline-flex items-center gap-2 disabled:cursor-not-allowed disabled:opacity-50',
+                  isAnalyzing && !batchAnalyze && !isPaused
+                    ? 'border-amber-500 bg-amber-500 text-white hover:border-amber-600 hover:bg-amber-600'
+                    : 'admin-btn-primary',
+                ].join(' ')}
               >
-                {isAnalyzing ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : null}
-                开始分析
+                {isAnalyzing && isPaused ? <Play className="h-4 w-4" aria-hidden /> : null}
+                {isAnalyzing && !isPaused ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : null}
+                {!isAnalyzing ? '开始分析' : batchAnalyze ? '开始分析' : isPaused ? '继续分析' : '暂停分析'}
               </button>
             </Tooltip>
           </div>
@@ -729,6 +904,7 @@ export function AnalysisTabContent({
                 progress={analyzeProgress}
                 isAnalyzing={isAnalyzing}
                 incrementalResults={!batchAnalyze}
+                isPaused={isPaused}
               />
             </div>
           ) : null}

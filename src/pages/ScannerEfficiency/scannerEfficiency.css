@@ -669,11 +669,27 @@
   min-width: 0;
 }
 
+.scanner-efficiency-page .se-ai-top-performer-name-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-bottom: 0.2rem;
+}
+
 .scanner-efficiency-page .se-ai-top-performer-name {
   font-size: 0.8125rem;
   font-weight: 600;
   color: #92400e;
-  margin-bottom: 0.2rem;
+  min-width: 0;
+}
+
+.scanner-efficiency-page .se-ai-top-performer-cainiao {
+  flex-shrink: 0;
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: #a16207;
+  font-variant-numeric: tabular-nums;
 }
 
 .scanner-efficiency-page .se-ai-top-performer-reason {

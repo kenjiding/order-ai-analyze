@@ -3,7 +3,12 @@ import { Button as VantButton, Empty as VantEmpty, Tag as VantTag } from 'react-
 import 'react-vant/es/empty/style/index.css'
 import dayjs from 'dayjs'
 import { CircleCheckBig, Pencil, Trash2 } from 'lucide-react'
-import { attendanceProcessCategoryLabel, attendanceShiftLabel, type AttendanceWorkRecord } from '../../attendanceWorkTimeTypes'
+import {
+  attendanceProcessCategoryLabel,
+  attendanceShiftLabel,
+  formatAttendanceDurationHours,
+  type AttendanceWorkRecord,
+} from '../../attendanceWorkTimeTypes'
 
 type Props = {
   records: AttendanceWorkRecord[]
@@ -67,6 +72,9 @@ export function AttendanceRecordListMobile({ records, loading, onEdit, onDelete,
           </div>
           <div className="mt-2 text-sm text-slate-500">
             {formatTime(record.startTime)} ~ {formatTime(record.endTime)}
+            <span className="ml-2 text-slate-700">
+              总时长 {formatAttendanceDurationHours(record.startTime, record.endTime)}
+            </span>
           </div>
           {record.notes ? <div className="mt-1 text-sm text-slate-400">{record.notes}</div> : null}
         </div>

@@ -5,12 +5,14 @@ type Props = {
   isAnalyzing: boolean
   /** 逐单模式为 true；批量模式完成后一次性展示 */
   incrementalResults?: boolean
+  isPaused?: boolean
 }
 
 export function AnalyzeProgressStrip({
   progress,
   isAnalyzing,
   incrementalResults = true,
+  isPaused = false,
 }: Props) {
   const remaining = Math.max(0, progress.total - progress.completed)
   const percent =
@@ -42,6 +44,11 @@ export function AnalyzeProgressStrip({
             <span className="font-semibold tabular-nums">{progress.failed}</span>
           </span>
         ) : null}
+        {isPaused ? (
+          <span className="inline-flex items-center gap-1.5 rounded-md border border-amber-200/90 bg-amber-50 px-2.5 py-1 text-sm text-amber-900 shadow-sm">
+            已暂停
+          </span>
+        ) : null}
         <span className="ml-auto text-xs font-medium tabular-nums text-slate-500">{percent}%</span>
       </div>
       <div className="mt-3 h-2 overflow-hidden rounded-full bg-white/80 ring-1 ring-slate-200/80">
@@ -52,9 +59,11 @@ export function AnalyzeProgressStrip({
       </div>
       {isAnalyzing ? (
         <p className="mt-2 text-xs leading-relaxed text-slate-600">
-          {incrementalResults
-            ? '已完成的结果会即时显示在下方表格，无需等待全部结束。'
-            : '批量分析完成后一次性展示全部结果，请稍候。'}
+          {isPaused
+            ? '已暂停，点击「继续分析」恢复；已完成的结果保留在下方表格中。'
+            : incrementalResults
+              ? '已完成的结果会即时显示在下方表格，无需等待全部结束。'
+              : '批量分析完成后一次性展示全部结果，请稍候。'}
         </p>
       ) : null}
     </div>

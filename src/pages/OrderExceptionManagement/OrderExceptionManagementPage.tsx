@@ -30,6 +30,9 @@ export default function OrderExceptionManagementPage() {
           onClearImportedAnalyzeOrders={v.onClearImportedAnalyzeOrders}
           importedAnalyzeOrders={v.importedAnalyzeOrders}
           isAnalyzing={v.isAnalyzing}
+          isPaused={v.isPaused}
+          onPauseAnalyze={v.onPauseAnalyze}
+          onResumeAnalyze={v.onResumeAnalyze}
           rows={v.analysisRows}
           filteredRows={v.filteredAnalysisRows}
           totalDoneRowCount={v.analysisRows.filter((r) => r.status === 'done').length}

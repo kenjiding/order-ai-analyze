@@ -6,6 +6,8 @@ export type EfficiencyInsightAiProvider = 'openai' | 'deepseek'
 
 export type TopPerformer = {
   scanner: string
+  /** 0–1 菜鸟件占比 */
+  cainiaoShare: number
   reason: string
 }
 
@@ -121,6 +123,7 @@ export async function generateScannerInsight(
   const reasons = asStringArray(analysis.topPerformerReasons)
   const topPerformers: TopPerformer[] = top5.map((c, i) => ({
     scanner: c.scanner,
+    cainiaoShare: c.cainiaoShare,
     reason: reasons[i] ?? '',
   }))
 

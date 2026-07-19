@@ -92,6 +92,8 @@ export type AnalysisRow = {
   trackEvents: TrackEvent[]
   interceptLogs: OrderAnalyzeInterceptLog[]
   latestResponsibilityTrackMarker?: ResponsibilityTrackMarker | null
+  /** 最终责任点距今天数（对应 latestResponsibilityTrackMarker 所指的那个点），无最终责任点时为 null */
+  noOperationDays?: number | null
   detectedDriverId?: string
   needsReview?: boolean
   crossCheckedBy?: string | null
@@ -236,11 +238,14 @@ function mapAnalyzeHitToRow(
   hit: OrderAnalyzeResultItem | undefined,
   trackInfo: Record<string, TrackEvent[]>,
   interceptLogsByOrder: Record<string, OrderAnalyzeInterceptLog[]>,
-  orderInfoByOrder: Record<string, OrderQueryInfo | null>
+  orderInfoByOrder: Record<string, OrderQueryInfo | null>,
+  trackFactsByOrder?: Record<string, OrderTrackFacts>
 ): AnalysisRow {
   const trackEvents = trackInfo[orderNo] ?? []
   const interceptLogs = interceptLogsByOrder[orderNo] ?? []
   const orderInfo = orderInfoByOrder[orderNo] ?? null
+  const facts = trackFactsByOrder?.[orderNo]
+  const noOperationDays = facts?.finalResponsibilityOwner ? facts.finalResponsibilityDaysDiff : null
   if (!hit) {
     const hasTrack = trackEvents.length > 0
     return {
@@ -268,6 +273,7 @@ function mapAnalyzeHitToRow(
     interceptLogs,
     orderInfo,
     latestResponsibilityTrackMarker: hit.latestResponsibilityTrackMarker ?? null,
+    noOperationDays,
     detectedDriverId: deriveDetectedDriverId(hit.latestResponsibilityTrackMarker, trackEvents, interceptLogs),
     needsReview: hit.needsReview ?? false,
     crossCheckedBy: hit.crossCheckedBy ?? null,
@@ -289,6 +295,9 @@ export function useOrderExceptionManagementPage() {
   const [batchAnalyze, setBatchAnalyze] = useState(readStoredBatchAnalyze)
 
   const [isAnalyzing, setIsAnalyzing] = useState(false)
+  const [isPaused, setIsPaused] = useState(false)
+  const isPausedRef = useRef(false)
+  const pauseResolveRef = useRef<(() => void) | null>(null)
   const [analyzeTokenUsage, setAnalyzeTokenUsage] = useState<OrderAnalyzeTokenUsage | null>(null)
   const [lastAnalyzeOrderCount, setLastAnalyzeOrderCount] = useState(0)
   const [analyzeDurationMs, setAnalyzeDurationMs] = useState<number | null>(null)
@@ -479,7 +488,8 @@ export function useOrderExceptionManagementPage() {
           artifact.results.find((r) => r.orderNo === orderNo),
           artifact.trackInfo,
           artifact.interceptLogs,
-          artifact.orderInfo ?? {}
+          artifact.orderInfo ?? {},
+          artifact.trackFacts
         )
       )
       if (artifact.trackFacts) {
@@ -548,12 +558,39 @@ export function useOrderExceptionManagementPage() {
 
   const activeJobCount = jobsList.filter((j) => j.status === 'pending' || j.status === 'running').length
 
+  /** 逐单分析循环每轮开始前调用；暂停期间挂起，直到 onResumeAnalyze 被调用 */
+  const waitWhilePaused = useCallback(async () => {
+    while (isPausedRef.current) {
+      await new Promise<void>((resolve) => {
+        pauseResolveRef.current = resolve
+      })
+    }
+  }, [])
+
+  const onPauseAnalyze = useCallback(() => {
+    isPausedRef.current = true
+    setIsPaused(true)
+  }, [])
+
+  const onResumeAnalyze = useCallback(() => {
+    isPausedRef.current = false
+    setIsPaused(false)
+    pauseResolveRef.current?.()
+    pauseResolveRef.current = null
+  }, [])
+
   const onAnalyze = useCallback(async (explicitOrderNos?: string[]) => {
     const token = ensureToken()
     if (!token) return
-    const orderNos = explicitOrderNos ?? parseOrderNumbersUnique(
-      [analyzeOrderText, importedAnalyzeOrders?.orderNos.join('\n') ?? ''].filter(Boolean).join('\n')
-    )
+    // 必须用 Array.isArray：按钮 onClick={onAnalyze} 会传入 MouseEvent，
+    // 若用 ?? 会把事件当成订单号，导致已填写/已导入的单号被忽略。
+    const orderNos = Array.isArray(explicitOrderNos)
+      ? explicitOrderNos
+      : parseOrderNumbersUnique(
+          [analyzeOrderText, importedAnalyzeOrders?.orderNos.join('\n') ?? '']
+            .filter(Boolean)
+            .join('\n')
+        )
     if (!orderNos.length) {
       showToast('请填写待分析订单号或导入文件', 'error')
       return
@@ -576,6 +613,10 @@ export function useOrderExceptionManagementPage() {
     const runId = analyzeRunIdRef.current + 1
     analyzeRunIdRef.current = runId
     const isStaleRun = () => analyzeRunIdRef.current !== runId
+
+    isPausedRef.current = false
+    setIsPaused(false)
+    pauseResolveRef.current = null
 
     setIsAnalyzing(true)
     setAnalysisRows(orderNos.map(createPendingAnalysisRow))
@@ -619,6 +660,8 @@ export function useOrderExceptionManagementPage() {
 
       for (const orderNo of orderNos) {
         if (isStaleRun()) return
+        await waitWhilePaused()
+        if (isStaleRun()) return
 
         setAnalysisRows((prev) =>
           prev.map((row) =>
@@ -643,7 +686,8 @@ export function useOrderExceptionManagementPage() {
             results.find((r) => r.orderNo === orderNo),
             trackInfo,
             interceptLogs,
-            orderInfo ?? {}
+            orderInfo ?? {},
+            trackFacts
           )
           if (trackFacts) logOrderAnalysisFacts(orderNo, trackFacts[orderNo])
           setAnalysisRows((prev) => prev.map((r) => (r.orderNo === orderNo ? row : r)))
@@ -691,6 +735,8 @@ export function useOrderExceptionManagementPage() {
 
     if (isStaleRun()) return
 
+    isPausedRef.current = false
+    setIsPaused(false)
     setAnalyzeDurationMs(Math.round(performance.now() - analyzeStartedAt))
     setIsAnalyzing(false)
 
@@ -710,6 +756,7 @@ export function useOrderExceptionManagementPage() {
     isWarehouseConfigLoaded,
     refreshJobs,
     scanStationCode,
+    waitWhilePaused,
     warehouseDraftConfig,
     warehouseSavedConfig,
   ])
@@ -888,6 +935,9 @@ export function useOrderExceptionManagementPage() {
     onClearImportedAnalyzeOrders,
     importedAnalyzeOrders,
     isAnalyzing,
+    isPaused,
+    onPauseAnalyze,
+    onResumeAnalyze,
     analysisRows,
     analyzeProgress,
     submittedJobBanner,

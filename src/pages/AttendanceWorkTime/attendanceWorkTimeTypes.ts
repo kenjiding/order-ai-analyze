@@ -1,6 +1,23 @@
+import dayjs from 'dayjs'
 import { AU_REGIONS } from '../ExitAlarm/exitAlarmTypes'
 
 export { AU_REGIONS }
+
+/** 由开始/结束时间计算十进制总时长（小时，保留 2 位）；无结束时间或非法区间返回 null */
+export function calcAttendanceDurationHours(startTime: string, endTime: string | null): number | null {
+  if (!endTime) return null
+  const start = dayjs(startTime)
+  const end = dayjs(endTime)
+  if (!start.isValid() || !end.isValid()) return null
+  const hours = end.diff(start, 'millisecond') / 3_600_000
+  if (!Number.isFinite(hours) || hours <= 0) return null
+  return Math.round(hours * 100) / 100
+}
+
+export function formatAttendanceDurationHours(startTime: string, endTime: string | null): string {
+  const hours = calcAttendanceDurationHours(startTime, endTime)
+  return hours == null ? '—' : hours.toFixed(2)
+}
 
 export const ATTENDANCE_PROCESS_CATEGORIES = [
   { code: 'coarse_sort', label: '粗分' },

@@ -488,7 +488,7 @@ export function OrderAnalysisDetailDrawer({ row, onClose }: Props) {
                   </div>
                   <div className="hidden h-8 w-px bg-white/20 sm:block" aria-hidden />
                   <div className="min-w-0">
-                    <p className="text-[11px] font-medium uppercase tracking-[0.12em] text-white/70">当前责任方</p>
+                    <p className="text-[11px] font-medium uppercase tracking-[0.12em] text-white/70">当前责任站点</p>
                     <p className="truncate text-sm font-semibold text-white/95">{row.currentResponsibilityParty || '—'}</p>
                   </div>
                   <div className="hidden h-8 w-px bg-white/20 sm:block" aria-hidden />

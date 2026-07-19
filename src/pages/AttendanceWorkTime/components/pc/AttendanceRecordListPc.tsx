@@ -2,7 +2,12 @@ import { Button, Empty, Table } from 'antd'
 import type { ColumnsType } from 'antd/es/table'
 import dayjs from 'dayjs'
 import { CircleCheckBig, Pencil, Trash2 } from 'lucide-react'
-import { attendanceProcessCategoryLabel, attendanceShiftLabel, type AttendanceWorkRecord } from '../../attendanceWorkTimeTypes'
+import {
+  attendanceProcessCategoryLabel,
+  attendanceShiftLabel,
+  formatAttendanceDurationHours,
+  type AttendanceWorkRecord,
+} from '../../attendanceWorkTimeTypes'
 
 type Props = {
   records: AttendanceWorkRecord[]
@@ -52,6 +57,12 @@ export function AttendanceRecordListPc({ records, loading, onEdit, onDelete, onQ
       width: 140,
       render: (v: string | null) => formatTime(v),
     },
+    {
+      title: '总时长',
+      key: 'totalDuration',
+      width: 90,
+      render: (_, record) => formatAttendanceDurationHours(record.startTime, record.endTime),
+    },
     { title: '负责区号', dataIndex: 'zoneCode', key: 'zoneCode', width: 100, render: (v: string | null) => v ?? '—' },
     { title: '备注', dataIndex: 'notes', key: 'notes', ellipsis: true, render: (v: string | null) => v ?? '—' },
     {
@@ -89,7 +100,7 @@ export function AttendanceRecordListPc({ records, loading, onEdit, onDelete, onQ
       dataSource={records}
       loading={loading}
       pagination={{ pageSize: 20, showSizeChanger: false }}
-      scroll={{ x: 900 }}
+      scroll={{ x: 990 }}
     />
   )
 }

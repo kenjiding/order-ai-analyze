@@ -1,4 +1,5 @@
 import { Select } from 'antd'
+import { formatCainiaoSharePercent } from '../cainiaoWaybill'
 import type { EfficiencyAiAnalysis, EfficiencyInsightAiProvider } from '../efficiencyInsightApi'
 
 export type { EfficiencyAiAnalysis, EfficiencyInsightAiProvider }
@@ -106,7 +107,12 @@ export function EfficiencyAiInsightBlock({
                   <div key={i} className="se-ai-top-performer-card">
                     <div className="se-ai-top-performer-rank">{i + 1}</div>
                     <div className="se-ai-top-performer-body">
-                      <div className="se-ai-top-performer-name">{p.scanner}</div>
+                      <div className="se-ai-top-performer-name-row">
+                        <div className="se-ai-top-performer-name">{p.scanner}</div>
+                        <div className="se-ai-top-performer-cainiao">
+                          菜鸟占比 {formatCainiaoSharePercent(p.cainiaoShare)}
+                        </div>
+                      </div>
                       {p.reason && (
                         <div className="se-ai-top-performer-reason">{p.reason}</div>
                       )}
