@@ -47,13 +47,15 @@ export type TrackEvent = {
   trackType?: string
 }
 
-/** 与 iMile track/query 的 resultObject.baseInfo、skuInfo 对齐，供异常订单 Drawer 展示。 */
+/** 与 iMile track/query 的 resultObject.baseInfo、skuInfo、consigneeInfo 对齐，供异常订单 Drawer 展示。 */
 export type OrderQueryInfo = {
   merchantName: string
   merchantCode: string
   totalWeight: string
   customerDeclaredValueAud: string
   declaredValueUsd: string
+  /** resultObject.consigneeInfo.consigneeRouteCode，供「路由码」列展示 */
+  consigneeRouteCode: string
 }
 
 export type TrackQuerySuccess = {
@@ -287,14 +289,20 @@ function readPlainField(raw: unknown): string {
 
 export function extractOrderInfo(payload: unknown): OrderQueryInfo | null {
   const root = payload as {
-    resultObject?: { baseInfo?: Record<string, unknown>; skuInfo?: Record<string, unknown> }
+    resultObject?: {
+      baseInfo?: Record<string, unknown>
+      skuInfo?: Record<string, unknown>
+      consigneeInfo?: Record<string, unknown>
+    }
     baseInfo?: Record<string, unknown>
     skuInfo?: Record<string, unknown>
+    consigneeInfo?: Record<string, unknown>
   }
   const bag = root?.resultObject ?? root
   const base = bag?.baseInfo
   const sku = bag?.skuInfo
-  if (!base && !sku) return null
+  const consignee = bag?.consigneeInfo
+  if (!base && !sku && !consignee) return null
 
   const clientName = readPlainField(base?.clientName)
   const createUserName = readPlainField(base?.createUserName)
@@ -306,6 +314,7 @@ export function extractOrderInfo(payload: unknown): OrderQueryInfo | null {
     totalWeight: readPlainField(sku?.totalWeight),
     customerDeclaredValueAud: readPlainField(sku?.customerDeclaredValue),
     declaredValueUsd: readPlainField(sku?.declaredValue),
+    consigneeRouteCode: readPlainField(consignee?.consigneeRouteCode),
   }
 }
 

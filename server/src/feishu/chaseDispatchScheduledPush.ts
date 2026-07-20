@@ -20,7 +20,12 @@ import {
   type StagnationBucket,
 } from '../imile/stagnantWaybills'
 import { aggregateVendorStagnation, type BucketResult } from '../imile/chaseDispatchAggregate'
-import { claimScheduledSlot, formatScheduledPushSlotKey, releaseScheduledSlot } from '../jobs/scheduledClaim'
+import {
+  claimScheduledSlot,
+  countClaimedSlots,
+  formatScheduledPushSlotKey,
+  releaseScheduledSlot,
+} from '../jobs/scheduledClaim'
 import { resolveDueScheduledSlots } from '../jobs/scheduledDueSlots'
 import { createChaseDispatchShareSnapshot } from './chaseDispatchShareSnapshot'
 
@@ -103,8 +108,13 @@ export async function executeChaseDispatchPush(params: {
   buckets: StagnationBucket[]
   configs: FleetSupplierPushConfig[]
   label: string
+  /**
+   * 仅供定时任务传入：按 (jobKeyPrefix:configId, slotKey) 对每个供应商配置单独做幂等去重。
+   * 「立刻推送」不传此参数，始终对全部 configs 重新执行。
+   */
+  perConfigDedupe?: { jobKeyPrefix: string; slotKey: string }
 }): Promise<ChaseDispatchPushResult | { error: string }> {
-  const { token, stationCode, baseDate, pushTime, buckets, configs, label } = params
+  const { token, stationCode, baseDate, pushTime, buckets, configs, label, perConfigDedupe } = params
 
   // 每个滞留区间发起一次 daWaybillInventory 查询
   const bucketResults: BucketResult[] = []
@@ -151,37 +161,56 @@ export async function executeChaseDispatchPush(params: {
 
   for (const config of configs) {
     const vendorCode = config.vendorCode.trim()
-    const allowedRouteCodes = new Set(parseRouteCodes(config.routeCode))
-    // 该供应商明细：vendorCode 归属 → routeCode 纳入（不用路由码白名单）
-    const configBucketResults = bucketResults.map((b) => {
-      const byVendor = b.rows.filter((row) => (row.driverVendorCode ?? '').trim() === vendorCode)
-      return { bucket: b.bucket, rows: filterRowsByRouteCode(byVendor, allowedRouteCodes) }
-    })
     const vendorName = supplierDisplayName(config)
-    const summary = aggregateVendorStagnation(configBucketResults, config.vendorCode, routeCodeByWaybillNo)
-    const share =
-      summary.totalStagnant > 0
-        ? await createChaseDispatchShareSnapshot({
-            vendorCode: config.vendorCode,
-            vendorName,
-            baseDate,
-            pushTime,
-            summary,
-          })
-        : null
-    const card = buildChaseDispatchCard({
-      vendorName,
-      baseDate,
-      pushTime,
-      summary,
-      pushDescription: config.pushDescription,
-      detailUrl: share?.url ?? null,
-    })
-    const ok = await pushCardToWebhook(config.webhookUrl, config.signingSecret, card)
-    if (ok) {
-      pushedCount++
-    } else {
-      errors.push(`${vendorName}: 飞书推送失败`)
+
+    let dedupeJobKey: string | null = null
+    if (perConfigDedupe) {
+      dedupeJobKey = `${perConfigDedupe.jobKeyPrefix}:${config.id}`
+      const claimed = await claimScheduledSlot(dedupeJobKey, perConfigDedupe.slotKey)
+      if (!claimed) {
+        console.log(`${label} ${vendorName} 本时间槽已推送成功过，跳过`)
+        continue
+      }
+    }
+
+    try {
+      const allowedRouteCodes = new Set(parseRouteCodes(config.routeCode))
+      // 该供应商明细：vendorCode 归属 → routeCode 纳入（不用路由码白名单）
+      const configBucketResults = bucketResults.map((b) => {
+        const byVendor = b.rows.filter((row) => (row.driverVendorCode ?? '').trim() === vendorCode)
+        return { bucket: b.bucket, rows: filterRowsByRouteCode(byVendor, allowedRouteCodes) }
+      })
+      const summary = aggregateVendorStagnation(configBucketResults, config.vendorCode, routeCodeByWaybillNo)
+      const share =
+        summary.totalStagnant > 0
+          ? await createChaseDispatchShareSnapshot({
+              vendorCode: config.vendorCode,
+              vendorName,
+              baseDate,
+              pushTime,
+              summary,
+            })
+          : null
+      const card = buildChaseDispatchCard({
+        vendorName,
+        baseDate,
+        pushTime,
+        summary,
+        pushDescription: config.pushDescription,
+        detailUrl: share?.url ?? null,
+      })
+      const ok = await pushCardToWebhook(config.webhookUrl, config.signingSecret, card)
+      if (ok) {
+        pushedCount++
+      } else {
+        errors.push(`${vendorName}: 飞书推送失败`)
+        if (dedupeJobKey) await releaseScheduledSlot(dedupeJobKey, perConfigDedupe!.slotKey)
+      }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err)
+      console.error(`${label} ✗ 处理异常: ${vendorName} (${msg})`)
+      errors.push(`${vendorName}: 处理异常(${msg})`)
+      if (dedupeJobKey) await releaseScheduledSlot(dedupeJobKey, perConfigDedupe!.slotKey)
     }
   }
 
@@ -236,7 +265,7 @@ async function runOneScheduledPush(schedule: ChaseDispatchSchedule, regionCode: 
 
   for (const slot of dueSlots) {
     const { weekday, timeHHmm, dateStr } = slot
-    const jobKey = `chase-dispatch:${schedule.id}`
+    const jobKeyPrefix = `chase-dispatch:${schedule.id}`
     const slotKey = formatScheduledPushSlotKey(slot)
 
     const buckets = parseStagnationBuckets(schedule.stagnationBuckets)
@@ -260,9 +289,12 @@ async function runOneScheduledPush(schedule: ChaseDispatchSchedule, regionCode: 
       continue
     }
 
-    const claimed = await claimScheduledSlot(jobKey, slotKey)
-    if (!claimed) {
-      console.log(`${label} 时间槽 date=${dateStr} time=${timeHHmm} 已被推送过（其他 worker 抢先处理），跳过`)
+    // 幂等粒度下沉到「每个供应商配置」：先快速判断本时间槽是否已全部推送成功，
+    // 全部完成则跳过，避免 catch-up 重试窗口内每分钟都重新拉一遍滞留数据。
+    const configJobKeys = configs.map((c) => `${jobKeyPrefix}:${c.id}`)
+    const claimedCount = await countClaimedSlots(configJobKeys, slotKey)
+    if (claimedCount >= configs.length) {
+      console.log(`${label} 时间槽 date=${dateStr} time=${timeHHmm} 已全部推送成功，跳过`)
       continue
     }
 
@@ -276,15 +308,10 @@ async function runOneScheduledPush(schedule: ChaseDispatchSchedule, regionCode: 
       buckets,
       configs,
       label,
+      perConfigDedupe: { jobKeyPrefix, slotKey },
     })
     if ('error' in result) {
-      await releaseScheduledSlot(jobKey, slotKey)
       console.error(`${label} 推送失败: ${result.error}`)
-      continue
-    }
-    if (result.pushedCount === 0 && result.errors.length > 0) {
-      await releaseScheduledSlot(jobKey, slotKey)
-      console.error(`${label} 全部推送失败: ${result.errors.join('; ')}`)
       continue
     }
     console.log(`${label} 完成 ${result.pushedCount}/${result.totalConfigs} 条`)

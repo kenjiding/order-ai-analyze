@@ -6,7 +6,7 @@
  * 不重复实现。
  */
 import { iMileStrToMs, localDatePlusDaysMs, weekdayInTz, type AusTz } from '../imile/ausTimezone'
-import { isRowInVendorScope } from './supplierScope'
+import { buildRouteCodeVendorsMap, isRowInVendorScope, resolveVendorCodesByRouteCode } from './supplierScope'
 
 const DAY_MS = 24 * 60 * 60 * 1000
 
@@ -147,9 +147,15 @@ export function selectWaybillNosNeedingRefresh(
 }
 
 /**
- * 按供应商（courierVendorCode）聚合 24H 派签达标情况：
- * courierVendorCode → routeCode 纳入 → 路由码白名单剔除 → 站点（lastScanSiteCode）→ 达标判定；
- * 同时按司机（courierCode）细分未达标数，供告警卡片展示司机维度明细。
+ * 按供应商聚合 24H 派签达标情况：
+ * courierVendorCode 有值 → 按它归属（唯一）；为空（尚未派件）→ 按 consigneeRouteCode 匹配所有配置了
+ * 该路由码的供应商，各自独立统计——两家供应商共担同一路由码是正常业务场景，不存在"归谁"的排他判断，
+ * 各供应商按自己配置的路由码独立匹配、独立计数即可（见 buildRouteCodeVendorsMap）。
+ * 匹配到的每个供应商还要再过 routeCode 纳入 → 路由码白名单剔除 → 站点（lastScanSiteCode）三关；
+ * 尚未派件（无 deliveryTime）的单也计入 total，按未达标处理（归入「从未签收」）——
+ * 因为该供应商范围内的单，只要还没派件，24H 派签就必然不达标，不能因为拿不到 deliveryTime 就当它不存在。
+ * 同时按司机（courierCode）细分未达标数，供告警卡片展示司机维度明细；
+ * 未派件的单没有司机可归（courierCode 同样为空），只计入供应商总数，不出现在任何司机的明细里。
  * 口径与「供应商数据分析」大盘 / 「24小时派签告警」一致。
  */
 export function aggregateDispatch24hByVendor(input: {
@@ -169,76 +175,83 @@ export function aggregateDispatch24hByVendor(input: {
   } = input
   const stationSet = new Set(stationCodes.map((s) => s.trim()).filter(Boolean))
   const inStation = (code: string | undefined) => stationSet.size === 0 || stationSet.has(norm(code))
+  const routeCodeVendorsMap = buildRouteCodeVendorsMap(routeCodesByVendor)
 
   const result = new Map<string, Dispatch24hVendorStat>()
   const driverMapByVendor = new Map<string, Map<string, Dispatch24hDriverStat>>()
 
   for (const row of rows) {
-    const vendorCode = norm(row.courierVendorCode)
-    if (!vendorCode) continue
     const consigneeRouteCode = norm(row.consigneeRouteCode)
-    if (!isRowInVendorScope(vendorCode, consigneeRouteCode, { routeCodesByVendor, routeCodeWhitelistByVendor })) continue
+    const explicitVendorCode = norm(row.courierVendorCode)
+    const candidateVendorCodes = explicitVendorCode
+      ? [explicitVendorCode]
+      : resolveVendorCodesByRouteCode(consigneeRouteCode, routeCodeVendorsMap)
+    if (candidateVendorCodes.length === 0) continue
     if (!inStation(row.lastScanSiteCode)) continue
-    if (!row.deliveryTime) continue
+
     const met = isDispatch24hMet(row, tz)
     const hasProblem = isDispatch24hProblem(row)
     const neverSigned = !met && !row.signDate
     const lateSigned = !met && Boolean(row.signDate)
     const wbNo = row.waybillNo ?? ''
-
-    let stat = result.get(vendorCode)
-    if (!stat) {
-      stat = { total: 0, met: 0, problemCount: 0, neverSignedCount: 0, lateSignedCount: 0, unmetNos: [], drivers: [] }
-      result.set(vendorCode, stat)
-    }
-    stat.total += 1
-    if (met) {
-      stat.met += 1
-    } else if (wbNo) {
-      stat.unmetNos.push(wbNo)
-    }
-    if (hasProblem) stat.problemCount += 1
-    if (neverSigned) stat.neverSignedCount += 1
-    if (lateSigned) stat.lateSignedCount += 1
-
     const courierCode = norm(row.courierCode)
-    if (!courierCode) continue
-    let driverMap = driverMapByVendor.get(vendorCode)
-    if (!driverMap) {
-      driverMap = new Map()
-      driverMapByVendor.set(vendorCode, driverMap)
-    }
-    let driverStat = driverMap.get(courierCode)
-    if (!driverStat) {
-      driverStat = {
-        courierCode,
-        courierName: row.courier?.trim() || courierCode,
-        routeCode: consigneeRouteCode,
-        total: 0,
-        met: 0,
-        problemCount: 0,
-        neverSignedCount: 0,
-        lateSignedCount: 0,
-        neverSignedWaybills: [],
-        lateSignedWaybills: [],
-        problemWaybills: [],
+
+    for (const vendorCode of candidateVendorCodes) {
+      if (!isRowInVendorScope(vendorCode, consigneeRouteCode, { routeCodesByVendor, routeCodeWhitelistByVendor })) continue
+
+      let stat = result.get(vendorCode)
+      if (!stat) {
+        stat = { total: 0, met: 0, problemCount: 0, neverSignedCount: 0, lateSignedCount: 0, unmetNos: [], drivers: [] }
+        result.set(vendorCode, stat)
       }
-      driverMap.set(courierCode, driverStat)
+      stat.total += 1
+      if (met) {
+        stat.met += 1
+      } else if (wbNo) {
+        stat.unmetNos.push(wbNo)
+      }
+      if (hasProblem) stat.problemCount += 1
+      if (neverSigned) stat.neverSignedCount += 1
+      if (lateSigned) stat.lateSignedCount += 1
+
+      if (!courierCode) continue
+      let driverMap = driverMapByVendor.get(vendorCode)
+      if (!driverMap) {
+        driverMap = new Map()
+        driverMapByVendor.set(vendorCode, driverMap)
+      }
+      let driverStat = driverMap.get(courierCode)
+      if (!driverStat) {
+        driverStat = {
+          courierCode,
+          courierName: row.courier?.trim() || courierCode,
+          routeCode: consigneeRouteCode,
+          total: 0,
+          met: 0,
+          problemCount: 0,
+          neverSignedCount: 0,
+          lateSignedCount: 0,
+          neverSignedWaybills: [],
+          lateSignedWaybills: [],
+          problemWaybills: [],
+        }
+        driverMap.set(courierCode, driverStat)
+      }
+      driverStat.total += 1
+      if (met) {
+        driverStat.met += 1
+      } else if (wbNo) {
+        const waybill = { waybillNo: wbNo, routeCode: consigneeRouteCode || '未知路由' }
+        if (neverSigned) driverStat.neverSignedWaybills.push(waybill)
+        if (lateSigned) driverStat.lateSignedWaybills.push(waybill)
+      }
+      if (hasProblem) {
+        driverStat.problemCount += 1
+        if (wbNo) driverStat.problemWaybills.push({ waybillNo: wbNo, routeCode: consigneeRouteCode || '未知路由' })
+      }
+      if (neverSigned) driverStat.neverSignedCount += 1
+      if (lateSigned) driverStat.lateSignedCount += 1
     }
-    driverStat.total += 1
-    if (met) {
-      driverStat.met += 1
-    } else if (wbNo) {
-      const waybill = { waybillNo: wbNo, routeCode: consigneeRouteCode || '未知路由' }
-      if (neverSigned) driverStat.neverSignedWaybills.push(waybill)
-      if (lateSigned) driverStat.lateSignedWaybills.push(waybill)
-    }
-    if (hasProblem) {
-      driverStat.problemCount += 1
-      if (wbNo) driverStat.problemWaybills.push({ waybillNo: wbNo, routeCode: consigneeRouteCode || '未知路由' })
-    }
-    if (neverSigned) driverStat.neverSignedCount += 1
-    if (lateSigned) driverStat.lateSignedCount += 1
   }
 
   for (const [vendorCode, driverMap] of driverMapByVendor) {

@@ -105,7 +105,7 @@ test('库内扫描员在库外责任起算之后取消司机取件限制时改�
   assert.equal(reclassified.exceptionCategoryId, '扫描员丢失')
   assert.equal(reclassified.needsReview, false)
   assert.equal(reclassified.activeResponsibilityOwner, 'company_warehouse')
-  assert.equal(reclassified.latestResponsibilityTrackMarker, null)
+  assert.equal(reclassified.latestResponsibility, null)
   assert.match(reclassified.reason, /^\[取消扫描核验纠正]/)
   assert.equal(reclassified.appliedDecisionRuleId, 'cancel_scan_driver_pickup_restriction_reassigns_in_warehouse')
   // 展示时间必须原样使用接口返回的 scanDate 字符串，不能经 Date 反格式化产生时区偏差（如 ISO Z 格式）

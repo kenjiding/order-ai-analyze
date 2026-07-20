@@ -69,7 +69,7 @@ export const jobs = pgTable(
     payload: jsonb('payload').notNull().default({}),
     progress: jsonb('progress').notNull().default({}),
     error: varchar('error', { length: 2048 }),
-    artifactPath: varchar('artifact_path', { length: 512 }),
+    artifactPayload: jsonb('artifact_payload'),
     artifactExpiresAt: timestamp('artifact_expires_at', { withTimezone: true }),
     createdBy: uuid('created_by').references(() => users.id, { onDelete: 'set null' }),
     attemptCount: integer('attempt_count').notNull().default(0),
@@ -199,7 +199,7 @@ export const userPreferences = pgTable(
   (table) => [primaryKey({ columns: [table.userId, table.prefKey] })],
 )
 
-/** 供应商数据分析任务的完整分析结果，长期保存在数据库中，不受 jobs.artifactPath 文件 TTL 清理影响 */
+/** 供应商数据分析任务的完整分析结果，长期保存在数据库中，不受 jobs.artifactPayload 的 TTL 清理影响 */
 export const vendorAnalysisSnapshots = pgTable(
   'vendor_analysis_snapshots',
   {

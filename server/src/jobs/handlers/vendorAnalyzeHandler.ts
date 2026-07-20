@@ -320,7 +320,7 @@ export const vendorAnalyzeHandler: JobHandler = {
       vendors,
     }
 
-    // 汇总分析结果长期存库，不依赖 jobs.artifactPath 的文件+TTL 清理机制，支持长期回溯
+    // 汇总分析结果长期存库，不依赖 jobs.artifactPayload 的 TTL 清理机制，支持长期回溯
     const db = getDb()
     await db.insert(schema.vendorAnalysisSnapshots).values({
       jobId: ctx.job.id,

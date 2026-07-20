@@ -6,19 +6,14 @@ export type JobStatus = (typeof JOB_STATUSES)[number]
 export type JobProgress = Record<string, unknown>
 
 export type JobHandlerResult = {
-  /** 省略表示该任务的结果不落文件，比如结果已由 handler 自行持久化到专属数据表 */
-  artifactRelPath?: string
-}
-
-export type ArtifactWriter = {
-  writeJson: (data: unknown) => Promise<string>
+  /** 省略表示该任务的结果不落库，比如结果已由 handler 自行持久化到专属数据表 */
+  artifactPayload?: unknown
 }
 
 export type JobHandlerContext = {
   job: Job
   signal: AbortSignal
   reportProgress: (progress: JobProgress) => Promise<void>
-  artifact: ArtifactWriter
 }
 
 export type JobHandler = {
@@ -44,7 +39,7 @@ export type PublicJob = {
   payload: Record<string, unknown>
   progress: JobProgress
   error: string | null
-  artifactPath: string | null
+  hasArtifact: boolean
   artifactExpiresAt: string | null
   createdBy: string | null
   attemptCount: number
@@ -67,7 +62,7 @@ export function toPublicJob(row: Job): PublicJob {
     payload: (row.payload as Record<string, unknown>) ?? {},
     progress: (row.progress as JobProgress) ?? {},
     error: row.error,
-    artifactPath: row.artifactPath,
+    hasArtifact: row.artifactPayload != null,
     artifactExpiresAt: row.artifactExpiresAt?.toISOString() ?? null,
     createdBy: row.createdBy,
     attemptCount: row.attemptCount,

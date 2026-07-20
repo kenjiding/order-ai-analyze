@@ -22,11 +22,6 @@ export function readJobStaleLockMinutes(): number {
   return raw
 }
 
-export function readJobArtifactDir(): string {
-  const raw = String(process.env.JOB_ARTIFACT_DIR ?? '').trim()
-  return raw || '/data/job-artifacts'
-}
-
 export function readJobArtifactTtlHours(): number {
   const raw = Number.parseInt(String(process.env.JOB_ARTIFACT_TTL_HOURS ?? ''), 10)
   if (!Number.isFinite(raw)) return 24

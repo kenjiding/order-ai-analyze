@@ -276,3 +276,83 @@ test('aggregateDispatch24hByVendor：未达标运单按 neverSigned/lateSigned �
     ['L1'],
   )
 })
+
+test('aggregateDispatch24hByVendor：尚未派件（无 deliveryTime）的单也计入 total，按未达标（从未签收）处理', () => {
+  const rows: Dispatch24hWaybillRow[] = [
+    // 已派件、按时签收：达标
+    {
+      waybillNo: 'D1',
+      courierCode: 'C1',
+      courierVendorCode: 'V1',
+      lastScanSiteCode: 'S1',
+      consigneeRouteCode: 'R-A',
+      deliveryTime: '2024-06-24 10:00:00',
+      signDate: '2024-06-24 12:00:00',
+    },
+    // 尚未派件：courierVendorCode 已知，但 deliveryTime/courierCode 都还没有（司机没来出货）
+    {
+      waybillNo: 'D2',
+      courierVendorCode: 'V1',
+      lastScanSiteCode: 'S1',
+      consigneeRouteCode: 'R-A',
+    },
+  ]
+
+  const stat = aggregateDispatch24hByVendor({
+    rows,
+    stationCodes: ['S1'],
+    tz,
+    routeCodeWhitelistByVendor: new Map(),
+  }).get('V1')
+
+  assert.equal(stat?.total, 2)
+  assert.equal(stat?.met, 1)
+  assert.equal(stat?.neverSignedCount, 1)
+  assert.deepEqual(stat?.unmetNos, ['D2'])
+  // 没有司机可归（courierCode 为空），未派件的单不出现在任何司机明细里
+  assert.deepEqual(
+    stat?.drivers.map((d) => d.courierCode),
+    ['C1'],
+  )
+})
+
+test('aggregateDispatch24hByVendor：courierVendorCode 为空时按 consigneeRouteCode 反查兜底归属；两家供应商共担同一路由码时各自独立计入，不是互斥归属', () => {
+  const rows: Dispatch24hWaybillRow[] = [
+    // 尚未派件：courierVendorCode 为空，靠 routeCode 反查兜底到 V1（仅 V1 配置了这个路由码）
+    {
+      waybillNo: 'F1',
+      lastScanSiteCode: 'S1',
+      consigneeRouteCode: 'R-A',
+    },
+    // routeCode 同时配置在 V1、V2 名下（两家共担同一路由）：各自独立匹配，两边 total 都要算上这单
+    {
+      waybillNo: 'F2',
+      lastScanSiteCode: 'S1',
+      consigneeRouteCode: 'R-SHARED',
+    },
+    // routeCode 未配置给任何供应商，无法兜底
+    {
+      waybillNo: 'F3',
+      lastScanSiteCode: 'S1',
+      consigneeRouteCode: 'R-UNKNOWN',
+    },
+  ]
+
+  const result = aggregateDispatch24hByVendor({
+    rows,
+    stationCodes: ['S1'],
+    tz,
+    routeCodesByVendor: new Map([
+      ['V1', new Set(['R-A', 'R-SHARED'])],
+      ['V2', new Set(['R-SHARED'])],
+    ]),
+    routeCodeWhitelistByVendor: new Map(),
+  })
+
+  const v1 = result.get('V1')
+  const v2 = result.get('V2')
+  assert.equal(v1?.total, 2)
+  assert.deepEqual(v1?.unmetNos.sort(), ['F1', 'F2'])
+  assert.equal(v2?.total, 1)
+  assert.deepEqual(v2?.unmetNos, ['F2'])
+})

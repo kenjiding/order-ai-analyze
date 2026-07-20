@@ -70,7 +70,7 @@ function sortInterceptLogsDesc(logs: OrderAnalyzeInterceptLog[]): OrderAnalyzeIn
 function isOutResponsibility(row: Row): boolean {
   if (row.activeResponsibilityOwner === 'external_carrier') return true
   if (row.lossScope === '库外丢失') return true
-  return row.latestResponsibilityTrackMarker?.owner === 'out_warehouse'
+  return row.latestResponsibility?.owner === 'out_warehouse'
 }
 
 function readLatestProblemTrack(events: TrackEvent[]): TrackEvent | null {
@@ -361,7 +361,7 @@ export function OrderAnalysisDetailDrawer({ row, onClose }: Props) {
 
   const sortedTrackEvents = useMemo(() => (row ? sortTrackEventsDesc(row.trackEvents) : []), [row])
   const sortedInterceptLogs = useMemo(() => (row ? sortInterceptLogsDesc(row.interceptLogs) : []), [row])
-  const latestResponsibilityMarker = row?.latestResponsibilityTrackMarker ?? null
+  const latestResponsibilityMarker = row?.latestResponsibility ?? null
   const hasInterceptLogs = sortedInterceptLogs.length > 0
   const outResponsibility = row ? isOutResponsibility(row) : false
 

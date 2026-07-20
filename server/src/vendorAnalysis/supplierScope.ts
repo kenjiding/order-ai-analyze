@@ -56,6 +56,34 @@ export function isRowInVendorScope(
   )
 }
 
+/**
+ * routeCode → 配置了该路由码的供应商列表：从 routeCodesByVendor 反转而来，
+ * 供 courierVendorCode 为空时（尚未派件，iMile 还没回填承运商）按路由码兜底归属使用。
+ * 一个路由码可能同时配置在多个供应商名下（两家供应商共担同一路由，业务上正常）——
+ * 每个供应商各自独立按自己配置的路由码匹配、各自统计，不存在"归属唯一"的排他性判断。
+ */
+export function buildRouteCodeVendorsMap(routeCodesByVendor: Map<string, Set<string>>): Map<string, string[]> {
+  const routeToVendors = new Map<string, string[]>()
+  for (const [vendorCode, routeCodes] of routeCodesByVendor) {
+    for (const routeCode of routeCodes) {
+      const list = routeToVendors.get(routeCode)
+      if (list) list.push(vendorCode)
+      else routeToVendors.set(routeCode, [vendorCode])
+    }
+  }
+  return routeToVendors
+}
+
+/** 按 routeCode 查出所有配置了该路由码的供应商（可能为空、一个或多个） */
+export function resolveVendorCodesByRouteCode(
+  routeCode: unknown,
+  routeCodeVendorsMap: Map<string, string[]>,
+): string[] {
+  const code = normCode(routeCode)
+  if (!code) return []
+  return routeCodeVendorsMap.get(code) ?? []
+}
+
 type ScopeConfigRow = Pick<FleetSupplierPushConfig, 'vendorCode' | 'routeCode' | 'routeCodeWhitelist'>
 
 /**

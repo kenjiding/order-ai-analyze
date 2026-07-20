@@ -166,7 +166,7 @@ export async function reclassifyOutWarehouseLossWithCancelScan(input: {
       reason: `[取消扫描核验纠正] ${hit}。原始判断: ${result.reason}`,
       currentResponsibilityParty: facts?.activeWarehouseName ?? '未知仓库',
       activeResponsibilityOwner: 'company_warehouse' as const,
-      latestResponsibilityTrackMarker: null,
+      latestResponsibility: null,
     }
   })
 

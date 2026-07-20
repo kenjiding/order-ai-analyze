@@ -75,7 +75,7 @@ export const orderAnalyzeHandler: JobHandler = {
 
     await ctx.reportProgress({ phase: 'writing', message: '写入结果', percent: 95 })
 
-    const artifactRelPath = await ctx.artifact.writeJson({
+    const artifactPayload = {
       results,
       trackInfo: sourceResult.trackInfo,
       orderInfo: sourceResult.orderInfo,
@@ -83,9 +83,9 @@ export const orderAnalyzeHandler: JobHandler = {
       tokenUsage,
       trackFacts,
       cancelScanRecheck,
-    })
+    }
 
     await ctx.reportProgress({ phase: 'done', percent: 100 })
-    return { artifactRelPath }
+    return { artifactPayload }
   },
 }

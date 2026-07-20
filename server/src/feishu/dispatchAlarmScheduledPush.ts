@@ -15,7 +15,12 @@ import {
 import { buildScopeMapsFromConfig } from '../vendorAnalysis/supplierScope'
 import { aggregateDispatch24hByVendor, type Dispatch24hWaybillRow } from '../vendorAnalysis/dispatch24hAggregate'
 import { lastSortingWorkdayOnOrBefore } from '../imile/sortingWorkday'
-import { claimScheduledSlot, formatScheduledPushSlotKey, releaseScheduledSlot } from '../jobs/scheduledClaim'
+import {
+  claimScheduledSlot,
+  countClaimedSlots,
+  formatScheduledPushSlotKey,
+  releaseScheduledSlot,
+} from '../jobs/scheduledClaim'
 import { resolveDueScheduledSlots } from '../jobs/scheduledDueSlots'
 
 type EnabledSchedule = { schedule: DispatchAlarmSchedule; regionCode: string | null }
@@ -95,8 +100,16 @@ export async function executeDispatchAlarmPush(params: {
   /** 与 tz 同源的账号 regionCode；透传给 fetchDriverWaybills，避免其内部缓存终态判定兜底成阿德莱德、与本次聚合口径的 tz 不一致 */
   regionCode: string | null
   label: string
+  /**
+   * 仅供定时任务传入：按 (jobKeyPrefix:configId, slotKey) 对每个供应商配置单独做幂等去重。
+   * 某个配置本次已经成功推送过则跳过，推送失败则释放交给下次 catch-up 重试；
+   * 「无数据不推送」不算完成，不会被 claim，留给下次重新判断。
+   * 「立刻推送」不传此参数，始终对全部 configs 重新执行。
+   */
+  perConfigDedupe?: { jobKeyPrefix: string; slotKey: string }
 }): Promise<DispatchAlarmPushResult | { error: string }> {
-  const { token, stationCode, date, pushTime, alertThresholdPct, configs, tz, regionCode, label } = params
+  const { token, stationCode, date, pushTime, alertThresholdPct, configs, tz, regionCode, label, perConfigDedupe } =
+    params
 
   const result = await fetchDriverWaybills(token, { stationCode, dateStr: date, regionCode })
   if (!result.ok) {
@@ -122,43 +135,62 @@ export async function executeDispatchAlarmPush(params: {
       routeCodeWhitelistByVendor: scope.routeCodeWhitelistByVendor,
     })
     const stat = statsByVendor.get(vendorCode)
-    if (!stat || stat.total === 0) continue // 无数据不推送
+    if (!stat || stat.total === 0) continue // 无数据不推送；不 claim，留给下次重新判断
 
     const vendorName = supplierDisplayName(config)
-    const share =
-      stat.total - stat.met > 0 || stat.problemCount > 0
-        ? await createDispatchAlarmShareSnapshot({
-            vendorCode: config.vendorCode,
-            vendorName,
-            stationCode,
-            date,
-            pushTime,
-            total: stat.total,
-            met: stat.met,
-            problemCount: stat.problemCount,
-            alertThresholdPct,
-            drivers: stat.drivers,
-          })
-        : null
 
-    const card = buildDispatchAlarmCard({
-      vendorName,
-      stationCode,
-      date,
-      pushTime,
-      total: stat.total,
-      met: stat.met,
-      problemCount: stat.problemCount,
-      drivers: stat.drivers,
-      alertThresholdPct,
-      pushDescription: config.pushDescription,
-      detailUrl: share?.url ?? null,
-    })
-    const ok = await pushCardToWebhook(config.webhookUrl, config.signingSecret, card)
-    if (ok) {
-      pushedCount++
-    } else {
-      errors.push(`${supplierDisplayName(config)}: 飞书推送失败`)
+    let dedupeJobKey: string | null = null
+    if (perConfigDedupe) {
+      dedupeJobKey = `${perConfigDedupe.jobKeyPrefix}:${config.id}`
+      const claimed = await claimScheduledSlot(dedupeJobKey, perConfigDedupe.slotKey)
+      if (!claimed) {
+        console.log(`${label} ${vendorName} 本时间槽已推送成功过，跳过`)
+        continue
+      }
+    }
+
+    try {
+      const share =
+        stat.total - stat.met > 0 || stat.problemCount > 0
+          ? await createDispatchAlarmShareSnapshot({
+              vendorCode: config.vendorCode,
+              vendorName,
+              stationCode,
+              date,
+              pushTime,
+              total: stat.total,
+              met: stat.met,
+              problemCount: stat.problemCount,
+              alertThresholdPct,
+              drivers: stat.drivers,
+            })
+          : null
+
+      const card = buildDispatchAlarmCard({
+        vendorName,
+        stationCode,
+        date,
+        pushTime,
+        total: stat.total,
+        met: stat.met,
+        problemCount: stat.problemCount,
+        drivers: stat.drivers,
+        alertThresholdPct,
+        pushDescription: config.pushDescription,
+        detailUrl: share?.url ?? null,
+      })
+      const ok = await pushCardToWebhook(config.webhookUrl, config.signingSecret, card)
+      if (ok) {
+        pushedCount++
+      } else {
+        errors.push(`${vendorName}: 飞书推送失败`)
+        if (dedupeJobKey) await releaseScheduledSlot(dedupeJobKey, perConfigDedupe!.slotKey)
+      }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err)
+      console.error(`${label} ✗ 处理异常: ${vendorName} (${msg})`)
+      errors.push(`${vendorName}: 处理异常(${msg})`)
+      if (dedupeJobKey) await releaseScheduledSlot(dedupeJobKey, perConfigDedupe!.slotKey)
     }
   }
 
@@ -208,7 +240,7 @@ async function runOneScheduledPush(schedule: DispatchAlarmSchedule, regionCode: 
 
   for (const slot of dueSlots) {
     const { weekday, timeHHmm, prevDateStr } = slot
-    const jobKey = `dispatch-alarm:${schedule.id}`
+    const jobKeyPrefix = `dispatch-alarm:${schedule.id}`
     const slotKey = formatScheduledPushSlotKey(slot)
 
     const token = readDispatchAlarmImileToken(schedule)
@@ -226,9 +258,12 @@ async function runOneScheduledPush(schedule: DispatchAlarmSchedule, regionCode: 
       continue
     }
 
-    const claimed = await claimScheduledSlot(jobKey, slotKey)
-    if (!claimed) {
-      console.log(`${label} 时间槽 date=${slot.dateStr} time=${timeHHmm} 已被推送过（其他 worker 抢先处理），跳过`)
+    // 幂等粒度下沉到「每个供应商配置」：先快速判断本时间槽是否已全部推送成功，
+    // 全部完成则跳过，避免 catch-up 重试窗口内每分钟都重新拉一遍运单数据。
+    const configJobKeys = configs.map((c) => `${jobKeyPrefix}:${c.id}`)
+    const claimedCount = await countClaimedSlots(configJobKeys, slotKey)
+    if (claimedCount >= configs.length) {
+      console.log(`${label} 时间槽 date=${slot.dateStr} time=${timeHHmm} 已全部推送成功，跳过`)
       continue
     }
 
@@ -246,15 +281,10 @@ async function runOneScheduledPush(schedule: DispatchAlarmSchedule, regionCode: 
       tz,
       regionCode,
       label,
+      perConfigDedupe: { jobKeyPrefix, slotKey },
     })
     if ('error' in result) {
-      await releaseScheduledSlot(jobKey, slotKey)
       console.error(`${label} 推送失败: ${result.error}`)
-      continue
-    }
-    if (result.pushedCount === 0 && result.errors.length > 0) {
-      await releaseScheduledSlot(jobKey, slotKey)
-      console.error(`${label} 全部推送失败: ${result.errors.join('; ')}`)
       continue
     }
     console.log(`${label} 完成 ${result.pushedCount}/${result.totalConfigs} 条`)

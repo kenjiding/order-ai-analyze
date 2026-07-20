@@ -19,7 +19,12 @@ import {
   parsePushConfigIds,
   supplierDisplayName,
 } from '../supplierPushConfigs'
-import { claimScheduledSlot, formatScheduledPushSlotKey, releaseScheduledSlot } from '../jobs/scheduledClaim'
+import {
+  claimScheduledSlot,
+  countClaimedSlots,
+  formatScheduledPushSlotKey,
+  releaseScheduledSlot,
+} from '../jobs/scheduledClaim'
 import { resolveDueScheduledSlots } from '../jobs/scheduledDueSlots'
 
 type EnabledSchedule = { schedule: ExitAlarmSchedule; regionCode: string | null }
@@ -116,6 +121,8 @@ export type ExitAlarmPushResult = {
   errors: string[]
   stationCode: string
   date: string
+  /** 各供应商本次推送中未在 11 点前出仓（未达标）的运单号，供前端导出 Excel */
+  unqualifiedByVendor: { vendorName: string; waybillNos: string[] }[]
 }
 
 /**
@@ -131,8 +138,14 @@ export async function executeExitAlarmPush(params: {
   configs: FleetSupplierPushConfig[]
   tz: AusTz
   label: string
+  /**
+   * 仅供定时任务传入：按 (jobKeyPrefix:configId, slotKey) 对每个供应商配置单独做幂等去重。
+   * 某个配置本次已经成功推送过则跳过，推送失败/暂无数据则释放，交给下次 catch-up 重试；
+   * 「立刻推送」不传此参数，始终对全部 configs 重新执行，不受定时任务的去重状态影响。
+   */
+  perConfigDedupe?: { jobKeyPrefix: string; slotKey: string }
 }): Promise<ExitAlarmPushResult | { error: string }> {
-  const { token, stationCode, date, pushTime, configs, tz, label } = params
+  const { token, stationCode, date, pushTime, configs, tz, label, perConfigDedupe } = params
 
   const result = await fetchWaybillDetailsByInboundIndex({
     token,
@@ -155,42 +168,66 @@ export async function executeExitAlarmPush(params: {
   })
   let pushedCount = 0
   const errors: string[] = []
+  const unqualifiedByVendor: { vendorName: string; waybillNos: string[] }[] = []
 
   for (const config of configs) {
     const vendorName = supplierDisplayName(config)
 
-    // 与「供应商数据分析」同一套归属口径：courierVendorCode 归属 → routeCode 纳入 → 白名单剔除
-    const vendorWaybills = filterBefore11RowsByScope(
-      taggedRows,
-      buildScopeMapsFromConfig(config),
-      config.vendorCode,
-    )
+    let dedupeJobKey: string | null = null
+    if (perConfigDedupe) {
+      dedupeJobKey = `${perConfigDedupe.jobKeyPrefix}:${config.id}`
+      const claimed = await claimScheduledSlot(dedupeJobKey, perConfigDedupe.slotKey)
+      if (!claimed) {
+        console.log(`${label} ${vendorName} 本时间槽已推送成功过，跳过`)
+        continue
+      }
+    }
 
-    const zoneBreakdown = projectBefore11ZoneBreakdown(vendorWaybills)
-    const totalPending = Object.values(zoneBreakdown).reduce((s, v) => s + v.pending, 0)
-    const card = buildExitAlarmCard({
-      vendorName,
-      stationCode,
-      date,
-      pushTime,
-      zoneBreakdown,
-      totalPending,
-      totalWaybills: vendorWaybills.length,
-      pushDescription: config.pushDescription,
-    })
+    try {
+      // 与「供应商数据分析」同一套归属口径：courierVendorCode 归属 → routeCode 纳入 → 白名单剔除
+      const vendorWaybills = filterBefore11RowsByScope(
+        taggedRows,
+        buildScopeMapsFromConfig(config),
+        config.vendorCode,
+      )
 
-    const { ok, reason } = await pushCardToWebhook(config.webhookUrl, config.signingSecret, card)
-    if (ok) {
-      pushedCount++
-      console.log(`${label} ✓ 推送成功: ${vendorName}`)
-    } else {
-      const detail = reason ? ` (${reason})` : ''
-      console.error(`${label} ✗ 推送失败: ${vendorName}${detail}`)
-      errors.push(`${vendorName}: ${reason ?? '推送失败'}`)
+      const zoneBreakdown = projectBefore11ZoneBreakdown(vendorWaybills)
+      const totalPending = Object.values(zoneBreakdown).reduce((s, v) => s + v.pending, 0)
+      const card = buildExitAlarmCard({
+        vendorName,
+        stationCode,
+        date,
+        pushTime,
+        zoneBreakdown,
+        totalPending,
+        totalWaybills: vendorWaybills.length,
+        pushDescription: config.pushDescription,
+      })
+
+      unqualifiedByVendor.push({
+        vendorName,
+        waybillNos: vendorWaybills.filter((r) => !r.before11Exit).map((r) => r.waybillNo).filter(Boolean),
+      })
+
+      const { ok, reason } = await pushCardToWebhook(config.webhookUrl, config.signingSecret, card)
+      if (ok) {
+        pushedCount++
+        console.log(`${label} ✓ 推送成功: ${vendorName}`)
+      } else {
+        const detail = reason ? ` (${reason})` : ''
+        console.error(`${label} ✗ 推送失败: ${vendorName}${detail}`)
+        errors.push(`${vendorName}: ${reason ?? '推送失败'}`)
+        if (dedupeJobKey) await releaseScheduledSlot(dedupeJobKey, perConfigDedupe!.slotKey)
+      }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err)
+      console.error(`${label} ✗ 处理异常: ${vendorName} (${msg})`)
+      errors.push(`${vendorName}: 处理异常(${msg})`)
+      if (dedupeJobKey) await releaseScheduledSlot(dedupeJobKey, perConfigDedupe!.slotKey)
     }
   }
 
-  return { pushedCount, totalConfigs: configs.length, errors, stationCode, date }
+  return { pushedCount, totalConfigs: configs.length, errors, stationCode, date, unqualifiedByVendor }
 }
 
 /** 处理单个账号的定时配置：命中推送时间则读取到件索引并执行告警推送 */
@@ -208,7 +245,7 @@ async function runOneScheduledPush(schedule: ExitAlarmSchedule, regionCode: stri
 
   for (const slot of dueSlots) {
     const { weekday, timeHHmm, prevDateStr } = slot
-    const jobKey = `exit-alarm:${schedule.id}`
+    const jobKeyPrefix = `exit-alarm:${schedule.id}`
     const slotKey = formatScheduledPushSlotKey(slot)
 
     const rawToken = readExitAlarmImileToken(schedule)
@@ -228,9 +265,12 @@ async function runOneScheduledPush(schedule: ExitAlarmSchedule, regionCode: stri
       continue
     }
 
-    const claimed = await claimScheduledSlot(jobKey, slotKey)
-    if (!claimed) {
-      console.log(`${label} 时间槽 date=${slot.dateStr} time=${timeHHmm} 已被推送过（其他 worker 抢先处理），跳过`)
+    // 幂等粒度下沉到「每个供应商配置」：先快速判断本时间槽是否已全部推送成功，
+    // 全部完成则跳过，避免 catch-up 重试窗口内每分钟都重新拉一遍到件数据。
+    const configJobKeys = configs.map((c) => `${jobKeyPrefix}:${c.id}`)
+    const claimedCount = await countClaimedSlots(configJobKeys, slotKey)
+    if (claimedCount >= configs.length) {
+      console.log(`${label} 时间槽 date=${slot.dateStr} time=${timeHHmm} 已全部推送成功，跳过`)
       continue
     }
 
@@ -246,15 +286,10 @@ async function runOneScheduledPush(schedule: ExitAlarmSchedule, regionCode: stri
       configs,
       tz,
       label,
+      perConfigDedupe: { jobKeyPrefix, slotKey },
     })
     if ('error' in result) {
-      await releaseScheduledSlot(jobKey, slotKey)
       console.error(`${label} 推送失败: ${result.error}`)
-      continue
-    }
-    if (result.pushedCount === 0 && result.errors.length > 0) {
-      await releaseScheduledSlot(jobKey, slotKey)
-      console.error(`${label} 全部推送失败: ${result.errors.join('; ')}`)
       continue
     }
     console.log(`${label} 完成 ${result.pushedCount}/${result.totalConfigs} 条`)

@@ -1,6 +1,6 @@
 import { setTimeout as sleep } from 'node:timers/promises'
 import type { Job } from '../db/schema'
-import { cleanupExpiredArtifacts, createArtifactWriter } from './artifactStore'
+import { cleanupExpiredArtifacts } from './artifactStore'
 import {
   readJobArtifactCleanupIntervalMs,
   readJobPollIntervalMs,
@@ -31,10 +31,9 @@ async function executeJob(job: Job): Promise<void> {
       reportProgress: async (progress) => {
         await updateJobProgress(job.id, progress)
       },
-      artifact: createArtifactWriter(job),
     })
 
-    const completed = await completeJob(job.id, result.artifactRelPath ?? null)
+    const completed = await completeJob(job.id, result.artifactPayload ?? null)
     if (!completed) {
       console.warn(`[worker] job ${job.id} complete ignored (not running)`)
     }
@@ -106,7 +105,7 @@ export async function startWorkerLoop(workerId: string): Promise<WorkerLoopHandl
   const cleanupTimer = setInterval(() => {
     void cleanupExpiredArtifacts()
       .then((removed) => {
-        if (removed > 0) console.log(`[worker] cleaned ${removed} expired artifact file(s)`)
+        if (removed > 0) console.log(`[worker] cleaned ${removed} expired artifact payload(s)`)
       })
       .catch((error) => {
         console.error('[worker] artifact cleanup failed', error)

@@ -33,13 +33,15 @@ export type OrderAnalyzeApiTiming = {
   aiMs: number
 }
 
-/** iMile track/query 订单主数据（resultObject.baseInfo + skuInfo）。 */
+/** iMile track/query 订单主数据（resultObject.baseInfo + skuInfo + consigneeInfo）。 */
 export type OrderQueryInfo = {
   merchantName: string
   merchantCode: string
   totalWeight: string
   customerDeclaredValueAud: string
   declaredValueUsd: string
+  /** resultObject.consigneeInfo.consigneeRouteCode */
+  consigneeRouteCode: string
 }
 
 export type OrderAnalyzeInterceptLog = {
@@ -54,10 +56,23 @@ export type OrderAnalyzeInterceptLog = {
   operatorType: 'courier' | 'scanner' | 'unknown'
 }
 
-export type ResponsibilityTrackMarker = {
+/**
+ * 「分析结果」中与最新责任点相关字段的统一载体：责任人/操作/时间/无操作天数
+ * 均由服务端解析完成，前端只做展示，不再反查 trackInfo/interceptLogs 或做正则解析。
+ */
+export type LatestResponsibility = {
   source: 'track' | 'intercept'
   owner: 'in_warehouse' | 'out_warehouse'
+  /** 责任点时间，用于在轨迹/阻断日志时间线中定位并高亮该条记录 */
   time: string
+  /** 「最新责任时间」展示值 */
+  displayTime: string
+  /** 「最新责任人」展示值，无法解析时为 '—' */
+  person: string
+  /** 「最新责任操作」展示值，无法解析时为 '—' */
+  action: string
+  /** 「无操作天数」 */
+  noOperationDays: number
 }
 
 export type OrderAnalyzeResponsibilityOwner =
@@ -72,7 +87,8 @@ export type OrderAnalyzeResultItem = {
   exceptionCategoryId: string
   currentResponsibilityParty?: string
   activeResponsibilityOwner?: OrderAnalyzeResponsibilityOwner
-  latestResponsibilityTrackMarker?: ResponsibilityTrackMarker | null
+  /** 最新责任点：责任人/操作/时间/无操作天数，null 表示当前责任段内无可确定的责任点 */
+  latestResponsibility?: LatestResponsibility | null
   reason: string
   confidence: number
   /** 事实硬校验后需要人工复核 */
@@ -382,7 +398,7 @@ export type PublicJob = {
   payload: Record<string, unknown>
   progress: Record<string, unknown>
   error: string | null
-  artifactPath: string | null
+  hasArtifact: boolean
   artifactExpiresAt: string | null
   attemptCount: number
   maxAttempts: number

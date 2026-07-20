@@ -1,6 +1,9 @@
 import { Button, Empty, Popconfirm, Switch, Tag } from 'antd'
-import { Pencil, Send, Trash2 } from 'lucide-react'
+import { FileDown, Pencil, Send, Trash2 } from 'lucide-react'
 import { StationDisplayLabel } from '../../../components/Layout/StationDisplayLabel'
+import { showToast } from '../../../utils/toast'
+import type { ExitAlarmPushNowResult } from '../exitAlarmApi'
+import { exportUnqualifiedWaybillsExcel } from '../exportUnqualifiedWaybillsExcel'
 import type { ExitAlarmSchedule } from '../exitAlarmTypes'
 
 const WEEKDAY_LABELS: Record<number, string> = { 1: '周一', 2: '周二', 3: '周三', 4: '周四', 5: '周五', 6: '周六', 7: '周日' }
@@ -15,6 +18,7 @@ type Props = {
   schedules: ExitAlarmSchedule[]
   loading: boolean
   pushingId: string | null
+  pushResults: Record<string, ExitAlarmPushNowResult>
   onEdit: (schedule: ExitAlarmSchedule) => void
   onDelete: (id: string) => void
   onToggleEnabled: (schedule: ExitAlarmSchedule, isEnabled: boolean) => void
@@ -25,6 +29,7 @@ export function ExitAlarmScheduleList({
   schedules,
   loading,
   pushingId,
+  pushResults,
   onEdit,
   onDelete,
   onToggleEnabled,
@@ -43,6 +48,9 @@ export function ExitAlarmScheduleList({
       {schedules.map((schedule) => {
         const { weekdaysText, timesText } = summarizeSchedule(schedule)
         const isPushing = pushingId === schedule.id
+        const pushResult = pushResults[schedule.id]
+        const unqualifiedTotal =
+          pushResult?.unqualifiedByVendor.reduce((sum, v) => sum + v.waybillNos.length, 0) ?? 0
         return (
           <div key={schedule.id} className="flex flex-wrap items-center justify-between gap-3 px-5 py-3.5">
             <div className="min-w-0 flex-1 space-y-1">
@@ -79,6 +87,21 @@ export function ExitAlarmScheduleList({
                   立刻推送
                 </Button>
               </Popconfirm>
+              {pushResult && (
+                <Button
+                  icon={<FileDown className="h-3.5 w-3.5" />}
+                  disabled={unqualifiedTotal === 0}
+                  onClick={() => {
+                    if (unqualifiedTotal === 0) {
+                      showToast('本次推送所有运单均已在 11 点前出仓，无需导出', 'info')
+                      return
+                    }
+                    void exportUnqualifiedWaybillsExcel(pushResult)
+                  }}
+                >
+                  导出Excel（未达标 {unqualifiedTotal}）
+                </Button>
+              )}
               <Button icon={<Pencil className="h-3.5 w-3.5" />} onClick={() => onEdit(schedule)}>
                 编辑
               </Button>

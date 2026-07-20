@@ -9,6 +9,7 @@ import {
   loadExitAlarmSchedules,
   triggerExitAlarmSchedulePushNow,
   updateExitAlarmSchedule,
+  type ExitAlarmPushNowResult,
 } from './exitAlarmApi'
 
 export function useExitAlarmPage() {
@@ -23,6 +24,8 @@ export function useExitAlarmPage() {
 
   const [drawerOpen, setDrawerOpen] = useState(false)
   const [editingSchedule, setEditingSchedule] = useState<ExitAlarmSchedule | null>(null)
+  /** 每条配置最近一次「立刻推送」结果，用于展示「导出Excel」 */
+  const [pushResults, setPushResults] = useState<Record<string, ExitAlarmPushNowResult>>({})
 
   const initRef = useRef(false)
 
@@ -132,6 +135,7 @@ export function useExitAlarmPage() {
         return
       }
       const { pushedCount, totalConfigs, errors, date } = res.data
+      setPushResults((prev) => ({ ...prev, [schedule.id]: res.data }))
       if (errors.length > 0) {
         showToast(
           `已推送 ${pushedCount}/${totalConfigs}（数据日 ${date}），部分失败: ${errors.slice(0, 2).join('；')}`,
@@ -163,5 +167,6 @@ export function useExitAlarmPage() {
     removeSchedule,
     pushNow,
     pushableConfigs,
+    pushResults,
   }
 }

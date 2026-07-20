@@ -316,6 +316,13 @@
       "when": 1785700000000,
       "tag": "0044_dispatch_alarm_arrival_scan_date",
       "breakpoints": true
+    },
+    {
+      "idx": 45,
+      "version": "7",
+      "when": 1785700000001,
+      "tag": "0045_job_artifact_payload",
+      "breakpoints": true
     }
   ]
 }

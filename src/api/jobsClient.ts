@@ -9,7 +9,7 @@ export type PublicJob = {
   payload: Record<string, unknown>
   progress: Record<string, unknown>
   error: string | null
-  artifactPath: string | null
+  hasArtifact: boolean
   artifactExpiresAt: string | null
   attemptCount: number
   maxAttempts: number

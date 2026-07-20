@@ -12,15 +12,15 @@ export const systemNoopHandler: JobHandler = {
       throw new Error('job aborted')
     }
 
-    const artifactRelPath = await ctx.artifact.writeJson({
+    const artifactPayload = {
       ok: true,
       type: SYSTEM_NOOP_JOB_TYPE,
       jobId: ctx.job.id,
       echoed: ctx.job.payload,
       finishedAt: new Date().toISOString(),
-    })
+    }
 
     await ctx.reportProgress({ phase: 'noop', message: 'done', percent: 100 })
-    return { artifactRelPath }
+    return { artifactPayload }
   },
 }

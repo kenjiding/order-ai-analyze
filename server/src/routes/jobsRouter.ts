@@ -6,7 +6,7 @@ import {
   resolveEnqueueRegionCode,
   sendJobAccessDenied,
 } from '../jobs/access'
-import { isArtifactExpired, readJobArtifactJson } from '../jobs/artifactStore'
+import { isArtifactExpired } from '../jobs/artifactStore'
 import { enqueueJob, cancelJob, deleteJob, getJobById, listJobs, JobQueueError } from '../jobs/queue'
 import { listRegisteredJobTypes } from '../jobs/registry'
 import { JOB_STATUSES, toPublicJob, type JobStatus } from '../jobs/types'
@@ -123,7 +123,7 @@ jobsRouter.get('/:id/artifact', async (req: AuthenticatedRequest, res: Response)
     sendJobAccessDenied(res)
     return
   }
-  if (!job.artifactPath) {
+  if (job.artifactPayload == null) {
     res.status(404).json({ error: '任务尚无 artifact' })
     return
   }
@@ -132,12 +132,7 @@ jobsRouter.get('/:id/artifact', async (req: AuthenticatedRequest, res: Response)
     return
   }
 
-  try {
-    const data = await readJobArtifactJson(job.artifactPath)
-    res.json({ artifact: data })
-  } catch {
-    res.status(404).json({ error: 'artifact 文件不存在' })
-  }
+  res.json({ artifact: job.artifactPayload })
 })
 
 jobsRouter.delete('/:id', async (req: AuthenticatedRequest, res: Response) => {

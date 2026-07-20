@@ -62,10 +62,24 @@ export type ResponsibilitySegment = {
 
 export type LossResponsibilityOwner = 'in_warehouse' | 'out_warehouse'
 
-export type ResponsibilityTrackMarker = {
+/**
+ * 「分析结果」中与最新责任点相关的字段的统一载体：责任人/操作/时间/无操作天数
+ * 均由服务端在同一处（pipeline.ts 的 buildLatestResponsibility）解析完成，
+ * 避免前端再拿 time 去 trackInfo/interceptLogs 里反查、正则解析文案。
+ */
+export type LatestResponsibility = {
   source: 'track' | 'intercept'
   owner: LossResponsibilityOwner
+  /** 责任点时间，用于在轨迹/阻断日志时间线中定位并高亮该条记录 */
   time: string
+  /** 「最新责任时间」展示值；intercept 来源优先取 gmtScan，可能与 time 不同 */
+  displayTime: string
+  /** 「最新责任人」展示值，无法解析时为 '—' */
+  person: string
+  /** 「最新责任操作」展示值，无法解析时为 '—' */
+  action: string
+  /** 「无操作天数」，距今天数 */
+  noOperationDays: number
 }
 
 export type OrderAnalyzeResult = {
@@ -76,8 +90,8 @@ export type OrderAnalyzeResult = {
   currentResponsibilityParty?: string
   /** 当前责任主体（供前端闭环判型用） */
   activeResponsibilityOwner?: ResponsibilityOwner
-  /** 最新责任方对应的责任点锚点（用于前端在轨迹/阻断中高亮） */
-  latestResponsibilityTrackMarker?: ResponsibilityTrackMarker | null
+  /** 最新责任点：责任人/操作/时间/无操作天数，null 表示当前责任段内无可确定的责任点 */
+  latestResponsibility?: LatestResponsibility | null
   reason: string
   confidence: number
   /** 事实硬校验后需要人工复核 */

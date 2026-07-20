@@ -11,7 +11,7 @@ import {
   type OrderAnalyzeResult,
   type TokenUsage,
 } from '../openaiOrderAnalyze'
-import type { TrackFacts } from './types'
+import type { LatestResponsibility, TrackFacts } from './types'
 import { classifyOrderFromFacts } from './decisionRules'
 import { runWithWarehouseProfileContextAsync, type WarehouseConfigDto } from './warehouseProfiles'
 
@@ -85,17 +85,46 @@ export function formatCurrentResponsibilityParty(facts: TrackFacts | undefined):
   return '未知'
 }
 
-function buildLatestResponsibilityTrackMarker(
-  facts: TrackFacts | undefined
-): { source: 'track' | 'intercept'; owner: 'in_warehouse' | 'out_warehouse'; time: string } | null {
+/** 轨迹文案里紧跟在“操作员【xxx】”前的动作短语，如“已盘点，库位编号[01]”→“盘点” */
+const TRACK_OPERATOR_RE = /操作员[【[]([^】\]]*)[】\]]/
+const TRACK_ACTION_DELIMITER_RE = /[，,。(（[【]/
+
+function extractTrackResponsibilityDetail(content: string): { person: string; action: string } {
+  const operatorMatch = TRACK_OPERATOR_RE.exec(content)
+  const person = operatorMatch?.[1]?.trim() || '—'
+  const beforeOperator = content.slice(0, operatorMatch?.index ?? content.length)
+  const afterSiteTag = beforeOperator.replace(/^[【[][^】\]]*[】\]]/, '')
+  const afterDone = afterSiteTag.includes('已') ? afterSiteTag.slice(afterSiteTag.indexOf('已') + 1) : afterSiteTag
+  const action = afterDone.split(TRACK_ACTION_DELIMITER_RE)[0]?.trim() || '—'
+  return { person, action }
+}
+
+function buildLatestResponsibility(
+  facts: TrackFacts | undefined,
+  target: AnalyzeTarget | undefined
+): LatestResponsibility | null {
   if (!facts) return null
-  if (!facts.finalResponsibilityOwner || !facts.finalResponsibilityStartTime || !facts.finalResponsibilitySource) {
-    return null
+  const { finalResponsibilityOwner: owner, finalResponsibilityStartTime: time, finalResponsibilitySource: source, finalResponsibilityDaysDiff: noOperationDays } =
+    facts
+  if (!owner || !time || !source) return null
+
+  if (source === 'track') {
+    const evt = target?.tracks.find((e) => e.time === time)
+    if (!evt) return { source, owner, time, displayTime: '—', person: '—', action: '—', noOperationDays }
+    const { person, action } = extractTrackResponsibilityDetail(evt.content)
+    return { source, owner, time, displayTime: evt.time, person, action, noOperationDays }
   }
+
+  const log = target?.interceptLogs?.find((l) => l.gmtIntercept === time)
+  if (!log) return { source, owner, time, displayTime: '—', person: '—', action: '—', noOperationDays }
   return {
-    source: facts.finalResponsibilitySource,
-    owner: facts.finalResponsibilityOwner,
-    time: facts.finalResponsibilityStartTime,
+    source,
+    owner,
+    time,
+    displayTime: log.gmtScan || log.gmtIntercept || '—',
+    person: log.scanUserName || log.scanUserCode || '—',
+    action: log.scanTypeDesc || '—',
+    noOperationDays,
   }
 }
 
@@ -145,7 +174,11 @@ function mergeAiExplanation(input: {
   }
 }
 
-function finalizeResultWithFacts(result: OrderAnalyzeResult, facts: TrackFacts | undefined): OrderAnalyzeResult {
+function finalizeResultWithFacts(
+  result: OrderAnalyzeResult,
+  facts: TrackFacts | undefined,
+  target: AnalyzeTarget | undefined
+): OrderAnalyzeResult {
   return {
     ...result,
     exceptionCategoryId: normalizeSubType({
@@ -155,7 +188,7 @@ function finalizeResultWithFacts(result: OrderAnalyzeResult, facts: TrackFacts |
     }),
     currentResponsibilityParty: formatCurrentResponsibilityParty(facts),
     activeResponsibilityOwner: facts?.activeResponsibilityOwner,
-    latestResponsibilityTrackMarker: buildLatestResponsibilityTrackMarker(facts),
+    latestResponsibility: buildLatestResponsibility(facts, target),
   }
 }
 
@@ -272,8 +305,9 @@ export async function runOrderAnalyzePipelineLegacy(input: {
     }
   }
 
+  const targetsByOrderNo = new Map(targets.map((t) => [t.orderNo, t]))
   const normalizedResults = finalResults.map((r) => ({
-    ...finalizeResultWithFacts(r, targetFactsMap.get(r.orderNo)),
+    ...finalizeResultWithFacts(r, targetFactsMap.get(r.orderNo), targetsByOrderNo.get(r.orderNo)),
   }))
 
   return { results: normalizedResults, tokenUsage }
@@ -292,6 +326,7 @@ export async function runOrderAnalyzePipeline(input: {
   const targetFactsMap = new Map(
     targets.map((t) => [t.orderNo, deriveTrackFacts(t.tracks, t.interceptLogs ?? [], { analysisDate: t.analysisDate })])
   )
+  const targetsByOrderNo = new Map(targets.map((t) => [t.orderNo, t]))
 
   const deterministicResults = targets.map((target) => {
     const facts = targetFactsMap.get(target.orderNo)
@@ -359,7 +394,7 @@ export async function runOrderAnalyzePipeline(input: {
   }
 
   const normalizedResults = mergedResults.map((result) =>
-    finalizeResultWithFacts(result, targetFactsMap.get(result.orderNo))
+    finalizeResultWithFacts(result, targetFactsMap.get(result.orderNo), targetsByOrderNo.get(result.orderNo))
   )
   const trackFacts: Record<string, TrackFacts> = Object.fromEntries(targetFactsMap.entries())
   return { results: normalizedResults, tokenUsage, trackFacts }

@@ -66,3 +66,44 @@ test('projectBefore11RatesByVendor: 只统计列出的供应商', () => {
   const rates = projectBefore11RatesByVendor(scoped, ['V1'])
   assert.equal('V9' in rates, false)
 })
+
+test('filterBefore11RowsByScope: courierVendorCode 为空时按 consigneeRouteCode 反查兜底归属，计入 total 且按未达标处理', () => {
+  const rowsWithPending: Array<Record<string, unknown>> = [
+    ...rows,
+    // 尚未派件：courierVendorCode 为空，routeCode 属于 V1 的纳入名单，靠反查兜底归属
+    { waybillNo: 'W6', courierVendorCode: '', consigneeRouteCode: 'R1', deliveryTime: null, courierCode: '', courier: '' },
+  ]
+  const tagged = tagBefore11Rows({ rows: rowsWithPending, before11ThresholdMs: thresholdMs })
+  const scoped = filterBefore11RowsByScope(tagged, buildScopeMapsFromConfig(v1Config), 'V1')
+
+  assert.deepEqual(scoped.map((r) => r.waybillNo), ['W1', 'W2', 'W3', 'W6'])
+  const w6 = scoped.find((r) => r.waybillNo === 'W6')
+  assert.equal(w6?.courierVendorCode, 'V1') // 归属结果回填，供调用方按此分组
+  assert.equal(w6?.before11Exit, false) // 未派件 = 未在 11 点前出仓，未达标
+})
+
+test('filterBefore11RowsByScope: routeCode 同时配置在多个供应商名下时（两家共担同一路由），courierVendorCode 为空的单各自独立命中，非互斥', () => {
+  const sharedRows: Array<Record<string, unknown>> = [
+    { waybillNo: 'X1', courierVendorCode: '', consigneeRouteCode: 'R1', deliveryTime: null, courierCode: '', courier: '' },
+  ]
+  const tagged = tagBefore11Rows({ rows: sharedRows, before11ThresholdMs: thresholdMs })
+  // R1 同时属于 V1、V2 的纳入名单：两家共担同一路由
+  const sharedScope = {
+    routeCodesByVendor: new Map([
+      ['V1', new Set(['R1'])],
+      ['V2', new Set(['R1'])],
+    ]),
+    routeCodeWhitelistByVendor: new Map<string, Set<string>>(),
+  }
+  // 不传 targetVendor：两家都应各自独立命中，各自的统计里都要算上这单
+  const scoped = filterBefore11RowsByScope(tagged, sharedScope)
+  assert.deepEqual(
+    scoped.map((r) => r.courierVendorCode).sort(),
+    ['V1', 'V2'],
+  )
+
+  // 传 targetVendor='V1' 时（告警按单个供应商推送），只返回归给 V1 的那一条
+  const scopedV1 = filterBefore11RowsByScope(tagged, sharedScope, 'V1')
+  assert.equal(scopedV1.length, 1)
+  assert.equal(scopedV1[0]?.courierVendorCode, 'V1')
+})

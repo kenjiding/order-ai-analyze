@@ -20,7 +20,7 @@ import {
   type OrderAnalyzeResultItem,
   type OrderAnalyzeResponsibilityOwner,
   type OrderTrackFacts,
-  type ResponsibilityTrackMarker,
+  type LatestResponsibility,
   type OrderAnalyzeTokenUsage,
   type OrderQueryInfo,
   type RegressionCaseListItem,
@@ -91,9 +91,8 @@ export type AnalysisRow = {
   confidence: string
   trackEvents: TrackEvent[]
   interceptLogs: OrderAnalyzeInterceptLog[]
-  latestResponsibilityTrackMarker?: ResponsibilityTrackMarker | null
-  /** 最终责任点距今天数（对应 latestResponsibilityTrackMarker 所指的那个点），无最终责任点时为 null */
-  noOperationDays?: number | null
+  /** 最新责任点：责任人/操作/时间/无操作天数，服务端解析好的统一字段 */
+  latestResponsibility?: LatestResponsibility | null
   detectedDriverId?: string
   needsReview?: boolean
   crossCheckedBy?: string | null
@@ -202,20 +201,18 @@ function extractDriverIdFromTrackContent(content: string): string {
 }
 
 function deriveDetectedDriverId(
-  latestResponsibilityTrackMarker: ResponsibilityTrackMarker | null | undefined,
+  latestResponsibility: LatestResponsibility | null | undefined,
   trackEvents: TrackEvent[],
   interceptLogs: OrderAnalyzeInterceptLog[]
 ): string {
-  const marker = latestResponsibilityTrackMarker ?? null
-
-  if (marker?.source === 'track') {
-    const matchedTrack = trackEvents.find((event) => event.time === marker.time)
+  if (latestResponsibility?.source === 'track') {
+    const matchedTrack = trackEvents.find((event) => event.time === latestResponsibility.time)
     const fromTrack = matchedTrack ? extractDriverIdFromTrackContent(matchedTrack.content) : ''
     if (fromTrack) return fromTrack
   }
 
-  if (marker?.source === 'intercept') {
-    const matchedIntercept = interceptLogs.find((log) => log.gmtIntercept === marker.time)
+  if (latestResponsibility?.source === 'intercept') {
+    const matchedIntercept = interceptLogs.find((log) => log.gmtIntercept === latestResponsibility.time)
     const fromIntercept = matchedIntercept?.scanUserCode.trim() ?? ''
     if (fromIntercept) return fromIntercept
   }
@@ -238,14 +235,11 @@ function mapAnalyzeHitToRow(
   hit: OrderAnalyzeResultItem | undefined,
   trackInfo: Record<string, TrackEvent[]>,
   interceptLogsByOrder: Record<string, OrderAnalyzeInterceptLog[]>,
-  orderInfoByOrder: Record<string, OrderQueryInfo | null>,
-  trackFactsByOrder?: Record<string, OrderTrackFacts>
+  orderInfoByOrder: Record<string, OrderQueryInfo | null>
 ): AnalysisRow {
   const trackEvents = trackInfo[orderNo] ?? []
   const interceptLogs = interceptLogsByOrder[orderNo] ?? []
   const orderInfo = orderInfoByOrder[orderNo] ?? null
-  const facts = trackFactsByOrder?.[orderNo]
-  const noOperationDays = facts?.finalResponsibilityOwner ? facts.finalResponsibilityDaysDiff : null
   if (!hit) {
     const hasTrack = trackEvents.length > 0
     return {
@@ -272,9 +266,8 @@ function mapAnalyzeHitToRow(
     trackEvents,
     interceptLogs,
     orderInfo,
-    latestResponsibilityTrackMarker: hit.latestResponsibilityTrackMarker ?? null,
-    noOperationDays,
-    detectedDriverId: deriveDetectedDriverId(hit.latestResponsibilityTrackMarker, trackEvents, interceptLogs),
+    latestResponsibility: hit.latestResponsibility ?? null,
+    detectedDriverId: deriveDetectedDriverId(hit.latestResponsibility, trackEvents, interceptLogs),
     needsReview: hit.needsReview ?? false,
     crossCheckedBy: hit.crossCheckedBy ?? null,
     status: 'done',
@@ -488,8 +481,7 @@ export function useOrderExceptionManagementPage() {
           artifact.results.find((r) => r.orderNo === orderNo),
           artifact.trackInfo,
           artifact.interceptLogs,
-          artifact.orderInfo ?? {},
-          artifact.trackFacts
+          artifact.orderInfo ?? {}
         )
       )
       if (artifact.trackFacts) {
@@ -686,8 +678,7 @@ export function useOrderExceptionManagementPage() {
             results.find((r) => r.orderNo === orderNo),
             trackInfo,
             interceptLogs,
-            orderInfo ?? {},
-            trackFacts
+            orderInfo ?? {}
           )
           if (trackFacts) logOrderAnalysisFacts(orderNo, trackFacts[orderNo])
           setAnalysisRows((prev) => prev.map((r) => (r.orderNo === orderNo ? row : r)))

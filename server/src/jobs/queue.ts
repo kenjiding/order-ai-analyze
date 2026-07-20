@@ -142,15 +142,15 @@ export async function updateJobProgress(jobId: string, progress: JobProgress): P
     .where(eq(jobs.id, jobId))
 }
 
-export async function completeJob(jobId: string, artifactRelPath: string | null): Promise<Job | null> {
+export async function completeJob(jobId: string, artifactPayload: unknown | null): Promise<Job | null> {
   const db = getDb()
   const now = new Date()
   const [updated] = await db
     .update(jobs)
     .set({
       status: 'succeeded',
-      artifactPath: artifactRelPath,
-      artifactExpiresAt: artifactRelPath ? computeArtifactExpiresAt(now) : null,
+      artifactPayload: artifactPayload ?? null,
+      artifactExpiresAt: artifactPayload != null ? computeArtifactExpiresAt(now) : null,
       finishedAt: now,
       updatedAt: now,
       lockedBy: null,

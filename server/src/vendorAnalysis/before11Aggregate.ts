@@ -8,7 +8,13 @@
  * 过滤口径统一走 supplierScope。
  */
 import { isBefore11Exit } from '../imile/before11Exit'
-import { isRowInVendorScope, normCode, type VendorScopeMaps } from './supplierScope'
+import {
+  buildRouteCodeVendorsMap,
+  isRowInVendorScope,
+  normCode,
+  resolveVendorCodesByRouteCode,
+  type VendorScopeMaps,
+} from './supplierScope'
 
 export type Before11TaggedRow = {
   waybillNo: string
@@ -47,8 +53,14 @@ export function tagBefore11Rows(input: {
 }
 
 /**
- * 业务层过滤：按 courierVendorCode 归属套用纳入收窄 + 白名单剔除；
- * scope 无该供应商时整行保留。传 vendorCode 时只保留该供应商（告警按配置逐条推送）。
+ * 业务层过滤：courierVendorCode 有值 → 按它归属（唯一）；为空（尚未派件）→ 按 consigneeRouteCode
+ * 匹配所有配置了该路由码的供应商，各自独立命中、独立统计（两家供应商共担同一路由码是正常业务场景，
+ * 见 buildRouteCodeVendorsMap），再各自套用纳入收窄 + 白名单剔除；scope 无该供应商时整行保留。
+ * 传 vendorCode 时只保留该供应商（告警按配置逐条推送）。
+ * 尚未派件的单 deliveryTime 为空，isBefore11Exit 已天然判定为未达标，本函数不再额外剔除，
+ * 一并计入该供应商的 total / pending——理由与 24H 派签一致：没派件就必然没在 11 点前出仓。
+ * 一行可能因路由码被多个供应商配置而命中多个供应商——此时返回多条副本（courierVendorCode 各自改写），
+ * 供调用方（projectBefore11RatesByVendor 等）按各自的 courierVendorCode 分组统计。
  */
 export function filterBefore11RowsByScope(
   rows: Before11TaggedRow[],
@@ -56,10 +68,19 @@ export function filterBefore11RowsByScope(
   vendorCode?: string,
 ): Before11TaggedRow[] {
   const targetVendor = normCode(vendorCode)
-  return rows.filter((row) => {
-    if (targetVendor && row.courierVendorCode !== targetVendor) return false
-    return isRowInVendorScope(row.courierVendorCode, row.consigneeRouteCode, scope)
-  })
+  const routeCodeVendorsMap = buildRouteCodeVendorsMap(scope.routeCodesByVendor)
+  const result: Before11TaggedRow[] = []
+  for (const row of rows) {
+    const candidateVendors = row.courierVendorCode
+      ? [row.courierVendorCode]
+      : resolveVendorCodesByRouteCode(row.consigneeRouteCode, routeCodeVendorsMap)
+    for (const candidate of candidateVendors) {
+      if (targetVendor && candidate !== targetVendor) continue
+      if (!isRowInVendorScope(candidate, row.consigneeRouteCode, scope)) continue
+      result.push(candidate === row.courierVendorCode ? row : { ...row, courierVendorCode: candidate })
+    }
+  }
+  return result
 }
 
 /** 分析投影：按供应商统计出仓率（仅统计 vendorCodes 中列出的供应商） */

@@ -2,7 +2,7 @@ import { Button, Table, Tag, Tooltip } from 'antd'
 import type { ColumnsType } from 'antd/es/table'
 import { Navigate } from 'react-router-dom'
 import { Plus, Shield, UserCog, UserPlus, Users } from 'lucide-react'
-import { useMemo } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useAuthStore } from '../../stores/authStore'
 import type { AdminUser } from '../../api/adminUsersApi'
 import UserFormModal from './components/UserFormModal'
@@ -32,6 +32,8 @@ export default function SystemUsersPage() {
     handleSubmit,
     handleDisable,
   } = useSystemUsersPage()
+  const [currentPage, setCurrentPage] = useState(1)
+  const [pageSize, setPageSize] = useState(10)
 
   const stats = useMemo(() => {
     const activeCount = users.filter((user) => user.isActive).length
@@ -39,6 +41,13 @@ export default function SystemUsersPage() {
     const inactiveCount = users.length - activeCount
     return { activeCount, adminCount, inactiveCount }
   }, [users])
+
+  useEffect(() => {
+    const maxPage = Math.max(1, Math.ceil(users.length / pageSize))
+    if (currentPage > maxPage) {
+      setCurrentPage(maxPage)
+    }
+  }, [users.length, pageSize, currentPage])
 
   if (!isSuperAdmin) {
     return <Navigate to="/efficiency" replace />
@@ -194,27 +203,34 @@ export default function SystemUsersPage() {
           </p>
         </div>
 
-        <Table<AdminUser>
-          rowKey="id"
-          loading={loading}
-          columns={columns}
-          dataSource={users}
-          scroll={{ x: 760 }}
-          pagination={{
-            pageSize: 10,
-            showSizeChanger: true,
-            pageSizeOptions: ['10', '20', '50'],
-            showTotal: (total) => `共 ${total} 条`,
-          }}
-          locale={{
-            emptyText: (
-              <div className="su-empty-panel">
-                <UserPlus className="mx-auto h-8 w-8 text-[var(--admin-accent)]" aria-hidden />
-                <p>暂无后台账号。点击右上角「新建用户」创建第一个账号。</p>
-              </div>
-            ),
-          }}
-        />
+        <div className="su-table-wrap">
+          <Table<AdminUser>
+            rowKey="id"
+            loading={loading}
+            columns={columns}
+            dataSource={users}
+            scroll={{ x: 760 }}
+            pagination={{
+              current: currentPage,
+              pageSize,
+              showSizeChanger: true,
+              pageSizeOptions: [10, 20, 50],
+              showTotal: (total) => `共 ${total} 条`,
+              onChange: (page, size) => {
+                setCurrentPage(page)
+                setPageSize(size)
+              },
+            }}
+            locale={{
+              emptyText: (
+                <div className="su-empty-panel">
+                  <UserPlus className="mx-auto h-8 w-8 text-[var(--admin-accent)]" aria-hidden />
+                  <p>暂无后台账号。点击右上角「新建用户」创建第一个账号。</p>
+                </div>
+              ),
+            }}
+          />
+        </div>
       </section>
 
       <UserFormModal

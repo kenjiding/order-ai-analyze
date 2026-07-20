@@ -138,6 +138,43 @@
   color: var(--admin-muted);
 }
 
+.system-users-page .su-table-wrap .ant-table-thead > tr > th {
+  padding: 0.625rem 1.25rem;
+}
+
+.system-users-page .su-table-wrap .ant-table-tbody > tr > td {
+  padding: 0.75rem 1.25rem;
+}
+
+.system-users-page .su-table-wrap .ant-table-pagination {
+  margin: 0;
+  padding: 0.75rem 1.25rem 1rem;
+  border-top: 1px solid var(--admin-line);
+  background: linear-gradient(180deg, var(--admin-surface) 0%, var(--admin-surface-soft) 100%);
+}
+
+@media (min-width: 640px) {
+  .system-users-page .su-table-wrap .ant-table-thead > tr > th,
+  .system-users-page .su-table-wrap .ant-table-tbody > tr > td {
+    padding-inline: 1.5rem;
+  }
+
+  .system-users-page .su-table-wrap .ant-table-pagination {
+    padding: 0.875rem 1.5rem 1rem;
+  }
+}
+
+.system-users-page .su-table-wrap .ant-pagination-options {
+  margin-inline-start: 0.5rem;
+}
+
+.system-users-page .su-table-wrap .ant-pagination-total-text {
+  margin-inline-end: auto;
+  padding-inline-end: 0.75rem;
+  font-size: 0.8125rem;
+  color: var(--admin-muted);
+}
+
 .system-users-page .su-user-cell {
   display: flex;
   align-items: center;

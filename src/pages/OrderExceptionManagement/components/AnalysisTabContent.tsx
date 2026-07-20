@@ -297,7 +297,7 @@ function buildColumns(
         if (r.status === 'pending' || r.status === 'analyzing') {
           return <span className="text-slate-400">—</span>
         }
-        return <span>{String(r.noOperationDays ?? '—')}</span>
+        return <span>{r.latestResponsibility ? r.latestResponsibility.noOperationDays : '—'}</span>
       },
     },
     {
@@ -316,7 +316,7 @@ function buildColumns(
         if (r.status === 'pending' || r.status === 'analyzing') {
           return <span className="text-slate-400">—</span>
         }
-        return <span>{extractLatestResponsibilityDetail(r).person}</span>
+        return <span>{r.latestResponsibility?.person ?? '—'}</span>
       },
     },
     {
@@ -335,7 +335,7 @@ function buildColumns(
         if (r.status === 'pending' || r.status === 'analyzing') {
           return <span className="text-slate-400">—</span>
         }
-        return <span>{extractLatestResponsibilityDetail(r).action}</span>
+        return <span>{r.latestResponsibility?.action ?? '—'}</span>
       },
     },
     {
@@ -346,7 +346,7 @@ function buildColumns(
         if (r.status === 'pending' || r.status === 'analyzing') {
           return <span className="text-slate-400">—</span>
         }
-        return <span>{extractLatestResponsibilityDetail(r).time}</span>
+        return <span>{r.latestResponsibility?.displayTime ?? '—'}</span>
       },
     },
     {
@@ -366,6 +366,17 @@ function buildColumns(
           return <span className="text-slate-400">—</span>
         }
         return <span>{String(r.currentResponsibilityParty ?? '—')}</span>
+      },
+    },
+    {
+      key: 'consigneeRouteCode',
+      title: '路由码',
+      render: (row) => {
+        const r = row as unknown as Row
+        if (r.status === 'pending' || r.status === 'analyzing') {
+          return <span className="text-slate-400">—</span>
+        }
+        return <span>{r.orderInfo?.consigneeRouteCode || '—'}</span>
       },
     },
     {
@@ -463,44 +474,10 @@ const CROSS_CHECKED_LABEL: Record<string, string> = {
 }
 
 /**
- * 与 onExportResults 列顺序一致：订单号、异常类型、子类型、当前责任站点、置信度、判定依据、
+ * 与 onExportResults 列顺序一致：订单号、异常类型、子类型、当前责任站点、路由码、置信度、判定依据、
  * 是否需复核、交叉验证模型、最新责任人、最新责任时间、最新责任操作、无操作天数
  */
-const ANALYZE_EXPORT_COLUMN_WIDTHS = [24, 14, 16, 28, 10, 80, 12, 16, 20, 20, 24, 14] as const
-
-/** 轨迹文案里紧跟在“操作员【xxx】”前的动作短语，如“已盘点，库位编号[01]”→“盘点” */
-const TRACK_OPERATOR_RE = /操作员[【[]([^】\]]*)[】\]]/
-const TRACK_ACTION_DELIMITER_RE = /[，,。(（[【]/
-
-function extractLatestResponsibilityDetail(row: Row): {
-  person: string
-  time: string
-  action: string
-} {
-  const fallback = { person: '—', time: '—', action: '—' }
-  const marker = row.latestResponsibilityTrackMarker
-  if (!marker) return fallback
-
-  if (marker.source === 'track') {
-    const evt = row.trackEvents.find((e) => e.time === marker.time)
-    if (!evt) return fallback
-    const operatorMatch = TRACK_OPERATOR_RE.exec(evt.content)
-    const person = operatorMatch?.[1]?.trim() || '—'
-    const beforeOperator = evt.content.slice(0, operatorMatch?.index ?? evt.content.length)
-    const afterSiteTag = beforeOperator.replace(/^[【[][^】\]]*[】\]]/, '')
-    const afterDone = afterSiteTag.includes('已') ? afterSiteTag.slice(afterSiteTag.indexOf('已') + 1) : afterSiteTag
-    const action = afterDone.split(TRACK_ACTION_DELIMITER_RE)[0]?.trim() || '—'
-    return { person, time: evt.time, action }
-  }
-
-  const log = row.interceptLogs.find((l) => l.gmtIntercept === marker.time)
-  if (!log) return fallback
-  return {
-    person: log.scanUserName || log.scanUserCode || '—',
-    time: log.gmtScan || log.gmtIntercept || '—',
-    action: log.scanTypeDesc || '—',
-  }
-}
+const ANALYZE_EXPORT_COLUMN_WIDTHS = [24, 14, 16, 28, 16, 10, 80, 12, 16, 20, 20, 24, 14] as const
 
 export function AnalysisTabContent({
   analyzeOrderText,
@@ -566,12 +543,12 @@ export function AnalysisTabContent({
   )
   const latestResponsibilityPersonOptions = useMemo(
     () =>
-      [...new Set(doneRows.map((r) => extractLatestResponsibilityDetail(r).person).filter((v) => v && v !== '—'))].sort(),
+      [...new Set(doneRows.map((r) => r.latestResponsibility?.person ?? '').filter((v) => v && v !== '—'))].sort(),
     [doneRows],
   )
   const latestResponsibilityActionOptions = useMemo(
     () =>
-      [...new Set(doneRows.map((r) => extractLatestResponsibilityDetail(r).action).filter((v) => v && v !== '—'))].sort(),
+      [...new Set(doneRows.map((r) => r.latestResponsibility?.action ?? '').filter((v) => v && v !== '—'))].sort(),
     [doneRows],
   )
 
@@ -591,9 +568,10 @@ export function AnalysisTabContent({
       if (categoryName.length > 0 && !categoryName.includes(r.categoryName ?? '')) return false
       if (currentResponsibilityParty.length > 0 && !currentResponsibilityParty.includes(r.currentResponsibilityParty ?? '')) return false
       if (latestResponsibilityPerson.length > 0 || latestResponsibilityAction.length > 0) {
-        const detail = extractLatestResponsibilityDetail(r)
-        if (latestResponsibilityPerson.length > 0 && !latestResponsibilityPerson.includes(detail.person)) return false
-        if (latestResponsibilityAction.length > 0 && !latestResponsibilityAction.includes(detail.action)) return false
+        const person = r.latestResponsibility?.person ?? '—'
+        const action = r.latestResponsibility?.action ?? '—'
+        if (latestResponsibilityPerson.length > 0 && !latestResponsibilityPerson.includes(person)) return false
+        if (latestResponsibilityAction.length > 0 && !latestResponsibilityAction.includes(action)) return false
       }
       return true
     })
@@ -665,23 +643,21 @@ export function AnalysisTabContent({
 
   const onExportResults = useCallback(() => {
     if (exportableRows.length === 0) return
-    const data = exportableRows.map((r) => {
-      const { person, time, action } = extractLatestResponsibilityDetail(r)
-      return {
-        订单号: r.orderNo,
-        异常类型: r.lossScope,
-        子类型: r.categoryName,
-        当前责任站点: r.currentResponsibilityParty,
-        置信度: r.confidence,
-        判定依据: r.reason,
-        是否需复核: r.needsReview ? '是' : '否',
-        交叉验证模型: r.crossCheckedBy ? (CROSS_CHECKED_LABEL[r.crossCheckedBy] ?? r.crossCheckedBy) : '—',
-        最新责任人: person,
-        最新责任时间: time,
-        最新责任操作: action,
-        无操作天数: r.noOperationDays ?? '—',
-      }
-    })
+    const data = exportableRows.map((r) => ({
+      订单号: r.orderNo,
+      异常类型: r.lossScope,
+      子类型: r.categoryName,
+      当前责任站点: r.currentResponsibilityParty,
+      路由码: r.orderInfo?.consigneeRouteCode || '—',
+      置信度: r.confidence,
+      判定依据: r.reason,
+      是否需复核: r.needsReview ? '是' : '否',
+      交叉验证模型: r.crossCheckedBy ? (CROSS_CHECKED_LABEL[r.crossCheckedBy] ?? r.crossCheckedBy) : '—',
+      最新责任人: r.latestResponsibility?.person ?? '—',
+      最新责任时间: r.latestResponsibility?.displayTime ?? '—',
+      最新责任操作: r.latestResponsibility?.action ?? '—',
+      无操作天数: r.latestResponsibility ? r.latestResponsibility.noOperationDays : '—',
+    }))
     const ws = XLSX.utils.json_to_sheet(data)
     applySheetCenterAlignment(ws)
     ws['!cols'] = ANALYZE_EXPORT_COLUMN_WIDTHS.map((wch) => ({ wch }))

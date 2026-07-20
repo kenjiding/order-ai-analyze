@@ -7,8 +7,11 @@ import {
   type ImileBusinessFailure,
 } from './shared'
 
-const DEFAULT_BUSY_RETRY_DELAY_MS = 1500
-const DEFAULT_BUSY_RETRY_MAX = 3
+/** 首次重试的基础延迟；实际延迟按 2^attempt 指数增长，见 busyRetryMaxDelayMs 封顶 */
+const DEFAULT_BUSY_RETRY_DELAY_MS = 2000
+const DEFAULT_BUSY_RETRY_MAX = 5
+/** 单次退避延迟上限：避免指数增长在大批量场景下把单次请求拖太久 */
+const DEFAULT_BUSY_RETRY_MAX_DELAY_MS = 8000
 
 export type ImileClientError = {
   ok: false
@@ -36,11 +39,13 @@ export async function requestImileApi(options: {
   retryBusy?: boolean
   busyRetryDelayMs?: number
   busyRetryMax?: number
+  busyRetryMaxDelayMs?: number
   timeoutMs?: number
 }): Promise<ImileClientSuccess | ImileClientError> {
   const retryBusy = options.retryBusy ?? true
   const busyRetryDelayMs = options.busyRetryDelayMs ?? DEFAULT_BUSY_RETRY_DELAY_MS
   const busyRetryMax = options.busyRetryMax ?? DEFAULT_BUSY_RETRY_MAX
+  const busyRetryMaxDelayMs = options.busyRetryMaxDelayMs ?? DEFAULT_BUSY_RETRY_MAX_DELAY_MS
   const body =
     options.body == null || options.method === 'GET' ? undefined : JSON.stringify(options.body)
 
@@ -68,7 +73,8 @@ export async function requestImileApi(options: {
     const failure = readImileBusinessFailure(res.json)
     if (failure) {
       if (retryBusy && isRetryableBusyFailure(failure) && attempt < busyRetryMax) {
-        await sleep(busyRetryDelayMs)
+        const backoffMs = Math.min(busyRetryDelayMs * 2 ** attempt, busyRetryMaxDelayMs)
+        await sleep(backoffMs)
         continue
       }
       return {
