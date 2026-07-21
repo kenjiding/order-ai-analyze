@@ -13,6 +13,7 @@ import {
 } from '../openaiOrderAnalyze'
 import type { LatestResponsibility, TrackFacts } from './types'
 import { classifyOrderFromFacts } from './decisionRules'
+import { isSorterChuteAssignmentEvent } from './trackFacts'
 import { runWithWarehouseProfileContextAsync, type WarehouseConfigDto } from './warehouseProfiles'
 
 export type OrderAnalyzeAiProvider = 'openai' | 'deepseek'
@@ -90,6 +91,7 @@ const TRACK_OPERATOR_RE = /操作员[【[]([^】\]]*)[】\]]/
 const TRACK_ACTION_DELIMITER_RE = /[，,。(（[【]/
 
 function extractTrackResponsibilityDetail(content: string): { person: string; action: string } {
+  if (isSorterChuteAssignmentEvent(content)) return { person: 'sorter', action: '格口' }
   const operatorMatch = TRACK_OPERATOR_RE.exec(content)
   const person = operatorMatch?.[1]?.trim() || '—'
   const beforeOperator = content.slice(0, operatorMatch?.index ?? content.length)

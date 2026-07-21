@@ -7,7 +7,7 @@ import { compareRegressionCase } from './regression/compare'
 import { applyFactGuardrails, classifyOrderFromFacts } from './decisionRules'
 import { normalizeSubType } from './exceptionCatalog'
 import { parseOrderAnalyzeResults, prepareAnalyzeCategories } from './prompt'
-import { deriveTrackFacts, summarizeTracks } from './trackFacts'
+import { deriveTrackFacts, isSorterChuteAssignmentEvent, summarizeTracks } from './trackFacts'
 import { formatCurrentResponsibilityParty } from './pipeline'
 import {
   classifyOperatorForWarehouse,
@@ -707,16 +707,21 @@ test('SYDE 仓库配置生效后不再标记为未知仓库', () => {
 })
 
 test('已配置仓库最终责任未超时应纠正需人工判断', () => {
-  const facts = deriveTrackFacts([
-    track('2026-05-04 08:34:27', '【Sydney Center】已揽收, 操作员【System】。', '', '转运'),
-    track('2026-05-04 08:34:57', '【Sydney Center】已到达，包裹重量为【0kg】。操作员【sorter】,设备编码[AUS_S210312_01]', '', '转运'),
-    track('2026-05-04 14:03:18', '【Sydney Center】已装箱，集包号[2604211588701]，目的地【SYDE】。操作员【SYD Warehouse6】', '', '转运'),
-    track('2026-05-04 19:07:30', '【Sydney Center】完成待转发件，目的地【SYDE】。操作员【SYD Warehouse6】', '', '转运'),
-    track('2026-05-04 19:30:01', '【SYDE】包号[2604211588701]已到达。操作员【SYDE OPS1】 。', '', '转运'),
-    track('2026-05-07 07:33:10', '【SYDE】派送任务已分配给派件员(派件员：PUS-567-Kunjin Wu,电话：+61 ***)，待派件员领取包裹。 操作员【SYDE OPS1】', '', '派送'),
-    track('2026-05-07 07:33:11', '【SYDE】包裹正在派送中(派件员: PUS-567-Kunjin Wu, +61 ***)。操作员【SYDE OPS1】', 'delivery', '派送'),
-    track('2026-05-20 09:16:53', '【SYDE】派件员已回到网点。操作员【SYDE OPS1】', '', '派送'),
-  ])
+  const facts = deriveTrackFacts(
+    [
+      track('2026-05-04 08:34:27', '【Sydney Center】已揽收, 操作员【System】。', '', '转运'),
+      track('2026-05-04 08:34:57', '【Sydney Center】已到达，包裹重量为【0kg】。操作员【sorter】,设备编码[AUS_S210312_01]', '', '转运'),
+      track('2026-05-04 14:03:18', '【Sydney Center】已装箱，集包号[2604211588701]，目的地【SYDE】。操作员【SYD Warehouse6】', '', '转运'),
+      track('2026-05-04 19:07:30', '【Sydney Center】完成待转发件，目的地【SYDE】。操作员【SYD Warehouse6】', '', '转运'),
+      track('2026-05-04 19:30:01', '【SYDE】包号[2604211588701]已到达。操作员【SYDE OPS1】 。', '', '转运'),
+      track('2026-05-07 07:33:10', '【SYDE】派送任务已分配给派件员(派件员：PUS-567-Kunjin Wu,电话：+61 ***)，待派件员领取包裹。 操作员【SYDE OPS1】', '', '派送'),
+      track('2026-05-07 07:33:11', '【SYDE】包裹正在派送中(派件员: PUS-567-Kunjin Wu, +61 ***)。操作员【SYDE OPS1】', 'delivery', '派送'),
+      track('2026-05-20 09:16:53', '【SYDE】派件员已回到网点。操作员【SYDE OPS1】', '', '派送'),
+    ],
+    [],
+    // 固定分析基准时间，避免用真实系统时间跑测试时随「今天」推进而越过仓库丢失阈值窗口导致断言漂移失败
+    { analysisDate: '2026-05-21' }
+  )
   const guarded = applyFactGuardrails(
     baseResult({ lossScope: '需人工判断', reason: '模型保守判定', confidence: 0.95 }),
     facts
@@ -1113,6 +1118,48 @@ test('sorter 未携带设备编码时不视为仓内真实扫描记录', () => {
   assert.equal(facts.inWarehouseStartTime, null)
   assert.equal(guarded.lossScope, '需人工判断')
   assert.equal(guarded.appliedDecisionRuleId, 'company_warehouse_missing_basis_needs_review')
+})
+
+test('isSorterChuteAssignmentEvent 只在同时出现 sorter 操作人与格口号时命中', () => {
+  assert.equal(
+    isSorterChuteAssignmentEvent('【Sydney Center】实际格口号为【82】，操作人【sorter】'),
+    true
+  )
+  assert.equal(
+    isSorterChuteAssignmentEvent('【Sydney Center】实际格口号为【82】，操作员【sorter】'),
+    true
+  )
+  assert.equal(isSorterChuteAssignmentEvent('【Sydney Center】操作人【sorter】处理中'), false)
+  assert.equal(
+    isSorterChuteAssignmentEvent('【Sydney Center】实际格口号为【82】，操作人【Frank Wang】'),
+    false
+  )
+})
+
+test('sorter 携带实际格口号时视为仓内真实扫描记录', () => {
+  const scanTime = daysAgo(16)
+  const facts = deriveTrackFacts([
+    track(scanTime, '【Sydney Center】实际格口号为【82】，操作人【sorter】', '', '派送'),
+  ])
+  const guarded = applyFactGuardrails(baseResult({ lossScope: '暂无异常' }), facts)
+
+  assert.equal(facts.activeWarehouseHubId, 'sydney_placeholder')
+  assert.equal(facts.hasRealOperatorScan, true)
+  assert.equal(facts.inWarehouseStartTime, scanTime)
+  assert.equal(guarded.lossScope, '库内丢失')
+  assert.equal(guarded.exceptionCategoryId, '扫描员丢失')
+  assert.equal(guarded.appliedDecisionRuleId, 'active_in_warehouse_overdue_is_in_warehouse_loss')
+})
+
+test('sorter 未携带格口号/设备编码证据时不视为仓内真实扫描记录', () => {
+  const facts = deriveTrackFacts([
+    track(daysAgo(8), '【Sydney Center】操作人【sorter】处理中', '', '派送'),
+  ])
+  const guarded = applyFactGuardrails(baseResult({ lossScope: '库内丢失' }), facts)
+
+  assert.equal(facts.hasRealOperatorScan, false)
+  assert.equal(facts.inWarehouseStartTime, null)
+  assert.equal(guarded.lossScope, '需人工判断')
 })
 
 test('Sydney Center 分拣后转入 SYDN，按 SYDN 到达节点重置库内起算', () => {

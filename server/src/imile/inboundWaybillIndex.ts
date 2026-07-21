@@ -448,18 +448,22 @@ export async function fetchWaybillDetailsByInboundIndex(input: {
   })
 }
 
-export type IncrementalWaybillFetchSuccess = InboundWaybillFetchSuccess & {
+export type IncrementalWaybillFetchSuccess = {
+  ok: true
+  /** 到件索引全量单号（含本次跳过未重拉的终态单） */
+  waybillNos: string[]
   /** 本次实际重新 searchWaybill 的单号数 */
   fetchedCount: number
   /** 因已达标/已超窗口而跳过的单号数 */
   skippedCount: number
-  fromCacheRecords: InboundWaybillRow[]
   fetchedRecords: InboundWaybillRow[]
 }
 
 /**
  * 24H 派签增量拉数：到件索引仍全量（可走 DB 缓存），searchWaybill 只拉「未终态」单号。
  * 已达标或已超过 24H/周末窗口的单复用 cachedByWaybillNo，供告警多时段推送与司机地图刷新共用。
+ * 唯一调用方（stationDayWaybillSync）只消费 fetchedRecords，不需要把跳过的缓存行合并回一份
+ * 全量 records 数组——大站点几万条时那份合并数组是纯粹的内存浪费，故不再构建。
  */
 export async function fetchWaybillDetailsIncremental(input: {
   token: string
@@ -482,14 +486,6 @@ export async function fetchWaybillDetailsIncremental(input: {
     input.cachedByWaybillNo,
     input.tz,
   )
-  const needSet = new Set(needNos)
-  const fromCacheRecords: InboundWaybillRow[] = []
-  for (const no of indexResult.waybillNos) {
-    if (needSet.has(no)) continue
-    const cached = input.cachedByWaybillNo.get(no)
-    if (!cached) continue
-    fromCacheRecords.push(cached as InboundWaybillRow)
-  }
 
   const fetched = await fetchSearchWaybillByNos({
     token: input.token,
@@ -501,27 +497,11 @@ export async function fetchWaybillDetailsIncremental(input: {
   })
   if (!fetched.ok) return fetched
 
-  const byNo = new Map<string, InboundWaybillRow>()
-  for (const row of fromCacheRecords) {
-    const no = typeof row.waybillNo === 'string' ? row.waybillNo.trim() : ''
-    if (no) byNo.set(no, row)
-  }
-  for (const row of fetched.records) {
-    const no = typeof row.waybillNo === 'string' ? row.waybillNo.trim() : ''
-    if (no) byNo.set(no, row)
-  }
-
-  const records = indexResult.waybillNos
-    .map((no) => byNo.get(no))
-    .filter((row): row is InboundWaybillRow => row != null)
-
   return {
     ok: true,
-    records,
     waybillNos: indexResult.waybillNos,
     fetchedCount: needNos.length,
     skippedCount: indexResult.waybillNos.length - needNos.length,
-    fromCacheRecords,
     fetchedRecords: fetched.records,
   }
 }

@@ -8,9 +8,9 @@ import { fetchWaybillDetailsByInboundIndex } from '../imile/inboundWaybillIndex'
 import { resolveRegionTz, type AusTz } from '../imile/ausTimezone'
 import { computeBefore11ThresholdMs } from '../imile/before11Exit'
 import {
-  filterBefore11RowsByScope,
-  projectBefore11ZoneBreakdown,
+  aggregateBefore11ByScopes,
   tagBefore11Rows,
+  type Before11Scope,
 } from '../vendorAnalysis/before11Aggregate'
 import { buildScopeMapsFromConfig } from '../vendorAnalysis/supplierScope'
 import { lastSortingWorkdayOnOrBefore } from '../imile/sortingWorkday'
@@ -170,6 +170,22 @@ export async function executeExitAlarmPush(params: {
   const errors: string[] = []
   const unqualifiedByVendor: { vendorName: string; waybillNos: string[] }[] = []
 
+  // 与「供应商数据分析」同一套归属口径：courierVendorCode 归属 → routeCode 纳入 → 白名单剔除。
+  // 用 config.id 当 key 一次遍历 taggedRows 拿到全部配置的统计，不再对每条配置各自重新扫一遍全量到件运单。
+  const scopes: Before11Scope[] = []
+  for (const config of configs) {
+    const vendorCode = config.vendorCode.trim()
+    if (!vendorCode) continue
+    const scope = buildScopeMapsFromConfig(config)
+    scopes.push({
+      key: config.id,
+      vendorCode,
+      routeCodes: scope.routeCodesByVendor.get(vendorCode),
+      routeCodeWhitelist: scope.routeCodeWhitelistByVendor.get(vendorCode),
+    })
+  }
+  const statsByConfigId = aggregateBefore11ByScopes({ rows: taggedRows, scopes })
+
   for (const config of configs) {
     const vendorName = supplierDisplayName(config)
 
@@ -184,30 +200,24 @@ export async function executeExitAlarmPush(params: {
     }
 
     try {
-      // 与「供应商数据分析」同一套归属口径：courierVendorCode 归属 → routeCode 纳入 → 白名单剔除
-      const vendorWaybills = filterBefore11RowsByScope(
-        taggedRows,
-        buildScopeMapsFromConfig(config),
-        config.vendorCode,
-      )
-
-      const zoneBreakdown = projectBefore11ZoneBreakdown(vendorWaybills)
-      const totalPending = Object.values(zoneBreakdown).reduce((s, v) => s + v.pending, 0)
+      const stat = statsByConfigId.get(config.id) ?? {
+        totalWaybills: 0,
+        zoneBreakdown: {},
+        unqualifiedWaybillNos: [],
+      }
+      const totalPending = Object.values(stat.zoneBreakdown).reduce((s, v) => s + v.pending, 0)
       const card = buildExitAlarmCard({
         vendorName,
         stationCode,
         date,
         pushTime,
-        zoneBreakdown,
+        zoneBreakdown: stat.zoneBreakdown,
         totalPending,
-        totalWaybills: vendorWaybills.length,
+        totalWaybills: stat.totalWaybills,
         pushDescription: config.pushDescription,
       })
 
-      unqualifiedByVendor.push({
-        vendorName,
-        waybillNos: vendorWaybills.filter((r) => !r.before11Exit).map((r) => r.waybillNo).filter(Boolean),
-      })
+      unqualifiedByVendor.push({ vendorName, waybillNos: stat.unqualifiedWaybillNos })
 
       const { ok, reason } = await pushCardToWebhook(config.webhookUrl, config.signingSecret, card)
       if (ok) {

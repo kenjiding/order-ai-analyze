@@ -3,10 +3,12 @@ import test from 'node:test'
 import { AUS_TZ } from '../imile/ausTimezone'
 import { computeBefore11ThresholdMs } from '../imile/before11Exit'
 import {
+  aggregateBefore11ByScopes,
   filterBefore11RowsByScope,
   projectBefore11RatesByVendor,
   projectBefore11ZoneBreakdown,
   tagBefore11Rows,
+  type Before11Scope,
 } from './before11Aggregate'
 import { buildScopeMapsFromConfig } from './supplierScope'
 
@@ -106,4 +108,44 @@ test('filterBefore11RowsByScope: routeCode 同时配置在多个供应商名下�
   const scopedV1 = filterBefore11RowsByScope(tagged, sharedScope, 'V1')
   assert.equal(scopedV1.length, 1)
   assert.equal(scopedV1[0]?.courierVendorCode, 'V1')
+})
+
+test('aggregateBefore11ByScopes: 归属、纳入收窄、白名单剔除与 filterBefore11RowsByScope 逐个调用等价', () => {
+  const scopes: Before11Scope[] = [{ key: 'cfg-v1', vendorCode: 'V1', routeCodes: new Set(['R1', 'R2']), routeCodeWhitelist: new Set(['RW']) }]
+  const result = aggregateBefore11ByScopes({ rows: taggedAll, scopes })
+  const stat = result.get('cfg-v1')
+
+  const expectedScoped = filterBefore11RowsByScope(taggedAll, buildScopeMapsFromConfig(v1Config), 'V1')
+  const expectedZones = projectBefore11ZoneBreakdown(expectedScoped)
+  const expectedUnqualified = expectedScoped.filter((r) => !r.before11Exit).map((r) => r.waybillNo).filter(Boolean)
+
+  assert.equal(stat?.totalWaybills, expectedScoped.length)
+  assert.deepEqual(stat?.zoneBreakdown, expectedZones)
+  assert.deepEqual(stat?.unqualifiedWaybillNos, expectedUnqualified)
+})
+
+test('aggregateBefore11ByScopes: 同 vendorCode 两条配置各自不同 routeCode 范围，一次遍历下各自独立统计', () => {
+  const scopes: Before11Scope[] = [
+    { key: 'cfg-region-1', vendorCode: 'V1', routeCodes: new Set(['R1']) },
+    { key: 'cfg-region-2', vendorCode: 'V1', routeCodes: new Set(['R2']) },
+  ]
+  const result = aggregateBefore11ByScopes({ rows: taggedAll, scopes })
+  // cfg-region-1 只收 R1：命中 W1、W2（V1/R1），V9 的 W4 不算，RW 的 W5 路由不在收窄范围内
+  assert.equal(result.get('cfg-region-1')?.totalWaybills, 2)
+  // cfg-region-2 只收 R2：命中 W3
+  assert.equal(result.get('cfg-region-2')?.totalWaybills, 1)
+})
+
+test('aggregateBefore11ByScopes: 两个不同 vendorCode 共担同一路由码时，一次遍历下依然各自独立计入', () => {
+  const sharedRows: Array<Record<string, unknown>> = [
+    { waybillNo: 'X1', courierVendorCode: '', consigneeRouteCode: 'R1', deliveryTime: null, courierCode: '', courier: '' },
+  ]
+  const tagged = tagBefore11Rows({ rows: sharedRows, before11ThresholdMs: thresholdMs })
+  const scopes: Before11Scope[] = [
+    { key: 'cfg-v1', vendorCode: 'V1', routeCodes: new Set(['R1']) },
+    { key: 'cfg-v2', vendorCode: 'V2', routeCodes: new Set(['R1']) },
+  ]
+  const result = aggregateBefore11ByScopes({ rows: tagged, scopes })
+  assert.equal(result.get('cfg-v1')?.totalWaybills, 1)
+  assert.equal(result.get('cfg-v2')?.totalWaybills, 1)
 })

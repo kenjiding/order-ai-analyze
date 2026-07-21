@@ -37,6 +37,9 @@ services:
       HOST: 0.0.0.0
       DATABASE_URL: postgresql://${POSTGRES_USER:-warehouse}:${POSTGRES_PASSWORD:-warehouse}@postgres:5432/${POSTGRES_DB:-warehouse}
       JOB_ARTIFACT_DIR: /data/job-artifacts
+      # 宿主机内存有限且无 swap：给堆内存设软上限，命中时是可控的 JS 堆溢出崩溃（有日志/堆栈），
+      # 而不是被内核 OOM killer 无预警地强杀整个进程、殃及同机其它容器
+      NODE_OPTIONS: --max-old-space-size=1536
     healthcheck:
       test: ['CMD-SHELL', 'wget -qO- http://127.0.0.1:8787/health | grep -q "\"ok\":true"']
       interval: 30s
@@ -64,6 +67,7 @@ services:
       NODE_ENV: production
       DATABASE_URL: postgresql://${POSTGRES_USER:-warehouse}:${POSTGRES_PASSWORD:-warehouse}@postgres:5432/${POSTGRES_DB:-warehouse}
       JOB_ARTIFACT_DIR: /data/job-artifacts
+      NODE_OPTIONS: --max-old-space-size=1536
     command: ['sh', '-c', 'pnpm worker:start']
     volumes:
       - job_artifacts:/data/job-artifacts

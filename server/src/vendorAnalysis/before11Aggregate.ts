@@ -125,3 +125,67 @@ export function projectBefore11ZoneBreakdown(
   }
   return zoneBreakdown
 }
+
+export type Before11Scope = {
+  /** 结果 Map 的 key，用配置自己的 id（而非 vendorCode），使同一 vendorCode 的多条配置各自独立累计，互不覆盖 */
+  key: string
+  vendorCode: string
+  /** 路由码纳入名单；undefined = 不按路由码收窄 */
+  routeCodes?: Set<string>
+  routeCodeWhitelist?: Set<string>
+}
+
+export type Before11ScopedStat = {
+  totalWaybills: number
+  zoneBreakdown: Record<string, { pending: number; total: number }>
+  /** 未在 11 点前出仓的运单号，供前端导出 Excel */
+  unqualifiedWaybillNos: string[]
+}
+
+/**
+ * 按预先给定的多个独立范围一次遍历 rows，完成过滤 + 分区统计 + 未达标运单号收集，每个 scope 各自出一份结果——
+ * 供「同一批到件运单要按 N 个供应商推送配置分别出结果」的场景使用（11点前出仓告警逐配置推送），
+ * 避免每个配置都对全量 rows 重新过滤一遍（等价于 filterBefore11RowsByScope + projectBefore11ZoneBreakdown
+ * 按 vendorCode 逐个调用，但只扫一遍 rows）。
+ *
+ * 与 filterBefore11RowsByScope 的区别：后者按行动态发现 vendorCode（「供应商数据分析」要看全量供应商口径），
+ * 这里 vendorCode 由调用方在 scopes 里显式给定，不做动态发现。
+ */
+export function aggregateBefore11ByScopes(input: {
+  rows: Before11TaggedRow[]
+  scopes: Before11Scope[]
+}): Map<string, Before11ScopedStat> {
+  const { rows, scopes } = input
+  const result = new Map<string, Before11ScopedStat>()
+
+  for (const row of rows) {
+    const explicitVendorCode = row.courierVendorCode
+    const routeCode = row.consigneeRouteCode
+
+    for (const scope of scopes) {
+      if (explicitVendorCode) {
+        if (explicitVendorCode !== scope.vendorCode) continue
+      } else if (!scope.routeCodes?.has(routeCode)) {
+        continue
+      }
+      if (scope.routeCodes && !scope.routeCodes.has(routeCode)) continue
+      if (scope.routeCodeWhitelist?.has(routeCode)) continue
+
+      let stat = result.get(scope.key)
+      if (!stat) {
+        stat = { totalWaybills: 0, zoneBreakdown: {}, unqualifiedWaybillNos: [] }
+        result.set(scope.key, stat)
+      }
+      stat.totalWaybills += 1
+      const zone = routeCode.trim() || 'Unknown route'
+      if (!stat.zoneBreakdown[zone]) stat.zoneBreakdown[zone] = { pending: 0, total: 0 }
+      stat.zoneBreakdown[zone].total += 1
+      if (!row.before11Exit) {
+        stat.zoneBreakdown[zone].pending += 1
+        if (row.waybillNo) stat.unqualifiedWaybillNos.push(row.waybillNo)
+      }
+    }
+  }
+
+  return result
+}

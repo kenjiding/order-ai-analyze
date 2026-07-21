@@ -2,6 +2,7 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { AUS_TZ, iMileStrToMs } from '../imile/ausTimezone'
 import {
+  aggregateDispatch24hByScopes,
   aggregateDispatch24hByVendor,
   getDispatch24hDeadlineMs,
   isDispatch24hMet,
@@ -9,6 +10,7 @@ import {
   isDispatch24hTerminal,
   isDispatch24hWindowExpired,
   selectWaybillNosNeedingRefresh,
+  type Dispatch24hScope,
   type Dispatch24hWaybillRow,
 } from './dispatch24hAggregate'
 
@@ -355,4 +357,169 @@ test('aggregateDispatch24hByVendor：courierVendorCode 为空时按 consigneeRou
   assert.deepEqual(v1?.unmetNos.sort(), ['F1', 'F2'])
   assert.equal(v2?.total, 1)
   assert.deepEqual(v2?.unmetNos, ['F2'])
+})
+
+test('aggregateDispatch24hByScopes：同 vendorCode 两条配置各自不同 routeCode 范围，一次遍历下依然各自独立统计，不互相覆盖', () => {
+  const rows: Dispatch24hWaybillRow[] = [
+    {
+      waybillNo: 'A1',
+      courierCode: 'C1',
+      courierVendorCode: 'V1',
+      lastScanSiteCode: 'S1',
+      consigneeRouteCode: 'R-A',
+      deliveryTime: '2024-06-24 10:00:00',
+      signDate: '2024-06-24 12:00:00',
+    },
+    {
+      waybillNo: 'B1',
+      courierCode: 'C1',
+      courierVendorCode: 'V1',
+      lastScanSiteCode: 'S1',
+      consigneeRouteCode: 'R-B',
+      deliveryTime: '2024-06-24 10:00:00',
+      signDate: '2024-06-24 12:00:00',
+    },
+  ]
+
+  const scopes: Dispatch24hScope[] = [
+    { key: 'config-region-a', vendorCode: 'V1', routeCodes: new Set(['R-A']) },
+    { key: 'config-region-b', vendorCode: 'V1', routeCodes: new Set(['R-B']) },
+  ]
+  const result = aggregateDispatch24hByScopes({ rows, stationCodes: ['S1'], tz, scopes })
+
+  assert.equal(result.get('config-region-a')?.total, 1)
+  assert.equal(result.get('config-region-b')?.total, 1)
+})
+
+test('aggregateDispatch24hByScopes：两个不同 vendorCode 共担同一路由码时各自独立计入；courierVendorCode 为空按 routeCode 兜底', () => {
+  const rows: Dispatch24hWaybillRow[] = [
+    { waybillNo: 'F1', lastScanSiteCode: 'S1', consigneeRouteCode: 'R-A' },
+    { waybillNo: 'F2', lastScanSiteCode: 'S1', consigneeRouteCode: 'R-SHARED' },
+    { waybillNo: 'F3', lastScanSiteCode: 'S1', consigneeRouteCode: 'R-UNKNOWN' },
+  ]
+  const scopes: Dispatch24hScope[] = [
+    { key: 'cfg-v1', vendorCode: 'V1', routeCodes: new Set(['R-A', 'R-SHARED']) },
+    { key: 'cfg-v2', vendorCode: 'V2', routeCodes: new Set(['R-SHARED']) },
+  ]
+  const result = aggregateDispatch24hByScopes({ rows, stationCodes: ['S1'], tz, scopes })
+
+  assert.equal(result.get('cfg-v1')?.total, 2)
+  assert.equal(result.get('cfg-v2')?.total, 1)
+})
+
+test('aggregateDispatch24hByScopes：explicit courierVendorCode 不匹配任何 scope 时不计入任何桶；未配置 routeCode 的 scope 对 explicit 归属不做路由限制', () => {
+  const rows: Dispatch24hWaybillRow[] = [
+    {
+      waybillNo: 'G1',
+      courierCode: 'C1',
+      courierVendorCode: 'V1',
+      lastScanSiteCode: 'S1',
+      consigneeRouteCode: 'R-ANY',
+      deliveryTime: '2024-06-24 10:00:00',
+      signDate: '2024-06-24 12:00:00',
+    },
+    {
+      waybillNo: 'G2',
+      courierCode: 'C1',
+      courierVendorCode: 'V99',
+      lastScanSiteCode: 'S1',
+      consigneeRouteCode: 'R-ANY',
+      deliveryTime: '2024-06-24 10:00:00',
+      signDate: '2024-06-24 12:00:00',
+    },
+  ]
+  const scopes: Dispatch24hScope[] = [{ key: 'cfg-v1-norestrict', vendorCode: 'V1' }]
+  const result = aggregateDispatch24hByScopes({ rows, stationCodes: ['S1'], tz, scopes })
+
+  // V1 未配置 routeCode（scope.routeCodes 缺省）→ explicit 归属不受路由限制，G1 计入
+  assert.equal(result.get('cfg-v1-norestrict')?.total, 1)
+  assert.deepEqual(
+    result.get('cfg-v1-norestrict')?.drivers.map((d) => d.courierCode),
+    ['C1'],
+  )
+  // G2 显式归属 V99，不在 scopes 里，不应出现在任何结果中
+  assert.equal(result.size, 1)
+})
+
+test('aggregateDispatch24hByScopes：路由码白名单剔除在单次遍历下依然生效', () => {
+  const rows: Dispatch24hWaybillRow[] = [
+    {
+      waybillNo: 'H1',
+      courierCode: 'C1',
+      courierVendorCode: 'V1',
+      lastScanSiteCode: 'S1',
+      consigneeRouteCode: 'R-BLOCKED',
+      deliveryTime: '2024-06-24 10:00:00',
+      signDate: '2024-06-24 12:00:00',
+    },
+    {
+      waybillNo: 'H2',
+      courierCode: 'C1',
+      courierVendorCode: 'V1',
+      lastScanSiteCode: 'S1',
+      consigneeRouteCode: 'R-OK',
+      deliveryTime: '2024-06-24 10:00:00',
+      signDate: '2024-06-24 12:00:00',
+    },
+  ]
+  const scopes: Dispatch24hScope[] = [
+    { key: 'cfg-v1', vendorCode: 'V1', routeCodeWhitelist: new Set(['R-BLOCKED']) },
+  ]
+  const result = aggregateDispatch24hByScopes({ rows, stationCodes: ['S1'], tz, scopes })
+
+  assert.equal(result.get('cfg-v1')?.total, 1)
+  assert.deepEqual(result.get('cfg-v1')?.drivers[0]?.total, 1)
+})
+
+test('aggregateDispatch24hByScopes：与 aggregateDispatch24hByVendor 逐配置调用结果等价（同一份 rows，含共享路由/独立路由范围混合场景）', () => {
+  const rows: Dispatch24hWaybillRow[] = [
+    { waybillNo: 'E1', courierCode: 'C1', courierVendorCode: 'V1', lastScanSiteCode: 'S1', consigneeRouteCode: 'R-A', deliveryTime: '2024-06-24 10:00:00', signDate: '2024-06-24 12:00:00' },
+    { waybillNo: 'E2', courierCode: 'C2', courierVendorCode: 'V1', lastScanSiteCode: 'S1', consigneeRouteCode: 'R-B', deliveryTime: '2024-06-24 10:00:00' },
+    { waybillNo: 'E3', lastScanSiteCode: 'S1', consigneeRouteCode: 'R-SHARED' },
+    { waybillNo: 'E4', courierCode: 'C3', courierVendorCode: 'V2', lastScanSiteCode: 'S1', consigneeRouteCode: 'R-C', lastProblemDate: '2024-06-24 20:00:00', deliveryTime: '2024-06-24 10:00:00' },
+    { waybillNo: 'E5', courierCode: 'C1', courierVendorCode: 'V3', lastScanSiteCode: 'S1', consigneeRouteCode: 'R-D', deliveryTime: '2024-06-24 10:00:00', signDate: '2024-06-26 09:00:00' },
+  ]
+
+  const configs = [
+    { key: 'cfg-1', vendorCode: 'V1', routeCodes: new Set(['R-A', 'R-B', 'R-SHARED']) },
+    { key: 'cfg-2', vendorCode: 'V2', routeCodes: new Set(['R-SHARED']), routeCodeWhitelist: new Set(['R-C']) },
+    { key: 'cfg-3', vendorCode: 'V3' },
+  ]
+
+  // 旧路径：逐配置各自调用 aggregateDispatch24hByVendor
+  const expected = new Map(
+    configs.map((c) => [
+      c.key,
+      aggregateDispatch24hByVendor({
+        rows,
+        stationCodes: ['S1'],
+        tz,
+        routeCodesByVendor: c.routeCodes ? new Map([[c.vendorCode, c.routeCodes]]) : new Map(),
+        routeCodeWhitelistByVendor: c.routeCodeWhitelist ? new Map([[c.vendorCode, c.routeCodeWhitelist]]) : new Map(),
+      }).get(c.vendorCode),
+    ]),
+  )
+
+  // 新路径：一次遍历
+  const actual = aggregateDispatch24hByScopes({
+    rows,
+    stationCodes: ['S1'],
+    tz,
+    scopes: configs.map((c) => ({ key: c.key, vendorCode: c.vendorCode, routeCodes: c.routeCodes, routeCodeWhitelist: c.routeCodeWhitelist })),
+  })
+
+  for (const c of configs) {
+    const exp = expected.get(c.key)
+    const act = actual.get(c.key)
+    assert.equal(act?.total, exp?.total, `${c.key} total`)
+    assert.equal(act?.met, exp?.met, `${c.key} met`)
+    assert.equal(act?.problemCount, exp?.problemCount, `${c.key} problemCount`)
+    assert.equal(act?.neverSignedCount, exp?.neverSignedCount, `${c.key} neverSignedCount`)
+    assert.equal(act?.lateSignedCount, exp?.lateSignedCount, `${c.key} lateSignedCount`)
+    assert.deepEqual(
+      act?.drivers.map((d) => ({ courierCode: d.courierCode, total: d.total, met: d.met })),
+      exp?.drivers.map((d) => ({ courierCode: d.courierCode, total: d.total, met: d.met })),
+      `${c.key} drivers`,
+    )
+  }
 })

@@ -2,10 +2,7 @@ import { requestImileApi } from './client'
 import { buildImilePortalHeaders, IMILE_OC_INTERCEPT_PORTAL } from './portal'
 import { envFirstOr, normalizeImileToken } from './shared'
 import { resolveRegionTz } from './ausTimezone'
-import {
-  listStationDayWaybillRows,
-  syncStationDayWaybillsIncremental,
-} from './stationDayWaybillSync'
+import { syncStationDayWaybillsIncremental } from './stationDayWaybillSync'
 
 const DEFAULT_RETURN_WARNING_URL =
   'https://oc.imile.com/saastms/v1/report/stock/daWaybillInventory'
@@ -42,8 +39,8 @@ export type DriverReturnRow = {
 type ApiError = { ok: false; status: number; message: string; rawText?: string }
 
 /**
- * 24小时派签率运单查询：增量同步站点日缓存后读库。
- * 已达标 / 已超 24H 窗口的单号不会再次 searchWaybill。
+ * 24小时派签率运单查询：增量同步站点日缓存，直接复用同步结果里已在内存中的全量行。
+ * 已达标 / 已超 24H 窗口的单号不会再次 searchWaybill；同步结果不再需要额外整表 SELECT 一次。
  */
 export async function fetchDriverWaybills(
   token: string,
@@ -58,8 +55,7 @@ export async function fetchDriverWaybills(
     label: '24H派签率运单查询',
   })
   if (!synced.ok) return { ok: false, status: 502, message: synced.message }
-  const rows = await listStationDayWaybillRows(params.stationCode, params.dateStr)
-  return { ok: true, data: rows as DriverWaybillRow[] }
+  return { ok: true, data: synced.rows as DriverWaybillRow[] }
 }
 
 export async function fetchDriverReturnWarning(

@@ -13,7 +13,11 @@ import {
   supplierDisplayName,
 } from '../supplierPushConfigs'
 import { buildScopeMapsFromConfig } from '../vendorAnalysis/supplierScope'
-import { aggregateDispatch24hByVendor, type Dispatch24hWaybillRow } from '../vendorAnalysis/dispatch24hAggregate'
+import {
+  aggregateDispatch24hByScopes,
+  type Dispatch24hScope,
+  type Dispatch24hWaybillRow,
+} from '../vendorAnalysis/dispatch24hAggregate'
 import { lastSortingWorkdayOnOrBefore } from '../imile/sortingWorkday'
 import {
   claimScheduledSlot,
@@ -121,20 +125,28 @@ export async function executeDispatchAlarmPush(params: {
   let pushedCount = 0
   const errors: string[] = []
 
+  // 按配置独立过滤：避免同供应商多区域（不同 routeCode）共用一份聚合结果。
+  // 用 config.id 当 key（而非 vendorCode）一次遍历 rows 拿到全部配置的统计，
+  // 不再对每条配置各自重新扫一遍全量运单——大站点几万条时这是聚合阶段的主要开销。
+  const scopes: Dispatch24hScope[] = []
+  for (const config of configs) {
+    const vendorCode = config.vendorCode.trim()
+    if (!vendorCode) continue
+    const scope = buildScopeMapsFromConfig(config)
+    scopes.push({
+      key: config.id,
+      vendorCode,
+      routeCodes: scope.routeCodesByVendor.get(vendorCode),
+      routeCodeWhitelist: scope.routeCodeWhitelistByVendor.get(vendorCode),
+    })
+  }
+  const statsByConfigId = aggregateDispatch24hByScopes({ rows, stationCodes: [stationCode], tz, scopes })
+
   for (const config of configs) {
     const vendorCode = config.vendorCode.trim()
     if (!vendorCode) continue
 
-    // 按配置独立过滤：避免同供应商多区域（不同 routeCode）共用一份聚合结果
-    const scope = buildScopeMapsFromConfig(config)
-    const statsByVendor = aggregateDispatch24hByVendor({
-      rows,
-      stationCodes: [stationCode],
-      tz,
-      routeCodesByVendor: scope.routeCodesByVendor,
-      routeCodeWhitelistByVendor: scope.routeCodeWhitelistByVendor,
-    })
-    const stat = statsByVendor.get(vendorCode)
+    const stat = statsByConfigId.get(config.id)
     if (!stat || stat.total === 0) continue // 无数据不推送；不 claim，留给下次重新判断
 
     const vendorName = supplierDisplayName(config)

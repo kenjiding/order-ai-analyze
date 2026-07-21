@@ -62,7 +62,23 @@ function resolvePointStatus(signDate: string, lastProblemDate: string): 'complet
   return 'pending'
 }
 
-function toCacheRow(row: typeof schema.driverMapWaybillPoints.$inferSelect): Dispatch24hWaybillRow {
+/** toCacheRow 只读这几列，用 Pick 而非整行 $inferSelect，使 upsert 前的内存行（$inferInsert）也能直接复用，无需为拿一份 Dispatch24hWaybillRow 而回读整表 */
+type CacheableWaybillPoint = Pick<
+  typeof schema.driverMapWaybillPoints.$inferInsert,
+  | 'waybillNo'
+  | 'courierName'
+  | 'courierCode'
+  | 'vendorCode'
+  | 'consigneeRouteCode'
+  | 'lastScanSiteCode'
+  | 'stationCode'
+  | 'deliveryTime'
+  | 'signDate'
+  | 'lastProblemDate'
+  | 'updatedAt'
+>
+
+function toCacheRow(row: CacheableWaybillPoint): Dispatch24hWaybillRow {
   return {
     waybillNo: row.waybillNo,
     courier: row.courierName || undefined,
@@ -73,7 +89,7 @@ function toCacheRow(row: typeof schema.driverMapWaybillPoints.$inferSelect): Dis
     deliveryTime: row.deliveryTime ?? undefined,
     signDate: row.signDate ?? undefined,
     lastProblemDate: row.lastProblemDate ?? undefined,
-    syncedAtMs: row.updatedAt.getTime(),
+    syncedAtMs: row.updatedAt?.getTime() ?? Date.now(),
   }
 }
 
@@ -104,6 +120,8 @@ export type StationDayWaybillSyncResult = {
   fetchedCount: number
   skippedCount: number
   upsertedCount: number
+  /** 本次同步后，该站点该日的全量运单行（刚 upsert 的 + 复用未变的缓存行），供聚合直接使用，避免同步完再整表 SELECT 一次 */
+  rows: Dispatch24hWaybillRow[]
 }
 
 /**
@@ -204,6 +222,19 @@ export async function syncStationDayWaybillsIncremental(input: {
     `[waybill-sync] ${label} station=${stationCode} date=${dataDate} index=${fetched.waybillNos.length} fetched=${fetched.fetchedCount} skipped=${fetched.skippedCount} upserted=${upsertedCount}`,
   )
 
+  // 合并本次 upsert 的新行 + 未变动、复用旧值的缓存行，拼出与「同步后整表 SELECT」等价的全量结果——
+  // 这两部分数据本次调用里都已经在内存中，不需要为拿全量行再回读一次数据库。
+  const rows: Dispatch24hWaybillRow[] = []
+  for (const waybillNo of fetched.waybillNos) {
+    const upserted = rowsByWaybillNo.get(waybillNo)
+    if (upserted) {
+      rows.push(toCacheRow(upserted))
+      continue
+    }
+    const cached = cachedByWaybillNo.get(waybillNo)
+    if (cached) rows.push(cached)
+  }
+
   return {
     ok: true,
     stationCode,
@@ -212,23 +243,6 @@ export async function syncStationDayWaybillsIncremental(input: {
     fetchedCount: fetched.fetchedCount,
     skippedCount: fetched.skippedCount,
     upsertedCount,
+    rows,
   }
-}
-
-/** 从缓存表读出可供 24H 聚合的运单行（含尚无签收的 pending） */
-export async function listStationDayWaybillRows(
-  stationCode: string,
-  dataDate: string,
-): Promise<Dispatch24hWaybillRow[]> {
-  const db = getDb()
-  const rows = await db
-    .select()
-    .from(schema.driverMapWaybillPoints)
-    .where(
-      and(
-        eq(schema.driverMapWaybillPoints.stationCode, stationCode),
-        eq(schema.driverMapWaybillPoints.dataDate, dataDate),
-      ),
-    )
-  return rows.map(toCacheRow)
 }

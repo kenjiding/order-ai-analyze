@@ -117,8 +117,9 @@ const MERCHANT_ABANDON_FEEDBACK_RE =
 const MERCHANT_ABANDON_CLOSED_RE = /退件已销毁/
 const TRANSFER_DESTINATION_RE = /(?:已装箱|完成待转发件)[^。]*目的地【([^】]+)】/
 const BOXED_TRANSFER_RE = /(?:已装箱|完成待转发件)[^。]*目的地【[^】]+】/
-const SORTER_DEVICE_SCAN_RE = /操作员【\s*sorter\s*】/i
+const SORTER_DEVICE_SCAN_RE = /操作[员人]【\s*sorter\s*】/i
 const DEVICE_CODE_RE = /设备编码\[[^\]]+\]/
+const SORTER_CHUTE_ASSIGN_RE = /实际格口号为【[^】]+】/
 const SYD_WAREHOUSE_OPERATOR_RE = /^SYD Warehouse\d+$/i
 const NSYD_W_OPERATOR_RE = /^NSYD W\d+$/i
 const LEADING_HUB_RE = /^【([^】]+)】/
@@ -252,7 +253,13 @@ function isBoxedTransferEvent(content: string): boolean {
 }
 
 function isSorterDeviceScanEvent(content: string): boolean {
-  return SORTER_DEVICE_SCAN_RE.test(content) && DEVICE_CODE_RE.test(content)
+  if (!SORTER_DEVICE_SCAN_RE.test(content)) return false
+  return DEVICE_CODE_RE.test(content) || SORTER_CHUTE_ASSIGN_RE.test(content)
+}
+
+/** sorter 分拣格口扫描事件：展示层用它把「最新责任操作」显示为固定短标签「格口」 */
+export function isSorterChuteAssignmentEvent(content: string): boolean {
+  return SORTER_DEVICE_SCAN_RE.test(content) && SORTER_CHUTE_ASSIGN_RE.test(content)
 }
 
 function isSydneyWarehouseOperator(name: string): boolean {

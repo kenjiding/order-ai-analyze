@@ -158,6 +158,72 @@ export function selectWaybillNosNeedingRefresh(
  * 未派件的单没有司机可归（courierCode 同样为空），只计入供应商总数，不出现在任何司机的明细里。
  * 口径与「供应商数据分析」大盘 / 「24小时派签告警」一致。
  */
+/** 司机维度累加：供 aggregateDispatch24hByVendor / aggregateDispatch24hByScopes 共用，二者除是否额外记 unmetNos 外，司机级累加逻辑完全一致 */
+function accumulateDriverStat(
+  driverMapByKey: Map<string, Map<string, Dispatch24hDriverStat>>,
+  key: string,
+  row: Dispatch24hWaybillRow,
+  consigneeRouteCode: string,
+  courierCode: string,
+  met: boolean,
+  hasProblem: boolean,
+  neverSigned: boolean,
+  lateSigned: boolean,
+  wbNo: string,
+): void {
+  if (!courierCode) return
+  let driverMap = driverMapByKey.get(key)
+  if (!driverMap) {
+    driverMap = new Map()
+    driverMapByKey.set(key, driverMap)
+  }
+  let driverStat = driverMap.get(courierCode)
+  if (!driverStat) {
+    driverStat = {
+      courierCode,
+      courierName: row.courier?.trim() || courierCode,
+      routeCode: consigneeRouteCode,
+      total: 0,
+      met: 0,
+      problemCount: 0,
+      neverSignedCount: 0,
+      lateSignedCount: 0,
+      neverSignedWaybills: [],
+      lateSignedWaybills: [],
+      problemWaybills: [],
+    }
+    driverMap.set(courierCode, driverStat)
+  }
+  driverStat.total += 1
+  if (met) {
+    driverStat.met += 1
+  } else if (wbNo) {
+    const waybill = { waybillNo: wbNo, routeCode: consigneeRouteCode || '未知路由' }
+    if (neverSigned) driverStat.neverSignedWaybills.push(waybill)
+    if (lateSigned) driverStat.lateSignedWaybills.push(waybill)
+  }
+  if (hasProblem) {
+    driverStat.problemCount += 1
+    if (wbNo) driverStat.problemWaybills.push({ waybillNo: wbNo, routeCode: consigneeRouteCode || '未知路由' })
+  }
+  if (neverSigned) driverStat.neverSignedCount += 1
+  if (lateSigned) driverStat.lateSignedCount += 1
+}
+
+/** 把每个 key 下按司机聚出的明细排序、挂回对应 stat.drivers；未达标数从高到低 */
+function finalizeDriverStats(
+  result: Map<string, Dispatch24hVendorStat>,
+  driverMapByKey: Map<string, Map<string, Dispatch24hDriverStat>>,
+): void {
+  for (const [key, driverMap] of driverMapByKey) {
+    const stat = result.get(key)
+    if (!stat) continue
+    stat.drivers = [...driverMap.values()].sort(
+      (a, b) => (b.total - b.met) - (a.total - a.met) || b.total - a.total,
+    )
+  }
+}
+
 export function aggregateDispatch24hByVendor(input: {
   rows: Dispatch24hWaybillRow[]
   stationCodes: string[]
@@ -214,53 +280,105 @@ export function aggregateDispatch24hByVendor(input: {
       if (neverSigned) stat.neverSignedCount += 1
       if (lateSigned) stat.lateSignedCount += 1
 
-      if (!courierCode) continue
-      let driverMap = driverMapByVendor.get(vendorCode)
-      if (!driverMap) {
-        driverMap = new Map()
-        driverMapByVendor.set(vendorCode, driverMap)
-      }
-      let driverStat = driverMap.get(courierCode)
-      if (!driverStat) {
-        driverStat = {
-          courierCode,
-          courierName: row.courier?.trim() || courierCode,
-          routeCode: consigneeRouteCode,
-          total: 0,
-          met: 0,
-          problemCount: 0,
-          neverSignedCount: 0,
-          lateSignedCount: 0,
-          neverSignedWaybills: [],
-          lateSignedWaybills: [],
-          problemWaybills: [],
-        }
-        driverMap.set(courierCode, driverStat)
-      }
-      driverStat.total += 1
-      if (met) {
-        driverStat.met += 1
-      } else if (wbNo) {
-        const waybill = { waybillNo: wbNo, routeCode: consigneeRouteCode || '未知路由' }
-        if (neverSigned) driverStat.neverSignedWaybills.push(waybill)
-        if (lateSigned) driverStat.lateSignedWaybills.push(waybill)
-      }
-      if (hasProblem) {
-        driverStat.problemCount += 1
-        if (wbNo) driverStat.problemWaybills.push({ waybillNo: wbNo, routeCode: consigneeRouteCode || '未知路由' })
-      }
-      if (neverSigned) driverStat.neverSignedCount += 1
-      if (lateSigned) driverStat.lateSignedCount += 1
+      accumulateDriverStat(
+        driverMapByVendor,
+        vendorCode,
+        row,
+        consigneeRouteCode,
+        courierCode,
+        met,
+        hasProblem,
+        neverSigned,
+        lateSigned,
+        wbNo,
+      )
     }
   }
 
-  for (const [vendorCode, driverMap] of driverMapByVendor) {
-    const stat = result.get(vendorCode)
-    if (!stat) continue
-    stat.drivers = [...driverMap.values()].sort(
-      (a, b) => (b.total - b.met) - (a.total - a.met) || b.total - a.total,
-    )
+  finalizeDriverStats(result, driverMapByVendor)
+  return result
+}
+
+export type Dispatch24hScope = {
+  /** 结果 Map 的 key，用配置自己的 id（而非 vendorCode），使同一 vendorCode 的多条配置各自独立累计，互不覆盖 */
+  key: string
+  vendorCode: string
+  /** 路由码纳入名单；undefined/空集 = 不按路由码收窄 */
+  routeCodes?: Set<string>
+  routeCodeWhitelist?: Set<string>
+}
+
+/**
+ * 按预先给定的多个独立范围一次遍历 rows 完成聚合，每个 scope 各自累计一份统计——
+ * 供「同一批运单要按 N 个供应商推送配置（可能同 vendorCode 不同 routeCode 范围）分别出结果」的场景使用
+ * （24H 派签逐配置推送），避免每个配置都重新扫一遍全量 rows。
+ *
+ * 与 aggregateDispatch24hByVendor 的区别：后者按行动态发现 vendorCode（「供应商数据分析」要看全量供应商口径），
+ * 这里 vendorCode 由调用方在 scopes 里显式给定，不做动态发现，且不需要 unmetNos（调用方只用 total/met/problemCount/drivers），
+ * 故不构建该字段。
+ */
+export function aggregateDispatch24hByScopes(input: {
+  rows: Dispatch24hWaybillRow[]
+  stationCodes: string[]
+  tz: AusTz
+  scopes: Dispatch24hScope[]
+}): Map<string, Dispatch24hVendorStat> {
+  const { rows, stationCodes, tz, scopes } = input
+  const stationSet = new Set(stationCodes.map((s) => s.trim()).filter(Boolean))
+  const inStation = (code: string | undefined) => stationSet.size === 0 || stationSet.has(norm(code))
+
+  const result = new Map<string, Dispatch24hVendorStat>()
+  const driverMapByKey = new Map<string, Map<string, Dispatch24hDriverStat>>()
+
+  for (const row of rows) {
+    if (!inStation(row.lastScanSiteCode)) continue
+    const consigneeRouteCode = norm(row.consigneeRouteCode)
+    const explicitVendorCode = norm(row.courierVendorCode)
+    const met = isDispatch24hMet(row, tz)
+    const hasProblem = isDispatch24hProblem(row)
+    const neverSigned = !met && !row.signDate
+    const lateSigned = !met && Boolean(row.signDate)
+    const wbNo = row.waybillNo ?? ''
+    const courierCode = norm(row.courierCode)
+
+    for (const scope of scopes) {
+      // 归属判定：有 explicit vendorCode 时必须精确等于该 scope；否则按 routeCode 兜底，且必须配置了 routeCodes 才能兜底
+      if (explicitVendorCode) {
+        if (explicitVendorCode !== scope.vendorCode) continue
+      } else if (!scope.routeCodes?.has(consigneeRouteCode)) {
+        continue
+      }
+      // 路由码纳入名单收窄（explicit 分支在此生效；fallback 分支上面已确认命中，这里恒真，保留是为了和
+      // isRouteCodeAllowed 语义保持单一实现来源，避免以后各写各的走偏）
+      if (scope.routeCodes && !scope.routeCodes.has(consigneeRouteCode)) continue
+      if (scope.routeCodeWhitelist?.has(consigneeRouteCode)) continue
+
+      let stat = result.get(scope.key)
+      if (!stat) {
+        stat = { total: 0, met: 0, problemCount: 0, neverSignedCount: 0, lateSignedCount: 0, unmetNos: [], drivers: [] }
+        result.set(scope.key, stat)
+      }
+      stat.total += 1
+      if (met) stat.met += 1
+      if (hasProblem) stat.problemCount += 1
+      if (neverSigned) stat.neverSignedCount += 1
+      if (lateSigned) stat.lateSignedCount += 1
+
+      accumulateDriverStat(
+        driverMapByKey,
+        scope.key,
+        row,
+        consigneeRouteCode,
+        courierCode,
+        met,
+        hasProblem,
+        neverSigned,
+        lateSigned,
+        wbNo,
+      )
+    }
   }
 
+  finalizeDriverStats(result, driverMapByKey)
   return result
 }
