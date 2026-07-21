@@ -3,7 +3,6 @@ import {
   AlertTriangle,
   Building2,
   ClipboardCheck,
-  MapPin,
   Package,
   Route,
   ShieldAlert,
@@ -11,6 +10,7 @@ import {
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
 import { DrawerCloseButton } from '../../../components/Drawer/DrawerCloseButton'
 import { useAppSettings } from '../../../context/AppSettingsContext'
+import { useGlobalFilterStore } from '../../../stores/globalFilterStore'
 import { showToast } from '../../../utils/toast'
 import {
   getClosureVendors,
@@ -50,12 +50,7 @@ const TRACK_TYPE_TAG: Record<string, { color: string; label: string }> = {
   Delivery: { color: 'success', label: '派送中' },
 }
 
-type ClosureVendorMemoryCache = {
-  vendors: ClosureVendorOption[]
-  defaultStationCode: string
-}
-
-let closureVendorMemoryCache: ClosureVendorMemoryCache | null = null
+let closureVendorMemoryCache: ClosureVendorOption[] | null = null
 
 const TRACK_DRIVER_ID_RE = /\bID\s*[:：]\s*(D[0-9A-Za-z-]+)/gi
 
@@ -223,10 +218,10 @@ type Props = {
 
 export function OrderAnalysisDetailDrawer({ row, onClose }: Props) {
   const { imileToken } = useAppSettings()
+  const stationCode = useGlobalFilterStore((state) => state.selectedStations[0] ?? '')
 
   const [closureTypeKey, setClosureTypeKey] = useState<ClosureExceptionTypeKey | ''>('')
   const [closureRemark, setClosureRemark] = useState('')
-  const [stationCode, setStationCode] = useState('')
   const [vendorOptions, setVendorOptions] = useState<ClosureVendorOption[]>([])
   const [selectedVendorKey, setSelectedVendorKey] = useState('')
   const [detectedDriverId, setDetectedDriverId] = useState('')
@@ -249,7 +244,6 @@ export function OrderAnalysisDetailDrawer({ row, onClose }: Props) {
     if (!row) {
       setClosureTypeKey('')
       setClosureRemark('')
-      setStationCode('')
       setVendorOptions([])
       setSelectedVendorKey('')
       setDetectedDriverId('')
@@ -274,23 +268,21 @@ export function OrderAnalysisDetailDrawer({ row, onClose }: Props) {
     if (!row || !token) return
 
     if (closureVendorMemoryCache) {
-      setVendorOptions(closureVendorMemoryCache.vendors)
-      if (!stationCode.trim()) setStationCode(closureVendorMemoryCache.defaultStationCode || '')
+      setVendorOptions(closureVendorMemoryCache)
       return
     }
 
     setIsLoadingVendors(true)
     try {
-      const { vendors, defaultStationCode } = await getClosureVendors({ imileToken: token })
-      closureVendorMemoryCache = { vendors, defaultStationCode }
+      const { vendors } = await getClosureVendors({ imileToken: token })
+      closureVendorMemoryCache = vendors
       setVendorOptions(vendors)
-      if (!stationCode.trim()) setStationCode(defaultStationCode || '')
     } catch (e) {
       showToast((e as Error).message || '供应商列表加载失败', 'error')
     } finally {
       setIsLoadingVendors(false)
     }
-  }, [row, imileToken, stationCode])
+  }, [row, imileToken])
 
   useEffect(() => {
     if (!row) return
@@ -319,7 +311,7 @@ export function OrderAnalysisDetailDrawer({ row, onClose }: Props) {
           if (exists) return prev
           const next = [...prev, { key: result.vendorCode, value: result.vendorName, label: null }]
           if (closureVendorMemoryCache) {
-            closureVendorMemoryCache = { ...closureVendorMemoryCache, vendors: next }
+            closureVendorMemoryCache = next
           }
           return next
         })
@@ -586,15 +578,6 @@ export function OrderAnalysisDetailDrawer({ row, onClose }: Props) {
                 />
                 <div className="px-5 py-4">
                   <Form layout="vertical" colon={false}>
-                    <Form.Item label="站点编码" className="mb-3">
-                      <Input
-                        value={stationCode}
-                        onChange={(e) => setStationCode(e.target.value.trim())}
-                        placeholder="例如：S210372901"
-                        prefix={<MapPin className="h-3.5 w-3.5 text-slate-400" aria-hidden />}
-                      />
-                    </Form.Item>
-
                     <Form.Item label="派送员 ID" className="mb-3">
                       <Input
                         value={detectedDriverId}
@@ -613,16 +596,25 @@ export function OrderAnalysisDetailDrawer({ row, onClose }: Props) {
                       <Button
                         block
                         type="default"
-                        disabled={!detectedDriverId || !stationCode || isResolvingVendor}
+                        disabled={!detectedDriverId || !stationCode.trim() || isResolvingVendor}
                         loading={isResolvingVendor}
-                        onClick={() =>
-                          detectedDriverId ? void resolveVendorByDriver(detectedDriverId, stationCode) : undefined
-                        }
+                        onClick={() => {
+                          if (!detectedDriverId) return
+                          const nextStationCode = stationCode.trim()
+                          if (!nextStationCode) {
+                            showToast('请先在右上角选择责任站点', 'error')
+                            return
+                          }
+                          void resolveVendorByDriver(detectedDriverId, nextStationCode)
+                        }}
                       >
                         识别供应商
                       </Button>
                     </Form.Item>
                   </Form>
+                  {!stationCode.trim() ? (
+                    <p className="mt-3 text-xs text-amber-600">请先在右上角选择责任站点，再识别供应商。</p>
+                  ) : null}
                 </div>
               </section>
             </div>
