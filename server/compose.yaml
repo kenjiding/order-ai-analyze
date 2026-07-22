@@ -3,6 +3,8 @@ services:
     image: docker.io/library/postgres:16-alpine
     container_name: warehouse-postgres
     restart: unless-stopped
+    mem_limit: 4g
+    command: postgres -c shared_buffers=1GB -c effective_cache_size=3GB
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-warehouse}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-warehouse}
@@ -24,6 +26,7 @@ services:
     image: warehouse-server:latest
     container_name: warehouse-server
     restart: unless-stopped
+    mem_limit: 8g
     depends_on:
       postgres:
         condition: service_healthy
@@ -37,7 +40,7 @@ services:
       HOST: 0.0.0.0
       DATABASE_URL: postgresql://${POSTGRES_USER:-warehouse}:${POSTGRES_PASSWORD:-warehouse}@postgres:5432/${POSTGRES_DB:-warehouse}
       JOB_ARTIFACT_DIR: /data/job-artifacts
-      # 宿主机内存有限且无 swap：给堆内存设软上限，命中时是可控的 JS 堆溢出崩溃（有日志/堆栈），
+      # 与 mem_limit 分层：堆内存设软上限，命中时是可控的 JS 堆溢出崩溃（有日志/堆栈），
       # 而不是被内核 OOM killer 无预警地强杀整个进程、殃及同机其它容器
       NODE_OPTIONS: --max-old-space-size=1536
     healthcheck:
@@ -56,6 +59,7 @@ services:
     image: warehouse-server:latest
     container_name: warehouse-worker
     restart: unless-stopped
+    mem_limit: 8g
     depends_on:
       postgres:
         condition: service_healthy
@@ -67,7 +71,7 @@ services:
       NODE_ENV: production
       DATABASE_URL: postgresql://${POSTGRES_USER:-warehouse}:${POSTGRES_PASSWORD:-warehouse}@postgres:5432/${POSTGRES_DB:-warehouse}
       JOB_ARTIFACT_DIR: /data/job-artifacts
-      NODE_OPTIONS: --max-old-space-size=1536
+      NODE_OPTIONS: --max-old-space-size=3072
     command: ['sh', '-c', 'pnpm worker:start']
     volumes:
       - job_artifacts:/data/job-artifacts

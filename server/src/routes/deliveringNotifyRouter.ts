@@ -135,7 +135,7 @@ deliveringNotifyRouter.post('/push', async (req: AuthenticatedRequest, res: Resp
     }
 
     const vendorName = supplierDisplayName(config)
-    const card = buildDeliveringNotifyCard({ vendorName, stationCode, date: dateStr, couriers })
+    const card = buildDeliveringNotifyCard({ vendorName, stationCode, date: dateStr, tz, couriers })
 
     try {
       const webhookHref = parseSafeWebhookUrl(config.webhookUrl).href

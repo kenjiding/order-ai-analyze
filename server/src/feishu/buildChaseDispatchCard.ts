@@ -1,4 +1,5 @@
 import type { VendorStagnationSummary } from '../imile/chaseDispatchAggregate'
+import { tzDisplayName, type AusTz } from '../imile/ausTimezone'
 
 type CardEl = Record<string, unknown>
 type MarkColor = 'red' | 'orange' | 'green' | 'grey' | 'blue'
@@ -39,12 +40,14 @@ export function buildChaseDispatchCard(params: {
   vendorName: string
   baseDate: string
   pushTime: string
+  /** 计算 baseDate/pushTime 所用的账号时区，用于卡片上的时区标签 */
+  tz: AusTz
   summary: VendorStagnationSummary
   pushDescription?: string | null
   /** 无登录落地页：查看并复制运单号 */
   detailUrl?: string | null
 }): Record<string, unknown> {
-  const { vendorName, baseDate, pushTime, summary, pushDescription, detailUrl } = params
+  const { vendorName, baseDate, pushTime, tz, summary, pushDescription, detailUrl } = params
   const { totalStagnant, buckets } = summary
   const elements: CardEl[] = []
 
@@ -98,7 +101,7 @@ export function buildChaseDispatchCard(params: {
   }
 
   elements.push(hr())
-  elements.push(note(`${baseDate} ${pushTime} · Long time - No return warehouse or Overdue Deliveries · iMile Warehouse Management System`))
+  elements.push(note(`${baseDate} ${pushTime} (${tzDisplayName(tz)}) · Long time - No return warehouse or Overdue Deliveries · iMile Warehouse Management System`))
 
   const isUrgent = totalStagnant > 0
   return {

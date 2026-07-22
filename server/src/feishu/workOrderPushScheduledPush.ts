@@ -114,6 +114,7 @@ export async function executeWorkOrderPush(params: {
   endTime: string
   pushTime: string
   baseDate: string
+  tz: AusTz
   configs: FleetSupplierPushConfig[]
   label: string
   /**
@@ -122,7 +123,7 @@ export async function executeWorkOrderPush(params: {
    */
   perConfigDedupe?: { jobKeyPrefix: string; slotKey: string }
 }): Promise<WorkOrderPushResult | { error: string }> {
-  const { token, startTime, endTime, pushTime, baseDate, configs, label, perConfigDedupe } = params
+  const { token, startTime, endTime, pushTime, baseDate, tz, configs, label, perConfigDedupe } = params
 
   const ticketsRes = await fetchUnprocessedTickets(token, { startTime, endTime })
   if (!ticketsRes.ok) {
@@ -175,6 +176,7 @@ export async function executeWorkOrderPush(params: {
         vendorName,
         baseDate,
         pushTime,
+        tz,
         summary,
         pushDescription: config.pushDescription,
       })
@@ -267,6 +269,7 @@ async function runOneScheduledPush(schedule: WorkOrderPushSchedule, regionCode: 
       endTime,
       pushTime: timeHHmm,
       baseDate: dateStr,
+      tz,
       configs,
       label,
       perConfigDedupe: { jobKeyPrefix, slotKey },

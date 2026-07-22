@@ -1,4 +1,4 @@
-import { iMileStrToMs } from '../imile/ausTimezone'
+import { iMileStrToMs, localDateTimeInTz, tzDisplayName, type AusTz } from '../imile/ausTimezone'
 import type { WorkOrderPushVendorSummary } from '../vendorAnalysis/workOrderPushAggregate'
 
 type CardEl = Record<string, unknown>
@@ -51,6 +51,14 @@ function isOverdue(expectHandleTime: string, nowMs: number): boolean {
   return Number.isFinite(ms) && ms < nowMs
 }
 
+/** iMile 返回的 expectHandleTime 是墨尔本本地时间字符串，转换到账号时区展示，避免跨州账号误读 */
+function formatDeadline(expectHandleTime: string, tz: AusTz): string {
+  if (!expectHandleTime) return 'Not set'
+  const ms = iMileStrToMs(expectHandleTime)
+  if (!Number.isFinite(ms)) return expectHandleTime
+  return `${localDateTimeInTz(ms, tz)} (${tzDisplayName(tz)})`
+}
+
 /**
  * 构建工单推送飞书卡片（webhook interactive card v1）。一家供应商一张卡片，
  * 只在该供应商有未处理工单时才会构建/推送（totalCount 恒 > 0，无“无异常”态）。
@@ -59,11 +67,13 @@ export function buildWorkOrderPushCard(params: {
   vendorName: string
   baseDate: string
   pushTime: string
+  /** 计算 baseDate/pushTime 所用的账号时区，也用于 Deadline 展示换算 */
+  tz: AusTz
   summary: WorkOrderPushVendorSummary
   pushDescription?: string | null
   nowMs?: number
 }): Record<string, unknown> {
-  const { vendorName, baseDate, pushTime, summary, pushDescription } = params
+  const { vendorName, baseDate, pushTime, tz, summary, pushDescription } = params
   const nowMs = params.nowMs ?? Date.now()
   const { totalCount, normalCount, complaintCount, arbitrationCount, tickets } = summary
   const elements: CardEl[] = []
@@ -103,7 +113,7 @@ export function buildWorkOrderPushCard(params: {
         const shown = group.slice(0, MAX_TICKET_LINES)
         const lines = shown.map((t) => {
           const overdue = isOverdue(t.expectHandleTime, nowMs)
-          const deadlineValue = t.expectHandleTime || 'Not set'
+          const deadlineValue = formatDeadline(t.expectHandleTime, tz)
           const deadline = colored(deadlineValue, overdue ? 'red' : 'grey')
           return `· ${t.orderCode || '(no ticket no.)'} **Waybill** ${t.waybillNo} · **Deadline** ${deadline}`
         })
@@ -118,7 +128,7 @@ export function buildWorkOrderPushCard(params: {
   elements.push(hr())
   elements.push(div(colored('⚠️ Overdue tickets will incur penalty/compensation fees. Please handle immediately.', 'red')))
   elements.push(openUrlAction(PCS_TICKET_WORKBENCH_URL, 'Click to Resolve Tickets'))
-  elements.push(note(`${baseDate} ${pushTime} · Ticket push · iMile Warehouse Management System`))
+  elements.push(note(`${baseDate} ${pushTime} (${tzDisplayName(tz)}) · Ticket push · iMile Warehouse Management System`))
 
   return {
     config: { wide_screen_mode: true },

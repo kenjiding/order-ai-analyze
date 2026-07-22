@@ -106,6 +106,7 @@ export async function executeChaseDispatchPush(params: {
   stationCode: string
   baseDate: string
   pushTime: string
+  tz: AusTz
   buckets: StagnationBucket[]
   configs: FleetSupplierPushConfig[]
   label: string
@@ -115,7 +116,7 @@ export async function executeChaseDispatchPush(params: {
    */
   perConfigDedupe?: { jobKeyPrefix: string; slotKey: string }
 }): Promise<ChaseDispatchPushResult | { error: string }> {
-  const { token, stationCode, baseDate, pushTime, buckets, configs, label, perConfigDedupe } = params
+  const { token, stationCode, baseDate, pushTime, tz, buckets, configs, label, perConfigDedupe } = params
 
   // 每个滞留区间发起一次 daWaybillInventory 查询
   const bucketResults: BucketResult[] = []
@@ -211,6 +212,7 @@ export async function executeChaseDispatchPush(params: {
         vendorName,
         baseDate,
         pushTime,
+        tz,
         summary,
         pushDescription: config.pushDescription,
         detailUrl: share?.url ?? null,
@@ -321,6 +323,7 @@ async function runOneScheduledPush(schedule: ChaseDispatchSchedule, regionCode: 
       stationCode,
       baseDate: dateStr,
       pushTime: timeHHmm,
+      tz,
       buckets,
       configs,
       label,

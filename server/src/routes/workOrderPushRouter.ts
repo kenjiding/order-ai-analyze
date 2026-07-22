@@ -212,6 +212,7 @@ workOrderPushRouter.post('/push-now', async (req: AuthenticatedRequest, res: Res
     endTime,
     pushTime,
     baseDate,
+    tz,
     configs,
     label: '工单推送立即推送',
   })

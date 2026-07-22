@@ -101,6 +101,21 @@ export function localDateInTz(utcMs: number, tz: AusTz): string {
   }).format(new Date(utcMs))
 }
 
+/** 某 UTC 时刻在指定时区的本地日期时间 'YYYY-MM-DD HH:mm' */
+export function localDateTimeInTz(utcMs: number, tz: AusTz): string {
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: tz,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  }).formatToParts(new Date(utcMs))
+  const g = (t: string) => parts.find((p) => p.type === t)?.value ?? ''
+  return `${g('year')}-${g('month')}-${g('day')} ${g('hour')}:${g('minute')}`
+}
+
 /**
  * 以某 UTC 时刻在 targetTz 的本地日期为基准，加 addDays 天后的 hh:mm:ss（targetTz 本地）对应的 UTC 毫秒。
  * 用中午做加天探针，避开 DST 边界歧义。对齐前端 `deliveryLocal.add(n,'day').hour(h)...valueOf()`。

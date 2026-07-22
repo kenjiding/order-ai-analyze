@@ -211,6 +211,7 @@ export async function executeExitAlarmPush(params: {
         stationCode,
         date,
         pushTime,
+        tz,
         zoneBreakdown: stat.zoneBreakdown,
         totalPending,
         totalWaybills: stat.totalWaybills,

@@ -311,6 +311,7 @@ chaseDispatchRouter.post('/schedules/:id/push-now', async (req: AuthenticatedReq
       stationCode,
       baseDate,
       pushTime,
+      tz,
       buckets,
       configs,
       label: `[chase-dispatch/push-now schedule=${schedule.id}]`,

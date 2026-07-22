@@ -1,3 +1,5 @@
+import { tzDisplayName, type AusTz } from '../imile/ausTimezone'
+
 type CardEl = Record<string, unknown>
 type MarkColor = 'red' | 'orange' | 'green' | 'grey' | 'blue'
 type BgStyle = 'default' | 'grey' | 'red' | 'orange' | 'green' | 'blue'
@@ -77,6 +79,8 @@ export function buildExitAlarmCard(params: {
   stationCode: string
   date: string
   pushTime: string
+  /** 计算 date/pushTime 所用的账号时区，用于卡片上的时区标签 */
+  tz: AusTz
   zoneBreakdown: Record<string, ZoneStats>
   totalPending: number
   totalWaybills: number
@@ -87,6 +91,7 @@ export function buildExitAlarmCard(params: {
     stationCode,
     date,
     pushTime,
+    tz,
     zoneBreakdown,
     totalPending,
     totalWaybills,
@@ -103,7 +108,7 @@ export function buildExitAlarmCard(params: {
     div(
       [
         `📦 **Responsible vendor: ${vendorName}**`,
-        colored(`Station: ${stationCode} · ${date} ${pushTime} (Adelaide)`, 'grey'),
+        colored(`Station: ${stationCode} · ${date} ${pushTime} (${tzDisplayName(tz)})`, 'grey'),
         pushDescription ? colored(pushDescription, 'grey') : '',
       ]
         .filter(Boolean)

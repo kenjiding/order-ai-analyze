@@ -1,3 +1,5 @@
+import { tzDisplayName, type AusTz } from '../imile/ausTimezone'
+
 type CardEl = Record<string, unknown>
 
 function div(content: string): CardEl {
@@ -27,9 +29,11 @@ export function buildDeliveringNotifyCard(params: {
   vendorName: string
   stationCode: string
   date: string
+  /** 计算 date 所用的账号时区，用于卡片上的时区标签 */
+  tz: AusTz
   couriers: DeliveringNotifyCourierGroup[]
 }): Record<string, unknown> {
-  const { vendorName, stationCode, date, couriers } = params
+  const { vendorName, stationCode, date, tz, couriers } = params
   const totalWaybills = couriers.reduce((sum, c) => sum + c.waybillNos.length, 0)
   const parcelWord = (n: number) => (n === 1 ? 'parcel' : 'parcels')
   const elements: CardEl[] = []
@@ -39,7 +43,7 @@ export function buildDeliveringNotifyCard(params: {
       [
         `📦 **Dispatched parcels left at the front desk: ${vendorName}**`,
         colored('Status: Has dispatched · Not yet collected from the warehouse front desk', 'grey'),
-        colored(`Station: ${stationCode} · ${date} · ${totalWaybills} ${parcelWord(totalWaybills)} total`, 'grey'),
+        colored(`Station: ${stationCode} · ${date} (${tzDisplayName(tz)}) · ${totalWaybills} ${parcelWord(totalWaybills)} total`, 'grey'),
       ].join('\n'),
     ),
   )
@@ -58,7 +62,7 @@ export function buildDeliveringNotifyCard(params: {
   }
 
   elements.push(hr())
-  elements.push(note(`${date} · Dispatched parcel reminder · Treated as lost stock if not collected promptly`))
+  elements.push(note(`${date} (${tzDisplayName(tz)}) · Dispatched parcel reminder · Treated as lost stock if not collected promptly`))
 
   return {
     config: { wide_screen_mode: true },
