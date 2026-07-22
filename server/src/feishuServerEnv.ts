@@ -1,3 +1,5 @@
+import { fetchFeishuJson } from './feishu/feishuHttpClient'
+
 /** @see https://open.feishu.cn/document/ukTMukTMukTM/ukDNz4SO0MjL5QzM/auth-v3/auth/tenant_access_token_internal */
 const FEISHU_TENANT_TOKEN_INTERNAL_URL = 'https://open.feishu.cn/open-apis/auth/v3/tenant_access_token/internal'
 
@@ -21,19 +23,16 @@ let tenantTokenCache: TokenCache | null = null
 let tenantTokenInflight: Promise<string> | null = null
 
 async function fetchTenantAccessTokenFromApp(appId: string, appSecret: string): Promise<{ token: string; expireSec: number }> {
-  const upstream = await fetch(FEISHU_TENANT_TOKEN_INTERNAL_URL, {
+  const result = await fetchFeishuJson(FEISHU_TENANT_TOKEN_INTERNAL_URL, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ app_id: appId, app_secret: appSecret }),
   })
-
-  let body: unknown
-  try {
-    body = await upstream.json()
-  } catch {
-    body = await upstream.text().catch(() => '')
+  if (!result.ok) {
+    throw new Error(result.error)
   }
 
+  const body = result.json
   const obj = typeof body === 'object' && body !== null ? (body as Record<string, unknown>) : null
   const code = obj && typeof obj.code === 'number' ? obj.code : NaN
   if (code !== 0) {

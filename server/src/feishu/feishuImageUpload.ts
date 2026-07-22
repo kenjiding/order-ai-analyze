@@ -3,6 +3,7 @@ import {
   inferFeishuImagePartMeta,
   splitDataUrlBase64,
 } from '../feishuWebhookHelpers'
+import { fetchFeishuJson } from './feishuHttpClient'
 
 export type FeishuImageUploadResult =
   | { ok: true; imageKey: string; feishu: unknown }
@@ -36,19 +37,16 @@ export async function uploadFeishuImageFromBase64(
   form.append('image_type', 'message')
   form.append('image', new Blob([new Uint8Array(buf)], { type: imageContentType }), imageFilename)
 
-  let uploadJson: unknown
-  let uploadHttpStatus = 0
-  try {
-    const up = await fetch(FEISHU_UPLOAD_IMAGES_URL, {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${tenantToken}` },
-      body: form,
-    })
-    uploadHttpStatus = up.status
-    uploadJson = await up.json().catch(async () => await up.text().catch(() => ''))
-  } catch {
-    return { ok: false, error: '无法连接飞书图片上传接口' }
+  const uploadResult = await fetchFeishuJson(FEISHU_UPLOAD_IMAGES_URL, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${tenantToken}` },
+    body: form,
+  })
+  if (!uploadResult.ok) {
+    return { ok: false, error: uploadResult.error }
   }
+  const uploadJson = uploadResult.json
+  const uploadHttpStatus = uploadResult.httpStatus
 
   const uploadObj =
     typeof uploadJson === 'object' && uploadJson !== null ? (uploadJson as Record<string, unknown>) : null

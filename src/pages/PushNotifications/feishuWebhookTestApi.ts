@@ -1,6 +1,31 @@
 import { backendFetch } from '../../api/httpClient'
 import type { PushApiScope } from '../../permissions/pushNotificationAccess'
 
+/** 飞书推送链路服务端自带超时+重试（单跳约 15s×3 次），客户端超时留够余量，避免服务端还在重试时前端先放弃 */
+const FEISHU_PUSH_TIMEOUT_MS = 60_000
+
+/** 给飞书推送请求加超时：避免服务端/飞书接口卡住时前端无限等待、按钮一直转圈 */
+async function backendFetchWithTimeout(path: string, options: RequestInit = {}): Promise<Response> {
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), FEISHU_PUSH_TIMEOUT_MS)
+  try {
+    return await backendFetch(path, { ...options, signal: controller.signal })
+  } finally {
+    clearTimeout(timer)
+  }
+}
+
+function isTimeoutError(err: unknown): boolean {
+  return err instanceof Error && err.name === 'AbortError'
+}
+
+function backendUnreachableMessage(path: string, err: unknown): string {
+  if (isTimeoutError(err)) {
+    return `请求超时（${FEISHU_PUSH_TIMEOUT_MS / 1000}s），飞书接口可能响应缓慢，请稍后重试。`
+  }
+  return `无法访问后端 (${path})。请确认已运行 server（如 pnpm dev:server）或检查 VITE_API_BASE。`
+}
+
 export type FeishuPushTestPayload = {
   pushScope: PushApiScope
   webhookUrl: string
@@ -47,7 +72,7 @@ export type FeishuPushImageFail = {
 export async function postFeishuPushTest(payload: FeishuPushTestPayload): Promise<FeishuPushTestOk | FeishuPushTestFail> {
   const path = '/api/feishu-webhook/test'
   try {
-    const res = await backendFetch(path, {
+    const res = await backendFetchWithTimeout(path, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
@@ -71,8 +96,8 @@ export async function postFeishuPushTest(payload: FeishuPushTestPayload): Promis
       }
     }
     return { ok: false, httpStatus: res.status, error: '无法解析服务端响应。' }
-  } catch {
-    return { ok: false, error: `无法访问后端 (${path})。请确认已运行 server（如 pnpm dev:server）或检查 VITE_API_BASE。` }
+  } catch (err) {
+    return { ok: false, error: backendUnreachableMessage(path, err) }
   }
 }
 
@@ -84,7 +109,7 @@ export async function postFeishuPushText(payload: {
 }): Promise<FeishuPushTestOk | FeishuPushTestFail> {
   const path = '/api/feishu-webhook/push-text'
   try {
-    const res = await backendFetch(path, {
+    const res = await backendFetchWithTimeout(path, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -113,8 +138,8 @@ export async function postFeishuPushText(payload: {
       }
     }
     return { ok: false, httpStatus: res.status, error: '无法解析服务端响应。' }
-  } catch {
-    return { ok: false, error: `无法访问后端 (${path})。请确认已运行 server 或检查 VITE_API_BASE。` }
+  } catch (err) {
+    return { ok: false, error: backendUnreachableMessage(path, err) }
   }
 }
 
@@ -126,7 +151,7 @@ export async function postFeishuPushCard(payload: {
 }): Promise<FeishuPushTestOk | FeishuPushTestFail> {
   const path = '/api/feishu-webhook/push-card'
   try {
-    const res = await backendFetch(path, {
+    const res = await backendFetchWithTimeout(path, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -150,8 +175,8 @@ export async function postFeishuPushCard(payload: {
       }
     }
     return { ok: false, httpStatus: res.status, error: '无法解析服务端响应。' }
-  } catch {
-    return { ok: false, error: `无法访问后端 (${path})。请确认已运行 server 或检查 VITE_API_BASE。` }
+  } catch (err) {
+    return { ok: false, error: backendUnreachableMessage(path, err) }
   }
 }
 
@@ -164,7 +189,7 @@ export async function postFeishuPushRichMessage(payload: {
 }): Promise<FeishuPushTestOk | FeishuPushTestFail> {
   const path = '/api/feishu-webhook/push-rich-message'
   try {
-    const res = await backendFetch(path, {
+    const res = await backendFetchWithTimeout(path, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -189,8 +214,8 @@ export async function postFeishuPushRichMessage(payload: {
       }
     }
     return { ok: false, httpStatus: res.status, error: '无法解析服务端响应。' }
-  } catch {
-    return { ok: false, error: `无法访问后端 (${path})。请确认已运行 server 或检查 VITE_API_BASE。` }
+  } catch (err) {
+    return { ok: false, error: backendUnreachableMessage(path, err) }
   }
 }
 
@@ -231,7 +256,7 @@ export async function postFeishuPushImage(
 ): Promise<FeishuPushImageOk | FeishuPushImageFail> {
   const path = '/api/feishu-webhook/push-image'
   try {
-    const res = await backendFetch(path, {
+    const res = await backendFetchWithTimeout(path, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -276,11 +301,8 @@ export async function postFeishuPushImage(
       }
     }
     return { ok: false, httpStatus: res.status, error: '无法解析服务端响应。' }
-  } catch {
-    return {
-      ok: false,
-      error: `无法访问后端 (${path})。请确认已运行 server 或检查 VITE_API_BASE。`,
-    }
+  } catch (err) {
+    return { ok: false, error: backendUnreachableMessage(path, err) }
   }
 }
 

@@ -5,6 +5,7 @@ import {
 } from '../sortEfficiencyFeishuAnalysis'
 import { getLatestFeishuPushSnapshot } from './pushSnapshotRepository'
 import { claimScheduledSlot } from '../jobs/scheduledClaim'
+import { fetchFeishuJson } from './feishuHttpClient'
 
 const MAX_SNAPSHOT_AGE_DAYS = 14
 
@@ -16,21 +17,18 @@ function todayDateStrInTz(tz: string): string {
 async function postWebhookJson(
   webhookHref: string,
   payload: Record<string, unknown>,
-): Promise<{ ok: boolean; httpStatus: number }> {
-  const upstream = await fetch(webhookHref, {
+): Promise<{ ok: boolean; httpStatus: number; error?: string }> {
+  const result = await fetchFeishuJson(webhookHref, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload),
   })
-  let feishu: unknown
-  try {
-    feishu = await upstream.json()
-  } catch {
-    feishu = null
+  if (!result.ok) {
+    return { ok: false, httpStatus: 0, error: result.error }
   }
-  const data = typeof feishu === 'object' && feishu !== null ? (feishu as Record<string, unknown>) : {}
-  const ok = upstream.ok && typeof data.code === 'number' && data.code === 0
-  return { ok, httpStatus: upstream.status }
+  const data = typeof result.json === 'object' && result.json !== null ? (result.json as Record<string, unknown>) : {}
+  const ok = result.httpStatus >= 200 && result.httpStatus < 300 && typeof data.code === 'number' && data.code === 0
+  return { ok, httpStatus: result.httpStatus }
 }
 
 function appendSign(payload: Record<string, unknown>, secret: string): void {
@@ -90,7 +88,7 @@ export async function runScheduledFeishuPush(): Promise<void> {
     if (secret) appendSign(payload, secret)
     const result = await postWebhookJson(webhookHref, payload)
     if (!result.ok) {
-      console.error(`[scheduler/feishu] 飞书返回失败 HTTP ${result.httpStatus}`)
+      console.error(`[scheduler/feishu] 飞书返回失败：${result.error ?? `HTTP ${result.httpStatus}`}`)
       return
     }
   }

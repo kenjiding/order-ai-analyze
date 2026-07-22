@@ -17,6 +17,7 @@ import {
 import { buildFleetRichMessageCard } from '../feishu/buildFleetRichMessageCard'
 import { uploadFeishuImageFromBase64 } from '../feishu/feishuImageUpload'
 import { upsertFeishuPushSnapshot } from '../feishu/pushSnapshotRepository'
+import { fetchFeishuJson } from '../feishu/feishuHttpClient'
 import {
   buildOrderExceptionFeishuCard,
   buildOrderExceptionPushStats,
@@ -105,36 +106,27 @@ feishuWebhookTestRouter.post('/test', async (req: AuthenticatedRequest, res: Res
     payload.sign = computeFeishuWebhookSign(secret, timestampSec)
   }
 
-  try {
-    const upstream = await fetch(webhookHref, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
-    })
+  const result = await fetchFeishuJson(webhookHref, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  })
 
-    let feishu: unknown
-    try {
-      feishu = await upstream.json()
-    } catch {
-      feishu = await upstream.text().catch(() => '')
-    }
-
-    const data = typeof feishu === 'object' && feishu !== null ? (feishu as Record<string, unknown>) : {}
-    const code = data.code
-    const codeOk = typeof code === 'number' && code === 0
-    const ok = upstream.ok === true && codeOk
-
-    res.status(ok ? 200 : 502).json({
-      ok,
-      httpStatus: upstream.status,
-      feishu,
-    })
-  } catch {
-    res.status(502).json({
-      ok: false,
-      error: '无法连接飞书 webhook，请检查本机后端是否启动、Webhook 是否正确或稍后重试。',
-    })
+  if (!result.ok) {
+    res.status(502).json({ ok: false, error: result.error })
+    return
   }
+
+  const data = typeof result.json === 'object' && result.json !== null ? (result.json as Record<string, unknown>) : {}
+  const code = data.code
+  const codeOk = typeof code === 'number' && code === 0
+  const ok = result.httpStatus >= 200 && result.httpStatus < 300 && codeOk
+
+  res.status(ok ? 200 : 502).json({
+    ok,
+    httpStatus: result.httpStatus,
+    feishu: result.json,
+  })
 })
 
 type PushTextBody = {
@@ -195,7 +187,7 @@ feishuWebhookTestRouter.post('/push-text', async (req: AuthenticatedRequest, res
       if (!r.ok) {
         res.status(502).json({
           ok: false,
-          error: '飞书 webhook 文案消息发送失败。',
+          error: r.networkError ?? '飞书 webhook 文案消息发送失败。',
           httpStatus: r.httpStatus,
           feishu: r.feishu,
         })
@@ -260,7 +252,7 @@ feishuWebhookTestRouter.post('/push-card', async (req: AuthenticatedRequest, res
     if (!r.ok) {
       res.status(502).json({
         ok: false,
-        error: '飞书 webhook 卡片消息发送失败。',
+        error: r.networkError ?? '飞书 webhook 卡片消息发送失败。',
         httpStatus: r.httpStatus,
         feishu: r.feishu,
       })
@@ -366,7 +358,7 @@ feishuWebhookTestRouter.post('/push-rich-message', async (req: AuthenticatedRequ
         if (!r.ok) {
           res.status(502).json({
             ok: false,
-            error: '飞书 webhook 图片消息发送失败。',
+            error: r.networkError ?? '飞书 webhook 图片消息发送失败。',
             httpStatus: r.httpStatus,
             feishu: r.feishu,
             imageUploadedCount: imageKeys.length,
@@ -390,7 +382,7 @@ feishuWebhookTestRouter.post('/push-rich-message', async (req: AuthenticatedRequ
     if (!r.ok) {
       res.status(502).json({
         ok: false,
-        error: '飞书 webhook 富文本卡片消息发送失败。',
+        error: r.networkError ?? '飞书 webhook 富文本卡片消息发送失败。',
         httpStatus: r.httpStatus,
         feishu: r.feishu,
         imageUploadedCount: imageKeys.length,
@@ -433,23 +425,23 @@ async function appendWebhookSign(payload: Record<string, unknown>, secret: strin
   return timestampSec
 }
 
-async function postWebhookJson(webhookHref: string, payload: Record<string, unknown>): Promise<{ ok: boolean; httpStatus: number; feishu: unknown }> {
-  const upstream = await fetch(webhookHref, {
+async function postWebhookJson(
+  webhookHref: string,
+  payload: Record<string, unknown>,
+): Promise<{ ok: boolean; httpStatus: number; feishu: unknown; networkError?: string }> {
+  const result = await fetchFeishuJson(webhookHref, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload),
   })
-  let feishu: unknown
-  try {
-    feishu = await upstream.json()
-  } catch {
-    feishu = await upstream.text().catch(() => '')
+  if (!result.ok) {
+    return { ok: false, httpStatus: 0, feishu: undefined, networkError: result.error }
   }
-  const data = typeof feishu === 'object' && feishu !== null ? (feishu as Record<string, unknown>) : {}
+  const data = typeof result.json === 'object' && result.json !== null ? (result.json as Record<string, unknown>) : {}
   const code = data.code
   const codeOk = typeof code === 'number' && code === 0
-  const ok = upstream.ok === true && codeOk
-  return { ok, httpStatus: upstream.status, feishu }
+  const ok = result.httpStatus >= 200 && result.httpStatus < 300 && codeOk
+  return { ok, httpStatus: result.httpStatus, feishu: result.json }
 }
 
 feishuWebhookTestRouter.post('/push-image', async (req: AuthenticatedRequest, res: Response) => {
@@ -519,20 +511,17 @@ feishuWebhookTestRouter.post('/push-image', async (req: AuthenticatedRequest, re
   form.append('image_type', 'message')
   form.append('image', new Blob([new Uint8Array(buf)], { type: imageContentType }), imageFilename)
 
-  let uploadJson: unknown
-  let uploadHttpStatus = 0
-  try {
-    const up = await fetch(FEISHU_UPLOAD_IMAGES_URL, {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${tenant}` },
-      body: form,
-    })
-    uploadHttpStatus = up.status
-    uploadJson = await up.json().catch(async () => await up.text().catch(() => ''))
-  } catch {
-    res.status(502).json({ ok: false, error: '无法连接飞书图片上传接口' })
+  const uploadResult = await fetchFeishuJson(FEISHU_UPLOAD_IMAGES_URL, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${tenant}` },
+    body: form,
+  })
+  if (!uploadResult.ok) {
+    res.status(502).json({ ok: false, error: uploadResult.error })
     return
   }
+  const uploadJson = uploadResult.json
+  const uploadHttpStatus = uploadResult.httpStatus
 
   const uploadObj =
     typeof uploadJson === 'object' && uploadJson !== null ? (uploadJson as Record<string, unknown>) : null
@@ -603,7 +592,7 @@ feishuWebhookTestRouter.post('/push-image', async (req: AuthenticatedRequest, re
       if (!headRes.ok) {
         res.status(502).json({
           ok: false,
-          error: '飞书 webhook 文案消息发送失败。',
+          error: headRes.networkError ?? '飞书 webhook 文案消息发送失败。',
           webhookTextHttpStatus: headRes.httpStatus,
           webhookTextFeishu: headRes.feishu,
           aiAnalysisGenerated,
@@ -623,6 +612,7 @@ feishuWebhookTestRouter.post('/push-image', async (req: AuthenticatedRequest, re
     const ok = imgRes.ok
     res.status(ok ? 200 : 502).json({
       ok,
+      error: ok ? undefined : (imgRes.networkError ?? '飞书 webhook 图片消息发送失败。'),
       httpStatus: imgRes.httpStatus,
       feishu: imgRes.feishu,
       imageUploaded: Boolean(imageKey),
@@ -699,7 +689,12 @@ feishuWebhookTestRouter.post('/push-order-exception', async (req: AuthenticatedR
   try {
     const r = await postWebhookJson(webhookHref, payload)
     if (!r.ok) {
-      res.status(502).json({ ok: false, error: '飞书 webhook 卡片消息发送失败。', httpStatus: r.httpStatus, feishu: r.feishu })
+      res.status(502).json({
+        ok: false,
+        error: r.networkError ?? '飞书 webhook 卡片消息发送失败。',
+        httpStatus: r.httpStatus,
+        feishu: r.feishu,
+      })
       return
     }
     res.status(200).json({ ok: true, httpStatus: r.httpStatus, feishu: r.feishu, aiSummaryGenerated: Boolean(aiSummary), aiError })
