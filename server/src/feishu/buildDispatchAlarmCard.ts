@@ -1,4 +1,5 @@
 import type { Dispatch24hDriverStat } from '../vendorAnalysis/dispatch24hAggregate'
+import { tzDisplayName, type AusTz } from '../imile/ausTimezone'
 
 type CardEl = Record<string, unknown>
 type MarkColor = 'red' | 'orange' | 'green' | 'grey' | 'blue'
@@ -73,6 +74,8 @@ export function buildDispatchAlarmCard(params: {
   stationCode: string
   date: string
   pushTime: string
+  /** 计算 date/pushTime 所用的账号时区，用于卡片上的时区标签 */
+  tz: AusTz
   total: number
   met: number
   /** 问题件数：见 aggregateDispatch24hByVendor 的 isDispatch24hProblem 口径 */
@@ -88,6 +91,7 @@ export function buildDispatchAlarmCard(params: {
     stationCode,
     date,
     pushTime,
+    tz,
     total,
     met,
     problemCount,
@@ -107,7 +111,7 @@ export function buildDispatchAlarmCard(params: {
     div(
       [
         `📮 **Responsible vendor: ${vendorName}**`,
-        colored(`Station: ${stationCode} · ${date} ${pushTime} (Adelaide)`, 'grey'),
+        colored(`Station: ${stationCode} · ${date} ${pushTime} (${tzDisplayName(tz)})`, 'grey'),
         pushDescription ? colored(pushDescription, 'grey') : '',
       ]
         .filter(Boolean)

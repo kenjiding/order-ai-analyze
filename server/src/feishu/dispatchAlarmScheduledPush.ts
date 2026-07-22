@@ -183,6 +183,7 @@ export async function executeDispatchAlarmPush(params: {
         stationCode,
         date,
         pushTime,
+        tz,
         total: stat.total,
         met: stat.met,
         problemCount: stat.problemCount,

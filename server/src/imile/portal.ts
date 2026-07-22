@@ -181,6 +181,19 @@ export const IMILE_DS_SAAS_TMS_PORTAL: ImilePortalDefaults = {
   hubcode: 'S210431701',
 }
 
+/**
+ * ds.imile.com 工单查询（ticketQuery）门户默认配置（催派"≥7 天"过滤已有工单运单用）。
+ * resourceCode 为占位值，若实际请求鉴权失败需通过 IMILE_CHASE_DISPATCH_TICKET_RESOURCE_CODE 勘误。
+ */
+export const IMILE_DS_TICKET_PORTAL: ImilePortalDefaults = {
+  resourceCode: 'ticketQuery',
+  sysName: 'DS',
+  sysPortal: 'DS',
+  origin: 'https://ds.imile.com',
+  referer: 'https://ds.imile.com/',
+  hubcode: 'S210431701',
+}
+
 /** ds.imile.com 前台箱号分配列表（assignedList）门户默认配置 */
 export const IMILE_DS_BOX_ASSIGNED_PORTAL: ImilePortalDefaults = {
   resourceCode: 'assignedList',

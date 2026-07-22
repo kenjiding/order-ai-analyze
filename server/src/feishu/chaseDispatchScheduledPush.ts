@@ -20,6 +20,7 @@ import {
   type StagnationBucket,
 } from '../imile/stagnantWaybills'
 import { aggregateVendorStagnation, type BucketResult } from '../imile/chaseDispatchAggregate'
+import { filterWaybillsWithExistingTicket } from '../imile/chaseDispatchTicketCheck'
 import {
   claimScheduledSlot,
   countClaimedSlots,
@@ -130,6 +131,21 @@ export async function executeChaseDispatchPush(params: {
       return { error: `滞留区间 ${bucket} 查询失败: ${res.message}` }
     }
     bucketResults.push({ bucket, rows: res.data })
+  }
+
+  // "≥7 天"已有关联工单（如起诉罚款）的运单视为已处理，飞书推送中不再展示
+  const sevenPlusIndex = bucketResults.findIndex((b) => b.bucket === '7+')
+  if (sevenPlusIndex !== -1) {
+    const sevenPlusRows = bucketResults[sevenPlusIndex].rows
+    const sevenPlusWaybillNos = sevenPlusRows.map((row) => row.waybillNo ?? '').filter(Boolean)
+    const ticketedWaybills = await filterWaybillsWithExistingTicket(token, sevenPlusWaybillNos, stationCode, label)
+    if (ticketedWaybills.size > 0) {
+      console.log(`${label} ≥7 天已有关联工单，过滤 ${ticketedWaybills.size}/${sevenPlusWaybillNos.length} 条`)
+      bucketResults[sevenPlusIndex] = {
+        bucket: '7+',
+        rows: sevenPlusRows.filter((row) => !ticketedWaybills.has((row.waybillNo ?? '').trim())),
+      }
+    }
   }
 
   // 先按启用供应商的 vendorCode 收窄，再收集运单号查 searchWaybill 路由码

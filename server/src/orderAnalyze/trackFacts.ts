@@ -6,6 +6,7 @@ import {
   classifyOperatorForWarehouse,
   findWarehouseProfileByName,
   getWarehouseLossTimeoutDays,
+  isSharedWorkstationOperator,
   EXTERNAL_CARRIER_LOSS_TIMEOUT_DAYS,
 } from './warehouseProfiles'
 
@@ -346,6 +347,10 @@ function isReturnOrInventoryEvent(t: TrackEvent): boolean {
   return t.content.includes('已回到网点') || t.content.includes('已盘点') || t.content.includes('已归班')
 }
 
+function isProblemEvent(t: TrackEvent): boolean {
+  return t.content.includes('登记问题件') || hasTrackType(t, 'problem')
+}
+
 /**
  * 外部承运商将包裹退回仓库的入仓确认事件。
  * 例："【Sydney Center】已收到【Australia Fastway】退回包裹" 或 "已收到退件包裹"。
@@ -354,10 +359,6 @@ function isReturnOrInventoryEvent(t: TrackEvent): boolean {
  */
 function isReturnFromCarrierArrivalEvent(content: string): boolean {
   return (content.includes('已收到') && content.includes('退回包裹')) || content.includes('已收到退件包裹')
-}
-
-function isProblemEvent(t: TrackEvent): boolean {
-  return t.content.includes('登记问题件') || hasTrackType(t, 'problem')
 }
 
 function isWarehouseArrivalEvent(t: TrackEvent): boolean {
@@ -470,6 +471,18 @@ function getTrackResponsibilityPoint(
       time: event.time,
       basis: `正常轨迹外部承运商退件入仓确认责任点（${event.time}）`,
       source: 'track',
+    }
+  }
+
+  if (event.content.includes('已到达')) {
+    const arrivalOperatorName = extractOperatorFromContent(event.content)
+    if (isSharedWorkstationOperator(arrivalOperatorName, profile)) {
+      return {
+        owner: 'in_warehouse',
+        time: event.time,
+        basis: `正常轨迹共享工位账号 ${arrivalOperatorName} 到仓确认责任点（${event.time}）`,
+        source: 'track',
+      }
     }
   }
 
@@ -759,6 +772,7 @@ function findFirstRealScan(events: TrackEvent[], profile: WarehouseProfile | nul
     if (isSorterDeviceScanEvent(event.content)) return event
     if (isReturnFromCarrierArrivalEvent(event.content)) return event
     const op = extractOperatorFromContent(event.content)
+    if (event.content.includes('已到达') && isSharedWorkstationOperator(op, profile)) return event
     if (classifyOperatorForWarehouse(op, profile) !== 'real') continue
     if (
       isBoxedTransferEvent(event.content) ||
@@ -777,6 +791,7 @@ function findLastRealScan(events: TrackEvent[], profile: WarehouseProfile | null
     if (isSorterDeviceScanEvent(event.content)) return event
     if (isReturnFromCarrierArrivalEvent(event.content)) return event
     const op = extractOperatorFromContent(event.content)
+    if (event.content.includes('已到达') && isSharedWorkstationOperator(op, profile)) return event
     if (classifyOperatorForWarehouse(op, profile) !== 'real') continue
     if (
       isBoxedTransferEvent(event.content) ||

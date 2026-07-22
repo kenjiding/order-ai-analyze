@@ -37,6 +37,15 @@ export type WarehouseProfileContext = {
   getConfiguredSystemOperatorNames(): string[]
   getConfiguredNonRealOperatorNames(): string[]
   isConfiguredNonRealOrSystemOperator(name: string): boolean
+  /**
+   * 账号是否匹配「共享工位」正则（如 nonRealOperatorPatterns 里的 `^[A-Z]{2,5}\s+OPS\d+$`，
+   * 命中 `SYDE OPS1` 这类名字）：多名员工共用同一登录账号，无法定位到具体个人，
+   * 但账号本身不是系统/设备自动事件，只按正则判定，不看逐条枚举的 nonRealOperators
+   * （部分仓库把同一批 OPS 账号又重复写进了精确名单，那不代表要排除它们）。
+   * 真正需要排除的已知不可信账号（sorter、System 等）本身不匹配该正则，不受影响，
+   * 它们即便携带「已到达」也不代表包裹真实到仓，因此不适用本判定。
+   */
+  isSharedWorkstationOperator(operatorName: string, profile: WarehouseProfile | null): boolean
 }
 
 const WAREHOUSE_CITY_IDS: readonly WarehouseCityId[] = [
@@ -348,6 +357,23 @@ export function createWarehouseProfileContext(config: WarehouseConfigDto): Wareh
       if (nonRealOperatorPatterns.some((pattern) => pattern.test(name))) return 'non_real'
 
       return profile ? 'real' : 'unknown'
+    },
+    isSharedWorkstationOperator(operatorName: string, profile: WarehouseProfile | null) {
+      const name = operatorName.trim()
+      if (!name) return false
+
+      const systemOperators = [...commonSystemOperators, ...(profile?.systemOperators ?? [])]
+      if (systemOperators.some((operator) => operatorNameEquals(operator, name))) return false
+
+      // 仅按「共享工位」正则判定，不看逐条枚举的 nonRealOperators：
+      // SYDE/SYDN/PER 等仓库把 `XXX OPSn` 既写进了精确名单也命中通用正则（历史遗留的重复配置），
+      // 若在此处也排除精确名单命中，会把这些本该信任的共享工位账号误判掉；
+      // 真正需要排除的具体黑名单账号（sorter、Kuangyi Gao 等）本身就不匹配该正则，不受影响。
+      const nonRealOperatorPatterns = [
+        ...commonNonRealOperatorPatterns,
+        ...(profile?.nonRealOperatorPatterns ?? []),
+      ]
+      return nonRealOperatorPatterns.some((pattern) => pattern.test(name))
     },
     getWarehouseLossTimeoutDays(profile: WarehouseProfile | null) {
       const configured = profile?.lossTimeoutDays

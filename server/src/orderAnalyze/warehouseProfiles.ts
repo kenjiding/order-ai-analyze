@@ -77,6 +77,13 @@ export function classifyOperatorForWarehouse(
   return activeWarehouseProfileContext.classifyOperatorForWarehouse(operatorName, profile)
 }
 
+export function isSharedWorkstationOperator(
+  operatorName: string,
+  profile: WarehouseProfile | null
+): boolean {
+  return activeWarehouseProfileContext.isSharedWorkstationOperator(operatorName, profile)
+}
+
 export function getWarehouseLossTimeoutDays(profile: WarehouseProfile | null): number {
   return activeWarehouseProfileContext.getWarehouseLossTimeoutDays(profile)
 }

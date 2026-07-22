@@ -33,6 +33,15 @@ export function resolveRegionTz(regionCode: string | null | undefined): AusTz {
   return REGION_TZ[regionCode] ?? AUS_TZ.Adelaide
 }
 
+const TZ_DISPLAY_NAME: Record<AusTz, string> = Object.fromEntries(
+  Object.entries(AUS_TZ).map(([name, tz]) => [tz, name]),
+) as Record<AusTz, string>
+
+/** IANA 时区值 → 展示名，用于飞书卡片等 UI 文案，如 'Australia/Melbourne' → 'Melbourne' */
+export function tzDisplayName(tz: AusTz): string {
+  return TZ_DISPLAY_NAME[tz] ?? tz
+}
+
 /**
  * 求给定 UTC 时刻在指定时区的本地偏移量（毫秒）。
  * 偏移 = 本地时间（视作 UTC）- 实际 UTC 时间。

@@ -1574,3 +1574,53 @@ test('3PL 退返仓库后商家给出 RTC 退件方向，责任段正确切回�
   assert.equal(facts.merchantReturnRequested, true)
   assert.equal(facts.merchantStorageSupersededByBusinessProgress, true)
 })
+
+test('SYDE 到仓真实扫描（OPS 共享账号）应成为最新责任点，不应停留在上游装箱转运节点', () => {
+  const arrivalTime = '2026-06-17 19:47:25'
+  const facts = deriveTrackFacts([
+    track('2026-06-17 11:47:16', '【Sydney Center】已揽收, 操作员【System】。', '', '已揽件'),
+    track('2026-06-17 11:47:46', '【Sydney Center】已到达，包裹重量为【0kg】。操作员【sorter】 ,设备编码[AUS_S210312_01]', '', '转运'),
+    track('2026-06-17 11:48:02', '【Sydney Center】实际格口号为【38】，操作人【sorter】', '', '转运'),
+    track('2026-06-17 14:16:17', '【Sydney Center】已装箱，集包号[2605292356501]，目的地【SYDE】。操作员【SYD Warehouse6】', '', '转运'),
+    track('2026-06-17 19:00:17', '【Sydney Center】完成待转发件，目的地【SYDE】。操作员【SYD Warehouse12】', '', '转运'),
+    track(arrivalTime, '【SYDE】包号[2605292356501]已到达。操作员【SYDE OPS1】 。', '', '派送'),
+    track(
+      '2026-06-22 20:58:15',
+      '【SYDE】派送任务已分配给派件员(派件员：017-PUS-Song Guang Zhang,电话：+61 403483343)，待派件员领取包裹。 操作员【cornerstone】',
+      '',
+      '派送'
+    ),
+    track('2026-06-22 22:06:26', '【SYDE】包裹已取消分配给[017-PUS-Song Guang Zhang]。操作员【SYDE OPS1】', '', '派送'),
+    track('2026-06-28 11:28:22', '包裹正在处理中。', '', '派送'),
+    track('2026-06-30 17:37:31', '【Sydney Center】登记问题件[派送失败，需退回。], 操作员【Frank Wang Xige】。', '', '派送问题件'),
+    track('2026-06-30 17:37:33', '【SYDE】已进入NDR，NDR来源[问题件触发NDR]', '', '派送'),
+    track('2026-07-02 08:01:19', '【SYDE】包裹确认派送结束, 将按照商家反馈意见[退返商家]进行处理。', '', '退件处理'),
+  ])
+
+  assert.equal(facts.activeWarehouseHubId, 'SYDE')
+  assert.equal(facts.finalResponsibilityOwner, 'in_warehouse')
+  assert.equal(facts.finalResponsibilityStartTime, arrivalTime)
+  assert.equal(facts.hasRealOperatorScan, true)
+})
+
+test('共享工位账号（XX OPSn）到仓扫描视为真实责任点，但 System/sorter 未携带证据时不视为真实扫描', () => {
+  const arrivalTime = daysAgo(10)
+  const sharedWorkstationFacts = deriveTrackFacts([
+    track(arrivalTime, '【SYDE】包号[123]已到达。操作员【SYDE OPS3】 。', '', '派送'),
+  ])
+  assert.equal(sharedWorkstationFacts.hasRealOperatorScan, true)
+  assert.equal(sharedWorkstationFacts.finalResponsibilityOwner, 'in_warehouse')
+  assert.equal(sharedWorkstationFacts.finalResponsibilityStartTime, arrivalTime)
+
+  const systemFacts = deriveTrackFacts([
+    track(daysAgo(10), '【SYDE】包号[123]已到达。操作员【System】 。', '', '派送'),
+  ])
+  assert.equal(systemFacts.hasRealOperatorScan, false)
+  assert.equal(systemFacts.finalResponsibilityOwner, null)
+
+  const sorterWithoutEvidenceFacts = deriveTrackFacts([
+    track(daysAgo(10), '【SYDE】包号[123]已到达。操作员【sorter】 。', '', '派送'),
+  ])
+  assert.equal(sorterWithoutEvidenceFacts.hasRealOperatorScan, false)
+  assert.equal(sorterWithoutEvidenceFacts.finalResponsibilityOwner, null)
+})
