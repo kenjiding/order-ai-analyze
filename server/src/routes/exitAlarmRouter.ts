@@ -41,7 +41,10 @@ type PublicExitAlarmSchedule = {
   hasImileToken: boolean
 }
 
-function toPublicSchedule(row: ExitAlarmSchedule, regionCode: string | null): PublicExitAlarmSchedule {
+async function toPublicSchedule(
+  row: ExitAlarmSchedule,
+  regionCode: string | null,
+): Promise<PublicExitAlarmSchedule> {
   return {
     id: row.id,
     weekdays: row.weekdays,
@@ -51,7 +54,7 @@ function toPublicSchedule(row: ExitAlarmSchedule, regionCode: string | null): Pu
     pushConfigIds: parsePushConfigIds(row.pushConfigIds),
     regionCode,
     updatedAt: row.updatedAt,
-    hasImileToken: hasExitAlarmImileToken(row),
+    hasImileToken: await hasExitAlarmImileToken(row),
   }
 }
 
@@ -91,7 +94,8 @@ exitAlarmRouter.get('/schedules', async (req: AuthenticatedRequest, res: Respons
       .from(schema.exitAlarmSchedules)
       .where(eq(schema.exitAlarmSchedules.userId, userId))
       .orderBy(desc(schema.exitAlarmSchedules.createdAt))
-    res.json({ ok: true, data: rows.map((row) => toPublicSchedule(row, req.authUser?.regionCode ?? null)) })
+    const data = await Promise.all(rows.map((row) => toPublicSchedule(row, req.authUser?.regionCode ?? null)))
+    res.json({ ok: true, data })
   } catch {
     res.status(500).json({ ok: false, error: '读取出仓告警配置失败' })
   }
@@ -150,7 +154,7 @@ exitAlarmRouter.post('/schedules', async (req: AuthenticatedRequest, res: Respon
         updatedBy: userId,
       })
       .returning()
-    res.json({ ok: true, data: toPublicSchedule(created, req.authUser?.regionCode ?? null) })
+    res.json({ ok: true, data: await toPublicSchedule(created, req.authUser?.regionCode ?? null) })
   } catch {
     res.status(500).json({ ok: false, error: '新增出仓告警配置失败' })
   }
@@ -217,7 +221,7 @@ exitAlarmRouter.put('/schedules/:id', async (req: AuthenticatedRequest, res: Res
       })
       .where(eq(schema.exitAlarmSchedules.id, existing.id))
       .returning()
-    res.json({ ok: true, data: toPublicSchedule(updated, req.authUser?.regionCode ?? null) })
+    res.json({ ok: true, data: await toPublicSchedule(updated, req.authUser?.regionCode ?? null) })
   } catch {
     res.status(500).json({ ok: false, error: '保存出仓告警配置失败' })
   }
@@ -264,7 +268,7 @@ exitAlarmRouter.post('/schedules/:id/push-now', async (req: AuthenticatedRequest
       return
     }
 
-    const token = readExitAlarmImileToken(schedule)
+    const token = await readExitAlarmImileToken(schedule)
     if (!token) {
       res.status(400).json({ ok: false, error: '缺少 iMile token，请编辑该配置并重新保存' })
       return

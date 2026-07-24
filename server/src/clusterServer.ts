@@ -31,6 +31,9 @@ export async function runClusterServer(options: ClusterServerOptions): Promise<v
 /** 崩溃循环判定窗口：窗口内退出次数超过此值就放弃重拉，交给容器层重启（见下方说明） */
 const CRASH_LOOP_WINDOW_MS = 10_000
 
+/** 优雅退出等待上限：worker 若因残留连接（本地常见于浏览器保持的 keep-alive）迟迟不关闭，超时后强杀，避免 Ctrl+C 卡死 */
+const GRACEFUL_SHUTDOWN_TIMEOUT_MS = Number(process.env.SHUTDOWN_TIMEOUT_MS) || 10_000
+
 async function runPrimary(options: ClusterServerOptions): Promise<void> {
   await options.beforeFork()
 
@@ -71,9 +74,36 @@ async function runPrimary(options: ClusterServerOptions): Promise<void> {
     if (shuttingDown) return
     shuttingDown = true
     console.log(`[cluster] primary received ${signal}, disconnecting workers`)
-    // cluster.disconnect 会让每个 worker 优雅关闭（先停止接收新连接、等在途请求跑完再退出），
-    // 全部退出后才回调——不像直接 kill(signal) 那样会把在途请求粗暴掐断。
+
+    // 实测发现 cluster.disconnect() 的回调不能保证 worker 底层 OS 进程已经真正退出：
+    // 若 worker 上还挂着未关闭的连接（本地常见于浏览器保持的 keep-alive），回调仍可能很快触发、
+    // primary 随之 exit，但该 worker 会变成孤儿进程继续占着端口。所以退出前显式记下所有 worker
+    // pid，无论走哪条路径（超时兜底 / disconnect 回调正常完成）都强杀一遍残留的 worker。
+    const workerPids = Object.values(cluster.workers ?? {})
+      .map((worker) => worker?.process.pid)
+      .filter((pid): pid is number => typeof pid === 'number')
+
+    const killLingeringWorkers = (): void => {
+      for (const pid of workerPids) {
+        try {
+          process.kill(pid, 'SIGKILL')
+        } catch {
+          // 进程已退出，忽略
+        }
+      }
+    }
+
+    const forceKillTimer = setTimeout(() => {
+      console.error(
+        `[cluster] graceful shutdown 超过 ${GRACEFUL_SHUTDOWN_TIMEOUT_MS}ms 仍未完成，强制退出`,
+      )
+      killLingeringWorkers()
+      process.exit(1)
+    }, GRACEFUL_SHUTDOWN_TIMEOUT_MS)
+
     cluster.disconnect(() => {
+      clearTimeout(forceKillTimer)
+      killLingeringWorkers()
       process.exit(0)
     })
   }

@@ -4,6 +4,7 @@ import type { WorkOrderPushSchedule, FleetSupplierPushConfig } from '../db/schem
 import { buildWorkOrderPushCard } from './buildWorkOrderPushCard'
 import { computeFeishuWebhookSign, parseSafeWebhookUrl } from '../feishuWebhookHelpers'
 import { envFirst } from '../imile/shared'
+import { getGlobalImileToken } from './globalImileToken'
 import { getRegionNow } from '../imile/inboundWaybillIndex'
 import { resolveRegionTz, type AusTz } from '../imile/ausTimezone'
 import { listPushableConfigsForScope } from '../supplierConfigScopes'
@@ -34,18 +35,22 @@ async function listEnabledSchedules(): Promise<EnabledSchedule[]> {
     .where(eq(schema.workOrderPushSchedules.isEnabled, true))
 }
 
-export function readWorkOrderPushImileToken(
-  schedule?: Pick<WorkOrderPushSchedule, 'imileToken'> | null,
-): string {
+export async function readWorkOrderPushImileToken(
+  schedule?: Pick<WorkOrderPushSchedule, 'imileToken' | 'userId'> | null,
+): Promise<string> {
+  if (schedule?.userId) {
+    const fromGlobalSettings = await getGlobalImileToken(schedule.userId)
+    if (fromGlobalSettings) return fromGlobalSettings
+  }
   const fromSchedule = schedule?.imileToken?.trim()
   if (fromSchedule) return fromSchedule
   return envFirst('IMILE_WORK_ORDER_PUSH_TOKEN') ?? ''
 }
 
-export function hasWorkOrderPushImileToken(
-  schedule?: Pick<WorkOrderPushSchedule, 'imileToken'> | null,
-): boolean {
-  return readWorkOrderPushImileToken(schedule).length > 0
+export async function hasWorkOrderPushImileToken(
+  schedule?: Pick<WorkOrderPushSchedule, 'imileToken' | 'userId'> | null,
+): Promise<boolean> {
+  return (await readWorkOrderPushImileToken(schedule)).length > 0
 }
 
 /** 按日期字符串做纯日历减法（不依赖时区毫秒换算，与前端 dayjs .subtract('day') 口径一致） */
@@ -209,7 +214,7 @@ export async function logWorkOrderPushSchedulerReadiness(): Promise<void> {
     }
     const scopedConfigs = await listPushableConfigsForScope(WORK_ORDER_PUSH_SCOPE)
     for (const { schedule, regionCode } of enabled) {
-      if (!hasWorkOrderPushImileToken(schedule)) {
+      if (!(await hasWorkOrderPushImileToken(schedule))) {
         console.warn(`${label} 配置 ${schedule.id} 已启用，但缺少 iMile token`)
         continue
       }
@@ -239,7 +244,7 @@ async function runOneScheduledPush(schedule: WorkOrderPushSchedule, regionCode: 
     const jobKeyPrefix = `work-order-push:${schedule.id}`
     const slotKey = formatScheduledPushSlotKey(slot)
 
-    const token = readWorkOrderPushImileToken(schedule)
+    const token = await readWorkOrderPushImileToken(schedule)
     if (!token) {
       console.warn(`${label} 命中推送时间 time=${timeHHmm}，但缺少 iMile token`)
       continue

@@ -57,7 +57,7 @@ async function toPublicSchedule(
     regionCode,
     pushConfigIds,
     updatedAt: row.updatedAt,
-    hasImileToken: hasWorkOrderPushImileToken(row),
+    hasImileToken: await hasWorkOrderPushImileToken(row),
   }
 }
 
@@ -111,7 +111,7 @@ workOrderPushRouter.put('/schedule', async (req: AuthenticatedRequest, res: Resp
     const isEnabled = body.isEnabled !== false
     const willEnable = isEnabled && pushTimes.length > 0
     const existingToken = existing?.imileToken?.trim() ?? ''
-    if (willEnable && !nextImileToken && !existingToken && !hasWorkOrderPushImileToken(existing)) {
+    if (willEnable && !nextImileToken && !existingToken && !(await hasWorkOrderPushImileToken(existing))) {
       res.status(400).json({
         ok: false,
         error: '启用定时推送需要 iMile token，请在全局设置中配置后重新保存',

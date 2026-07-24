@@ -5,6 +5,7 @@ import { buildDispatchAlarmCard } from './buildDispatchAlarmCard'
 import { createDispatchAlarmShareSnapshot } from './dispatchAlarmShareSnapshot'
 import { computeFeishuWebhookSign, parseSafeWebhookUrl } from '../feishuWebhookHelpers'
 import { envFirst } from '../imile/shared'
+import { getGlobalImileToken } from './globalImileToken'
 import { resolveRegionTz, type AusTz } from '../imile/ausTimezone'
 import { fetchDriverWaybills } from '../imile/driverPerformance'
 import {
@@ -39,14 +40,22 @@ async function listEnabledSchedules(): Promise<EnabledSchedule[]> {
     .where(eq(schema.dispatchAlarmSchedules.isEnabled, true))
 }
 
-export function readDispatchAlarmImileToken(schedule?: Pick<DispatchAlarmSchedule, 'imileToken'> | null): string {
+export async function readDispatchAlarmImileToken(
+  schedule?: Pick<DispatchAlarmSchedule, 'imileToken' | 'userId'> | null,
+): Promise<string> {
+  if (schedule?.userId) {
+    const fromGlobalSettings = await getGlobalImileToken(schedule.userId)
+    if (fromGlobalSettings) return fromGlobalSettings
+  }
   const fromSchedule = schedule?.imileToken?.trim()
   if (fromSchedule) return fromSchedule
   return envFirst('IMILE_DISPATCH_ALARM_TOKEN') ?? ''
 }
 
-export function hasDispatchAlarmImileToken(schedule?: Pick<DispatchAlarmSchedule, 'imileToken'> | null): boolean {
-  return readDispatchAlarmImileToken(schedule).length > 0
+export async function hasDispatchAlarmImileToken(
+  schedule?: Pick<DispatchAlarmSchedule, 'imileToken' | 'userId'> | null,
+): Promise<boolean> {
+  return (await readDispatchAlarmImileToken(schedule)).length > 0
 }
 
 async function pushCardToWebhook(
@@ -223,7 +232,7 @@ export async function logDispatchAlarmSchedulerReadiness(): Promise<void> {
       if (!schedule.stationCode?.trim()) {
         console.warn(`${label} 配置 ${schedule.id} 已启用，但未保存站点编码 stationCode`)
       }
-      if (!hasDispatchAlarmImileToken(schedule)) {
+      if (!(await hasDispatchAlarmImileToken(schedule))) {
         console.warn(`${label} 配置 ${schedule.id} 已启用，但缺少 iMile token`)
         continue
       }
@@ -256,7 +265,7 @@ async function runOneScheduledPush(schedule: DispatchAlarmSchedule, regionCode: 
     const jobKeyPrefix = `dispatch-alarm:${schedule.id}`
     const slotKey = formatScheduledPushSlotKey(slot)
 
-    const token = readDispatchAlarmImileToken(schedule)
+    const token = await readDispatchAlarmImileToken(schedule)
     if (!token) {
       console.warn(`${label} 命中推送时间 weekday=${weekday} time=${timeHHmm}，但缺少 iMile token，无法拉数推送`)
       continue

@@ -68,7 +68,10 @@ function isArrivalScanDateBeforeToday(dateStr: string, regionCode: string | null
   return dateStr < getRegionNow(resolveRegionTz(regionCode)).dateStr
 }
 
-function toPublicSchedule(row: DispatchAlarmSchedule, regionCode: string | null): PublicDispatchAlarmSchedule {
+async function toPublicSchedule(
+  row: DispatchAlarmSchedule,
+  regionCode: string | null,
+): Promise<PublicDispatchAlarmSchedule> {
   return {
     id: row.id,
     weekdays: row.weekdays,
@@ -80,7 +83,7 @@ function toPublicSchedule(row: DispatchAlarmSchedule, regionCode: string | null)
     arrivalScanDate: row.arrivalScanDate ?? null,
     regionCode,
     updatedAt: row.updatedAt,
-    hasImileToken: hasDispatchAlarmImileToken(row),
+    hasImileToken: await hasDispatchAlarmImileToken(row),
   }
 }
 
@@ -122,7 +125,8 @@ dispatchAlarmRouter.get('/schedules', async (req: AuthenticatedRequest, res: Res
       .from(schema.dispatchAlarmSchedules)
       .where(eq(schema.dispatchAlarmSchedules.userId, userId))
       .orderBy(desc(schema.dispatchAlarmSchedules.createdAt))
-    res.json({ ok: true, data: rows.map((row) => toPublicSchedule(row, req.authUser?.regionCode ?? null)) })
+    const data = await Promise.all(rows.map((row) => toPublicSchedule(row, req.authUser?.regionCode ?? null)))
+    res.json({ ok: true, data })
   } catch {
     res.status(500).json({ ok: false, error: '读取派签告警配置失败' })
   }
@@ -187,7 +191,7 @@ dispatchAlarmRouter.post('/schedules', async (req: AuthenticatedRequest, res: Re
         updatedBy: userId,
       })
       .returning()
-    res.json({ ok: true, data: toPublicSchedule(created, req.authUser?.regionCode ?? null) })
+    res.json({ ok: true, data: await toPublicSchedule(created, req.authUser?.regionCode ?? null) })
   } catch {
     res.status(500).json({ ok: false, error: '新增派签告警配置失败' })
   }
@@ -260,7 +264,7 @@ dispatchAlarmRouter.put('/schedules/:id', async (req: AuthenticatedRequest, res:
       })
       .where(eq(schema.dispatchAlarmSchedules.id, existing.id))
       .returning()
-    res.json({ ok: true, data: toPublicSchedule(updated, req.authUser?.regionCode ?? null) })
+    res.json({ ok: true, data: await toPublicSchedule(updated, req.authUser?.regionCode ?? null) })
   } catch {
     res.status(500).json({ ok: false, error: '保存派签告警配置失败' })
   }
@@ -307,7 +311,7 @@ dispatchAlarmRouter.post('/schedules/:id/push-now', async (req: AuthenticatedReq
       return
     }
 
-    const token = readDispatchAlarmImileToken(schedule)
+    const token = await readDispatchAlarmImileToken(schedule)
     if (!token) {
       res.status(400).json({ ok: false, error: '缺少 iMile token，请编辑该配置并重新保存' })
       return

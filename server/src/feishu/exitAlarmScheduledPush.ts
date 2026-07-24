@@ -4,6 +4,7 @@ import type { ExitAlarmSchedule, FleetSupplierPushConfig } from '../db/schema'
 import { buildExitAlarmCard } from './buildExitAlarmCard'
 import { computeFeishuWebhookSign, parseSafeWebhookUrl } from '../feishuWebhookHelpers'
 import { envFirst } from '../imile/shared'
+import { getGlobalImileToken } from './globalImileToken'
 import { fetchWaybillDetailsByInboundIndex } from '../imile/inboundWaybillIndex'
 import { resolveRegionTz, type AusTz } from '../imile/ausTimezone'
 import { computeBefore11ThresholdMs } from '../imile/before11Exit'
@@ -40,14 +41,22 @@ async function listEnabledSchedules(): Promise<EnabledSchedule[]> {
   return rows
 }
 
-export function readExitAlarmImileToken(schedule?: Pick<ExitAlarmSchedule, 'imileToken'> | null): string {
+export async function readExitAlarmImileToken(
+  schedule?: Pick<ExitAlarmSchedule, 'imileToken' | 'userId'> | null,
+): Promise<string> {
+  if (schedule?.userId) {
+    const fromGlobalSettings = await getGlobalImileToken(schedule.userId)
+    if (fromGlobalSettings) return fromGlobalSettings
+  }
   const fromSchedule = schedule?.imileToken?.trim()
   if (fromSchedule) return fromSchedule
   return envFirst('IMILE_EXIT_ALARM_TOKEN') ?? ''
 }
 
-export function hasExitAlarmImileToken(schedule?: Pick<ExitAlarmSchedule, 'imileToken'> | null): boolean {
-  return readExitAlarmImileToken(schedule).length > 0
+export async function hasExitAlarmImileToken(
+  schedule?: Pick<ExitAlarmSchedule, 'imileToken' | 'userId'> | null,
+): Promise<boolean> {
+  return (await readExitAlarmImileToken(schedule)).length > 0
 }
 
 /** worker 启动时检查定时推送前置条件，便于排查「配置了但不执行」 */
@@ -63,7 +72,7 @@ export async function logExitAlarmSchedulerReadiness(): Promise<void> {
       if (!schedule.stationCode?.trim()) {
         console.warn(`${label} 配置 ${schedule.id} 已启用，但未保存站点编码 stationCode`)
       }
-      if (!hasExitAlarmImileToken(schedule)) {
+      if (!(await hasExitAlarmImileToken(schedule))) {
         console.warn(
           `${label} 配置 ${schedule.id} 已启用，但缺少 iMile token（保存配置时需携带全局 token，或设置 IMILE_EXIT_ALARM_TOKEN）`,
         )
@@ -259,7 +268,7 @@ async function runOneScheduledPush(schedule: ExitAlarmSchedule, regionCode: stri
     const jobKeyPrefix = `exit-alarm:${schedule.id}`
     const slotKey = formatScheduledPushSlotKey(slot)
 
-    const rawToken = readExitAlarmImileToken(schedule)
+    const rawToken = await readExitAlarmImileToken(schedule)
     if (!rawToken) {
       console.warn(
         `${label} 命中推送时间 weekday=${weekday} time=${timeHHmm}，但缺少 iMile token，无法拉数推送`,

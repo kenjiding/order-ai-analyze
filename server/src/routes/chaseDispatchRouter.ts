@@ -43,7 +43,10 @@ type PublicChaseDispatchSchedule = {
   hasImileToken: boolean
 }
 
-function toPublicSchedule(row: ChaseDispatchSchedule, regionCode: string | null): PublicChaseDispatchSchedule {
+async function toPublicSchedule(
+  row: ChaseDispatchSchedule,
+  regionCode: string | null,
+): Promise<PublicChaseDispatchSchedule> {
   return {
     id: row.id,
     weekdays: row.weekdays,
@@ -54,7 +57,7 @@ function toPublicSchedule(row: ChaseDispatchSchedule, regionCode: string | null)
     pushConfigIds: parsePushConfigIds(row.pushConfigIds),
     regionCode,
     updatedAt: row.updatedAt,
-    hasImileToken: hasChaseDispatchImileToken(row),
+    hasImileToken: await hasChaseDispatchImileToken(row),
   }
 }
 
@@ -98,7 +101,8 @@ chaseDispatchRouter.get('/schedules', async (req: AuthenticatedRequest, res: Res
       .from(schema.chaseDispatchSchedules)
       .where(eq(schema.chaseDispatchSchedules.userId, userId))
       .orderBy(desc(schema.chaseDispatchSchedules.createdAt))
-    res.json({ ok: true, data: rows.map((row) => toPublicSchedule(row, req.authUser?.regionCode ?? null)) })
+    const data = await Promise.all(rows.map((row) => toPublicSchedule(row, req.authUser?.regionCode ?? null)))
+    res.json({ ok: true, data })
   } catch {
     res.status(500).json({ ok: false, error: '读取催派推送配置失败' })
   }
@@ -159,7 +163,7 @@ chaseDispatchRouter.post('/schedules', async (req: AuthenticatedRequest, res: Re
         updatedBy: userId,
       })
       .returning()
-    res.json({ ok: true, data: toPublicSchedule(created, req.authUser?.regionCode ?? null) })
+    res.json({ ok: true, data: await toPublicSchedule(created, req.authUser?.regionCode ?? null) })
   } catch {
     res.status(500).json({ ok: false, error: '新增催派推送配置失败' })
   }
@@ -228,7 +232,7 @@ chaseDispatchRouter.put('/schedules/:id', async (req: AuthenticatedRequest, res:
       })
       .where(eq(schema.chaseDispatchSchedules.id, existing.id))
       .returning()
-    res.json({ ok: true, data: toPublicSchedule(updated, req.authUser?.regionCode ?? null) })
+    res.json({ ok: true, data: await toPublicSchedule(updated, req.authUser?.regionCode ?? null) })
   } catch {
     res.status(500).json({ ok: false, error: '保存催派推送配置失败' })
   }
@@ -281,7 +285,7 @@ chaseDispatchRouter.post('/schedules/:id/push-now', async (req: AuthenticatedReq
       return
     }
 
-    const token = readChaseDispatchImileToken(schedule)
+    const token = await readChaseDispatchImileToken(schedule)
     if (!token) {
       res.status(400).json({ ok: false, error: '缺少 iMile token，请编辑该配置并重新保存' })
       return

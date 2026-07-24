@@ -4,6 +4,7 @@ import type { ChaseDispatchSchedule, FleetSupplierPushConfig } from '../db/schem
 import { buildChaseDispatchCard } from './buildChaseDispatchCard'
 import { computeFeishuWebhookSign, parseSafeWebhookUrl } from '../feishuWebhookHelpers'
 import { envFirst } from '../imile/shared'
+import { getGlobalImileToken } from './globalImileToken'
 import { resolveRegionTz, type AusTz } from '../imile/ausTimezone'
 import {
   listPushableSupplierPushConfigsForSchedule,
@@ -41,18 +42,22 @@ async function listEnabledSchedules(): Promise<EnabledSchedule[]> {
     .where(eq(schema.chaseDispatchSchedules.isEnabled, true))
 }
 
-export function readChaseDispatchImileToken(
-  schedule?: Pick<ChaseDispatchSchedule, 'imileToken'> | null,
-): string {
+export async function readChaseDispatchImileToken(
+  schedule?: Pick<ChaseDispatchSchedule, 'imileToken' | 'userId'> | null,
+): Promise<string> {
+  if (schedule?.userId) {
+    const fromGlobalSettings = await getGlobalImileToken(schedule.userId)
+    if (fromGlobalSettings) return fromGlobalSettings
+  }
   const fromSchedule = schedule?.imileToken?.trim()
   if (fromSchedule) return fromSchedule
   return envFirst('IMILE_CHASE_DISPATCH_TOKEN') ?? ''
 }
 
-export function hasChaseDispatchImileToken(
-  schedule?: Pick<ChaseDispatchSchedule, 'imileToken'> | null,
-): boolean {
-  return readChaseDispatchImileToken(schedule).length > 0
+export async function hasChaseDispatchImileToken(
+  schedule?: Pick<ChaseDispatchSchedule, 'imileToken' | 'userId'> | null,
+): Promise<boolean> {
+  return (await readChaseDispatchImileToken(schedule)).length > 0
 }
 
 /** 解析 stagnationBuckets JSONB → 合法的滞留区间数组 */
@@ -248,7 +253,7 @@ export async function logChaseDispatchSchedulerReadiness(): Promise<void> {
       if (!schedule.stationCode?.trim()) {
         console.warn(`${label} 配置 ${schedule.id} 已启用，但未保存站点编码 stationCode`)
       }
-      if (!hasChaseDispatchImileToken(schedule)) {
+      if (!(await hasChaseDispatchImileToken(schedule))) {
         console.warn(`${label} 配置 ${schedule.id} 已启用，但缺少 iMile token`)
         continue
       }
@@ -292,7 +297,7 @@ async function runOneScheduledPush(schedule: ChaseDispatchSchedule, regionCode: 
       continue
     }
 
-    const token = readChaseDispatchImileToken(schedule)
+    const token = await readChaseDispatchImileToken(schedule)
     if (!token) {
       console.warn(`${label} 命中推送时间 weekday=${weekday} time=${timeHHmm}，但缺少 iMile token`)
       continue
