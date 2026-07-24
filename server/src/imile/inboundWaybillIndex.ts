@@ -20,7 +20,7 @@ import { envFirstOr, isRecord, normalizeImileToken, sleep } from './shared'
 import { AUS_TZ, type AusTz } from './ausTimezone'
 
 const DEFAULT_DS_WAYBILL_URL = 'https://ds.imile.com/saastms/v1/biz/waybillInfo/searchWaybill'
-const DEFAULT_INBOUND_URL = 'https://dc.imile.com/lm/express/ops/v1/biz/inbound/query'
+const DEFAULT_INBOUND_URL = 'https://ds.imile.com/lm/express/ops/v1/biz/inbound/query'
 
 export const INBOUND_INDEX_ADELAIDE_TZ = 'Australia/Adelaide'
 export const INBOUND_INDEX_MELBOURNE_TZ = 'Australia/Melbourne'

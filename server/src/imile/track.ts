@@ -38,7 +38,7 @@ class SingleTrackError extends Error {
   }
 }
 
-const DEFAULT_TRACK_URL = 'https://dc.imile.com/saastms/v1/biz/track/query'
+const DEFAULT_TRACK_URL = 'https://ds.imile.com/saastms/v1/biz/track/query'
 
 export type TrackEvent = {
   content: string

@@ -5,7 +5,7 @@
 import { requestImileApi } from './client'
 import { fetchPaginatedResultRows } from './paginatedQuery'
 import { buildImilePortalHeaders, IMILE_DS_BOX_ASSIGNED_PORTAL } from './portal'
-import { envFirstOr, IMILE_DEFAULT_HUBCODE, normalizeImileToken } from './shared'
+import { envFirstOr, IMILE_DEFAULT_HUBCODE, normalizeImileToken, resolveImileCountry } from './shared'
 
 const DEFAULT_ASSIGNED_LIST_URL =
   'https://ds.imile.com/hub/operation/report/pd/box/assignedList'
@@ -72,7 +72,7 @@ export async function queryImileBoxAssignedList(input: {
   const url = envFirstOr(['IMILE_BOX_ASSIGNED_URL'], DEFAULT_ASSIGNED_LIST_URL)
   const headers = makeAssignedListHeaders(token)
 
-  const country = input.country?.trim() || envFirstOr(['IMILE_BOX_ASSIGNED_COUNTRY'], 'AUS')
+  const country = resolveImileCountry(input.country)
   const pendingHubCode =
     input.pendingHubCode?.trim() ||
     envFirstOr(['IMILE_BOX_ASSIGNED_PENDING_HUB_CODE'], IMILE_DEFAULT_HUBCODE)

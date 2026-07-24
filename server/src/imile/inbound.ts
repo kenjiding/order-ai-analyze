@@ -8,7 +8,7 @@ import { fetchPaginatedResultRows } from './paginatedQuery'
 import { buildImilePortalHeaders, IMILE_DC_SCAN_QUERY_PORTAL } from './portal'
 import { envFirstOr, normalizeImileToken } from './shared'
 
-const DEFAULT_INBOUND_URL = 'https://dc.imile.com/lm/express/ops/v1/biz/inbound/query'
+const DEFAULT_INBOUND_URL = 'https://ds.imile.com/lm/express/ops/v1/biz/inbound/query'
 
 const INBOUND_QUERY_DEFAULTS = {
   isLatest: 1,

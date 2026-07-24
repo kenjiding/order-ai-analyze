@@ -8,10 +8,12 @@ import {
   envFirst,
   envFirstOr,
   getRequestImileHubcode,
+  applyImileCountryToCookie,
   IMILE_DEFAULT_FRONT_SEC,
   IMILE_DEFAULT_HUBCODE,
   IMILE_DEFAULT_LANG,
-  IMILE_DEFAULT_TIMEZONE,
+  resolveImileCountry,
+  resolveImileTimezone,
 } from './shared'
 
 export type ImilePortalDefaults = {
@@ -146,7 +148,11 @@ export function buildImilePortalHeaders(input: BuildImilePortalHeadersInput): Re
     defaults.hubcode ?? IMILE_DEFAULT_HUBCODE,
   )
   headers.lang = readPortalEnv(input.envPrefix, 'LANG', shared, IMILE_DEFAULT_LANG)
-  headers.timezone = readPortalEnv(input.envPrefix, 'TIMEZONE', shared, IMILE_DEFAULT_TIMEZONE)
+
+  // 与正式站一致：国家选择器驱动 timezone + Cookie TIMEZONE / TIMEZONE_COUNTRY
+  const country = resolveImileCountry()
+  headers.timezone = resolveImileTimezone(country)
+  headers.Cookie = applyImileCountryToCookie(headers.Cookie, country)
 
   return headers
 }
@@ -169,6 +175,19 @@ export const IMILE_DS_CLOSURE_PORTAL: ImilePortalDefaults = {
   sysPortal: 'DS',
   origin: 'https://ds.imile.com',
   referer: 'https://ds.imile.com/',
+}
+
+/**
+ * 责任站点列表（permission/station）：正式站从 DAInventory 页发起时的门户头。
+ * 切国家时还需同步 timezone / Cookie TIMEZONE_COUNTRY（由 buildImilePortalHeaders 统一注入）。
+ */
+export const IMILE_STATION_LIST_PORTAL: ImilePortalDefaults = {
+  resourceCode: 'DAInventory',
+  sysName: 'IMILE',
+  sysPortal: 'DS',
+  origin: 'https://ds.imile.com',
+  referer: 'https://ds.imile.com/',
+  path: '/DSMonitor/DSInventory/DAInventory',
 }
 
 /** ds.imile.com saastms 报表 / 运单查询门户默认配置 */

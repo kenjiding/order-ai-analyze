@@ -6,8 +6,9 @@ import {
   IMILE_DS_SAAS_TMS_PORTAL,
   IMILE_GLOBALCS_PORTAL,
   IMILE_DC_SCAN_QUERY_PORTAL,
+  IMILE_STATION_LIST_PORTAL,
 } from './portal'
-import { envFirstOr, normalizeImileToken } from './shared'
+import { envFirstOr, normalizeImileToken, resolveImileCountry, runWithImileCountry } from './shared'
 import { resolveRegionTz } from './ausTimezone'
 import { computeBefore11ThresholdMs } from './before11Exit'
 import { fetchWaybillDetailsByInboundIndex } from './inboundWaybillIndex'
@@ -26,13 +27,22 @@ const DEFAULT_COMPLAINT_URL =
   'https://globalcs.imile.com/ticket/biz/work/order/ticketQueryByWorkOrderType'
 
 const DEFAULT_WAYBILL_URL =
-  'https://dc.imile.com/saastms/v1/biz/waybillInfo/searchWaybill'
+  'https://ds.imile.com/saastms/v1/biz/waybillInfo/searchWaybill'
 
 const DEFAULT_LONG_TAIL_URL =
   'https://ds.imile.com/saastms/v1/report/stock/daWaybillInventory'
 
 export type VendorAnalysisError = { ok: false; status: number; message: string; rawText?: string }
 export type VendorAnalysisSuccess<T> = { ok: true; data: T }
+
+function makeStationListHeaders(token: string): Record<string, string> {
+  return buildImilePortalHeaders({
+    token,
+    envPrefix: 'IMILE_VENDOR_STATION',
+    defaults: IMILE_STATION_LIST_PORTAL,
+    sharedEnvPrefixes: ['IMILE_VENDOR_ANALYSIS', 'IMILE_CANCEL_SCAN', 'IMILE_TRACK'],
+  })
+}
 
 function makeDsLmHeaders(token: string): Record<string, string> {
   return buildImilePortalHeaders({
@@ -71,11 +81,21 @@ function makeDsSaasTmsHeaders(token: string): Record<string, string> {
 
 export async function fetchVendorStations(
   token: string,
+  options?: { country?: string },
+): Promise<VendorAnalysisSuccess<unknown[]> | VendorAnalysisError> {
+  const country = resolveImileCountry(options?.country)
+  // 显式 country 写入 ALS，保证后续 header 的 timezone / TIMEZONE_COUNTRY 与 countries 一致
+  return runWithImileCountry(country, () => fetchVendorStationsWithCountry(token, country))
+}
+
+async function fetchVendorStationsWithCountry(
+  token: string,
+  country: string,
 ): Promise<VendorAnalysisSuccess<unknown[]> | VendorAnalysisError> {
   const normalizedToken = normalizeImileToken(token)
   const baseUrl = envFirstOr(['IMILE_VENDOR_STATION_URL'], DEFAULT_STATION_URL)
-  const url = `${baseUrl}?status=ACTIVE&countries=AUS&ocType=DS,AGENT`
-  const headers = makeDsLmHeaders(normalizedToken)
+  const url = `${baseUrl}?status=ACTIVE&countries=${encodeURIComponent(country)}&ocType=DS,AGENT`
+  const headers = makeStationListHeaders(normalizedToken)
 
   const result = await requestImileApi({ url, method: 'GET', headers, label: '责任站点列表' })
   if (!result.ok) return { ok: false, status: result.status, message: result.message, rawText: result.rawText }
@@ -366,7 +386,7 @@ export async function fetchLongTailOrders(
   const headers = makeDsSaasTmsHeaders(normalizedToken)
 
   const body = {
-    country: 'AUS',
+    country: resolveImileCountry(),
     currentPage: 1,
     end: sevenDaysAgo(),
     fromOc: false,

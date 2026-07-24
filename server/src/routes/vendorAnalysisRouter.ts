@@ -12,6 +12,7 @@ import { canAccessJob, resolveEnqueueRegionCode, sendJobAccessDenied } from '../
 import { listSupplierPushConfigs } from '../supplierPushConfigs'
 import { buildScopeRecordsFromConfigs } from '../vendorAnalysis/supplierScope'
 import { purgeOldVendorDailyData } from '../vendorAnalysis/retention'
+import { resolveImileCountry } from '../imile/shared'
 import {
   buildVendorAiSystemPrompt,
   mergeModuleMetricKeys,
@@ -30,7 +31,11 @@ vendorAnalysisRouter.get('/stations', async (req: AuthenticatedRequest, res: Res
     res.status(400).json({ ok: false, error: '缺少 iMile token' })
     return
   }
-  const result = await fetchVendorStations(token)
+  // 显式传入：优先 query/country 头（国家选择器），避免仅依赖 ALS 时序
+  const country = resolveImileCountry(
+    typeof req.query.country === 'string' ? req.query.country : undefined,
+  )
+  const result = await fetchVendorStations(token, { country })
   if (!result.ok) {
     res.status(502).json({ ok: false, error: result.message })
     return
@@ -71,6 +76,7 @@ function serializeRouteCodeMap(map: Record<string, string[]>): string {
 
 function buildVendorAnalyzeIdempotencyKey(input: {
   regionCode: string | null
+  country: string
   stationCodes: string[]
   referenceDate: string
   complaintStart: string
@@ -91,8 +97,9 @@ function buildVendorAnalyzeIdempotencyKey(input: {
     .update(`${vendors}\0${input.dataSources.join(',')}\0${routeCodesText}\0${whitelistText}`)
     .digest('hex')
   return [
-    'vendor.analyze:v4',
+    'vendor.analyze:v5',
     region,
+    input.country,
     stations,
     input.referenceDate,
     `${input.complaintStart}~${input.complaintEnd}`,
@@ -208,10 +215,12 @@ vendorAnalysisRouter.post('/analyze-async', async (req: AuthenticatedRequest, re
   const { routeCodesByVendor, routeCodeWhitelistByVendor } = buildScopeRecordsFromConfigs(configRows)
 
   const force = body.force === true
+  const country = resolveImileCountry()
   const idempotencyKey = force
     ? null
     : buildVendorAnalyzeIdempotencyKey({
         regionCode: regionResult,
+        country,
         stationCodes,
         referenceDate: body.referenceDate as string,
         complaintStart: body.complaintStart as string,
@@ -224,6 +233,7 @@ vendorAnalysisRouter.post('/analyze-async', async (req: AuthenticatedRequest, re
 
   const enqueuePayload = {
     imileToken: token,
+    country,
     stationCodes,
     vendorCodes,
     routeCodesByVendor,

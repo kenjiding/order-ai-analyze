@@ -1,16 +1,31 @@
 import type { NextFunction, Request, Response } from 'express'
-import { runWithImileHubcode } from './shared'
+import {
+  isImileCountryCode,
+  runWithImileCountry,
+  runWithImileHubcode,
+} from './shared'
 
 /**
- * 将前端「站点选择器」传来的 hubcode 请求头注入 AsyncLocalStorage，
- * 使本次请求内所有 buildImileAuthHeaders / buildImilePortalHeaders 调用
- * 自动带上该 hubcode，无需逐个 iMile 业务文件手动透传。
+ * 将前端「站点选择器」的 hubcode、「国家选择器」的 country 请求头
+ * 注入 AsyncLocalStorage，使本次请求内 iMile 调用自动取用，
+ * 无需逐个业务文件手动透传。
  */
 export function imileHubcodeMiddleware(req: Request, _res: Response, next: NextFunction): void {
   const hubcode = String(req.headers['hubcode'] ?? '').trim()
+  const countryRaw = String(req.headers['country'] ?? '').trim().toUpperCase()
+  const country = isImileCountryCode(countryRaw) ? countryRaw : ''
+
+  const withCountry = (fn: NextFunction) => {
+    if (!country) {
+      fn()
+      return
+    }
+    runWithImileCountry(country, fn)
+  }
+
   if (!hubcode) {
-    next()
+    withCountry(next)
     return
   }
-  runWithImileHubcode(hubcode, next)
+  runWithImileHubcode(hubcode, () => withCountry(next))
 }

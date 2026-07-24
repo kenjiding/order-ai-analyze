@@ -16,7 +16,8 @@ import {
 import { Semaphore } from '../../imile/semaphore'
 import { getDb, schema } from '../../db'
 import { resolveRegionTz } from '../../imile/ausTimezone'
-import type { JobHandler } from '../types'
+import { resolveImileCountry, runWithImileCountry } from '../../imile/shared'
+import type { JobHandler, JobHandlerResult } from '../types'
 import { VENDOR_ANALYSIS_DATA_SOURCES, type VendorAnalysisDataSource } from '../../vendorAnalysis/metricsCatalog'
 import { aggregateVendorAnalysis, type VendorAnalyzeSummary } from '../../vendorAnalysis/aggregate'
 import { populateDriverMapCache } from '../../driverMap/driverMapPointsQuery'
@@ -28,6 +29,8 @@ const waybillSearchSemaphore = new Semaphore(1)
 
 type VendorAnalyzePayload = {
   imileToken: string
+  /** 创建任务时冻结的国家口径；老任务缺省则回退 AUS */
+  country: string
   stationCodes: string[]
   vendorCodes: string[]
   referenceDate: string
@@ -84,6 +87,7 @@ function parsePayload(raw: Record<string, unknown>): VendorAnalyzePayload | null
 
   return {
     imileToken,
+    country: resolveImileCountry(typeof raw.country === 'string' ? raw.country : undefined),
     stationCodes,
     vendorCodes: asStringArray(raw.vendorCodes),
     referenceDate: raw.referenceDate as string,
@@ -125,6 +129,16 @@ export const vendorAnalyzeHandler: JobHandler = {
   async run(ctx) {
     const params = parsePayload(ctx.job.payload as Record<string, unknown>)
     if (!params) throw new Error('无效的任务参数')
+
+    // Worker 无 HTTP 请求头：用创建时冻结的 country 恢复 AsyncLocalStorage，供长尾单/归班等 resolveImileCountry
+    return runWithImileCountry(params.country, () => runVendorAnalyze(ctx, params))
+  },
+}
+
+async function runVendorAnalyze(
+  ctx: Parameters<JobHandler['run']>[0],
+  params: VendorAnalyzePayload,
+): Promise<JobHandlerResult> {
     const { imileToken } = params
     const enabledSources = new Set<VendorAnalysisDataSource>(params.dataSources)
 
@@ -339,5 +353,4 @@ export const vendorAnalyzeHandler: JobHandler = {
       totalSteps: enabledStages.length,
     })
     return {}
-  },
 }

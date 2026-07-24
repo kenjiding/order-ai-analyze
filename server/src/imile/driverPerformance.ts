@@ -1,6 +1,6 @@
 import { requestImileApi } from './client'
 import { buildImilePortalHeaders, IMILE_OC_INTERCEPT_PORTAL } from './portal'
-import { envFirstOr, normalizeImileToken } from './shared'
+import { envFirstOr, normalizeImileToken, resolveImileCountry } from './shared'
 import { resolveRegionTz } from './ausTimezone'
 import { syncStationDayWaybillsIncremental } from './stationDayWaybillSync'
 
@@ -66,7 +66,7 @@ export async function fetchDriverReturnWarning(
   const url = envFirstOr(['IMILE_DRIVER_RETURN_URL'], DEFAULT_RETURN_WARNING_URL)
   const headers = makeDriverReturnHeaders(normalizedToken)
   const body = {
-    country: 'AUS',
+    country: resolveImileCountry(),
     currentPage: 1,
     end: '',
     fromOc: true,

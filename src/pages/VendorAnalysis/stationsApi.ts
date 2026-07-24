@@ -1,4 +1,5 @@
 import { backendFetch } from '../../api/httpClient'
+import type { GlobalCountryCode } from '../../stores/globalFilterStore'
 import type { StationOption } from './vendorAnalysisTypes'
 
 async function apiFetch<T>(
@@ -23,8 +24,10 @@ async function apiFetch<T>(
  * 不应牵连 vendorAnalysisApi.ts 里其它供应商分析专属代码打进全局预加载 chunk */
 export async function fetchStations(
   imileToken: string,
+  country: GlobalCountryCode,
 ): Promise<{ ok: true; data: StationOption[] } | { ok: false; error: string }> {
-  return apiFetch<StationOption[]>('/api/vendor-analysis/stations', {
+  const qs = new URLSearchParams({ country })
+  return apiFetch<StationOption[]>(`/api/vendor-analysis/stations?${qs}`, {
     method: 'GET',
     headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${imileToken}` },
   })

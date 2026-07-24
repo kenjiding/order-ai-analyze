@@ -10,8 +10,27 @@ export const IMILE_DEFAULT_FRONT_SEC = JSON.stringify({
 })
 
 export const IMILE_DEFAULT_HUBCODE = 'S210431701'
+/** 系统默认国家：与前端「国家选择器」一致；无请求上下文时兜底 */
+export const IMILE_DEFAULT_COUNTRY = 'AUS'
 export const IMILE_DEFAULT_LANG = 'zh_CN'
 export const IMILE_DEFAULT_TIMEZONE = '+10'
+
+/**
+ * 正式 iMile 切国家时同步切换的时区偏移（见浏览器抓包）：
+ * AUS → timezone=+10 / TIMEZONE_COUNTRY=AUS
+ * NZL → timezone=+12 / TIMEZONE_COUNTRY=NZL
+ */
+export const IMILE_COUNTRY_TIMEZONE: Record<string, string> = {
+  AUS: '+10',
+  NZL: '+12',
+}
+
+/** 前端国家选择器允许的值 */
+const IMILE_COUNTRY_CODES = new Set(['AUS', 'NZL'])
+
+export function isImileCountryCode(value: string): boolean {
+  return IMILE_COUNTRY_CODES.has(value)
+}
 
 export type ImileBusinessFailure = {
   code: string
@@ -81,8 +100,62 @@ export function getRequestImileHubcode(): string | undefined {
   return imileHubcodeStorage.getStore()
 }
 
+/**
+ * 请求级 country 上下文：由 imileHubcodeMiddleware 注入前端「国家选择器」的 country 请求头。
+ * 定时任务等无 HTTP 上下文时 resolveImileCountry 回退到常量 AUS。
+ */
+const imileCountryStorage = new AsyncLocalStorage<string>()
+
+export function runWithImileCountry<T>(country: string, fn: () => T): T {
+  return imileCountryStorage.run(country, fn)
+}
+
+export function getRequestImileCountry(): string | undefined {
+  return imileCountryStorage.getStore()
+}
+
+/**
+ * 解析本次 iMile 调用应使用的国家码。
+ * 优先级：显式 override（如 job payload）→ 请求头上下文（国家选择器）→ 默认 AUS。
+ */
+export function resolveImileCountry(override?: string): string {
+  const fromOverride = String(override ?? '').trim().toUpperCase()
+  if (fromOverride && isImileCountryCode(fromOverride)) return fromOverride
+  return getRequestImileCountry() || IMILE_DEFAULT_COUNTRY
+}
+
+/** 国家选择器对应的 timezone 请求头（与正式站切国家行为一致） */
+export function resolveImileTimezone(country?: string): string {
+  const code = resolveImileCountry(country)
+  return IMILE_COUNTRY_TIMEZONE[code] ?? IMILE_DEFAULT_TIMEZONE
+}
+
+/** 写入 / 覆盖 cookie 中的单个键（不影响其它键） */
+function setCookiePair(cookie: string, key: string, value: string): string {
+  const escaped = key.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+  const re = new RegExp(`(^|;\\s*)${escaped}=[^;]*`, 'i')
+  if (re.test(cookie)) return cookie.replace(re, `$1${key}=${value}`)
+  const trimmed = cookie.trim()
+  return trimmed ? `${trimmed}; ${key}=${value}` : `${key}=${value}`
+}
+
+/**
+ * 正式站切国家会改 Cookie 的 TIMEZONE / TIMEZONE_COUNTRY；
+ * 仅改 countries 而 Cookie 仍是 AUS 时，站点列表不会变。
+ */
+export function applyImileCountryToCookie(cookie: string | undefined, country?: string): string {
+  const code = resolveImileCountry(country)
+  const tz = resolveImileTimezone(code)
+  let next = cookie?.trim() ?? ''
+  next = setCookiePair(next, 'TIMEZONE', tz)
+  next = setCookiePair(next, 'TIMEZONE_COUNTRY', code)
+  return next
+}
+
 export function buildImileAuthHeaders(config: ImileAuthHeaderConfig): Record<string, string> {
   const token = normalizeImileToken(config.token)
+  const country = resolveImileCountry()
+  const timezone = resolveImileTimezone(country)
   const headers: Record<string, string> = {
     Accept: 'application/json, text/plain, */*',
     Authorization: `Bearer ${token}`,
@@ -90,7 +163,8 @@ export function buildImileAuthHeaders(config: ImileAuthHeaderConfig): Record<str
     hubcode:
       getRequestImileHubcode() || envFirst(...(config.hubcodeEnvKeys ?? [])) || IMILE_DEFAULT_HUBCODE,
     lang: envFirst(...(config.langEnvKeys ?? [])) ?? IMILE_DEFAULT_LANG,
-    timezone: envFirst(...(config.timezoneEnvKeys ?? [])) ?? IMILE_DEFAULT_TIMEZONE,
+    // 国家选择器驱动 timezone，不再用写死的 +10 / env 覆盖正式切国行为
+    timezone,
     'resource-code': config.resourceCode,
     'sys-name': config.sysName,
     'sys-portal': config.sysPortal,
@@ -100,7 +174,7 @@ export function buildImileAuthHeaders(config: ImileAuthHeaderConfig): Record<str
   }
 
   const cookie = envFirst(...(config.cookieEnvKeys ?? []))
-  if (cookie) headers.Cookie = cookie
+  headers.Cookie = applyImileCountryToCookie(cookie, country)
   return headers
 }
 

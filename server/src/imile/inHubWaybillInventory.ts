@@ -1,7 +1,7 @@
 import { requestImileApi } from './client'
 import { fetchPaginatedResultRows } from './paginatedQuery'
 import { buildImilePortalHeaders, IMILE_DS_SAAS_TMS_PORTAL } from './portal'
-import { envFirstOr, isRecord, normalizeImileToken } from './shared'
+import { envFirstOr, isRecord, normalizeImileToken, resolveImileCountry } from './shared'
 
 const DEFAULT_IN_HUB_WAYBILL_INVENTORY_URL =
   'https://ds.imile.com/saastms/v1/report/stock/inHubWaybillInbentory'
@@ -63,7 +63,7 @@ export async function fetchInHubWaybillInventory(
     label: '库内异常订单查询',
     pageShowCount: IN_HUB_WAYBILL_PAGE_SHOW_COUNT,
     buildPageBody: ({ currentPage, showCount }) => ({
-      country: 'AUS',
+      country: resolveImileCountry(),
       currentPage,
       end: params.end,
       fromOc: false,

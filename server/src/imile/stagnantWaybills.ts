@@ -1,7 +1,7 @@
 import { requestImileApi } from './client'
 import { fetchPaginatedResultRows } from './paginatedQuery'
 import { buildImilePortalHeaders, IMILE_DS_SAAS_TMS_PORTAL } from './portal'
-import { envFirstOr, isRecord, normalizeImileToken, sleep } from './shared'
+import { envFirstOr, isRecord, normalizeImileToken, resolveImileCountry, sleep } from './shared'
 
 const DEFAULT_STAGNANT_URL =
   'https://ds.imile.com/saastms/v1/report/stock/daWaybillInventory'
@@ -122,7 +122,7 @@ export async function fetchStagnantWaybills(
     label: '催派滞留单查询',
     pageShowCount: STAGNANT_PAGE_SHOW_COUNT,
     buildPageBody: ({ currentPage, showCount }) => ({
-      country: 'AUS',
+      country: resolveImileCountry(),
       currentPage,
       end: params.end,
       fromOc: false,

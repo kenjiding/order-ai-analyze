@@ -4,10 +4,14 @@ import { Menu } from 'lucide-react'
 import Sidebar from './Layout/Sidebar'
 import UserAccountMenu from './Layout/UserAccountMenu'
 import { GlobalStationSelector } from './Layout/GlobalStationSelector'
+import { GlobalCountrySelector } from './Layout/GlobalCountrySelector'
+import { useGlobalStationBootstrap } from './Layout/useGlobalStationBootstrap'
 
 export default function AppLayout() {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
+  // 国家选择器变化时立刻重拉责任站点列表（countries 与所选国家联动）
+  useGlobalStationBootstrap()
 
   return (
     <div className="admin-shell">
@@ -24,7 +28,7 @@ export default function AppLayout() {
         }`}
       >
         <header className="admin-topbar">
-          <div className="mx-auto flex max-w-[1680px] items-center gap-3">
+          <div className="mx-auto flex max-w-[1680px] items-center">
             <div className="flex shrink-0 items-center gap-3">
               {/* 移动端汉堡按钮 */}
               <button
@@ -42,8 +46,9 @@ export default function AppLayout() {
               </div>
             </div>
 
-            <div className="hidden flex-1 items-center justify-end gap-4 pr-2 md:flex">
+            <div className="hidden flex-1 items-center justify-end pr-2 md:flex">
               <GlobalStationSelector />
+              <GlobalCountrySelector />
             </div>
 
             <div className="flex shrink-0 items-center">
