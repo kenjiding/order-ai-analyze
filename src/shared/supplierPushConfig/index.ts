@@ -40,7 +40,10 @@ export {
 export { useSupplierPushCatalog } from './hooks/useSupplierPushCatalog'
 export { useSupplierConfigScopeBinding } from './hooks/useSupplierConfigScopeBinding'
 
-export { SupplierPushSelectionGrid } from './components/SupplierPushSelectionGrid'
+export {
+  SupplierPushSelectionGrid,
+  SupplierPushSelectAllButtons,
+} from './components/SupplierPushSelectionGrid'
 
 /**
  * 扩展新业务 scope  checklist:

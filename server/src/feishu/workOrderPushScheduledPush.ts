@@ -7,8 +7,7 @@ import { envFirst } from '../imile/shared'
 import { getGlobalImileToken } from './globalImileToken'
 import { getRegionNow } from '../imile/inboundWaybillIndex'
 import { resolveRegionTz, type AusTz } from '../imile/ausTimezone'
-import { listPushableConfigsForScope } from '../supplierConfigScopes'
-import { supplierDisplayName } from '../supplierPushConfigs'
+import { listPushableSupplierPushConfigsByIds, parsePushConfigIds, supplierDisplayName } from '../supplierPushConfigs'
 import { fetchUnprocessedTickets } from '../imile/vendorAnalysis'
 import { fetchWorkOrderWaybillVendors } from '../imile/workOrderPushWaybills'
 import { aggregateWorkOrderPush } from '../vendorAnalysis/workOrderPushAggregate'
@@ -20,7 +19,6 @@ import {
 } from '../jobs/scheduledClaim'
 import { resolveDueScheduledSlots } from '../jobs/scheduledDueSlots'
 
-const WORK_ORDER_PUSH_SCOPE = 'work-order-push.scheduled' as const
 /** 工单出现时间不可预测，不做星期筛选：传入全 7 天等价于「每天都检查」 */
 const ALL_WEEKDAYS = [1, 2, 3, 4, 5, 6, 7]
 
@@ -115,6 +113,7 @@ export type WorkOrderPushResult = {
  */
 export async function executeWorkOrderPush(params: {
   token: string
+  stationCode: string
   startTime: string
   endTime: string
   pushTime: string
@@ -128,9 +127,9 @@ export async function executeWorkOrderPush(params: {
    */
   perConfigDedupe?: { jobKeyPrefix: string; slotKey: string }
 }): Promise<WorkOrderPushResult | { error: string }> {
-  const { token, startTime, endTime, pushTime, baseDate, tz, configs, label, perConfigDedupe } = params
+  const { token, stationCode, startTime, endTime, pushTime, baseDate, tz, configs, label, perConfigDedupe } = params
 
-  const ticketsRes = await fetchUnprocessedTickets(token, { startTime, endTime })
+  const ticketsRes = await fetchUnprocessedTickets(token, { startTime, endTime, stationCode })
   if (!ticketsRes.ok) {
     console.error(`${label} 未处理工单查询失败: ${ticketsRes.message}`)
     return { error: `未处理工单查询失败: ${ticketsRes.message}` }
@@ -212,17 +211,20 @@ export async function logWorkOrderPushSchedulerReadiness(): Promise<void> {
       console.log(`${label} 尚无已启用的定时配置，等待各账号页面保存后生效`)
       return
     }
-    const scopedConfigs = await listPushableConfigsForScope(WORK_ORDER_PUSH_SCOPE)
     for (const { schedule, regionCode } of enabled) {
+      if (!schedule.stationCode?.trim()) {
+        console.warn(`${label} 配置 ${schedule.id} 已启用，但未保存站点编码 stationCode`)
+      }
       if (!(await hasWorkOrderPushImileToken(schedule))) {
         console.warn(`${label} 配置 ${schedule.id} 已启用，但缺少 iMile token`)
         continue
       }
       const pushTimes = schedule.pushTimes as Array<{ id: string; time: string }>
+      const scopedCount = parsePushConfigIds(schedule.pushConfigIds).length
       console.log(
-        `${label} 就绪 user=${schedule.userId} times=[${pushTimes.map((s) => s.time).join(',')}] region=${
-          regionCode ?? '(默认阿德莱德)'
-        } scopedSuppliers=${scopedConfigs.length}`,
+        `${label} 就绪 user=${schedule.userId} times=[${pushTimes.map((s) => s.time).join(',')}] station=${
+          schedule.stationCode
+        } region=${regionCode ?? '(默认阿德莱德)'} scopedSuppliers=${scopedCount}`,
       )
     }
   } catch (err) {
@@ -232,6 +234,9 @@ export async function logWorkOrderPushSchedulerReadiness(): Promise<void> {
 
 async function runOneScheduledPush(schedule: WorkOrderPushSchedule, regionCode: string | null): Promise<void> {
   const label = `[work-order-push/scheduler user=${schedule.userId}]`
+
+  const stationCode = schedule.stationCode?.trim()
+  if (!stationCode) return
 
   const tz: AusTz = resolveRegionTz(regionCode)
   const pushTimes = schedule.pushTimes as Array<{ id: string; time: string }>
@@ -250,9 +255,9 @@ async function runOneScheduledPush(schedule: WorkOrderPushSchedule, regionCode: 
       continue
     }
 
-    const configs = await listPushableConfigsForScope(WORK_ORDER_PUSH_SCOPE)
+    const configs = await listPushableSupplierPushConfigsByIds(parsePushConfigIds(schedule.pushConfigIds))
     if (configs.length === 0) {
-      console.log(`${label} 无参与工单推送的供应商，跳过（请在「工单推送」启用供应商）`)
+      console.log(`${label} 无参与工单推送的供应商，跳过（请在该条目的「供应商配置」启用供应商）`)
       continue
     }
 
@@ -270,6 +275,7 @@ async function runOneScheduledPush(schedule: WorkOrderPushSchedule, regionCode: 
     const { startTime, endTime } = computeUnprocessedTicketWindow(tz)
     const result = await executeWorkOrderPush({
       token,
+      stationCode,
       startTime,
       endTime,
       pushTime: timeHHmm,
@@ -287,15 +293,26 @@ async function runOneScheduledPush(schedule: WorkOrderPushSchedule, regionCode: 
   }
 }
 
+let isRunning = false
+
 /** 每分钟由 scheduler 调用 */
 export async function runWorkOrderPushScheduledPush(): Promise<void> {
   const label = '[work-order-push/scheduler]'
-  const enabled = await listEnabledSchedules()
-  for (const { schedule, regionCode } of enabled) {
-    try {
-      await runOneScheduledPush(schedule, regionCode)
-    } catch (err) {
-      console.error(`${label} 配置 ${schedule.id}（user=${schedule.userId}）推送异常:`, err)
+  if (isRunning) {
+    console.warn(`${label} 上一次执行仍在进行中，跳过本次触发`)
+    return
+  }
+  isRunning = true
+  try {
+    const enabled = await listEnabledSchedules()
+    for (const { schedule, regionCode } of enabled) {
+      try {
+        await runOneScheduledPush(schedule, regionCode)
+      } catch (err) {
+        console.error(`${label} 配置 ${schedule.id}（user=${schedule.userId}）推送异常:`, err)
+      }
     }
+  } finally {
+    isRunning = false
   }
 }

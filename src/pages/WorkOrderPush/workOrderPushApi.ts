@@ -20,47 +20,59 @@ async function apiFetch<T>(
   }
 }
 
-export async function loadWorkOrderPushSchedule(): Promise<
-  { ok: true; data: WorkOrderPushSchedule | null } | { ok: false; error: string }
+export async function loadWorkOrderPushSchedules(): Promise<
+  { ok: true; data: WorkOrderPushSchedule[] } | { ok: false; error: string }
 > {
-  return apiFetch<WorkOrderPushSchedule | null>('/api/work-order-push/schedule', { method: 'GET' })
+  return apiFetch<WorkOrderPushSchedule[]>('/api/work-order-push/schedules', { method: 'GET' })
 }
 
-export async function saveWorkOrderPushSchedule(
+function withImileTokenHeaders(imileToken: string): HeadersInit {
+  return imileToken
+    ? { 'Content-Type': 'application/json', Authorization: `Bearer ${imileToken}` }
+    : { 'Content-Type': 'application/json' }
+}
+
+export async function createWorkOrderPushSchedule(
   draft: WorkOrderPushScheduleDraft,
   imileToken: string,
 ): Promise<{ ok: true; data: WorkOrderPushSchedule } | { ok: false; error: string }> {
-  return apiFetch<WorkOrderPushSchedule>('/api/work-order-push/schedule', {
-    method: 'PUT',
+  return apiFetch<WorkOrderPushSchedule>('/api/work-order-push/schedules', {
+    method: 'POST',
     body: JSON.stringify({ ...draft, imileToken }),
-    headers: imileToken
-      ? {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${imileToken}`,
-        }
-      : { 'Content-Type': 'application/json' },
+    headers: withImileTokenHeaders(imileToken),
   })
 }
 
-// 立即触发一次工单推送（测试用）
+export async function updateWorkOrderPushSchedule(
+  id: string,
+  draft: WorkOrderPushScheduleDraft,
+  imileToken: string,
+): Promise<{ ok: true; data: WorkOrderPushSchedule } | { ok: false; error: string }> {
+  return apiFetch<WorkOrderPushSchedule>(`/api/work-order-push/schedules/${id}`, {
+    method: 'PUT',
+    body: JSON.stringify({ ...draft, imileToken }),
+    headers: withImileTokenHeaders(imileToken),
+  })
+}
+
+export async function deleteWorkOrderPushSchedule(
+  id: string,
+): Promise<{ ok: true; data: null } | { ok: false; error: string }> {
+  return apiFetch<null>(`/api/work-order-push/schedules/${id}`, { method: 'DELETE' })
+}
+
 export type WorkOrderPushNowResult = {
   pushedCount: number
   totalConfigs: number
   errors: string[]
 }
 
-export async function triggerWorkOrderPushNow(
-  imileToken: string,
-  params: { configIds: string[] },
-  signal?: AbortSignal,
+/** 立刻推送：使用该条目已保存配置，不校验推送时间 */
+export async function triggerWorkOrderPushSchedulePushNow(
+  id: string,
 ): Promise<{ ok: true; data: WorkOrderPushNowResult } | { ok: false; error: string }> {
-  return apiFetch<WorkOrderPushNowResult>('/api/work-order-push/push-now', {
+  return apiFetch<WorkOrderPushNowResult>(`/api/work-order-push/schedules/${id}/push-now`, {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${imileToken}`,
-    },
-    body: JSON.stringify(params),
-    signal,
+    body: JSON.stringify({}),
   })
 }

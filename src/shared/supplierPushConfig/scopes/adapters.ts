@@ -23,7 +23,6 @@ export const SUPPLIER_CONFIG_SCOPE_ADAPTERS: Record<
   SupplierConfigScopeAdapter
 > = {
   'vendor-analysis.push': createScopeAdapter('vendor-analysis.push'),
-  'work-order-push.scheduled': createScopeAdapter('work-order-push.scheduled'),
 }
 
 export function getSupplierConfigScopeAdapter(

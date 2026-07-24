@@ -183,6 +183,8 @@ export async function fetchComplaintTickets(
 export type UnprocessedTicketsParams = {
   startTime: string
   endTime: string
+  /** 处理站点编码，留空表示不限站点（原有行为） */
+  stationCode?: string
 }
 
 export type UnprocessedTicketsResult = {
@@ -199,6 +201,7 @@ async function fetchTicketsByWorkOrderType(
     workOrderType: string
     mainTypeId: string
     orderStatusList: string[]
+    stationCode: string
   },
 ): Promise<VendorAnalysisSuccess<unknown[]> | VendorAnalysisError> {
   const normalizedToken = normalizeImileToken(token)
@@ -217,7 +220,7 @@ async function fetchTicketsByWorkOrderType(
     currentPage: 1,
     dateSearchType: 'workOrderCreateDate',
     endTime: params.endTime,
-    handlerStationCode: '',
+    handlerStationCode: params.stationCode,
     investigationResultList: [],
     mainTypeId: params.mainTypeId,
     orderCode: '',
@@ -257,6 +260,7 @@ export async function fetchUnprocessedTickets(
   token: string,
   params: UnprocessedTicketsParams,
 ): Promise<VendorAnalysisSuccess<UnprocessedTicketsResult> | VendorAnalysisError> {
+  const stationCode = params.stationCode?.trim() ?? ''
   const [normalRes, complaintRes, arbitrationRes] = await Promise.all([
     fetchTicketsByWorkOrderType(token, {
       startTime: params.startTime,
@@ -264,6 +268,7 @@ export async function fetchUnprocessedTickets(
       workOrderType: 'normal',
       mainTypeId: '1084982732691562497',
       orderStatusList: ['pending', 'processing'],
+      stationCode,
     }),
     fetchTicketsByWorkOrderType(token, {
       startTime: params.startTime,
@@ -271,6 +276,7 @@ export async function fetchUnprocessedTickets(
       workOrderType: 'complaint',
       mainTypeId: '1084934573554556928',
       orderStatusList: ['pending', 'processing'],
+      stationCode,
     }),
     fetchTicketsByWorkOrderType(token, {
       startTime: params.startTime,
@@ -278,6 +284,7 @@ export async function fetchUnprocessedTickets(
       workOrderType: 'arbitration',
       mainTypeId: '1267665135288328192',
       orderStatusList: ['1', '3'],
+      stationCode,
     }),
   ])
 

@@ -27,9 +27,7 @@ export type SupplierPushConfig = {
 export type SupplierPushConfigDraft = Omit<SupplierPushConfig, 'id' | 'regionCode'>
 
 /** 与 server/src/supplierConfigScopes/types.ts 保持一致 */
-export type SupplierConfigScopeKey =
-  | 'vendor-analysis.push'
-  | 'work-order-push.scheduled'
+export type SupplierConfigScopeKey = 'vendor-analysis.push'
 
 export type SupplierConfigScopeBinding = {
   scopeKey: SupplierConfigScopeKey

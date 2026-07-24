@@ -1,7 +1,5 @@
 /** 业务侧「启用哪些供应商配置」的作用域标识；与主配置 catalog 解耦 */
-export type SupplierConfigScopeKey =
-  | 'vendor-analysis.push'
-  | 'work-order-push.scheduled'
+export type SupplierConfigScopeKey = 'vendor-analysis.push'
 
 export type SupplierConfigScopeStore = {
   key: SupplierConfigScopeKey

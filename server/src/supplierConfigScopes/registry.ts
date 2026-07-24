@@ -1,10 +1,8 @@
 import { vendorAnalysisPushScope } from './vendorAnalysisPush'
-import { workOrderPushScheduledScope } from './workOrderPushScheduled'
 import type { SupplierConfigScopeKey, SupplierConfigScopeStore } from './types'
 
 const STORES: Record<SupplierConfigScopeKey, SupplierConfigScopeStore> = {
   'vendor-analysis.push': vendorAnalysisPushScope,
-  'work-order-push.scheduled': workOrderPushScheduledScope,
 }
 
 export function isSupplierConfigScopeKey(raw: string): raw is SupplierConfigScopeKey {

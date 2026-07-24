@@ -1,11 +1,13 @@
-import { Ticket } from 'lucide-react'
-import { WorkOrderPushScheduleConfig } from './components/WorkOrderPushScheduleConfig'
-import { WorkOrderPushNowPanel } from './components/WorkOrderPushNowPanel'
-import { WorkOrderPushSupplierSection } from './components/WorkOrderPushSupplierSection'
+import { Button } from 'antd'
+import { Plus, Ticket } from 'lucide-react'
+import { WorkOrderPushScheduleDrawer } from './components/WorkOrderPushScheduleDrawer'
+import { WorkOrderPushScheduleList } from './components/WorkOrderPushScheduleList'
 import { useWorkOrderPushPage } from './useWorkOrderPushPage'
 
 export default function WorkOrderPushPage() {
   const v = useWorkOrderPushPage()
+
+  const enabledCount = v.schedules.filter((s) => s.isEnabled).length
 
   return (
     <div className="admin-page space-y-5">
@@ -18,21 +20,40 @@ export default function WorkOrderPushPage() {
               工单推送
             </h2>
           </div>
-          <div className="flex flex-col items-end gap-1 text-right">
-            <div className="text-xs text-slate-500">定时已启用 / 可推送</div>
-            <div className="text-xl font-semibold tabular-nums text-slate-950">
-              {v.scheduledPushConfigs.length}
-              <span className="ml-1 text-sm font-normal text-slate-400">/ {v.pushableConfigs.length}</span>
+          <div className="flex items-center gap-4">
+            <div className="flex flex-col items-end gap-1 text-right">
+              <div className="text-xs text-slate-500">已启用 / 总数</div>
+              <div className="text-xl font-semibold tabular-nums text-slate-950">
+                {enabledCount}
+                <span className="ml-1 text-sm font-normal text-slate-400">/ {v.schedules.length}</span>
+              </div>
             </div>
+            <Button type="primary" icon={<Plus className="h-4 w-4" />} onClick={v.openCreateDrawer}>
+              添加工单推送
+            </Button>
           </div>
         </div>
       </div>
 
-      <WorkOrderPushScheduleConfig page={v} />
+      <WorkOrderPushScheduleList
+        schedules={v.schedules}
+        loading={v.schedulesLoading}
+        pushingId={v.pushingId}
+        onEdit={v.openEditDrawer}
+        onDelete={(id) => void v.removeSchedule(id)}
+        onToggleEnabled={(schedule, enabled) => void v.toggleEnabled(schedule, enabled)}
+        onPushNow={(schedule) => void v.pushNow(schedule)}
+      />
 
-      <WorkOrderPushSupplierSection page={v} />
-
-      <WorkOrderPushNowPanel disabled={v.catalog.loading} configs={v.scheduledPushConfigs} />
+      <WorkOrderPushScheduleDrawer
+        open={v.drawerOpen}
+        onClose={v.closeDrawer}
+        editingSchedule={v.editingSchedule}
+        catalogConfigs={v.catalog.configs}
+        catalogLoading={v.catalog.loading}
+        saving={v.saving}
+        onSubmit={v.submitDrawer}
+      />
     </div>
   )
 }

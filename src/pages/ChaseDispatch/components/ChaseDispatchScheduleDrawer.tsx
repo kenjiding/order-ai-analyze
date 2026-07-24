@@ -5,7 +5,11 @@ import type { LucideIcon } from 'lucide-react'
 import { Plus, X } from 'lucide-react'
 import { useEffect, useState, type ReactNode } from 'react'
 import { StationSelect } from '../../../components/Layout/StationSelect'
-import { SupplierPushSelectionGrid, type SupplierPushConfig } from '../../../shared/supplierPushConfig'
+import {
+  SupplierPushSelectAllButtons,
+  SupplierPushSelectionGrid,
+  type SupplierPushConfig,
+} from '../../../shared/supplierPushConfig'
 import { showToast } from '../../../utils/toast'
 import {
   STAGNATION_BUCKET_OPTIONS,
@@ -44,23 +48,28 @@ function FormSection({
   icon: Icon,
   title,
   description,
+  action,
   children,
 }: {
   icon: LucideIcon
   title: string
   description?: string
+  action?: ReactNode
   children: ReactNode
 }) {
   return (
     <section className="rounded-xl border border-[var(--admin-line)] bg-white">
-      <header className="flex items-start gap-2.5 border-b border-[var(--admin-line)] bg-[var(--admin-surface-soft)] px-4 py-3">
-        <span className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-[var(--admin-accent-soft)] text-[var(--admin-accent)]">
-          <Icon className="h-4 w-4" aria-hidden />
-        </span>
-        <div>
-          <h4 className="text-sm font-semibold text-slate-800">{title}</h4>
-          {description && <p className="mt-0.5 text-xs leading-relaxed text-slate-500">{description}</p>}
+      <header className="flex items-start justify-between gap-3 border-b border-[var(--admin-line)] bg-[var(--admin-surface-soft)] px-4 py-3">
+        <div className="flex items-start gap-2.5">
+          <span className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-[var(--admin-accent-soft)] text-[var(--admin-accent)]">
+            <Icon className="h-4 w-4" aria-hidden />
+          </span>
+          <div>
+            <h4 className="text-sm font-semibold text-slate-800">{title}</h4>
+            {description && <p className="mt-0.5 text-xs leading-relaxed text-slate-500">{description}</p>}
+          </div>
         </div>
+        {action && <div className="shrink-0">{action}</div>}
       </header>
       <div className="px-4 py-4">{children}</div>
     </section>
@@ -240,7 +249,22 @@ export function ChaseDispatchScheduleDrawer({
           </div>
         </FormSection>
 
-        <FormSection icon={Truck} title="供应商配置" description="与「飞书推送 · 车队供应商推送」同一份配置；同编码多条可分别勾选（按路由码 / Webhook 区分）">
+        <FormSection
+          icon={Truck}
+          title="供应商配置"
+          description="与「飞书推送 · 车队供应商推送」同一份配置；同编码多条可分别勾选（按路由码 / Webhook 区分）"
+          action={
+            <SupplierPushSelectAllButtons
+              configs={catalogConfigs}
+              enabledIdSet={enabledIdSet}
+              disabled={saving}
+              saving={catalogLoading}
+              onToggle={(id, next) =>
+                setPushConfigIds((prev) => (next ? [...prev, id] : prev.filter((x) => x !== id)))
+              }
+            />
+          }
+        >
           <SupplierPushSelectionGrid
             configs={catalogConfigs}
             enabledIdSet={enabledIdSet}

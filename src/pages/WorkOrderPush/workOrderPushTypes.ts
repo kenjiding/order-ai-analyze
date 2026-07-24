@@ -6,11 +6,13 @@ export type WorkOrderPushScheduleDraft = {
   /** 每天检查的推送时间点列表，格式 HH:mm，可配置多个 */
   pushTimes: PushTimeSlot[]
   isEnabled: boolean
+  /** 定时查询使用的处理站点编码，只检查该站点的未处理工单 */
+  stationCode: string
+  pushConfigIds: string[]
 }
 
 export type WorkOrderPushSchedule = WorkOrderPushScheduleDraft & {
   id: string
-  pushConfigIds: string[]
   updatedAt: string
   /** 服务端是否已具备定时拉数所需的 iMile token */
   hasImileToken: boolean

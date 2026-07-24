@@ -1,117 +1,163 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useAppSettings } from '../../context/AppSettingsContext'
 import { showToast } from '../../utils/toast'
-import {
-  useSupplierConfigScopeBinding,
-  useSupplierPushCatalog,
-} from '../../shared/supplierPushConfig'
+import { useSupplierPushCatalog } from '../../shared/supplierPushConfig'
 import type { WorkOrderPushSchedule, WorkOrderPushScheduleDraft } from './workOrderPushTypes'
-import { loadWorkOrderPushSchedule, saveWorkOrderPushSchedule } from './workOrderPushApi'
-
-const WORK_ORDER_PUSH_SCHEDULED_SCOPE = 'work-order-push.scheduled' as const
+import {
+  createWorkOrderPushSchedule,
+  deleteWorkOrderPushSchedule,
+  loadWorkOrderPushSchedules,
+  triggerWorkOrderPushSchedulePushNow,
+  updateWorkOrderPushSchedule,
+} from './workOrderPushApi'
 
 export function useWorkOrderPushPage() {
   const { imileToken } = useAppSettings()
 
   const catalog = useSupplierPushCatalog()
-  const scopeBinding = useSupplierConfigScopeBinding(WORK_ORDER_PUSH_SCHEDULED_SCOPE, catalog.configs)
 
-  const [schedule, setSchedule] = useState<WorkOrderPushSchedule | null>(null)
-  const [scheduleLoading, setScheduleLoading] = useState(false)
-  const [scheduleSaving, setScheduleSaving] = useState(false)
+  const [schedules, setSchedules] = useState<WorkOrderPushSchedule[]>([])
+  const [schedulesLoading, setSchedulesLoading] = useState(false)
+  const [saving, setSaving] = useState(false)
+  const [pushingId, setPushingId] = useState<string | null>(null)
 
-  // 「编辑」统一驱动定时推送配置与供应商配置（多选）：未加载出配置前默认可编辑，
-  // 加载完成后进入只读态，点击「编辑」才能同时修改两者，点击「保存」一并提交。
-  const [editing, setEditing] = useState(true)
-  const [pendingSupplierIds, setPendingSupplierIdsState] = useState<string[]>([])
-
-  useEffect(() => {
-    if (schedule) setEditing(false)
-  }, [schedule])
-
-  const supplierSyncedRef = useRef(false)
-  useEffect(() => {
-    if (scopeBinding.loading) return
-    if (supplierSyncedRef.current && editing) return
-    supplierSyncedRef.current = true
-    setPendingSupplierIdsState(scopeBinding.enabledIds)
-  }, [scopeBinding.enabledIds, scopeBinding.loading, editing])
-
-  const startEditing = useCallback(() => setEditing(true), [])
-
-  const cancelEditing = useCallback(() => {
-    setPendingSupplierIdsState(scopeBinding.enabledIds)
-    setEditing(false)
-  }, [scopeBinding.enabledIds])
+  const [drawerOpen, setDrawerOpen] = useState(false)
+  const [editingSchedule, setEditingSchedule] = useState<WorkOrderPushSchedule | null>(null)
 
   const initRef = useRef(false)
+
+  const reload = useCallback(async () => {
+    setSchedulesLoading(true)
+    const res = await loadWorkOrderPushSchedules()
+    setSchedulesLoading(false)
+    if (res.ok) {
+      setSchedules(res.data)
+    } else {
+      showToast(`工单推送配置加载失败: ${res.error}`, 'error')
+    }
+  }, [])
 
   useEffect(() => {
     if (initRef.current) return
     initRef.current = true
-    setScheduleLoading(true)
-    void loadWorkOrderPushSchedule().then((scheduleRes) => {
-      setScheduleLoading(false)
-      if (scheduleRes.ok) {
-        setSchedule(scheduleRes.data)
-      } else {
-        showToast(`定时配置加载失败: ${scheduleRes.error}`, 'error')
-      }
-    })
+    void reload()
+  }, [reload])
+
+  const openCreateDrawer = useCallback(() => {
+    setEditingSchedule(null)
+    setDrawerOpen(true)
   }, [])
 
-  const saveSchedule = useCallback(
+  const openEditDrawer = useCallback((schedule: WorkOrderPushSchedule) => {
+    setEditingSchedule(schedule)
+    setDrawerOpen(true)
+  }, [])
+
+  const closeDrawer = useCallback(() => {
+    setDrawerOpen(false)
+    setEditingSchedule(null)
+  }, [])
+
+  const submitDrawer = useCallback(
     async (draft: WorkOrderPushScheduleDraft): Promise<boolean> => {
       if (!imileToken.trim()) {
-        showToast('请先在全局设置中配置 iMile token，再保存定时推送', 'error')
+        showToast('请先在全局设置中配置 iMile token，再保存工单推送', 'error')
         return false
       }
-      setScheduleSaving(true)
+      setSaving(true)
       try {
-        const res = await saveWorkOrderPushSchedule(draft, imileToken)
+        const res = editingSchedule
+          ? await updateWorkOrderPushSchedule(editingSchedule.id, draft, imileToken)
+          : await createWorkOrderPushSchedule(draft, imileToken)
         if (res.ok) {
-          setSchedule(res.data)
-          showToast('定时推送配置已保存', 'success')
+          showToast(editingSchedule ? '工单推送已更新' : '工单推送已添加', 'success')
+          await reload()
           return true
         }
         showToast(`保存失败: ${res.error}`, 'error')
         return false
       } finally {
-        setScheduleSaving(false)
+        setSaving(false)
       }
     },
-    [imileToken],
+    [editingSchedule, imileToken, reload],
   )
 
-  // 「编辑」同时作用于定时推送配置与供应商配置：保存时先提交定时配置，
-  // 再提交多选的供应商范围，两者都成功才退出编辑态。
-  const saveAll = useCallback(
-    async (draft: WorkOrderPushScheduleDraft): Promise<boolean> => {
-      const scheduleOk = await saveSchedule(draft)
-      if (!scheduleOk) return false
-      const supplierOk = await scopeBinding.persist(pendingSupplierIds)
-      if (!supplierOk) return false
-      setEditing(false)
-      return true
+  const toggleEnabled = useCallback(
+    async (schedule: WorkOrderPushSchedule, isEnabled: boolean) => {
+      const draft: WorkOrderPushScheduleDraft = {
+        pushTimes: schedule.pushTimes,
+        isEnabled,
+        stationCode: schedule.stationCode,
+        pushConfigIds: schedule.pushConfigIds,
+      }
+      const res = await updateWorkOrderPushSchedule(schedule.id, draft, imileToken)
+      if (res.ok) {
+        await reload()
+      } else {
+        showToast(`更新失败: ${res.error}`, 'error')
+      }
     },
-    [saveSchedule, scopeBinding, pendingSupplierIds],
+    [imileToken, reload],
   )
 
-  const pushableConfigs = catalog.configs.filter((c) => c.webhookUrl.trim().length > 0)
+  const removeSchedule = useCallback(
+    async (id: string) => {
+      const res = await deleteWorkOrderPushSchedule(id)
+      if (res.ok) {
+        showToast('已删除', 'success')
+        await reload()
+      } else {
+        showToast(`删除失败: ${res.error}`, 'error')
+      }
+    },
+    [reload],
+  )
+
+  const pushNow = useCallback(async (schedule: WorkOrderPushSchedule) => {
+    if (!schedule.hasImileToken) {
+      showToast('缺少 iMile token，请编辑该配置并重新保存', 'error')
+      return
+    }
+    if (schedule.pushConfigIds.length === 0) {
+      showToast('请先为该配置选择供应商', 'error')
+      return
+    }
+    setPushingId(schedule.id)
+    try {
+      const res = await triggerWorkOrderPushSchedulePushNow(schedule.id)
+      if (!res.ok) {
+        showToast(`推送失败: ${res.error}`, 'error')
+        return
+      }
+      const { pushedCount, totalConfigs, errors } = res.data
+      if (errors.length > 0) {
+        showToast(
+          `已推送 ${pushedCount}/${totalConfigs}，部分失败: ${errors.slice(0, 2).join('；')}`,
+          'error',
+        )
+      } else {
+        showToast(`推送完成 ${pushedCount}/${totalConfigs}`, 'success')
+      }
+    } finally {
+      setPushingId(null)
+    }
+  }, [])
 
   return {
     catalog,
-    scopeBinding,
-    scheduledPushConfigs: scopeBinding.enabledPushable,
-    pushableConfigs,
-    schedule,
-    scheduleLoading,
-    scheduleSaving,
-    editing,
-    startEditing,
-    cancelEditing,
-    pendingSupplierIds,
-    setPendingSupplierIds: setPendingSupplierIdsState,
-    saveAll,
+    schedules,
+    schedulesLoading,
+    saving,
+    pushingId,
+    drawerOpen,
+    editingSchedule,
+    openCreateDrawer,
+    openEditDrawer,
+    closeDrawer,
+    submitDrawer,
+    toggleEnabled,
+    removeSchedule,
+    pushNow,
   }
 }

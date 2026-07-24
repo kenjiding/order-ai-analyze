@@ -1,4 +1,4 @@
-import { Checkbox, Tooltip } from 'antd'
+import { Button, Checkbox, Tooltip } from 'antd'
 import { useMemo, type ReactNode } from 'react'
 import { isSupplierPushEligible } from '../selection'
 import type { SupplierPushConfig } from '../types'
@@ -128,6 +128,56 @@ export function SupplierPushSelectionGrid({
           </label>
         )
       })}
+    </div>
+  )
+}
+
+type SelectAllButtonsProps = {
+  configs: SupplierPushConfig[]
+  enabledIdSet: ReadonlySet<string>
+  onToggle: (configId: string, next: boolean) => void
+  disabled?: boolean
+  saving?: boolean
+}
+
+/**
+ * 配合 SupplierPushSelectionGrid 使用的「全选/清空」按钮，放在 FormSection 标题右侧（action 插槽）。
+ * 全选只勾选已配置 Webhook（可推送）的供应商；清空会取消当前所有已勾选项。
+ */
+export function SupplierPushSelectAllButtons({
+  configs,
+  enabledIdSet,
+  onToggle,
+  disabled = false,
+  saving = false,
+}: SelectAllButtonsProps) {
+  const eligibleConfigs = useMemo(() => configs.filter(isSupplierPushEligible), [configs])
+  const selectedEligibleCount = eligibleConfigs.filter((c) => enabledIdSet.has(c.id)).length
+  const allEligibleSelected = eligibleConfigs.length > 0 && selectedEligibleCount === eligibleConfigs.length
+  const controlsDisabled = disabled || saving
+
+  const handleSelectAll = () => {
+    for (const c of eligibleConfigs) {
+      if (!enabledIdSet.has(c.id)) onToggle(c.id, true)
+    }
+  }
+  const handleClear = () => {
+    for (const c of configs) {
+      if (enabledIdSet.has(c.id)) onToggle(c.id, false)
+    }
+  }
+
+  return (
+    <div className="flex items-center gap-2">
+      <Button
+        onClick={handleSelectAll}
+        disabled={controlsDisabled || allEligibleSelected || eligibleConfigs.length === 0}
+      >
+        全选
+      </Button>
+      <Button onClick={handleClear} disabled={controlsDisabled || enabledIdSet.size === 0}>
+        清空
+      </Button>
     </div>
   )
 }
