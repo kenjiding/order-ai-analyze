@@ -86,6 +86,7 @@ export function useWorkOrderPushPage() {
   const toggleEnabled = useCallback(
     async (schedule: WorkOrderPushSchedule, isEnabled: boolean) => {
       const draft: WorkOrderPushScheduleDraft = {
+        weekdays: schedule.weekdays,
         pushTimes: schedule.pushTimes,
         isEnabled,
         stationCode: schedule.stationCode,

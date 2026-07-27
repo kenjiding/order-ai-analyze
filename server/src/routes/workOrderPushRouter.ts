@@ -20,6 +20,7 @@ export const workOrderPushRouter = Router()
 // ─── 定时推送配置（按账号隔离，一个账号可有多条） ────────────────────────────────
 
 type ScheduleBody = {
+  weekdays?: unknown
   pushTimes?: unknown
   isEnabled?: unknown
   stationCode?: unknown
@@ -29,6 +30,7 @@ type ScheduleBody = {
 
 type PublicWorkOrderPushSchedule = {
   id: string
+  weekdays: WorkOrderPushSchedule['weekdays']
   pushTimes: WorkOrderPushSchedule['pushTimes']
   isEnabled: boolean
   stationCode: string
@@ -50,6 +52,7 @@ function isPushTimeSlot(v: unknown): v is { id: string; time: string } {
 
 function extractScheduleFields(body: ScheduleBody) {
   return {
+    weekdays: Array.isArray(body.weekdays) ? body.weekdays : [],
     pushTimes: Array.isArray(body.pushTimes) ? body.pushTimes.filter(isPushTimeSlot) : [],
     isEnabled: body.isEnabled !== false,
     stationCode: typeof body.stationCode === 'string' ? body.stationCode.trim() : '',
@@ -71,6 +74,7 @@ async function toPublicSchedule(
 ): Promise<PublicWorkOrderPushSchedule> {
   return {
     id: row.id,
+    weekdays: row.weekdays,
     pushTimes: row.pushTimes,
     isEnabled: row.isEnabled,
     stationCode: row.stationCode,
@@ -121,8 +125,8 @@ workOrderPushRouter.post('/schedules', async (req: AuthenticatedRequest, res: Re
     return
   }
   const body = req.body as ScheduleBody
-  if (!Array.isArray(body.pushTimes)) {
-    res.status(400).json({ ok: false, error: '缺少必填字段: pushTimes' })
+  if (!Array.isArray(body.weekdays) || !Array.isArray(body.pushTimes)) {
+    res.status(400).json({ ok: false, error: '缺少必填字段: weekdays, pushTimes' })
     return
   }
   const fields = extractScheduleFields(body)
@@ -135,7 +139,7 @@ workOrderPushRouter.post('/schedules', async (req: AuthenticatedRequest, res: Re
   const tokenFromHeader = readImileTokenFromRequest(req, body.imileToken)
   const nextImileToken = tokenFromBody || tokenFromHeader
 
-  const willEnable = fields.isEnabled && fields.pushTimes.length > 0
+  const willEnable = fields.isEnabled && fields.pushTimes.length > 0 && fields.weekdays.length > 0
   if (willEnable && !nextImileToken) {
     res.status(400).json({ ok: false, error: '启用定时推送需要 iMile token，请在全局设置中配置后重新保存' })
     return
@@ -155,6 +159,7 @@ workOrderPushRouter.post('/schedules', async (req: AuthenticatedRequest, res: Re
       .insert(schema.workOrderPushSchedules)
       .values({
         userId,
+        weekdays: fields.weekdays,
         pushTimes: fields.pushTimes,
         isEnabled: fields.isEnabled,
         stationCode: fields.stationCode,
@@ -176,8 +181,8 @@ workOrderPushRouter.put('/schedules/:id', async (req: AuthenticatedRequest, res:
     return
   }
   const body = req.body as ScheduleBody
-  if (!Array.isArray(body.pushTimes)) {
-    res.status(400).json({ ok: false, error: '缺少必填字段: pushTimes' })
+  if (!Array.isArray(body.weekdays) || !Array.isArray(body.pushTimes)) {
+    res.status(400).json({ ok: false, error: '缺少必填字段: weekdays, pushTimes' })
     return
   }
   const fields = extractScheduleFields(body)
@@ -206,7 +211,7 @@ workOrderPushRouter.put('/schedules/:id', async (req: AuthenticatedRequest, res:
     const tokenFromHeader = readImileTokenFromRequest(req, body.imileToken)
     const nextImileToken = tokenFromBody || tokenFromHeader
 
-    const willEnable = fields.isEnabled && fields.pushTimes.length > 0
+    const willEnable = fields.isEnabled && fields.pushTimes.length > 0 && fields.weekdays.length > 0
     const existingToken = existing.imileToken?.trim() ?? ''
     if (willEnable && !nextImileToken && !existingToken) {
       res.status(400).json({ ok: false, error: '启用定时推送需要 iMile token，请在全局设置中配置后重新保存' })
@@ -216,6 +221,7 @@ workOrderPushRouter.put('/schedules/:id', async (req: AuthenticatedRequest, res:
     const [updated] = await db
       .update(schema.workOrderPushSchedules)
       .set({
+        weekdays: fields.weekdays,
         pushTimes: fields.pushTimes,
         isEnabled: fields.isEnabled,
         stationCode: fields.stationCode,

@@ -85,7 +85,7 @@ export function startJobScheduler(): { stop: () => void } {
   console.log('[scheduler] 已启动催派推送检查任务 cron="* * * * *" timezone="Australia/Adelaide"')
   void logChaseDispatchSchedulerReadiness()
 
-  // 工单推送：worker 内始终注册，是否执行由 DB 配置 isEnabled 控制；每天都检查（工单出现时间不可预测）
+  // 工单推送：worker 内始终注册，是否执行由 DB 配置 isEnabled 及 weekdays 控制
   const workOrderPushTask = cron.schedule(
     '* * * * *',
     async () => {

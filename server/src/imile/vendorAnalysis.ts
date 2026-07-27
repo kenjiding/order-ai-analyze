@@ -134,7 +134,7 @@ export async function fetchComplaintTickets(
   const headers = makeGlobalcsHeaders(normalizedToken)
 
   const body = {
-    acceptCountry: 'AUS',
+    acceptCountry: resolveImileCountry(),
     adjudicateIsResponsible: '1',
     adjudicateReason: [],
     arbitrationOrderStatusList: [],
@@ -209,7 +209,7 @@ async function fetchTicketsByWorkOrderType(
   const headers = makeGlobalcsHeaders(normalizedToken)
 
   const body = {
-    acceptCountry: 'AUS',
+    acceptCountry: resolveImileCountry(),
     adjudicateIsResponsible: '',
     adjudicateReason: [],
     arbitrationOrderStatusList: [],

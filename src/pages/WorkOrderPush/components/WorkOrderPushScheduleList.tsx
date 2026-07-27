@@ -3,9 +3,12 @@ import { Pencil, Send, Trash2 } from 'lucide-react'
 import { StationDisplayLabel } from '../../../components/Layout/StationDisplayLabel'
 import type { WorkOrderPushSchedule } from '../workOrderPushTypes'
 
-function summarizeSchedule(schedule: WorkOrderPushSchedule): { timesText: string } {
+const WEEKDAY_LABELS: Record<number, string> = { 1: '周一', 2: '周二', 3: '周三', 4: '周四', 5: '周五', 6: '周六', 7: '周日' }
+
+function summarizeSchedule(schedule: WorkOrderPushSchedule): { weekdaysText: string; timesText: string } {
+  const weekdaysText = schedule.weekdays.map((d) => WEEKDAY_LABELS[d] ?? d).join('、') || '未设置'
   const timesText = [...schedule.pushTimes].sort((a, b) => a.time.localeCompare(b.time)).map((t) => t.time).join('、') || '未设置'
-  return { timesText }
+  return { weekdaysText, timesText }
 }
 
 type Props = {
@@ -38,7 +41,7 @@ export function WorkOrderPushScheduleList({
   return (
     <div className="admin-panel divide-y divide-[var(--admin-line)] overflow-hidden">
       {schedules.map((schedule) => {
-        const { timesText } = summarizeSchedule(schedule)
+        const { weekdaysText, timesText } = summarizeSchedule(schedule)
         const isPushing = pushingId === schedule.id
         return (
           <div key={schedule.id} className="flex flex-wrap items-center justify-between gap-3 px-5 py-3.5">
@@ -49,7 +52,7 @@ export function WorkOrderPushScheduleList({
                 {!schedule.hasImileToken && <Tag color="orange">缺少 iMile token</Tag>}
               </div>
               <p className="truncate text-xs text-slate-500">
-                每天在 <span className="font-mono">{timesText}</span> 各检查一次未处理工单，有则推送 · 已选{' '}
+                每{weekdaysText}，在 <span className="font-mono">{timesText}</span> 各检查一次未处理工单，有则推送 · 已选{' '}
                 {schedule.pushConfigIds.length} 家供应商
               </p>
             </div>

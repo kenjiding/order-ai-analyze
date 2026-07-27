@@ -19,9 +19,6 @@ import {
 } from '../jobs/scheduledClaim'
 import { resolveDueScheduledSlots } from '../jobs/scheduledDueSlots'
 
-/** 工单出现时间不可预测，不做星期筛选：传入全 7 天等价于「每天都检查」 */
-const ALL_WEEKDAYS = [1, 2, 3, 4, 5, 6, 7]
-
 type EnabledSchedule = { schedule: WorkOrderPushSchedule; regionCode: string | null }
 
 async function listEnabledSchedules(): Promise<EnabledSchedule[]> {
@@ -220,11 +217,14 @@ export async function logWorkOrderPushSchedulerReadiness(): Promise<void> {
         continue
       }
       const pushTimes = schedule.pushTimes as Array<{ id: string; time: string }>
+      const weekdays = schedule.weekdays as number[]
       const scopedCount = parsePushConfigIds(schedule.pushConfigIds).length
       console.log(
-        `${label} 就绪 user=${schedule.userId} times=[${pushTimes.map((s) => s.time).join(',')}] station=${
-          schedule.stationCode
-        } region=${regionCode ?? '(默认阿德莱德)'} scopedSuppliers=${scopedCount}`,
+        `${label} 就绪 user=${schedule.userId} weekdays=[${weekdays.join(',')}] times=[${pushTimes
+          .map((s) => s.time)
+          .join(',')}] station=${schedule.stationCode} region=${
+          regionCode ?? '(默认阿德莱德)'
+        } scopedSuppliers=${scopedCount}`,
       )
     }
   } catch (err) {
@@ -239,9 +239,9 @@ async function runOneScheduledPush(schedule: WorkOrderPushSchedule, regionCode: 
   if (!stationCode) return
 
   const tz: AusTz = resolveRegionTz(regionCode)
+  const weekdays = schedule.weekdays as number[]
   const pushTimes = schedule.pushTimes as Array<{ id: string; time: string }>
-  // 工单出现时间不可预测，不做星期筛选：ALL_WEEKDAYS 等价于「每天都检查」，同时获得 catch-up 补跑窗口
-  const dueSlots = resolveDueScheduledSlots({ tz, weekdays: ALL_WEEKDAYS, pushTimes })
+  const dueSlots = resolveDueScheduledSlots({ tz, weekdays, pushTimes })
   if (dueSlots.length === 0) return
 
   for (const slot of dueSlots) {

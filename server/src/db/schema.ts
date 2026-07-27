@@ -328,7 +328,9 @@ export const workOrderPushSchedules = pgTable('work_order_push_schedules', {
   id: uuid('id').primaryKey().defaultRandom(),
   /** 拥有该配置的账号；时区按该账号的 regionCode 判断，未设置兜底阿德莱德 */
   userId: uuid('user_id').references(() => users.id, { onDelete: 'cascade' }),
-  /** 每天检查的推送时间点列表 [{id, time}]，time 格式 HH:mm（按拥有者账号所属州本地时间）；工单出现时间不可预测，不设星期筛选 */
+  /** 推送星期，1=周一…7=周日，存为 JSONB 数组 */
+  weekdays: jsonb('weekdays').notNull().default([]),
+  /** 每天检查的推送时间点列表 [{id, time}]，time 格式 HH:mm（按拥有者账号所属州本地时间） */
   pushTimes: jsonb('push_times').notNull().default([]),
   isEnabled: boolean('is_enabled').notNull().default(true),
   /** 定时查询使用的处理站点编码（handlerStationCode），只检查该站点的未处理工单 */

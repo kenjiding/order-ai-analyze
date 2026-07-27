@@ -1,9 +1,10 @@
-export type { PushTimeSlot } from '../ExitAlarm/exitAlarmTypes'
+export type { PushTimeSlot, WeekdayNum } from '../ExitAlarm/exitAlarmTypes'
 
-import type { PushTimeSlot } from '../ExitAlarm/exitAlarmTypes'
+import type { PushTimeSlot, WeekdayNum } from '../ExitAlarm/exitAlarmTypes'
 
 export type WorkOrderPushScheduleDraft = {
-  /** 每天检查的推送时间点列表，格式 HH:mm，可配置多个 */
+  weekdays: WeekdayNum[]
+  /** 推送星期内每天检查的推送时间点列表，格式 HH:mm，可配置多个 */
   pushTimes: PushTimeSlot[]
   isEnabled: boolean
   /** 定时查询使用的处理站点编码，只检查该站点的未处理工单 */
