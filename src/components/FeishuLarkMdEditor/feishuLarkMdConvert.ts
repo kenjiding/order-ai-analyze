@@ -432,14 +432,18 @@ export function htmlToLarkMd(html: string): string {
   const blocks: string[] = []
   root.childNodes.forEach((node) => {
     if (node.nodeType === Node.TEXT_NODE) {
-      const t = (node.textContent ?? '').replace(/\u00a0/g, ' ').trim()
-      if (t) blocks.push(t)
+      blocks.push((node.textContent ?? '').replace(/\u00a0/g, ' ').trim())
       return
     }
     if (node.nodeType !== Node.ELEMENT_NODE) return
-    const md = blockElementToLarkMd(node as HTMLElement)
-    if (md.length > 0) blocks.push(md)
+    blocks.push(blockElementToLarkMd(node as HTMLElement))
   })
 
-  return cleanupLarkMd(blocks.join('\n\n').replace(/\n{3,}/g, '\n\n').trimEnd())
+  // 首尾空段落不产生多余换行；中间的空段落对应编辑器里的一次空行，保留为一次真实换行。
+  // 飞书 markdown 组件里单个 \n 就是一次真实换行（不遵循「空一行才分段」的标准 markdown 语义），
+  // 因此这里按「一次 Enter = 一个 \n」拼接，而不是固定拼 \n\n，避免每敲一次回车飞书端多出空行。
+  while (blocks.length && !blocks[0]) blocks.shift()
+  while (blocks.length && !blocks[blocks.length - 1]) blocks.pop()
+
+  return cleanupLarkMd(blocks.join('\n').replace(/\n{3,}/g, '\n\n').trimEnd())
 }

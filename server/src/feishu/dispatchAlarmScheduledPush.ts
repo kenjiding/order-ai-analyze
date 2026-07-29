@@ -2,6 +2,7 @@ import { eq } from 'drizzle-orm'
 import { getDb, schema } from '../db'
 import type { DispatchAlarmSchedule, FleetSupplierPushConfig } from '../db/schema'
 import { buildDispatchAlarmCard } from './buildDispatchAlarmCard'
+import { parseSupplierMentionContacts, pickPrimaryMention } from './feishuMentionHelpers'
 import { createDispatchAlarmShareSnapshot } from './dispatchAlarmShareSnapshot'
 import { computeFeishuWebhookSign, parseSafeWebhookUrl } from '../feishuWebhookHelpers'
 import { envFirst } from '../imile/shared'
@@ -113,6 +114,8 @@ export async function executeDispatchAlarmPush(params: {
   /** 与 tz 同源的账号 regionCode；透传给 fetchDriverWaybills，避免其内部缓存终态判定兜底成阿德莱德、与本次聚合口径的 tz 不一致 */
   regionCode: string | null
   label: string
+  /** 是否 @ 供应商配置花名册第 1 位联系人；默认 false */
+  mentionEnabled?: boolean
   /**
    * 仅供定时任务传入：按 (jobKeyPrefix:configId, slotKey) 对每个供应商配置单独做幂等去重。
    * 某个配置本次已经成功推送过则跳过，推送失败则释放交给下次 catch-up 重试；
@@ -121,8 +124,19 @@ export async function executeDispatchAlarmPush(params: {
    */
   perConfigDedupe?: { jobKeyPrefix: string; slotKey: string }
 }): Promise<DispatchAlarmPushResult | { error: string }> {
-  const { token, stationCode, date, pushTime, alertThresholdPct, configs, tz, regionCode, label, perConfigDedupe } =
-    params
+  const {
+    token,
+    stationCode,
+    date,
+    pushTime,
+    alertThresholdPct,
+    configs,
+    tz,
+    regionCode,
+    label,
+    mentionEnabled,
+    perConfigDedupe,
+  } = params
 
   const result = await fetchDriverWaybills(token, { stationCode, dateStr: date, regionCode })
   if (!result.ok) {
@@ -187,6 +201,7 @@ export async function executeDispatchAlarmPush(params: {
             })
           : null
 
+      const mention = mentionEnabled ? pickPrimaryMention(parseSupplierMentionContacts(config.mentionOpenIds)) : null
       const card = buildDispatchAlarmCard({
         vendorName,
         stationCode,
@@ -200,6 +215,7 @@ export async function executeDispatchAlarmPush(params: {
         alertThresholdPct,
         pushDescription: config.pushDescription,
         detailUrl: share?.url ?? null,
+        mention,
       })
       const ok = await pushCardToWebhook(config.webhookUrl, config.signingSecret, card)
       if (ok) {
@@ -303,6 +319,7 @@ async function runOneScheduledPush(schedule: DispatchAlarmSchedule, regionCode: 
       tz,
       regionCode,
       label,
+      mentionEnabled: schedule.mentionEnabled,
       perConfigDedupe: { jobKeyPrefix, slotKey },
     })
     if ('error' in result) {

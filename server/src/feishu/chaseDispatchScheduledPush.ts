@@ -2,6 +2,7 @@ import { eq } from 'drizzle-orm'
 import { getDb, schema } from '../db'
 import type { ChaseDispatchSchedule, FleetSupplierPushConfig } from '../db/schema'
 import { buildChaseDispatchCard } from './buildChaseDispatchCard'
+import { parseSupplierMentionContacts, pickPrimaryMention } from './feishuMentionHelpers'
 import { computeFeishuWebhookSign, parseSafeWebhookUrl } from '../feishuWebhookHelpers'
 import { envFirst } from '../imile/shared'
 import { getGlobalImileToken } from './globalImileToken'
@@ -115,13 +116,16 @@ export async function executeChaseDispatchPush(params: {
   buckets: StagnationBucket[]
   configs: FleetSupplierPushConfig[]
   label: string
+  /** 是否 @ 供应商配置花名册第 1 位联系人；默认 false */
+  mentionEnabled?: boolean
   /**
    * 仅供定时任务传入：按 (jobKeyPrefix:configId, slotKey) 对每个供应商配置单独做幂等去重。
    * 「立刻推送」不传此参数，始终对全部 configs 重新执行。
    */
   perConfigDedupe?: { jobKeyPrefix: string; slotKey: string }
 }): Promise<ChaseDispatchPushResult | { error: string }> {
-  const { token, stationCode, baseDate, pushTime, tz, buckets, configs, label, perConfigDedupe } = params
+  const { token, stationCode, baseDate, pushTime, tz, buckets, configs, label, mentionEnabled, perConfigDedupe } =
+    params
 
   // 每个滞留区间发起一次 daWaybillInventory 查询
   const bucketResults: BucketResult[] = []
@@ -213,6 +217,7 @@ export async function executeChaseDispatchPush(params: {
               summary,
             })
           : null
+      const mention = mentionEnabled ? pickPrimaryMention(parseSupplierMentionContacts(config.mentionOpenIds)) : null
       const card = buildChaseDispatchCard({
         vendorName,
         baseDate,
@@ -221,6 +226,7 @@ export async function executeChaseDispatchPush(params: {
         summary,
         pushDescription: config.pushDescription,
         detailUrl: share?.url ?? null,
+        mention,
       })
       const ok = await pushCardToWebhook(config.webhookUrl, config.signingSecret, card)
       if (ok) {
@@ -332,6 +338,7 @@ async function runOneScheduledPush(schedule: ChaseDispatchSchedule, regionCode: 
       buckets,
       configs,
       label,
+      mentionEnabled: schedule.mentionEnabled,
       perConfigDedupe: { jobKeyPrefix, slotKey },
     })
     if ('error' in result) {

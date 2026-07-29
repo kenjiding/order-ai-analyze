@@ -1,5 +1,6 @@
 import { iMileStrToMs, localDateTimeInTz, tzDisplayName, type AusTz } from '../imile/ausTimezone'
 import type { WorkOrderPushVendorSummary } from '../vendorAnalysis/workOrderPushAggregate'
+import { buildMentionLarkMd, type SupplierMentionContact } from './feishuMentionHelpers'
 
 type CardEl = Record<string, unknown>
 type MarkColor = 'red' | 'orange' | 'green' | 'grey' | 'blue'
@@ -71,9 +72,11 @@ export function buildWorkOrderPushCard(params: {
   tz: AusTz
   summary: WorkOrderPushVendorSummary
   pushDescription?: string | null
+  /** 命中「是否 @ 相关人员」时传入，取供应商配置花名册第 1 位联系人 */
+  mention?: SupplierMentionContact | null
   nowMs?: number
 }): Record<string, unknown> {
-  const { vendorName, baseDate, pushTime, tz, summary, pushDescription } = params
+  const { vendorName, baseDate, pushTime, tz, summary, pushDescription, mention } = params
   const nowMs = params.nowMs ?? Date.now()
   const { totalCount, normalCount, complaintCount, arbitrationCount, tickets } = summary
   const elements: CardEl[] = []
@@ -129,6 +132,11 @@ export function buildWorkOrderPushCard(params: {
   elements.push(div(colored('⚠️ Overdue tickets will incur penalty/compensation fees. Please handle immediately.', 'red')))
   elements.push(openUrlAction(PCS_TICKET_WORKBENCH_URL, 'Click to Resolve Tickets'))
   elements.push(note(`${baseDate} ${pushTime} (${tzDisplayName(tz)}) · Ticket push · iMile Warehouse Management System`))
+
+  const mentionLarkMd = buildMentionLarkMd(mention)
+  if (mentionLarkMd) {
+    elements.push(div(mentionLarkMd))
+  }
 
   return {
     config: { wide_screen_mode: true },

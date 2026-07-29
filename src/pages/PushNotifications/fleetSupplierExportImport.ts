@@ -1,6 +1,7 @@
 import * as XLSX from 'xlsx'
 import type { FleetSupplierConfig, FleetSupplierImportRow } from './fleetSupplierPushTypes'
 import { createFleetSupplierId, sanitizeFleetSupplier } from './fleetSupplierStorage'
+import type { SupplierMentionContact } from '../../shared/supplierPushConfig'
 
 export const FLEET_SUPPLIER_EXPORT_SHEET_NAME = '供应商配置'
 
@@ -9,6 +10,25 @@ function cellToStr(v: unknown): string {
   if (typeof v === 'string') return v
   if (typeof v === 'number' || typeof v === 'boolean') return String(v)
   return ''
+}
+
+/** @联系人花名册在表格单元格里存成 JSON 字符串；解析失败或为空一律按无联系人处理 */
+function parseMentionOpenIdsCell(v: unknown): SupplierMentionContact[] {
+  const raw = cellToStr(v).trim()
+  if (!raw) return []
+  try {
+    const parsed = JSON.parse(raw) as unknown
+    if (!Array.isArray(parsed)) return []
+    return parsed
+      .filter((c): c is Record<string, unknown> => Boolean(c) && typeof c === 'object')
+      .map((c) => ({
+        name: typeof c.name === 'string' ? c.name.trim() : '',
+        openId: typeof c.openId === 'string' ? c.openId.trim() : '',
+      }))
+      .filter((c) => c.openId.length > 0)
+  } catch {
+    return []
+  }
 }
 
 /** 将表格行（中英表头）转为 sanitize 输入 */
@@ -39,6 +59,7 @@ export function fleetSupplierRowFromSheetRecord(row: Record<string, unknown>): R
     webhookUrl: pick('webhookUrl', '飞书 webhook', 'webhook'),
     signingSecret: pick('signingSecret', '密钥', '飞书 webhook 密钥', 'signing_secret'),
     pushContent: pick('pushContent', '供应商推送内容', '推送内容'),
+    mentionOpenIds: pick('mentionOpenIds', '@联系人', '@外部联系人'),
   }
 }
 
@@ -123,6 +144,7 @@ export function fleetSuppliersToExportRows(
       routeCodeWhitelist: s.routeCodeWhitelist,
       stationCode: s.stationCode,
       pushContent: s.pushContent,
+      mentionOpenIds: JSON.stringify(s.mentionOpenIds ?? []),
     }
     if (options.includeSecrets) {
       base.webhookUrl = s.webhookUrl
@@ -224,7 +246,7 @@ function parseSheetRows(
     const signingSecret =
       normalized.signingSecret.trim() !== '' ? normalized.signingSecret.trim() : undefined
     const s = sanitizeFleetSupplier(
-      { ...normalized, signingSecret },
+      { ...normalized, signingSecret, mentionOpenIds: parseMentionOpenIdsCell(mapped.mentionOpenIds) },
       { generateId: gen },
     )
     if (s) out.push(s)

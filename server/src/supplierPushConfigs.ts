@@ -1,6 +1,7 @@
 import { asc, eq, or } from 'drizzle-orm'
 import { getDb, schema } from './db'
 import type { FleetSupplierPushConfig } from './db/schema'
+import { parseSupplierMentionContacts } from './feishu/feishuMentionHelpers'
 
 /** 历史遗留（未按州归属）的供应商配置统一存这个值：不属于任何一个州，全部州可见且可编辑/删除，仅新建时不再使用 */
 export const LEGACY_GLOBAL_SUPPLIER_REGION_CODE = 'global'
@@ -16,6 +17,7 @@ export type SupplierPushConfigBody = {
   signingSecret?: unknown
   pushDescription?: unknown
   pushContent?: unknown
+  mentionOpenIds?: unknown
 }
 
 export function supplierDisplayName(config: Pick<FleetSupplierPushConfig, 'supplierNickname' | 'vendorName'>): string {
@@ -46,6 +48,7 @@ export function extractSupplierPushConfigFields(body: SupplierPushConfigBody) {
         ? body.pushDescription.trim()
         : null,
     pushContent: typeof body.pushContent === 'string' ? body.pushContent : '',
+    mentionOpenIds: parseSupplierMentionContacts(body.mentionOpenIds),
   }
 }
 

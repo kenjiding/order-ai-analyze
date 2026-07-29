@@ -2,6 +2,7 @@ import { eq } from 'drizzle-orm'
 import { getDb, schema } from '../db'
 import type { WorkOrderPushSchedule, FleetSupplierPushConfig } from '../db/schema'
 import { buildWorkOrderPushCard } from './buildWorkOrderPushCard'
+import { parseSupplierMentionContacts, pickPrimaryMention } from './feishuMentionHelpers'
 import { computeFeishuWebhookSign, parseSafeWebhookUrl } from '../feishuWebhookHelpers'
 import { envFirst } from '../imile/shared'
 import { getGlobalImileToken } from './globalImileToken'
@@ -118,13 +119,16 @@ export async function executeWorkOrderPush(params: {
   tz: AusTz
   configs: FleetSupplierPushConfig[]
   label: string
+  /** 是否 @ 供应商配置花名册第 1 位联系人；默认 false */
+  mentionEnabled?: boolean
   /**
    * 仅供定时任务传入：按 (jobKeyPrefix:configId, slotKey) 对每个供应商配置单独做幂等去重。
    * 「立刻推送」不传此参数，始终对全部 configs 重新执行。
    */
   perConfigDedupe?: { jobKeyPrefix: string; slotKey: string }
 }): Promise<WorkOrderPushResult | { error: string }> {
-  const { token, stationCode, startTime, endTime, pushTime, baseDate, tz, configs, label, perConfigDedupe } = params
+  const { token, stationCode, startTime, endTime, pushTime, baseDate, tz, configs, label, mentionEnabled, perConfigDedupe } =
+    params
 
   const ticketsRes = await fetchUnprocessedTickets(token, { startTime, endTime, stationCode })
   if (!ticketsRes.ok) {
@@ -173,6 +177,7 @@ export async function executeWorkOrderPush(params: {
     }
 
     try {
+      const mention = mentionEnabled ? pickPrimaryMention(parseSupplierMentionContacts(config.mentionOpenIds)) : null
       const card = buildWorkOrderPushCard({
         vendorName,
         baseDate,
@@ -180,6 +185,7 @@ export async function executeWorkOrderPush(params: {
         tz,
         summary,
         pushDescription: config.pushDescription,
+        mention,
       })
       const ok = await pushCardToWebhook(config.webhookUrl, config.signingSecret, card)
       if (ok) {
@@ -283,6 +289,7 @@ async function runOneScheduledPush(schedule: WorkOrderPushSchedule, regionCode: 
       tz,
       configs,
       label,
+      mentionEnabled: schedule.mentionEnabled,
       perConfigDedupe: { jobKeyPrefix, slotKey },
     })
     if ('error' in result) {

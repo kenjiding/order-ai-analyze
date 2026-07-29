@@ -1,5 +1,6 @@
 import type { VendorStagnationSummary } from '../imile/chaseDispatchAggregate'
 import { tzDisplayName, type AusTz } from '../imile/ausTimezone'
+import { buildMentionLarkMd, type SupplierMentionContact } from './feishuMentionHelpers'
 
 type CardEl = Record<string, unknown>
 type MarkColor = 'red' | 'orange' | 'green' | 'grey' | 'blue'
@@ -46,8 +47,10 @@ export function buildChaseDispatchCard(params: {
   pushDescription?: string | null
   /** 无登录落地页：查看并复制运单号 */
   detailUrl?: string | null
+  /** 命中「是否 @ 相关人员」时传入，取供应商配置花名册第 1 位联系人 */
+  mention?: SupplierMentionContact | null
 }): Record<string, unknown> {
-  const { vendorName, baseDate, pushTime, tz, summary, pushDescription, detailUrl } = params
+  const { vendorName, baseDate, pushTime, tz, summary, pushDescription, detailUrl, mention } = params
   const { totalStagnant, buckets } = summary
   const elements: CardEl[] = []
 
@@ -102,6 +105,11 @@ export function buildChaseDispatchCard(params: {
 
   elements.push(hr())
   elements.push(note(`${baseDate} ${pushTime} (${tzDisplayName(tz)}) · Long time - No return warehouse or Overdue Deliveries · iMile Warehouse Management System`))
+
+  const mentionLarkMd = buildMentionLarkMd(mention)
+  if (mentionLarkMd) {
+    elements.push(div(mentionLarkMd))
+  }
 
   const isUrgent = totalStagnant > 0
   return {

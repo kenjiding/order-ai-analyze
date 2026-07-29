@@ -24,6 +24,8 @@ export type ChaseDispatchScheduleDraft = {
   isEnabled: boolean
   stationCode: string
   pushConfigIds: string[]
+  /** 是否 @ 供应商配置花名册第 1 位外部联系人 */
+  mentionEnabled: boolean
 }
 
 export type ChaseDispatchSchedule = ChaseDispatchScheduleDraft & {

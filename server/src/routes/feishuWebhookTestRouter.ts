@@ -275,6 +275,8 @@ type PushRichMessageBody = {
   content?: unknown
   /** data URL 或纯 base64 图片列表 */
   images?: unknown
+  /** 勾选「@ 相关人员」时，前端传入该供应商花名册第 1 位联系人的 open_id */
+  mentionOpenId?: unknown
 }
 
 /** 富文本 + 多图合并为一条交互式卡片消息 */
@@ -296,6 +298,7 @@ feishuWebhookTestRouter.post('/push-rich-message', async (req: AuthenticatedRequ
   const content = typeof body.content === 'string' ? body.content.trim() : ''
   const imagesRaw = Array.isArray(body.images) ? body.images : []
   const images = imagesRaw.filter((x): x is string => typeof x === 'string' && x.trim() !== '')
+  const mentionOpenId = typeof body.mentionOpenId === 'string' ? body.mentionOpenId.trim() : ''
 
   if (!content && images.length === 0) {
     res.status(400).json({ ok: false, error: '缺少文案与图片，无法推送' })
@@ -373,7 +376,11 @@ feishuWebhookTestRouter.post('/push-rich-message', async (req: AuthenticatedRequ
     return
   }
 
-  const card = buildFleetRichMessageCard({ content, imageKeys })
+  const card = buildFleetRichMessageCard({
+    content,
+    imageKeys,
+    mention: mentionOpenId ? { name: '', openId: mentionOpenId } : null,
+  })
   const payload: Record<string, unknown> = { msg_type: 'interactive', card }
   if (secret) await appendWebhookSign(payload, secret)
 

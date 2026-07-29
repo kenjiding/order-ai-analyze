@@ -11,6 +11,8 @@ export type DispatchAlarmScheduleDraft = {
   pushConfigIds: string[]
   /** 「立刻推送」使用的到件扫描日期 YYYY-MM-DD；为空时按自动计算的最近工作日兜底，不影响自动定时推送 */
   arrivalScanDate: string | null
+  /** 是否 @ 供应商配置花名册第 1 位外部联系人 */
+  mentionEnabled: boolean
 }
 
 export type DispatchAlarmSchedule = DispatchAlarmScheduleDraft & {

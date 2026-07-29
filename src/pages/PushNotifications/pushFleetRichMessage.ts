@@ -8,6 +8,8 @@ export async function pushFleetRichMessage(payload: {
   signingSecret?: string
   content: string
   images: string[]
+  /** 勾选「@ 相关人员」时传该供应商花名册第 1 位联系人的 open_id */
+  mentionOpenId?: string
 }): Promise<FeishuPushTestOk | FeishuPushTestFail> {
   const content = payload.content.trim()
   const images = payload.images.filter((u) => u.trim().length > 0)
@@ -21,5 +23,6 @@ export async function pushFleetRichMessage(payload: {
     signingSecret: payload.signingSecret,
     content,
     images,
+    mentionOpenId: payload.mentionOpenId,
   })
 }

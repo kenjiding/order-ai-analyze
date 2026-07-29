@@ -10,6 +10,8 @@ export type WorkOrderPushScheduleDraft = {
   /** 定时查询使用的处理站点编码，只检查该站点的未处理工单 */
   stationCode: string
   pushConfigIds: string[]
+  /** 是否 @ 供应商配置花名册第 1 位外部联系人 */
+  mentionEnabled: boolean
 }
 
 export type WorkOrderPushSchedule = WorkOrderPushScheduleDraft & {

@@ -1,6 +1,7 @@
 export type {
   SupplierPushConfig,
   SupplierPushConfigDraft,
+  SupplierMentionContact,
   SupplierConfigScopeKey,
   SupplierConfigScopeBinding,
   SupplierConfigScopeAdapter,
@@ -44,6 +45,8 @@ export {
   SupplierPushSelectionGrid,
   SupplierPushSelectAllButtons,
 } from './components/SupplierPushSelectionGrid'
+
+export { SupplierMentionToggle } from './components/SupplierMentionToggle'
 
 /**
  * 扩展新业务 scope  checklist:

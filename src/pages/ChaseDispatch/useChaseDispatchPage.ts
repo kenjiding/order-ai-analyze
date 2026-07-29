@@ -92,6 +92,7 @@ export function useChaseDispatchPage() {
         isEnabled,
         stationCode: schedule.stationCode,
         pushConfigIds: schedule.pushConfigIds,
+        mentionEnabled: schedule.mentionEnabled,
       }
       const res = await updateChaseDispatchSchedule(schedule.id, draft, imileToken)
       if (res.ok) {

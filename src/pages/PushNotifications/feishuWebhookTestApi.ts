@@ -186,6 +186,8 @@ export async function postFeishuPushRichMessage(payload: {
   signingSecret?: string
   content: string
   images: string[]
+  /** 勾选「@ 相关人员」时传该供应商花名册第 1 位联系人的 open_id */
+  mentionOpenId?: string
 }): Promise<FeishuPushTestOk | FeishuPushTestFail> {
   const path = '/api/feishu-webhook/push-rich-message'
   try {
@@ -198,6 +200,7 @@ export async function postFeishuPushRichMessage(payload: {
         signingSecret: payload.signingSecret,
         content: payload.content,
         images: payload.images,
+        mentionOpenId: payload.mentionOpenId,
       }),
     })
     type Wire = { ok?: boolean; httpStatus?: number; feishu?: unknown; error?: string; imageUploadedCount?: number }

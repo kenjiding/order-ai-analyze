@@ -31,6 +31,7 @@ type ScheduleBody = {
   alertThresholdPct?: unknown
   pushConfigIds?: unknown
   arrivalScanDate?: unknown
+  mentionEnabled?: unknown
   imileToken?: unknown
 }
 
@@ -42,6 +43,7 @@ type PublicDispatchAlarmSchedule = {
   stationCode: string
   alertThresholdPct: number
   pushConfigIds: string[]
+  mentionEnabled: boolean
   /** 「立刻推送」使用的到件扫描日期 YYYY-MM-DD；为空时按自动计算的最近工作日兜底 */
   arrivalScanDate: string | null
   /** 拥有该配置的账号所属州/区域，决定 pushTimes/weekdays 按哪个时区判断；只读，随账号信息变化 */
@@ -80,6 +82,7 @@ async function toPublicSchedule(
     stationCode: row.stationCode,
     alertThresholdPct: row.alertThresholdPct,
     pushConfigIds: parsePushConfigIds(row.pushConfigIds),
+    mentionEnabled: row.mentionEnabled,
     arrivalScanDate: row.arrivalScanDate ?? null,
     regionCode,
     updatedAt: row.updatedAt,
@@ -109,6 +112,7 @@ function extractScheduleFields(body: ScheduleBody) {
     alertThresholdPct: normalizeAlertThresholdPct(body.alertThresholdPct),
     pushConfigIds: parsePushConfigIds(body.pushConfigIds),
     arrivalScanDate: normalizeArrivalScanDate(body.arrivalScanDate),
+    mentionEnabled: body.mentionEnabled === true,
   }
 }
 
@@ -187,6 +191,7 @@ dispatchAlarmRouter.post('/schedules', async (req: AuthenticatedRequest, res: Re
         alertThresholdPct: fields.alertThresholdPct,
         pushConfigIds: fields.pushConfigIds,
         arrivalScanDate: fields.arrivalScanDate,
+        mentionEnabled: fields.mentionEnabled,
         imileToken: nextImileToken ? normalizeImileToken(nextImileToken) : null,
         updatedBy: userId,
       })
@@ -258,6 +263,7 @@ dispatchAlarmRouter.put('/schedules/:id', async (req: AuthenticatedRequest, res:
         alertThresholdPct: fields.alertThresholdPct,
         pushConfigIds: fields.pushConfigIds,
         arrivalScanDate: fields.arrivalScanDate,
+        mentionEnabled: fields.mentionEnabled,
         ...(nextImileToken ? { imileToken: normalizeImileToken(nextImileToken) } : {}),
         updatedBy: userId,
         updatedAt: new Date(),
@@ -348,6 +354,7 @@ dispatchAlarmRouter.post('/schedules/:id/push-now', async (req: AuthenticatedReq
       tz,
       regionCode: req.authUser?.regionCode ?? null,
       label: `[dispatch-alarm/push-now schedule=${schedule.id}]`,
+      mentionEnabled: schedule.mentionEnabled,
     })
     if ('error' in result) {
       res.status(502).json({ ok: false, error: result.error })

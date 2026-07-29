@@ -1,5 +1,5 @@
 import { backendFetch } from '../../api/httpClient'
-import type { SupplierPushConfig, SupplierPushConfigDraft } from './types'
+import type { SupplierMentionContact, SupplierPushConfig, SupplierPushConfigDraft } from './types'
 
 /** 导入用一条待写入的供应商：regionCode 由服务端按当前账号所属州决定，不从导入文件读取 */
 type SupplierPushConfigImportRow = SupplierPushConfigDraft & { id: string }
@@ -40,6 +40,7 @@ type ServerRow = {
   signingSecret: string | null
   pushDescription: string | null
   pushContent: string
+  mentionOpenIds?: SupplierMentionContact[]
   regionCode: string
 }
 
@@ -56,6 +57,7 @@ function toClient(row: ServerRow): SupplierPushConfig {
     signingSecret: row.signingSecret ?? undefined,
     pushDescription: row.pushDescription,
     pushContent: row.pushContent,
+    mentionOpenIds: row.mentionOpenIds ?? [],
     regionCode: row.regionCode,
   }
 }

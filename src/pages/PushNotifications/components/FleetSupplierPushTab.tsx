@@ -37,6 +37,7 @@ import { withRetry } from '../feishuPushRetry'
 import { showToast } from '../../../utils/toast'
 import { confirmDialog } from '../../../utils/confirmDialog'
 import { PERMISSION_KEYS, usePermission } from '../../../hooks/usePermission'
+import { SupplierMentionToggle } from '../../../shared/supplierPushConfig'
 import { useAppSettings } from '../../../context/AppSettingsContext'
 import { fetchVendors } from '../../VendorAnalysis/vendorAnalysisApi'
 import { FleetSupplierEditModal } from './FleetSupplierEditModal'
@@ -65,6 +66,7 @@ export function FleetSupplierPushTab({
   // 天气预报开关与城市：从 localStorage 恢复，设置一次后长期保留
   const [weatherEnabled, setWeatherEnabled] = useState(() => readWeatherPushSettings().enabled)
   const [weatherCity, setWeatherCity] = useState(() => readWeatherPushSettings().city)
+  const [mentionEnabled, setMentionEnabled] = useState(false)
 
   useEffect(() => {
     writeWeatherPushSettings({ enabled: weatherEnabled, city: weatherCity })
@@ -258,6 +260,7 @@ export function FleetSupplierPushTab({
         signingSecret: s.signingSecret,
         content,
         images,
+        mentionOpenId: mentionEnabled ? s.mentionOpenIds[0]?.openId : undefined,
       }),
     )
   }
@@ -670,6 +673,7 @@ export function FleetSupplierPushTab({
                 推送所选供应商
               </Button>
             </Tooltip>
+            <SupplierMentionToggle value={mentionEnabled} onChange={setMentionEnabled} />
             <div className="fs-toolbar-weather">
               <span className="flex items-center gap-1.5 text-xs font-semibold text-[var(--admin-muted)]">
                 <CloudRain className="h-3.5 w-3.5 text-[var(--admin-accent)]" aria-hidden />

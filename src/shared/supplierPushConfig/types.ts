@@ -19,9 +19,13 @@ export type SupplierPushConfig = {
   signingSecret?: string
   pushDescription: string | null
   pushContent: string
+  /** 群内需要 @ 的外部联系人花名册；各推送是否实际 @ 由各自定时配置的「是否 @ 相关人员」决定，取第 1 位 */
+  mentionOpenIds: SupplierMentionContact[]
   /** 所属州；服务端已按当前账号所属州过滤，历史遗留数据为 'global'（不属于某个州，全部州可见且可编辑） */
   regionCode: string
 }
+
+export type SupplierMentionContact = { name: string; openId: string }
 
 /** 提交表单不含 id / regionCode：regionCode 由服务端按当前账号所属州决定，不可从客户端传入 */
 export type SupplierPushConfigDraft = Omit<SupplierPushConfig, 'id' | 'regionCode'>

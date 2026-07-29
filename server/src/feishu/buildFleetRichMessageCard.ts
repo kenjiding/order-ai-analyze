@@ -1,5 +1,6 @@
 import { splitFeishuWebhookTextChunks } from '../sortEfficiencyFeishuAnalysis'
 import { FEISHU_BODY_MARKER_RE, FEISHU_HR_MARKER } from './feishuLarkMdMarkers'
+import { buildMentionLarkMd, type SupplierMentionContact } from './feishuMentionHelpers'
 
 /** 飞书卡片 button.type 合法值 */
 const FEISHU_BUTTON_TYPES = new Set([
@@ -96,6 +97,8 @@ function parseBodyMarker(raw: string): { kind: 'img'; index: number; w?: number;
 export function buildFleetRichMessageCard(params: {
   content?: string
   imageKeys: string[]
+  /** 命中「@ 相关人员」时传入，取供应商配置花名册第 1 位联系人 */
+  mention?: SupplierMentionContact | null
 }): Record<string, unknown> {
   const elements: Record<string, unknown>[] = []
   const usedImageIndexes = new Set<number>()
@@ -144,6 +147,11 @@ export function buildFleetRichMessageCard(params: {
       elements.push(fleetImageElement(key.trim()))
     }
   })
+
+  const mentionLarkMd = buildMentionLarkMd(params.mention)
+  if (mentionLarkMd) {
+    elements.push({ tag: 'markdown', content: mentionLarkMd })
+  }
 
   return {
     schema: '2.0',

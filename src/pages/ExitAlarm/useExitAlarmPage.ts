@@ -94,6 +94,7 @@ export function useExitAlarmPage() {
         isEnabled,
         stationCode: schedule.stationCode,
         pushConfigIds: schedule.pushConfigIds,
+        mentionEnabled: schedule.mentionEnabled,
       }
       const res = await updateExitAlarmSchedule(schedule.id, draft, imileToken)
       if (res.ok) {

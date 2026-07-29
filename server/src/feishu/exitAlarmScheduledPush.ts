@@ -2,6 +2,7 @@ import { eq } from 'drizzle-orm'
 import { getDb, schema } from '../db'
 import type { ExitAlarmSchedule, FleetSupplierPushConfig } from '../db/schema'
 import { buildExitAlarmCard } from './buildExitAlarmCard'
+import { parseSupplierMentionContacts, pickPrimaryMention } from './feishuMentionHelpers'
 import { computeFeishuWebhookSign, parseSafeWebhookUrl } from '../feishuWebhookHelpers'
 import { envFirst } from '../imile/shared'
 import { getGlobalImileToken } from './globalImileToken'
@@ -147,6 +148,8 @@ export async function executeExitAlarmPush(params: {
   configs: FleetSupplierPushConfig[]
   tz: AusTz
   label: string
+  /** 是否 @ 供应商配置花名册第 1 位联系人；默认 false */
+  mentionEnabled?: boolean
   /**
    * 仅供定时任务传入：按 (jobKeyPrefix:configId, slotKey) 对每个供应商配置单独做幂等去重。
    * 某个配置本次已经成功推送过则跳过，推送失败/暂无数据则释放，交给下次 catch-up 重试；
@@ -154,7 +157,7 @@ export async function executeExitAlarmPush(params: {
    */
   perConfigDedupe?: { jobKeyPrefix: string; slotKey: string }
 }): Promise<ExitAlarmPushResult | { error: string }> {
-  const { token, stationCode, date, pushTime, configs, tz, label, perConfigDedupe } = params
+  const { token, stationCode, date, pushTime, configs, tz, label, mentionEnabled, perConfigDedupe } = params
 
   const result = await fetchWaybillDetailsByInboundIndex({
     token,
@@ -215,6 +218,7 @@ export async function executeExitAlarmPush(params: {
         unqualifiedWaybillNos: [],
       }
       const totalPending = Object.values(stat.zoneBreakdown).reduce((s, v) => s + v.pending, 0)
+      const mention = mentionEnabled ? pickPrimaryMention(parseSupplierMentionContacts(config.mentionOpenIds)) : null
       const card = buildExitAlarmCard({
         vendorName,
         stationCode,
@@ -225,6 +229,7 @@ export async function executeExitAlarmPush(params: {
         totalPending,
         totalWaybills: stat.totalWaybills,
         pushDescription: config.pushDescription,
+        mention,
       })
 
       unqualifiedByVendor.push({ vendorName, waybillNos: stat.unqualifiedWaybillNos })
@@ -306,6 +311,7 @@ async function runOneScheduledPush(schedule: ExitAlarmSchedule, regionCode: stri
       configs,
       tz,
       label,
+      mentionEnabled: schedule.mentionEnabled,
       perConfigDedupe: { jobKeyPrefix, slotKey },
     })
     if ('error' in result) {

@@ -6,6 +6,7 @@ import { Plus, X } from 'lucide-react'
 import { useEffect, useState, type ReactNode } from 'react'
 import { StationSelect } from '../../../components/Layout/StationSelect'
 import {
+  SupplierMentionToggle,
   SupplierPushSelectAllButtons,
   SupplierPushSelectionGrid,
   type SupplierPushConfig,
@@ -82,6 +83,7 @@ export function WorkOrderPushScheduleDrawer({
   const [weekdays, setWeekdays] = useState<WeekdayNum[]>([])
   const [pushTimes, setPushTimes] = useState<PushTimeSlot[]>([])
   const [pushConfigIds, setPushConfigIds] = useState<string[]>([])
+  const [mentionEnabled, setMentionEnabled] = useState(false)
 
   useEffect(() => {
     if (!open) return
@@ -89,6 +91,7 @@ export function WorkOrderPushScheduleDrawer({
     setWeekdays(editingSchedule?.weekdays ?? [])
     setPushTimes(editingSchedule?.pushTimes ?? [])
     setPushConfigIds(editingSchedule?.pushConfigIds ?? [])
+    setMentionEnabled(editingSchedule?.mentionEnabled ?? false)
   }, [open, editingSchedule])
 
   const handleAddTime = () => setPushTimes((prev) => [...prev, { id: generateId(), time: '09:00' }])
@@ -123,6 +126,7 @@ export function WorkOrderPushScheduleDrawer({
       isEnabled: true,
       stationCode,
       pushConfigIds: scopedPushConfigIds,
+      mentionEnabled,
     }
     const ok = await onSubmit(draft)
     if (ok) onClose()
@@ -227,15 +231,18 @@ export function WorkOrderPushScheduleDrawer({
           title="供应商配置"
           description="勾选参与该条工单推送的供应商"
           action={
-            <SupplierPushSelectAllButtons
-              configs={catalogConfigs}
-              enabledIdSet={enabledIdSet}
-              disabled={saving}
-              saving={catalogLoading}
-              onToggle={(id, next) =>
-                setPushConfigIds((prev) => (next ? [...prev, id] : prev.filter((x) => x !== id)))
-              }
-            />
+            <div className="flex items-center gap-3">
+              <SupplierMentionToggle value={mentionEnabled} onChange={setMentionEnabled} disabled={saving} />
+              <SupplierPushSelectAllButtons
+                configs={catalogConfigs}
+                enabledIdSet={enabledIdSet}
+                disabled={saving}
+                saving={catalogLoading}
+                onToggle={(id, next) =>
+                  setPushConfigIds((prev) => (next ? [...prev, id] : prev.filter((x) => x !== id)))
+                }
+              />
+            </div>
           }
         >
           <SupplierPushSelectionGrid

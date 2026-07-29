@@ -1,5 +1,6 @@
 import type { ModalProps } from 'antd'
-import { Col, Form, Input, Modal, Row, Select } from 'antd'
+import { Button, Col, Form, Input, Modal, Row, Select } from 'antd'
+import { Plus, X } from 'lucide-react'
 import { useEffect } from 'react'
 import { webhookFieldRules } from '../pushEntryFormValidators'
 import { parseFleetRouteCodes } from '../fleetRouteCodeParse'
@@ -7,6 +8,7 @@ import type { FleetSupplierConfig, FleetSupplierConfigDraft } from '../fleetSupp
 import { FEISHU_WEBHOOK_PREFIX } from '../feishuPushTypes'
 import { FeishuLarkMdEditor } from '../../../components/FeishuLarkMdEditor'
 import { useGlobalFilterStore } from '../../../stores/globalFilterStore'
+import type { SupplierMentionContact } from '../../../shared/supplierPushConfig'
 
 type VendorOption = {
   vendorCode: string
@@ -22,6 +24,7 @@ type FormValues = {
   webhookUrl: string
   signingSecret?: string
   pushContent: string
+  mentionOpenIds: SupplierMentionContact[]
 }
 
 type Props = Omit<ModalProps, 'onOk' | 'onCancel'> & {
@@ -59,6 +62,7 @@ export function FleetSupplierEditModal({
         routeCodeWhitelist: editing.routeCodeWhitelist ?? '',
         stationCode: editing.stationCode ?? '',
         pushContent: editing.pushContent,
+        mentionOpenIds: editing.mentionOpenIds ?? [],
       }
       if (secretsVisibility === 'full') {
         form.setFieldsValue({
@@ -79,6 +83,7 @@ export function FleetSupplierEditModal({
         webhookUrl: '',
         signingSecret: '',
         pushContent: '',
+        mentionOpenIds: [],
       })
     } else {
       form.setFieldsValue({
@@ -88,6 +93,7 @@ export function FleetSupplierEditModal({
         routeCodeWhitelist: '',
         stationCode: '',
         pushContent: '',
+        mentionOpenIds: [],
       })
     }
   }, [open, editing, form, secretsVisibility])
@@ -106,6 +112,9 @@ export function FleetSupplierEditModal({
         stationCode: typeof values.stationCode === 'string' ? values.stationCode.trim() : '',
         pushDescription: editing?.pushDescription ?? null,
         pushContent: typeof values.pushContent === 'string' ? values.pushContent : '',
+        mentionOpenIds: (Array.isArray(values.mentionOpenIds) ? values.mentionOpenIds : [])
+          .map((c) => ({ name: (c?.name ?? '').trim(), openId: (c?.openId ?? '').trim() }))
+          .filter((c) => c.openId.length > 0),
         webhookUrl: editing?.webhookUrl?.trim() ?? '',
         signingSecret: editing?.signingSecret,
       }
@@ -249,6 +258,47 @@ export function FleetSupplierEditModal({
           extra="将先于图片以富文本卡片推送至群内；与 Tab 顶部「推送内容」拼接为本条消息正文（本段在上、顶部段在下），任一段可留空。"
         >
           <FeishuLarkMdEditor rows={5} placeholder="例如：【货量日报】以下为按邮编/城市汇总单量。" />
+        </Form.Item>
+
+        <Form.Item
+          label="@ 外部联系人"
+          tooltip="群内需要 @ 的外部联系人花名册，可配置多组；各推送是否实际 @ 由该推送「是否 @ 相关人员」开关决定，命中时取第 1 组"
+        >
+          <Form.List name="mentionOpenIds">
+            {(fields, { add, remove }) => (
+              <div className="space-y-2">
+                {fields.map((field) => (
+                  <div key={field.key} className="flex items-center gap-2">
+                    <Form.Item {...field} name={[field.name, 'name']} noStyle>
+                      <Input placeholder="用户名" className="!w-32" allowClear />
+                    </Form.Item>
+                    <Form.Item
+                      {...field}
+                      name={[field.name, 'openId']}
+                      noStyle
+                      rules={[{ required: true, message: '请填写 Open ID' }]}
+                    >
+                      <Input placeholder="Open ID（ou_ 开头）" allowClear />
+                    </Form.Item>
+                    <button
+                      type="button"
+                      onClick={() => remove(field.name)}
+                      className="flex h-6 w-6 shrink-0 items-center justify-center rounded text-slate-300 transition-colors hover:bg-red-50 hover:text-red-400"
+                    >
+                      <X className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
+                ))}
+                <Button
+                  type="dashed"
+                  icon={<Plus className="h-3.5 w-3.5" />}
+                  onClick={() => add({ name: '', openId: '' })}
+                >
+                  添加联系人
+                </Button>
+              </div>
+            )}
+          </Form.List>
         </Form.Item>
       </Form>
     </Modal>

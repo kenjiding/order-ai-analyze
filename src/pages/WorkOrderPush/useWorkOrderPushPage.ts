@@ -91,6 +91,7 @@ export function useWorkOrderPushPage() {
         isEnabled,
         stationCode: schedule.stationCode,
         pushConfigIds: schedule.pushConfigIds,
+        mentionEnabled: schedule.mentionEnabled,
       }
       const res = await updateWorkOrderPushSchedule(schedule.id, draft, imileToken)
       if (res.ok) {

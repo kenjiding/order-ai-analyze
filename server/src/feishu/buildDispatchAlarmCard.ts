@@ -1,5 +1,6 @@
 import type { Dispatch24hDriverStat } from '../vendorAnalysis/dispatch24hAggregate'
 import { tzDisplayName, type AusTz } from '../imile/ausTimezone'
+import { buildMentionLarkMd, type SupplierMentionContact } from './feishuMentionHelpers'
 
 type CardEl = Record<string, unknown>
 type MarkColor = 'red' | 'orange' | 'green' | 'grey' | 'blue'
@@ -85,6 +86,8 @@ export function buildDispatchAlarmCard(params: {
   pushDescription?: string | null
   /** 无登录落地页：查看并复制未达标运单号 */
   detailUrl?: string | null
+  /** 命中「是否 @ 相关人员」时传入，取供应商配置花名册第 1 位联系人 */
+  mention?: SupplierMentionContact | null
 }): Record<string, unknown> {
   const {
     vendorName,
@@ -99,6 +102,7 @@ export function buildDispatchAlarmCard(params: {
     alertThresholdPct,
     pushDescription,
     detailUrl,
+    mention,
   } = params
   const elements: CardEl[] = []
 
@@ -158,6 +162,11 @@ export function buildDispatchAlarmCard(params: {
 
   elements.push(hr())
   elements.push(note(`${date} ${pushTime} · 24H delivery rate monitoring · iMile Warehouse Management System`))
+
+  const mentionLarkMd = buildMentionLarkMd(mention)
+  if (mentionLarkMd) {
+    elements.push(div(mentionLarkMd))
+  }
 
   return {
     config: { wide_screen_mode: true },

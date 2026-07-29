@@ -25,6 +25,7 @@ type ScheduleBody = {
   isEnabled?: unknown
   stationCode?: unknown
   pushConfigIds?: unknown
+  mentionEnabled?: unknown
   imileToken?: unknown
 }
 
@@ -35,6 +36,7 @@ type PublicWorkOrderPushSchedule = {
   isEnabled: boolean
   stationCode: string
   pushConfigIds: string[]
+  mentionEnabled: boolean
   regionCode: string | null
   updatedAt: Date
   hasImileToken: boolean
@@ -57,6 +59,7 @@ function extractScheduleFields(body: ScheduleBody) {
     isEnabled: body.isEnabled !== false,
     stationCode: typeof body.stationCode === 'string' ? body.stationCode.trim() : '',
     pushConfigIds: parsePushConfigIds(body.pushConfigIds),
+    mentionEnabled: body.mentionEnabled === true,
   }
 }
 
@@ -79,6 +82,7 @@ async function toPublicSchedule(
     isEnabled: row.isEnabled,
     stationCode: row.stationCode,
     pushConfigIds: parsePushConfigIds(row.pushConfigIds),
+    mentionEnabled: row.mentionEnabled,
     regionCode,
     updatedAt: row.updatedAt,
     hasImileToken: await hasWorkOrderPushImileToken(row),
@@ -164,6 +168,7 @@ workOrderPushRouter.post('/schedules', async (req: AuthenticatedRequest, res: Re
         isEnabled: fields.isEnabled,
         stationCode: fields.stationCode,
         pushConfigIds: fields.pushConfigIds,
+        mentionEnabled: fields.mentionEnabled,
         imileToken: nextImileToken ? normalizeImileToken(nextImileToken) : null,
         updatedBy: userId,
       })
@@ -226,6 +231,7 @@ workOrderPushRouter.put('/schedules/:id', async (req: AuthenticatedRequest, res:
         isEnabled: fields.isEnabled,
         stationCode: fields.stationCode,
         pushConfigIds: fields.pushConfigIds,
+        mentionEnabled: fields.mentionEnabled,
         ...(nextImileToken ? { imileToken: normalizeImileToken(nextImileToken) } : {}),
         updatedBy: userId,
         updatedAt: new Date(),
@@ -305,6 +311,7 @@ workOrderPushRouter.post('/schedules/:id/push-now', async (req: AuthenticatedReq
       tz,
       configs,
       label: `[work-order-push/push-now schedule=${schedule.id}]`,
+      mentionEnabled: schedule.mentionEnabled,
     })
     if ('error' in result) {
       res.status(502).json({ ok: false, error: result.error })

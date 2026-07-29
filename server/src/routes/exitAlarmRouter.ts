@@ -25,6 +25,7 @@ type ScheduleBody = {
   isEnabled?: unknown
   stationCode?: unknown
   pushConfigIds?: unknown
+  mentionEnabled?: unknown
   imileToken?: unknown
 }
 
@@ -35,6 +36,7 @@ type PublicExitAlarmSchedule = {
   isEnabled: boolean
   stationCode: string
   pushConfigIds: string[]
+  mentionEnabled: boolean
   /** 拥有该配置的账号所属州/区域，决定 pushTimes/weekdays 按哪个时区判断；只读，随账号信息变化 */
   regionCode: string | null
   updatedAt: Date
@@ -52,6 +54,7 @@ async function toPublicSchedule(
     isEnabled: row.isEnabled,
     stationCode: row.stationCode,
     pushConfigIds: parsePushConfigIds(row.pushConfigIds),
+    mentionEnabled: row.mentionEnabled,
     regionCode,
     updatedAt: row.updatedAt,
     hasImileToken: await hasExitAlarmImileToken(row),
@@ -78,6 +81,7 @@ function extractScheduleFields(body: ScheduleBody) {
     isEnabled: body.isEnabled !== false,
     stationCode: typeof body.stationCode === 'string' ? body.stationCode.trim() : '',
     pushConfigIds: parsePushConfigIds(body.pushConfigIds),
+    mentionEnabled: body.mentionEnabled === true,
   }
 }
 
@@ -150,6 +154,7 @@ exitAlarmRouter.post('/schedules', async (req: AuthenticatedRequest, res: Respon
         isEnabled: fields.isEnabled,
         stationCode: fields.stationCode,
         pushConfigIds: fields.pushConfigIds,
+        mentionEnabled: fields.mentionEnabled,
         imileToken: nextImileToken ? normalizeImileToken(nextImileToken) : null,
         updatedBy: userId,
       })
@@ -215,6 +220,7 @@ exitAlarmRouter.put('/schedules/:id', async (req: AuthenticatedRequest, res: Res
         isEnabled: fields.isEnabled,
         stationCode: fields.stationCode,
         pushConfigIds: fields.pushConfigIds,
+        mentionEnabled: fields.mentionEnabled,
         ...(nextImileToken ? { imileToken: normalizeImileToken(nextImileToken) } : {}),
         updatedBy: userId,
         updatedAt: new Date(),
@@ -302,6 +308,7 @@ exitAlarmRouter.post('/schedules/:id/push-now', async (req: AuthenticatedRequest
       configs,
       tz,
       label: `[exit-alarm/push-now schedule=${schedule.id}]`,
+      mentionEnabled: schedule.mentionEnabled,
     })
     if ('error' in result) {
       res.status(502).json({ ok: false, error: result.error })

@@ -39,6 +39,15 @@ export function sanitizeFleetSupplier(
       ? o.pushDescription.trim()
       : null
   const pushContent = typeof o.pushContent === 'string' ? o.pushContent : ''
+  const mentionOpenIds = Array.isArray(o.mentionOpenIds)
+    ? o.mentionOpenIds
+        .filter((c): c is Record<string, unknown> => Boolean(c) && typeof c === 'object')
+        .map((c) => ({
+          name: typeof c.name === 'string' ? c.name.trim() : '',
+          openId: typeof c.openId === 'string' ? c.openId.trim() : '',
+        }))
+        .filter((c) => c.openId.length > 0)
+    : []
 
   if (!vendorCode && !supplierNickname && !routeCode && !webhookUrl) return null
 
@@ -54,6 +63,7 @@ export function sanitizeFleetSupplier(
     signingSecret,
     pushDescription,
     pushContent,
+    mentionOpenIds,
   }
 }
 

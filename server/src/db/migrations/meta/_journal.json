@@ -344,6 +344,13 @@
       "when": 1785700000020,
       "tag": "0048_work_order_push_schedules_weekdays",
       "breakpoints": true
+    },
+    {
+      "idx": 49,
+      "version": "7",
+      "when": 1785700000021,
+      "tag": "0049_supplier_push_mention",
+      "breakpoints": true
     }
   ]
 }

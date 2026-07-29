@@ -170,6 +170,8 @@ export const fleetSupplierPushConfigs = pgTable(
     signingSecret: varchar('signing_secret', { length: 255 }),
     pushDescription: varchar('push_description', { length: 512 }),
     pushContent: text('push_content').notNull().default(''),
+    /** 群内需要 @ 的外部联系人花名册 [{name, openId}]；各推送是否实际 @ 由各自 schedule 的 mentionEnabled 决定 */
+    mentionOpenIds: jsonb('mention_open_ids').notNull().default([]),
     regionCode: varchar('region_code', { length: 16 }).notNull().default('global'),
     createdBy: uuid('created_by').references(() => users.id, { onDelete: 'set null' }),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
@@ -276,6 +278,8 @@ export const exitAlarmSchedules = pgTable('exit_alarm_schedules', {
   stationCode: varchar('station_code', { length: 64 }).notNull().default(''),
   /** 本条配置启用的供应商配置 id 列表，取代原来全局共享的 supplierConfigScopeBindings */
   pushConfigIds: jsonb('push_config_ids').notNull().default([]),
+  /** 是否在推送时 @ 供应商配置里花名册的第 1 位外部联系人 */
+  mentionEnabled: boolean('mention_enabled').notNull().default(false),
   /** 定时拉数使用的 iMile token（保存配置时从全局设置同步，不对外返回） */
   imileToken: varchar('imile_token', { length: 2048 }),
   updatedBy: uuid('updated_by').references(() => users.id, { onDelete: 'set null' }),
@@ -316,6 +320,8 @@ export const chaseDispatchSchedules = pgTable('chase_dispatch_schedules', {
   stationCode: varchar('station_code', { length: 64 }).notNull().default(''),
   /** 本条配置启用的供应商配置 id 列表，取代原来全局共享的 supplierConfigScopeBindings */
   pushConfigIds: jsonb('push_config_ids').notNull().default([]),
+  /** 是否在推送时 @ 供应商配置里花名册的第 1 位外部联系人 */
+  mentionEnabled: boolean('mention_enabled').notNull().default(false),
   /** 定时拉数使用的 iMile token（保存配置时从全局设置同步，不对外返回） */
   imileToken: varchar('imile_token', { length: 2048 }),
   updatedBy: uuid('updated_by').references(() => users.id, { onDelete: 'set null' }),
@@ -337,6 +343,8 @@ export const workOrderPushSchedules = pgTable('work_order_push_schedules', {
   stationCode: varchar('station_code', { length: 64 }).notNull().default(''),
   /** 本条配置启用的供应商配置 id 列表，取代原来全局共享的 supplierConfigScopeBindings */
   pushConfigIds: jsonb('push_config_ids').notNull().default([]),
+  /** 是否在推送时 @ 供应商配置里花名册的第 1 位外部联系人 */
+  mentionEnabled: boolean('mention_enabled').notNull().default(false),
   /** 定时拉数使用的 iMile token（保存配置时从全局设置同步，不对外返回） */
   imileToken: varchar('imile_token', { length: 2048 }),
   updatedBy: uuid('updated_by').references(() => users.id, { onDelete: 'set null' }),
@@ -363,6 +371,8 @@ export const dispatchAlarmSchedules = pgTable('dispatch_alarm_schedules', {
   alertThresholdPct: integer('alert_threshold_pct').notNull().default(92),
   /** 本条配置启用的供应商配置 id 列表，取代原来全局共享的 supplierConfigScopeBindings */
   pushConfigIds: jsonb('push_config_ids').notNull().default([]),
+  /** 是否在推送时 @ 供应商配置里花名册的第 1 位外部联系人 */
+  mentionEnabled: boolean('mention_enabled').notNull().default(false),
   /** 「立刻推送」使用的到件扫描日期 YYYY-MM-DD；为空时按自动计算的最近工作日兜底，不影响自动定时推送 */
   arrivalScanDate: varchar('arrival_scan_date', { length: 10 }),
   /** 定时拉数使用的 iMile token（保存配置时从全局设置同步，不对外返回） */

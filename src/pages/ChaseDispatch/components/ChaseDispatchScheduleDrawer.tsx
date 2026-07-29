@@ -6,6 +6,7 @@ import { Plus, X } from 'lucide-react'
 import { useEffect, useState, type ReactNode } from 'react'
 import { StationSelect } from '../../../components/Layout/StationSelect'
 import {
+  SupplierMentionToggle,
   SupplierPushSelectAllButtons,
   SupplierPushSelectionGrid,
   type SupplierPushConfig,
@@ -90,6 +91,7 @@ export function ChaseDispatchScheduleDrawer({
   const [pushTimes, setPushTimes] = useState<PushTimeSlot[]>([])
   const [stagnationBuckets, setStagnationBuckets] = useState<StagnationBucket[]>([])
   const [pushConfigIds, setPushConfigIds] = useState<string[]>([])
+  const [mentionEnabled, setMentionEnabled] = useState(false)
 
   useEffect(() => {
     if (!open) return
@@ -98,6 +100,7 @@ export function ChaseDispatchScheduleDrawer({
     setPushTimes(editingSchedule?.pushTimes ?? [])
     setStagnationBuckets(editingSchedule?.stagnationBuckets ?? [])
     setPushConfigIds(editingSchedule?.pushConfigIds ?? [])
+    setMentionEnabled(editingSchedule?.mentionEnabled ?? false)
   }, [open, editingSchedule])
 
   const handleAddTime = () => setPushTimes((prev) => [...prev, { id: generateId(), time: '09:00' }])
@@ -137,6 +140,7 @@ export function ChaseDispatchScheduleDrawer({
       isEnabled: true,
       stationCode,
       pushConfigIds: scopedPushConfigIds,
+      mentionEnabled,
     }
     const ok = await onSubmit(draft)
     if (ok) onClose()
@@ -252,17 +256,19 @@ export function ChaseDispatchScheduleDrawer({
         <FormSection
           icon={Truck}
           title="供应商配置"
-          description="与「飞书推送 · 车队供应商推送」同一份配置；同编码多条可分别勾选（按路由码 / Webhook 区分）"
           action={
-            <SupplierPushSelectAllButtons
-              configs={catalogConfigs}
-              enabledIdSet={enabledIdSet}
-              disabled={saving}
-              saving={catalogLoading}
-              onToggle={(id, next) =>
-                setPushConfigIds((prev) => (next ? [...prev, id] : prev.filter((x) => x !== id)))
-              }
-            />
+            <div className="flex items-center gap-3">
+              <SupplierMentionToggle value={mentionEnabled} onChange={setMentionEnabled} disabled={saving} />
+              <SupplierPushSelectAllButtons
+                configs={catalogConfigs}
+                enabledIdSet={enabledIdSet}
+                disabled={saving}
+                saving={catalogLoading}
+                onToggle={(id, next) =>
+                  setPushConfigIds((prev) => (next ? [...prev, id] : prev.filter((x) => x !== id)))
+                }
+              />
+            </div>
           }
         >
           <SupplierPushSelectionGrid
