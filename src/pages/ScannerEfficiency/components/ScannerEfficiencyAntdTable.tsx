@@ -16,8 +16,12 @@ function toAntdColumns(columns: DataTableColumn[]): ColumnsType<DataTableRow> {
   return columns.map((col) => ({
     key: col.key,
     dataIndex: col.key,
-    title: col.title,
+    title: col.renderTitle ? col.renderTitle() : col.title,
     width: col.width,
+    sorter: col.sorter,
+    sortDirections: col.sortDirections,
+    defaultSortOrder: col.defaultSortOrder,
+    showSorterTooltip: col.sorter ? { title: '点击排序' } : false,
     render: col.render
       ? (_value, record) => col.render!(record)
       : (value) => (value == null || value === '' ? '—' : String(value)),

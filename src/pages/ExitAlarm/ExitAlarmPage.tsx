@@ -39,6 +39,7 @@ export default function ExitAlarmPage() {
         schedules={v.schedules}
         loading={v.schedulesLoading}
         pushingId={v.pushingId}
+        togglingIds={v.togglingIds}
         pushResults={v.pushResults}
         onEdit={v.openEditDrawer}
         onDelete={(id) => void v.removeSchedule(id)}

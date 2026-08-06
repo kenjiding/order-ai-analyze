@@ -387,6 +387,24 @@ export async function postClosureDriverVendor(payload: {
   }
 }
 
+export async function postClosureExceptionAdd(payload: {
+  imileToken: string
+  waybillNo: string
+  exceptionCloseReason: ClosureExceptionTypeOption['key']
+  exceptionHandleRemark: string
+  vendorCode: string
+  violence: '0' | '1'
+}): Promise<{ ok: true }> {
+  const res = await backendFetch(`/api/order-exception/closure/add`, {
+    method: 'POST',
+    headers: JSON_HEADERS,
+    body: JSON.stringify(payload),
+  })
+  const text = await res.text()
+  if (!res.ok) throw new Error(await readHttpError(res, text))
+  return JSON.parse(text) as { ok: true }
+}
+
 // ─── 异步 AI 分析（jobs queue）───────────────────────────────────────────────
 
 export type JobStatus = 'pending' | 'running' | 'succeeded' | 'failed' | 'cancelled'

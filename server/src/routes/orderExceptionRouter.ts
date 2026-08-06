@@ -5,6 +5,7 @@ import { reclassifyOutWarehouseLossWithCancelScan } from '../orderAnalyze/cancel
 import { parseWarehouseConfigInput } from '../orderAnalyze/warehouseProfiles'
 import type { AnalyzeTarget } from '../openaiOrderAnalyze'
 import {
+  addClosureException,
   queryClosureVendorOptions,
   queryDriverVendorByDriverId,
   readClosureDefaultStationCode,
@@ -104,6 +105,67 @@ orderExceptionRouter.post('/closure/driver-vendor', async (req: Request, res: Re
     res.status(500).json({ error: (e as Error).message || '司机供应商查询失败' })
   }
 })
+
+orderExceptionRouter.post(
+  '/closure/add',
+  requirePermission('btn:order-exception:closure-add'),
+  async (req: Request, res: Response) => {
+    try {
+      const body = readJson<{
+        imileToken?: string
+        waybillNo?: string
+        exceptionCloseReason?: string
+        exceptionHandleRemark?: string
+        vendorCode?: string
+        violence?: string
+      }>(req)
+      const token = readImileToken(req, body.imileToken)
+      const waybillNo = String(body.waybillNo ?? '').trim()
+      const exceptionCloseReason = String(body.exceptionCloseReason ?? '').trim()
+      const exceptionHandleRemark = String(body.exceptionHandleRemark ?? '').trim()
+      const vendorCode = String(body.vendorCode ?? '').trim()
+      const violence = body.violence === '1' ? '1' : '0'
+
+      if (!token) {
+        res.status(400).json({ error: '缺少 imileToken' })
+        return
+      }
+      if (!waybillNo) {
+        res.status(400).json({ error: '缺少运单号' })
+        return
+      }
+      if (!exceptionCloseReason) {
+        res.status(400).json({ error: '缺少异常类型' })
+        return
+      }
+      if (exceptionCloseReason === 'aus_packet_loss_out_the_station' && !vendorCode) {
+        res.status(400).json({ error: '库外丢包必须选择派件员供应商' })
+        return
+      }
+
+      const result = await addClosureException({
+        imileToken: token,
+        waybillNo,
+        exceptionCloseReason,
+        exceptionHandleRemark,
+        vendorCode,
+        violence,
+      })
+      if (!result.ok) {
+        res.status(502).json({
+          error: result.message,
+          status: result.status,
+          rawText: result.rawText,
+        })
+        return
+      }
+
+      res.json({ ok: true })
+    } catch (e) {
+      res.status(500).json({ error: (e as Error).message || '异常完结新增失败' })
+    }
+  }
+)
 
 orderExceptionRouter.post('/track', async (req: Request, res: Response) => {
   try {

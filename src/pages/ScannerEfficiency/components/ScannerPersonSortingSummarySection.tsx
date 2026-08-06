@@ -29,7 +29,7 @@ export function ScannerPersonSortingSummarySection({
   emptyTableText = '暂无扫描员汇总。',
   sectionEyebrow,
   sectionTitle = '扫描员一级分拣效率汇总',
-  sectionDescription = '按扫描员汇总总扫描量、推算有效工时、原始总效率与按样本可靠度回归后的修正效率（团队基准=一级分拣整体效率）。',
+  sectionDescription = '',
   sectionTitleRight,
 }: ScannerPersonSortingSummarySectionProps) {
   const bodyRows = scannerTotalRows as unknown as DataTableRow[]

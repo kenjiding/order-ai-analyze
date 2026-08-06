@@ -15,6 +15,7 @@ type Props = {
   schedules: WorkOrderPushSchedule[]
   loading: boolean
   pushingId: string | null
+  togglingIds: ReadonlySet<string>
   onEdit: (schedule: WorkOrderPushSchedule) => void
   onDelete: (id: string) => void
   onToggleEnabled: (schedule: WorkOrderPushSchedule, isEnabled: boolean) => void
@@ -25,6 +26,7 @@ export function WorkOrderPushScheduleList({
   schedules,
   loading,
   pushingId,
+  togglingIds,
   onEdit,
   onDelete,
   onToggleEnabled,
@@ -43,6 +45,7 @@ export function WorkOrderPushScheduleList({
       {schedules.map((schedule) => {
         const { weekdaysText, timesText } = summarizeSchedule(schedule)
         const isPushing = pushingId === schedule.id
+        const isToggling = togglingIds.has(schedule.id)
         return (
           <div key={schedule.id} className="flex flex-wrap items-center justify-between gap-3 px-5 py-3.5">
             <div className="min-w-0 flex-1 space-y-1">
@@ -59,6 +62,7 @@ export function WorkOrderPushScheduleList({
             <div className="flex shrink-0 items-center gap-2">
               <Switch
                 checked={schedule.isEnabled}
+                loading={isToggling}
                 onChange={(checked) => onToggleEnabled(schedule, checked)}
                 checkedChildren="启用"
                 unCheckedChildren="停用"

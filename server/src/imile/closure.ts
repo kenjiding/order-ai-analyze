@@ -134,6 +134,53 @@ function readDriverFirstResult(payload: unknown): Record<string, unknown> | null
   return first
 }
 
+export type ClosureExceptionAddInput = {
+  imileToken: string
+  waybillNo: string
+  exceptionCloseReason: string
+  exceptionHandleRemark: string
+  vendorCode: string
+  violence: '0' | '1'
+}
+
+export async function addClosureException(
+  input: ClosureExceptionAddInput
+): Promise<{ ok: true } | ClosureApiError> {
+  const token = normalizeImileToken(input.imileToken)
+  const url = envFirstOr(
+    ['IMILE_CLOSURE_ADD_URL'],
+    'https://ds.imile.com/saastms/v1/biz/exception/close/add'
+  )
+  const body = {
+    attachmentFileList: [],
+    chargebackList: [],
+    exceptionCloseReason: input.exceptionCloseReason,
+    exceptionHandleRemark: input.exceptionHandleRemark,
+    vendorCode: input.vendorCode,
+    violence: input.violence,
+    waybillNo: input.waybillNo,
+  }
+  const res = await requestImileApi({
+    url,
+    method: 'POST',
+    headers: makeClosureHeaders(token),
+    body,
+    label: '异常完结新增',
+    retryBusy: false,
+  })
+
+  if (!res.ok) {
+    return {
+      ok: false,
+      status: res.status,
+      message: res.message,
+      rawText: res.rawText,
+    }
+  }
+
+  return { ok: true }
+}
+
 export async function queryDriverVendorByDriverId(input: {
   imileToken: string
   driverId: string

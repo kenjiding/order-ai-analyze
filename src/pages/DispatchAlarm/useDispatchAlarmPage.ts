@@ -1,7 +1,8 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useState } from 'react'
 import { useAppSettings } from '../../context/AppSettingsContext'
 import { showToast } from '../../utils/toast'
 import { useSupplierPushCatalog } from '../../shared/supplierPushConfig'
+import { useScheduleListCrud, type ScheduleListCrudMessages } from '../../shared/schedulePush'
 import type { DispatchAlarmSchedule, DispatchAlarmScheduleDraft } from './dispatchAlarmTypes'
 import {
   createDispatchAlarmSchedule,
@@ -11,80 +12,41 @@ import {
   updateDispatchAlarmSchedule,
 } from './dispatchAlarmApi'
 
+const MESSAGES: ScheduleListCrudMessages = {
+  missingImileToken: '请先在全局设置中配置 iMile token，再保存派签告警',
+  loadError: '派签告警配置加载失败',
+  createSuccess: '派签告警已添加',
+  updateSuccess: '派签告警已更新',
+  saveError: '保存失败',
+  deleteSuccess: '已删除',
+  deleteError: '删除失败',
+  toggleError: '更新失败',
+}
+
 export function useDispatchAlarmPage() {
   const { imileToken } = useAppSettings()
 
   const catalog = useSupplierPushCatalog()
 
-  const [schedules, setSchedules] = useState<DispatchAlarmSchedule[]>([])
-  const [schedulesLoading, setSchedulesLoading] = useState(false)
-  const [saving, setSaving] = useState(false)
+  const crud = useScheduleListCrud<DispatchAlarmSchedule, DispatchAlarmScheduleDraft>(
+    {
+      load: loadDispatchAlarmSchedules,
+      create: createDispatchAlarmSchedule,
+      update: updateDispatchAlarmSchedule,
+      remove: deleteDispatchAlarmSchedule,
+    },
+    MESSAGES,
+  )
+
   const [pushingId, setPushingId] = useState<string | null>(null)
 
-  const [drawerOpen, setDrawerOpen] = useState(false)
-  const [editingSchedule, setEditingSchedule] = useState<DispatchAlarmSchedule | null>(null)
-
-  const initRef = useRef(false)
-
-  const reload = useCallback(async () => {
-    setSchedulesLoading(true)
-    const res = await loadDispatchAlarmSchedules()
-    setSchedulesLoading(false)
-    if (res.ok) {
-      setSchedules(res.data)
-    } else {
-      showToast(`派签告警配置加载失败: ${res.error}`, 'error')
-    }
-  }, [])
-
-  useEffect(() => {
-    if (initRef.current) return
-    initRef.current = true
-    void reload()
-  }, [reload])
-
-  const openCreateDrawer = useCallback(() => {
-    setEditingSchedule(null)
-    setDrawerOpen(true)
-  }, [])
-
-  const openEditDrawer = useCallback((schedule: DispatchAlarmSchedule) => {
-    setEditingSchedule(schedule)
-    setDrawerOpen(true)
-  }, [])
-
-  const closeDrawer = useCallback(() => {
-    setDrawerOpen(false)
-    setEditingSchedule(null)
-  }, [])
-
   const submitDrawer = useCallback(
-    async (draft: DispatchAlarmScheduleDraft): Promise<boolean> => {
-      if (!imileToken.trim()) {
-        showToast('请先在全局设置中配置 iMile token，再保存派签告警', 'error')
-        return false
-      }
-      setSaving(true)
-      try {
-        const res = editingSchedule
-          ? await updateDispatchAlarmSchedule(editingSchedule.id, draft, imileToken)
-          : await createDispatchAlarmSchedule(draft, imileToken)
-        if (res.ok) {
-          showToast(editingSchedule ? '派签告警已更新' : '派签告警已添加', 'success')
-          await reload()
-          return true
-        }
-        showToast(`保存失败: ${res.error}`, 'error')
-        return false
-      } finally {
-        setSaving(false)
-      }
-    },
-    [editingSchedule, imileToken, reload],
+    (draft: DispatchAlarmScheduleDraft) => crud.submitDrawer(draft, imileToken),
+    [crud, imileToken],
   )
 
   const toggleEnabled = useCallback(
-    async (schedule: DispatchAlarmSchedule, isEnabled: boolean) => {
+    (schedule: DispatchAlarmSchedule, isEnabled: boolean) => {
       const draft: DispatchAlarmScheduleDraft = {
         weekdays: schedule.weekdays,
         pushTimes: schedule.pushTimes,
@@ -95,27 +57,9 @@ export function useDispatchAlarmPage() {
         arrivalScanDate: schedule.arrivalScanDate,
         mentionEnabled: schedule.mentionEnabled,
       }
-      const res = await updateDispatchAlarmSchedule(schedule.id, draft, imileToken)
-      if (res.ok) {
-        await reload()
-      } else {
-        showToast(`更新失败: ${res.error}`, 'error')
-      }
+      return crud.toggleEnabled(schedule, draft, imileToken)
     },
-    [imileToken, reload],
-  )
-
-  const removeSchedule = useCallback(
-    async (id: string) => {
-      const res = await deleteDispatchAlarmSchedule(id)
-      if (res.ok) {
-        showToast('已删除', 'success')
-        await reload()
-      } else {
-        showToast(`删除失败: ${res.error}`, 'error')
-      }
-    },
-    [reload],
+    [crud, imileToken],
   )
 
   const pushNow = useCallback(async (schedule: DispatchAlarmSchedule) => {
@@ -152,18 +96,19 @@ export function useDispatchAlarmPage() {
 
   return {
     catalog,
-    schedules,
-    schedulesLoading,
-    saving,
+    schedules: crud.schedules,
+    schedulesLoading: crud.schedulesLoading,
+    saving: crud.saving,
+    togglingIds: crud.togglingIds,
     pushingId,
-    drawerOpen,
-    editingSchedule,
-    openCreateDrawer,
-    openEditDrawer,
-    closeDrawer,
+    drawerOpen: crud.drawerOpen,
+    editingSchedule: crud.editingSchedule,
+    openCreateDrawer: crud.openCreateDrawer,
+    openEditDrawer: crud.openEditDrawer,
+    closeDrawer: crud.closeDrawer,
     submitDrawer,
     toggleEnabled,
-    removeSchedule,
+    removeSchedule: crud.removeSchedule,
     pushNow,
     pushableConfigs,
   }

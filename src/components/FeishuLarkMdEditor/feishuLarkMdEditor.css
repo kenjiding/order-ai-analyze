@@ -1,7 +1,6 @@
 .feishu-lark-md-editor {
   display: flex;
   flex-direction: column;
-  gap: 6px;
 }
 
 .feishu-lark-md-editor-toolbar {

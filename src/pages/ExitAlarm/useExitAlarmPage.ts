@@ -1,7 +1,8 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useState } from 'react'
 import { useAppSettings } from '../../context/AppSettingsContext'
 import { showToast } from '../../utils/toast'
 import { useSupplierPushCatalog } from '../../shared/supplierPushConfig'
+import { useScheduleListCrud, type ScheduleListCrudMessages } from '../../shared/schedulePush'
 import type { ExitAlarmSchedule, ExitAlarmScheduleDraft } from './exitAlarmTypes'
 import {
   createExitAlarmSchedule,
@@ -12,82 +13,43 @@ import {
   type ExitAlarmPushNowResult,
 } from './exitAlarmApi'
 
+const MESSAGES: ScheduleListCrudMessages = {
+  missingImileToken: '请先在全局设置中配置 iMile token，再保存出仓告警',
+  loadError: '出仓告警配置加载失败',
+  createSuccess: '出仓告警已添加',
+  updateSuccess: '出仓告警已更新',
+  saveError: '保存失败',
+  deleteSuccess: '已删除',
+  deleteError: '删除失败',
+  toggleError: '更新失败',
+}
+
 export function useExitAlarmPage() {
   const { imileToken } = useAppSettings()
 
   const catalog = useSupplierPushCatalog()
 
-  const [schedules, setSchedules] = useState<ExitAlarmSchedule[]>([])
-  const [schedulesLoading, setSchedulesLoading] = useState(false)
-  const [saving, setSaving] = useState(false)
-  const [pushingId, setPushingId] = useState<string | null>(null)
+  const crud = useScheduleListCrud<ExitAlarmSchedule, ExitAlarmScheduleDraft>(
+    {
+      load: loadExitAlarmSchedules,
+      create: createExitAlarmSchedule,
+      update: updateExitAlarmSchedule,
+      remove: deleteExitAlarmSchedule,
+    },
+    MESSAGES,
+  )
 
-  const [drawerOpen, setDrawerOpen] = useState(false)
-  const [editingSchedule, setEditingSchedule] = useState<ExitAlarmSchedule | null>(null)
+  const [pushingId, setPushingId] = useState<string | null>(null)
   /** 每条配置最近一次「立刻推送」结果，用于展示「导出Excel」 */
   const [pushResults, setPushResults] = useState<Record<string, ExitAlarmPushNowResult>>({})
 
-  const initRef = useRef(false)
-
-  const reload = useCallback(async () => {
-    setSchedulesLoading(true)
-    const res = await loadExitAlarmSchedules()
-    setSchedulesLoading(false)
-    if (res.ok) {
-      setSchedules(res.data)
-    } else {
-      showToast(`出仓告警配置加载失败: ${res.error}`, 'error')
-    }
-  }, [])
-
-  useEffect(() => {
-    if (initRef.current) return
-    initRef.current = true
-    void reload()
-  }, [reload])
-
-  const openCreateDrawer = useCallback(() => {
-    setEditingSchedule(null)
-    setDrawerOpen(true)
-  }, [])
-
-  const openEditDrawer = useCallback((schedule: ExitAlarmSchedule) => {
-    setEditingSchedule(schedule)
-    setDrawerOpen(true)
-  }, [])
-
-  const closeDrawer = useCallback(() => {
-    setDrawerOpen(false)
-    setEditingSchedule(null)
-  }, [])
-
   const submitDrawer = useCallback(
-    async (draft: ExitAlarmScheduleDraft): Promise<boolean> => {
-      if (!imileToken.trim()) {
-        showToast('请先在全局设置中配置 iMile token，再保存出仓告警', 'error')
-        return false
-      }
-      setSaving(true)
-      try {
-        const res = editingSchedule
-          ? await updateExitAlarmSchedule(editingSchedule.id, draft, imileToken)
-          : await createExitAlarmSchedule(draft, imileToken)
-        if (res.ok) {
-          showToast(editingSchedule ? '出仓告警已更新' : '出仓告警已添加', 'success')
-          await reload()
-          return true
-        }
-        showToast(`保存失败: ${res.error}`, 'error')
-        return false
-      } finally {
-        setSaving(false)
-      }
-    },
-    [editingSchedule, imileToken, reload],
+    (draft: ExitAlarmScheduleDraft) => crud.submitDrawer(draft, imileToken),
+    [crud, imileToken],
   )
 
   const toggleEnabled = useCallback(
-    async (schedule: ExitAlarmSchedule, isEnabled: boolean) => {
+    (schedule: ExitAlarmSchedule, isEnabled: boolean) => {
       const draft: ExitAlarmScheduleDraft = {
         weekdays: schedule.weekdays,
         pushTimes: schedule.pushTimes,
@@ -96,27 +58,9 @@ export function useExitAlarmPage() {
         pushConfigIds: schedule.pushConfigIds,
         mentionEnabled: schedule.mentionEnabled,
       }
-      const res = await updateExitAlarmSchedule(schedule.id, draft, imileToken)
-      if (res.ok) {
-        await reload()
-      } else {
-        showToast(`更新失败: ${res.error}`, 'error')
-      }
+      return crud.toggleEnabled(schedule, draft, imileToken)
     },
-    [imileToken, reload],
-  )
-
-  const removeSchedule = useCallback(
-    async (id: string) => {
-      const res = await deleteExitAlarmSchedule(id)
-      if (res.ok) {
-        showToast('已删除', 'success')
-        await reload()
-      } else {
-        showToast(`删除失败: ${res.error}`, 'error')
-      }
-    },
-    [reload],
+    [crud, imileToken],
   )
 
   const pushNow = useCallback(async (schedule: ExitAlarmSchedule) => {
@@ -154,18 +98,19 @@ export function useExitAlarmPage() {
 
   return {
     catalog,
-    schedules,
-    schedulesLoading,
-    saving,
+    schedules: crud.schedules,
+    schedulesLoading: crud.schedulesLoading,
+    saving: crud.saving,
+    togglingIds: crud.togglingIds,
     pushingId,
-    drawerOpen,
-    editingSchedule,
-    openCreateDrawer,
-    openEditDrawer,
-    closeDrawer,
+    drawerOpen: crud.drawerOpen,
+    editingSchedule: crud.editingSchedule,
+    openCreateDrawer: crud.openCreateDrawer,
+    openEditDrawer: crud.openEditDrawer,
+    closeDrawer: crud.closeDrawer,
     submitDrawer,
     toggleEnabled,
-    removeSchedule,
+    removeSchedule: crud.removeSchedule,
     pushNow,
     pushableConfigs,
     pushResults,

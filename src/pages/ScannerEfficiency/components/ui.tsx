@@ -120,6 +120,12 @@ export type DataTableColumn = {
   /** 自定义表头渲染；优先于 title */
   renderTitle?: () => ReactNode
   render?: (row: DataTableRow) => ReactNode
+  /** antd Table 列排序；仅 ScannerEfficiencyAntdTable 等消费方使用 */
+  sorter?: (a: DataTableRow, b: DataTableRow) => number
+  /** 点击表头时的排序方向循环；默认 ascend → descend */
+  sortDirections?: Array<'ascend' | 'descend'>
+  /** 初始排序方向；仅配合 sorter 使用 */
+  defaultSortOrder?: 'ascend' | 'descend'
 }
 
 type DataTableProps = {

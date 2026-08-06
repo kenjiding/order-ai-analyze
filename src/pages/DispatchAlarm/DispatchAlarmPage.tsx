@@ -39,6 +39,7 @@ export default function DispatchAlarmPage() {
         schedules={v.schedules}
         loading={v.schedulesLoading}
         pushingId={v.pushingId}
+        togglingIds={v.togglingIds}
         onEdit={v.openEditDrawer}
         onDelete={(id) => void v.removeSchedule(id)}
         onToggleEnabled={(schedule, enabled) => void v.toggleEnabled(schedule, enabled)}

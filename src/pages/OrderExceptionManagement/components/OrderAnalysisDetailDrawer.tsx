@@ -1,7 +1,6 @@
 import { Button, Drawer, Form, Input, Select, Tag, Timeline } from 'antd'
 import {
   AlertTriangle,
-  Building2,
   ClipboardCheck,
   Package,
   Route,
@@ -11,10 +10,12 @@ import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react
 import { DrawerCloseButton } from '../../../components/Drawer/DrawerCloseButton'
 import { useAppSettings } from '../../../context/AppSettingsContext'
 import { useGlobalFilterStore } from '../../../stores/globalFilterStore'
+import { PERMISSION_KEYS, usePermission } from '../../../hooks/usePermission'
 import { showToast } from '../../../utils/toast'
 import {
   getClosureVendors,
   postClosureDriverVendor,
+  postClosureExceptionAdd,
   type ClosureExceptionTypeOption,
   type ClosureVendorOption,
   type OrderAnalyzeInterceptLog,
@@ -35,7 +36,10 @@ const CLOSURE_EXCEPTION_TYPE_OPTIONS: ClosureExceptionTypeOption[] = [
   { key: 'aus_3PL_lost_items', value: '3PL丢件', label: null },
 ]
 
-const CLOSURE_TYPE_VALUE_BY_KEY = new Map(CLOSURE_EXCEPTION_TYPE_OPTIONS.map((x) => [x.key, x.value]))
+const VIOLENCE_OPTIONS: { value: '0' | '1'; label: string }[] = [
+  { value: '0', label: '否' },
+  { value: '1', label: '是' },
+]
 
 const STAGE_DOT_COLOR: Record<string, string> = {
   订单提交: 'blue',
@@ -219,17 +223,19 @@ type Props = {
 export function OrderAnalysisDetailDrawer({ row, onClose }: Props) {
   const { imileToken } = useAppSettings()
   const stationCode = useGlobalFilterStore((state) => state.selectedStations[0] ?? '')
+  const canSubmitClosure = usePermission(PERMISSION_KEYS.btnOrderExceptionClosureAdd)
 
   const [closureTypeKey, setClosureTypeKey] = useState<ClosureExceptionTypeKey | ''>('')
   const [closureRemark, setClosureRemark] = useState('')
+  const [violence, setViolence] = useState<'0' | '1'>('0')
   const [vendorOptions, setVendorOptions] = useState<ClosureVendorOption[]>([])
   const [selectedVendorKey, setSelectedVendorKey] = useState('')
   const [detectedDriverId, setDetectedDriverId] = useState('')
   const [pendingAutoResolveDriverId, setPendingAutoResolveDriverId] = useState('')
   const [vendorAutoFillTip, setVendorAutoFillTip] = useState('')
-  const [submitPreview, setSubmitPreview] = useState('')
   const [isLoadingVendors, setIsLoadingVendors] = useState(false)
   const [isResolvingVendor, setIsResolvingVendor] = useState(false)
+  const [isSubmittingClosure, setIsSubmittingClosure] = useState(false)
 
   useEffect(() => {
     if (!row) return
@@ -244,20 +250,20 @@ export function OrderAnalysisDetailDrawer({ row, onClose }: Props) {
     if (!row) {
       setClosureTypeKey('')
       setClosureRemark('')
+      setViolence('0')
       setVendorOptions([])
       setSelectedVendorKey('')
       setDetectedDriverId('')
       setPendingAutoResolveDriverId('')
       setVendorAutoFillTip('')
-      setSubmitPreview('')
       return
     }
 
     const inferred = inferClosureExceptionTypeKey(row)
     setClosureTypeKey(inferred ?? '')
     setClosureRemark(row.reason || '')
+    setViolence('0')
     setSelectedVendorKey('')
-    setSubmitPreview('')
     setVendorAutoFillTip('')
     setDetectedDriverId(row.detectedDriverId ?? '')
     setPendingAutoResolveDriverId(row.detectedDriverId ?? '')
@@ -366,7 +372,7 @@ export function OrderAnalysisDetailDrawer({ row, onClose }: Props) {
     [vendorOptions]
   )
 
-  const handlePreviewSubmit = useCallback(() => {
+  const handleSubmitClosure = useCallback(async () => {
     if (!row) return
 
     const selectedTypeKey = closureTypeKey.trim() as ClosureExceptionTypeKey | ''
@@ -375,44 +381,44 @@ export function OrderAnalysisDetailDrawer({ row, onClose }: Props) {
       return
     }
 
-    if (outResponsibility && !selectedVendorKey.trim()) {
-      showToast('当前为库外责任，请选择派件员供应商', 'error')
+    const vendor = vendorOptions.find((x) => x.key === selectedVendorKey)
+    const vendorRequired = outResponsibility || selectedTypeKey === 'aus_packet_loss_out_the_station'
+    if (vendorRequired && !vendor) {
+      showToast('库外丢包必须选择派件员供应商', 'error')
       return
     }
 
-    const vendor = vendorOptions.find((x) => x.key === selectedVendorKey)
-    const payload = {
-      orderNo: row.orderNo,
-      exceptionType: {
-        key: selectedTypeKey,
-        value: CLOSURE_TYPE_VALUE_BY_KEY.get(selectedTypeKey) ?? '',
-      },
-      remark: closureRemark.trim(),
-      deliverySupplier: vendor
-        ? { vendorCode: vendor.key, vendorName: vendor.value }
-        : null,
-      stationCode: stationCode.trim() || null,
-      driverId: detectedDriverId || null,
-      aiResult: {
-        lossScope: row.lossScope,
-        subType: row.categoryName,
-        responsibilityParty: row.currentResponsibilityParty,
-        reason: row.reason,
-        confidence: row.confidence,
-      },
+    const token = imileToken.trim()
+    if (!token) {
+      showToast('缺少 imileToken，请先在系统设置中配置', 'error')
+      return
     }
 
-    setSubmitPreview(JSON.stringify(payload, null, 2))
-    showToast('已生成提交预览（未实际调用闭环接口）', 'success')
+    setIsSubmittingClosure(true)
+    try {
+      await postClosureExceptionAdd({
+        imileToken: token,
+        waybillNo: row.orderNo,
+        exceptionCloseReason: selectedTypeKey,
+        exceptionHandleRemark: closureRemark.trim(),
+        vendorCode: vendor?.key ?? '',
+        violence,
+      })
+      showToast('异常完结已新增', 'success')
+    } catch (e) {
+      showToast((e as Error).message || '异常完结新增失败', 'error')
+    } finally {
+      setIsSubmittingClosure(false)
+    }
   }, [
     closureRemark,
     closureTypeKey,
-    detectedDriverId,
+    imileToken,
     row,
     outResponsibility,
     selectedVendorKey,
-    stationCode,
     vendorOptions,
+    violence,
   ])
 
   return (
@@ -498,86 +504,55 @@ export function OrderAnalysisDetailDrawer({ row, onClose }: Props) {
           </header>
 
           <div className="flex-1 space-y-5 overflow-y-auto px-5 py-5 sm:px-6">
-            {/* Closure + vendor */}
-            <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_280px]">
-              <section className="admin-panel overflow-hidden">
-                <DrawerSectionHeader
-                  icon={<ClipboardCheck className="h-4 w-4" aria-hidden />}
-                  eyebrow="Exception Closure"
-                  title="异常完结"
-                />
-                <div className="px-5 py-4">
-                  <Form layout="vertical" colon={false}>
-                    <div className="grid gap-x-4 sm:grid-cols-2">
-                      <Form.Item label="异常类型" required className="mb-3">
-                        <Select<ClosureExceptionTypeKey>
-                          value={closureTypeKey || undefined}
-                          placeholder="请选择异常类型"
-                          options={CLOSURE_EXCEPTION_TYPE_OPTIONS.map((x) => ({
-                            value: x.key,
-                            label: x.value,
-                          }))}
-                          onChange={(v) => setClosureTypeKey(v)}
-                        />
-                      </Form.Item>
-
-                      <Form.Item
-                        label="派件员供应商"
-                        required={outResponsibility}
-                        className="mb-3"
-                        extra={vendorAutoFillTip || undefined}
-                      >
-                        <Select<string>
-                          value={selectedVendorKey || undefined}
-                          placeholder={isLoadingVendors ? '加载中...' : '请选择供应商'}
-                          showSearch
-                          allowClear
-                          loading={isLoadingVendors}
-                          options={vendorSelectOptions}
-                          optionFilterProp="label"
-                          onChange={(v) => setSelectedVendorKey(v ?? '')}
-                          onClear={() => setSelectedVendorKey('')}
-                        />
-                      </Form.Item>
-                    </div>
-
-                    <Form.Item label="备注" className="mb-3">
-                      <Input.TextArea
-                        rows={3}
-                        value={closureRemark}
-                        onChange={(e) => setClosureRemark(e.target.value)}
-                        placeholder="默认回填 AI 判定依据"
+            {/* Closure */}
+            <section className="admin-panel overflow-hidden">
+              <DrawerSectionHeader
+                icon={<ClipboardCheck className="h-4 w-4" aria-hidden />}
+                eyebrow="Exception Closure"
+                title="异常完结"
+              />
+              <div className="px-5 py-4">
+                <Form layout="vertical" colon={false}>
+                  <div className="grid gap-x-4 sm:grid-cols-2">
+                    <Form.Item label="异常类型" required className="mb-3">
+                      <Select<ClosureExceptionTypeKey>
+                        value={closureTypeKey || undefined}
+                        placeholder="请选择异常类型"
+                        options={CLOSURE_EXCEPTION_TYPE_OPTIONS.map((x) => ({
+                          value: x.key,
+                          label: x.value,
+                        }))}
+                        onChange={(v) => setClosureTypeKey(v)}
                       />
                     </Form.Item>
 
-                    <Form.Item className="mb-0">
-                      <Button type="primary" onClick={handlePreviewSubmit} className="min-w-[120px]">
-                        提交预览
-                      </Button>
+                    <Form.Item
+                      label="派件员供应商"
+                      required={outResponsibility || closureTypeKey === 'aus_packet_loss_out_the_station'}
+                      className="mb-3"
+                      extra={vendorAutoFillTip || undefined}
+                    >
+                      <Select<string>
+                        value={selectedVendorKey || undefined}
+                        placeholder={isLoadingVendors ? '加载中...' : '请选择供应商'}
+                        showSearch
+                        allowClear
+                        loading={isLoadingVendors || isResolvingVendor}
+                        options={vendorSelectOptions}
+                        optionFilterProp="label"
+                        onChange={(v) => setSelectedVendorKey(v ?? '')}
+                        onClear={() => setSelectedVendorKey('')}
+                      />
                     </Form.Item>
-                  </Form>
 
-                  {submitPreview ? (
-                    <div className="mt-4 overflow-hidden rounded-lg border border-slate-700/30 bg-[linear-gradient(180deg,#1e293b_0%,#0f172a_100%)] shadow-[inset_0_1px_0_rgba(255,255,255,0.06)]">
-                      <div className="border-b border-white/10 px-4 py-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-400">
-                        Submit Payload Preview
-                      </div>
-                      <pre className="max-h-48 overflow-auto px-4 py-3 text-xs leading-relaxed text-slate-100">
-                        {submitPreview}
-                      </pre>
-                    </div>
-                  ) : null}
-                </div>
-              </section>
+                    <Form.Item label="是否暴力" required className="mb-3">
+                      <Select<'0' | '1'>
+                        value={violence}
+                        options={VIOLENCE_OPTIONS}
+                        onChange={(v) => setViolence(v)}
+                      />
+                    </Form.Item>
 
-              <section className="overflow-hidden rounded-lg border border-[#c8deee] bg-[linear-gradient(180deg,#f8fcff_0%,#eef7fb_100%)] shadow-[0_18px_48px_rgba(47,83,105,0.07)]">
-                <DrawerSectionHeader
-                  icon={<Building2 className="h-4 w-4" aria-hidden />}
-                  eyebrow="Vendor Resolution"
-                  title="供应商识别"
-                />
-                <div className="px-5 py-4">
-                  <Form layout="vertical" colon={false}>
                     <Form.Item label="派送员 ID" className="mb-3">
                       <Input
                         value={detectedDriverId}
@@ -591,33 +566,33 @@ export function OrderAnalysisDetailDrawer({ row, onClose }: Props) {
                         className="font-mono"
                       />
                     </Form.Item>
+                  </div>
 
+                  <Form.Item label="备注" className="mb-3">
+                    <Input.TextArea
+                      rows={3}
+                      value={closureRemark}
+                      onChange={(e) => setClosureRemark(e.target.value)}
+                      placeholder="默认回填 AI 判定依据"
+                    />
+                  </Form.Item>
+
+                  {canSubmitClosure ? (
                     <Form.Item className="mb-0">
                       <Button
-                        block
-                        type="default"
-                        disabled={!detectedDriverId || !stationCode.trim() || isResolvingVendor}
-                        loading={isResolvingVendor}
-                        onClick={() => {
-                          if (!detectedDriverId) return
-                          const nextStationCode = stationCode.trim()
-                          if (!nextStationCode) {
-                            showToast('请先在右上角选择责任站点', 'error')
-                            return
-                          }
-                          void resolveVendorByDriver(detectedDriverId, nextStationCode)
-                        }}
+                        type="primary"
+                        onClick={() => void handleSubmitClosure()}
+                        loading={isSubmittingClosure}
+                        disabled={isSubmittingClosure}
+                        className="min-w-[120px]"
                       >
-                        识别供应商
+                        新增异常完结
                       </Button>
                     </Form.Item>
-                  </Form>
-                  {!stationCode.trim() ? (
-                    <p className="mt-3 text-xs text-amber-600">请先在右上角选择责任站点，再识别供应商。</p>
                   ) : null}
-                </div>
-              </section>
-            </div>
+                </Form>
+              </div>
+            </section>
 
             {/* Trace timeline */}
             <div className={`grid gap-4 ${hasInterceptLogs ? 'xl:grid-cols-[minmax(0,1fr)_300px]' : ''}`}>

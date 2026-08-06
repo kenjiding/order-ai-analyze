@@ -11,6 +11,22 @@ import {
   SCANNER_EFFICIENCY_TABLE_NORMAL_CLASS,
 } from './scannerEfficiencyThresholds'
 
+/** 数值列排序：无效值视为 -∞，配合 descend→ascend 时高值优先、空值靠后 */
+function compareNumericField(
+  a: DataTableRow,
+  b: DataTableRow,
+  getValue: (row: DataTableRow) => unknown,
+): number {
+  const toNum = (v: unknown) => {
+    if (v == null || v === '') return Number.NEGATIVE_INFINITY
+    const n = Number(v)
+    return Number.isFinite(n) ? n : Number.NEGATIVE_INFINITY
+  }
+  return toNum(getValue(a)) - toNum(getValue(b))
+}
+
+const METRIC_SORT_DIRECTIONS: Array<'ascend' | 'descend'> = ['descend', 'ascend']
+
 function DailyTotalHoursCell({
   dateKey,
   hours,
@@ -442,6 +458,9 @@ export function buildScannerTotalEfficiencyColumns(): DataTableColumn[] {
     {
       key: 'scanCount',
       title: '扫描量',
+      sortDirections: METRIC_SORT_DIRECTIONS,
+      defaultSortOrder: 'descend',
+      sorter: (a, b) => compareNumericField(a, b, (row) => row.scanCount),
       render: (row: DataTableRow) =>
         row.isTableAverageRow
           ? formatNumber(Number(row.scanCount), 2)
@@ -466,6 +485,9 @@ export function buildScannerTotalEfficiencyColumns(): DataTableColumn[] {
     {
       key: 'cainiaoAdjustedTotalEfficiency',
       title: '总效率(票/小时)',
+      sortDirections: METRIC_SORT_DIRECTIONS,
+      sorter: (a, b) =>
+        compareNumericField(a, b, (row) => row.cainiaoAdjustedTotalEfficiency ?? row.totalEfficiency),
       render: (row: DataTableRow) => {
         const v = row.cainiaoAdjustedTotalEfficiency ?? row.totalEfficiency
         if (v == null) return '—'
@@ -487,6 +509,9 @@ export function buildScannerPersonColumns(): DataTableColumn[] {
     {
       key: 'scanCount',
       title: '总扫描量',
+      sortDirections: METRIC_SORT_DIRECTIONS,
+      defaultSortOrder: 'descend',
+      sorter: (a, b) => compareNumericField(a, b, (row) => row.scanCount),
       render: (row: DataTableRow) =>
         row.isTableAverageRow
           ? formatNumber(Number(row.scanCount), 2)
@@ -515,7 +540,10 @@ export function buildScannerPersonColumns(): DataTableColumn[] {
     },
     {
       key: 'cainiaoAdjustedEfficiency',
-      title: '修正效率(票/小时)',
+      title: '修正效率',
+      sortDirections: METRIC_SORT_DIRECTIONS,
+      sorter: (a, b) =>
+        compareNumericField(a, b, (row) => row.cainiaoAdjustedEfficiency ?? row.adjustedEfficiency),
       render: (row: DataTableRow) => {
         const v = row.cainiaoAdjustedEfficiency ?? row.adjustedEfficiency
         if (v == null && row.isTableAverageRow) return '—'

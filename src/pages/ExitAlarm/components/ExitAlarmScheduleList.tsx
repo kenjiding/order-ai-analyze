@@ -18,6 +18,7 @@ type Props = {
   schedules: ExitAlarmSchedule[]
   loading: boolean
   pushingId: string | null
+  togglingIds: ReadonlySet<string>
   pushResults: Record<string, ExitAlarmPushNowResult>
   onEdit: (schedule: ExitAlarmSchedule) => void
   onDelete: (id: string) => void
@@ -29,6 +30,7 @@ export function ExitAlarmScheduleList({
   schedules,
   loading,
   pushingId,
+  togglingIds,
   pushResults,
   onEdit,
   onDelete,
@@ -48,6 +50,7 @@ export function ExitAlarmScheduleList({
       {schedules.map((schedule) => {
         const { weekdaysText, timesText } = summarizeSchedule(schedule)
         const isPushing = pushingId === schedule.id
+        const isToggling = togglingIds.has(schedule.id)
         const pushResult = pushResults[schedule.id]
         const unqualifiedTotal =
           pushResult?.unqualifiedByVendor.reduce((sum, v) => sum + v.waybillNos.length, 0) ?? 0
@@ -67,6 +70,7 @@ export function ExitAlarmScheduleList({
             <div className="flex shrink-0 items-center gap-2">
               <Switch
                 checked={schedule.isEnabled}
+                loading={isToggling}
                 onChange={(checked) => onToggleEnabled(schedule, checked)}
                 checkedChildren="启用"
                 unCheckedChildren="停用"

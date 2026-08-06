@@ -1,7 +1,8 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useState } from 'react'
 import { useAppSettings } from '../../context/AppSettingsContext'
 import { showToast } from '../../utils/toast'
 import { useSupplierPushCatalog } from '../../shared/supplierPushConfig'
+import { useScheduleListCrud, type ScheduleListCrudMessages } from '../../shared/schedulePush'
 import type { WorkOrderPushSchedule, WorkOrderPushScheduleDraft } from './workOrderPushTypes'
 import {
   createWorkOrderPushSchedule,
@@ -11,80 +12,41 @@ import {
   updateWorkOrderPushSchedule,
 } from './workOrderPushApi'
 
+const MESSAGES: ScheduleListCrudMessages = {
+  missingImileToken: '请先在全局设置中配置 iMile token，再保存工单推送',
+  loadError: '工单推送配置加载失败',
+  createSuccess: '工单推送已添加',
+  updateSuccess: '工单推送已更新',
+  saveError: '保存失败',
+  deleteSuccess: '已删除',
+  deleteError: '删除失败',
+  toggleError: '更新失败',
+}
+
 export function useWorkOrderPushPage() {
   const { imileToken } = useAppSettings()
 
   const catalog = useSupplierPushCatalog()
 
-  const [schedules, setSchedules] = useState<WorkOrderPushSchedule[]>([])
-  const [schedulesLoading, setSchedulesLoading] = useState(false)
-  const [saving, setSaving] = useState(false)
+  const crud = useScheduleListCrud<WorkOrderPushSchedule, WorkOrderPushScheduleDraft>(
+    {
+      load: loadWorkOrderPushSchedules,
+      create: createWorkOrderPushSchedule,
+      update: updateWorkOrderPushSchedule,
+      remove: deleteWorkOrderPushSchedule,
+    },
+    MESSAGES,
+  )
+
   const [pushingId, setPushingId] = useState<string | null>(null)
 
-  const [drawerOpen, setDrawerOpen] = useState(false)
-  const [editingSchedule, setEditingSchedule] = useState<WorkOrderPushSchedule | null>(null)
-
-  const initRef = useRef(false)
-
-  const reload = useCallback(async () => {
-    setSchedulesLoading(true)
-    const res = await loadWorkOrderPushSchedules()
-    setSchedulesLoading(false)
-    if (res.ok) {
-      setSchedules(res.data)
-    } else {
-      showToast(`工单推送配置加载失败: ${res.error}`, 'error')
-    }
-  }, [])
-
-  useEffect(() => {
-    if (initRef.current) return
-    initRef.current = true
-    void reload()
-  }, [reload])
-
-  const openCreateDrawer = useCallback(() => {
-    setEditingSchedule(null)
-    setDrawerOpen(true)
-  }, [])
-
-  const openEditDrawer = useCallback((schedule: WorkOrderPushSchedule) => {
-    setEditingSchedule(schedule)
-    setDrawerOpen(true)
-  }, [])
-
-  const closeDrawer = useCallback(() => {
-    setDrawerOpen(false)
-    setEditingSchedule(null)
-  }, [])
-
   const submitDrawer = useCallback(
-    async (draft: WorkOrderPushScheduleDraft): Promise<boolean> => {
-      if (!imileToken.trim()) {
-        showToast('请先在全局设置中配置 iMile token，再保存工单推送', 'error')
-        return false
-      }
-      setSaving(true)
-      try {
-        const res = editingSchedule
-          ? await updateWorkOrderPushSchedule(editingSchedule.id, draft, imileToken)
-          : await createWorkOrderPushSchedule(draft, imileToken)
-        if (res.ok) {
-          showToast(editingSchedule ? '工单推送已更新' : '工单推送已添加', 'success')
-          await reload()
-          return true
-        }
-        showToast(`保存失败: ${res.error}`, 'error')
-        return false
-      } finally {
-        setSaving(false)
-      }
-    },
-    [editingSchedule, imileToken, reload],
+    (draft: WorkOrderPushScheduleDraft) => crud.submitDrawer(draft, imileToken),
+    [crud, imileToken],
   )
 
   const toggleEnabled = useCallback(
-    async (schedule: WorkOrderPushSchedule, isEnabled: boolean) => {
+    (schedule: WorkOrderPushSchedule, isEnabled: boolean) => {
       const draft: WorkOrderPushScheduleDraft = {
         weekdays: schedule.weekdays,
         pushTimes: schedule.pushTimes,
@@ -93,27 +55,9 @@ export function useWorkOrderPushPage() {
         pushConfigIds: schedule.pushConfigIds,
         mentionEnabled: schedule.mentionEnabled,
       }
-      const res = await updateWorkOrderPushSchedule(schedule.id, draft, imileToken)
-      if (res.ok) {
-        await reload()
-      } else {
-        showToast(`更新失败: ${res.error}`, 'error')
-      }
+      return crud.toggleEnabled(schedule, draft, imileToken)
     },
-    [imileToken, reload],
-  )
-
-  const removeSchedule = useCallback(
-    async (id: string) => {
-      const res = await deleteWorkOrderPushSchedule(id)
-      if (res.ok) {
-        showToast('已删除', 'success')
-        await reload()
-      } else {
-        showToast(`删除失败: ${res.error}`, 'error')
-      }
-    },
-    [reload],
+    [crud, imileToken],
   )
 
   const pushNow = useCallback(async (schedule: WorkOrderPushSchedule) => {
@@ -148,18 +92,19 @@ export function useWorkOrderPushPage() {
 
   return {
     catalog,
-    schedules,
-    schedulesLoading,
-    saving,
+    schedules: crud.schedules,
+    schedulesLoading: crud.schedulesLoading,
+    saving: crud.saving,
+    togglingIds: crud.togglingIds,
     pushingId,
-    drawerOpen,
-    editingSchedule,
-    openCreateDrawer,
-    openEditDrawer,
-    closeDrawer,
+    drawerOpen: crud.drawerOpen,
+    editingSchedule: crud.editingSchedule,
+    openCreateDrawer: crud.openCreateDrawer,
+    openEditDrawer: crud.openEditDrawer,
+    closeDrawer: crud.closeDrawer,
     submitDrawer,
     toggleEnabled,
-    removeSchedule,
+    removeSchedule: crud.removeSchedule,
     pushNow,
   }
 }
