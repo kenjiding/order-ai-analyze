@@ -18,7 +18,6 @@ export const VENDOR_ANALYSIS_DATA_SOURCES = [
   'waybills',
   'driverWaybills',
   'driverReturn',
-  'driverMap',
 ] as const
 
 export type VendorAnalysisDataSource = (typeof VENDOR_ANALYSIS_DATA_SOURCES)[number]
@@ -53,16 +52,6 @@ export const VENDOR_ANALYSIS_METRICS: VendorMetricDef[] = [
   { key: 'driver.before11ExitRate', category: 'driver', label: '11点前出率', fixed: false, defaultEnabled: true, dataSources: ['before11'], dateSensitive: true },
   { key: 'driver.returnWarning', category: 'driver', label: '归班预警', fixed: false, defaultEnabled: true, dataSources: ['driverReturn'] },
   { key: 'driver.longTail', category: 'driver', label: '长尾单', fixed: false, defaultEnabled: true, dataSources: ['longTail'] },
-  {
-    key: 'module.driverMap',
-    category: 'module',
-    label: '司机地图',
-    fixed: false,
-    defaultEnabled: true,
-    // 与 11 点前出仓同一天（before11Date）；分析任务写入缓存，刷新做未终态增量
-    dataSources: ['driverMap'],
-    dateSensitive: true,
-  },
 ]
 
 /**

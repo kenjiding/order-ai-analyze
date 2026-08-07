@@ -1,6 +1,5 @@
-import { Space, Tooltip } from 'antd'
-import { Info } from 'lucide-react'
-import { STATUS_COLORS, DRIVER_TRAIL_COLORS } from './driverMapConstants'
+import { Space } from 'antd'
+import { STATUS_COLORS } from './driverMapConstants'
 import type { DriverMapPointStatus } from './driverMapTypes'
 
 function Dot({

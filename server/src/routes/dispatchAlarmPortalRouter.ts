@@ -1,6 +1,14 @@
 import { Router, type Request, type Response, type NextFunction } from 'express'
 import { loadDispatchAlarmShareSnapshot } from '../feishu/dispatchAlarmShareSnapshot'
-import { ensureProblemReasons, geocodePendingMapPoints, queryDriverMapPoints } from '../driverMap/driverMapPointsQuery'
+import {
+  ensureProblemReasons,
+  geocodePendingMapPoints,
+  hasDriverMapWaybillRows,
+  populateDriverMapCache,
+  queryDriverMapPoints,
+  readDriverMapImileToken,
+} from '../driverMap/driverMapPointsQuery'
+import { AUS_TZ } from '../imile/ausTimezone'
 
 /**
  * 24小时派签告警外部门户（无登录鉴权，仅凭高熵分享 token）。
@@ -42,6 +50,8 @@ function sendNotFound(res: Response): void {
 
 /**
  * 司机地图：落地页站点/日期/供应商直接取自本次推送的快照（单站点单供应商，无需像供应商日报那样兜底多站点）。
+ * 这张缓存表现在唯一的数据来源就是这个路由：该站点该日第一次被打开时，现场做一次全量同步（含地理编码）；
+ * 之后同站点同日期的访问（含其它供应商）只需增量补坐标，不用重新整站拉取。
  * geocodePendingMapPoints 有时间预算，一次可能补不全坐标，由前端自行轮询重试。
  */
 dispatchAlarmPortalRouter.get('/driver-map/:token', rateLimit, async (req: Request, res: Response) => {
@@ -59,6 +69,29 @@ dispatchAlarmPortalRouter.get('/driver-map/:token', rateLimit, async (req: Reque
     const { stationCode, date: dataDate, vendorCode } = snapshot
     if (!stationCode || !/^\d{4}-\d{2}-\d{2}$/.test(dataDate)) {
       res.json({ ok: true, data: null })
+      return
+    }
+
+    const hasRows = await hasDriverMapWaybillRows({ stationCode, dataDate })
+    if (!hasRows) {
+      const imileToken = await readDriverMapImileToken()
+      if (!imileToken) {
+        res.json({ ok: true, data: null })
+        return
+      }
+      const synced = await populateDriverMapCache({
+        token: imileToken,
+        stationCode,
+        dataDate,
+        tz: AUS_TZ.Adelaide,
+        vendorCode,
+        label: '24H派签告警落地页首次同步',
+      })
+      if (!synced.ok) {
+        res.status(502).json({ ok: false, error: synced.message })
+        return
+      }
+      res.json({ ok: true, data: synced.data.points })
       return
     }
 

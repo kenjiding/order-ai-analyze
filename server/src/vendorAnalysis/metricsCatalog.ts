@@ -16,8 +16,6 @@ export const VENDOR_ANALYSIS_DATA_SOURCES = [
   'waybills',
   'driverWaybills',
   'driverReturn',
-  /** 司机地图：与 before11 同一天（before11Date），写入 driver_map_waybill_points */
-  'driverMap',
 ] as const
 
 export type VendorAnalysisDataSource = (typeof VENDOR_ANALYSIS_DATA_SOURCES)[number]
@@ -135,14 +133,6 @@ export const VENDOR_ANALYSIS_METRICS: VendorAnalysisMetricDef[] = [
         en: '   - If couriers have high long-tail counts, note follow-up volume and risk',
       },
     },
-  },
-  {
-    key: 'module.driverMap',
-    category: 'module',
-    fixed: false,
-    // 与「11点前出仓」同一数据日（before11Date）：分析任务同步站点日运单入缓存；
-    // 门户「刷新」对未终态增量再拉（见 server/src/driverMap/）
-    dataSources: ['driverMap'],
   },
 ]
 

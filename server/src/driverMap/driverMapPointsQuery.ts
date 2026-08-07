@@ -3,9 +3,9 @@
  * 数据日与「11点前出仓」一致（before11Date）；分析任务首次同步，手动「刷新」对未终态增量再拉。
  * 坐标来源：iMile 分拣坐标查询（sorting/pageList），按运单号直接取，见 ../imile/sortingGeocoding。
  */
-import { and, eq, inArray, isNotNull, isNull, ne, or, sql } from 'drizzle-orm'
+import { and, eq, inArray, isNotNull, isNull, lt, ne, or, sql } from 'drizzle-orm'
 import { getDb, schema } from '../db'
-import { AUS_TZ, iMileStrToMs, type AusTz } from '../imile/ausTimezone'
+import { AUS_TZ, iMileStrToMs, localDateInTz, type AusTz } from '../imile/ausTimezone'
 import { syncStationDayWaybillsIncremental } from '../imile/stationDayWaybillSync'
 import { fetchSearchWaybillByNos } from '../imile/inboundWaybillIndex'
 import { fetchSortingGeocodingByWaybillNos } from '../imile/sortingGeocoding'
@@ -258,6 +258,24 @@ function buildDriversFromRows(rows: DriverMapPointRow[]): {
   }
 }
 
+/**
+ * 该站点该日是否已同步过运单缓存（不区分供应商，同步本身是整站的）。
+ * 供调用方判断要不要先做一次全量同步，还是直接走增量补坐标。
+ */
+export async function hasDriverMapWaybillRows(input: {
+  stationCode: string
+  dataDate: string
+}): Promise<boolean> {
+  const db = getDb()
+  const p = schema.driverMapWaybillPoints
+  const [row] = await db
+    .select({ id: p.id })
+    .from(p)
+    .where(and(eq(p.stationCode, input.stationCode), eq(p.dataDate, input.dataDate)))
+    .limit(1)
+  return Boolean(row)
+}
+
 /** 从缓存表组装地图点位（不触发 iMile 拉取） */
 export async function queryDriverMapPoints(input: {
   stationCode: string
@@ -393,34 +411,8 @@ export async function ensureProblemReasons(input: {
 }
 
 /**
- * 手动增量刷新：同步未终态运单 → 为已签收/问题件补地理编码 → 返回最新点位。
- * 不做定时任务；由前端「刷新」按钮触发。
- * 数据日应与「11点前出仓」一致（before11Date）；逻辑与分析任务 driverMap 阶段相同。
- */
-export async function refreshDriverMapPoints(input: {
-  stationCode: string
-  dataDate: string
-  vendorCode?: string
-}): Promise<{ ok: true; data: DriverMapRefreshResult } | { ok: false; message: string }> {
-  const { stationCode, dataDate, vendorCode } = input
-  const token = await readDriverMapImileToken()
-  if (!token) {
-    return { ok: false, message: '未配置 iMile token，请先在「24小时派签告警」页面保存一次 token' }
-  }
-
-  return populateDriverMapCache({
-    token,
-    stationCode,
-    dataDate,
-    tz: AUS_TZ.Adelaide,
-    vendorCode,
-    label: '司机地图增量刷新',
-  })
-}
-
-/**
  * 将某站点某日运单增量写入司机地图缓存并补地理编码。
- * 分析任务（出仓日 before11Date）与手动「刷新」共用。
+ * 由分析任务（出仓日 before11Date）触发。
  */
 export async function populateDriverMapCache(input: {
   token: string
@@ -472,4 +464,24 @@ export async function populateDriverMapCache(input: {
       points: points.data,
     },
   }
+}
+
+/**
+ * 司机地图缓存保留天数：这张表只是 iMile 的缓存（本地无数据时会自动整表重新拉取，不会丢数据），
+ * 唯一还在用它的 24H 派签告警落地页，分享快照本身就是保留 1 天（见 dispatchAlarmShareSnapshot.ts），
+ * 这里多留 1 天做缓冲，避免快照还没过期、底层点位数据先被清掉。
+ */
+export const DRIVER_MAP_RETENTION_DAYS = 2
+
+/** 删除超过保留期的司机地图缓存行（按业务日期 dataDate，不是 updatedAt——重跑历史分析会刷新 updatedAt 但业务日期不变） */
+export async function purgeOldDriverMapWaybillPoints(
+  keepDays = DRIVER_MAP_RETENTION_DAYS,
+): Promise<number> {
+  const cutoff = localDateInTz(Date.now() - keepDays * 24 * 60 * 60 * 1000, AUS_TZ.Adelaide)
+  const db = getDb()
+  const deleted = await db
+    .delete(schema.driverMapWaybillPoints)
+    .where(lt(schema.driverMapWaybillPoints.dataDate, cutoff))
+    .returning({ id: schema.driverMapWaybillPoints.id })
+  return deleted.length
 }

@@ -21,6 +21,7 @@ import { INBOUND_INDEX_ADELAIDE_TZ } from '../imile/inboundWaybillIndex'
 import { purgeOldVendorDailyData } from '../vendorAnalysis/retention'
 import { purgeOldChaseDispatchShareSnapshots } from '../feishu/chaseDispatchShareSnapshot'
 import { purgeOldDispatchAlarmShareSnapshots } from '../feishu/dispatchAlarmShareSnapshot'
+import { purgeOldDriverMapWaybillPoints } from '../driverMap/driverMapPointsQuery'
 import { readJobSchedulerEnabled } from './config'
 
 export function startJobScheduler(): { stop: () => void } {
@@ -176,12 +177,20 @@ export function startJobScheduler(): { stop: () => void } {
       } catch (err) {
         console.error('[scheduler/dispatch-alarm-share-retention] 清理异常:', err)
       }
+      try {
+        const purged = await purgeOldDriverMapWaybillPoints()
+        if (purged > 0) {
+          console.log(`[scheduler/driver-map-retention] 已清理 ${purged} 条司机地图缓存点位`)
+        }
+      } catch (err) {
+        console.error('[scheduler/driver-map-retention] 清理异常:', err)
+      }
     },
     { timezone: INBOUND_INDEX_ADELAIDE_TZ },
   )
   tasks.push(vendorReportRetentionTask)
   console.log(
-    `[scheduler] 已启动供应商日报/催派分享保留期清理任务 cron="${vendorReportRetentionCronValid}" timezone="${INBOUND_INDEX_ADELAIDE_TZ}"`,
+    `[scheduler] 已启动供应商日报/催派分享/司机地图保留期清理任务 cron="${vendorReportRetentionCronValid}" timezone="${INBOUND_INDEX_ADELAIDE_TZ}"`,
   )
 
   return {
