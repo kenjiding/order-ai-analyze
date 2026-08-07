@@ -234,6 +234,18 @@ export const IMILE_OC_INTERCEPT_PORTAL: ImilePortalDefaults = {
 }
 
 /**
+ * oc.imile.com 分拣坐标查询（cornerstone/sorting/pageList）门户默认配置。
+ * resourceCode 为占位值，若实际请求鉴权失败需通过 IMILE_SORTING_RESOURCE_CODE 勘误。
+ */
+export const IMILE_OC_SORTING_PORTAL: ImilePortalDefaults = {
+  resourceCode: 'sortingPageList',
+  sysName: 'OC',
+  sysPortal: 'OC',
+  origin: 'https://oc.imile.com',
+  referer: 'https://oc.imile.com/',
+}
+
+/**
  * globalcs.imile.com 客诉工单门户默认配置（placeholder）。
  * resourceCode / sysName / sysPortal 须通过环境变量覆盖：
  *   IMILE_GLOBALCS_RESOURCE_CODE, IMILE_GLOBALCS_SYS_NAME, IMILE_GLOBALCS_SYS_PORTAL

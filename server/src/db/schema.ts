@@ -482,23 +482,6 @@ export const driverMapWaybillPoints = pgTable(
   ],
 )
 
-/** 司机地图：地址→坐标地理编码缓存（Google Geocoding 按次收费，跨运单/跨天全局按地址文本复用） */
-export const geocodeCache = pgTable(
-  'geocode_cache',
-  {
-    id: uuid('id').primaryKey().defaultRandom(),
-    addressText: varchar('address_text', { length: 1024 }).notNull(),
-    latitude: doublePrecision('latitude'),
-    longitude: doublePrecision('longitude'),
-    /** ok | not_found | error；失败态也缓存，避免对无效地址反复重试付费 */
-    status: varchar('status', { length: 16 }).notNull().default('ok'),
-    provider: varchar('provider', { length: 32 }).notNull().default('google'),
-    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
-    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
-  },
-  (table) => [uniqueIndex('geocode_cache_address_text_unique').on(table.addressText)],
-)
-
 /**
  * 催派推送外部分享快照：推送时落库，群内链接凭高熵 token 无登录查看运单明细。
  * 保留 3 天（按 createdAt 判定过期并清理）；payload 为白名单结构，不含 webhook/token。
@@ -586,5 +569,3 @@ export type DriverMapWaybillPoint = typeof driverMapWaybillPoints.$inferSelect
 export type NewDriverMapWaybillPoint = typeof driverMapWaybillPoints.$inferInsert
 export type ChaseDispatchShareSnapshot = typeof chaseDispatchShareSnapshots.$inferSelect
 export type NewChaseDispatchShareSnapshot = typeof chaseDispatchShareSnapshots.$inferInsert
-export type GeocodeCacheRow = typeof geocodeCache.$inferSelect
-export type NewGeocodeCacheRow = typeof geocodeCache.$inferInsert

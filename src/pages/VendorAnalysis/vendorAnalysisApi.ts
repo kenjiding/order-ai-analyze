@@ -10,7 +10,7 @@ import {
 import type { VendorOption } from './vendorAnalysisTypes'
 import type { VendorAnalyzeSummary } from './vendorAnalysisSummary'
 import type { VendorRankingResult } from '../../../shared/vendorAnalysis/rankingScore'
-import type { DriverMapPointsResponse } from './components/DriverMap/driverMapTypes'
+import type { DriverMapPointsResponse } from '../../components/DriverMap/driverMapTypes'
 
 export { getJobById, listJobs, cancelJobApi, deleteJobApi }
 export type { JobStatus, PublicJob }

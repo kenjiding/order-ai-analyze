@@ -4,9 +4,11 @@ import { copyTextToClipboard } from '../../utils/clipboard'
 import {
   fetchChaseDispatchShare,
   fetchDispatchAlarmShare,
+  fetchDispatchAlarmDriverMap,
   type ChaseDispatchShareView,
   type DispatchAlarmShareView,
 } from './chaseDispatchShareApi'
+import { PublicDriverMapSection } from '../../components/DriverMap'
 import './chaseDispatchSharePage.css'
 
 /**
@@ -417,6 +419,10 @@ export default function ChaseDispatchSharePage() {
               </section>
             ))}
           </div>
+        )}
+
+        {kind === 'dispatch-alarm' && token && (
+          <PublicDriverMapSection token={token} fetchPoints={fetchDispatchAlarmDriverMap} />
         )}
 
         <p className="wbs-share__foot">

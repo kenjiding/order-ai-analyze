@@ -5,8 +5,8 @@ import { LocaleSwitcher } from '../../components/I18n/LocaleSwitcher'
 import { getDateTimeLocale } from '../../i18n'
 import { useAppLocale, useVendorSnapshotTranslation } from '../../i18n/hooks'
 import { Legend, VendorSection } from '../VendorAnalysis/components/snapshotSections'
-import { fetchVendorPortalDaily, type VendorPortalDaily } from '../VendorAnalysis/vendorAnalysisApi'
-import { PortalDriverMapSection } from './PortalDriverMapSection'
+import { fetchVendorPortalDaily, fetchVendorPortalDriverMap, type VendorPortalDaily } from '../VendorAnalysis/vendorAnalysisApi'
+import { PublicDriverMapSection } from '../../components/DriverMap'
 import '../VendorAnalysis/vendorSnapshotPage.css'
 
 /**
@@ -139,7 +139,7 @@ export default function VendorPortalPage() {
         />
 
         {/* Driver map: 独立区块，未勾选/未启用时静默不渲染，不影响上方日报 */}
-        {token && <PortalDriverMapSection token={token} />}
+        {token && <PublicDriverMapSection token={token} fetchPoints={fetchVendorPortalDriverMap} />}
 
         {/* Footer */}
         <div className="mt-8 sm:mt-10 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between border-t border-slate-200 pt-4 sm:pt-6">

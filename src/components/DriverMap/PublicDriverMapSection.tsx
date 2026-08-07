@@ -1,31 +1,35 @@
 import { lazy, Suspense, useEffect, useMemo, useState } from 'react'
 import { Card, Empty, Spin } from 'antd'
-import { fetchVendorPortalDriverMap, type VendorPortalDriverMap } from '../VendorAnalysis/vendorAnalysisApi'
-import {
-  DEFAULT_DRIVER_MAP_STATUS_FILTER,
-  DriverMapLegend,
-  DriverMapStatusCounts,
-} from '../VendorAnalysis/components/DriverMap/DriverMapLegend'
-import { DriverFilterBar } from '../VendorAnalysis/components/DriverMap/DriverFilterBar'
-import type { DriverMapPointStatus } from '../VendorAnalysis/components/DriverMap/driverMapTypes'
+import { DEFAULT_DRIVER_MAP_STATUS_FILTER, DriverMapLegend, DriverMapStatusCounts } from './DriverMapLegend'
+import { DriverFilterBar } from './DriverFilterBar'
+import type { DriverMapPointsResponse, DriverMapPointStatus } from './driverMapTypes'
 
 /** maplibre-gl 体积较大（约 250KB gzip），懒加载避免所有页面都被迫下载 */
-const DriverMapView = lazy(() =>
-  import('../VendorAnalysis/components/DriverMap/DriverMapView').then((m) => ({ default: m.DriverMapView })),
-)
+const DriverMapView = lazy(() => import('./DriverMapView').then((m) => ({ default: m.DriverMapView })))
+
+export type FetchPublicDriverMapPoints = (
+  token: string,
+) => Promise<{ ok: true; data: DriverMapPointsResponse | null } | { ok: false; error?: string }>
 
 type DataState =
   | { status: 'loading' }
-  | { status: 'unavailable' } // 未勾选司机地图模块 → 整块不渲染
-  | { status: 'ready'; data: VendorPortalDriverMap }
+  | { status: 'unavailable' } // 无数据（如未勾选模块、快照缺站点/日期）→ 整块不渲染
+  | { status: 'ready'; data: DriverMapPointsResponse }
   | { status: 'error' }
 
 /**
- * 分享链接门户的司机地图：每个供应商 token 各自一份（后端已按 vendorCode 过滤）。
- * 打开时后端按本供应商补地理编码（有时间预算，一次可能补不全）；若仍有地址无坐标会自动再拉几次。
+ * 公开分享链接页共用的司机地图区块（供应商日报门户、24H 派签告警落地页等）。
+ * 打开时后端按 stationCode+dataDate（+可选 vendorCode）补地理编码（有时间预算，一次可能补不全）；
+ * 若仍有地址无坐标会自动再拉几次。数据源由调用方通过 fetchPoints 注入，本组件本身不关心具体来源。
  * 默认只展示「未签收 + 问题件」，标题右侧数量可点击切换筛选。
  */
-export function PortalDriverMapSection({ token }: { token: string }) {
+export function PublicDriverMapSection({
+  token,
+  fetchPoints,
+}: {
+  token: string
+  fetchPoints: FetchPublicDriverMapPoints
+}) {
   const [state, setState] = useState<DataState>({ status: 'loading' })
   const [courierCode, setCourierCode] = useState<string | undefined>(undefined)
   const [statusFilter, setStatusFilter] = useState<Set<DriverMapPointStatus>>(
@@ -36,7 +40,7 @@ export function PortalDriverMapSection({ token }: { token: string }) {
   useEffect(() => {
     let cancelled = false
     setState({ status: 'loading' })
-    void fetchVendorPortalDriverMap(token).then((res) => {
+    void fetchPoints(token).then((res) => {
       if (cancelled) return
       if (!res.ok) setState({ status: 'error' })
       else if (!res.data) setState({ status: 'unavailable' })
@@ -45,7 +49,7 @@ export function PortalDriverMapSection({ token }: { token: string }) {
     return () => {
       cancelled = true
     }
-  }, [token, geocodePass])
+  }, [token, fetchPoints, geocodePass])
 
   // 有运单但本轮未出点：后端 geocode 有时间预算，自动再请求几次把坐标补齐
   useEffect(() => {

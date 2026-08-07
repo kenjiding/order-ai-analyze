@@ -17,7 +17,9 @@ function readText(row: InboundWaybillRow | Dispatch24hWaybillRow, key: string): 
 }
 
 /**
- * 组合 Google Geocoding 用地址。澳洲常见格式：
+ * 拼收件地址展示文案（司机地图弹窗用）。坐标不再由这段文本地理编码得出——
+ * 坐标改为按运单号从 iMile sorting/pageList 直接查（见 ../driverMap/driverMapPointsQuery.ts），
+ * 这里只负责拼出人可读的地址。澳洲常见格式：
  * `详细地址, 城市, 省 邮编, Australia`
  * 例：`12 King William St, Adelaide, SA 5000, Australia`
  *

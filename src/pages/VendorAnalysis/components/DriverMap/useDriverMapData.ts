@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { getDriverMapPoints, triggerDriverMapRefresh } from './driverMapApi'
-import type { DriverMapPointsResponse } from './driverMapTypes'
+import type { DriverMapPointsResponse } from '../../../../components/DriverMap/driverMapTypes'
 
 type DataState =
   | { status: 'loading' }

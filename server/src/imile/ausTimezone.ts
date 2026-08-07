@@ -42,22 +42,34 @@ export function tzDisplayName(tz: AusTz): string {
   return TZ_DISPLAY_NAME[tz] ?? tz
 }
 
+// Intl.DateTimeFormat 构造开销不小（加载 ICU 时区数据），按时区缓存复用；
+// getOffsetMs 是 iMileStrToMs 的热路径（如司机地图按时间排序，单页可达每站上万次调用），
+// 不缓存会导致排序耗时被构造开销主导（实测 9000 点排序曾达 6s+，缓存后降到毫秒级）
+const OFFSET_FORMATTER_CACHE = new Map<string, Intl.DateTimeFormat>()
+function getOffsetFormatter(tz: string): Intl.DateTimeFormat {
+  let fmt = OFFSET_FORMATTER_CACHE.get(tz)
+  if (!fmt) {
+    fmt = new Intl.DateTimeFormat('en-AU', {
+      timeZone: tz,
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+      hour12: false,
+    })
+    OFFSET_FORMATTER_CACHE.set(tz, fmt)
+  }
+  return fmt
+}
+
 /**
  * 求给定 UTC 时刻在指定时区的本地偏移量（毫秒）。
  * 偏移 = 本地时间（视作 UTC）- 实际 UTC 时间。
  */
 function getOffsetMs(utcDate: Date, tz: string): number {
-  const fmt = new Intl.DateTimeFormat('en-AU', {
-    timeZone: tz,
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-    second: '2-digit',
-    hour12: false,
-  })
-  const parts = fmt.formatToParts(utcDate)
+  const parts = getOffsetFormatter(tz).formatToParts(utcDate)
   const g = (t: string) => {
     const v = parseInt(parts.find((p) => p.type === t)?.value ?? '0')
     return t === 'hour' && v === 24 ? 0 : v

@@ -1,51 +1,16 @@
 /**
  * 司机地图：从站点日运单缓存读点位（签收/未签收/问题件）。
  * 数据日与「11点前出仓」一致（before11Date）；分析任务首次同步，手动「刷新」对未终态增量再拉。
+ * 坐标来源：iMile 分拣坐标查询（sorting/pageList），按运单号直接取，见 ../imile/sortingGeocoding。
  */
 import { and, eq, inArray, isNotNull, isNull, ne, or, sql } from 'drizzle-orm'
 import { getDb, schema } from '../db'
 import { AUS_TZ, iMileStrToMs, type AusTz } from '../imile/ausTimezone'
 import { syncStationDayWaybillsIncremental } from '../imile/stationDayWaybillSync'
 import { fetchSearchWaybillByNos } from '../imile/inboundWaybillIndex'
+import { fetchSortingGeocodingByWaybillNos } from '../imile/sortingGeocoding'
 import { envFirst } from '../imile/shared'
-
-/** 全站分析/刷新时每轮最多发多少次 LocationIQ 请求（含 429 重试；地址已在 geocode_cache 的不占此额度） */
-const GEOCODE_API_CALLS_PER_STATION_REFRESH = 1500
-/** LocationIQ 免费档约 2 次/秒；串行 + 间隔，避免 429 后整批中止导致地图「飘忽」 */
-const GEOCODE_MIN_INTERVAL_MS = 550
-/** 门户单次请求的 geocode 时间预算：先返回已有点，剩余靠刷新继续补 */
-const GEOCODE_PORTAL_BUDGET_MS = 20_000
-/** 全站（分析任务/手动刷新）路径的墙钟预算：geocode 是多轮增量补，提前收尾无损正确性 */
-const GEOCODE_STATION_BUDGET_MS = 10 * 60_000
-/** LocationIQ 单次请求超时：串行循环里任何一次挂起都会冻结整个任务，必须硬性兜底 */
-const GEOCODE_REQUEST_TIMEOUT_MS = 10_000
-/**
- * 连续这么多个地址「退避重试后仍 429」→ 判定 LocationIQ 当日额度耗尽，跳过本轮剩余地址。
- * 偶发 QPS 限流经 1.5s/3s 退避后会成功；只有日额度耗尽才会连续多地址全 429。
- * 未解析的点位 lat/lng 保持 NULL，额度恢复后由下一次任务/刷新增量续补，不影响后续流程。
- */
-const GEOCODE_QUOTA_EXHAUSTED_STREAK = 3
-
-function readLocationIqKey(): string {
-  return envFirst('LOCATIONIQ_API_KEY') ?? ''
-}
-
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms))
-}
-
-function chunk<T>(items: T[], size: number): T[][] {
-  const out: T[][] = []
-  for (let i = 0; i < items.length; i += size) out.push(items.slice(i, i + size))
-  return out
-}
-
-/** 终态（签收/问题件）优先于未签收，避免 2 万 pending 抢光额度后地图长期空白 */
-function geocodeStatusPriority(status: string): number {
-  if (status === 'completed') return 0
-  if (status === 'problem') return 1
-  return 2
-}
+import { getGlobalImileToken } from '../feishu/globalImileToken'
 
 export type DriverMapPointDto = {
   waybillNo: string
@@ -80,301 +45,147 @@ export type DriverMapPointsQueryOutcome =
   | { ok: true; data: DriverMapPointsResult }
   | { ok: false; message: string }
 
-/** 复用用户已在「24小时派签告警」页面保存过的 iMile token，不要求为司机地图单独配置一遍 */
+/**
+ * 复用用户已在「24小时派签告警」页面保存过的 iMile token，不要求为司机地图单独配置一遍。
+ * 优先读该用户「系统设置」里的全局最新 token（schedule 表的 imileToken 只是保存那一刻的快照，
+ * 用户之后在系统设置改 token 不会级联同步过去，会导致 oc.imile.com 报 Invalid access token）。
+ */
 export async function readDriverMapImileToken(): Promise<string> {
   const db = getDb()
   const rows = await db
-    .select({ imileToken: schema.dispatchAlarmSchedules.imileToken })
+    .select({ imileToken: schema.dispatchAlarmSchedules.imileToken, userId: schema.dispatchAlarmSchedules.userId })
     .from(schema.dispatchAlarmSchedules)
     .where(and(isNotNull(schema.dispatchAlarmSchedules.imileToken), ne(schema.dispatchAlarmSchedules.imileToken, '')))
     .limit(1)
-  const fromSchedule = rows[0]?.imileToken?.trim()
+  const row = rows[0]
+  if (row?.userId) {
+    const fromGlobalSettings = await getGlobalImileToken(row.userId)
+    if (fromGlobalSettings) return fromGlobalSettings
+  }
+  const fromSchedule = row?.imileToken?.trim()
   if (fromSchedule) return fromSchedule
   return envFirst('IMILE_DISPATCH_ALARM_TOKEN') ?? ''
 }
 
-type GeocodeApiOutcome =
-  | { kind: 'ok'; data: { latitude: number; longitude: number } }
-  | { kind: 'not_found' }
-  | { kind: 'retryable'; status: string }
-
-/** LocationIQ 免费额度 5000次/天，覆盖 AU/NZ 成熟；接口结构与 Google Geocoding 类似（address -> lat/lng） */
-async function geocodeAddress(addressText: string): Promise<GeocodeApiOutcome | { kind: 'error' }> {
-  const apiKey = readLocationIqKey()
-  if (!apiKey) return { kind: 'error' }
-  try {
-    const params = new URLSearchParams({
-      key: apiKey,
-      q: addressText,
-      format: 'json',
-      countrycodes: 'au,nz',
-      limit: '1',
-    })
-    const resp = await fetch(`https://us1.locationiq.com/v1/search?${params.toString()}`, {
-      signal: AbortSignal.timeout(GEOCODE_REQUEST_TIMEOUT_MS),
-    })
-    if (resp.status === 404) return { kind: 'not_found' }
-    if (resp.status === 401 || resp.status === 429) {
-      console.warn(`[driver-map/geocode] status=${resp.status} addr=${addressText.slice(0, 60)}`)
-      return { kind: 'retryable', status: String(resp.status) }
-    }
-    if (!resp.ok) {
-      console.warn(`[driver-map/geocode] status=${resp.status} addr=${addressText.slice(0, 60)}`)
-      return { kind: 'retryable', status: String(resp.status) }
-    }
-    const json = (await resp.json()) as Array<{ lat?: string; lon?: string }>
-    const hit = json[0]
-    const lat = hit?.lat ? Number(hit.lat) : NaN
-    const lon = hit?.lon ? Number(hit.lon) : NaN
-    if (!Number.isFinite(lat) || !Number.isFinite(lon)) return { kind: 'not_found' }
-    return { kind: 'ok', data: { latitude: lat, longitude: lon } }
-  } catch (err) {
-    console.error('[driver-map/geocode] 请求异常:', err)
-    return { kind: 'error' }
-  }
-}
-
-async function writeGeocodeCache(
-  addressText: string,
-  result: { latitude: number; longitude: number } | null,
-  status: 'ok' | 'not_found',
-): Promise<void> {
+/** 把按运单号查到的坐标批量写回点位表；insert 分支不会真正触发，只是借 upsert 语法做批量部分字段更新 */
+async function applyGeocodedCoordsToPoints(
+  dataDate: string,
+  entries: Array<[string, { latitude: number; longitude: number }]>,
+): Promise<number> {
+  if (entries.length === 0) return 0
   const db = getDb()
+  const p = schema.driverMapWaybillPoints
+  const now = new Date()
   await db
-    .insert(schema.geocodeCache)
-    .values({
-      addressText,
-      latitude: result?.latitude ?? null,
-      longitude: result?.longitude ?? null,
-      status,
-      updatedAt: new Date(),
-    })
+    .insert(p)
+    .values(
+      entries.map(([waybillNo, coord]) => ({
+        waybillNo,
+        dataDate,
+        stationCode: '',
+        latitude: coord.latitude,
+        longitude: coord.longitude,
+        geocodedAt: now,
+        updatedAt: now,
+      })),
+    )
     .onConflictDoUpdate({
-      target: schema.geocodeCache.addressText,
+      target: [p.waybillNo, p.dataDate],
       set: {
-        latitude: result?.latitude ?? null,
-        longitude: result?.longitude ?? null,
-        status,
-        updatedAt: new Date(),
+        latitude: sql`excluded.latitude`,
+        longitude: sql`excluded.longitude`,
+        geocodedAt: sql`excluded.geocoded_at`,
+        updatedAt: sql`excluded.updated_at`,
       },
     })
-}
-
-/** 把解析到的坐标立刻写回运单点位（按地址批量），避免「全部 geocode 完才落库」导致超时后 0 点 */
-async function applyGeocodeToPoints(
-  stationCode: string,
-  dataDate: string,
-  addressText: string,
-  point: { latitude: number; longitude: number },
-  vendorCode?: string,
-): Promise<number> {
-  const db = getDb()
-  const now = new Date()
-  const updated = await db
-    .update(schema.driverMapWaybillPoints)
-    .set({
-      latitude: point.latitude,
-      longitude: point.longitude,
-      geocodedAt: now,
-      updatedAt: now,
-    })
-    .where(
-      and(
-        eq(schema.driverMapWaybillPoints.stationCode, stationCode),
-        eq(schema.driverMapWaybillPoints.dataDate, dataDate),
-        eq(schema.driverMapWaybillPoints.addressText, addressText),
-        or(isNull(schema.driverMapWaybillPoints.latitude), isNull(schema.driverMapWaybillPoints.longitude)),
-        vendorCode ? eq(schema.driverMapWaybillPoints.vendorCode, vendorCode) : undefined,
-      ),
-    )
-    .returning({ id: schema.driverMapWaybillPoints.id })
-  return updated.length
-}
-
-/** 把 geocode_cache 已成功的坐标一次性灌回点位表 */
-async function applyGeocodeCacheHits(stationCode: string, dataDate: string, vendorCode?: string): Promise<number> {
-  const db = getDb()
-  const result = await db.execute(sql`
-    UPDATE driver_map_waybill_points AS p
-    SET
-      latitude = g.latitude,
-      longitude = g.longitude,
-      geocoded_at = NOW(),
-      updated_at = NOW()
-    FROM geocode_cache AS g
-    WHERE g.address_text = p.address_text
-      AND g.status = 'ok'
-      AND g.latitude IS NOT NULL
-      AND g.longitude IS NOT NULL
-      AND p.station_code = ${stationCode}
-      AND p.data_date = ${dataDate}
-      AND p.status IN ('completed', 'problem', 'pending')
-      AND p.address_text <> ''
-      AND (p.latitude IS NULL OR p.longitude IS NULL)
-      ${vendorCode ? sql`AND p.vendor_code = ${vendorCode}` : sql``}
-  `)
-  return Number((result as { rowCount?: number }).rowCount ?? 0)
+  return entries.length
 }
 
 /**
- * 为尚无坐标的运单补地理编码（地址已由 consignee* 字段拼好）。
- * - 先批量灌 geocode_cache 命中
- * - 未命中再调 LocationIQ：签收/问题件地址优先，串行限速，429 退避重试（不再整批中止）
- * - 传 vendorCode 时只处理该供应商（门户用）；可设 budgetMs 避免拖垮 HTTP 请求
+ * 为尚无坐标的运单查坐标：按运单号批量查 iMile sorting/pageList，直接拿 lat/lng，
+ * 不再需要地址文本、不再需要跨运单地址缓存。
+ * 传 vendorCode 时只处理该供应商（门户用）。
  */
 export async function geocodePendingMapPoints(input: {
   stationCode: string
   dataDate: string
   vendorCode?: string
-  /** 未传 vendorCode 时生效，防止全站一次打爆日额度；含 429 重试的实际请求数 */
-  maxApiCalls?: number
-  /** 本轮墙钟时间上限；超时后已写入的坐标仍保留，下轮继续补 */
-  budgetMs?: number
-  /** 每处理若干地址回调一次，供任务进度上报（顺带充当心跳） */
+  /** 未传则回退 24H 派签告警已保存的 token（同 ensureProblemReasons） */
+  token?: string
+  /** 每处理一批坐标回调一次，供任务进度上报（顺带充当心跳） */
   onProgress?: (done: number, total: number) => void | Promise<void>
 }): Promise<number> {
   const { stationCode, dataDate, vendorCode, onProgress } = input
-  const maxApiCalls = vendorCode
-    ? (input.maxApiCalls ?? Number.POSITIVE_INFINITY)
-    : (input.maxApiCalls ?? GEOCODE_API_CALLS_PER_STATION_REFRESH)
-  const budgetMs = input.budgetMs ?? (vendorCode ? GEOCODE_PORTAL_BUDGET_MS : GEOCODE_STATION_BUDGET_MS)
-  const startedAt = Date.now()
-
-  const db = getDb()
-  const apiKey = readLocationIqKey()
-  if (!apiKey) {
-    console.warn('[driver-map/geocode] 未配置 LOCATIONIQ_API_KEY，跳过地理编码')
+  const token = input.token?.trim() || (await readDriverMapImileToken())
+  if (!token) {
+    console.warn('[driver-map/geocode] 未配置 iMile token，跳过坐标查询')
     return 0
   }
 
-  let updated = await applyGeocodeCacheHits(stationCode, dataDate, vendorCode)
-
+  const db = getDb()
   const rows = await db
-    .select({
-      addressText: schema.driverMapWaybillPoints.addressText,
-      status: schema.driverMapWaybillPoints.status,
-    })
+    .select({ waybillNo: schema.driverMapWaybillPoints.waybillNo })
     .from(schema.driverMapWaybillPoints)
     .where(
       and(
         eq(schema.driverMapWaybillPoints.stationCode, stationCode),
         eq(schema.driverMapWaybillPoints.dataDate, dataDate),
         inArray(schema.driverMapWaybillPoints.status, ['completed', 'problem', 'pending']),
-        ne(schema.driverMapWaybillPoints.addressText, ''),
         or(isNull(schema.driverMapWaybillPoints.latitude), isNull(schema.driverMapWaybillPoints.longitude)),
         vendorCode ? eq(schema.driverMapWaybillPoints.vendorCode, vendorCode) : undefined,
       ),
     )
 
   if (rows.length === 0) {
-    console.info(
-      `[driver-map/geocode] station=${stationCode} date=${dataDate} vendor=${vendorCode ?? '*'} cacheApplied=${updated} unique=0 apiCalls=0`,
-    )
-    return updated
+    console.info(`[driver-map/geocode] station=${stationCode} date=${dataDate} vendor=${vendorCode ?? '*'} pending=0`)
+    return 0
   }
 
-  // 同一地址取最高优先级（completed < problem < pending）
-  const bestPriority = new Map<string, number>()
-  for (const row of rows) {
-    if (!row.addressText) continue
-    const pri = geocodeStatusPriority(row.status)
-    const prev = bestPriority.get(row.addressText)
-    if (prev == null || pri < prev) bestPriority.set(row.addressText, pri)
+  const waybillNos = rows.map((r) => r.waybillNo)
+  const geocoded = await fetchSortingGeocodingByWaybillNos({
+    token,
+    waybillNos,
+    dataDate,
+    label: '司机地图坐标查询',
+    tz: AUS_TZ.Adelaide,
+  })
+
+  if (!geocoded.ok) {
+    console.warn(`[driver-map/geocode] 查询失败: ${geocoded.message}`)
+    return 0
   }
-  const uniqueAddresses = [...bestPriority.entries()]
-    .sort((a, b) => a[1] - b[1] || a[0].localeCompare(b[0]))
-    .map(([addressText]) => addressText)
 
-  // geocode_cache 已有记录（含 not_found）的地址不打 API；成功坐标已由上方 applyGeocodeCacheHits 批量灌回。
-  // 按块 inArray 查询，替代逐地址串行 SELECT（数千次 DB 往返）。
-  const cachedAddressSet = new Set<string>()
-  for (const part of chunk(uniqueAddresses, 500)) {
-    const cachedRows = await db
-      .select({ addressText: schema.geocodeCache.addressText })
-      .from(schema.geocodeCache)
-      .where(inArray(schema.geocodeCache.addressText, part))
-    for (const row of cachedRows) cachedAddressSet.add(row.addressText)
-  }
-  const needApi = uniqueAddresses.filter((addressText) => !cachedAddressSet.has(addressText))
-
-  let apiCalls = 0
-  let processed = 0
-  let stoppedForAuth = false
-  let stoppedForBudget = false
-  let stoppedForQuota = false
-  let stoppedForCap = false
-  let quota429Streak = 0
-  let lastCallAt = 0
-
-  for (const addressText of needApi) {
-    if (budgetMs != null && Date.now() - startedAt >= budgetMs) {
-      stoppedForBudget = true
-      break
-    }
-    // 上限按实际请求数（含 429 重试）计，确保一轮最多打出 maxApiCalls 次，不再超发烧额度
-    if (apiCalls >= maxApiCalls) {
-      stoppedForCap = true
-      break
-    }
-
-    const wait = GEOCODE_MIN_INTERVAL_MS - (Date.now() - lastCallAt)
-    if (lastCallAt > 0 && wait > 0) await sleep(wait)
-
-    let geocoded = await geocodeAddress(addressText)
-    lastCallAt = Date.now()
-    apiCalls += 1
-
-    // 429：退避后最多再试 2 次，仍失败则按额度耗尽计数
-    if (geocoded.kind === 'retryable' && geocoded.status === '429') {
-      for (const backoff of [1500, 3000]) {
-        if (apiCalls >= maxApiCalls) break
-        await sleep(backoff)
-        geocoded = await geocodeAddress(addressText)
-        lastCallAt = Date.now()
-        apiCalls += 1
-        if (geocoded.kind !== 'retryable' || geocoded.status !== '429') break
-      }
-    }
-    processed += 1
-
-    if (geocoded.kind === 'ok') {
-      quota429Streak = 0
-      await writeGeocodeCache(addressText, geocoded.data, 'ok')
-      updated += await applyGeocodeToPoints(stationCode, dataDate, addressText, geocoded.data, vendorCode)
-    } else if (geocoded.kind === 'not_found') {
-      quota429Streak = 0
-      await writeGeocodeCache(addressText, null, 'not_found')
-    } else if (geocoded.kind === 'retryable' && geocoded.status === '401') {
-      console.warn('[driver-map/geocode] LOCATIONIQ_API_KEY 无效，中止本轮')
-      stoppedForAuth = true
-      break
-    } else if (geocoded.kind === 'retryable' && geocoded.status === '429') {
-      quota429Streak += 1
-      if (quota429Streak >= GEOCODE_QUOTA_EXHAUSTED_STREAK) {
-        console.warn(
-          `[driver-map/geocode] 连续 ${quota429Streak} 个地址退避后仍 429，判定当日额度耗尽，跳过剩余 ${needApi.length - processed} 个地址，待额度恢复后增量续补`,
-        )
-        stoppedForQuota = true
-        break
-      }
-      console.warn(`[driver-map/geocode] 429 持续，跳过地址继续下一轮 addr=${addressText.slice(0, 60)}`)
-    }
-
-    if (onProgress && (processed % 25 === 0 || processed === needApi.length)) {
-      await onProgress(processed, needApi.length)
-    }
+  let updated = 0
+  const entries = [...geocoded.coordsByWaybillNo.entries()]
+  for (let i = 0; i < entries.length; i += 500) {
+    const part = entries.slice(i, i + 500)
+    updated += await applyGeocodedCoordsToPoints(dataDate, part)
+    if (onProgress) await onProgress(Math.min(i + part.length, entries.length), entries.length)
   }
 
   console.info(
-    `[driver-map/geocode] station=${stationCode} date=${dataDate} vendor=${vendorCode ?? '*'} unique=${uniqueAddresses.length} needApi=${needApi.length} apiCalls=${apiCalls} updatedRows=${updated} budgetStop=${stoppedForBudget} capStop=${stoppedForCap} authStop=${stoppedForAuth} quotaStop=${stoppedForQuota}`,
+    `[driver-map/geocode] station=${stationCode} date=${dataDate} vendor=${vendorCode ?? '*'} pending=${waybillNos.length} resolved=${entries.length} updatedRows=${updated}`,
   )
   return updated
 }
 
-function buildDriversFromRows(
-  rows: Array<typeof schema.driverMapWaybillPoints.$inferSelect>,
-  vendorCode?: string,
-): {
+type DriverMapPointRow = Pick<
+  typeof schema.driverMapWaybillPoints.$inferSelect,
+  | 'waybillNo'
+  | 'vendorCode'
+  | 'courierCode'
+  | 'courierName'
+  | 'deliveryTime'
+  | 'signDate'
+  | 'lastProblemDate'
+  | 'problemReason'
+  | 'status'
+  | 'addressText'
+  | 'latitude'
+  | 'longitude'
+>
+
+function buildDriversFromRows(rows: DriverMapPointRow[]): {
   drivers: DriverMapDriverDto[]
   totalCount: number
   geocodedCount: number
@@ -382,11 +193,10 @@ function buildDriversFromRows(
   completedCount: number
   problemCount: number
 } {
-  const scoped = rows.filter((r) => !vendorCode || r.vendorCode === vendorCode)
-  const completedCount = scoped.filter((r) => r.status === 'completed').length
-  const problemCount = scoped.filter((r) => r.status === 'problem').length
-  const pendingCount = scoped.filter((r) => r.status === 'pending').length
-  const plottable = scoped.filter(
+  const completedCount = rows.filter((r) => r.status === 'completed').length
+  const problemCount = rows.filter((r) => r.status === 'problem').length
+  const pendingCount = rows.filter((r) => r.status === 'pending').length
+  const plottable = rows.filter(
     (r) => r.status === 'completed' || r.status === 'problem' || r.status === 'pending',
   )
 
@@ -456,17 +266,32 @@ export async function queryDriverMapPoints(input: {
 }): Promise<DriverMapPointsQueryOutcome> {
   const { stationCode, dataDate, vendorCode } = input
   const db = getDb()
+  const p = schema.driverMapWaybillPoints
   const rows = await db
-    .select()
-    .from(schema.driverMapWaybillPoints)
+    .select({
+      waybillNo: p.waybillNo,
+      vendorCode: p.vendorCode,
+      courierCode: p.courierCode,
+      courierName: p.courierName,
+      deliveryTime: p.deliveryTime,
+      signDate: p.signDate,
+      lastProblemDate: p.lastProblemDate,
+      problemReason: p.problemReason,
+      status: p.status,
+      addressText: p.addressText,
+      latitude: p.latitude,
+      longitude: p.longitude,
+    })
+    .from(p)
     .where(
       and(
-        eq(schema.driverMapWaybillPoints.stationCode, stationCode),
-        eq(schema.driverMapWaybillPoints.dataDate, dataDate),
+        eq(p.stationCode, stationCode),
+        eq(p.dataDate, dataDate),
+        vendorCode ? eq(p.vendorCode, vendorCode) : undefined,
       ),
     )
 
-  const built = buildDriversFromRows(rows, vendorCode)
+  const built = buildDriversFromRows(rows)
   return {
     ok: true,
     data: {
@@ -629,6 +454,7 @@ export async function populateDriverMapCache(input: {
     stationCode,
     dataDate,
     vendorCode,
+    token,
     onProgress: onGeocodeProgress,
   })
   const points = await queryDriverMapPoints({ stationCode, dataDate, vendorCode })

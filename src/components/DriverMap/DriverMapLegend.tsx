@@ -49,20 +49,6 @@ export function DriverMapLegend() {
         <Dot color={STATUS_COLORS.problem} variant="numbered" />
         <span>问题件</span>
       </Space>
-      <Space size={6}>
-        <span className="inline-flex items-center gap-0.5" aria-hidden>
-          {DRIVER_TRAIL_COLORS.slice(0, 4).map((c) => (
-            <span key={c} style={{ display: 'inline-block', width: 10, height: 2.5, background: c }} />
-          ))}
-        </span>
-        <span>司机轨迹（不同司机不同颜色）</span>
-      </Space>
-      <Tooltip title="系统无司机实时GPS，位置为收件地址近似坐标，非真实实时定位">
-        <Space size={4} className="text-slate-400">
-          <Info className="h-3.5 w-3.5" aria-hidden />
-          <span>位置为近似值</span>
-        </Space>
-      </Tooltip>
     </Space>
   )
 }

@@ -1,5 +1,9 @@
 import { backendFetch } from '../../../../api/httpClient'
-import type { DriverMapConfig, DriverMapPointsResponse, DriverMapRefreshResponse } from './driverMapTypes'
+import type {
+  DriverMapConfig,
+  DriverMapPointsResponse,
+  DriverMapRefreshResponse,
+} from '../../../../components/DriverMap/driverMapTypes'
 
 async function apiFetch<T>(
   path: string,

@@ -3,9 +3,8 @@ import { Alert, Button, Card, Empty, Spin, message } from 'antd'
 import { RefreshCw } from 'lucide-react'
 import { PermissionGate, PERMISSION_KEYS } from '../../../../hooks/usePermission'
 import { useDriverMapData } from './useDriverMapData'
-import { DriverMapView } from './DriverMapView'
-import { DriverMapLegend } from './DriverMapLegend'
-import { DriverFilterBar } from './DriverFilterBar'
+import { DriverMapView } from '../../../../components/DriverMap/DriverMapView'
+import { DriverMapLegend, DriverFilterBar } from '../../../../components/DriverMap'
 
 function DriverMapBody({
   stationCode,
@@ -55,7 +54,7 @@ function DriverMapBody({
           type="warning"
           showIcon
           message={`已有 ${totalCount} 单签收/问题件，但未能解析出地图坐标`}
-          description="请确认后端已配置可用的地理编码 Key（LOCATIONIQ_API_KEY），然后再次点击「刷新」。地址较多时需多次刷新逐步补全坐标。"
+          description="这批运单暂未从 iMile 查到坐标记录，可再次点击「刷新」重试。运单较多时需多次刷新逐步补全坐标。"
         />
       )
     }

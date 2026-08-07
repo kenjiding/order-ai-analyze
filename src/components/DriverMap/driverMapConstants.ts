@@ -38,8 +38,16 @@ export function trailColorForDriver(courierCode: string): string {
   return DRIVER_TRAIL_COLORS[hash % DRIVER_TRAIL_COLORS.length]!
 }
 
-/** 地图标点：圆圈样式；签收/问题件带大号顺序数字，未签收不加号 */
-export function buildStatusPinIconUrl(status: keyof typeof STATUS_COLORS, sequence?: number): string {
+/**
+ * 地图标点：圆圈样式；签收/问题件带大号顺序数字，未签收不加号。
+ * `pixelRatio` 只放大 svg 的 width/height（栅格化的像素密度），viewBox 和内部坐标不变——
+ * 保证视觉大小不变的前提下在高分屏（devicePixelRatio>1）下不糊。
+ */
+export function buildStatusPinIconUrl(
+  status: keyof typeof STATUS_COLORS,
+  sequence?: number,
+  pixelRatio = 1,
+): string {
   const fill = STATUS_COLORS[status]
   const label =
     typeof sequence === 'number' && sequence > 0
@@ -49,7 +57,8 @@ export function buildStatusPinIconUrl(status: keyof typeof STATUS_COLORS, sequen
 
   // 未签收：空心圆环，无数字
   if (status === 'pending') {
-    const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 32 32">
+    const size = 32 * pixelRatio
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 32 32">
       <circle cx="16" cy="16" r="12" fill="${fill}" fill-opacity="0.2" stroke="${fill}" stroke-width="3"/>
       <circle cx="16" cy="16" r="4" fill="${fill}"/>
     </svg>`
@@ -57,8 +66,10 @@ export function buildStatusPinIconUrl(status: keyof typeof STATUS_COLORS, sequen
   }
 
   // 签收 / 问题件：实心圆 + 大号白色数字（水平/垂直居中；SVG 作图片时用 dy 比 dominant-baseline 更稳）
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="36" height="36" viewBox="0 0 36 36">
-    <circle cx="18" cy="18" r="16" fill="${fill}" stroke="#ffffff" stroke-width="2.5"/>
+  // 描边故意做细（1px）：地图缩小、大量点位彼此靠近堆叠时，粗描边会叠成一片片白色色块
+  const size = 36 * pixelRatio
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 36 36">
+    <circle cx="18" cy="18" r="16" fill="${fill}" stroke="#ffffff" stroke-width="1"/>
     ${
       label
         ? `<text x="18" y="18" dy="0.38em" text-anchor="middle" fill="#ffffff" font-size="${fontSize}" font-family="Arial,Helvetica,sans-serif" font-weight="800">${label}</text>`

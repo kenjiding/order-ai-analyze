@@ -115,6 +115,9 @@ devDependencies:
   '@types/file-saver':
     specifier: ^2.0.7
     version: 2.0.7
+  '@types/geojson':
+    specifier: ^7946.0.16
+    version: 7946.0.16
   '@types/node':
     specifier: ^24.12.2
     version: 24.13.2
@@ -2348,7 +2351,6 @@ packages:
 
   /@types/geojson@7946.0.16:
     resolution: {integrity: sha512-6C8nqWur3j98U6+lXDfTUWIfgvZU+EumvpHKcYjujKH7woYyLj2sUmff0tRhrqM7BohUw7Pz3ZB1jj2gW9Fvmg==}
-    dev: false
 
   /@types/json-schema@7.0.15:
     resolution: {integrity: sha512-5+fP8P8MFNC+AyZCDxrB2pkZFPGzqQWUzpSeuuVLvm8VMcorNYavBqoFcxK8bQz4Qsbn4oUEEem4wDLfcysGHA==}
