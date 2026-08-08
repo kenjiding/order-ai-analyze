@@ -57,6 +57,7 @@ export function useExitAlarmPage() {
         stationCode: schedule.stationCode,
         pushConfigIds: schedule.pushConfigIds,
         mentionEnabled: schedule.mentionEnabled,
+        routeCodeWhitelistPushEnabled: schedule.routeCodeWhitelistPushEnabled,
       }
       return crud.toggleEnabled(schedule, draft, imileToken)
     },
@@ -94,8 +95,6 @@ export function useExitAlarmPage() {
     }
   }, [])
 
-  const pushableConfigs = catalog.configs.filter((c) => c.webhookUrl.trim().length > 0)
-
   return {
     catalog,
     schedules: crud.schedules,
@@ -112,7 +111,6 @@ export function useExitAlarmPage() {
     toggleEnabled,
     removeSchedule: crud.removeSchedule,
     pushNow,
-    pushableConfigs,
     pushResults,
   }
 }

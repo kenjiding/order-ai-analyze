@@ -95,8 +95,6 @@ export function useChaseDispatchPage() {
     }
   }, [])
 
-  const pushableConfigs = catalog.configs.filter((c) => c.webhookUrl.trim().length > 0)
-
   return {
     catalog,
     schedules: crud.schedules,
@@ -113,6 +111,5 @@ export function useChaseDispatchPage() {
     toggleEnabled,
     removeSchedule: crud.removeSchedule,
     pushNow,
-    pushableConfigs,
   }
 }

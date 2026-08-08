@@ -140,6 +140,11 @@ export type Before11ScopedStat = {
   zoneBreakdown: Record<string, { pending: number; total: number }>
   /** 未在 11 点前出仓的运单号，供前端导出 Excel */
   unqualifiedWaybillNos: string[]
+  /** 路由码白名单命中的行的统计（与主统计对称），供「路由码白名单数据推送」开关消费；始终计算，不受开关影响 */
+  whitelistStat?: {
+    totalWaybills: number
+    zoneBreakdown: Record<string, { pending: number; total: number }>
+  }
 }
 
 /**
@@ -169,13 +174,24 @@ export function aggregateBefore11ByScopes(input: {
         continue
       }
       if (scope.routeCodes && !scope.routeCodes.has(routeCode)) continue
-      if (scope.routeCodeWhitelist?.has(routeCode)) continue
 
       let stat = result.get(scope.key)
       if (!stat) {
         stat = { totalWaybills: 0, zoneBreakdown: {}, unqualifiedWaybillNos: [] }
         result.set(scope.key, stat)
       }
+
+      if (scope.routeCodeWhitelist?.has(routeCode)) {
+        if (!stat.whitelistStat) stat.whitelistStat = { totalWaybills: 0, zoneBreakdown: {} }
+        const whitelistStat = stat.whitelistStat
+        whitelistStat.totalWaybills += 1
+        const whitelistZone = routeCode.trim() || 'Unknown route'
+        if (!whitelistStat.zoneBreakdown[whitelistZone]) whitelistStat.zoneBreakdown[whitelistZone] = { pending: 0, total: 0 }
+        whitelistStat.zoneBreakdown[whitelistZone].total += 1
+        if (!row.before11Exit) whitelistStat.zoneBreakdown[whitelistZone].pending += 1
+        continue
+      }
+
       stat.totalWaybills += 1
       const zone = routeCode.trim() || 'Unknown route'
       if (!stat.zoneBreakdown[zone]) stat.zoneBreakdown[zone] = { pending: 0, total: 0 }

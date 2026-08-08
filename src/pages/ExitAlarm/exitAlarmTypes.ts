@@ -29,6 +29,8 @@ export type ExitAlarmScheduleDraft = {
   pushConfigIds: string[]
   /** 是否 @ 供应商配置花名册第 1 位外部联系人 */
   mentionEnabled: boolean
+  /** 是否推送白名单路由码的 11 点前出仓数据 */
+  routeCodeWhitelistPushEnabled: boolean
 }
 
 export type ExitAlarmSchedule = ExitAlarmScheduleDraft & {

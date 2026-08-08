@@ -3,7 +3,7 @@ import { getDb, schema } from '../db'
 import type { WorkOrderPushSchedule, FleetSupplierPushConfig } from '../db/schema'
 import { buildWorkOrderPushCard } from './buildWorkOrderPushCard'
 import { parseSupplierMentionContacts, pickMentions } from './feishuMentionHelpers'
-import { computeFeishuWebhookSign, parseSafeWebhookUrl } from '../feishuWebhookHelpers'
+import { sendSupplierPushCard } from './sendSupplierPushCard'
 import { envFirst } from '../imile/shared'
 import { getGlobalImileToken } from './globalImileToken'
 import { getRegionNow } from '../imile/inboundWaybillIndex'
@@ -67,36 +67,6 @@ export function computeUnprocessedTicketWindow(tz: AusTz): { startTime: string; 
   // weekday: 1=周一…7=周日；上周一 = 本周一（today - (weekday-1)）再往前 7 天
   const lastMondayDateStr = subtractDaysFromDateStr(dateStr, weekday - 1 + 7)
   return { startTime: `${lastMondayDateStr} 00:00:00`, endTime: `${prevDateStr} 23:59:59` }
-}
-
-async function pushCardToWebhook(
-  webhookUrl: string,
-  signingSecret: string | null,
-  card: Record<string, unknown>,
-): Promise<boolean> {
-  let webhookHref: string
-  try {
-    webhookHref = parseSafeWebhookUrl(webhookUrl).href
-  } catch {
-    return false
-  }
-  const payload: Record<string, unknown> = { msg_type: 'interactive', card }
-  if (signingSecret) {
-    const timestampSec = Math.floor(Date.now() / 1000)
-    payload.timestamp = String(timestampSec)
-    payload.sign = computeFeishuWebhookSign(signingSecret, timestampSec)
-  }
-  try {
-    const upstream = await fetch(webhookHref, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
-    })
-    const data = (await upstream.json().catch(() => ({}))) as Record<string, unknown>
-    return upstream.ok && typeof data.code === 'number' && data.code === 0
-  } catch {
-    return false
-  }
 }
 
 export type WorkOrderPushResult = {
@@ -187,11 +157,11 @@ export async function executeWorkOrderPush(params: {
         pushDescription: config.pushDescription,
         mentions,
       })
-      const ok = await pushCardToWebhook(config.webhookUrl, config.signingSecret, card)
+      const { ok, reason } = await sendSupplierPushCard(config, card)
       if (ok) {
         pushedCount++
       } else {
-        errors.push(`${vendorName}: 飞书推送失败`)
+        errors.push(`${vendorName}: ${reason ?? '飞书推送失败'}`)
         if (dedupeJobKey) await releaseScheduledSlot(dedupeJobKey, perConfigDedupe!.slotKey)
       }
     } catch (err) {

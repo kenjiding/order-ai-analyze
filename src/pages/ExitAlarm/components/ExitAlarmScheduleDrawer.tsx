@@ -1,6 +1,6 @@
 import { Button, Checkbox, Drawer, TimePicker } from 'antd'
 import dayjs from 'dayjs'
-import { AlarmClock, Clock, Plus, Save, Truck, X } from 'lucide-react'
+import { AlarmClock, Clock, Plus, Save, Settings, Truck, X } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import { useEffect, useState, type ReactNode } from 'react'
 import { StationSelect } from '../../../components/Layout/StationSelect'
@@ -88,6 +88,7 @@ export function ExitAlarmScheduleDrawer({
   const [pushTimes, setPushTimes] = useState<PushTimeSlot[]>([])
   const [pushConfigIds, setPushConfigIds] = useState<string[]>([])
   const [mentionEnabled, setMentionEnabled] = useState(false)
+  const [routeCodeWhitelistPushEnabled, setRouteCodeWhitelistPushEnabled] = useState(false)
 
   useEffect(() => {
     if (!open) return
@@ -96,6 +97,7 @@ export function ExitAlarmScheduleDrawer({
     setPushTimes(editingSchedule?.pushTimes ?? [])
     setPushConfigIds(editingSchedule?.pushConfigIds ?? [])
     setMentionEnabled(editingSchedule?.mentionEnabled ?? false)
+    setRouteCodeWhitelistPushEnabled(editingSchedule?.routeCodeWhitelistPushEnabled ?? false)
   }, [open, editingSchedule])
 
   const handleAddTime = () => setPushTimes((prev) => [...prev, { id: generateId(), time: '11:00' }])
@@ -131,6 +133,7 @@ export function ExitAlarmScheduleDrawer({
       stationCode,
       pushConfigIds: scopedPushConfigIds,
       mentionEnabled,
+      routeCodeWhitelistPushEnabled,
     }
     const ok = await onSubmit(draft)
     if (ok) onClose()
@@ -226,12 +229,24 @@ export function ExitAlarmScheduleDrawer({
           </div>
         </FormSection>
 
+        <FormSection icon={Settings} title="其他配置">
+          <div className="flex flex-wrap items-center gap-x-6 gap-y-2">
+            <SupplierMentionToggle value={mentionEnabled} onChange={setMentionEnabled} disabled={saving} />
+            <Checkbox
+              checked={routeCodeWhitelistPushEnabled}
+              disabled={saving}
+              onChange={(e) => setRouteCodeWhitelistPushEnabled(e.target.checked)}
+            >
+              <span className="text-sm">路由码白名单数据推送</span>
+            </Checkbox>
+          </div>
+        </FormSection>
+
         <FormSection
           icon={Truck}
           title="供应商配置"
           action={
             <div className="flex items-center gap-3">
-              <SupplierMentionToggle value={mentionEnabled} onChange={setMentionEnabled} disabled={saving} />
               <SupplierPushSelectAllButtons
                 configs={catalogConfigs}
                 enabledIdSet={enabledIdSet}

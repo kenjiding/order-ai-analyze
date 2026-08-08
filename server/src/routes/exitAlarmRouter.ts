@@ -26,6 +26,7 @@ type ScheduleBody = {
   stationCode?: unknown
   pushConfigIds?: unknown
   mentionEnabled?: unknown
+  routeCodeWhitelistPushEnabled?: unknown
   imileToken?: unknown
 }
 
@@ -37,6 +38,7 @@ type PublicExitAlarmSchedule = {
   stationCode: string
   pushConfigIds: string[]
   mentionEnabled: boolean
+  routeCodeWhitelistPushEnabled: boolean
   /** 拥有该配置的账号所属州/区域，决定 pushTimes/weekdays 按哪个时区判断；只读，随账号信息变化 */
   regionCode: string | null
   updatedAt: Date
@@ -55,6 +57,7 @@ async function toPublicSchedule(
     stationCode: row.stationCode,
     pushConfigIds: parsePushConfigIds(row.pushConfigIds),
     mentionEnabled: row.mentionEnabled,
+    routeCodeWhitelistPushEnabled: row.routeCodeWhitelistPushEnabled,
     regionCode,
     updatedAt: row.updatedAt,
     hasImileToken: await hasExitAlarmImileToken(row),
@@ -82,6 +85,7 @@ function extractScheduleFields(body: ScheduleBody) {
     stationCode: typeof body.stationCode === 'string' ? body.stationCode.trim() : '',
     pushConfigIds: parsePushConfigIds(body.pushConfigIds),
     mentionEnabled: body.mentionEnabled === true,
+    routeCodeWhitelistPushEnabled: body.routeCodeWhitelistPushEnabled === true,
   }
 }
 
@@ -155,6 +159,7 @@ exitAlarmRouter.post('/schedules', async (req: AuthenticatedRequest, res: Respon
         stationCode: fields.stationCode,
         pushConfigIds: fields.pushConfigIds,
         mentionEnabled: fields.mentionEnabled,
+        routeCodeWhitelistPushEnabled: fields.routeCodeWhitelistPushEnabled,
         imileToken: nextImileToken ? normalizeImileToken(nextImileToken) : null,
         updatedBy: userId,
       })
@@ -221,6 +226,7 @@ exitAlarmRouter.put('/schedules/:id', async (req: AuthenticatedRequest, res: Res
         stationCode: fields.stationCode,
         pushConfigIds: fields.pushConfigIds,
         mentionEnabled: fields.mentionEnabled,
+        routeCodeWhitelistPushEnabled: fields.routeCodeWhitelistPushEnabled,
         ...(nextImileToken ? { imileToken: normalizeImileToken(nextImileToken) } : {}),
         updatedBy: userId,
         updatedAt: new Date(),
@@ -309,6 +315,7 @@ exitAlarmRouter.post('/schedules/:id/push-now', async (req: AuthenticatedRequest
       tz,
       label: `[exit-alarm/push-now schedule=${schedule.id}]`,
       mentionEnabled: schedule.mentionEnabled,
+      routeCodeWhitelistPushEnabled: schedule.routeCodeWhitelistPushEnabled,
     })
     if ('error' in result) {
       res.status(502).json({ ok: false, error: result.error })

@@ -4,7 +4,7 @@ import type { DispatchAlarmSchedule, FleetSupplierPushConfig } from '../db/schem
 import { buildDispatchAlarmCard } from './buildDispatchAlarmCard'
 import { parseSupplierMentionContacts, pickMentions } from './feishuMentionHelpers'
 import { createDispatchAlarmShareSnapshot } from './dispatchAlarmShareSnapshot'
-import { computeFeishuWebhookSign, parseSafeWebhookUrl } from '../feishuWebhookHelpers'
+import { sendSupplierPushCard } from './sendSupplierPushCard'
 import { envFirst } from '../imile/shared'
 import { getGlobalImileToken } from './globalImileToken'
 import { resolveRegionTz, type AusTz } from '../imile/ausTimezone'
@@ -57,36 +57,6 @@ export async function hasDispatchAlarmImileToken(
   schedule?: Pick<DispatchAlarmSchedule, 'imileToken' | 'userId'> | null,
 ): Promise<boolean> {
   return (await readDispatchAlarmImileToken(schedule)).length > 0
-}
-
-async function pushCardToWebhook(
-  webhookUrl: string,
-  signingSecret: string | null,
-  card: Record<string, unknown>,
-): Promise<boolean> {
-  let webhookHref: string
-  try {
-    webhookHref = parseSafeWebhookUrl(webhookUrl).href
-  } catch {
-    return false
-  }
-  const payload: Record<string, unknown> = { msg_type: 'interactive', card }
-  if (signingSecret) {
-    const timestampSec = Math.floor(Date.now() / 1000)
-    payload.timestamp = String(timestampSec)
-    payload.sign = computeFeishuWebhookSign(signingSecret, timestampSec)
-  }
-  try {
-    const upstream = await fetch(webhookHref, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
-    })
-    const data = (await upstream.json().catch(() => ({}))) as Record<string, unknown>
-    return upstream.ok && typeof data.code === 'number' && data.code === 0
-  } catch {
-    return false
-  }
 }
 
 export type DispatchAlarmPushResult = {
@@ -217,11 +187,11 @@ export async function executeDispatchAlarmPush(params: {
         detailUrl: share?.url ?? null,
         mentions,
       })
-      const ok = await pushCardToWebhook(config.webhookUrl, config.signingSecret, card)
+      const { ok, reason } = await sendSupplierPushCard(config, card)
       if (ok) {
         pushedCount++
       } else {
-        errors.push(`${vendorName}: 飞书推送失败`)
+        errors.push(`${vendorName}: ${reason ?? '飞书推送失败'}`)
         if (dedupeJobKey) await releaseScheduledSlot(dedupeJobKey, perConfigDedupe!.slotKey)
       }
     } catch (err) {

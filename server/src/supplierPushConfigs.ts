@@ -32,6 +32,18 @@ export function isSupplierWebhookConfigured(webhookUrl: string | null | undefine
   return typeof webhookUrl === 'string' && webhookUrl.trim().length > 0
 }
 
+/**
+ * 供出仓告警/24H派签告警/催派推送/工单推送 4 类定时任务判断"是否可推送"：
+ * webhookUrl / chatId 二选一即可（sendSupplierPushCard 两条通道都支持发送）。
+ * 「派送中通知」（deliveringNotifyRouter）目前仍只支持 webhook 通道，继续用上面的
+ * isSupplierWebhookConfigured，不要在那里换成本函数。
+ */
+export function isSupplierPushConfigured(
+  config: Pick<FleetSupplierPushConfig, 'webhookUrl' | 'chatId'>,
+): boolean {
+  return isSupplierWebhookConfigured(config.webhookUrl) || Boolean(config.chatId?.trim())
+}
+
 export function extractSupplierPushConfigFields(body: SupplierPushConfigBody) {
   return {
     vendorCode: typeof body.vendorCode === 'string' ? body.vendorCode.trim() : '',
@@ -114,9 +126,7 @@ export async function listSupplierPushConfigsByIds(ids: string[]): Promise<Fleet
   if (!ids.length) return []
   const idSet = new Set(ids)
   const rows = await listSupplierPushConfigs()
-  return rows.filter(
-    (c) => idSet.has(c.id) && isSupplierWebhookConfigured(c.webhookUrl),
-  )
+  return rows.filter((c) => idSet.has(c.id) && isSupplierPushConfigured(c))
 }
 
 export async function listPushableSupplierPushConfigsByIds(ids: string[]): Promise<FleetSupplierPushConfig[]> {
@@ -146,7 +156,7 @@ export async function listPushableSupplierPushConfigsForSchedule(
   return rows.filter(
     (config) =>
       idSet.has(config.id) &&
-      isSupplierWebhookConfigured(config.webhookUrl) &&
+      isSupplierPushConfigured(config) &&
       isRegionAccessible(config.regionCode, scope.regionCode),
   )
 }
@@ -168,11 +178,11 @@ export async function validatePushConfigIdsForSchedule(
   const idSet = new Set(normalizedIds)
   const rows = (await listSupplierPushConfigs()).filter((c) => idSet.has(c.id))
   if (rows.length === 0) return '所选供应商配置不存在或已删除'
-  if (!rows.some((c) => isSupplierWebhookConfigured(c.webhookUrl))) {
-    return '请至少选择一个已配置 Webhook 的供应商'
+  if (!rows.some((c) => isSupplierPushConfigured(c))) {
+    return '请至少选择一个已配置 Webhook 或飞书群 Chat ID 的供应商'
   }
   if (!rows.some((c) => isRegionAccessible(c.regionCode, scope.regionCode))) {
     return '所选供应商不属于当前账号所在州，无法推送'
   }
-  return '请至少选择一个已配置 Webhook 的供应商'
+  return '请至少选择一个已配置 Webhook 或飞书群 Chat ID 的供应商'
 }

@@ -51,8 +51,8 @@ function zoneTile(
   const lines = [
     `**${routeCode}**`,
     pending === 0
-      ? colored('✅ All exited by 11:00', 'green')
-      : colored(`**${pending} not exited by 11:00**`, pendingColor),
+      ? colored('✅ All exited', 'green')
+      : colored(`**${pending} not exited**`, pendingColor),
     colored(`${exited} / ${total} total · ${rate}%`, 'grey'),
   ]
   return {
@@ -174,6 +174,86 @@ export function buildExitAlarmCard(params: {
         content: isUrgent
           ? `11 Am Dispatch alert - ${vendorName}`
           : `11 Am Dispatch on track - ${vendorName}`,
+      },
+    },
+    elements,
+  }
+}
+
+/**
+ * 构建路由码白名单出仓数据卡片（webhook interactive card v1）——独立第二条消息，
+ * 紧跟在 buildExitAlarmCard 主卡片之后推送，不与主卡片拼接；命中「路由码白名单数据推送」
+ * 开关且确有白名单命中数据时才发送。展示口径与主卡片一致（总数/出仓量/出仓率 + 逐路由明细），
+ * 但统计对象是主卡片里被剔除的那部分白名单路由数据。
+ */
+export function buildExitAlarmWhitelistCard(params: {
+  vendorName: string
+  stationCode: string
+  date: string
+  pushTime: string
+  tz: AusTz
+  whitelistStat: { totalWaybills: number; zoneBreakdown: Record<string, ZoneStats> }
+  pushDescription?: string | null
+}): Record<string, unknown> {
+  const { vendorName, stationCode, date, pushTime, tz, whitelistStat, pushDescription } = params
+  const elements: CardEl[] = []
+
+  const totalWaybills = whitelistStat.totalWaybills
+  const totalPending = Object.values(whitelistStat.zoneBreakdown).reduce((s, v) => s + v.pending, 0)
+  const exited = totalWaybills - totalPending
+  const exitRate = totalWaybills > 0 ? ((exited / totalWaybills) * 100).toFixed(1) : '0.0'
+  const exitRateNum = totalWaybills > 0 ? (exited / totalWaybills) * 100 : 0
+  const rateColor: MarkColor = exitRateNum >= 80 ? 'green' : exitRateNum >= 60 ? 'orange' : 'red'
+
+  elements.push(
+    div(
+      [
+        `🔓 **Whitelisted routes: ${vendorName}**`,
+        colored(`Station: ${stationCode} · ${date} ${pushTime} (${tzDisplayName(tz)})`, 'grey'),
+        pushDescription ? colored(pushDescription, 'grey') : '',
+      ]
+        .filter(Boolean)
+        .join('\n'),
+    ),
+  )
+
+  elements.push(hr())
+
+  elements.push(
+    columnSet([
+      summaryTile('Exited by 11:00', `${exited}`, `${totalWaybills} waybills total`, 'blue'),
+      summaryTile('Whitelisted exit rate', `${exitRate}%`, `${exited} / ${totalWaybills} exited`, rateColor),
+    ]),
+  )
+
+  elements.push(hr())
+
+  const zones = Object.entries(whitelistStat.zoneBreakdown).sort((a, b) => b[1].pending - a[1].pending)
+  if (zones.length === 0) {
+    elements.push(div(colored('No whitelisted route data', 'grey')))
+  } else {
+    for (let i = 0; i < zones.length; i += 2) {
+      const pair = zones.slice(i, i + 2)
+      const cols = pair.map(([code, { pending, total }]) => zoneTile(code, pending, total, 'default'))
+      if (cols.length === 1) cols.push(emptyCol())
+      elements.push(columnSet(cols, 'bisect'))
+    }
+  }
+
+  elements.push(hr())
+  elements.push(
+    note(
+      `${date} ${pushTime} · Whitelisted route codes (excluded from pre-11am exit stats above) · iMile Warehouse Management System`,
+    ),
+  )
+
+  return {
+    config: { wide_screen_mode: true },
+    header: {
+      template: 'blue',
+      title: {
+        tag: 'plain_text',
+        content: `Whitelisted Routes - ${vendorName}`,
       },
     },
     elements,

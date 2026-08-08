@@ -23,7 +23,7 @@ const COLUMNS_CLASS: Record<4 | 5, string> = {
 
 /**
  * 供应商推送多选：卡片网格样式，重点展示供应商昵称与供应商名。
- * 选中即代表会被推送；未配置 Webhook 的供应商禁用（无法推送），并给出提示。
+ * 选中即代表会被推送；未配置 Webhook 也未配置飞书群 Chat ID 的供应商禁用（无法推送），并给出提示。
  */
 export function SupplierPushSelectionGrid({
   configs,
@@ -121,7 +121,7 @@ export function SupplierPushSelectionGrid({
             {eligible ? (
               checkboxNode
             ) : (
-              <Tooltip title="该供应商未配置 Webhook，无法推送">
+              <Tooltip title="该供应商未配置 Webhook 或飞书群 Chat ID，无法推送">
                 <span className="flex w-full min-w-0">{checkboxNode}</span>
               </Tooltip>
             )}
@@ -142,7 +142,7 @@ type SelectAllButtonsProps = {
 
 /**
  * 配合 SupplierPushSelectionGrid 使用的「全选/清空」按钮，放在 FormSection 标题右侧（action 插槽）。
- * 全选只勾选已配置 Webhook（可推送）的供应商；清空会取消当前所有已勾选项。
+ * 全选只勾选已配置 Webhook 或飞书群 Chat ID（可推送）的供应商；清空会取消当前所有已勾选项。
  */
 export function SupplierPushSelectAllButtons({
   configs,

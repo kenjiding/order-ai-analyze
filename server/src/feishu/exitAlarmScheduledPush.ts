@@ -1,9 +1,9 @@
 import { eq } from 'drizzle-orm'
 import { getDb, schema } from '../db'
 import type { ExitAlarmSchedule, FleetSupplierPushConfig } from '../db/schema'
-import { buildExitAlarmCard } from './buildExitAlarmCard'
+import { buildExitAlarmCard, buildExitAlarmWhitelistCard } from './buildExitAlarmCard'
 import { parseSupplierMentionContacts, pickMentions } from './feishuMentionHelpers'
-import { computeFeishuWebhookSign, parseSafeWebhookUrl } from '../feishuWebhookHelpers'
+import { sendSupplierPushCard } from './sendSupplierPushCard'
 import { envFirst } from '../imile/shared'
 import { getGlobalImileToken } from './globalImileToken'
 import { fetchWaybillDetailsByInboundIndex } from '../imile/inboundWaybillIndex'
@@ -91,40 +91,6 @@ export async function logExitAlarmSchedulerReadiness(): Promise<void> {
   }
 }
 
-async function pushCardToWebhook(
-  webhookUrl: string,
-  signingSecret: string | null,
-  card: Record<string, unknown>,
-): Promise<{ ok: boolean; reason?: string }> {
-  let webhookHref: string
-  try {
-    webhookHref = parseSafeWebhookUrl(webhookUrl).href
-  } catch {
-    return { ok: false, reason: 'webhookUrl 不合法' }
-  }
-  const payload: Record<string, unknown> = { msg_type: 'interactive', card }
-  if (signingSecret) {
-    const timestampSec = Math.floor(Date.now() / 1000)
-    payload.timestamp = String(timestampSec)
-    payload.sign = computeFeishuWebhookSign(signingSecret, timestampSec)
-  }
-  try {
-    const upstream = await fetch(webhookHref, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
-    })
-    const data = (await upstream.json().catch(() => ({}))) as Record<string, unknown>
-    if (upstream.ok && typeof data.code === 'number' && data.code === 0) {
-      return { ok: true }
-    }
-    return { ok: false, reason: `飞书返回 code=${String(data.code)}` }
-  } catch (err) {
-    const cause = err instanceof Error ? (err.cause as { code?: string } | undefined)?.code : undefined
-    return { ok: false, reason: `网络错误(${cause ?? (err instanceof Error ? err.message : String(err))})` }
-  }
-}
-
 export type ExitAlarmPushResult = {
   pushedCount: number
   totalConfigs: number
@@ -150,6 +116,8 @@ export async function executeExitAlarmPush(params: {
   label: string
   /** 是否 @ 供应商配置花名册第 1 位联系人；默认 false */
   mentionEnabled?: boolean
+  /** 是否在主卡片推送成功后额外推送第二条「路由码白名单出仓数据」卡片；默认 false */
+  routeCodeWhitelistPushEnabled?: boolean
   /**
    * 仅供定时任务传入：按 (jobKeyPrefix:configId, slotKey) 对每个供应商配置单独做幂等去重。
    * 某个配置本次已经成功推送过则跳过，推送失败/暂无数据则释放，交给下次 catch-up 重试；
@@ -157,7 +125,18 @@ export async function executeExitAlarmPush(params: {
    */
   perConfigDedupe?: { jobKeyPrefix: string; slotKey: string }
 }): Promise<ExitAlarmPushResult | { error: string }> {
-  const { token, stationCode, date, pushTime, configs, tz, label, mentionEnabled, perConfigDedupe } = params
+  const {
+    token,
+    stationCode,
+    date,
+    pushTime,
+    configs,
+    tz,
+    label,
+    mentionEnabled,
+    routeCodeWhitelistPushEnabled,
+    perConfigDedupe,
+  } = params
 
   const result = await fetchWaybillDetailsByInboundIndex({
     token,
@@ -234,15 +213,42 @@ export async function executeExitAlarmPush(params: {
 
       unqualifiedByVendor.push({ vendorName, waybillNos: stat.unqualifiedWaybillNos })
 
-      const { ok, reason } = await pushCardToWebhook(config.webhookUrl, config.signingSecret, card)
-      if (ok) {
-        pushedCount++
-        console.log(`${label} ✓ 推送成功: ${vendorName}`)
-      } else {
+      const { ok, reason } = await sendSupplierPushCard(config, card)
+      if (!ok) {
         const detail = reason ? ` (${reason})` : ''
         console.error(`${label} ✗ 推送失败: ${vendorName}${detail}`)
         errors.push(`${vendorName}: ${reason ?? '推送失败'}`)
         if (dedupeJobKey) await releaseScheduledSlot(dedupeJobKey, perConfigDedupe!.slotKey)
+        continue
+      }
+
+      // 主卡片推送成功后，紧接着单独推第二条「路由码白名单数据」卡片，不与主卡片拼接；
+      // 白名单卡片推送失败也算本次未完成，释放去重槽交给下次重试，避免下次误判「已推送成功」而漏发白名单数据。
+      let whitelistOk = true
+      if (routeCodeWhitelistPushEnabled && stat.whitelistStat && stat.whitelistStat.totalWaybills > 0) {
+        const whitelistCard = buildExitAlarmWhitelistCard({
+          vendorName,
+          stationCode,
+          date,
+          pushTime,
+          tz,
+          whitelistStat: stat.whitelistStat,
+          pushDescription: config.pushDescription,
+        })
+        const whitelistSend = await sendSupplierPushCard(config, whitelistCard)
+        if (!whitelistSend.ok) {
+          whitelistOk = false
+          const detail = whitelistSend.reason ? ` (${whitelistSend.reason})` : ''
+          console.error(`${label} ✗ 白名单卡片推送失败: ${vendorName}${detail}`)
+          errors.push(`${vendorName}(白名单路由): ${whitelistSend.reason ?? '推送失败'}`)
+        }
+      }
+
+      if (whitelistOk) {
+        pushedCount++
+        console.log(`${label} ✓ 推送成功: ${vendorName}`)
+      } else if (dedupeJobKey) {
+        await releaseScheduledSlot(dedupeJobKey, perConfigDedupe!.slotKey)
       }
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err)
@@ -312,6 +318,7 @@ async function runOneScheduledPush(schedule: ExitAlarmSchedule, regionCode: stri
       tz,
       label,
       mentionEnabled: schedule.mentionEnabled,
+      routeCodeWhitelistPushEnabled: schedule.routeCodeWhitelistPushEnabled,
       perConfigDedupe: { jobKeyPrefix, slotKey },
     })
     if ('error' in result) {

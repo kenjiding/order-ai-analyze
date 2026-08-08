@@ -92,8 +92,6 @@ export function useDispatchAlarmPage() {
     }
   }, [])
 
-  const pushableConfigs = catalog.configs.filter((c) => c.webhookUrl.trim().length > 0)
-
   return {
     catalog,
     schedules: crud.schedules,
@@ -110,6 +108,5 @@ export function useDispatchAlarmPage() {
     toggleEnabled,
     removeSchedule: crud.removeSchedule,
     pushNow,
-    pushableConfigs,
   }
 }

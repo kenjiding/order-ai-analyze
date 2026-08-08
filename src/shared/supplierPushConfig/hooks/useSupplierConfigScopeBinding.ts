@@ -93,7 +93,7 @@ export function useSupplierConfigScopeBinding(
       if (saving || togglingId) return false
       const row = catalog.find((c) => c.id === configId)
       if (nextEnabled && row && !isSupplierPushEligible(row)) {
-        showToast('该供应商未配置 Webhook，无法启用', 'warning')
+        showToast('该供应商未配置 Webhook 或飞书群 Chat ID，无法启用', 'warning')
         return false
       }
       const nextIds = toggleScopeEnabledId(enabledIds, configId, nextEnabled)

@@ -1,8 +1,8 @@
 import type { Key } from 'react'
 
-/** catalog 中可用于飞书推送的配置（已配置 Webhook） */
-export function isSupplierPushEligible(config: { webhookUrl: string }): boolean {
-  return config.webhookUrl.trim().length > 0
+/** catalog 中可用于飞书推送的配置（已配置 Webhook 或飞书群 Chat ID，二选一即可） */
+export function isSupplierPushEligible(config: { webhookUrl: string; chatId?: string | null }): boolean {
+  return config.webhookUrl.trim().length > 0 || Boolean(config.chatId?.trim())
 }
 
 export function pruneSelectedConfigIds(allIds: Iterable<string>, selected: string[]): string[] {
@@ -10,7 +10,7 @@ export function pruneSelectedConfigIds(allIds: Iterable<string>, selected: strin
   return selected.filter((id) => idSet.has(id))
 }
 
-export function selectedPushableConfigs<T extends { id: string; webhookUrl: string }>(
+export function selectedPushableConfigs<T extends { id: string; webhookUrl: string; chatId?: string | null }>(
   configs: T[],
   selectedIds: string[],
 ): T[] {
