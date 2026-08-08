@@ -97,8 +97,8 @@ function parseBodyMarker(raw: string): { kind: 'img'; index: number; w?: number;
 export function buildFleetRichMessageCard(params: {
   content?: string
   imageKeys: string[]
-  /** 命中「@ 相关人员」时传入，取供应商配置花名册第 1 位联系人 */
-  mention?: SupplierMentionContact | null
+  /** 命中「@ 相关人员」时传入，供应商配置花名册里选中的全部联系人 */
+  mentions?: SupplierMentionContact[] | null
 }): Record<string, unknown> {
   const elements: Record<string, unknown>[] = []
   const usedImageIndexes = new Set<number>()
@@ -148,7 +148,7 @@ export function buildFleetRichMessageCard(params: {
     }
   })
 
-  const mentionLarkMd = buildMentionLarkMd(params.mention)
+  const mentionLarkMd = buildMentionLarkMd(params.mentions)
   if (mentionLarkMd) {
     elements.push({ tag: 'markdown', content: mentionLarkMd })
   }

@@ -15,6 +15,8 @@ export type SupplierPushConfigBody = {
   stationCode?: unknown
   webhookUrl?: unknown
   signingSecret?: unknown
+  /** 自建应用机器人所在群的 chat_id（选填）；配置后该供应商推送改走应用机器人消息接口，支持已读查询 */
+  chatId?: unknown
   pushDescription?: unknown
   pushContent?: unknown
   mentionOpenIds?: unknown
@@ -43,6 +45,7 @@ export function extractSupplierPushConfigFields(body: SupplierPushConfigBody) {
       typeof body.signingSecret === 'string' && body.signingSecret.trim()
         ? body.signingSecret.trim()
         : null,
+    chatId: typeof body.chatId === 'string' && body.chatId.trim() ? body.chatId.trim() : null,
     pushDescription:
       typeof body.pushDescription === 'string' && body.pushDescription.trim()
         ? body.pushDescription.trim()
@@ -58,7 +61,7 @@ export function validateSupplierPushConfigCreate(body: SupplierPushConfigBody): 
   if (!fields.vendorName) return '缺少必填字段: vendorName'
   if (!fields.supplierNickname) return '缺少必填字段: supplierNickname'
   if (!fields.routeCode.trim()) return '缺少必填字段: routeCode'
-  if (!fields.webhookUrl) return '缺少必填字段: webhookUrl'
+  if (!fields.chatId && !fields.webhookUrl) return '缺少必填字段: chatId 或 webhookUrl（至少填一项）'
   return null
 }
 
@@ -68,7 +71,7 @@ export function validateSupplierPushConfigUpdate(body: SupplierPushConfigBody): 
   if (!fields.vendorName) return '缺少必填字段: vendorName'
   if (!fields.supplierNickname) return '缺少必填字段: supplierNickname'
   if (typeof body.routeCode !== 'string') return '缺少必填字段: routeCode'
-  if (!fields.webhookUrl) return '缺少必填字段: webhookUrl'
+  if (!fields.chatId && !fields.webhookUrl) return '缺少必填字段: chatId 或 webhookUrl（至少填一项）'
   return null
 }
 

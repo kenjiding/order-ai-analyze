@@ -1,19 +1,22 @@
 export type SupplierMentionContact = { name: string; openId: string }
 
-/** 供应商配置里 mentionOpenIds 花名册的第 1 位，即"要 @ 的那个人" */
-export function pickPrimaryMention(
+/** 供应商配置里 mentionOpenIds 花名册，勾选「是否 @ 相关人员」时全部 @ 上（未勾选则不 @ 任何人） */
+export function pickMentions(
   mentionOpenIds: SupplierMentionContact[] | null | undefined,
-): SupplierMentionContact | null {
-  return mentionOpenIds?.[0] ?? null
+  enabled: boolean,
+): SupplierMentionContact[] {
+  if (!enabled) return []
+  return (mentionOpenIds ?? []).filter((m) => m.openId)
 }
 
 /**
- * 自定义机器人卡片里的 @ 语法（lark_md 内嵌 `<at id="ou_xxx"></at>`），拼在卡片正文最前面。
+ * 自定义机器人卡片里的 @ 语法（lark_md 内嵌 `<at id="ou_xxx"></at>`），多个联系人依次拼接，拼在卡片正文最前面。
  * @see https://open.feishu.cn/document/client-docs/bot-v3/add-custom-bot
  */
-export function buildMentionLarkMd(mention: SupplierMentionContact | null | undefined): string {
-  if (!mention?.openId) return ''
-  return `<at id="${mention.openId}"></at>`
+export function buildMentionLarkMd(mentions: SupplierMentionContact[] | null | undefined): string {
+  const list = (mentions ?? []).filter((m) => m?.openId)
+  if (!list.length) return ''
+  return list.map((m) => `<at id="${m.openId}"></at>`).join(' ')
 }
 
 /** 解析供应商配置存储的 mentionOpenIds jsonb，过滤非法项 */

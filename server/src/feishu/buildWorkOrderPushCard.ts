@@ -72,11 +72,11 @@ export function buildWorkOrderPushCard(params: {
   tz: AusTz
   summary: WorkOrderPushVendorSummary
   pushDescription?: string | null
-  /** 命中「是否 @ 相关人员」时传入，取供应商配置花名册第 1 位联系人 */
-  mention?: SupplierMentionContact | null
+  /** 命中「是否 @ 相关人员」时传入，供应商配置花名册里选中的全部联系人 */
+  mentions?: SupplierMentionContact[] | null
   nowMs?: number
 }): Record<string, unknown> {
-  const { vendorName, baseDate, pushTime, tz, summary, pushDescription, mention } = params
+  const { vendorName, baseDate, pushTime, tz, summary, pushDescription, mentions } = params
   const nowMs = params.nowMs ?? Date.now()
   const { totalCount, normalCount, complaintCount, arbitrationCount, tickets } = summary
   const elements: CardEl[] = []
@@ -133,7 +133,7 @@ export function buildWorkOrderPushCard(params: {
   elements.push(openUrlAction(PCS_TICKET_WORKBENCH_URL, 'Click to Resolve Tickets'))
   elements.push(note(`${baseDate} ${pushTime} (${tzDisplayName(tz)}) · Ticket push · iMile Warehouse Management System`))
 
-  const mentionLarkMd = buildMentionLarkMd(mention)
+  const mentionLarkMd = buildMentionLarkMd(mentions)
   if (mentionLarkMd) {
     elements.push(div(mentionLarkMd))
   }

@@ -186,8 +186,8 @@ export async function postFeishuPushRichMessage(payload: {
   signingSecret?: string
   content: string
   images: string[]
-  /** 勾选「@ 相关人员」时传该供应商花名册第 1 位联系人的 open_id */
-  mentionOpenId?: string
+  /** 勾选「@ 相关人员」时传该供应商花名册里选中的全部联系人 open_id */
+  mentionOpenIds?: string[]
 }): Promise<FeishuPushTestOk | FeishuPushTestFail> {
   const path = '/api/feishu-webhook/push-rich-message'
   try {
@@ -200,7 +200,7 @@ export async function postFeishuPushRichMessage(payload: {
         signingSecret: payload.signingSecret,
         content: payload.content,
         images: payload.images,
-        mentionOpenId: payload.mentionOpenId,
+        mentionOpenIds: payload.mentionOpenIds,
       }),
     })
     type Wire = { ok?: boolean; httpStatus?: number; feishu?: unknown; error?: string; imageUploadedCount?: number }
@@ -242,6 +242,142 @@ export async function fetchDeliveryWeatherLarkMd(params: {
     return { ok: false, error: typeof parsed?.error === 'string' ? parsed.error : '获取天气预报失败。' }
   } catch {
     return { ok: false, error: `无法访问后端 (${path})。` }
+  }
+}
+
+export type FeishuBotChatOption = { chatId: string; name: string }
+
+/** 列出自建应用机器人当前所在的群，供「选群」下拉填 chat_id（前提：群主/管理员已手动把机器人拉进群） */
+export async function fetchFeishuAppBotChats(): Promise<
+  { ok: true; chats: FeishuBotChatOption[] } | { ok: false; error: string }
+> {
+  const path = '/api/feishu-webhook/app-bot/chats'
+  try {
+    const res = await backendFetch(path)
+    const parsed = (await res.json()) as { ok?: boolean; data?: FeishuBotChatOption[]; error?: string }
+    if (parsed?.ok === true && Array.isArray(parsed.data)) {
+      return { ok: true, chats: parsed.data }
+    }
+    return { ok: false, error: typeof parsed?.error === 'string' ? parsed.error : '获取机器人所在群列表失败。' }
+  } catch (err) {
+    return { ok: false, error: backendUnreachableMessage(path, err) }
+  }
+}
+
+/** 富文本 + 多图，走自建应用机器人（im/v1/messages）发送；仅当供应商配置了 chatId 时使用 */
+export async function postFeishuPushRichMessageViaAppBot(payload: {
+  pushScope: PushApiScope
+  supplierConfigId?: string
+  chatId: string
+  pushLabel?: string
+  content: string
+  images: string[]
+  mentionOpenIds?: string[]
+}): Promise<FeishuPushTestOk | FeishuPushTestFail> {
+  const path = '/api/feishu-webhook/push-rich-message-app'
+  try {
+    const res = await backendFetchWithTimeout(path, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        pushScope: payload.pushScope,
+        supplierConfigId: payload.supplierConfigId,
+        chatId: payload.chatId.trim(),
+        pushLabel: payload.pushLabel,
+        content: payload.content,
+        images: payload.images,
+        mentionOpenIds: payload.mentionOpenIds,
+      }),
+    })
+    type Wire = { ok?: boolean; httpStatus?: number; feishu?: unknown; error?: string; messageId?: string }
+    const parsed = (await res.json()) as Wire
+    if (parsed && typeof parsed === 'object') {
+      if (parsed.ok === true) {
+        return { ok: true, httpStatus: res.status, feishu: parsed }
+      }
+      return {
+        ok: false,
+        httpStatus: parsed.httpStatus ?? res.status,
+        feishu: parsed.feishu,
+        error: typeof parsed.error === 'string' ? parsed.error : '应用机器人富文本推送失败。',
+      }
+    }
+    return { ok: false, httpStatus: res.status, error: '无法解析服务端响应。' }
+  } catch (err) {
+    return { ok: false, error: backendUnreachableMessage(path, err) }
+  }
+}
+
+export type FeishuChatMemberOption = { userId: string; name: string }
+
+/** 列出某个群的全量成员（含外部联系人），供「@ 外部联系人」下拉选择 */
+export async function fetchFeishuChatMembers(
+  chatId: string,
+): Promise<{ ok: true; members: FeishuChatMemberOption[] } | { ok: false; error: string }> {
+  const path = `/api/feishu-webhook/app-bot/chats/${encodeURIComponent(chatId)}/members`
+  try {
+    const res = await backendFetch(path)
+    const parsed = (await res.json()) as { ok?: boolean; data?: FeishuChatMemberOption[]; error?: string }
+    if (parsed?.ok === true && Array.isArray(parsed.data)) {
+      return { ok: true, members: parsed.data }
+    }
+    return { ok: false, error: typeof parsed?.error === 'string' ? parsed.error : '获取群成员列表失败。' }
+  } catch (err) {
+    return { ok: false, error: backendUnreachableMessage(path, err) }
+  }
+}
+
+export type FeishuPushMessageRecord = {
+  id: string
+  supplierConfigId: string | null
+  chatId: string
+  messageId: string
+  msgType: string
+  pushLabel: string | null
+  createdAt: string
+}
+
+/** 某供应商最近的应用机器人推送记录，供「查看已读」入口列表 */
+export async function fetchFeishuPushMessages(
+  supplierConfigId: string,
+): Promise<{ ok: true; data: FeishuPushMessageRecord[] } | { ok: false; error: string }> {
+  const path = `/api/feishu-webhook/push-messages?supplierConfigId=${encodeURIComponent(supplierConfigId)}`
+  try {
+    const res = await backendFetch(path)
+    const parsed = (await res.json()) as { ok?: boolean; data?: FeishuPushMessageRecord[]; error?: string }
+    if (parsed?.ok === true && Array.isArray(parsed.data)) {
+      return { ok: true, data: parsed.data }
+    }
+    return { ok: false, error: typeof parsed?.error === 'string' ? parsed.error : '获取推送记录失败。' }
+  } catch (err) {
+    return { ok: false, error: backendUnreachableMessage(path, err) }
+  }
+}
+
+export type FeishuReadStatusUser = { userId: string; name: string; readAtMs?: number }
+export type FeishuReadStatus = {
+  messageId: string
+  sentAt: string
+  totalMembers: number
+  readCount: number
+  readUsers: FeishuReadStatusUser[]
+  unreadUsers: FeishuReadStatusUser[]
+}
+
+/** 查询某条应用机器人消息的已读/未读名单（飞书仅允许查发送后 7 天内的消息） */
+export async function fetchFeishuPushMessageReadStatus(
+  pushMessageId: string,
+): Promise<{ ok: true; data: FeishuReadStatus } | { ok: false; error: string }> {
+  const path = `/api/feishu-webhook/push-messages/${encodeURIComponent(pushMessageId)}/read-status`
+  try {
+    const res = await backendFetch(path)
+    const parsed = (await res.json()) as { ok?: boolean; data?: FeishuReadStatus; error?: string }
+    if (parsed?.ok === true && parsed.data) {
+      return { ok: true, data: parsed.data }
+    }
+    return { ok: false, error: typeof parsed?.error === 'string' ? parsed.error : '查询已读状态失败。' }
+  } catch (err) {
+    return { ok: false, error: backendUnreachableMessage(path, err) }
   }
 }
 

@@ -2,7 +2,7 @@ import { eq } from 'drizzle-orm'
 import { getDb, schema } from '../db'
 import type { DispatchAlarmSchedule, FleetSupplierPushConfig } from '../db/schema'
 import { buildDispatchAlarmCard } from './buildDispatchAlarmCard'
-import { parseSupplierMentionContacts, pickPrimaryMention } from './feishuMentionHelpers'
+import { parseSupplierMentionContacts, pickMentions } from './feishuMentionHelpers'
 import { createDispatchAlarmShareSnapshot } from './dispatchAlarmShareSnapshot'
 import { computeFeishuWebhookSign, parseSafeWebhookUrl } from '../feishuWebhookHelpers'
 import { envFirst } from '../imile/shared'
@@ -201,7 +201,7 @@ export async function executeDispatchAlarmPush(params: {
             })
           : null
 
-      const mention = mentionEnabled ? pickPrimaryMention(parseSupplierMentionContacts(config.mentionOpenIds)) : null
+      const mentions = pickMentions(parseSupplierMentionContacts(config.mentionOpenIds), Boolean(mentionEnabled))
       const card = buildDispatchAlarmCard({
         vendorName,
         stationCode,
@@ -215,7 +215,7 @@ export async function executeDispatchAlarmPush(params: {
         alertThresholdPct,
         pushDescription: config.pushDescription,
         detailUrl: share?.url ?? null,
-        mention,
+        mentions,
       })
       const ok = await pushCardToWebhook(config.webhookUrl, config.signingSecret, card)
       if (ok) {

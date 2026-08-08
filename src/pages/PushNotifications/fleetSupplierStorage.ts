@@ -32,6 +32,7 @@ export function sanitizeFleetSupplier(
     typeof o.routeCodeWhitelist === 'string' ? o.routeCodeWhitelist.trim() : ''
   const stationCode = typeof o.stationCode === 'string' ? o.stationCode.trim() : ''
   const webhookUrl = typeof o.webhookUrl === 'string' ? o.webhookUrl.trim() : ''
+  const chatId = typeof o.chatId === 'string' ? o.chatId.trim() : ''
   const signingSecret =
     typeof o.signingSecret === 'string' && o.signingSecret.trim() !== '' ? o.signingSecret.trim() : undefined
   const pushDescription =
@@ -60,6 +61,7 @@ export function sanitizeFleetSupplier(
     routeCodeWhitelist,
     stationCode,
     webhookUrl,
+    chatId,
     signingSecret,
     pushDescription,
     pushContent,

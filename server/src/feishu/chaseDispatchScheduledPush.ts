@@ -2,7 +2,7 @@ import { eq } from 'drizzle-orm'
 import { getDb, schema } from '../db'
 import type { ChaseDispatchSchedule, FleetSupplierPushConfig } from '../db/schema'
 import { buildChaseDispatchCard } from './buildChaseDispatchCard'
-import { parseSupplierMentionContacts, pickPrimaryMention } from './feishuMentionHelpers'
+import { parseSupplierMentionContacts, pickMentions } from './feishuMentionHelpers'
 import { computeFeishuWebhookSign, parseSafeWebhookUrl } from '../feishuWebhookHelpers'
 import { envFirst } from '../imile/shared'
 import { getGlobalImileToken } from './globalImileToken'
@@ -217,7 +217,7 @@ export async function executeChaseDispatchPush(params: {
               summary,
             })
           : null
-      const mention = mentionEnabled ? pickPrimaryMention(parseSupplierMentionContacts(config.mentionOpenIds)) : null
+      const mentions = pickMentions(parseSupplierMentionContacts(config.mentionOpenIds), Boolean(mentionEnabled))
       const card = buildChaseDispatchCard({
         vendorName,
         baseDate,
@@ -226,7 +226,7 @@ export async function executeChaseDispatchPush(params: {
         summary,
         pushDescription: config.pushDescription,
         detailUrl: share?.url ?? null,
-        mention,
+        mentions,
       })
       const ok = await pushCardToWebhook(config.webhookUrl, config.signingSecret, card)
       if (ok) {

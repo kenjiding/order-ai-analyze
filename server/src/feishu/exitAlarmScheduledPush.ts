@@ -2,7 +2,7 @@ import { eq } from 'drizzle-orm'
 import { getDb, schema } from '../db'
 import type { ExitAlarmSchedule, FleetSupplierPushConfig } from '../db/schema'
 import { buildExitAlarmCard } from './buildExitAlarmCard'
-import { parseSupplierMentionContacts, pickPrimaryMention } from './feishuMentionHelpers'
+import { parseSupplierMentionContacts, pickMentions } from './feishuMentionHelpers'
 import { computeFeishuWebhookSign, parseSafeWebhookUrl } from '../feishuWebhookHelpers'
 import { envFirst } from '../imile/shared'
 import { getGlobalImileToken } from './globalImileToken'
@@ -218,7 +218,7 @@ export async function executeExitAlarmPush(params: {
         unqualifiedWaybillNos: [],
       }
       const totalPending = Object.values(stat.zoneBreakdown).reduce((s, v) => s + v.pending, 0)
-      const mention = mentionEnabled ? pickPrimaryMention(parseSupplierMentionContacts(config.mentionOpenIds)) : null
+      const mentions = pickMentions(parseSupplierMentionContacts(config.mentionOpenIds), Boolean(mentionEnabled))
       const card = buildExitAlarmCard({
         vendorName,
         stationCode,
@@ -229,7 +229,7 @@ export async function executeExitAlarmPush(params: {
         totalPending,
         totalWaybills: stat.totalWaybills,
         pushDescription: config.pushDescription,
-        mention,
+        mentions,
       })
 
       unqualifiedByVendor.push({ vendorName, waybillNos: stat.unqualifiedWaybillNos })

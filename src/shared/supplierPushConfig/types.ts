@@ -17,6 +17,8 @@ export type SupplierPushConfig = {
   stationCode: string
   webhookUrl: string
   signingSecret?: string
+  /** 自建应用机器人所在群的 chat_id（选填）；配置后该供应商推送改走应用机器人消息接口，支持已读查询 */
+  chatId: string
   pushDescription: string | null
   pushContent: string
   /** 群内需要 @ 的外部联系人花名册；各推送是否实际 @ 由各自定时配置的「是否 @ 相关人员」决定，取第 1 位 */

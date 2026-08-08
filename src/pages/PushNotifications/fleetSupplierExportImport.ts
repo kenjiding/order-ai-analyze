@@ -58,6 +58,7 @@ export function fleetSupplierRowFromSheetRecord(row: Record<string, unknown>): R
     stationCode: pick('stationCode', '站点编码', 'station_code'),
     webhookUrl: pick('webhookUrl', '飞书 webhook', 'webhook'),
     signingSecret: pick('signingSecret', '密钥', '飞书 webhook 密钥', 'signing_secret'),
+    chatId: pick('chatId', '飞书群 Chat ID', 'chat_id'),
     pushContent: pick('pushContent', '供应商推送内容', '推送内容'),
     mentionOpenIds: pick('mentionOpenIds', '@联系人', '@外部联系人'),
   }
@@ -149,6 +150,7 @@ export function fleetSuppliersToExportRows(
     if (options.includeSecrets) {
       base.webhookUrl = s.webhookUrl
       base.signingSecret = s.signingSecret ?? ''
+      base.chatId = s.chatId ?? ''
     }
     return base
   })
@@ -232,6 +234,7 @@ function parseSheetRows(
       stationCode: cellToStr(mapped.stationCode),
       webhookUrl: cellToStr(mapped.webhookUrl),
       signingSecret: cellToStr(mapped.signingSecret),
+      chatId: cellToStr(mapped.chatId),
       pushContent: cellToStr(mapped.pushContent),
     }
     if (

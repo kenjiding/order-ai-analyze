@@ -258,9 +258,12 @@ export function FleetSupplierPushTab({
         pushScope: 'fleet-supplier',
         webhookUrl: s.webhookUrl,
         signingSecret: s.signingSecret,
+        chatId: s.chatId,
+        supplierConfigId: s.id,
+        pushLabel: '供应商推送内容',
         content,
         images,
-        mentionOpenId: mentionEnabled ? s.mentionOpenIds[0]?.openId : undefined,
+        mentionOpenIds: mentionEnabled ? s.mentionOpenIds.map((c) => c.openId).filter(Boolean) : undefined,
       }),
     )
   }
@@ -271,6 +274,9 @@ export function FleetSupplierPushTab({
         pushScope: 'fleet-supplier',
         webhookUrl: s.webhookUrl,
         signingSecret: s.signingSecret,
+        chatId: s.chatId,
+        supplierConfigId: s.id,
+        pushLabel: '推送图片',
         content: '',
         images: [imageDataUrl],
       }),
@@ -283,7 +289,7 @@ export function FleetSupplierPushTab({
     weatherLarkMd: string,
   ): Promise<string[]> => {
     const supplierErrors: string[] = []
-    if (!s.webhookUrl.trim()) return ['未配置 webhook。']
+    if (!s.webhookUrl.trim() && !s.chatId?.trim()) return ['未配置 webhook 或飞书群 Chat ID。']
 
     // 天气块置于推送内容末尾（供应商专属文案 + 顶栏推送内容之后）
     const mergedHtml = mergeEditorHtmlParts([s.pushContent.trim(), globalText, weatherLarkMd])
@@ -804,7 +810,7 @@ export function FleetSupplierPushTab({
                 onChange: setSelectedSupplierKeys,
                 columnWidth: 44,
                 getCheckboxProps: (row) => ({
-                  disabled: !row.webhookUrl.trim(),
+                  disabled: !row.webhookUrl.trim() && !row.chatId?.trim(),
                 }),
               }}
               locale={{

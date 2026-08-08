@@ -19,6 +19,17 @@ import { uploadFeishuImageFromBase64 } from '../feishu/feishuImageUpload'
 import { upsertFeishuPushSnapshot } from '../feishu/pushSnapshotRepository'
 import { fetchFeishuJson } from '../feishu/feishuHttpClient'
 import {
+  getFeishuMessageReadUsers,
+  listFeishuBotChats,
+  listFeishuChatMembers,
+  sendFeishuAppMessage,
+} from '../feishu/feishuAppMessage'
+import {
+  getFeishuPushMessageById,
+  insertFeishuPushMessage,
+  listFeishuPushMessagesBySupplier,
+} from '../feishu/pushMessageRepository'
+import {
   buildOrderExceptionFeishuCard,
   buildOrderExceptionPushStats,
   generateOrderExceptionFeishuSummary,
@@ -275,8 +286,8 @@ type PushRichMessageBody = {
   content?: unknown
   /** data URL 或纯 base64 图片列表 */
   images?: unknown
-  /** 勾选「@ 相关人员」时，前端传入该供应商花名册第 1 位联系人的 open_id */
-  mentionOpenId?: unknown
+  /** 勾选「@ 相关人员」时，前端传入该供应商花名册里选中的全部联系人 open_id */
+  mentionOpenIds?: unknown
 }
 
 /** 富文本 + 多图合并为一条交互式卡片消息 */
@@ -298,7 +309,9 @@ feishuWebhookTestRouter.post('/push-rich-message', async (req: AuthenticatedRequ
   const content = typeof body.content === 'string' ? body.content.trim() : ''
   const imagesRaw = Array.isArray(body.images) ? body.images : []
   const images = imagesRaw.filter((x): x is string => typeof x === 'string' && x.trim() !== '')
-  const mentionOpenId = typeof body.mentionOpenId === 'string' ? body.mentionOpenId.trim() : ''
+  const mentionOpenIds = (Array.isArray(body.mentionOpenIds) ? body.mentionOpenIds : [])
+    .filter((x): x is string => typeof x === 'string' && x.trim() !== '')
+    .map((x) => x.trim())
 
   if (!content && images.length === 0) {
     res.status(400).json({ ok: false, error: '缺少文案与图片，无法推送' })
@@ -379,7 +392,7 @@ feishuWebhookTestRouter.post('/push-rich-message', async (req: AuthenticatedRequ
   const card = buildFleetRichMessageCard({
     content,
     imageKeys,
-    mention: mentionOpenId ? { name: '', openId: mentionOpenId } : null,
+    mentions: mentionOpenIds.map((openId) => ({ name: '', openId })),
   })
   const payload: Record<string, unknown> = { msg_type: 'interactive', card }
   if (secret) await appendWebhookSign(payload, secret)
@@ -708,4 +721,223 @@ feishuWebhookTestRouter.post('/push-order-exception', async (req: AuthenticatedR
   } catch {
     res.status(502).json({ ok: false, error: '推送卡片时发生网络错误，请稍后重试。' })
   }
+})
+
+/**
+ * 列出自建应用机器人当前所在的群，供前端「选群」下拉填 chat_id。
+ * 前提：该群已由群主/管理员手动把这个自建应用机器人拉进去。
+ */
+feishuWebhookTestRouter.get('/app-bot/chats', async (_req: AuthenticatedRequest, res: Response) => {
+  const tenantRes = await getFeishuTenantAccessToken()
+  if (!tenantRes.ok) {
+    if (tenantRes.reason === 'not_configured') {
+      res.status(400).json({ ok: false, error: '服务器未配置飞书开放接口凭证（FEISHU_APP_ID / FEISHU_APP_SECRET）。' })
+      return
+    }
+    res.status(502).json({ ok: false, error: tenantRes.error || '获取 tenant_access_token 失败' })
+    return
+  }
+  const result = await listFeishuBotChats(tenantRes.token)
+  if (!result.ok) {
+    res.status(502).json({ ok: false, error: result.error })
+    return
+  }
+  res.json({ ok: true, data: result.chats })
+})
+
+/**
+ * 列出某个群的全量成员（含外部联系人，不含机器人），供「@ 外部联系人」下拉选择，
+ * 免去手动查/填 open_id。
+ */
+feishuWebhookTestRouter.get('/app-bot/chats/:chatId/members', async (req: AuthenticatedRequest, res: Response) => {
+  const chatId = String(req.params.chatId ?? '').trim()
+  if (!chatId) {
+    res.status(400).json({ ok: false, error: '缺少 chatId' })
+    return
+  }
+  const tenantRes = await getFeishuTenantAccessToken()
+  if (!tenantRes.ok) {
+    if (tenantRes.reason === 'not_configured') {
+      res.status(400).json({ ok: false, error: '服务器未配置飞书开放接口凭证（FEISHU_APP_ID / FEISHU_APP_SECRET）。' })
+      return
+    }
+    res.status(502).json({ ok: false, error: tenantRes.error || '获取 tenant_access_token 失败' })
+    return
+  }
+  const result = await listFeishuChatMembers(tenantRes.token, chatId)
+  if (!result.ok) {
+    res.status(502).json({ ok: false, error: result.error })
+    return
+  }
+  res.json({ ok: true, data: result.members })
+})
+
+type PushRichMessageAppBody = {
+  pushScope?: unknown
+  supplierConfigId?: unknown
+  chatId?: unknown
+  pushLabel?: unknown
+  content?: unknown
+  images?: unknown
+  mentionOpenIds?: unknown
+}
+
+/**
+ * 富文本 + 多图，通过自建应用机器人（im/v1/messages）发送，而非 webhook。
+ * 仅当供应商配置了 chatId 时前端才会调用本接口；发送成功后落库 message_id，供「查看已读」使用。
+ */
+feishuWebhookTestRouter.post('/push-rich-message-app', async (req: AuthenticatedRequest, res: Response) => {
+  if (!requirePushApiScope(req, res)) return
+
+  const body = req.body as PushRichMessageAppBody
+  const chatId = typeof body.chatId === 'string' ? body.chatId.trim() : ''
+  if (!chatId) {
+    res.status(400).json({ ok: false, error: '缺少 chatId' })
+    return
+  }
+  const supplierConfigId =
+    typeof body.supplierConfigId === 'string' && body.supplierConfigId.trim() ? body.supplierConfigId.trim() : null
+  const pushLabel = typeof body.pushLabel === 'string' && body.pushLabel.trim() ? body.pushLabel.trim() : null
+
+  const content = typeof body.content === 'string' ? body.content.trim() : ''
+  const imagesRaw = Array.isArray(body.images) ? body.images : []
+  const images = imagesRaw.filter((x): x is string => typeof x === 'string' && x.trim() !== '')
+  const mentionOpenIds = (Array.isArray(body.mentionOpenIds) ? body.mentionOpenIds : [])
+    .filter((x): x is string => typeof x === 'string' && x.trim() !== '')
+    .map((x) => x.trim())
+
+  if (!content && images.length === 0) {
+    res.status(400).json({ ok: false, error: '缺少文案与图片，无法推送' })
+    return
+  }
+
+  const tenantRes = await getFeishuTenantAccessToken()
+  if (!tenantRes.ok) {
+    if (tenantRes.reason === 'not_configured') {
+      res.status(400).json({ ok: false, error: '服务器未配置飞书开放接口凭证（FEISHU_APP_ID / FEISHU_APP_SECRET）。' })
+      return
+    }
+    res.status(502).json({ ok: false, error: tenantRes.error || '获取 tenant_access_token 失败' })
+    return
+  }
+  const tenant = tenantRes.token
+
+  const imageKeys: string[] = []
+  for (let i = 0; i < images.length; i++) {
+    const upload = await uploadFeishuImageFromBase64(tenant, images[i]!)
+    if (!upload.ok) {
+      res.status(502).json({ ok: false, error: `第 ${i + 1} 张图片上传失败：${upload.error}` })
+      return
+    }
+    imageKeys.push(upload.imageKey)
+  }
+
+  const card = buildFleetRichMessageCard({
+    content,
+    imageKeys,
+    mentions: mentionOpenIds.map((openId) => ({ name: '', openId })),
+  })
+
+  const sendRes = await sendFeishuAppMessage(tenant, chatId, 'interactive', card)
+  if (!sendRes.ok) {
+    res.status(502).json({ ok: false, error: sendRes.error, feishu: sendRes.feishu })
+    return
+  }
+
+  // 消息已经发到群里了：记录 message_id 失败不该让这次推送在前端显示为失败（会被 withRetry 重试导致重复发送）
+  let pushMessageId: string | undefined
+  try {
+    const record = await insertFeishuPushMessage({
+      supplierConfigId,
+      chatId,
+      messageId: sendRes.messageId,
+      msgType: 'interactive',
+      pushLabel,
+      createdBy: req.authUser?.id ?? null,
+    })
+    pushMessageId = record.id
+  } catch (err) {
+    console.error('[push-rich-message-app] 记录 message_id 失败（不影响本次推送，仅无法查已读）:', err)
+  }
+
+  res.status(200).json({ ok: true, messageId: sendRes.messageId, pushMessageId })
+})
+
+/** 某供应商最近的应用机器人推送记录（供「查看已读」入口列表） */
+feishuWebhookTestRouter.get('/push-messages', async (req: AuthenticatedRequest, res: Response) => {
+  const supplierConfigId = typeof req.query.supplierConfigId === 'string' ? req.query.supplierConfigId.trim() : ''
+  if (!supplierConfigId) {
+    res.status(400).json({ ok: false, error: '缺少 supplierConfigId' })
+    return
+  }
+  try {
+    const rows = await listFeishuPushMessagesBySupplier(supplierConfigId)
+    res.json({ ok: true, data: rows })
+  } catch {
+    res.status(500).json({ ok: false, error: '读取推送记录失败' })
+  }
+})
+
+/** 查询某条应用机器人消息的已读/未读名单：已读来自 read_users，未读 = 群成员 - 已读 */
+feishuWebhookTestRouter.get('/push-messages/:id/read-status', async (req: AuthenticatedRequest, res: Response) => {
+  const id = String(req.params.id ?? '').trim()
+  let record: Awaited<ReturnType<typeof getFeishuPushMessageById>>
+  try {
+    record = await getFeishuPushMessageById(id)
+  } catch {
+    res.status(500).json({ ok: false, error: '读取推送记录失败' })
+    return
+  }
+  if (!record) {
+    res.status(404).json({ ok: false, error: '推送记录不存在' })
+    return
+  }
+
+  const tenantRes = await getFeishuTenantAccessToken()
+  if (!tenantRes.ok) {
+    if (tenantRes.reason === 'not_configured') {
+      res.status(400).json({ ok: false, error: '服务器未配置飞书开放接口凭证（FEISHU_APP_ID / FEISHU_APP_SECRET）。' })
+      return
+    }
+    res.status(502).json({ ok: false, error: tenantRes.error || '获取 tenant_access_token 失败' })
+    return
+  }
+  const tenant = tenantRes.token
+
+  const [readRes, membersRes] = await Promise.all([
+    getFeishuMessageReadUsers(tenant, record.messageId),
+    listFeishuChatMembers(tenant, record.chatId),
+  ])
+  if (!readRes.ok) {
+    res.status(502).json({ ok: false, error: readRes.error })
+    return
+  }
+  if (!membersRes.ok) {
+    res.status(502).json({ ok: false, error: membersRes.error })
+    return
+  }
+
+  const readIdSet = new Set(readRes.readUsers.map((u) => u.userId))
+  const memberMap = new Map(membersRes.members.map((m) => [m.userId, m.name]))
+
+  const readUsers = readRes.readUsers.map((u) => ({
+    userId: u.userId,
+    name: memberMap.get(u.userId) ?? '',
+    readAtMs: u.readAtMs,
+  }))
+  const unreadUsers = membersRes.members
+    .filter((m) => !readIdSet.has(m.userId))
+    .map((m) => ({ userId: m.userId, name: m.name }))
+
+  res.json({
+    ok: true,
+    data: {
+      messageId: record.messageId,
+      sentAt: record.createdAt,
+      totalMembers: membersRes.members.length,
+      readCount: readUsers.length,
+      readUsers,
+      unreadUsers,
+    },
+  })
 })

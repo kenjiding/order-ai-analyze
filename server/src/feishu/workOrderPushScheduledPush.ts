@@ -2,7 +2,7 @@ import { eq } from 'drizzle-orm'
 import { getDb, schema } from '../db'
 import type { WorkOrderPushSchedule, FleetSupplierPushConfig } from '../db/schema'
 import { buildWorkOrderPushCard } from './buildWorkOrderPushCard'
-import { parseSupplierMentionContacts, pickPrimaryMention } from './feishuMentionHelpers'
+import { parseSupplierMentionContacts, pickMentions } from './feishuMentionHelpers'
 import { computeFeishuWebhookSign, parseSafeWebhookUrl } from '../feishuWebhookHelpers'
 import { envFirst } from '../imile/shared'
 import { getGlobalImileToken } from './globalImileToken'
@@ -177,7 +177,7 @@ export async function executeWorkOrderPush(params: {
     }
 
     try {
-      const mention = mentionEnabled ? pickPrimaryMention(parseSupplierMentionContacts(config.mentionOpenIds)) : null
+      const mentions = pickMentions(parseSupplierMentionContacts(config.mentionOpenIds), Boolean(mentionEnabled))
       const card = buildWorkOrderPushCard({
         vendorName,
         baseDate,
@@ -185,7 +185,7 @@ export async function executeWorkOrderPush(params: {
         tz,
         summary,
         pushDescription: config.pushDescription,
-        mention,
+        mentions,
       })
       const ok = await pushCardToWebhook(config.webhookUrl, config.signingSecret, card)
       if (ok) {

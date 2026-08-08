@@ -168,6 +168,8 @@ export const fleetSupplierPushConfigs = pgTable(
     stationCode: varchar('station_code', { length: 64 }).notNull().default(''),
     webhookUrl: varchar('webhook_url', { length: 512 }).notNull().default(''),
     signingSecret: varchar('signing_secret', { length: 255 }),
+    /** 自建应用机器人所在群的 chat_id（选填）；配置后该供应商推送改走应用机器人消息接口，支持已读查询 */
+    chatId: varchar('chat_id', { length: 64 }),
     pushDescription: varchar('push_description', { length: 512 }),
     pushContent: text('push_content').notNull().default(''),
     /** 群内需要 @ 的外部联系人花名册 [{name, openId}]；各推送是否实际 @ 由各自 schedule 的 mentionEnabled 决定 */
@@ -178,6 +180,25 @@ export const fleetSupplierPushConfigs = pgTable(
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => [index('fleet_supplier_push_configs_region_idx').on(table.regionCode)],
+)
+
+/**
+ * 通过自建应用机器人（im/v1/messages）发出的消息记录：仅记录走 chatId 通道的推送，
+ * 用于后续调用 read_users 接口查询已读名单（飞书仅允许查发送后 7 天内的消息）。
+ */
+export const feishuPushMessages = pgTable(
+  'feishu_push_messages',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    supplierConfigId: uuid('supplier_config_id').references(() => fleetSupplierPushConfigs.id, { onDelete: 'cascade' }),
+    chatId: varchar('chat_id', { length: 64 }).notNull(),
+    messageId: varchar('message_id', { length: 64 }).notNull(),
+    msgType: varchar('msg_type', { length: 32 }).notNull(),
+    pushLabel: varchar('push_label', { length: 255 }),
+    createdBy: uuid('created_by').references(() => users.id, { onDelete: 'set null' }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [index('feishu_push_messages_supplier_config_idx').on(table.supplierConfigId)],
 )
 
 /** 各业务独立的供应商 config 启用列表（与 catalog 解耦） */
@@ -549,6 +570,8 @@ export type VendorShareLink = typeof vendorShareLinks.$inferSelect
 export type NewVendorShareLink = typeof vendorShareLinks.$inferInsert
 export type FleetSupplierPushConfig = typeof fleetSupplierPushConfigs.$inferSelect
 export type NewFleetSupplierPushConfig = typeof fleetSupplierPushConfigs.$inferInsert
+export type FeishuPushMessage = typeof feishuPushMessages.$inferSelect
+export type NewFeishuPushMessage = typeof feishuPushMessages.$inferInsert
 export type ExitAlarmSchedule = typeof exitAlarmSchedules.$inferSelect
 export type NewExitAlarmSchedule = typeof exitAlarmSchedules.$inferInsert
 export type ScheduledJobClaim = typeof scheduledJobClaims.$inferSelect

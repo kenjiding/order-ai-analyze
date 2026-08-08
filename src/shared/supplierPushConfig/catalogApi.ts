@@ -38,6 +38,7 @@ type ServerRow = {
   stationCode: string
   webhookUrl: string
   signingSecret: string | null
+  chatId: string | null
   pushDescription: string | null
   pushContent: string
   mentionOpenIds?: SupplierMentionContact[]
@@ -55,6 +56,7 @@ function toClient(row: ServerRow): SupplierPushConfig {
     stationCode: row.stationCode ?? '',
     webhookUrl: row.webhookUrl,
     signingSecret: row.signingSecret ?? undefined,
+    chatId: row.chatId ?? '',
     pushDescription: row.pushDescription,
     pushContent: row.pushContent,
     mentionOpenIds: row.mentionOpenIds ?? [],

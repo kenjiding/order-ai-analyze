@@ -86,8 +86,8 @@ export function buildDispatchAlarmCard(params: {
   pushDescription?: string | null
   /** 无登录落地页：查看并复制未达标运单号 */
   detailUrl?: string | null
-  /** 命中「是否 @ 相关人员」时传入，取供应商配置花名册第 1 位联系人 */
-  mention?: SupplierMentionContact | null
+  /** 命中「是否 @ 相关人员」时传入，供应商配置花名册里选中的全部联系人 */
+  mentions?: SupplierMentionContact[] | null
 }): Record<string, unknown> {
   const {
     vendorName,
@@ -102,7 +102,7 @@ export function buildDispatchAlarmCard(params: {
     alertThresholdPct,
     pushDescription,
     detailUrl,
-    mention,
+    mentions,
   } = params
   const elements: CardEl[] = []
 
@@ -163,7 +163,7 @@ export function buildDispatchAlarmCard(params: {
   elements.push(hr())
   elements.push(note(`${date} ${pushTime} · 24H delivery rate monitoring · iMile Warehouse Management System`))
 
-  const mentionLarkMd = buildMentionLarkMd(mention)
+  const mentionLarkMd = buildMentionLarkMd(mentions)
   if (mentionLarkMd) {
     elements.push(div(mentionLarkMd))
   }
