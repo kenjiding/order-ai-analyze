@@ -3,18 +3,27 @@ import { buildMentionLarkMd, type SupplierMentionContact } from './feishuMention
 
 type CardEl = Record<string, unknown>
 type MarkColor = 'red' | 'orange' | 'green' | 'grey' | 'blue'
-type BgStyle = 'default' | 'grey' | 'red' | 'orange' | 'green' | 'blue'
 
-function div(content: string): CardEl {
-  return { tag: 'div', text: { tag: 'lark_md', content } }
+/** 磁贴柔和背景色——用卡片色板的 -50 浅色阶，避免纯色背景对比度过强 */
+const TILE_BG: Record<MarkColor, string> = {
+  red: 'red-50',
+  orange: 'orange-50',
+  green: 'green-50',
+  grey: 'grey-50',
+  blue: 'blue-50',
+}
+
+function md(content: string, extra?: CardEl): CardEl {
+  return { tag: 'markdown', content, ...extra }
 }
 
 function hr(): CardEl {
   return { tag: 'hr' }
 }
 
-function note(content: string): CardEl {
-  return { tag: 'note', elements: [{ tag: 'lark_md', content }] }
+/** JSON 2.0 不再支持 note 组件，用小号灰字的 markdown 代替页脚说明文案 */
+function footerCaption(content: string): CardEl {
+  return md(colored(content, 'grey'), { text_size: 'notation' })
 }
 
 function colored(value: string, color: MarkColor): string {
@@ -22,7 +31,13 @@ function colored(value: string, color: MarkColor): string {
 }
 
 function columnSet(columns: CardEl[], flexMode: 'bisect' | 'trisect' = 'bisect'): CardEl {
-  return { tag: 'column_set', flex_mode: flexMode, background_style: 'default', columns }
+  return {
+    tag: 'column_set',
+    flex_mode: flexMode,
+    background_style: 'default',
+    horizontal_spacing: 'small',
+    columns,
+  }
 }
 
 function summaryTile(label: string, value: string, sub: string, valueColor: MarkColor): CardEl {
@@ -31,37 +46,31 @@ function summaryTile(label: string, value: string, sub: string, valueColor: Mark
     width: 'weighted',
     weight: 1,
     vertical_align: 'top',
-    background_style: 'grey',
+    background_style: TILE_BG[valueColor],
+    padding: '8px 10px 8px 10px',
     elements: [
-      div([`**${label}**`, colored(`**${value}**`, valueColor), colored(sub, 'grey')].join('\n')),
+      md([`**${label}**`, colored(`**${value}**`, valueColor), colored(sub, 'grey')].join('\n')),
     ],
   }
 }
 
-function zoneTile(
-  routeCode: string,
-  pending: number,
-  total: number,
-  bg: BgStyle,
-): CardEl {
+function zoneTile(routeCode: string, pending: number, total: number): CardEl {
   const exited = total - pending
   const rate = total > 0 ? ((exited / total) * 100).toFixed(0) : '0'
   const pendingColor: MarkColor =
     pending === 0 ? 'green' : pending >= 10 ? 'red' : pending >= 5 ? 'orange' : 'grey'
-  const lines = [
-    `**${routeCode}**`,
-    pending === 0
-      ? colored('✅ All exited', 'green')
-      : colored(`**${pending} not exited**`, pendingColor),
-    colored(`${exited} / ${total} total · ${rate}%`, 'grey'),
-  ]
+  const firstLine = `**${routeCode}** - ${
+    pending === 0 ? colored('✅ All exited', 'green') : colored(`${pending} not exited`, pendingColor)
+  }`
+  const secondLine = colored(`${exited} / ${total} total · ${rate}%`, 'grey')
   return {
     tag: 'column',
     width: 'weighted',
     weight: 1,
     vertical_align: 'top',
-    background_style: bg,
-    elements: [div(lines.join('\n'))],
+    background_style: 'default',
+    padding: '8px 10px 8px 10px',
+    elements: [md([firstLine, secondLine].join('\n'))],
   }
 }
 
@@ -74,7 +83,68 @@ export type ZoneStats = {
   total: number
 }
 
-/** 构建出仓告警飞书卡片（webhook interactive card v1） */
+export type WhitelistStat = {
+  totalWaybills: number
+  zoneBreakdown: Record<string, ZoneStats>
+}
+
+/**
+ * 路由码白名单出仓数据——折叠面板（collapsible_panel，JSON 2.0 结构），
+ * 追加在主卡片末尾，默认折叠（expanded: false），点击后展开；不再作为独立第二条消息推送。
+ * 统计对象是主卡片里被剔除的那部分白名单路由数据，展示口径与主卡片一致。
+ * 面板与标题背景取柔和的浅色阶（grey-50 / blue-50），与卡片其余磁贴的色调保持一致。
+ */
+function buildWhitelistPanel(whitelistStat: WhitelistStat): CardEl {
+  const { totalWaybills, zoneBreakdown } = whitelistStat
+  const totalPending = Object.values(zoneBreakdown).reduce((s, v) => s + v.pending, 0)
+  const exited = totalWaybills - totalPending
+  const exitRate = totalWaybills > 0 ? ((exited / totalWaybills) * 100).toFixed(1) : '0.0'
+  const exitRateNum = totalWaybills > 0 ? (exited / totalWaybills) * 100 : 0
+  const rateColor: MarkColor = exitRateNum >= 80 ? 'green' : exitRateNum >= 60 ? 'orange' : 'red'
+
+  const panelElements: CardEl[] = [
+    columnSet([
+      summaryTile('Exited by 11:00', `${exited}`, `${totalWaybills} waybills total`, 'blue'),
+      summaryTile('Whitelisted exit rate', `${exitRate}%`, `${exited} / ${totalWaybills} exited`, rateColor),
+    ]),
+  ]
+
+  const zones = Object.entries(zoneBreakdown).sort((a, b) => b[1].pending - a[1].pending)
+  if (zones.length === 0) {
+    panelElements.push(md(colored('No whitelisted route data', 'grey')))
+  } else {
+    for (let i = 0; i < zones.length; i += 2) {
+      const pair = zones.slice(i, i + 2)
+      const cols = pair.map(([code, { pending, total }]) => zoneTile(code, pending, total))
+      if (cols.length === 1) cols.push(emptyCol())
+      panelElements.push(columnSet(cols, 'bisect'))
+    }
+  }
+
+  return {
+    tag: 'collapsible_panel',
+    expanded: false,
+    background_color: 'blue-50',
+    header: {
+      title: {
+        tag: 'markdown',
+        content: `**🔓 Whitelisted routes (${totalWaybills} waybills · ${exitRate}% exited)**`,
+      },
+      background_color: 'blue-50',
+      vertical_align: 'center',
+      padding: '4px 0px 4px 8px',
+      icon: { tag: 'standard_icon', token: 'down-small-ccm_outlined', size: '16px 16px' },
+      icon_position: 'follow_text',
+      icon_expanded_angle: -180,
+    },
+    border: { color: 'grey-200', corner_radius: '5px' },
+    vertical_spacing: '2px',
+    padding: '4px 4px 4px 4px',
+    elements: panelElements,
+  }
+}
+
+/** 构建出仓告警飞书卡片（card JSON 2.0 结构） */
 export function buildExitAlarmCard(params: {
   vendorName: string
   stationCode: string
@@ -88,6 +158,8 @@ export function buildExitAlarmCard(params: {
   pushDescription?: string | null
   /** 命中「是否 @ 相关人员」时传入，供应商配置花名册里选中的全部联系人 */
   mentions?: SupplierMentionContact[] | null
+  /** 命中「路由码白名单数据推送」且有命中数据时传入，作为折叠面板追加在主卡片末尾，默认折叠 */
+  whitelistStat?: WhitelistStat | null
 }): Record<string, unknown> {
   const {
     vendorName,
@@ -100,6 +172,7 @@ export function buildExitAlarmCard(params: {
     totalWaybills,
     pushDescription,
     mentions,
+    whitelistStat,
   } = params
   const elements: CardEl[] = []
 
@@ -109,7 +182,7 @@ export function buildExitAlarmCard(params: {
 
   // 标题行
   elements.push(
-    div(
+    md(
       [
         `📦 **Responsible vendor: ${vendorName}**`,
         colored(`Station: ${stationCode} · ${date} ${pushTime} (${tzDisplayName(tz)})`, 'grey'),
@@ -145,28 +218,33 @@ export function buildExitAlarmCard(params: {
     .sort((a, b) => b[1].pending - a[1].pending)
 
   if (pendingZones.length === 0) {
-    elements.push(div(colored('✅ All routes meet pre-11am exit target', 'green')))
+    elements.push(md(colored('✅ All routes meet pre-11am exit target', 'green')))
   } else {
-    elements.push(div(`🚨 **Routes not exited by 11:00 (${pendingZones.length})** — Notify drivers now!`))
+    elements.push(md(`🚨 **Routes not exited by 11:00 (${pendingZones.length})** — Notify drivers now!`))
     for (let i = 0; i < pendingZones.length; i += 2) {
       const pair = pendingZones.slice(i, i + 2)
-      const cols = pair.map(([code, { pending, total }]) => zoneTile(code, pending, total, 'default'))
+      const cols = pair.map(([code, { pending, total }]) => zoneTile(code, pending, total))
       if (cols.length === 1) cols.push(emptyCol())
       elements.push(columnSet(cols, 'bisect'))
     }
   }
 
+  if (whitelistStat && whitelistStat.totalWaybills > 0) {
+    elements.push(hr())
+    elements.push(buildWhitelistPanel(whitelistStat))
+  }
+
   elements.push(hr())
-  elements.push(note(`${date} ${pushTime} · Pre-11am dispatch monitoring · iMile Warehouse Management System`))
+  elements.push(footerCaption(`${date} ${pushTime} · Pre-11am dispatch monitoring · iMile Warehouse Management System`))
 
   const mentionLarkMd = buildMentionLarkMd(mentions)
   if (mentionLarkMd) {
-    elements.push(div(mentionLarkMd))
+    elements.push(md(mentionLarkMd))
   }
 
   const isUrgent = totalPending > 0
   return {
-    config: { wide_screen_mode: true },
+    schema: '2.0',
     header: {
       template: isUrgent ? 'orange' : 'green',
       title: {
@@ -176,86 +254,10 @@ export function buildExitAlarmCard(params: {
           : `11 Am Dispatch on track - ${vendorName}`,
       },
     },
-    elements,
-  }
-}
-
-/**
- * 构建路由码白名单出仓数据卡片（webhook interactive card v1）——独立第二条消息，
- * 紧跟在 buildExitAlarmCard 主卡片之后推送，不与主卡片拼接；命中「路由码白名单数据推送」
- * 开关且确有白名单命中数据时才发送。展示口径与主卡片一致（总数/出仓量/出仓率 + 逐路由明细），
- * 但统计对象是主卡片里被剔除的那部分白名单路由数据。
- */
-export function buildExitAlarmWhitelistCard(params: {
-  vendorName: string
-  stationCode: string
-  date: string
-  pushTime: string
-  tz: AusTz
-  whitelistStat: { totalWaybills: number; zoneBreakdown: Record<string, ZoneStats> }
-  pushDescription?: string | null
-}): Record<string, unknown> {
-  const { vendorName, stationCode, date, pushTime, tz, whitelistStat, pushDescription } = params
-  const elements: CardEl[] = []
-
-  const totalWaybills = whitelistStat.totalWaybills
-  const totalPending = Object.values(whitelistStat.zoneBreakdown).reduce((s, v) => s + v.pending, 0)
-  const exited = totalWaybills - totalPending
-  const exitRate = totalWaybills > 0 ? ((exited / totalWaybills) * 100).toFixed(1) : '0.0'
-  const exitRateNum = totalWaybills > 0 ? (exited / totalWaybills) * 100 : 0
-  const rateColor: MarkColor = exitRateNum >= 80 ? 'green' : exitRateNum >= 60 ? 'orange' : 'red'
-
-  elements.push(
-    div(
-      [
-        `🔓 **Whitelisted routes: ${vendorName}**`,
-        colored(`Station: ${stationCode} · ${date} ${pushTime} (${tzDisplayName(tz)})`, 'grey'),
-        pushDescription ? colored(pushDescription, 'grey') : '',
-      ]
-        .filter(Boolean)
-        .join('\n'),
-    ),
-  )
-
-  elements.push(hr())
-
-  elements.push(
-    columnSet([
-      summaryTile('Exited by 11:00', `${exited}`, `${totalWaybills} waybills total`, 'blue'),
-      summaryTile('Whitelisted exit rate', `${exitRate}%`, `${exited} / ${totalWaybills} exited`, rateColor),
-    ]),
-  )
-
-  elements.push(hr())
-
-  const zones = Object.entries(whitelistStat.zoneBreakdown).sort((a, b) => b[1].pending - a[1].pending)
-  if (zones.length === 0) {
-    elements.push(div(colored('No whitelisted route data', 'grey')))
-  } else {
-    for (let i = 0; i < zones.length; i += 2) {
-      const pair = zones.slice(i, i + 2)
-      const cols = pair.map(([code, { pending, total }]) => zoneTile(code, pending, total, 'default'))
-      if (cols.length === 1) cols.push(emptyCol())
-      elements.push(columnSet(cols, 'bisect'))
-    }
-  }
-
-  elements.push(hr())
-  elements.push(
-    note(
-      `${date} ${pushTime} · Whitelisted route codes (excluded from pre-11am exit stats above) · iMile Warehouse Management System`,
-    ),
-  )
-
-  return {
-    config: { wide_screen_mode: true },
-    header: {
-      template: 'blue',
-      title: {
-        tag: 'plain_text',
-        content: `Whitelisted Routes - ${vendorName}`,
-      },
+    body: {
+      direction: 'vertical',
+      vertical_spacing: '2px',
+      elements,
     },
-    elements,
   }
 }

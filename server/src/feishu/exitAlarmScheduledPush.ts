@@ -1,7 +1,7 @@
 import { eq } from 'drizzle-orm'
 import { getDb, schema } from '../db'
 import type { ExitAlarmSchedule, FleetSupplierPushConfig } from '../db/schema'
-import { buildExitAlarmCard, buildExitAlarmWhitelistCard } from './buildExitAlarmCard'
+import { buildExitAlarmCard } from './buildExitAlarmCard'
 import { parseSupplierMentionContacts, pickMentions } from './feishuMentionHelpers'
 import { sendSupplierPushCard } from './sendSupplierPushCard'
 import { envFirst } from '../imile/shared'
@@ -198,6 +198,11 @@ export async function executeExitAlarmPush(params: {
       }
       const totalPending = Object.values(stat.zoneBreakdown).reduce((s, v) => s + v.pending, 0)
       const mentions = pickMentions(parseSupplierMentionContacts(config.mentionOpenIds), Boolean(mentionEnabled))
+      // 路由码白名单数据不再作为独立第二条消息推送，而是作为折叠面板追加在主卡片末尾，默认折叠。
+      const whitelistStat =
+        routeCodeWhitelistPushEnabled && stat.whitelistStat && stat.whitelistStat.totalWaybills > 0
+          ? stat.whitelistStat
+          : null
       const card = buildExitAlarmCard({
         vendorName,
         stationCode,
@@ -209,6 +214,7 @@ export async function executeExitAlarmPush(params: {
         totalWaybills: stat.totalWaybills,
         pushDescription: config.pushDescription,
         mentions,
+        whitelistStat,
       })
 
       unqualifiedByVendor.push({ vendorName, waybillNos: stat.unqualifiedWaybillNos })
@@ -222,34 +228,8 @@ export async function executeExitAlarmPush(params: {
         continue
       }
 
-      // 主卡片推送成功后，紧接着单独推第二条「路由码白名单数据」卡片，不与主卡片拼接；
-      // 白名单卡片推送失败也算本次未完成，释放去重槽交给下次重试，避免下次误判「已推送成功」而漏发白名单数据。
-      let whitelistOk = true
-      if (routeCodeWhitelistPushEnabled && stat.whitelistStat && stat.whitelistStat.totalWaybills > 0) {
-        const whitelistCard = buildExitAlarmWhitelistCard({
-          vendorName,
-          stationCode,
-          date,
-          pushTime,
-          tz,
-          whitelistStat: stat.whitelistStat,
-          pushDescription: config.pushDescription,
-        })
-        const whitelistSend = await sendSupplierPushCard(config, whitelistCard)
-        if (!whitelistSend.ok) {
-          whitelistOk = false
-          const detail = whitelistSend.reason ? ` (${whitelistSend.reason})` : ''
-          console.error(`${label} ✗ 白名单卡片推送失败: ${vendorName}${detail}`)
-          errors.push(`${vendorName}(白名单路由): ${whitelistSend.reason ?? '推送失败'}`)
-        }
-      }
-
-      if (whitelistOk) {
-        pushedCount++
-        console.log(`${label} ✓ 推送成功: ${vendorName}`)
-      } else if (dedupeJobKey) {
-        await releaseScheduledSlot(dedupeJobKey, perConfigDedupe!.slotKey)
-      }
+      pushedCount++
+      console.log(`${label} ✓ 推送成功: ${vendorName}`)
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err)
       console.error(`${label} ✗ 处理异常: ${vendorName} (${msg})`)
