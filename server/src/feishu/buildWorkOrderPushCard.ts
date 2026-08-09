@@ -7,16 +7,17 @@ type MarkColor = 'red' | 'orange' | 'green' | 'grey' | 'blue'
 
 const MAX_TICKET_LINES = 15
 
-function div(content: string): CardEl {
-  return { tag: 'div', text: { tag: 'lark_md', content } }
+function md(content: string): CardEl {
+  return { tag: 'markdown', content }
 }
 
 function hr(): CardEl {
   return { tag: 'hr' }
 }
 
-function note(content: string): CardEl {
-  return { tag: 'note', elements: [{ tag: 'lark_md', content }] }
+/** JSON 2.0 不再支持 note 组件，用小号灰字的 markdown 代替页脚说明文案 */
+function footerCaption(content: string): CardEl {
+  return { tag: 'markdown', content: colored(content, 'grey'), text_size: 'notation' }
 }
 
 function colored(value: string, color: MarkColor): string {
@@ -25,18 +26,15 @@ function colored(value: string, color: MarkColor): string {
 
 const PCS_TICKET_WORKBENCH_URL = 'https://pcs.imile.com/#/PCSTicketWorkbench'
 
-/** 自定义机器人 v1 卡片：用 action + button.url 打开 PCS 工单工作台（markdown 链接不可跳转） */
-function openUrlAction(url: string, label: string): CardEl {
+/** 自定义机器人 card JSON 2.0：button + behaviors.open_url 打开 PCS 工单工作台（markdown 链接不可跳转） */
+function openUrlButton(url: string, label: string): CardEl {
   return {
-    tag: 'action',
-    actions: [
-      {
-        tag: 'button',
-        text: { tag: 'plain_text', content: label },
-        type: 'primary',
-        url,
-      },
-    ],
+    tag: 'button',
+    text: { tag: 'plain_text', content: label },
+    type: 'primary_filled',
+    width: 'default',
+    size: 'medium',
+    behaviors: [{ type: 'open_url', default_url: url, pc_url: url, ios_url: url, android_url: url }],
   }
 }
 
@@ -61,7 +59,7 @@ function formatDeadline(expectHandleTime: string, tz: AusTz): string {
 }
 
 /**
- * 构建工单推送飞书卡片（webhook interactive card v1）。一家供应商一张卡片，
+ * 构建工单推送飞书卡片（card JSON 2.0 结构）。一家供应商一张卡片，
  * 只在该供应商有未处理工单时才会构建/推送（totalCount 恒 > 0，无“无异常”态）。
  */
 export function buildWorkOrderPushCard(params: {
@@ -82,7 +80,7 @@ export function buildWorkOrderPushCard(params: {
   const elements: CardEl[] = []
 
   if (pushDescription) {
-    elements.push(div(colored(pushDescription, 'grey')))
+    elements.push(md(colored(pushDescription, 'grey')))
     elements.push(hr())
   }
 
@@ -95,7 +93,7 @@ export function buildWorkOrderPushCard(params: {
     .join(' ｜ ')
 
   elements.push(
-    div(
+    md(
       [`**Unresolved tickets** ${colored(`**${totalCount}**`, 'red')}`, breakdown]
         .filter(Boolean)
         .join(' ｜ '),
@@ -125,21 +123,21 @@ export function buildWorkOrderPushCard(params: {
         }
         return `**${TYPE_LABEL[type]} (${group.length})**\n${lines.join('\n')}`
       })
-    elements.push(div(blocks.join('\n\n')))
+    elements.push(md(blocks.join('\n\n')))
   }
 
   elements.push(hr())
-  elements.push(div(colored('⚠️ Overdue tickets will incur penalty/compensation fees. Please handle immediately.', 'red')))
-  elements.push(openUrlAction(PCS_TICKET_WORKBENCH_URL, 'Click to Resolve Tickets'))
-  elements.push(note(`${baseDate} ${pushTime} (${tzDisplayName(tz)}) · Ticket push · iMile Warehouse Management System`))
+  elements.push(md(colored('⚠️ Overdue tickets will incur penalty/compensation fees. Please handle immediately.', 'red')))
+  elements.push(openUrlButton(PCS_TICKET_WORKBENCH_URL, 'Click to Resolve Tickets'))
+  elements.push(footerCaption(`${baseDate} ${pushTime} (${tzDisplayName(tz)}) · Ticket push · iMile Warehouse Management System`))
 
   const mentionLarkMd = buildMentionLarkMd(mentions)
   if (mentionLarkMd) {
-    elements.push(div(mentionLarkMd))
+    elements.push(md(mentionLarkMd))
   }
 
   return {
-    config: { wide_screen_mode: true },
+    schema: '2.0',
     header: {
       template: 'purple',
       title: {
@@ -147,6 +145,9 @@ export function buildWorkOrderPushCard(params: {
         content: `Unresolved Ticket Alert - ${vendorName}`,
       },
     },
-    elements,
+    body: {
+      direction: 'vertical',
+      elements,
+    },
   }
 }

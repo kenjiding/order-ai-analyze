@@ -7,16 +7,26 @@ type MarkColor = 'red' | 'orange' | 'green' | 'grey' | 'blue'
 
 const MAX_DRIVER_LINES = 20
 
-function div(content: string): CardEl {
-  return { tag: 'div', text: { tag: 'lark_md', content } }
+/** 磁贴柔和背景色——用卡片色板的 -50 浅色阶，避免纯色背景对比度过强 */
+const TILE_BG: Record<MarkColor, string> = {
+  red: 'red-50',
+  orange: 'orange-50',
+  green: 'green-50',
+  grey: 'grey-50',
+  blue: 'blue-50',
+}
+
+function md(content: string): CardEl {
+  return { tag: 'markdown', content }
 }
 
 function hr(): CardEl {
   return { tag: 'hr' }
 }
 
-function note(content: string): CardEl {
-  return { tag: 'note', elements: [{ tag: 'lark_md', content }] }
+/** JSON 2.0 不再支持 note 组件，用小号灰字的 markdown 代替页脚说明文案 */
+function footerCaption(content: string): CardEl {
+  return { tag: 'markdown', content: colored(content, 'grey'), text_size: 'notation' }
 }
 
 function colored(value: string, color: MarkColor): string {
@@ -33,21 +43,24 @@ function shortDriverName(courierName: string): string {
 }
 
 function columnSet(columns: CardEl[]): CardEl {
-  return { tag: 'column_set', flex_mode: 'trisect', background_style: 'default', columns }
+  return {
+    tag: 'column_set',
+    flex_mode: 'trisect',
+    background_style: 'default',
+    horizontal_spacing: 'small',
+    columns,
+  }
 }
 
-/** 自定义机器人 v1 卡片：用 action + button.url 打开落地页（markdown 链接不可跳转） */
-function openUrlAction(url: string, label: string): CardEl {
+/** 自定义机器人 card JSON 2.0：button + behaviors.open_url 打开落地页（markdown 链接不可跳转） */
+function openUrlButton(url: string, label: string): CardEl {
   return {
-    tag: 'action',
-    actions: [
-      {
-        tag: 'button',
-        text: { tag: 'plain_text', content: label },
-        type: 'primary',
-        url,
-      },
-    ],
+    tag: 'button',
+    text: { tag: 'plain_text', content: label },
+    type: 'primary_filled',
+    width: 'default',
+    size: 'medium',
+    behaviors: [{ type: 'open_url', default_url: url, pc_url: url, ios_url: url, android_url: url }],
   }
 }
 
@@ -57,13 +70,14 @@ function summaryTile(label: string, value: string, sub: string, valueColor: Mark
     width: 'weighted',
     weight: 1,
     vertical_align: 'top',
-    background_style: 'grey',
-    elements: [div([`**${label}**`, colored(`**${value}**`, valueColor), colored(sub, 'grey')].join('\n'))],
+    background_style: TILE_BG[valueColor],
+    padding: '8px 10px 8px 10px',
+    elements: [md([`**${label}**`, colored(`**${value}**`, valueColor), colored(sub, 'grey')].join('\n'))],
   }
 }
 
 /**
- * 构建 24 小时签收率告警飞书卡片（webhook interactive card v1）。
+ * 构建 24 小时签收率告警飞书卡片（card JSON 2.0 结构）。
  * “派签率”口径实为“24小时内签收率”（deliveryTime 起 24h 内 signDate/lastProblemDate），
  * 卡片英文措辞按“delivery/signed”表达，不用字面 dispatch。
  * 达标数据来自「供应商数据分析」封装复用出来的 aggregateDispatch24hByVendor
@@ -112,7 +126,7 @@ export function buildDispatchAlarmCard(params: {
   const isAlert = total > 0 && rate < alertThresholdPct
 
   elements.push(
-    div(
+    md(
       [
         `📮 **Responsible vendor: ${vendorName}**`,
         colored(`Station: ${stationCode} · ${date} ${pushTime} (${tzDisplayName(tz)})`, 'grey'),
@@ -137,7 +151,7 @@ export function buildDispatchAlarmCard(params: {
 
   const unmetDrivers = drivers.filter((d) => d.total - d.met > 0)
   if (unmetDrivers.length === 0) {
-    elements.push(div(colored('✅ All waybills signed within 24H', 'green')))
+    elements.push(md(colored('✅ All waybills signed within 24H', 'green')))
   } else {
     const shown = unmetDrivers.slice(0, MAX_DRIVER_LINES)
     const lines = shown.map((d) => {
@@ -151,25 +165,25 @@ export function buildDispatchAlarmCard(params: {
       lines.push(`及其他 ${unmetDrivers.length - MAX_DRIVER_LINES} 位司机`)
     }
     elements.push(
-      div(`🚨 **Drivers with waybills not signed within 24H (${unmetDrivers.length})**\n${lines.join('\n')}`),
+      md(`🚨 **Drivers with waybills not signed within 24H (${unmetDrivers.length})**\n${lines.join('\n')}`),
     )
   }
 
   if (detailUrl && (unmet > 0 || problemCount > 0)) {
     elements.push(hr())
-    elements.push(openUrlAction(detailUrl, 'Click to View Details'))
+    elements.push(openUrlButton(detailUrl, 'Click to View Details'))
   }
 
   elements.push(hr())
-  elements.push(note(`${date} ${pushTime} · 24H delivery rate monitoring · iMile Warehouse Management System`))
+  elements.push(footerCaption(`${date} ${pushTime} · 24H delivery rate monitoring · iMile Warehouse Management System`))
 
   const mentionLarkMd = buildMentionLarkMd(mentions)
   if (mentionLarkMd) {
-    elements.push(div(mentionLarkMd))
+    elements.push(md(mentionLarkMd))
   }
 
   return {
-    config: { wide_screen_mode: true },
+    schema: '2.0',
     header: {
       template: isAlert ? 'blue' : 'green',
       title: {
@@ -179,6 +193,10 @@ export function buildDispatchAlarmCard(params: {
           : `24-Hour Delivery on track - ${vendorName}`,
       },
     },
-    elements,
+    body: {
+      direction: 'vertical',
+      vertical_spacing: '6px',
+      elements,
+    },
   }
 }

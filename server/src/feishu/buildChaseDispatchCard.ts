@@ -5,38 +5,36 @@ import { buildMentionLarkMd, type SupplierMentionContact } from './feishuMention
 type CardEl = Record<string, unknown>
 type MarkColor = 'red' | 'orange' | 'green' | 'grey' | 'blue'
 
-function div(content: string): CardEl {
-  return { tag: 'div', text: { tag: 'lark_md', content } }
+function md(content: string): CardEl {
+  return { tag: 'markdown', content }
 }
 
 function hr(): CardEl {
   return { tag: 'hr' }
 }
 
-function note(content: string): CardEl {
-  return { tag: 'note', elements: [{ tag: 'lark_md', content }] }
+/** JSON 2.0 不再支持 note 组件，用小号灰字的 markdown 代替页脚说明文案 */
+function footerCaption(content: string): CardEl {
+  return { tag: 'markdown', content: colored(content, 'grey'), text_size: 'notation' }
 }
 
 function colored(value: string, color: MarkColor): string {
   return `<font color='${color}'>${value}</font>`
 }
 
-/** 自定义机器人 v1 卡片：用 action + button.url 打开落地页（markdown 链接不可跳转） */
-function openUrlAction(url: string, label: string): CardEl {
+/** 自定义机器人 card JSON 2.0：button + behaviors.open_url 打开落地页（markdown 链接不可跳转） */
+function openUrlButton(url: string, label: string): CardEl {
   return {
-    tag: 'action',
-    actions: [
-      {
-        tag: 'button',
-        text: { tag: 'plain_text', content: label },
-        type: 'primary',
-        url,
-      },
-    ],
+    tag: 'button',
+    text: { tag: 'plain_text', content: label },
+    type: 'primary_filled',
+    width: 'default',
+    size: 'medium',
+    behaviors: [{ type: 'open_url', default_url: url, pc_url: url, ios_url: url, android_url: url }],
   }
 }
 
-/** 构建催派推送飞书卡片（webhook interactive card v1）。一家供应商一张卡片 */
+/** 构建催派推送飞书卡片（card JSON 2.0 结构）。一家供应商一张卡片 */
 export function buildChaseDispatchCard(params: {
   vendorName: string
   baseDate: string
@@ -56,7 +54,7 @@ export function buildChaseDispatchCard(params: {
 
   // 供应商名称已在卡片 header 展示，此处仅可选地展示推送说明
   if (pushDescription) {
-    elements.push(div(colored(pushDescription, 'grey')))
+    elements.push(md(colored(pushDescription, 'grey')))
     elements.push(hr())
   }
 
@@ -67,7 +65,7 @@ export function buildChaseDispatchCard(params: {
     .map((b) => `${b.label.replace(/\s*天$/, '')} days: ${colored(String(b.count), 'red')}`)
     .join(' ｜ ')
   elements.push(
-    div(
+    md(
       [
         `**Total stagnant orders** ${colored(`**${totalStagnant}**`, totalColor)}`,
         bucketInline,
@@ -87,33 +85,33 @@ export function buildChaseDispatchCard(params: {
         .join('\n')
       return `**${b.bucket} days:**\n${driverLines}`
     })
-    elements.push(div(`**By driver**\n${bucketBlocks.join('\n')}`))
+    elements.push(md(`**By driver**\n${bucketBlocks.join('\n')}`))
   }
 
   if (detailUrl && totalStagnant > 0) {
     elements.push(hr())
-    elements.push(openUrlAction(detailUrl, 'Click to View Details'))
+    elements.push(openUrlButton(detailUrl, 'Click to View Details'))
   }
 
   if (totalStagnant === 0) {
     elements.push(hr())
-    elements.push(div(colored('✅ No stagnant orders', 'green')))
+    elements.push(md(colored('✅ No stagnant orders', 'green')))
   } else {
     elements.push(hr())
-    elements.push(div(colored('⚠️ Overdue parcels will incur fees. Please dispatch or return immediately.', 'red')))
+    elements.push(md(colored('⚠️ Overdue parcels will incur fees. Please dispatch or return immediately.', 'red')))
   }
 
   elements.push(hr())
-  elements.push(note(`${baseDate} ${pushTime} (${tzDisplayName(tz)}) · Long time - No return warehouse or Overdue Deliveries · iMile Warehouse Management System`))
+  elements.push(footerCaption(`${baseDate} ${pushTime} (${tzDisplayName(tz)}) · Long time - No return warehouse or Overdue Deliveries · iMile Warehouse Management System`))
 
   const mentionLarkMd = buildMentionLarkMd(mentions)
   if (mentionLarkMd) {
-    elements.push(div(mentionLarkMd))
+    elements.push(md(mentionLarkMd))
   }
 
   const isUrgent = totalStagnant > 0
   return {
-    config: { wide_screen_mode: true },
+    schema: '2.0',
     header: {
       template: isUrgent ? 'red' : 'green',
       title: {
@@ -123,6 +121,9 @@ export function buildChaseDispatchCard(params: {
           : `🚚✅ No stagnant orders - ${vendorName}`,
       },
     },
-    elements,
+    body: {
+      direction: 'vertical',
+      elements,
+    },
   }
 }
