@@ -4,14 +4,13 @@ import { loadSupplierPushCatalog } from '../../shared/supplierPushConfig/catalog
 import { supplierDisplayName } from '../../shared/supplierPushConfig/display'
 import type { SupplierPushConfig } from '../../shared/supplierPushConfig/types'
 import { showToast } from '../../utils/toast'
+import { groupKey, groupRowsByDate, groupRowsByLabel, mergeReadStatuses, type LabelGroup } from './pushEngagementGrouping'
 import {
   fetchPushEngagementList,
   fetchPushMessageClickEvents,
   fetchPushMessageReadStatus,
 } from './pushEngagementApi'
-import type { PushClickEvent, PushEngagementRow, PushReadStatus } from './pushEngagementTypes'
-
-type DetailState<T> = { status: 'loading' } | { status: 'error'; error: string } | { status: 'ready'; data: T }
+import type { DetailState, PushClickEvent, PushEngagementRow, PushReadStatus } from './pushEngagementTypes'
 
 export function usePushEngagementMonitorPage() {
   const [dateRange, setDateRange] = useState<[Dayjs, Dayjs]>([dayjs().subtract(6, 'day').startOf('day'), dayjs().endOf('day')])
@@ -26,9 +25,9 @@ export function usePushEngagementMonitorPage() {
   const [rowsLoading, setRowsLoading] = useState(true)
   const [rowsError, setRowsError] = useState<string | null>(null)
 
-  const [expandedRowKeys, setExpandedRowKeys] = useState<string[]>([])
-  const [readStatusById, setReadStatusById] = useState<Record<string, DetailState<PushReadStatus>>>({})
-  const [clickEventsById, setClickEventsById] = useState<Record<string, DetailState<PushClickEvent[]>>>({})
+  const [expandedDates, setExpandedDates] = useState<string[]>([])
+  const [readStatusByGroup, setReadStatusByGroup] = useState<Record<string, DetailState<PushReadStatus>>>({})
+  const [clickEventsByGroup, setClickEventsByGroup] = useState<Record<string, DetailState<PushClickEvent[]>>>({})
 
   useEffect(() => {
     void (async () => {
@@ -62,6 +61,9 @@ export function usePushEngagementMonitorPage() {
     // pushLabel 多选（>1 项）时后端只支持单值过滤，前端补一道过滤
     const filtered = pushLabels.length > 1 ? res.data.filter((r) => r.pushLabel && pushLabels.includes(r.pushLabel)) : res.data
     setRows(filtered)
+    setExpandedDates([])
+    setReadStatusByGroup({})
+    setClickEventsByGroup({})
   }, [dateRange, pushLabels, supplierConfigId, regionCode])
 
   useEffect(() => {
@@ -77,36 +79,59 @@ export function usePushEngagementMonitorPage() {
     [suppliers],
   )
 
-  const loadReadStatus = useCallback((row: PushEngagementRow) => {
-    setReadStatusById((prev) => ({ ...prev, [row.id]: { status: 'loading' } }))
+  const dateGroups = useMemo(() => groupRowsByDate(rows), [rows])
+
+  const loadLabelGroupDetail = useCallback((date: string, labelGroup: LabelGroup) => {
+    const key = groupKey(date, labelGroup.pushLabel)
+    setReadStatusByGroup((prev) => ({ ...prev, [key]: { status: 'loading' } }))
+    setClickEventsByGroup((prev) => ({ ...prev, [key]: { status: 'loading' } }))
+
     void (async () => {
-      const res = await fetchPushMessageReadStatus(row.id)
-      setReadStatusById((prev) => ({
-        ...prev,
-        [row.id]: res.ok ? { status: 'ready', data: res.data } : { status: 'error', error: res.error },
-      }))
+      const nonExpiredRows = labelGroup.rows.filter((r) => !r.readWindowExpired)
+      if (nonExpiredRows.length === 0) {
+        setReadStatusByGroup((prev) => ({ ...prev, [key]: { status: 'expired' } }))
+        return
+      }
+      const results = await Promise.all(nonExpiredRows.map((r) => fetchPushMessageReadStatus(r.id)))
+      const ok = results.filter((r): r is { ok: true; data: PushReadStatus } => r.ok)
+      if (ok.length === 0) {
+        const firstError = results.find((r) => !r.ok)
+        setReadStatusByGroup((prev) => ({
+          ...prev,
+          [key]: { status: 'error', error: firstError && !firstError.ok ? firstError.error : '查询已读状态失败。' },
+        }))
+        return
+      }
+      setReadStatusByGroup((prev) => ({ ...prev, [key]: { status: 'ready', data: mergeReadStatuses(ok.map((r) => r.data)) } }))
+    })()
+
+    void (async () => {
+      const results = await Promise.all(labelGroup.rows.map((r) => fetchPushMessageClickEvents(r.id)))
+      const ok = results.filter((r): r is { ok: true; data: PushClickEvent[] } => r.ok)
+      if (ok.length === 0 && results.length > 0) {
+        const firstError = results[0]
+        setClickEventsByGroup((prev) => ({
+          ...prev,
+          [key]: { status: 'error', error: !firstError.ok ? firstError.error : '查询点击记录失败。' },
+        }))
+        return
+      }
+      setClickEventsByGroup((prev) => ({ ...prev, [key]: { status: 'ready', data: ok.flatMap((r) => r.data) } }))
     })()
   }, [])
 
-  const loadClickEvents = useCallback((row: PushEngagementRow) => {
-    setClickEventsById((prev) => ({ ...prev, [row.id]: { status: 'loading' } }))
-    void (async () => {
-      const res = await fetchPushMessageClickEvents(row.id)
-      setClickEventsById((prev) => ({
-        ...prev,
-        [row.id]: res.ok ? { status: 'ready', data: res.data } : { status: 'error', error: res.error },
-      }))
-    })()
-  }, [])
-
-  const onExpandRow = useCallback(
-    (expanded: boolean, row: PushEngagementRow) => {
-      setExpandedRowKeys((prev) => (expanded ? [...prev, row.id] : prev.filter((id) => id !== row.id)))
+  const onExpandDate = useCallback(
+    (expanded: boolean, date: string) => {
+      setExpandedDates((prev) => (expanded ? [...prev, date] : prev.filter((d) => d !== date)))
       if (!expanded) return
-      if (!row.readWindowExpired && !readStatusById[row.id]) loadReadStatus(row)
-      if (!clickEventsById[row.id]) loadClickEvents(row)
+      const group = dateGroups.find((g) => g.date === date)
+      if (!group) return
+      for (const labelGroup of groupRowsByLabel(group.rows)) {
+        const key = groupKey(date, labelGroup.pushLabel)
+        if (!readStatusByGroup[key] && !clickEventsByGroup[key]) loadLabelGroupDetail(date, labelGroup)
+      }
     },
-    [readStatusById, clickEventsById, loadReadStatus, loadClickEvents],
+    [dateGroups, readStatusByGroup, clickEventsByGroup, loadLabelGroupDetail],
   )
 
   const summary = useMemo(() => {
@@ -130,14 +155,14 @@ export function usePushEngagementMonitorPage() {
     setRegionCode,
     supplierOptions,
     suppliersLoading,
-    rows,
     rowsLoading,
     rowsError,
     reload,
-    expandedRowKeys,
-    onExpandRow,
-    readStatusById,
-    clickEventsById,
+    dateGroups,
+    expandedDates,
+    onExpandDate,
+    readStatusByGroup,
+    clickEventsByGroup,
     summary,
   }
 }

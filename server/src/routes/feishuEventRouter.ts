@@ -1,11 +1,21 @@
 import { Router } from 'express'
 import { CardActionHandler, adaptExpress } from '@larksuiteoapi/node-sdk'
-import type { InteractiveCardActionEvent } from '@larksuiteoapi/node-sdk'
 import { getFeishuVerificationToken } from '../feishuServerEnv'
 import { insertFeishuCardClickEvent } from '../feishu/feishuCardClickEventRepository'
 
 function stringValue(v: unknown): string {
   return typeof v === 'string' ? v : ''
+}
+
+/**
+ * card JSON 2.0 的 card.action.trigger 事件实际结构（SDK 自带的 InteractiveCardActionEvent
+ * 类型是旧版 schema 1.0 回调的扁平结构 open_id/open_message_id，对不上，故自定义）。
+ * @see https://open.feishu.cn/document/uAjLw4CM/ukTMukTMukTM/reference/card-callback-communication/callback-return-value
+ */
+interface CardActionTriggerEvent {
+  operator?: { open_id?: string; user_id?: string; tenant_key?: string }
+  context?: { open_message_id?: string; open_chat_id?: string }
+  action?: { value?: Record<string, unknown>; tag?: string; option?: string }
 }
 
 /**
@@ -17,9 +27,9 @@ function stringValue(v: unknown): string {
  */
 const cardActionHandler = new CardActionHandler(
   { verificationToken: getFeishuVerificationToken() ?? '' },
-  async (data: InteractiveCardActionEvent) => {
-    const openId = data.open_id
-    const messageId = data.open_message_id
+  async (data: CardActionTriggerEvent) => {
+    const openId = data.operator?.open_id
+    const messageId = data.context?.open_message_id
     const value = (data.action?.value ?? {}) as Record<string, unknown>
     const pushType = stringValue(value.pushType)
     const actionType = stringValue(value.actionType)

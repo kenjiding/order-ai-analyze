@@ -58,12 +58,12 @@ export default function PushEngagementMonitorPage() {
           <Alert type="error" showIcon message={page.rowsError} className="mb-4" />
         ) : null}
         <PushEngagementTable
-          rows={page.rows}
+          dateGroups={page.dateGroups}
           loading={page.rowsLoading}
-          expandedRowKeys={page.expandedRowKeys}
-          onExpandRow={page.onExpandRow}
-          readStatusById={page.readStatusById}
-          clickEventsById={page.clickEventsById}
+          expandedDates={page.expandedDates}
+          onExpandDate={page.onExpandDate}
+          readStatusByGroup={page.readStatusByGroup}
+          clickEventsByGroup={page.clickEventsByGroup}
         />
       </section>
     </div>

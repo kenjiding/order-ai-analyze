@@ -1,30 +1,8 @@
 import { Empty, Table, Tag } from 'antd'
 import type { ColumnsType } from 'antd/es/table'
-import { AU_REGIONS } from '../../ExitAlarm/exitAlarmTypes'
-import { clickActionLabel, type PushClickEvent, type PushEngagementRow, type PushReadStatus } from '../pushEngagementTypes'
-import { ExpandedRowContent } from './ExpandedRowContent'
-
-type DetailState<T> = { status: 'loading' } | { status: 'error'; error: string } | { status: 'ready'; data: T }
-
-const PUSH_LABEL_COLOR: Record<string, string> = {
-  '11点出仓告警': 'orange',
-  '24H派签告警': 'blue',
-  催派推送: 'volcano',
-  工单推送: 'purple',
-}
-
-function regionLabel(code: string): string {
-  if (!code) return '—'
-  if (code === 'global') return '全部州'
-  return AU_REGIONS.find((r) => r.code === code)?.name ?? code
-}
-
-function formatDateTime(iso: string): string {
-  const d = new Date(iso)
-  if (Number.isNaN(d.getTime())) return iso
-  const pad = (n: number) => String(n).padStart(2, '0')
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`
-}
+import { groupRowsByLabel, type DateGroup } from '../pushEngagementGrouping'
+import { clickActionLabel, PUSH_LABEL_COLOR, type DetailState, type PushClickEvent, type PushReadStatus } from '../pushEngagementTypes'
+import { PushLabelBreakdown } from './PushLabelBreakdown'
 
 function ClicksCell({ clicks }: { clicks: Record<string, number> }) {
   const entries = Object.entries(clicks).filter(([, n]) => n > 0)
@@ -41,68 +19,73 @@ function ClicksCell({ clicks }: { clicks: Record<string, number> }) {
 }
 
 export function PushEngagementTable({
-  rows,
+  dateGroups,
   loading,
-  expandedRowKeys,
-  onExpandRow,
-  readStatusById,
-  clickEventsById,
+  expandedDates,
+  onExpandDate,
+  readStatusByGroup,
+  clickEventsByGroup,
 }: {
-  rows: PushEngagementRow[]
+  dateGroups: DateGroup[]
   loading: boolean
-  expandedRowKeys: string[]
-  onExpandRow: (expanded: boolean, row: PushEngagementRow) => void
-  readStatusById: Record<string, DetailState<PushReadStatus>>
-  clickEventsById: Record<string, DetailState<PushClickEvent[]>>
+  expandedDates: string[]
+  onExpandDate: (expanded: boolean, date: string) => void
+  readStatusByGroup: Record<string, DetailState<PushReadStatus>>
+  clickEventsByGroup: Record<string, DetailState<PushClickEvent[]>>
 }) {
-  const columns: ColumnsType<PushEngagementRow> = [
+  const columns: ColumnsType<DateGroup> = [
     {
-      title: '州/区域',
-      dataIndex: 'regionCode',
-      width: 110,
-      render: (code: string) => <Tag>{regionLabel(code)}</Tag>,
+      title: '日期',
+      dataIndex: 'date',
+      width: 130,
+      render: (date: string) => <span className="font-medium text-slate-800">{date}</span>,
     },
     {
-      title: '供应商',
-      dataIndex: 'vendorName',
-      render: (name: string) => <span className="font-medium text-slate-800">{name || '—'}</span>,
+      title: '推送条数',
+      dataIndex: 'messageCount',
+      width: 100,
     },
     {
       title: '推送类型',
-      dataIndex: 'pushLabel',
-      width: 130,
-      render: (label: string | null) =>
-        label ? <Tag color={PUSH_LABEL_COLOR[label] ?? 'default'}>{label}</Tag> : <span className="text-slate-400">—</span>,
+      dataIndex: 'labels',
+      render: (labels: string[]) => (
+        <div className="flex flex-wrap gap-1">
+          {labels.map((label) => (
+            <Tag key={label} color={PUSH_LABEL_COLOR[label] ?? 'default'}>
+              {label}
+            </Tag>
+          ))}
+        </div>
+      ),
     },
     {
-      title: '推送时间',
-      dataIndex: 'createdAt',
-      width: 160,
-      render: (iso: string) => <span className="text-sm text-slate-600">{formatDateTime(iso)}</span>,
-    },
-    {
-      title: '点击',
-      dataIndex: 'clicks',
-      width: 160,
+      title: '累计点击',
+      dataIndex: 'clicksByAction',
+      width: 200,
       render: (clicks: Record<string, number>) => <ClicksCell clicks={clicks} />,
     },
   ]
 
   return (
-    <Table<PushEngagementRow>
-      rowKey="id"
+    <Table<DateGroup>
+      rowKey="date"
       columns={columns}
-      dataSource={rows}
+      dataSource={dateGroups}
       loading={loading}
       locale={{ emptyText: <Empty description="所选条件下暂无推送记录" /> }}
       expandable={{
-        expandedRowKeys,
-        onExpand: onExpandRow,
-        expandedRowRender: (row) => (
-          <ExpandedRowContent row={row} readStatus={readStatusById[row.id]} clickEvents={clickEventsById[row.id]} />
+        expandedRowKeys: expandedDates,
+        onExpand: (expanded, record) => onExpandDate(expanded, record.date),
+        expandedRowRender: (group) => (
+          <PushLabelBreakdown
+            date={group.date}
+            labelGroups={groupRowsByLabel(group.rows)}
+            readStatusByGroup={readStatusByGroup}
+            clickEventsByGroup={clickEventsByGroup}
+          />
         ),
       }}
-      pagination={{ pageSize: 20, showTotal: (total) => `共 ${total} 条` }}
+      pagination={{ pageSize: 20, showTotal: (total) => `共 ${total} 天` }}
       scroll={{ x: 760 }}
     />
   )

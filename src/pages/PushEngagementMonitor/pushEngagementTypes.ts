@@ -2,6 +2,19 @@
 export const PUSH_LABELS = ['11点出仓告警', '24H派签告警', '催派推送', '工单推送'] as const
 export type PushLabel = (typeof PUSH_LABELS)[number]
 
+export const PUSH_LABEL_COLOR: Record<string, string> = {
+  '11点出仓告警': 'orange',
+  '24H派签告警': 'blue',
+  催派推送: 'volcano',
+  工单推送: 'purple',
+}
+
+export type DetailState<T> =
+  | { status: 'loading' }
+  | { status: 'error'; error: string }
+  | { status: 'ready'; data: T }
+  | { status: 'expired' }
+
 /** 卡片按钮点击事件的 actionType → 展示文案 */
 export const CLICK_ACTION_LABELS: Record<string, string> = {
   view_details: 'View Details',

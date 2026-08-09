@@ -1,20 +1,8 @@
 import { Empty, Progress, Spin, Tag, Tooltip } from 'antd'
-import type { PushClickEvent, PushEngagementRow, PushReadStatus } from '../pushEngagementTypes'
-import { clickActionLabel } from '../pushEngagementTypes'
+import { dedupeClickEvents, formatDateTime, groupKey, type LabelGroup } from '../pushEngagementGrouping'
+import { clickActionLabel, PUSH_LABEL_COLOR, type DetailState, type PushClickEvent, type PushReadStatus } from '../pushEngagementTypes'
 
-type DetailState<T> = { status: 'loading' } | { status: 'error'; error: string } | { status: 'ready'; data: T }
-
-function formatDateTime(iso: string): string {
-  const d = new Date(iso)
-  if (Number.isNaN(d.getTime())) return iso
-  const pad = (n: number) => String(n).padStart(2, '0')
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`
-}
-
-function ReadStatusPanel({ row, state }: { row: PushEngagementRow; state: DetailState<PushReadStatus> | undefined }) {
-  if (row.readWindowExpired) {
-    return <div className="text-sm text-slate-400">已超过飞书 7 天已读查询窗口，无法查询已读状态。</div>
-  }
+function ReadStatusPanel({ state }: { state: DetailState<PushReadStatus> | undefined }) {
   if (!state || state.status === 'loading') {
     return (
       <div className="flex items-center gap-2 py-2">
@@ -22,6 +10,9 @@ function ReadStatusPanel({ row, state }: { row: PushEngagementRow; state: Detail
         <span className="text-sm text-slate-400">加载中...</span>
       </div>
     )
+  }
+  if (state.status === 'expired') {
+    return <div className="text-sm text-slate-400">已超过飞书 7 天已读查询窗口，无法查询已读状态。</div>
   }
   if (state.status === 'error') {
     return <div className="text-sm text-red-500">{state.error}</div>
@@ -80,7 +71,7 @@ function ClickEventsPanel({ state }: { state: DetailState<PushClickEvent[]> | un
   if (state.status === 'error') {
     return <div className="text-sm text-red-500">{state.error}</div>
   }
-  if (state.data.length === 0) {
+  if (state.status !== 'ready' || state.data.length === 0) {
     return <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无点击记录" className="!my-2" />
   }
   const byAction = new Map<string, PushClickEvent[]>()
@@ -90,43 +81,61 @@ function ClickEventsPanel({ state }: { state: DetailState<PushClickEvent[]> | un
   }
   return (
     <div className="space-y-2">
-      {[...byAction.entries()].map(([actionType, events]) => (
-        <div key={actionType}>
-          <span className="mr-1 text-xs font-semibold text-[#1f6f68]">
-            {clickActionLabel(actionType)}（{events.length}）：
-          </span>
-          {events.map((e, idx) => (
-            <Tooltip key={`${e.openId}-${idx}`} title={`${formatDateTime(e.clickedAt)} · ${e.openId}`}>
-              <Tag color="blue" className="mb-1">
-                {e.name || e.openId}
-              </Tag>
-            </Tooltip>
-          ))}
-        </div>
-      ))}
+      {[...byAction.entries()].map(([actionType, events]) => {
+        const deduped = dedupeClickEvents(events)
+        return (
+          <div key={actionType}>
+            <span className="mr-1 text-xs font-semibold text-[#1f6f68]">
+              {clickActionLabel(actionType)}（{events.length}）：
+            </span>
+            {deduped.map((u) => (
+              <Tooltip key={u.openId} title={`最近点击 ${formatDateTime(u.lastClickedAt)} · ${u.openId}`}>
+                <Tag color="blue" className="mb-1">
+                  {(u.name || u.openId) + (u.count > 1 ? ` +${u.count}` : '')}
+                </Tag>
+              </Tooltip>
+            ))}
+          </div>
+        )
+      })}
     </div>
   )
 }
 
-export function ExpandedRowContent({
-  row,
-  readStatus,
-  clickEvents,
+export function PushLabelBreakdown({
+  date,
+  labelGroups,
+  readStatusByGroup,
+  clickEventsByGroup,
 }: {
-  row: PushEngagementRow
-  readStatus: DetailState<PushReadStatus> | undefined
-  clickEvents: DetailState<PushClickEvent[]> | undefined
+  date: string
+  labelGroups: LabelGroup[]
+  readStatusByGroup: Record<string, DetailState<PushReadStatus>>
+  clickEventsByGroup: Record<string, DetailState<PushClickEvent[]>>
 }) {
   return (
-    <div className="grid grid-cols-1 gap-6 bg-[#f8fafc] px-4 py-4 md:grid-cols-2">
-      <div>
-        <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-400">已读情况</div>
-        <ReadStatusPanel row={row} state={readStatus} />
-      </div>
-      <div>
-        <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-400">点击记录</div>
-        <ClickEventsPanel state={clickEvents} />
-      </div>
+    <div className="space-y-3 bg-[#f8fafc] px-4 py-4">
+      {labelGroups.map((group) => {
+        const key = groupKey(date, group.pushLabel)
+        return (
+          <div key={group.pushLabel} className="rounded-lg border border-slate-200 bg-white p-4">
+            <div className="mb-3 flex items-center gap-2">
+              <Tag color={PUSH_LABEL_COLOR[group.pushLabel] ?? 'default'}>{group.pushLabel}</Tag>
+              <span className="text-xs text-slate-400">共 {group.rows.length} 条推送</span>
+            </div>
+            <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
+              <div>
+                <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-400">已读情况</div>
+                <ReadStatusPanel state={readStatusByGroup[key]} />
+              </div>
+              <div>
+                <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-400">点击记录</div>
+                <ClickEventsPanel state={clickEventsByGroup[key]} />
+              </div>
+            </div>
+          </div>
+        )
+      })}
     </div>
   )
 }
