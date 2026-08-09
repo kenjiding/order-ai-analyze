@@ -20,6 +20,8 @@ export type DispatchAlarmSharePayload = {
   problemCount: number
   alertThresholdPct: number
   drivers: Dispatch24hDriverStat[]
+  /** 是否在落地页展示「司机地图」组件 */
+  showDriverMap: boolean
 }
 
 function newShareToken(): string {
@@ -51,9 +53,21 @@ export async function createDispatchAlarmShareSnapshot(params: {
   problemCount: number
   alertThresholdPct: number
   drivers: Dispatch24hDriverStat[]
+  showDriverMap: boolean
 }): Promise<{ token: string; url: string } | null> {
-  const { vendorCode, vendorName, stationCode, date, pushTime, total, met, problemCount, alertThresholdPct, drivers } =
-    params
+  const {
+    vendorCode,
+    vendorName,
+    stationCode,
+    date,
+    pushTime,
+    total,
+    met,
+    problemCount,
+    alertThresholdPct,
+    drivers,
+    showDriverMap,
+  } = params
   const urlProbe = buildDispatchAlarmShareUrl('probe')
   if (!urlProbe) {
     console.warn('[dispatch-alarm/share] PUBLIC_WEB_ORIGIN / CORS_ORIGIN 未配置，跳过落地页链接')
@@ -72,6 +86,7 @@ export async function createDispatchAlarmShareSnapshot(params: {
     problemCount,
     alertThresholdPct,
     drivers,
+    showDriverMap,
   }
 
   try {
@@ -141,6 +156,7 @@ export async function loadDispatchAlarmShareSnapshot(
     problemCount: typeof payload.problemCount === 'number' ? payload.problemCount : 0,
     alertThresholdPct: typeof payload.alertThresholdPct === 'number' ? payload.alertThresholdPct : 0,
     drivers: Array.isArray(payload.drivers) ? payload.drivers : [],
+    showDriverMap: payload.showDriverMap === true,
     createdAt: new Date(row.createdAt).toISOString(),
   }
 }

@@ -66,6 +66,10 @@ dispatchAlarmPortalRouter.get('/driver-map/:token', rateLimit, async (req: Reque
       sendNotFound(res)
       return
     }
+    if (!snapshot.showDriverMap) {
+      res.json({ ok: true, data: null })
+      return
+    }
     const { stationCode, date: dataDate, vendorCode } = snapshot
     if (!stationCode || !/^\d{4}-\d{2}-\d{2}$/.test(dataDate)) {
       res.json({ ok: true, data: null })

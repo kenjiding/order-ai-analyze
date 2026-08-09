@@ -72,6 +72,7 @@ export type DispatchAlarmShareView = {
   problemCount: number
   alertThresholdPct: number
   drivers: DispatchAlarmShareDriver[]
+  showDriverMap: boolean
   createdAt: string
 }
 

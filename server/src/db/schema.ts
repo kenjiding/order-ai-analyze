@@ -396,6 +396,8 @@ export const dispatchAlarmSchedules = pgTable('dispatch_alarm_schedules', {
   pushConfigIds: jsonb('push_config_ids').notNull().default([]),
   /** 是否在推送时 @ 供应商配置里花名册的第 1 位外部联系人 */
   mentionEnabled: boolean('mention_enabled').notNull().default(false),
+  /** 是否在 24H 派签落地页展示「司机地图」组件 */
+  showDriverMap: boolean('show_driver_map').notNull().default(false),
   /** 「立刻推送」使用的到件扫描日期 YYYY-MM-DD；为空时按自动计算的最近工作日兜底，不影响自动定时推送 */
   arrivalScanDate: varchar('arrival_scan_date', { length: 10 }),
   /** 定时拉数使用的 iMile token（保存配置时从全局设置同步，不对外返回） */

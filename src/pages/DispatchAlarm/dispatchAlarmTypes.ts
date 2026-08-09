@@ -13,6 +13,8 @@ export type DispatchAlarmScheduleDraft = {
   arrivalScanDate: string | null
   /** 是否 @ 供应商配置花名册第 1 位外部联系人 */
   mentionEnabled: boolean
+  /** 是否在 24H 派签落地页展示「司机地图」组件 */
+  showDriverMap: boolean
 }
 
 export type DispatchAlarmSchedule = DispatchAlarmScheduleDraft & {

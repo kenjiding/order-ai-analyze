@@ -95,6 +95,7 @@ export function DispatchAlarmScheduleDrawer({
   const [pushConfigIds, setPushConfigIds] = useState<string[]>([])
   const [arrivalScanDate, setArrivalScanDate] = useState<string>(yesterday())
   const [mentionEnabled, setMentionEnabled] = useState(false)
+  const [showDriverMap, setShowDriverMap] = useState(false)
 
   useEffect(() => {
     if (!open) return
@@ -105,6 +106,7 @@ export function DispatchAlarmScheduleDrawer({
     setPushConfigIds(editingSchedule?.pushConfigIds ?? [])
     setArrivalScanDate(editingSchedule?.arrivalScanDate ?? yesterday())
     setMentionEnabled(editingSchedule?.mentionEnabled ?? false)
+    setShowDriverMap(editingSchedule?.showDriverMap ?? false)
   }, [open, editingSchedule])
 
   const handleAddTime = () => setPushTimes((prev) => [...prev, { id: generateId(), time: '09:30' }])
@@ -142,6 +144,7 @@ export function DispatchAlarmScheduleDrawer({
       pushConfigIds: scopedPushConfigIds,
       arrivalScanDate,
       mentionEnabled,
+      showDriverMap,
     }
     const ok = await onSubmit(draft)
     if (ok) onClose()
@@ -258,7 +261,7 @@ export function DispatchAlarmScheduleDrawer({
               </div>
             </div>
 
-            <div className="flex items-center gap-4 py-3 last:pb-0">
+            <div className="flex items-center gap-4 py-3">
               <span className="flex w-16 shrink-0 items-center gap-1 text-xs font-medium text-slate-500">预警阈值</span>
               <InputNumber
                 value={alertThresholdPct}
@@ -269,7 +272,16 @@ export function DispatchAlarmScheduleDrawer({
                 className="!w-28"
                 onChange={(val) => setAlertThresholdPct(typeof val === 'number' ? val : null)}
               />
-              <span className="text-xs text-slate-400">24H 派签率低于该值的供应商，卡片中标红并列出未达标运单号</span>
+            </div>
+
+            <div className="flex items-center gap-4 py-3 last:pb-0">
+              <span className="w-16 shrink-0 text-xs font-medium text-slate-500">推送选项</span>
+              <div className="flex flex-wrap items-center gap-x-5 gap-y-1">
+                <SupplierMentionToggle value={mentionEnabled} onChange={setMentionEnabled} disabled={saving} />
+                <Checkbox checked={showDriverMap} disabled={saving} onChange={(e) => setShowDriverMap(e.target.checked)}>
+                  <span className="text-sm">司机地图</span>
+                </Checkbox>
+              </div>
             </div>
           </div>
         </FormSection>
@@ -279,7 +291,6 @@ export function DispatchAlarmScheduleDrawer({
           title="供应商配置"
           action={
             <div className="flex items-center gap-3">
-              <SupplierMentionToggle value={mentionEnabled} onChange={setMentionEnabled} disabled={saving} />
               <SupplierPushSelectAllButtons
                 configs={catalogConfigs}
                 enabledIdSet={enabledIdSet}

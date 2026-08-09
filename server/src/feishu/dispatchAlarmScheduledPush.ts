@@ -86,6 +86,8 @@ export async function executeDispatchAlarmPush(params: {
   label: string
   /** 是否 @ 供应商配置花名册第 1 位联系人；默认 false */
   mentionEnabled?: boolean
+  /** 是否在落地页展示「司机地图」组件；默认 false */
+  showDriverMap?: boolean
   /**
    * 仅供定时任务传入：按 (jobKeyPrefix:configId, slotKey) 对每个供应商配置单独做幂等去重。
    * 某个配置本次已经成功推送过则跳过，推送失败则释放交给下次 catch-up 重试；
@@ -105,6 +107,7 @@ export async function executeDispatchAlarmPush(params: {
     regionCode,
     label,
     mentionEnabled,
+    showDriverMap,
     perConfigDedupe,
   } = params
 
@@ -168,6 +171,7 @@ export async function executeDispatchAlarmPush(params: {
               problemCount: stat.problemCount,
               alertThresholdPct,
               drivers: stat.drivers,
+              showDriverMap: Boolean(showDriverMap),
             })
           : null
 
@@ -290,6 +294,7 @@ async function runOneScheduledPush(schedule: DispatchAlarmSchedule, regionCode: 
       regionCode,
       label,
       mentionEnabled: schedule.mentionEnabled,
+      showDriverMap: schedule.showDriverMap,
       perConfigDedupe: { jobKeyPrefix, slotKey },
     })
     if ('error' in result) {

@@ -51,6 +51,7 @@ type ShareViewModel = {
   metricValue: number
   groups: ShareGroup[]
   emptyMessage: string
+  showDriverMap: boolean
 }
 
 const BRAND_BY_KIND: Record<ShareKind, string> = {
@@ -103,6 +104,7 @@ function toChaseDispatchViewModel(data: ChaseDispatchShareView): ShareViewModel 
         })),
       })),
     emptyMessage: 'No stagnant parcels — nothing to chase.',
+    showDriverMap: false,
   }
 }
 
@@ -171,6 +173,7 @@ function toDispatchAlarmViewModel(data: DispatchAlarmShareView): ShareViewModel 
     metricValue: unmetTotal,
     groups,
     emptyMessage: 'All waybills signed within 24H, no problem parcels.',
+    showDriverMap: data.showDriverMap,
   }
 }
 
@@ -421,7 +424,7 @@ export default function ChaseDispatchSharePage() {
           </div>
         )}
 
-        {kind === 'dispatch-alarm' && token && (
+        {kind === 'dispatch-alarm' && token && view.showDriverMap && (
           <PublicDriverMapSection token={token} fetchPoints={fetchDispatchAlarmDriverMap} />
         )}
 
