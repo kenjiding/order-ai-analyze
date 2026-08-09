@@ -40,6 +40,13 @@ export const PERMISSION_REGISTRY: PermissionDefinition[] = [
   { key: 'menu:chase-dispatch', type: 'menu', label: '催派推送', description: '按滞留时间统计供应商滞留订单并定时推送催派', sortOrder: 39 },
   { key: 'menu:work-order-push', type: 'menu', label: '工单推送', description: '未处理工单定时推送提醒供应商', sortOrder: 39 },
   { key: 'menu:push-notifications', type: 'menu', label: '推送功能', description: '飞书群机器人推送配置', sortOrder: 40 },
+  {
+    key: 'menu:push-engagement-monitor',
+    type: 'menu',
+    label: '推送数据监控',
+    description: '监控供应商对出仓/24H派签/催派/工单推送的已读与按钮点击情况',
+    sortOrder: 41,
+  },
   { key: 'menu:warehouse-safety', type: 'menu', label: '仓库安全日常检查', description: '安全自查表填写与导出', sortOrder: 50 },
   {
     key: 'menu:attendance-work-time',

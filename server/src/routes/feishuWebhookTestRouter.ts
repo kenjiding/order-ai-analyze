@@ -1,8 +1,16 @@
 import type { Response } from 'express'
 import { Router } from 'express'
+import { and, desc, eq, gte, inArray, lte, sql } from 'drizzle-orm'
 import type { AuthenticatedRequest } from '../auth/middleware'
 import { requirePushApiScope } from '../permissions/pushNotificationAccess'
 import { getFeishuTenantAccessToken } from '../feishuServerEnv'
+import { getDb, schema } from '../db'
+import {
+  LEGACY_GLOBAL_SUPPLIER_REGION_CODE,
+  listSupplierPushConfigs,
+  supplierDisplayName,
+} from '../supplierPushConfigs'
+import { listFeishuCardClickEventsByMessageId } from '../feishu/feishuCardClickEventRepository'
 import {
   FEISHU_UPLOAD_IMAGES_URL,
   computeFeishuWebhookSign,
@@ -939,5 +947,129 @@ feishuWebhookTestRouter.get('/push-messages/:id/read-status', async (req: Authen
       readUsers,
       unreadUsers,
     },
+  })
+})
+
+const READ_WINDOW_MS = 7 * 24 * 60 * 60 * 1000
+
+/**
+ * 「推送数据监控」列表：出仓/24H派签/催派/工单 4 类定时推送的已发送记录，按日期/推送类型/供应商/州筛选。
+ * 已读数不在这里带（避免对着一屏幕的行逐条实时调用飞书 API），只标注是否已超过飞书 7 天可查窗口；
+ * 点击数是我方数据库聚合，随列表一次性返回。
+ */
+feishuWebhookTestRouter.get('/push-engagement', async (req: AuthenticatedRequest, res: Response) => {
+  const startDateRaw = typeof req.query.startDate === 'string' ? req.query.startDate.trim() : ''
+  const endDateRaw = typeof req.query.endDate === 'string' ? req.query.endDate.trim() : ''
+  const pushLabel = typeof req.query.pushLabel === 'string' ? req.query.pushLabel.trim() : ''
+  const supplierConfigId = typeof req.query.supplierConfigId === 'string' ? req.query.supplierConfigId.trim() : ''
+  const regionFilter = typeof req.query.regionCode === 'string' ? req.query.regionCode.trim() : ''
+
+  // 同州 + 历史遗留 global 两类可见，与「供应商配置」列表接口（fleetSupplierPushRouter）口径一致
+  const userRegionCode = req.authUser?.regionCode?.trim() || LEGACY_GLOBAL_SUPPLIER_REGION_CODE
+  let configs = await listSupplierPushConfigs(userRegionCode)
+  if (supplierConfigId) configs = configs.filter((c) => c.id === supplierConfigId)
+  if (regionFilter) configs = configs.filter((c) => c.regionCode === regionFilter)
+  if (configs.length === 0) {
+    res.json({ ok: true, data: [] })
+    return
+  }
+  const configById = new Map(configs.map((c) => [c.id, c]))
+
+  const conditions = [inArray(schema.feishuPushMessages.supplierConfigId, [...configById.keys()])]
+  if (pushLabel) conditions.push(eq(schema.feishuPushMessages.pushLabel, pushLabel))
+  const startDate = startDateRaw ? new Date(`${startDateRaw}T00:00:00`) : null
+  const endDate = endDateRaw ? new Date(`${endDateRaw}T23:59:59.999`) : null
+  if (startDate && !Number.isNaN(startDate.getTime())) conditions.push(gte(schema.feishuPushMessages.createdAt, startDate))
+  if (endDate && !Number.isNaN(endDate.getTime())) conditions.push(lte(schema.feishuPushMessages.createdAt, endDate))
+
+  const db = getDb()
+  const messages = await db
+    .select()
+    .from(schema.feishuPushMessages)
+    .where(and(...conditions))
+    .orderBy(desc(schema.feishuPushMessages.createdAt))
+    .limit(500)
+
+  const messageIds = messages.map((m) => m.messageId)
+  const clickRows = messageIds.length
+    ? await db
+        .select({
+          messageId: schema.feishuCardClickEvents.messageId,
+          actionType: schema.feishuCardClickEvents.actionType,
+          count: sql<number>`count(*)::int`,
+        })
+        .from(schema.feishuCardClickEvents)
+        .where(inArray(schema.feishuCardClickEvents.messageId, messageIds))
+        .groupBy(schema.feishuCardClickEvents.messageId, schema.feishuCardClickEvents.actionType)
+    : []
+  const clicksByMessageId = new Map<string, Record<string, number>>()
+  for (const row of clickRows) {
+    const bucket = clicksByMessageId.get(row.messageId) ?? {}
+    bucket[row.actionType] = row.count
+    clicksByMessageId.set(row.messageId, bucket)
+  }
+
+  const now = Date.now()
+  const data = messages.map((m) => {
+    const config = m.supplierConfigId ? configById.get(m.supplierConfigId) : undefined
+    return {
+      id: m.id,
+      messageId: m.messageId,
+      supplierConfigId: m.supplierConfigId,
+      vendorName: config ? supplierDisplayName(config) : '',
+      regionCode: config?.regionCode ?? '',
+      pushLabel: m.pushLabel,
+      createdAt: m.createdAt,
+      readWindowExpired: now - new Date(m.createdAt).getTime() > READ_WINDOW_MS,
+      clicks: clicksByMessageId.get(m.messageId) ?? {},
+    }
+  })
+
+  res.json({ ok: true, data })
+})
+
+/** 「推送数据监控」点击详情：某条推送记录里，谁点了哪个按钮、什么时间 */
+feishuWebhookTestRouter.get('/push-messages/:id/click-events', async (req: AuthenticatedRequest, res: Response) => {
+  const id = String(req.params.id ?? '').trim()
+  let record: Awaited<ReturnType<typeof getFeishuPushMessageById>>
+  try {
+    record = await getFeishuPushMessageById(id)
+  } catch {
+    res.status(500).json({ ok: false, error: '读取推送记录失败' })
+    return
+  }
+  if (!record) {
+    res.status(404).json({ ok: false, error: '推送记录不存在' })
+    return
+  }
+
+  let events: Awaited<ReturnType<typeof listFeishuCardClickEventsByMessageId>>
+  try {
+    events = await listFeishuCardClickEventsByMessageId(record.messageId)
+  } catch {
+    res.status(500).json({ ok: false, error: '读取点击记录失败' })
+    return
+  }
+  if (events.length === 0) {
+    res.json({ ok: true, data: [] })
+    return
+  }
+
+  // 点击事件本身不受 7 天限制（我方落库），姓名映射尽力而为：拿不到 tenant token / 群成员时退化成只显示 openId
+  let nameByOpenId = new Map<string, string>()
+  const tenantRes = await getFeishuTenantAccessToken()
+  if (tenantRes.ok) {
+    const membersRes = await listFeishuChatMembers(tenantRes.token, record.chatId)
+    if (membersRes.ok) nameByOpenId = new Map(membersRes.members.map((m) => [m.userId, m.name]))
+  }
+
+  res.json({
+    ok: true,
+    data: events.map((e) => ({
+      openId: e.openId,
+      name: nameByOpenId.get(e.openId) ?? '',
+      actionType: e.actionType,
+      clickedAt: e.clickedAt,
+    })),
   })
 })

@@ -31,6 +31,7 @@ import {
 } from '../jobs/scheduledClaim'
 import { resolveDueScheduledSlots } from '../jobs/scheduledDueSlots'
 import { createChaseDispatchShareSnapshot } from './chaseDispatchShareSnapshot'
+import { recordFeishuPushMessage } from './pushMessageRepository'
 
 type EnabledSchedule = { schedule: ChaseDispatchSchedule; regionCode: string | null }
 
@@ -197,10 +198,12 @@ export async function executeChaseDispatchPush(params: {
         pushDescription: config.pushDescription,
         detailUrl: share?.url ?? null,
         mentions,
+        supplierConfigId: config.id,
       })
-      const { ok, reason } = await sendSupplierPushCard(config, card)
+      const { ok, reason, messageId, chatId } = await sendSupplierPushCard(config, card)
       if (ok) {
         pushedCount++
+        void recordFeishuPushMessage({ supplierConfigId: config.id, chatId, messageId, pushLabel: '催派推送' })
       } else {
         errors.push(`${vendorName}: ${reason ?? '飞书推送失败'}`)
         if (dedupeJobKey) await releaseScheduledSlot(dedupeJobKey, perConfigDedupe!.slotKey)

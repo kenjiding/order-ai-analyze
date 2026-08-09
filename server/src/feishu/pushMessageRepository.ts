@@ -42,3 +42,28 @@ export async function getFeishuPushMessageById(id: string): Promise<FeishuPushMe
   const [row] = await db.select().from(feishuPushMessages).where(eq(feishuPushMessages.id, id)).limit(1)
   return row ?? null
 }
+
+/**
+ * 定时推送发送成功后落库 message_id，供「推送数据监控」查已读/关联点击事件。
+ * 仅 chatId（应用机器人）通道有 messageId；webhook 通道无 messageId 时静默跳过。
+ * 落库失败不影响推送主流程，仅打日志（该次推送已经成功发出）。
+ */
+export async function recordFeishuPushMessage(input: {
+  supplierConfigId: string
+  chatId?: string | null
+  messageId?: string | null
+  pushLabel: string
+}): Promise<void> {
+  if (!input.chatId || !input.messageId) return
+  try {
+    await insertFeishuPushMessage({
+      supplierConfigId: input.supplierConfigId,
+      chatId: input.chatId,
+      messageId: input.messageId,
+      msgType: 'interactive',
+      pushLabel: input.pushLabel,
+    })
+  } catch (err) {
+    console.error('[feishu-push-message] 记录 message_id 失败（不影响本次推送，仅无法查已读/点击）:', err)
+  }
+}

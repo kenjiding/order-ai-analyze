@@ -39,7 +39,7 @@ async function pushCardToWebhook(
 async function pushCardViaAppBot(
   chatId: string,
   card: Record<string, unknown>,
-): Promise<{ ok: boolean; reason?: string }> {
+): Promise<{ ok: boolean; reason?: string; messageId?: string }> {
   const tenantRes = await getFeishuTenantAccessToken()
   if (!tenantRes.ok) {
     return {
@@ -52,7 +52,7 @@ async function pushCardViaAppBot(
   }
   const sendRes = await sendFeishuAppMessage(tenantRes.token, chatId, 'interactive', card)
   if (!sendRes.ok) return { ok: false, reason: sendRes.error }
-  return { ok: true }
+  return { ok: true, messageId: sendRes.messageId }
 }
 
 /**
@@ -65,14 +65,16 @@ async function pushCardViaAppBot(
 export async function sendSupplierPushCard(
   target: { webhookUrl?: string | null; signingSecret?: string | null; chatId?: string | null },
   card: Record<string, unknown>,
-): Promise<{ ok: boolean; reason?: string }> {
+): Promise<{ ok: boolean; reason?: string; messageId?: string; chatId?: string }> {
   const webhookUrl = target.webhookUrl?.trim()
   if (webhookUrl) {
+    // webhook 通道飞书不返回可查询的 message_id，无法记录已读/关联点击
     return pushCardToWebhook(webhookUrl, target.signingSecret, card)
   }
   const chatId = target.chatId?.trim()
   if (chatId) {
-    return pushCardViaAppBot(chatId, card)
+    const res = await pushCardViaAppBot(chatId, card)
+    return { ...res, chatId: res.ok ? chatId : undefined }
   }
   return { ok: false, reason: '未配置 Webhook 或飞书群 Chat ID' }
 }

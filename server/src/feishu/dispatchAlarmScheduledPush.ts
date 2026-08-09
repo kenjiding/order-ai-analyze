@@ -5,6 +5,7 @@ import { buildDispatchAlarmCard } from './buildDispatchAlarmCard'
 import { parseSupplierMentionContacts, pickMentions } from './feishuMentionHelpers'
 import { createDispatchAlarmShareSnapshot } from './dispatchAlarmShareSnapshot'
 import { sendSupplierPushCard } from './sendSupplierPushCard'
+import { recordFeishuPushMessage } from './pushMessageRepository'
 import { envFirst } from '../imile/shared'
 import { getGlobalImileToken } from './globalImileToken'
 import { resolveRegionTz, type AusTz } from '../imile/ausTimezone'
@@ -190,10 +191,12 @@ export async function executeDispatchAlarmPush(params: {
         pushDescription: config.pushDescription,
         detailUrl: share?.url ?? null,
         mentions,
+        supplierConfigId: config.id,
       })
-      const { ok, reason } = await sendSupplierPushCard(config, card)
+      const { ok, reason, messageId, chatId } = await sendSupplierPushCard(config, card)
       if (ok) {
         pushedCount++
+        void recordFeishuPushMessage({ supplierConfigId: config.id, chatId, messageId, pushLabel: '24H派签告警' })
       } else {
         errors.push(`${vendorName}: ${reason ?? '飞书推送失败'}`)
         if (dedupeJobKey) await releaseScheduledSlot(dedupeJobKey, perConfigDedupe!.slotKey)

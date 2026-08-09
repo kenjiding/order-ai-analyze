@@ -4,6 +4,7 @@ import type { ExitAlarmSchedule, FleetSupplierPushConfig } from '../db/schema'
 import { buildExitAlarmCard } from './buildExitAlarmCard'
 import { parseSupplierMentionContacts, pickMentions } from './feishuMentionHelpers'
 import { sendSupplierPushCard } from './sendSupplierPushCard'
+import { recordFeishuPushMessage } from './pushMessageRepository'
 import { envFirst } from '../imile/shared'
 import { getGlobalImileToken } from './globalImileToken'
 import { fetchWaybillDetailsByInboundIndex } from '../imile/inboundWaybillIndex'
@@ -219,7 +220,7 @@ export async function executeExitAlarmPush(params: {
 
       unqualifiedByVendor.push({ vendorName, waybillNos: stat.unqualifiedWaybillNos })
 
-      const { ok, reason } = await sendSupplierPushCard(config, card)
+      const { ok, reason, messageId, chatId } = await sendSupplierPushCard(config, card)
       if (!ok) {
         const detail = reason ? ` (${reason})` : ''
         console.error(`${label} ✗ 推送失败: ${vendorName}${detail}`)
@@ -228,6 +229,7 @@ export async function executeExitAlarmPush(params: {
         continue
       }
 
+      void recordFeishuPushMessage({ supplierConfigId: config.id, chatId, messageId, pushLabel: '11点出仓告警' })
       pushedCount++
       console.log(`${label} ✓ 推送成功: ${vendorName}`)
     } catch (err) {

@@ -39,6 +39,7 @@ const DispatchAlarmPage = lazy(() => import('./pages/DispatchAlarm/DispatchAlarm
 const ChaseDispatchPage = lazy(() => import('./pages/ChaseDispatch/ChaseDispatchPage'))
 const WorkOrderPushPage = lazy(() => import('./pages/WorkOrderPush/WorkOrderPushPage'))
 const AttendanceWorkTimePage = lazy(() => import('./pages/AttendanceWorkTime/AttendanceWorkTimePage'))
+const PushEngagementMonitorPage = lazy(() => import('./pages/PushEngagementMonitor/PushEngagementMonitorPage'))
 
 function RouteLoadingFallback() {
   return (
@@ -229,6 +230,14 @@ function AppRoutes() {
             element={
               <KeptPage cacheKey="page-push-notifications" name="push-notifications">
                 <PushNotificationsPage />
+              </KeptPage>
+            }
+          />
+          <Route
+            path="/push-engagement-monitor"
+            element={
+              <KeptPage cacheKey="page-push-engagement-monitor" name="push-engagement-monitor">
+                <PushEngagementMonitorPage />
               </KeptPage>
             }
           />

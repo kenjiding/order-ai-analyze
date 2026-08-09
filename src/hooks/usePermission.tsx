@@ -65,6 +65,7 @@ export const PERMISSION_KEYS = {
   menuOrderException: 'menu:order-exception',
   menuNewMerchantMonitor: 'menu:new-merchant-monitor',
   menuPushNotifications: 'menu:push-notifications',
+  menuPushEngagementMonitor: 'menu:push-engagement-monitor',
   menuWarehouseSafety: 'menu:warehouse-safety',
   menuSystemUsers: 'menu:system-users',
   btnWageSalaryExport: 'btn:wage-salary:export',

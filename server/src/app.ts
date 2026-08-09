@@ -7,6 +7,7 @@ import { imileHubcodeMiddleware } from './imile/hubcodeMiddleware'
 import { adminUsersRouter } from './routes/adminUsersRouter'
 import { authRouter } from './routes/authRouter'
 import { feishuWebhookTestRouter } from './routes/feishuWebhookTestRouter'
+import { feishuEventRouter } from './routes/feishuEventRouter'
 import { newMerchantRouter } from './routes/newMerchantRouter'
 import { orderExceptionRouter } from './routes/orderExceptionRouter'
 import { problemPackageAuditRouter } from './routes/problemPackageAuditRouter'
@@ -59,6 +60,8 @@ app.get('/health', async (_req, res) => {
 
 app.use('/api/auth', authRouter)
 app.use('/api/admin/users', adminUsersRouter)
+// 飞书卡片按钮点击回调：请求方是飞书服务器，不带我方登录态，靠 Verification Token 校验，不挂 requireAuth
+app.use('/api/feishu-events', feishuEventRouter)
 
 app.use('/api/order-exception', requireAuth, orderExceptionRouter)
 app.use('/api/scanner-efficiency', requireAuth, scannerEfficiencyRouter)

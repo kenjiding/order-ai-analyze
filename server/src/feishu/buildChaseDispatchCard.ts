@@ -22,15 +22,22 @@ function colored(value: string, color: MarkColor): string {
   return `<font color='${color}'>${value}</font>`
 }
 
-/** 自定义机器人 card JSON 2.0：button + behaviors.open_url 打开落地页（markdown 链接不可跳转） */
-function openUrlButton(url: string, label: string): CardEl {
+/**
+ * 自定义机器人 card JSON 2.0：button 同时挂 open_url（跳转落地页，用户体验不变）+
+ * callback（服务端回调，拿到点击人 open_id，见 feishuEventRouter.ts /card-callback）。
+ * value 里带业务标识供回调落库用。
+ */
+function openUrlButton(url: string, label: string, value: Record<string, unknown>): CardEl {
   return {
     tag: 'button',
     text: { tag: 'plain_text', content: label },
     type: 'primary_filled',
     width: 'default',
     size: 'medium',
-    behaviors: [{ type: 'open_url', default_url: url, pc_url: url, ios_url: url, android_url: url }],
+    behaviors: [
+      { type: 'open_url', default_url: url, pc_url: url, ios_url: url, android_url: url },
+      { type: 'callback', value },
+    ],
   }
 }
 
@@ -47,8 +54,11 @@ export function buildChaseDispatchCard(params: {
   detailUrl?: string | null
   /** 命中「是否 @ 相关人员」时传入，供应商配置花名册里选中的全部联系人 */
   mentions?: SupplierMentionContact[] | null
+  /** 落地页按钮点击回调关联供应商用，见「推送数据监控」 */
+  supplierConfigId?: string | null
 }): Record<string, unknown> {
-  const { vendorName, baseDate, pushTime, tz, summary, pushDescription, detailUrl, mentions } = params
+  const { vendorName, baseDate, pushTime, tz, summary, pushDescription, detailUrl, mentions, supplierConfigId } =
+    params
   const { totalStagnant, buckets } = summary
   const elements: CardEl[] = []
 
@@ -90,7 +100,13 @@ export function buildChaseDispatchCard(params: {
 
   if (detailUrl && totalStagnant > 0) {
     elements.push(hr())
-    elements.push(openUrlButton(detailUrl, 'Click to View Details'))
+    elements.push(
+      openUrlButton(detailUrl, 'Click to View Details', {
+        pushType: 'chase_dispatch',
+        actionType: 'view_details',
+        supplierConfigId: supplierConfigId ?? '',
+      }),
+    )
   }
 
   if (totalStagnant === 0) {

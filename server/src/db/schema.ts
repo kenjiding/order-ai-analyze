@@ -201,6 +201,30 @@ export const feishuPushMessages = pgTable(
   (table) => [index('feishu_push_messages_supplier_config_idx').on(table.supplierConfigId)],
 )
 
+/**
+ * 飞书卡片按钮点击事件：卡片 2.0 button 同时挂 open_url + callback behavior，
+ * 点击时飞书在跳转的同时把点击人 open_id 回传给我们（见 feishuEventRouter.ts）。
+ * 用于「推送数据监控」页面统计谁点了 View Details / Resolve Tickets，不受飞书已读查询的 7 天限制（我们自己落库）。
+ */
+export const feishuCardClickEvents = pgTable(
+  'feishu_card_click_events',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    messageId: varchar('message_id', { length: 64 }).notNull(),
+    supplierConfigId: uuid('supplier_config_id').references(() => fleetSupplierPushConfigs.id, { onDelete: 'set null' }),
+    openId: varchar('open_id', { length: 64 }).notNull(),
+    /** 'view_details' | 'resolve_tickets' */
+    actionType: varchar('action_type', { length: 32 }).notNull(),
+    /** 'chase_dispatch' | 'dispatch_alarm' | 'work_order' */
+    pushType: varchar('push_type', { length: 32 }).notNull(),
+    clickedAt: timestamp('clicked_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    index('feishu_card_click_events_message_idx').on(table.messageId),
+    index('feishu_card_click_events_supplier_config_idx').on(table.supplierConfigId),
+  ],
+)
+
 /** 各业务独立的供应商 config 启用列表（与 catalog 解耦） */
 export const supplierConfigScopeBindings = pgTable('supplier_config_scope_bindings', {
   scopeKey: varchar('scope_key', { length: 64 }).primaryKey(),
@@ -576,6 +600,8 @@ export type FleetSupplierPushConfig = typeof fleetSupplierPushConfigs.$inferSele
 export type NewFleetSupplierPushConfig = typeof fleetSupplierPushConfigs.$inferInsert
 export type FeishuPushMessage = typeof feishuPushMessages.$inferSelect
 export type NewFeishuPushMessage = typeof feishuPushMessages.$inferInsert
+export type FeishuCardClickEvent = typeof feishuCardClickEvents.$inferSelect
+export type NewFeishuCardClickEvent = typeof feishuCardClickEvents.$inferInsert
 export type ExitAlarmSchedule = typeof exitAlarmSchedules.$inferSelect
 export type NewExitAlarmSchedule = typeof exitAlarmSchedules.$inferInsert
 export type ScheduledJobClaim = typeof scheduledJobClaims.$inferSelect

@@ -26,15 +26,22 @@ function colored(value: string, color: MarkColor): string {
 
 const PCS_TICKET_WORKBENCH_URL = 'https://pcs.imile.com/#/PCSTicketWorkbench'
 
-/** 自定义机器人 card JSON 2.0：button + behaviors.open_url 打开 PCS 工单工作台（markdown 链接不可跳转） */
-function openUrlButton(url: string, label: string): CardEl {
+/**
+ * 自定义机器人 card JSON 2.0：button 同时挂 open_url（跳转 PCS 工单工作台，用户体验不变）+
+ * callback（服务端回调，拿到点击人 open_id，见 feishuEventRouter.ts /card-callback）。
+ * value 里带业务标识供回调落库用。
+ */
+function openUrlButton(url: string, label: string, value: Record<string, unknown>): CardEl {
   return {
     tag: 'button',
     text: { tag: 'plain_text', content: label },
     type: 'primary_filled',
     width: 'default',
     size: 'medium',
-    behaviors: [{ type: 'open_url', default_url: url, pc_url: url, ios_url: url, android_url: url }],
+    behaviors: [
+      { type: 'open_url', default_url: url, pc_url: url, ios_url: url, android_url: url },
+      { type: 'callback', value },
+    ],
   }
 }
 
@@ -73,8 +80,10 @@ export function buildWorkOrderPushCard(params: {
   /** 命中「是否 @ 相关人员」时传入，供应商配置花名册里选中的全部联系人 */
   mentions?: SupplierMentionContact[] | null
   nowMs?: number
+  /** 落地页按钮点击回调关联供应商用，见「推送数据监控」 */
+  supplierConfigId?: string | null
 }): Record<string, unknown> {
-  const { vendorName, baseDate, pushTime, tz, summary, pushDescription, mentions } = params
+  const { vendorName, baseDate, pushTime, tz, summary, pushDescription, mentions, supplierConfigId } = params
   const nowMs = params.nowMs ?? Date.now()
   const { totalCount, normalCount, complaintCount, arbitrationCount, tickets } = summary
   const elements: CardEl[] = []
@@ -128,7 +137,13 @@ export function buildWorkOrderPushCard(params: {
 
   elements.push(hr())
   elements.push(md(colored('⚠️ Overdue tickets will incur penalty/compensation fees. Please handle immediately.', 'red')))
-  elements.push(openUrlButton(PCS_TICKET_WORKBENCH_URL, 'Click to Resolve Tickets'))
+  elements.push(
+    openUrlButton(PCS_TICKET_WORKBENCH_URL, 'Click to Resolve Tickets', {
+      pushType: 'work_order',
+      actionType: 'resolve_tickets',
+      supplierConfigId: supplierConfigId ?? '',
+    }),
+  )
   elements.push(footerCaption(`${baseDate} ${pushTime} (${tzDisplayName(tz)}) · Ticket push · iMile Warehouse Management System`))
 
   const mentionLarkMd = buildMentionLarkMd(mentions)

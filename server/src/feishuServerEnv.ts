@@ -14,6 +14,15 @@ function readAppId(): string | undefined {
   return typeof appIdRaw === 'string' && appIdRaw.trim() !== '' ? appIdRaw.trim() : undefined
 }
 
+/**
+ * 校验飞书事件/卡片回调请求确实来自本应用：开发者后台「事件与回调」页面的 Verification Token。
+ * @see https://open.feishu.cn/document/uYjL24iN/uYzMxEjL2MTMx4iNzETM
+ */
+export function getFeishuVerificationToken(): string | undefined {
+  const raw = process.env.FEISHU_VERIFICATION_TOKEN
+  return typeof raw === 'string' && raw.trim() !== '' ? raw.trim() : undefined
+}
+
 type TokenCache = {
   token: string
   expiresAtMs: number

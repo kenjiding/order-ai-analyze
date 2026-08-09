@@ -379,6 +379,20 @@
       "when": 1785700000025,
       "tag": "0053_dispatch_alarm_show_driver_map",
       "breakpoints": true
+    },
+    {
+      "idx": 54,
+      "version": "7",
+      "when": 1785700000026,
+      "tag": "0054_feishu_card_click_events",
+      "breakpoints": true
+    },
+    {
+      "idx": 55,
+      "version": "7",
+      "when": 1785700000027,
+      "tag": "0055_feishu_card_click_events_drop_chat_id",
+      "breakpoints": true
     }
   ]
 }

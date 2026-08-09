@@ -4,6 +4,7 @@ import type { WorkOrderPushSchedule, FleetSupplierPushConfig } from '../db/schem
 import { buildWorkOrderPushCard } from './buildWorkOrderPushCard'
 import { parseSupplierMentionContacts, pickMentions } from './feishuMentionHelpers'
 import { sendSupplierPushCard } from './sendSupplierPushCard'
+import { recordFeishuPushMessage } from './pushMessageRepository'
 import { envFirst } from '../imile/shared'
 import { getGlobalImileToken } from './globalImileToken'
 import { getRegionNow } from '../imile/inboundWaybillIndex'
@@ -156,10 +157,12 @@ export async function executeWorkOrderPush(params: {
         summary,
         pushDescription: config.pushDescription,
         mentions,
+        supplierConfigId: config.id,
       })
-      const { ok, reason } = await sendSupplierPushCard(config, card)
+      const { ok, reason, messageId, chatId } = await sendSupplierPushCard(config, card)
       if (ok) {
         pushedCount++
+        void recordFeishuPushMessage({ supplierConfigId: config.id, chatId, messageId, pushLabel: '工单推送' })
       } else {
         errors.push(`${vendorName}: ${reason ?? '飞书推送失败'}`)
         if (dedupeJobKey) await releaseScheduledSlot(dedupeJobKey, perConfigDedupe!.slotKey)
