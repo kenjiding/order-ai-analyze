@@ -27,17 +27,26 @@ export const EXCEPTION_CATALOG: readonly ExceptionScopeDefinition[] = [
   {
     lossScope: '库内丢失',
     promptDescription:
-      '满足真实操作员扫描入库、未真正出库或已回仓、无正常完结，且达到库内超时或无成功出库的分配-取消循环阈值。',
+      '满足真实操作员扫描入库、未真正出库或已回仓、无正常完结，且最终库内责任点距今达到当前仓库「仓库丢失超时（天）」阈值。',
     subTypes: [
       {
-        id: '扫描员丢失',
-        promptDescription: '真实操作员扫描入库后，包裹仍在库内责任域内超时或满足无成功出库的分配-取消循环。',
+        id: '疑似派件员窃取',
+        promptDescription:
+          '已达到库内超时阈值，且最近一次库内起算（回仓/盘点/入库扫描）之后存在无成功出库的分配-取消循环（同一/不同派件员反复领取又被取消，此后未再真正出库）；问题指向具体派件员而非仓库扫描员单纯滞留超时。该起算点之前已回仓闭环的出库不影响本判定。',
         inferFromFacts: (facts) =>
           (facts.hasRealOperatorScan &&
             facts.finalResponsibilityOwner === 'in_warehouse' &&
-            facts.finalResponsibilityDaysDiff >= 0 &&
-            (facts.finalResponsibilityDaysDiff >= facts.activeWarehouseLossTimeoutDays ||
-              (facts.assignCancelLoopWithoutDispatch && facts.finalResponsibilityDaysDiff >= 5))),
+            facts.finalResponsibilityDaysDiff >= facts.activeWarehouseLossTimeoutDays &&
+            facts.assignCancelLoopWithoutDispatch),
+      },
+      {
+        id: '扫描员丢失',
+        promptDescription: '真实操作员扫描入库后，包裹仍在库内责任域内达到超时阈值，且库内起算之后不存在无成功出库的分配-取消循环。',
+        inferFromFacts: (facts) =>
+          (facts.hasRealOperatorScan &&
+            facts.finalResponsibilityOwner === 'in_warehouse' &&
+            facts.finalResponsibilityDaysDiff >= facts.activeWarehouseLossTimeoutDays &&
+            !facts.assignCancelLoopWithoutDispatch),
       },
     ],
   },

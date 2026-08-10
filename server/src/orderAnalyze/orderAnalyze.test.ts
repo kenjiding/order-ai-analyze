@@ -489,7 +489,7 @@ test('商家退返方向未闭环不阻断库内超时判定', () => {
   assert.equal(facts.finalResponsibilityOwner, 'in_warehouse')
   assert.equal(facts.finalResponsibilityStartTime, responsibilityTime)
   assert.equal(guarded.lossScope, '库内丢失')
-  assert.equal(guarded.exceptionCategoryId, '扫描员丢失')
+  assert.equal(guarded.exceptionCategoryId, '疑似派件员窃取')
   assert.equal(guarded.needsReview, false)
 })
 
@@ -805,32 +805,67 @@ test('非外部承运责任段不得接受模型误报的 3PL 丢件', () => {
   assert.equal(guarded.appliedDecisionRuleId, 'non_external_carrier_cannot_be_3pl_loss')
 })
 
+test('分配取消循环未达仓库超时阈值时禁止判库内丢失（真实案例 3781059314407）', () => {
+  // 完整轨迹：到仓后 5 轮「分配→取消」全程无出库，但最后责任点（盘点）距今仅 5 天，
+  // 远未达到仓库丢失超时阈值。循环信号只能决定子类型，绝不能独立构成丢失判定。
+  const facts = deriveTrackFacts(
+    [
+      track('2026-07-22 12:15:11', '【ADL DS】已到达。操作员【System】 。'),
+      track('2026-07-23 10:27:58', '【ADL DS】派送任务已分配给派件员(派件员：ADL-CXH-369-sunning,电话：***)，待派件员领取包裹。 操作员【cornerstone】'),
+      track('2026-07-23 10:44:30', '【ADL DS】包裹已取消分配给[ADL-CXH-369-sunning]。操作员【ADL OP1】'),
+      track('2026-07-28 09:14:25', '【ADL DS】派送任务已分配给派件员(派件员：ADL-JC-city-A,电话：***)，待派件员领取包裹。 操作员【cornerstone】'),
+      track('2026-07-28 11:08:37', '【ADL DS】包裹已取消分配给[ADL-JC-city-A]。操作员【ADL OP1】'),
+      track('2026-07-31 15:08:33', '【ADL DS】已盘点，库位编号[01]。操作员【ADL-前台】'),
+      track('2026-08-01 08:55:17', '【ADL DS】派送任务已分配给派件员(派件员：ADL-JC-city-A,电话：***)，待派件员领取包裹。 操作员【cornerstone】'),
+      track('2026-08-01 10:20:58', '【ADL DS】包裹已取消分配给[ADL-JC-city-A]。操作员【ADL OP1】'),
+      track('2026-08-04 09:01:38', '【ADL DS】派送任务已分配给派件员(派件员：ADL-JC-city-A,电话：***)，待派件员领取包裹。 操作员【cornerstone】'),
+      track('2026-08-04 10:29:56', '【ADL DS】包裹已取消分配给[ADL-JC-city-A]。操作员【ADL OP1】'),
+      track('2026-08-04 15:19:50', '【ADL DS】已盘点，库位编号[01]。操作员【ADL-前台】'),
+      track('2026-08-05 14:20:45', '【ADL DS】已盘点，库位编号[01]。操作员【ADL-前台】'),
+      track('2026-08-05 19:05:44', '【ADL DS】派送任务已分配给派件员(派件员：ADL-JC-city-A,电话：***)，待派件员领取包裹。 操作员【cornerstone】'),
+      track('2026-08-05 20:09:38', '【ADL DS】包裹已取消分配给[ADL-JC-city-A]。操作员【ADL OP1】'),
+    ],
+    [],
+    { analysisDate: '2026-08-10' }
+  )
+  const guarded = classifyOrderFromFacts({ orderNo: '3781059314407', facts })
+
+  assert.equal(facts.finalResponsibilityOwner, 'in_warehouse')
+  assert.equal(facts.finalResponsibilityStartTime, '2026-08-05 14:20:45')
+  assert.equal(facts.finalResponsibilityDaysDiff, 5)
+  assert.ok(facts.finalResponsibilityDaysDiff < facts.activeWarehouseLossTimeoutDays)
+  assert.equal(guarded.lossScope, '暂无异常')
+  assert.notEqual(guarded.exceptionCategoryId, '疑似派件员窃取')
+})
+
 test('ADL 当前责任段真实扫描加分配取消循环仍判库内事实成立', () => {
+  // ADL DS 使用默认 15 天阈值：责任点须超阈值，循环信号才用于区分子类型
   const facts = deriveTrackFacts([
-    track(daysAgo(8), '【ADL DS】包号[2603191734601]已到达。操作员【ADL-DC-Tong】 。'),
-    track(daysAgo(7), '【ADL DS】派送任务已分配给派件员(派件员：ADL-JC-city-A,电话：***)，待派件员领取包裹。 操作员【cornerstone】'),
-    track(daysAgo(7, '11:00:00'), '【ADL DS】包裹已取消分配给[ADL-JC-city-A]。操作员【ADL OP1】'),
-    track(daysAgo(6), '【ADL DS】派送任务已分配给派件员(派件员：ADL-JC-city-B,电话：***)，待派件员领取包裹。 操作员【cornerstone】'),
-    track(daysAgo(6, '11:00:00'), '【ADL DS】包裹已取消分配给[ADL-JC-city-B]。操作员【ADL OP1】'),
+    track(daysAgo(20), '【ADL DS】包号[2603191734601]已到达。操作员【ADL-DC-Tong】 。'),
+    track(daysAgo(19), '【ADL DS】派送任务已分配给派件员(派件员：ADL-JC-city-A,电话：***)，待派件员领取包裹。 操作员【cornerstone】'),
+    track(daysAgo(19, '11:00:00'), '【ADL DS】包裹已取消分配给[ADL-JC-city-A]。操作员【ADL OP1】'),
+    track(daysAgo(18), '【ADL DS】派送任务已分配给派件员(派件员：ADL-JC-city-B,电话：***)，待派件员领取包裹。 操作员【cornerstone】'),
+    track(daysAgo(18, '11:00:00'), '【ADL DS】包裹已取消分配给[ADL-JC-city-B]。操作员【ADL OP1】'),
   ])
 
   assert.equal(facts.activeWarehouseHubId, 'adelaide_ds')
   assert.equal(facts.hasRealOperatorScan, true)
   assert.equal(facts.assignCancelLoopWithoutDispatch, true)
-  assert.equal(normalizeSubType({ lossScope: '库内丢失', facts }), '扫描员丢失')
+  assert.ok(facts.finalResponsibilityDaysDiff >= facts.activeWarehouseLossTimeoutDays)
+  assert.equal(normalizeSubType({ lossScope: '库内丢失', facts }), '疑似派件员窃取')
 })
 
 test('同城上游仓真实扫描可作为 DS 内部转发入库依据', () => {
-  const inboundScanTime = daysAgo(8, '12:21:44')
+  const inboundScanTime = daysAgo(20, '12:21:44')
   const facts = deriveTrackFacts([
-    track(daysAgo(8, '12:21:14'), '【Adelaide Center】已揽收, 操作员【System】。'),
+    track(daysAgo(20, '12:21:14'), '【Adelaide Center】已揽收, 操作员【System】。'),
     track(inboundScanTime, '【Adelaide Center】已到达。操作员【ADL-DC-Tong】 。'),
-    track(daysAgo(8, '12:21:45'), '【Adelaide Center】完成待转发件，目的地【ADL DS】。操作员【System】'),
-    track(daysAgo(8, '12:21:46'), '【ADL DS】已到达。操作员【System】 。'),
-    track(daysAgo(7, '09:14:11'), '【ADL DS】派送任务已分配给派件员(派件员：ADL-JC-city-A,电话：***)，待派件员领取包裹。 操作员【cornerstone】'),
-    track(daysAgo(7, '09:53:27'), '【ADL DS】包裹已取消分配给[ADL-JC-city-A]。操作员【ADL OP1】'),
-    track(daysAgo(6, '09:05:41'), '【ADL DS】派送任务已分配给派件员(派件员：ADL-JC-city-A,电话：***)，待派件员领取包裹。 操作员【cornerstone】'),
-    track(daysAgo(6, '09:31:42'), '【ADL DS】包裹已取消分配给[ADL-JC-city-A]。操作员【ADL OP1】'),
+    track(daysAgo(20, '12:21:45'), '【Adelaide Center】完成待转发件，目的地【ADL DS】。操作员【System】'),
+    track(daysAgo(20, '12:21:46'), '【ADL DS】已到达。操作员【System】 。'),
+    track(daysAgo(19, '09:14:11'), '【ADL DS】派送任务已分配给派件员(派件员：ADL-JC-city-A,电话：***)，待派件员领取包裹。 操作员【cornerstone】'),
+    track(daysAgo(19, '09:53:27'), '【ADL DS】包裹已取消分配给[ADL-JC-city-A]。操作员【ADL OP1】'),
+    track(daysAgo(18, '09:05:41'), '【ADL DS】派送任务已分配给派件员(派件员：ADL-JC-city-A,电话：***)，待派件员领取包裹。 操作员【cornerstone】'),
+    track(daysAgo(18, '09:31:42'), '【ADL DS】包裹已取消分配给[ADL-JC-city-A]。操作员【ADL OP1】'),
   ])
 
   assert.equal(facts.activeWarehouseHubId, 'adelaide_ds')
@@ -838,7 +873,7 @@ test('同城上游仓真实扫描可作为 DS 内部转发入库依据', () => {
   assert.equal(facts.inWarehouseStartTime, inboundScanTime)
   assert.equal(facts.inWarehouseBasis, `当前责任段上游同城仓真实操作员扫描（内部转发入库依据）（${inboundScanTime}）`)
   assert.equal(facts.assignCancelLoopWithoutDispatch, true)
-  assert.equal(normalizeSubType({ lossScope: '库内丢失', facts }), '扫描员丢失')
+  assert.equal(normalizeSubType({ lossScope: '库内丢失', facts }), '疑似派件员窃取')
 })
 
 test('当前责任段真实出库超阈值且未回仓满足库外事实', () => {
@@ -1044,7 +1079,7 @@ test('仓库名与轨迹【】文案一致时匹配配置', () => {
   })
 })
 
-test('分配-取消循环无出库与出库后回仓再分配取消保持区分', () => {
+test('分配-取消循环只看库内起算之后是否出库', () => {
   const noDispatchFacts = deriveTrackFacts([
     track('2024-01-01 10:00:00', '【ADL DS】操作员【ADL-DC-Tong】 已盘点'),
     track('2024-01-02 10:00:00', '【ADL DS】派送任务已分配给派件员 D001'),
@@ -1052,18 +1087,66 @@ test('分配-取消循环无出库与出库后回仓再分配取消保持区分'
     track('2024-01-03 10:00:00', '【ADL DS】派送任务已分配给派件员 D001'),
     track('2024-01-03 11:00:00', '【ADL DS】取消分配'),
   ])
+  // 出库已在回站+盘点处闭环，库内责任重新起算；此后的循环期间一次都没出过库 → 仍算循环
   const afterReturnFacts = deriveTrackFacts([
     track('2024-01-01 10:00:00', '【ADL DS】操作员【ADL-DC-Tong】 已盘点'),
     track('2024-01-02 10:00:00', '【ADL DS】包裹正在派送中', 'delivery'),
     track('2024-01-03 10:00:00', '【ADL DS】已回到网点'),
+    track('2024-01-03 12:00:00', '【ADL DS】操作员【ADL-DC-Tong】 已盘点'),
     track('2024-01-04 10:00:00', '【ADL DS】派送任务已分配给派件员 D001'),
     track('2024-01-04 11:00:00', '【ADL DS】取消分配'),
     track('2024-01-05 10:00:00', '【ADL DS】派送任务已分配给派件员 D001'),
     track('2024-01-05 11:00:00', '【ADL DS】取消分配'),
   ])
+  // 循环之后又真正出库，包裹已在库外 → 不算「库内起算后无出库」
+  const dispatchAfterLoopFacts = deriveTrackFacts([
+    track('2024-01-01 10:00:00', '【ADL DS】操作员【ADL-DC-Tong】 已盘点'),
+    track('2024-01-02 10:00:00', '【ADL DS】派送任务已分配给派件员 D001'),
+    track('2024-01-02 11:00:00', '【ADL DS】取消分配'),
+    track('2024-01-03 10:00:00', '【ADL DS】派送任务已分配给派件员 D001'),
+    track('2024-01-03 11:00:00', '【ADL DS】取消分配'),
+    track('2024-01-04 10:00:00', '【ADL DS】包裹正在派送中', 'delivery'),
+  ])
+  // 只有 1 组分配-取消，未达到循环阈值
+  const singlePairFacts = deriveTrackFacts([
+    track('2024-01-01 10:00:00', '【ADL DS】操作员【ADL-DC-Tong】 已盘点'),
+    track('2024-01-02 10:00:00', '【ADL DS】包裹正在派送中', 'delivery'),
+    track('2024-01-03 10:00:00', '【ADL DS】已回到网点'),
+    track('2024-01-03 12:00:00', '【ADL DS】操作员【ADL-DC-Tong】 已盘点'),
+    track('2024-01-04 10:00:00', '【ADL DS】派送任务已分配给派件员 D001'),
+    track('2024-01-04 11:00:00', '【ADL DS】取消分配'),
+  ])
 
   assert.equal(noDispatchFacts.assignCancelLoopWithoutDispatch, true)
-  assert.equal(afterReturnFacts.assignCancelLoopWithoutDispatch, false)
+  assert.equal(afterReturnFacts.assignCancelLoopWithoutDispatch, true)
+  assert.equal(dispatchAfterLoopFacts.assignCancelLoopWithoutDispatch, false)
+  assert.equal(singlePairFacts.assignCancelLoopWithoutDispatch, false)
+})
+
+test('出库回仓后的分配-取消循环超时判为疑似派件员窃取（3781059456380）', () => {
+  const tracks = [
+    track(daysAgo(18), '【ADL DS】已到达。操作员【System】 。'),
+    track(daysAgo(18, '20:00:36'), '【ADL DS】派送任务已分配给派件员(派件员：D064,电话：+61 433975868)，待派件员领取包裹。 操作员【cornerstone】'),
+    track(daysAgo(17), '【ADL DS】包裹正在派送中(派件员: D064,ID: D21021656901,电话: +61 433975868)。操作员【D064】', 'Delivery', '派送'),
+    track(daysAgo(16, '09:37:42'), '【ADL DS】登记问题件[AUS| 店铺关门], 操作员【D064】。', 'Problem', '派送'),
+    track(daysAgo(16, '11:05:39'), '【ADL DS】派件员已回到网点。操作员【ADL-前台】'),
+    track(daysAgo(16, '15:01:58'), '【ADL DS】已盘点，库位编号[01]。操作员【ADL-前台】'),
+    track(daysAgo(15), '【ADL DS】派送任务已分配给派件员(派件员：D064,电话：+61 433975868)，待派件员领取包裹。 操作员【cornerstone】'),
+    track(daysAgo(15, '21:35:33'), '【ADL DS】包裹已取消分配给[D064]。操作员【ADARSH AA】'),
+    track(daysAgo(11), '【ADL DS】派送任务已分配给派件员(派件员：MAN A,电话：+61 452332323)，待派件员领取包裹。 操作员【cornerstone】'),
+    track(daysAgo(10), '【ADL DS】包裹已取消分配给[MAN A]。操作员【ADARSH AA】'),
+    track(daysAgo(9), '【ADL DS】派送任务已分配给派件员(派件员：MAN A,电话：+61 452332323)，待派件员领取包裹。 操作员【cornerstone】'),
+    track(daysAgo(7), '【ADL DS】包裹已取消分配给[MAN A]。操作员【ADARSH AA】'),
+    track(daysAgo(0), '【ADL DS】派送任务已分配给派件员(派件员：ARYAN P,电话：+61 453690800)，待派件员领取包裹。 操作员【cornerstone】'),
+  ]
+  const facts = deriveTrackFacts(tracks)
+  const result = classifyOrderFromFacts({ orderNo: '3781059456380', facts })
+
+  assert.equal(facts.finalResponsibilityOwner, 'in_warehouse')
+  assert.equal(facts.lastDispatchHasReturn, true)
+  assert.equal(facts.assignCancelLoopWithoutDispatch, true)
+  assert.equal(result.lossScope, '库内丢失')
+  assert.equal(result.exceptionCategoryId, '疑似派件员窃取')
 })
 
 test('无真实操作员扫描时禁止库内丢失', () => {
@@ -1187,7 +1270,7 @@ test('Sydney Center 分拣后转入 SYDN，按 SYDN 到达节点重置库内起�
   assert.equal(facts.inWarehouseBasis, `正常轨迹悉尼分拣/内部转仓真实扫描责任点（${sydnArrivalTime}）`)
   assert.equal(facts.assignCancelLoopWithoutDispatch, true)
   assert.equal(guarded.lossScope, '库内丢失')
-  assert.equal(guarded.exceptionCategoryId, '扫描员丢失')
+  assert.equal(guarded.exceptionCategoryId, '疑似派件员窃取')
   assert.equal(formatCurrentResponsibilityParty(facts), 'SYDN')
 })
 

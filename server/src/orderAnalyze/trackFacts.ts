@@ -60,17 +60,19 @@ function extractOperatorFromContent(content: string): string {
 
 /**
  * 按时序识别「连续相邻」的 "分配→取消" 配对的最大次数。
+ *
+ * 只有首尾相接、中间不夹任何真实物理操作的分配-取消才算同一轮循环：一旦出现真实扫描员/派送员操作
+ * （即能建立责任点的事件，与 getTrackResponsibilityPoint 同源），说明包裹被真实触达过，
+ * 链条断开，计数归零。判定"是否为真实操作"必须走仓库画像，避免把 System 等非真实账号误当作打断。
  */
-function countMaxConsecutiveAssignCancelPairs(sorted: TrackEvent[]): number {
+function countMaxConsecutiveAssignCancelPairs(
+  sorted: TrackEvent[],
+  profile: WarehouseProfile | null
+): number {
   const isInterruptingEvent = (event: TrackEvent): boolean => {
-    if (isDispatchOutEvent(event) || isProblemEvent(event) || isDeliveryCompletionEvent(event)) return true
-    const content = event.content
-    return (
-      content.includes('已回到网点') ||
-      content.includes('已盘点') ||
-      content.includes('登记为问题件') ||
-      content.includes('订单异常完结')
-    )
+    if (isProblemEvent(event) || isDeliveryCompletionEvent(event)) return true
+    if (event.content.includes('订单异常完结')) return true
+    return getTrackResponsibilityPoint(event, profile) !== null
   }
 
   let maxPairs = 0
@@ -1077,7 +1079,7 @@ export function deriveTrackFacts(
     ? findLastEvent(activeEvents, (event) => event.content.includes('已盘点'))
     : null
   const maxConsecutiveAssignCancelPairs = shouldComputeWarehouseFacts
-    ? countMaxConsecutiveAssignCancelPairs(activeEvents)
+    ? countMaxConsecutiveAssignCancelPairs(activeEvents, activeProfile)
     : 0
   const hasAssignCancelLoop = maxConsecutiveAssignCancelPairs >= 2
   const activeTrackResponsibilityPoints = shouldComputeWarehouseFacts
@@ -1113,7 +1115,13 @@ export function deriveTrackFacts(
     inWarehouseStartTime !== null &&
     outWarehouseResponsibilityPoint !== null &&
     outWarehouseResponsibilityPoint.time > inWarehouseStartTime
-  const assignCancelLoopWithoutDispatch = hasAssignCancelLoop && lastDispatchedOut === null
+  // 「无出库」只看最后一次库内责任重置点（回站/盘点等）之后的区间：该点之前的出库属于上一轮且已闭环
+  // （见 lastDispatchHasReturn），不能用来否定这一轮的分配-取消循环。真实案例 3781059456380：
+  // 07-29 出库 → 07-30 回站+盘点 → 此后 3 组分配-取消，旧的「当前责任段全程无出库」口径把它误判成「扫描员丢失」。
+  const dispatchAfterInWarehouseStart =
+    lastDispatchedOut !== null &&
+    (inWarehouseStartTime === null || lastDispatchedOut.time > inWarehouseStartTime)
+  const assignCancelLoopWithoutDispatch = hasAssignCancelLoop && !dispatchAfterInWarehouseStart
   const latestAssignmentAfterLastDispatch =
     lastDeliveryAssignment !== null &&
     lastDispatchedOut !== null &&
@@ -1510,18 +1518,21 @@ export function computeTrackTemporalContext(
   if (facts.assignCancelLoopWithoutDispatch) {
     if (facts.hasRealOperatorScan) {
       lines.push(
-        '分配-取消循环（当前责任段无任何成功出库）: 是，且当前责任段存在真实操作员扫描入库  → 派件员反复领取后退回、包裹始终在当前仓库未离开，是「库内扫描员丢失」的典型特征'
+        '分配-取消循环（库内起算之后无成功出库）: 是，且当前责任段存在真实操作员扫描入库  → 派件员反复领取后退回、包裹自最近一次回仓/盘点起始终在当前仓库未离开。⚠️ 该信号本身不构成丢失判定，是否判库内丢失仍必须以「最终责任点距今天数 ≥ 当前仓库丢失超时阈值」为准；仅在已超阈值时用于将子类型定为「疑似派件员窃取」'
       )
     } else {
       lines.push(
-        '分配-取消循环（当前责任段无任何成功出库）: 是，但当前责任段无真实操作员扫描入库（真实操作员扫描记录: 否）  → 责任尚未真正进入库内、包裹也未真正出库，是「虚假转运」的典型特征，禁止据此判库内丢失'
+        '分配-取消循环（库内起算之后无成功出库）: 是，但当前责任段无真实操作员扫描入库（真实操作员扫描记录: 否）  → 责任尚未真正进入库内、包裹也未真正出库，是「虚假转运」的典型特征，禁止据此判库内丢失'
       )
     }
   } else {
-    const noLoopReason = facts.lastDispatchedOutTime
-      ? `当前责任段存在「包裹正在派送中」真实出库（${facts.lastDispatchedOutTime}），不构成"无任何成功出库循环"`
+    const dispatchedAfterInWarehouseStart =
+      facts.lastDispatchedOutTime !== null &&
+      (facts.inWarehouseStartTime === null || facts.lastDispatchedOutTime > facts.inWarehouseStartTime)
+    const noLoopReason = dispatchedAfterInWarehouseStart
+      ? `库内起算之后存在「包裹正在派送中」真实出库（${facts.lastDispatchedOutTime}），不构成"库内起算后无成功出库循环"`
       : '当前责任段连续分配-取消配对未达到阈值，或当前不在公司仓库责任段'
-    lines.push(`分配-取消循环（当前责任段无任何成功出库）: 否  → ${noLoopReason}`)
+    lines.push(`分配-取消循环（库内起算之后无成功出库）: 否  → ${noLoopReason}`)
   }
 
   if (facts.stationLossCompletion) {

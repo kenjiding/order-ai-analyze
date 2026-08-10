@@ -11,7 +11,7 @@ import { EXTERNAL_CARRIER_LOSS_TIMEOUT_DAYS } from './warehouseProfiles'
  * - 指令后无物理扫描 但 尚未构成丢失 → 有效（方向刚给出，尚未超时，豁免）
  *
  * 是否「已超时」统一复用 expectedScopeFromFinalResponsibility，与库内/库外丢失判定同源，
- * 涵盖 15 天阈值以及「分配-取消循环（无出库）+ ≥5 天」两种充分条件，避免口径分裂。
+ * 即以当前仓库配置的「仓库丢失超时（天）」为唯一口径，避免口径分裂。
  *
  * 不适用于 merchantReturnClosed（物理退返完成）：该状态永远有效。
  */
@@ -67,13 +67,17 @@ function withRuleHit(input: {
   }
 }
 
+/**
+ * 库内/库外丢失的唯一时效口径：最终责任点距今天数必须达到当前仓库配置的「仓库丢失超时（天）」。
+ * 分配-取消循环只是责任归属线索（决定子类型，见 inWarehouseLossSubType），绝不构成独立的丢失判定条件——
+ * 曾存在「循环 + 距今≥5天」捷径，导致 5 天即被判库内丢失（真实案例：3781059314407），已移除。
+ */
 function expectedScopeFromFinalResponsibility(facts: TrackFacts): AiLossScope | null {
   if (!facts.finalResponsibilityOwner || facts.finalResponsibilityDaysDiff < 0) return null
 
   if (
     facts.finalResponsibilityOwner === 'in_warehouse' &&
-    (facts.finalResponsibilityDaysDiff >= facts.activeWarehouseLossTimeoutDays ||
-      (facts.assignCancelLoopWithoutDispatch && facts.finalResponsibilityDaysDiff >= 5))
+    facts.finalResponsibilityDaysDiff >= facts.activeWarehouseLossTimeoutDays
   ) {
     return '库内丢失'
   }
@@ -86,6 +90,15 @@ function expectedScopeFromFinalResponsibility(facts: TrackFacts): AiLossScope | 
   }
 
   return '暂无异常'
+}
+
+/**
+ * 库内丢失子类型：已达到仓库超时阈值的前提下，若同时命中「分配-取消循环（库内起算之后无出库）」，
+ * 问题更可能是具体某个派件员反复领取又取消、包裹去向不明，用更具体的「疑似派件员窃取」；
+ * 其余情形维持「扫描员丢失」。本函数只影响子类型，不参与是否构成丢失的判定。
+ */
+function inWarehouseLossSubType(facts: TrackFacts): string {
+  return facts.assignCancelLoopWithoutDispatch ? '疑似派件员窃取' : '扫描员丢失'
 }
 
 function formatActiveOwner(owner: TrackFacts['activeResponsibilityOwner']): string {
@@ -309,7 +322,7 @@ function buildDeterministicBaseResult(input: {
     return {
       orderNo,
       lossScope: '库内丢失',
-      exceptionCategoryId: '扫描员丢失',
+      exceptionCategoryId: inWarehouseLossSubType(facts),
       confidence: 0.88,
       needsReview: false,
       reason: appendEvidence(
@@ -639,9 +652,7 @@ export const DECISION_RULES: readonly DecisionRule[] = [
       facts.hasRealOperatorScan &&
       facts.finalResponsibilityOwner === 'in_warehouse' &&
       !facts.hasDeliveryCompletion &&
-      facts.finalResponsibilityDaysDiff >= 0 &&
-      (facts.finalResponsibilityDaysDiff >= facts.activeWarehouseLossTimeoutDays ||
-        (facts.assignCancelLoopWithoutDispatch && facts.finalResponsibilityDaysDiff >= 5)) &&
+      facts.finalResponsibilityDaysDiff >= facts.activeWarehouseLossTimeoutDays &&
       result.lossScope !== '库外丢失' &&
       result.lossScope !== '库内丢失',
     resolve: ({ result, facts }) => {
@@ -650,7 +661,7 @@ export const DECISION_RULES: readonly DecisionRule[] = [
         result,
         ruleId: 'active_in_warehouse_overdue_is_in_warehouse_loss',
         lossScope: '库内丢失',
-        exceptionCategoryId: '扫描员丢失',
+        exceptionCategoryId: inWarehouseLossSubType(facts),
         confidence: Math.max(0.85, result.confidence),
         needsReview: false,
         hit,
@@ -677,7 +688,7 @@ export const DECISION_RULES: readonly DecisionRule[] = [
           result,
           ruleId: 'merchant_return_in_progress_not_terminal',
           lossScope: '库内丢失',
-          exceptionCategoryId: '扫描员丢失',
+          exceptionCategoryId: inWarehouseLossSubType(facts),
           confidence: Math.max(0.85, result.confidence),
           needsReview: false,
           hit,
@@ -736,10 +747,9 @@ export const DECISION_RULES: readonly DecisionRule[] = [
     match: ({ facts }) =>
       facts.finalResponsibilityOwner === 'in_warehouse' &&
       facts.finalResponsibilityDaysDiff >= 0 &&
-      facts.finalResponsibilityDaysDiff < facts.activeWarehouseLossTimeoutDays &&
-      !(facts.assignCancelLoopWithoutDispatch && facts.finalResponsibilityDaysDiff >= 5),
+      facts.finalResponsibilityDaysDiff < facts.activeWarehouseLossTimeoutDays,
     resolve: ({ result, facts }) => {
-      const hit = `最终库内责任点距今仅 ${facts.finalResponsibilityDaysDiff} 天，未达到当前仓库 ${facts.activeWarehouseLossTimeoutDays} 天阈值，且不满足「分配-取消循环（无任何成功出库）+ 库内责任点 ≥ 5 天」的充分条件`
+      const hit = `最终库内责任点距今仅 ${facts.finalResponsibilityDaysDiff} 天，未达到当前仓库 ${facts.activeWarehouseLossTimeoutDays} 天阈值`
       return withRuleHit({
         result,
         ruleId: 'in_warehouse_loss_threshold_not_met',
@@ -797,7 +807,7 @@ export const DECISION_RULES: readonly DecisionRule[] = [
           result,
           ruleId: 'intercept_updates_responsibility_start',
           lossScope: '库内丢失',
-          exceptionCategoryId: '扫描员丢失',
+          exceptionCategoryId: inWarehouseLossSubType(facts),
           confidence: Math.max(0.85, result.confidence),
           needsReview: false,
           hit,
@@ -832,10 +842,7 @@ export const DECISION_RULES: readonly DecisionRule[] = [
       facts.finalResponsibilityOwner !== null &&
       facts.finalResponsibilityStartTime !== null &&
       facts.finalResponsibilityDaysDiff >= 0 &&
-      facts.finalResponsibilityDaysDiff < facts.activeWarehouseLossTimeoutDays &&
-      !(facts.finalResponsibilityOwner === 'in_warehouse' &&
-        facts.assignCancelLoopWithoutDispatch &&
-        facts.finalResponsibilityDaysDiff >= 5),
+      facts.finalResponsibilityDaysDiff < facts.activeWarehouseLossTimeoutDays,
     resolve: ({ result, facts }) => {
       const hit = `${facts.finalResponsibilityBasis ?? '当前责任段最终责任点'}；最终起算距今 ${facts.finalResponsibilityDaysDiff} 天，未达到当前仓库 ${facts.activeWarehouseLossTimeoutDays} 天阈值`
       return withRuleHit({
@@ -913,7 +920,7 @@ export const DECISION_RULES: readonly DecisionRule[] = [
           result,
           ruleId: 'out_warehouse_loss_after_return',
           lossScope: '库内丢失',
-          exceptionCategoryId: '扫描员丢失',
+          exceptionCategoryId: inWarehouseLossSubType(facts),
           confidence: Math.max(0.85, result.confidence),
           needsReview: false,
           hit,
@@ -968,7 +975,7 @@ export const DECISION_RULES: readonly DecisionRule[] = [
           result,
           ruleId: 'fake_transfer_has_real_operator',
           lossScope: '库内丢失',
-          exceptionCategoryId: '扫描员丢失',
+          exceptionCategoryId: inWarehouseLossSubType(facts),
           confidence: Math.max(0.85, result.confidence),
           needsReview: false,
           hit,
