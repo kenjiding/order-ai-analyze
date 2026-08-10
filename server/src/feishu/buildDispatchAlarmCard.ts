@@ -16,8 +16,8 @@ const TILE_BG: Record<MarkColor, string> = {
   blue: 'blue-50',
 }
 
-function md(content: string): CardEl {
-  return { tag: 'markdown', content }
+function md(content: string, extra?: CardEl): CardEl {
+  return { tag: 'markdown', content, ...extra }
 }
 
 function hr(): CardEl {
@@ -175,8 +175,11 @@ export function buildDispatchAlarmCard(params: {
       lines.push(`及其他 ${unmetDrivers.length - MAX_DRIVER_LINES} 位司机`)
     }
     elements.push(
-      md(`🚨 **Drivers with waybills not signed within 24H (${unmetDrivers.length})**\n${lines.join('\n')}`),
+      md(`🚨 **Drivers with waybills not signed within 24H (${unmetDrivers.length})**`, {
+        text_size: 'heading',
+      }),
     )
+    elements.push(md(lines.join('\n')))
   }
 
   if (detailUrl && (unmet > 0 || problemCount > 0)) {

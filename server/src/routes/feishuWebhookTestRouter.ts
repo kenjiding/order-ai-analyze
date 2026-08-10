@@ -10,7 +10,10 @@ import {
   listSupplierPushConfigs,
   supplierDisplayName,
 } from '../supplierPushConfigs'
-import { listFeishuCardClickEventsByMessageId } from '../feishu/feishuCardClickEventRepository'
+import {
+  listFeishuCardClickEventsByMessageId,
+  listFeishuCardClickEventsByMessageIds,
+} from '../feishu/feishuCardClickEventRepository'
 import {
   FEISHU_UPLOAD_IMAGES_URL,
   computeFeishuWebhookSign,
@@ -34,6 +37,7 @@ import {
 } from '../feishu/feishuAppMessage'
 import {
   getFeishuPushMessageById,
+  getFeishuPushMessagesByIds,
   insertFeishuPushMessage,
   listFeishuPushMessagesBySupplier,
 } from '../feishu/pushMessageRepository'
@@ -886,6 +890,96 @@ feishuWebhookTestRouter.get('/push-messages', async (req: AuthenticatedRequest, 
   }
 })
 
+/** 按 chatId 去重后并发拉取群成员，避免同一个群在批量接口里被重复查询多次 */
+async function fetchChatMembersByChatIds(
+  tenant: string,
+  chatIds: string[],
+): Promise<{ ok: true; membersByChatId: Map<string, Map<string, string>> } | { ok: false; error: string }> {
+  const uniqueChatIds = [...new Set(chatIds)]
+  const results = await Promise.all(uniqueChatIds.map((chatId) => listFeishuChatMembers(tenant, chatId)))
+  const membersByChatId = new Map<string, Map<string, string>>()
+  for (let i = 0; i < uniqueChatIds.length; i++) {
+    const result = results[i]
+    if (!result.ok) return { ok: false, error: result.error }
+    membersByChatId.set(uniqueChatIds[i], new Map(result.members.map((m) => [m.userId, m.name])))
+  }
+  return { ok: true, membersByChatId }
+}
+
+/**
+ * 「推送数据监控」批量已读详情：一次性查询多条消息的已读/未读名单。
+ * 展开一个日期行时该日期下可能有几十条消息，前端不再逐条调用单条接口，改为一次批量请求；
+ * 同一 chatId 的群成员查询在此去重，飞书 read_users 本身不支持批量仍需逐条并发调用。
+ */
+feishuWebhookTestRouter.get('/push-messages/read-status', async (req: AuthenticatedRequest, res: Response) => {
+  const idsRaw = typeof req.query.ids === 'string' ? req.query.ids : ''
+  const ids = idsRaw.split(',').map((s) => s.trim()).filter(Boolean)
+  if (ids.length === 0) {
+    res.json({ ok: true, data: {} })
+    return
+  }
+
+  let records: Awaited<ReturnType<typeof getFeishuPushMessagesByIds>>
+  try {
+    records = await getFeishuPushMessagesByIds(ids)
+  } catch {
+    res.status(500).json({ ok: false, error: '读取推送记录失败' })
+    return
+  }
+  if (records.length === 0) {
+    res.json({ ok: true, data: {} })
+    return
+  }
+
+  const tenantRes = await getFeishuTenantAccessToken()
+  if (!tenantRes.ok) {
+    if (tenantRes.reason === 'not_configured') {
+      res.status(400).json({ ok: false, error: '服务器未配置飞书开放接口凭证（FEISHU_APP_ID / FEISHU_APP_SECRET）。' })
+      return
+    }
+    res.status(502).json({ ok: false, error: tenantRes.error || '获取 tenant_access_token 失败' })
+    return
+  }
+  const tenant = tenantRes.token
+
+  const membersRes = await fetchChatMembersByChatIds(tenant, records.map((r) => r.chatId))
+  if (!membersRes.ok) {
+    res.status(502).json({ ok: false, error: membersRes.error })
+    return
+  }
+
+  const readResults = await Promise.all(records.map((r) => getFeishuMessageReadUsers(tenant, r.messageId)))
+  const data: Record<string, unknown> = {}
+  for (let i = 0; i < records.length; i++) {
+    const record = records[i]
+    const readRes = readResults[i]
+    if (!readRes.ok) {
+      res.status(502).json({ ok: false, error: readRes.error })
+      return
+    }
+    const memberMap = membersRes.membersByChatId.get(record.chatId) ?? new Map<string, string>()
+    const readIdSet = new Set(readRes.readUsers.map((u) => u.userId))
+    const readUsers = readRes.readUsers.map((u) => ({
+      userId: u.userId,
+      name: memberMap.get(u.userId) ?? '',
+      readAtMs: u.readAtMs,
+    }))
+    const unreadUsers = [...memberMap.entries()]
+      .filter(([userId]) => !readIdSet.has(userId))
+      .map(([userId, name]) => ({ userId, name }))
+    data[record.id] = {
+      messageId: record.messageId,
+      sentAt: record.createdAt,
+      totalMembers: memberMap.size,
+      readCount: readUsers.length,
+      readUsers,
+      unreadUsers,
+    }
+  }
+
+  res.json({ ok: true, data })
+})
+
 /** 查询某条应用机器人消息的已读/未读名单：已读来自 read_users，未读 = 群成员 - 已读 */
 feishuWebhookTestRouter.get('/push-messages/:id/read-status', async (req: AuthenticatedRequest, res: Response) => {
   const id = String(req.params.id ?? '').trim()
@@ -1024,6 +1118,71 @@ feishuWebhookTestRouter.get('/push-engagement', async (req: AuthenticatedRequest
       clicks: clicksByMessageId.get(m.messageId) ?? {},
     }
   })
+
+  res.json({ ok: true, data })
+})
+
+/**
+ * 「推送数据监控」批量点击详情：一次性查询多条消息的点击记录。
+ * click-events 完全是我方数据库数据，直接用 inArray 一次查完；群成员查询同样按 chatId 去重。
+ */
+feishuWebhookTestRouter.get('/push-messages/click-events', async (req: AuthenticatedRequest, res: Response) => {
+  const idsRaw = typeof req.query.ids === 'string' ? req.query.ids : ''
+  const ids = idsRaw.split(',').map((s) => s.trim()).filter(Boolean)
+  if (ids.length === 0) {
+    res.json({ ok: true, data: {} })
+    return
+  }
+
+  let records: Awaited<ReturnType<typeof getFeishuPushMessagesByIds>>
+  try {
+    records = await getFeishuPushMessagesByIds(ids)
+  } catch {
+    res.status(500).json({ ok: false, error: '读取推送记录失败' })
+    return
+  }
+  if (records.length === 0) {
+    res.json({ ok: true, data: {} })
+    return
+  }
+
+  let events: Awaited<ReturnType<typeof listFeishuCardClickEventsByMessageIds>>
+  try {
+    events = await listFeishuCardClickEventsByMessageIds(records.map((r) => r.messageId))
+  } catch {
+    res.status(500).json({ ok: false, error: '读取点击记录失败' })
+    return
+  }
+
+  // 点击事件本身不受 7 天限制（我方落库），姓名映射尽力而为：拿不到 tenant token / 群成员时退化成只显示 openId
+  const nameByOpenId = new Map<string, string>()
+  const tenantRes = await getFeishuTenantAccessToken()
+  if (tenantRes.ok) {
+    const membersRes = await fetchChatMembersByChatIds(tenantRes.token, records.map((r) => r.chatId))
+    if (membersRes.ok) {
+      for (const memberMap of membersRes.membersByChatId.values()) {
+        for (const [userId, name] of memberMap) nameByOpenId.set(userId, name)
+      }
+    }
+  }
+
+  const eventsByMessageId = new Map<string, typeof events>()
+  for (const e of events) {
+    const bucket = eventsByMessageId.get(e.messageId) ?? []
+    bucket.push(e)
+    eventsByMessageId.set(e.messageId, bucket)
+  }
+
+  const data: Record<string, unknown> = {}
+  for (const record of records) {
+    const recordEvents = eventsByMessageId.get(record.messageId) ?? []
+    data[record.id] = recordEvents.map((e) => ({
+      openId: e.openId,
+      name: nameByOpenId.get(e.openId) ?? '',
+      actionType: e.actionType,
+      clickedAt: e.clickedAt,
+    }))
+  }
 
   res.json({ ok: true, data })
 })

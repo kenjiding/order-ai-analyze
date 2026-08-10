@@ -72,8 +72,13 @@ export type ExitAlarmPushNowResult = {
   errors: string[]
   stationCode: string
   date: string
-  /** 各供应商本次推送中未在 11 点前出仓（未达标）的运单号，供导出 Excel */
-  unqualifiedByVendor: { vendorName: string; waybillNos: string[] }[]
+  /** 各供应商本次推送中未在阈值前出仓（未达标）的运单号，供导出 Excel */
+  unqualifiedByVendor: {
+    vendorName: string
+    waybillNos: string[]
+    /** 路由码白名单范围内未达标的运单号 */
+    whitelistWaybillNos: string[]
+  }[]
 }
 
 /** 立刻推送：使用该条目已保存配置，不校验推送时间 */

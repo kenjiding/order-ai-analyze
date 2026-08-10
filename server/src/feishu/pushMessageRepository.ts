@@ -1,4 +1,4 @@
-import { desc, eq } from 'drizzle-orm'
+import { desc, eq, inArray } from 'drizzle-orm'
 import { getDb } from '../db'
 import { feishuPushMessages } from '../db/schema'
 import type { FeishuPushMessage } from '../db/schema'
@@ -41,6 +41,13 @@ export async function getFeishuPushMessageById(id: string): Promise<FeishuPushMe
   const db = getDb()
   const [row] = await db.select().from(feishuPushMessages).where(eq(feishuPushMessages.id, id)).limit(1)
   return row ?? null
+}
+
+/** 按一组 id 批量查询推送记录，供「推送数据监控」展开行的批量已读/点击详情接口使用 */
+export async function getFeishuPushMessagesByIds(ids: string[]): Promise<FeishuPushMessage[]> {
+  if (ids.length === 0) return []
+  const db = getDb()
+  return db.select().from(feishuPushMessages).where(inArray(feishuPushMessages.id, ids))
 }
 
 /**

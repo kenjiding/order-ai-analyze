@@ -303,13 +303,14 @@ exitAlarmRouter.post('/schedules/:id/push-now', async (req: AuthenticatedRequest
     }
 
     const tz = resolveRegionTz(req.authUser?.regionCode)
-    const { prevDateStr, timeHHmm: pushTime } = getRegionNow(tz)
+    const { dateStr: todayDateStr, prevDateStr, timeHHmm: pushTime } = getRegionNow(tz)
     const date = lastSortingWorkdayOnOrBefore(prevDateStr)
 
     const result = await executeExitAlarmPush({
       token,
       stationCode,
       date,
+      todayDateStr,
       pushTime,
       configs,
       tz,

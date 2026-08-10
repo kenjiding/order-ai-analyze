@@ -1,4 +1,4 @@
-import { desc, eq } from 'drizzle-orm'
+import { desc, eq, inArray } from 'drizzle-orm'
 import { getDb } from '../db'
 import { feishuCardClickEvents } from '../db/schema'
 import type { FeishuCardClickEvent } from '../db/schema'
@@ -31,5 +31,16 @@ export async function listFeishuCardClickEventsByMessageId(messageId: string): P
     .select()
     .from(feishuCardClickEvents)
     .where(eq(feishuCardClickEvents.messageId, messageId))
+    .orderBy(desc(feishuCardClickEvents.clickedAt))
+}
+
+/** 按一组 messageId 批量查点击事件（倒序），供「推送数据监控」展开行的批量点击详情接口使用 */
+export async function listFeishuCardClickEventsByMessageIds(messageIds: string[]): Promise<FeishuCardClickEvent[]> {
+  if (messageIds.length === 0) return []
+  const db = getDb()
+  return db
+    .select()
+    .from(feishuCardClickEvents)
+    .where(inArray(feishuCardClickEvents.messageId, messageIds))
     .orderBy(desc(feishuCardClickEvents.clickedAt))
 }

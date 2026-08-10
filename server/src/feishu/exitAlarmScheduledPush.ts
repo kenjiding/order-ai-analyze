@@ -9,7 +9,7 @@ import { envFirst } from '../imile/shared'
 import { getGlobalImileToken } from './globalImileToken'
 import { fetchWaybillDetailsByInboundIndex } from '../imile/inboundWaybillIndex'
 import { resolveRegionTz, type AusTz } from '../imile/ausTimezone'
-import { computeBefore11ThresholdMs } from '../imile/before11Exit'
+import { computeThresholdMsOnDate } from '../imile/before11Exit'
 import {
   aggregateBefore11ByScopes,
   tagBefore11Rows,
@@ -98,8 +98,13 @@ export type ExitAlarmPushResult = {
   errors: string[]
   stationCode: string
   date: string
-  /** 各供应商本次推送中未在 11 点前出仓（未达标）的运单号，供前端导出 Excel */
-  unqualifiedByVendor: { vendorName: string; waybillNos: string[] }[]
+  /** 各供应商本次推送中未在阈值前出仓（未达标）的运单号，供前端导出 Excel */
+  unqualifiedByVendor: {
+    vendorName: string
+    waybillNos: string[]
+    /** 路由码白名单范围内未达标的运单号；不受「路由码白名单数据推送」开关影响，导出始终带上 */
+    whitelistWaybillNos: string[]
+  }[]
 }
 
 /**
@@ -109,8 +114,10 @@ export type ExitAlarmPushResult = {
 export async function executeExitAlarmPush(params: {
   token: string
   stationCode: string
-  /** 目标工作日 YYYY-MM-DD */
+  /** 到件日（查询目标）YYYY-MM-DD；跨周末/节假日时会回退到最近工作日，可能早于「今天」多天 */
   date: string
+  /** 推送实际触发那天 YYYY-MM-DD（账号州时区）——阈值锚点，与 date 是两回事，不能互相替代 */
+  todayDateStr: string
   pushTime: string
   configs: FleetSupplierPushConfig[]
   tz: AusTz
@@ -130,6 +137,7 @@ export async function executeExitAlarmPush(params: {
     token,
     stationCode,
     date,
+    todayDateStr,
     pushTime,
     configs,
     tz,
@@ -152,7 +160,11 @@ export async function executeExitAlarmPush(params: {
   }
 
   const waybills = result.records
-  const before11ThresholdMs = computeBefore11ThresholdMs(date, tz)
+  // 阈值锚在「推送实际触发那天」的「推送触发时刻」——不能用 date（到件日）反推次日，
+  // 到件日跨周末/节假日回退后可能是好几天前，「到件日+1天」不等于「今天」（例：周一到件日
+  // 回退到上周五，+1 天=周六，早已过去，会把当天所有正常出仓都误判成「未出仓」）。
+  // 也不再固定 11:00 —— 与「供应商数据分析」的 before11ExitRate（固定 11 点口径）区分开。
+  const before11ThresholdMs = computeThresholdMsOnDate(todayDateStr, tz, pushTime)
   // 取数层：全量打标；过滤留给各配置业务侧（与供应商分析对称）
   const taggedRows = tagBefore11Rows({
     rows: waybills as Array<Record<string, unknown>>,
@@ -160,7 +172,7 @@ export async function executeExitAlarmPush(params: {
   })
   let pushedCount = 0
   const errors: string[] = []
-  const unqualifiedByVendor: { vendorName: string; waybillNos: string[] }[] = []
+  const unqualifiedByVendor: ExitAlarmPushResult['unqualifiedByVendor'] = []
 
   // 与「供应商数据分析」同一套归属口径：courierVendorCode 归属 → routeCode 纳入 → 白名单剔除。
   // 用 config.id 当 key 一次遍历 taggedRows 拿到全部配置的统计，不再对每条配置各自重新扫一遍全量到件运单。
@@ -207,7 +219,7 @@ export async function executeExitAlarmPush(params: {
       const card = buildExitAlarmCard({
         vendorName,
         stationCode,
-        date,
+        date: todayDateStr,
         pushTime,
         tz,
         zoneBreakdown: stat.zoneBreakdown,
@@ -218,7 +230,11 @@ export async function executeExitAlarmPush(params: {
         whitelistStat,
       })
 
-      unqualifiedByVendor.push({ vendorName, waybillNos: stat.unqualifiedWaybillNos })
+      unqualifiedByVendor.push({
+        vendorName,
+        waybillNos: stat.unqualifiedWaybillNos,
+        whitelistWaybillNos: stat.whitelistStat?.unqualifiedWaybillNos ?? [],
+      })
 
       const { ok, reason, messageId, chatId } = await sendSupplierPushCard(config, card)
       if (!ok) {
@@ -257,7 +273,7 @@ async function runOneScheduledPush(schedule: ExitAlarmSchedule, regionCode: stri
   if (dueSlots.length === 0) return
 
   for (const slot of dueSlots) {
-    const { weekday, timeHHmm, prevDateStr } = slot
+    const { weekday, timeHHmm, dateStr: todayDateStr, prevDateStr } = slot
     const jobKeyPrefix = `exit-alarm:${schedule.id}`
     const slotKey = formatScheduledPushSlotKey(slot)
 
@@ -295,6 +311,7 @@ async function runOneScheduledPush(schedule: ExitAlarmSchedule, regionCode: stri
       token: rawToken,
       stationCode,
       date: targetDate,
+      todayDateStr,
       pushTime: timeHHmm,
       configs,
       tz,

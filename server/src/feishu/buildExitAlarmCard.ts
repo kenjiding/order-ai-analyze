@@ -88,13 +88,24 @@ export type WhitelistStat = {
   zoneBreakdown: Record<string, ZoneStats>
 }
 
+/** 路由出仓率高于此值视为达标，不在「未出仓」磁贴里展示——主统计与白名单面板共用同一口径 */
+const COMPLIANT_RATE = 90
+
+function filterNonCompliantZones(
+  zoneBreakdown: Record<string, ZoneStats>,
+): [string, ZoneStats][] {
+  return Object.entries(zoneBreakdown)
+    .filter(([, s]) => s.pending > 0 && (s.total > 0 ? ((s.total - s.pending) / s.total) * 100 : 0) <= COMPLIANT_RATE)
+    .sort((a, b) => b[1].pending - a[1].pending)
+}
+
 /**
  * 路由码白名单出仓数据——折叠面板（collapsible_panel，JSON 2.0 结构），
  * 追加在主卡片末尾，默认折叠（expanded: false），点击后展开；不再作为独立第二条消息推送。
  * 统计对象是主卡片里被剔除的那部分白名单路由数据，展示口径与主卡片一致。
  * 面板与标题背景取柔和的浅色阶（grey-50 / blue-50），与卡片其余磁贴的色调保持一致。
  */
-function buildWhitelistPanel(whitelistStat: WhitelistStat): CardEl {
+function buildWhitelistPanel(whitelistStat: WhitelistStat, pushTime: string): CardEl {
   const { totalWaybills, zoneBreakdown } = whitelistStat
   const totalPending = Object.values(zoneBreakdown).reduce((s, v) => s + v.pending, 0)
   const exited = totalWaybills - totalPending
@@ -104,17 +115,18 @@ function buildWhitelistPanel(whitelistStat: WhitelistStat): CardEl {
 
   const panelElements: CardEl[] = [
     columnSet([
-      summaryTile('Exited by 11:00', `${exited}`, `${totalWaybills} waybills total`, 'blue'),
+      summaryTile(`Exited by ${pushTime}`, `${exited}`, `${totalWaybills} waybills total`, 'blue'),
       summaryTile('Whitelisted exit rate', `${exitRate}%`, `${exited} / ${totalWaybills} exited`, rateColor),
     ]),
   ]
 
-  const zones = Object.entries(zoneBreakdown).sort((a, b) => b[1].pending - a[1].pending)
-  if (zones.length === 0) {
-    panelElements.push(md(colored('No whitelisted route data', 'grey')))
+  // 出仓率高于 90% 视为达标，不展示——跟主统计的路由明细磁贴口径保持一致
+  const pendingZones = filterNonCompliantZones(zoneBreakdown)
+  if (pendingZones.length === 0) {
+    panelElements.push(md(colored('✅ All whitelisted routes meet exit target', 'green')))
   } else {
-    for (let i = 0; i < zones.length; i += 2) {
-      const pair = zones.slice(i, i + 2)
+    for (let i = 0; i < pendingZones.length; i += 2) {
+      const pair = pendingZones.slice(i, i + 2)
       const cols = pair.map(([code, { pending, total }]) => zoneTile(code, pending, total))
       if (cols.length === 1) cols.push(emptyCol())
       panelElements.push(columnSet(cols, 'bisect'))
@@ -200,27 +212,24 @@ export function buildExitAlarmCard(params: {
   elements.push(
     columnSet([
       summaryTile(
-        'Not exited by 11:00',
+        `Not exited by ${pushTime}`,
         `${totalPending}`,
         `${totalWaybills} waybills total`,
         totalPending > 0 ? 'red' : 'green',
       ),
-      summaryTile('Pre-11am exit rate', `${exitRate}%`, `${exited} exited on time`, rateColor),
+      summaryTile(`Exit rate by ${pushTime}`, `${exitRate}%`, `${exited} exited on time`, rateColor),
     ]),
   )
 
   elements.push(hr())
 
   // 各路由码明细磁贴：出仓率高于 90% 视为达标，不展示
-  const COMPLIANT_RATE = 90
-  const pendingZones = Object.entries(zoneBreakdown)
-    .filter(([, s]) => s.pending > 0 && (s.total > 0 ? ((s.total - s.pending) / s.total) * 100 : 0) <= COMPLIANT_RATE)
-    .sort((a, b) => b[1].pending - a[1].pending)
+  const pendingZones = filterNonCompliantZones(zoneBreakdown)
 
   if (pendingZones.length === 0) {
-    elements.push(md(colored('✅ All routes meet pre-11am exit target', 'green')))
+    elements.push(md(colored(`✅ All routes meet ${pushTime} exit target`, 'green')))
   } else {
-    elements.push(md(`🚨 **Routes not exited by 11:00 (${pendingZones.length})** — Notify drivers now!`))
+    elements.push(md(`🚨 **Routes not exited by ${pushTime} (${pendingZones.length})** — Notify drivers now!`))
     for (let i = 0; i < pendingZones.length; i += 2) {
       const pair = pendingZones.slice(i, i + 2)
       const cols = pair.map(([code, { pending, total }]) => zoneTile(code, pending, total))
@@ -231,11 +240,11 @@ export function buildExitAlarmCard(params: {
 
   if (whitelistStat && whitelistStat.totalWaybills > 0) {
     elements.push(hr())
-    elements.push(buildWhitelistPanel(whitelistStat))
+    elements.push(buildWhitelistPanel(whitelistStat, pushTime))
   }
 
   elements.push(hr())
-  elements.push(footerCaption(`${date} ${pushTime} · Pre-11am dispatch monitoring · iMile Warehouse Management System`))
+  elements.push(footerCaption(`${date} ${pushTime} · Dispatch monitoring as of ${pushTime} · iMile Warehouse Management System`))
 
   const mentionLarkMd = buildMentionLarkMd(mentions)
   if (mentionLarkMd) {
@@ -250,8 +259,8 @@ export function buildExitAlarmCard(params: {
       title: {
         tag: 'plain_text',
         content: isUrgent
-          ? `11 Am Dispatch alert - ${vendorName}`
-          : `11 Am Dispatch on track - ${vendorName}`,
+          ? `${pushTime} Dispatch alert - ${vendorName}`
+          : `${pushTime} Dispatch on track - ${vendorName}`,
       },
     },
     body: {

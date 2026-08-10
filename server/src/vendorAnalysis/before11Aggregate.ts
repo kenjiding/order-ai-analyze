@@ -144,6 +144,8 @@ export type Before11ScopedStat = {
   whitelistStat?: {
     totalWaybills: number
     zoneBreakdown: Record<string, { pending: number; total: number }>
+    /** 白名单范围内未在阈值前出仓的运单号，供前端导出 Excel（与主统计 unqualifiedWaybillNos 对称） */
+    unqualifiedWaybillNos: string[]
   }
 }
 
@@ -182,13 +184,18 @@ export function aggregateBefore11ByScopes(input: {
       }
 
       if (scope.routeCodeWhitelist?.has(routeCode)) {
-        if (!stat.whitelistStat) stat.whitelistStat = { totalWaybills: 0, zoneBreakdown: {} }
+        if (!stat.whitelistStat) {
+          stat.whitelistStat = { totalWaybills: 0, zoneBreakdown: {}, unqualifiedWaybillNos: [] }
+        }
         const whitelistStat = stat.whitelistStat
         whitelistStat.totalWaybills += 1
         const whitelistZone = routeCode.trim() || 'Unknown route'
         if (!whitelistStat.zoneBreakdown[whitelistZone]) whitelistStat.zoneBreakdown[whitelistZone] = { pending: 0, total: 0 }
         whitelistStat.zoneBreakdown[whitelistZone].total += 1
-        if (!row.before11Exit) whitelistStat.zoneBreakdown[whitelistZone].pending += 1
+        if (!row.before11Exit) {
+          whitelistStat.zoneBreakdown[whitelistZone].pending += 1
+          if (row.waybillNo) whitelistStat.unqualifiedWaybillNos.push(row.waybillNo)
+        }
         continue
       }
 

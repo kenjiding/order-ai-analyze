@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import dayjs, { type Dayjs } from 'dayjs'
 import { loadSupplierPushCatalog } from '../../shared/supplierPushConfig/catalogApi'
 import { supplierDisplayName } from '../../shared/supplierPushConfig/display'
@@ -7,8 +7,8 @@ import { showToast } from '../../utils/toast'
 import { groupKey, groupRowsByDate, groupRowsByLabel, mergeReadStatuses, type LabelGroup } from './pushEngagementGrouping'
 import {
   fetchPushEngagementList,
-  fetchPushMessageClickEvents,
-  fetchPushMessageReadStatus,
+  fetchPushMessageClickEventsBatch,
+  fetchPushMessageReadStatusBatch,
 } from './pushEngagementApi'
 import type { DetailState, PushClickEvent, PushEngagementRow, PushReadStatus } from './pushEngagementTypes'
 
@@ -28,6 +28,8 @@ export function usePushEngagementMonitorPage() {
   const [expandedDates, setExpandedDates] = useState<string[]>([])
   const [readStatusByGroup, setReadStatusByGroup] = useState<Record<string, DetailState<PushReadStatus>>>({})
   const [clickEventsByGroup, setClickEventsByGroup] = useState<Record<string, DetailState<PushClickEvent[]>>>({})
+  /** 记录哪些日期已经批量拉取过详情，展开/收起同一日期不重复发请求 */
+  const requestedDatesRef = useRef<Set<string>>(new Set())
 
   useEffect(() => {
     void (async () => {
@@ -64,6 +66,7 @@ export function usePushEngagementMonitorPage() {
     setExpandedDates([])
     setReadStatusByGroup({})
     setClickEventsByGroup({})
+    requestedDatesRef.current = new Set()
   }, [dateRange, pushLabels, supplierConfigId, regionCode])
 
   useEffect(() => {
@@ -81,42 +84,61 @@ export function usePushEngagementMonitorPage() {
 
   const dateGroups = useMemo(() => groupRowsByDate(rows), [rows])
 
-  const loadLabelGroupDetail = useCallback((date: string, labelGroup: LabelGroup) => {
-    const key = groupKey(date, labelGroup.pushLabel)
-    setReadStatusByGroup((prev) => ({ ...prev, [key]: { status: 'loading' } }))
-    setClickEventsByGroup((prev) => ({ ...prev, [key]: { status: 'loading' } }))
+  /**
+   * 一个日期下常有多条独立推送消息（跨多个 pushLabel）。展开日期时不再逐条消息发请求，
+   * 而是把该日期下所有消息 id 合并成一次已读批量请求 + 一次点击批量批量请求，再按 pushLabel 拆回各分组展示。
+   */
+  const loadDateDetail = useCallback((date: string, labelGroups: LabelGroup[]) => {
+    const keys = labelGroups.map((lg) => groupKey(date, lg.pushLabel))
+    setReadStatusByGroup((prev) => {
+      const next = { ...prev }
+      for (const key of keys) next[key] = { status: 'loading' }
+      return next
+    })
+    setClickEventsByGroup((prev) => {
+      const next = { ...prev }
+      for (const key of keys) next[key] = { status: 'loading' }
+      return next
+    })
 
     void (async () => {
-      const nonExpiredRows = labelGroup.rows.filter((r) => !r.readWindowExpired)
-      if (nonExpiredRows.length === 0) {
-        setReadStatusByGroup((prev) => ({ ...prev, [key]: { status: 'expired' } }))
-        return
+      const nonExpiredIds = labelGroups.flatMap((lg) => lg.rows.filter((r) => !r.readWindowExpired).map((r) => r.id))
+      const res = nonExpiredIds.length > 0 ? await fetchPushMessageReadStatusBatch(nonExpiredIds) : null
+      const results: Record<string, DetailState<PushReadStatus>> = {}
+      for (const labelGroup of labelGroups) {
+        const key = groupKey(date, labelGroup.pushLabel)
+        const groupNonExpiredRows = labelGroup.rows.filter((r) => !r.readWindowExpired)
+        if (groupNonExpiredRows.length === 0) {
+          results[key] = { status: 'expired' }
+          continue
+        }
+        if (!res || !res.ok) {
+          results[key] = { status: 'error', error: res && !res.ok ? res.error : '查询已读状态失败。' }
+          continue
+        }
+        const ok = groupNonExpiredRows.map((r) => res.data[r.id]).filter((d): d is PushReadStatus => Boolean(d))
+        if (ok.length === 0) {
+          results[key] = { status: 'error', error: '查询已读状态失败。' }
+          continue
+        }
+        results[key] = { status: 'ready', data: mergeReadStatuses(ok) }
       }
-      const results = await Promise.all(nonExpiredRows.map((r) => fetchPushMessageReadStatus(r.id)))
-      const ok = results.filter((r): r is { ok: true; data: PushReadStatus } => r.ok)
-      if (ok.length === 0) {
-        const firstError = results.find((r) => !r.ok)
-        setReadStatusByGroup((prev) => ({
-          ...prev,
-          [key]: { status: 'error', error: firstError && !firstError.ok ? firstError.error : '查询已读状态失败。' },
-        }))
-        return
-      }
-      setReadStatusByGroup((prev) => ({ ...prev, [key]: { status: 'ready', data: mergeReadStatuses(ok.map((r) => r.data)) } }))
+      setReadStatusByGroup((prev) => ({ ...prev, ...results }))
     })()
 
     void (async () => {
-      const results = await Promise.all(labelGroup.rows.map((r) => fetchPushMessageClickEvents(r.id)))
-      const ok = results.filter((r): r is { ok: true; data: PushClickEvent[] } => r.ok)
-      if (ok.length === 0 && results.length > 0) {
-        const firstError = results[0]
-        setClickEventsByGroup((prev) => ({
-          ...prev,
-          [key]: { status: 'error', error: !firstError.ok ? firstError.error : '查询点击记录失败。' },
-        }))
-        return
+      const allIds = labelGroups.flatMap((lg) => lg.rows.map((r) => r.id))
+      const res = await fetchPushMessageClickEventsBatch(allIds)
+      const results: Record<string, DetailState<PushClickEvent[]>> = {}
+      for (const labelGroup of labelGroups) {
+        const key = groupKey(date, labelGroup.pushLabel)
+        if (!res.ok) {
+          results[key] = { status: 'error', error: res.error }
+          continue
+        }
+        results[key] = { status: 'ready', data: labelGroup.rows.flatMap((r) => res.data[r.id] ?? []) }
       }
-      setClickEventsByGroup((prev) => ({ ...prev, [key]: { status: 'ready', data: ok.flatMap((r) => r.data) } }))
+      setClickEventsByGroup((prev) => ({ ...prev, ...results }))
     })()
   }, [])
 
@@ -124,14 +146,13 @@ export function usePushEngagementMonitorPage() {
     (expanded: boolean, date: string) => {
       setExpandedDates((prev) => (expanded ? [...prev, date] : prev.filter((d) => d !== date)))
       if (!expanded) return
+      if (requestedDatesRef.current.has(date)) return
       const group = dateGroups.find((g) => g.date === date)
       if (!group) return
-      for (const labelGroup of groupRowsByLabel(group.rows)) {
-        const key = groupKey(date, labelGroup.pushLabel)
-        if (!readStatusByGroup[key] && !clickEventsByGroup[key]) loadLabelGroupDetail(date, labelGroup)
-      }
+      requestedDatesRef.current.add(date)
+      loadDateDetail(date, groupRowsByLabel(group.rows))
     },
-    [dateGroups, readStatusByGroup, clickEventsByGroup, loadLabelGroupDetail],
+    [dateGroups, loadDateDetail],
   )
 
   const summary = useMemo(() => {

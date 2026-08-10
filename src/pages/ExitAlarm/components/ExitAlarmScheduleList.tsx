@@ -53,7 +53,10 @@ export function ExitAlarmScheduleList({
         const isToggling = togglingIds.has(schedule.id)
         const pushResult = pushResults[schedule.id]
         const unqualifiedTotal =
-          pushResult?.unqualifiedByVendor.reduce((sum, v) => sum + v.waybillNos.length, 0) ?? 0
+          pushResult?.unqualifiedByVendor.reduce(
+            (sum, v) => sum + v.waybillNos.length + v.whitelistWaybillNos.length,
+            0,
+          ) ?? 0
         return (
           <div key={schedule.id} className="flex flex-wrap items-center justify-between gap-3 px-5 py-3.5">
             <div className="min-w-0 flex-1 space-y-1">

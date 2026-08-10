@@ -68,3 +68,39 @@ export async function fetchPushMessageClickEvents(
     return { ok: false, error: backendUnreachableMessage(path) }
   }
 }
+
+/** 批量已读/未读名单：一次请求查询多条消息，避免展开一个日期行时逐条发请求 */
+export async function fetchPushMessageReadStatusBatch(
+  pushMessageIds: string[],
+): Promise<{ ok: true; data: Record<string, PushReadStatus> } | { ok: false; error: string }> {
+  if (pushMessageIds.length === 0) return { ok: true, data: {} }
+  const path = `/api/feishu-webhook/push-messages/read-status?ids=${encodeURIComponent(pushMessageIds.join(','))}`
+  try {
+    const res = await backendFetch(path)
+    const parsed = (await res.json()) as { ok?: boolean; data?: Record<string, PushReadStatus>; error?: string }
+    if (parsed?.ok === true && parsed.data) {
+      return { ok: true, data: parsed.data }
+    }
+    return { ok: false, error: typeof parsed?.error === 'string' ? parsed.error : '查询已读状态失败。' }
+  } catch {
+    return { ok: false, error: backendUnreachableMessage(path) }
+  }
+}
+
+/** 批量点击记录：一次请求查询多条消息，避免展开一个日期行时逐条发请求 */
+export async function fetchPushMessageClickEventsBatch(
+  pushMessageIds: string[],
+): Promise<{ ok: true; data: Record<string, PushClickEvent[]> } | { ok: false; error: string }> {
+  if (pushMessageIds.length === 0) return { ok: true, data: {} }
+  const path = `/api/feishu-webhook/push-messages/click-events?ids=${encodeURIComponent(pushMessageIds.join(','))}`
+  try {
+    const res = await backendFetch(path)
+    const parsed = (await res.json()) as { ok?: boolean; data?: Record<string, PushClickEvent[]>; error?: string }
+    if (parsed?.ok === true && parsed.data) {
+      return { ok: true, data: parsed.data }
+    }
+    return { ok: false, error: typeof parsed?.error === 'string' ? parsed.error : '查询点击记录失败。' }
+  } catch {
+    return { ok: false, error: backendUnreachableMessage(path) }
+  }
+}
