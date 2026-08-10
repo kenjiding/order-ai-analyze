@@ -19,6 +19,7 @@ import {
 } from '../imile/inboundWaybillIndexScheduler'
 import { INBOUND_INDEX_ADELAIDE_TZ } from '../imile/inboundWaybillIndex'
 import { purgeOldVendorDailyData } from '../vendorAnalysis/retention'
+import { purgeOldPushEngagementData } from '../feishu/pushEngagementRetention'
 import { purgeOldChaseDispatchShareSnapshots } from '../feishu/chaseDispatchShareSnapshot'
 import { purgeOldDispatchAlarmShareSnapshots } from '../feishu/dispatchAlarmShareSnapshot'
 import { purgeOldDriverMapWaybillPoints } from '../driverMap/driverMapPointsQuery'
@@ -185,12 +186,22 @@ export function startJobScheduler(): { stop: () => void } {
       } catch (err) {
         console.error('[scheduler/driver-map-retention] 清理异常:', err)
       }
+      try {
+        const { pushMessages, clickEvents } = await purgeOldPushEngagementData()
+        if (pushMessages > 0 || clickEvents > 0) {
+          console.log(
+            `[scheduler/push-engagement-retention] 已清理 ${pushMessages} 条推送记录 / ${clickEvents} 条点击事件`,
+          )
+        }
+      } catch (err) {
+        console.error('[scheduler/push-engagement-retention] 清理异常:', err)
+      }
     },
     { timezone: INBOUND_INDEX_ADELAIDE_TZ },
   )
   tasks.push(vendorReportRetentionTask)
   console.log(
-    `[scheduler] 已启动供应商日报/催派分享/司机地图保留期清理任务 cron="${vendorReportRetentionCronValid}" timezone="${INBOUND_INDEX_ADELAIDE_TZ}"`,
+    `[scheduler] 已启动供应商日报/催派分享/司机地图/推送数据监控保留期清理任务 cron="${vendorReportRetentionCronValid}" timezone="${INBOUND_INDEX_ADELAIDE_TZ}"`,
   )
 
   return {

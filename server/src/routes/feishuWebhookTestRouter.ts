@@ -844,6 +844,42 @@ feishuWebhookTestRouter.post('/push-rich-message-app', async (req: Authenticated
     imageKeys.push(upload.imageKey)
   }
 
+  // 纯图片（无文案）：与 webhook 通道保持一致，逐张以 msg_type: 'image' 发送，飞书折叠为可点击的缩略图
+  if (!content && imageKeys.length > 0) {
+    let lastMessageId = ''
+    try {
+      for (const key of imageKeys) {
+        const sendRes = await sendFeishuAppMessage(tenant, chatId, 'image', { image_key: key })
+        if (!sendRes.ok) {
+          res.status(502).json({ ok: false, error: sendRes.error, feishu: sendRes.feishu })
+          return
+        }
+        lastMessageId = sendRes.messageId
+      }
+    } catch {
+      res.status(502).json({ ok: false, error: '推送图片时发生网络错误，请稍后重试。' })
+      return
+    }
+
+    let pushMessageId: string | undefined
+    try {
+      const record = await insertFeishuPushMessage({
+        supplierConfigId,
+        chatId,
+        messageId: lastMessageId,
+        msgType: 'image',
+        pushLabel,
+        createdBy: req.authUser?.id ?? null,
+      })
+      pushMessageId = record.id
+    } catch (err) {
+      console.error('[push-rich-message-app] 记录 message_id 失败（不影响本次推送，仅无法查已读）:', err)
+    }
+
+    res.status(200).json({ ok: true, messageId: lastMessageId, pushMessageId })
+    return
+  }
+
   const card = buildFleetRichMessageCard({
     content,
     imageKeys,
