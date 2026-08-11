@@ -140,7 +140,7 @@ function buildWhitelistPanel(whitelistStat: WhitelistStat, pushTime: string): Ca
     header: {
       title: {
         tag: 'markdown',
-        content: `**🔓 Whitelisted routes (${totalWaybills} waybills · ${exitRate}% exited)**`,
+        content: '**Click to expand: Whitelisted Routes**',
       },
       background_color: 'blue-50',
       vertical_align: 'center',
