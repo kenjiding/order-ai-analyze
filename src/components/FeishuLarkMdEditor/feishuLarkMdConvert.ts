@@ -1,4 +1,4 @@
-import { FEISHU_AT_ALL_LARK, FEISHU_HR_MARKER } from './feishuLarkMdMarkers'
+import { FEISHU_AT_ALL_LARK, FEISHU_BLOCK_MARKER, FEISHU_HR_MARKER } from './feishuLarkMdMarkers'
 
 const FEISHU_NAMED_COLORS = new Set(['red', 'orange', 'green', 'blue', 'grey', 'gray'])
 const INLINE_MARK_TAGS = new Set(['STRONG', 'B', 'EM', 'I', 'S', 'DEL', 'STRIKE'])
@@ -148,7 +148,12 @@ export function larkMdToHtml(larkMd: string): string {
   if (!larkMd.trim()) return ''
 
   const hrParts = larkMd.split(FEISHU_HR_MARKER)
-  const htmlParts = hrParts.map((part) => larkMdSegmentToHtml(part))
+  const htmlParts = hrParts.map((part) =>
+    part
+      .split(FEISHU_BLOCK_MARKER)
+      .map((block) => larkMdSegmentToHtml(block))
+      .join(''),
+  )
   return htmlParts.join('<hr>')
 }
 
@@ -328,6 +333,54 @@ function inlineNodesToLarkMd(parent: Node): string {
   return out
 }
 
+/**
+ * 列表项自身的正文（不含嵌套子列表）：`<li>` 里可能是多个 `<p>` 或软换行 `<br>`，
+ * 用 \n 分隔后由调用方缩进到内容列，避免变成「未缩进的延续行」被 markdown 归错块。
+ */
+function listItemOwnText(li: Element): string {
+  const parts: string[] = []
+  let buf = ''
+  li.childNodes.forEach((node) => {
+    if (node.nodeType === Node.ELEMENT_NODE) {
+      const tag = (node as Element).tagName
+      if (tag === 'UL' || tag === 'OL') return
+      if (tag === 'P' || tag === 'DIV') {
+        if (buf.trim()) parts.push(buf)
+        buf = ''
+        parts.push(inlineNodesToLarkMd(node as HTMLElement))
+        return
+      }
+    }
+    buf += nodeToLarkMd(node)
+  })
+  if (buf.trim()) parts.push(buf)
+  return parts
+    .map((p) => p.replace(/\u00a0/g, ' ').trim())
+    .filter(Boolean)
+    .join('\n')
+}
+
+/** 列表 → lark_md：嵌套子列表每层缩进 4 空格（飞书 markdown 组件的嵌套语法要求） */
+function listToLarkMd(el: HTMLElement, depth: number): string {
+  const ordered = el.tagName === 'OL'
+  const indent = '    '.repeat(depth)
+  const lines: string[] = []
+  Array.from(el.children)
+    .filter((child) => child.tagName === 'LI')
+    .forEach((li, index) => {
+      const bullet = ordered ? `${index + 1}.` : '-'
+      const contentIndent = `${indent}${' '.repeat(bullet.length + 1)}`
+      const text = listItemOwnText(li).replace(/\n/g, `\n${contentIndent}`)
+      lines.push(`${indent}${bullet} ${text}`)
+      for (const child of Array.from(li.children)) {
+        if (child.tagName === 'UL' || child.tagName === 'OL') {
+          lines.push(listToLarkMd(child as HTMLElement, depth + 1))
+        }
+      }
+    })
+  return lines.join('\n')
+}
+
 function blockElementToLarkMd(el: HTMLElement): string {
   const tag = el.tagName
   if (tag === 'HR') return FEISHU_HR_MARKER
@@ -341,17 +394,7 @@ function blockElementToLarkMd(el: HTMLElement): string {
       .join('\n')
   }
 
-  if (tag === 'UL') {
-    return Array.from(el.querySelectorAll(':scope > li'))
-      .map((li) => `- ${inlineNodesToLarkMd(li).trim()}`)
-      .join('\n')
-  }
-
-  if (tag === 'OL') {
-    return Array.from(el.querySelectorAll(':scope > li'))
-      .map((li, index) => `${index + 1}. ${inlineNodesToLarkMd(li).trim()}`)
-      .join('\n')
-  }
+  if (tag === 'UL' || tag === 'OL') return listToLarkMd(el, 0)
 
   if (tag === 'P' || tag === 'DIV') {
     return inlineNodesToLarkMd(el).replace(/\u00a0/g, ' ').trimEnd()
@@ -439,11 +482,11 @@ export function htmlToLarkMd(html: string): string {
     blocks.push(blockElementToLarkMd(node as HTMLElement))
   })
 
-  // 首尾空段落不产生多余换行；中间的空段落对应编辑器里的一次空行，保留为一次真实换行。
-  // 飞书 markdown 组件里单个 \n 就是一次真实换行（不遵循「空一行才分段」的标准 markdown 语义），
-  // 因此这里按「一次 Enter = 一个 \n」拼接，而不是固定拼 \n\n，避免每敲一次回车飞书端多出空行。
+  // 首尾空段落不产生多余间距；中间的空段落原样保留为一个空块，卡片端翻译成一行空行的 margin。
+  // 块之间一律用 FEISHU_BLOCK_MARKER 分隔（不能用换行，原因见该常量注释），
+  // 换行只在块内部出现，对应段内软换行 <br>。
   while (blocks.length && !blocks[0]) blocks.shift()
   while (blocks.length && !blocks[blocks.length - 1]) blocks.pop()
 
-  return cleanupLarkMd(blocks.join('\n').replace(/\n{3,}/g, '\n\n').trimEnd())
+  return cleanupLarkMd(blocks.join(FEISHU_BLOCK_MARKER))
 }

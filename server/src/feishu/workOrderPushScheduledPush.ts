@@ -77,7 +77,7 @@ export type WorkOrderPushResult = {
 }
 
 /**
- * 工单推送核心：拉未处理工单 → 按 waybillNo 解析供应商归属 → 聚合 → 按供应商逐个推送（无工单则跳过该供应商）。
+ * 工单推送核心：拉未处理工单 → 按 waybillNo 解析供应商归属 → 聚合 → 按供应商逐个推送（无工单也推送“无遗留工单”卡片）。
  * 供定时任务与「立即推送」复用。
  */
 export async function executeWorkOrderPush(params: {
@@ -132,8 +132,15 @@ export async function executeWorkOrderPush(params: {
   const errors: string[] = []
 
   for (const config of configs) {
-    const summary = byVendor.get(config.vendorCode)
-    if (!summary || summary.totalCount === 0) continue // 有就推送，没有就不用推送；不 claim，留给下次重新判断
+    // 无未处理工单也要推送“无遗留工单”正向卡片，故无命中时补一个空 summary（totalCount=0）
+    const summary = byVendor.get(config.vendorCode) ?? {
+      vendorCode: config.vendorCode,
+      normalCount: 0,
+      complaintCount: 0,
+      arbitrationCount: 0,
+      totalCount: 0,
+      tickets: [],
+    }
 
     const vendorName = supplierDisplayName(config)
 

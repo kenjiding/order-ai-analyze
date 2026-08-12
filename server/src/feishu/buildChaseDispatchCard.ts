@@ -111,7 +111,14 @@ export function buildChaseDispatchCard(params: {
 
   if (totalStagnant === 0) {
     elements.push(hr())
-    elements.push(md(colored('✅ No stagnant orders', 'green')))
+    elements.push(
+      md(
+        colored(
+          '✅ No overdue deliveries and no parcels pending return to warehouse. Everything is on track — thank you for the timely deliveries and returns, please keep it up!',
+          'green',
+        ),
+      ),
+    )
   } else {
     elements.push(hr())
     elements.push(md(colored('⚠️ Overdue parcels will incur fees. Please dispatch or return immediately.', 'red')))
@@ -134,7 +141,7 @@ export function buildChaseDispatchCard(params: {
         tag: 'plain_text',
         content: isUrgent
           ? `🚚⚠️ Long time - No return warehouse or Overdue Deliveries - ${vendorName}`
-          : `🚚✅ No stagnant orders - ${vendorName}`,
+          : `🚚✅ Delivery & Return Check: All Clear - ${vendorName}`,
       },
     },
     body: {

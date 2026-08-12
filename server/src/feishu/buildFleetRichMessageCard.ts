@@ -1,6 +1,30 @@
 import { splitFeishuWebhookTextChunks } from '../sortEfficiencyFeishuAnalysis'
-import { FEISHU_BODY_MARKER_RE, FEISHU_HR_MARKER } from './feishuLarkMdMarkers'
+import { FEISHU_BLOCK_MARKER, FEISHU_BODY_MARKER_RE, FEISHU_HR_MARKER } from './feishuLarkMdMarkers'
 import { buildMentionLarkMd, type SupplierMentionContact } from './feishuMentionHelpers'
+
+/** 编辑器里一个空行在卡片上对应的高度（markdown 组件正文行高，normal 字号约 22px） */
+const FEISHU_BLANK_LINE_PX = 22
+
+/** margin 官方允许 [-99,99]px，连续空行最多留 4 行的间距 */
+const FEISHU_MAX_BLANK_LINES = 4
+
+/** 一张卡片最多 200 个元素（官方限制），超了飞书直接拒收整条消息 */
+const FEISHU_CARD_MAX_ELEMENTS = 200
+
+/** 块内含图片 / 外链按钮 / 分割线占位标记（非全局，可安全 test） */
+const FEISHU_ANY_MARKER_RE = /\[\[FEISHU_(?:IMG|LINK|HR)/
+
+/**
+ * 行首块级 markdown 语法（列表 / 引用 / 标题 / 表格 / 代码围栏 / 缩进代码）。
+ * 这类块必须独占一个 markdown 元素：一旦和别的块拼进同一个元素，块之间的空行就会被
+ * CommonMark 当成「结束这个块」的语法分隔符吃掉——编辑器里敲的空行到飞书就消失了。
+ */
+const BLOCK_MD_LINE_RE =
+  /^(?:\s{4,}\S|\s{0,3}(?:[-*+](?=\s)|\d{1,9}[.)](?=\s)|>|#{1,6}(?=\s|$)|\||```|~~~|(?:[-*_][ \t]*){3,}$))/
+
+function isPlainTextBlock(block: string): boolean {
+  return block.split('\n').every((line) => !BLOCK_MD_LINE_RE.test(line))
+}
 
 /** 飞书卡片 button.type 合法值 */
 const FEISHU_BUTTON_TYPES = new Set([
@@ -93,6 +117,11 @@ function parseBodyMarker(raw: string): { kind: 'img'; index: number; w?: number;
  * markdown 组件原生支持列表、**加粗**、<font> 颜色、<at id=all> 等完整语法。
  * 正文中的 [[FEISHU_IMG:n]] / [[FEISHU_LINK:url|文案|样式]] 占位标记按顺序替换为图片或 open_url 按钮；
  * 未被标记引用的图片追加在末尾（兼容旧内容）。
+ *
+ * 排版按「编辑器一个块 → 卡片一个元素」组装，块间距用元素 margin 表达，不用字符换行：
+ * 飞书 markdown 组件按 CommonMark 解析块级结构，空行在列表 / 引用后面只是语法分隔符会被吃掉，
+ * 只有段落内部的单个 \n 才稳定等价于 <br>。每个元素里只放一个块，块边界就不再经过解析器，
+ * 编辑器所见即飞书所得。连续的纯文本块允许合并进一个元素（渲染等价，纯为压元素数）。
  */
 export function buildFleetRichMessageCard(params: {
   content?: string
@@ -104,42 +133,76 @@ export function buildFleetRichMessageCard(params: {
   const usedImageIndexes = new Set<number>()
   const raw = params.content?.trim() ?? ''
 
+  // 编辑器里的空段落不发成空元素，而是攒起来写进下一个元素的上外边距
+  let pendingBlankLines = 0
+
+  const emit = (element: Record<string, unknown>) => {
+    const top = Math.min(pendingBlankLines, FEISHU_MAX_BLANK_LINES) * FEISHU_BLANK_LINE_PX
+    pendingBlankLines = 0
+    if (top > 0) element.margin = `${top}px 0px 0px 0px`
+    elements.push(element)
+  }
+
   const pushMarkdown = (text: string) => {
     const t = text.trim()
     if (!t) return
     for (const chunk of splitFeishuWebhookTextChunks(t)) {
-      elements.push({ tag: 'markdown', content: chunk })
+      emit({ tag: 'markdown', content: chunk })
     }
   }
 
   const pushImageAt = (index: number, size?: string) => {
     const key = params.imageKeys[index]?.trim()
     if (!key) return
-    elements.push(fleetImageElement(key, size))
+    emit(fleetImageElement(key, size))
     usedImageIndexes.add(index)
   }
 
+  // 块内按占位标记拆分，文字 / 图片 / 外链按钮按原始顺序交错成卡片元素
+  const consumeMarkers = (segment: string) => {
+    let cursor = 0
+    for (const match of segment.matchAll(FEISHU_BODY_MARKER_RE)) {
+      pushMarkdown(segment.slice(cursor, match.index))
+      const parsed = parseBodyMarker(match[1] ?? '')
+      if (parsed?.kind === 'img') {
+        const size = parsed.w != null && parsed.h != null ? feishuImgSize(parsed.w, parsed.h) : undefined
+        pushImageAt(parsed.index, size)
+      } else if (parsed?.kind === 'link' && parsed.url.startsWith('http')) {
+        emit(fleetOpenUrlButton(parsed.url, parsed.text, parsed.buttonType))
+      }
+      cursor = match.index! + match[0].length
+    }
+    pushMarkdown(segment.slice(cursor))
+  }
+
   if (raw) {
-    const segments = raw.split(FEISHU_HR_MARKER)
-    segments.forEach((segment, segIndex) => {
-      // 按占位标记拆分，文字 / 图片 / 外链按钮按原始顺序交错成卡片元素
-      let cursor = 0
-      for (const match of segment.matchAll(FEISHU_BODY_MARKER_RE)) {
-        pushMarkdown(segment.slice(cursor, match.index))
-        const parsed = parseBodyMarker(match[1] ?? '')
-        if (parsed?.kind === 'img') {
-          const size = parsed.w != null && parsed.h != null ? feishuImgSize(parsed.w, parsed.h) : undefined
-          pushImageAt(parsed.index, size)
-        } else if (parsed?.kind === 'link' && parsed.url.startsWith('http')) {
-          elements.push(fleetOpenUrlButton(parsed.url, parsed.text, parsed.buttonType))
-        }
-        cursor = match.index! + match[0].length
+    let plainBuffer: string[] = []
+    const flushPlain = () => {
+      if (!plainBuffer.length) return
+      const text = plainBuffer.join('\n')
+      plainBuffer = []
+      pushMarkdown(text)
+    }
+
+    for (const block of raw.split(FEISHU_BLOCK_MARKER)) {
+      if (!block.trim()) {
+        flushPlain()
+        pendingBlankLines += 1
+        continue
       }
-      pushMarkdown(segment.slice(cursor))
-      if (segIndex < segments.length - 1) {
-        elements.push({ tag: 'hr' })
+      // 纯文本块之间用 \n 拼在同一个元素里（段内换行 = <br>），块级语法必须自己一个元素
+      if (!FEISHU_ANY_MARKER_RE.test(block) && isPlainTextBlock(block)) {
+        plainBuffer.push(block.trim())
+        continue
       }
-    })
+      flushPlain()
+      const hrPieces = block.split(FEISHU_HR_MARKER)
+      hrPieces.forEach((piece, index) => {
+        consumeMarkers(piece)
+        if (index < hrPieces.length - 1) emit({ tag: 'hr' })
+      })
+    }
+    flushPlain()
   }
 
   params.imageKeys.forEach((key, index) => {
@@ -151,6 +214,13 @@ export function buildFleetRichMessageCard(params: {
   const mentionLarkMd = buildMentionLarkMd(params.mentions)
   if (mentionLarkMd) {
     elements.push({ tag: 'markdown', content: mentionLarkMd })
+  }
+
+  // 超上限飞书会拒收整条消息（前端会看到 code!=0 的失败），这里先把原因打出来，别让人只看到一句"发送失败"
+  if (elements.length > FEISHU_CARD_MAX_ELEMENTS) {
+    console.warn(
+      `[fleet-rich-card] 卡片元素 ${elements.length} 个，超过飞书上限 ${FEISHU_CARD_MAX_ELEMENTS}，本次推送会被飞书拒收，请拆分推送内容`,
+    )
   }
 
   return {

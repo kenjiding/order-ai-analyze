@@ -66,8 +66,8 @@ function formatDeadline(expectHandleTime: string, tz: AusTz): string {
 }
 
 /**
- * 构建工单推送飞书卡片（card JSON 2.0 结构）。一家供应商一张卡片，
- * 只在该供应商有未处理工单时才会构建/推送（totalCount 恒 > 0，无“无异常”态）。
+ * 构建工单推送飞书卡片（card JSON 2.0 结构）。一家供应商一张卡片。
+ * 有未处理工单时推送紫色告警卡片；totalCount=0 时推送绿色“无遗留工单”正向卡片。
  */
 export function buildWorkOrderPushCard(params: {
   vendorName: string
@@ -86,11 +86,37 @@ export function buildWorkOrderPushCard(params: {
   const { vendorName, baseDate, pushTime, tz, summary, pushDescription, mentions, supplierConfigId } = params
   const nowMs = params.nowMs ?? Date.now()
   const { totalCount, normalCount, complaintCount, arbitrationCount, tickets } = summary
+  const hasTickets = totalCount > 0
   const elements: CardEl[] = []
 
   if (pushDescription) {
     elements.push(md(colored(pushDescription, 'grey')))
     elements.push(hr())
+  }
+
+  if (!hasTickets) {
+    elements.push(md(colored('✅ No unresolved tickets remaining. Thank you for your prompt handling!', 'green')))
+    elements.push(
+      footerCaption(`${baseDate} ${pushTime} (${tzDisplayName(tz)}) · Ticket push · iMile Warehouse Management System`),
+    )
+    const mentionLarkMdEmpty = buildMentionLarkMd(mentions)
+    if (mentionLarkMdEmpty) {
+      elements.push(md(mentionLarkMdEmpty))
+    }
+    return {
+      schema: '2.0',
+      header: {
+        template: 'green',
+        title: {
+          tag: 'plain_text',
+          content: `No Pending Tickets - ${vendorName}`,
+        },
+      },
+      body: {
+        direction: 'vertical',
+        elements,
+      },
+    }
   }
 
   const breakdown = [
