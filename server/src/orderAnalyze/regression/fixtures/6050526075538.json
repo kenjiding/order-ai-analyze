@@ -3,9 +3,9 @@
   "orderNo": "6050526075538",
   "capturedAt": "2026-05-23T13:39:22.107Z",
   "expected": {
-    "lossScope": "库内丢失",
-    "exceptionCategoryId": "扫描员丢失",
-    "reason": ""
+    "lossScope": "暂无异常",
+    "exceptionCategoryId": "",
+    "reason": "库内起算 2026-05-12 12:21:44 距今 11 天，未达 ADL DS 的 15 天阈值。虽有 3 组分配-取消循环且全程无出库，但循环只决定子类型、不能独立构成丢失判定（原「循环+≥5 天」捷径已因 3781059314407 误判被移除）。"
   },
   "tracks": [
     {

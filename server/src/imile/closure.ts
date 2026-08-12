@@ -20,6 +20,14 @@ export type ClosureDriverVendorResult = {
   vendorName: string
 }
 
+/** 司机查询命中的单条记录；按名字查询时可能命中多条，需由调用方决定取哪条。 */
+export type ClosureDriverVendorMatch = {
+  driverId: string
+  driverName: string
+  vendorCode: string
+  vendorName: string
+}
+
 type ClosureApiError = {
   ok: false
   status: number
@@ -104,18 +112,22 @@ type DriverQueryPayload = {
   vendorCode: string
 }
 
-function buildDriverQueryPayload(input: { driverId: string; stationCode: string }): DriverQueryPayload {
+function buildDriverQueryPayload(input: {
+  driverId?: string
+  driverName?: string
+  stationCode: string
+}): DriverQueryPayload {
   return {
     auditStatus: 'PASS',
     auditType: '',
     currentPage: 1,
     deptCode: '',
     driverCode: '',
-    driverName: '',
+    driverName: input.driverName ?? '',
     employeeTypeList: [],
     functional: '',
     isDtl: '',
-    multiDriverCode: input.driverId,
+    multiDriverCode: input.driverId ?? '',
     postCode: '',
     showCount: 20,
     showSubOrganizationEmployee: 1,
@@ -126,12 +138,36 @@ function buildDriverQueryPayload(input: { driverId: string; stationCode: string 
   }
 }
 
-function readDriverFirstResult(payload: unknown): Record<string, unknown> | null {
+function readDriverResultRows(payload: unknown): Record<string, unknown>[] {
   const resultObject = readResultObject(payload)
-  if (!isRecord(resultObject) || !Array.isArray(resultObject.results)) return null
-  const first = resultObject.results[0]
-  if (!isRecord(first)) return null
-  return first
+  if (!isRecord(resultObject) || !Array.isArray(resultObject.results)) return []
+  return resultObject.results.filter(isRecord)
+}
+
+function normalizeDriverMatch(raw: Record<string, unknown>): ClosureDriverVendorMatch | null {
+  const vendorCode = String(raw.vendorCode ?? '').trim()
+  const vendorName = String(raw.vendorName ?? '').trim()
+  if (!vendorCode && !vendorName) return null
+  return {
+    driverId: String(raw.driverCode ?? raw.driverId ?? '').trim(),
+    driverName: String(raw.driverName ?? '').trim(),
+    vendorCode: vendorCode || vendorName,
+    vendorName: vendorName || vendorCode,
+  }
+}
+
+/** iMile 按 driverName 查询可能是模糊匹配，需要用输入值精确回筛，避免把同前缀的其他司机当成命中。 */
+function pickExactDriverMatch(
+  matches: ClosureDriverVendorMatch[],
+  keyword: string
+): ClosureDriverVendorMatch | null {
+  const needle = keyword.trim().toLowerCase()
+  if (!needle) return null
+  return (
+    matches.find(
+      (m) => m.driverId.toLowerCase() === needle || m.driverName.toLowerCase() === needle
+    ) ?? null
+  )
 }
 
 export type ClosureExceptionAddInput = {
@@ -181,17 +217,28 @@ export async function addClosureException(
   return { ok: true }
 }
 
-export async function queryDriverVendorByDriverId(input: {
+/**
+ * 司机供应商查询。driverId 走 multiDriverCode，driverName 走 driverName（轨迹「分配」事件只有名字没有 ID）。
+ * 返回全部候选与精确匹配项，由调用方决定在多条命中时是取值还是标注不确定。
+ */
+export async function queryDriverVendor(input: {
   imileToken: string
-  driverId: string
+  driverId?: string
+  driverName?: string
   stationCode: string
-}): Promise<{ ok: true; result: ClosureDriverVendorResult | null } | ClosureApiError> {
+}): Promise<
+  { ok: true; matches: ClosureDriverVendorMatch[]; exact: ClosureDriverVendorMatch | null } | ClosureApiError
+> {
   const token = normalizeImileToken(input.imileToken)
   const url = envFirstOr(
     ['IMILE_CLOSURE_DRIVER_URL'],
     'https://ds.imile.com/lm/express/base/v1/biz/driver/page'
   )
-  const body = buildDriverQueryPayload({ driverId: input.driverId, stationCode: input.stationCode })
+  const body = buildDriverQueryPayload({
+    driverId: input.driverId,
+    driverName: input.driverName,
+    stationCode: input.stationCode,
+  })
   const res = await requestImileApi({
     url,
     method: 'POST',
@@ -210,17 +257,34 @@ export async function queryDriverVendorByDriverId(input: {
     }
   }
 
-  const first = readDriverFirstResult(res.json)
+  const matches = readDriverResultRows(res.json)
+    .map(normalizeDriverMatch)
+    .filter((m): m is ClosureDriverVendorMatch => m !== null)
+  const keyword = String(input.driverId ?? input.driverName ?? '')
+  return { ok: true, matches, exact: pickExactDriverMatch(matches, keyword) }
+}
+
+export async function queryDriverVendorByDriverId(input: {
+  imileToken: string
+  driverId: string
+  stationCode: string
+}): Promise<{ ok: true; result: ClosureDriverVendorResult | null } | ClosureApiError> {
+  const res = await queryDriverVendor({
+    imileToken: input.imileToken,
+    driverId: input.driverId,
+    stationCode: input.stationCode,
+  })
+  if (!res.ok) return res
+
+  // 保持既有调用方（异常完结抽屉自动回填供应商）的行为不变：始终取第一条命中。
+  const first = res.matches[0]
   if (!first) return { ok: true, result: null }
-  const vendorCode = String(first.vendorCode ?? '').trim()
-  const vendorName = String(first.vendorName ?? '').trim()
-  if (!vendorCode && !vendorName) return { ok: true, result: null }
   return {
     ok: true,
     result: {
       driverId: input.driverId,
-      vendorCode: vendorCode || vendorName,
-      vendorName: vendorName || vendorCode,
+      vendorCode: first.vendorCode,
+      vendorName: first.vendorName,
     },
   }
 }

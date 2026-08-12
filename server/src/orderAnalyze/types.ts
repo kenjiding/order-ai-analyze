@@ -102,6 +102,30 @@ export type OrderAnalyzeResult = {
   factGuardrailHit?: string
   /** 命中的服务端确定性规则 id（用于排查规则优先级与生产问题） */
   appliedDecisionRuleId?: string
+  /** 与判定无关的补充信息，由 pipeline 之后的富化阶段按需填充；缺失即表示无额外数据 */
+  extraData?: OrderAnalyzeExtraData
+}
+
+export type OrderAnalyzeExtraDataEntry = { label: string; value: string }
+
+/**
+ * 「额外数据」通用载体：与判定结论无关的补充信息。
+ * summary 用于表格列与 Excel 单元格，entries 用于详情抽屉里的结构化明细。
+ */
+export type OrderAnalyzeExtraData = {
+  summary: string
+  entries: OrderAnalyzeExtraDataEntry[]
+}
+
+/** 「分配→取消」配对中被分配的派件员；轨迹「分配」事件通常只有名字没有 ID。 */
+export type FirstAssignCancelDriver = {
+  driverName: string
+  /** 轨迹里带 `ID: Dxxx` 时填，通常为空串 */
+  driverId: string
+  assignTime: string
+  cancelTime: string
+  /** 「取消分配给[X]」里的名字，用于与 driverName 做一致性校验 */
+  cancelDriverName: string
 }
 
 /**
@@ -172,6 +196,15 @@ export type TrackFacts = {
    * 出库后已回仓再发起的新一轮分配-取消，**不**触发此标志。
    */
   assignCancelLoopWithoutDispatch: boolean
+  /**
+   * 最后一次库内实物确认（盘点/回站/到仓，即 inWarehouseStartTime）之后，
+   * 第一个「分配→取消」配对的派件员。该时点之前被分配又取消的司机已被盘点洗清嫌疑，故不取。
+   *
+   * ⚠️ 仅用于「额外数据」展示与追责线索，**不参与任何判定**：
+   * 不得出现在 decisionRules 的规则条件、exceptionCatalog 的 inferFromFacts，
+   * 也不得写进喂给模型的时序文本（computeTrackTemporalContext）。
+   */
+  firstAssignCancelDriver: FirstAssignCancelDriver | null
   /** 承运商完结标记含「站内丢包/站点丢失」关键词 */
   stationLossCompletion: boolean
   /** 过滤 cornerstone 后是否存在阻断日志 */

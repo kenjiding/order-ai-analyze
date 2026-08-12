@@ -97,6 +97,17 @@ export type OrderAnalyzeResultItem = {
   crossCheckedBy?: 'openai' | 'deepseek' | null
   /** 命中的事实校验规则描述 */
   factGuardrailHit?: string
+  /** 与判定无关的补充信息（如「疑似派件员窃取」的首个嫌疑派件员及其供应商） */
+  extraData?: OrderAnalyzeExtraData
+}
+
+export type OrderAnalyzeExtraDataEntry = { label: string; value: string }
+
+export type OrderAnalyzeExtraData = {
+  /** 表格列与 Excel 单元格里的一行摘要 */
+  summary: string
+  /** 详情抽屉里的结构化明细 */
+  entries: OrderAnalyzeExtraDataEntry[]
 }
 
 export type RegressionExpectedInput = {
@@ -292,6 +303,14 @@ export type CancelScanRecheckMeta = {
   error?: string
 }
 
+/** 「疑似派件员窃取」首个嫌疑派件员供应商富化的统计；失败只影响额外数据，不影响判定结论。 */
+export type DriverVendorEnrichMeta = {
+  checkedOrderNos: string[]
+  enrichedOrderNos: string[]
+  ambiguousOrderNos: string[]
+  errors: string[]
+}
+
 export async function postOrderExceptionAnalyze(payload: {
   imileToken: string
   orderNos: string[]
@@ -306,6 +325,7 @@ export async function postOrderExceptionAnalyze(payload: {
   timing?: OrderAnalyzeApiTiming
   trackFacts?: Record<string, OrderTrackFacts>
   cancelScanRecheck?: CancelScanRecheckMeta
+  driverVendorEnrich?: DriverVendorEnrichMeta
 }> {
   const res = await backendFetch(`/api/order-exception/analyze`, {
     method: 'POST',
@@ -328,6 +348,7 @@ export async function postOrderExceptionAnalyze(payload: {
     timing?: OrderAnalyzeApiTiming
     trackFacts?: Record<string, OrderTrackFacts>
     cancelScanRecheck?: CancelScanRecheckMeta
+    driverVendorEnrich?: DriverVendorEnrichMeta
   }
 }
 
@@ -435,6 +456,7 @@ export type AnalyzeJobArtifact = {
   tokenUsage: OrderAnalyzeTokenUsage
   trackFacts?: Record<string, OrderTrackFacts>
   cancelScanRecheck?: CancelScanRecheckMeta
+  driverVendorEnrich?: DriverVendorEnrichMeta
 }
 
 /** 提交批量异步分析任务；立即返回 jobId，通过 getJobById 轮询状态。 */

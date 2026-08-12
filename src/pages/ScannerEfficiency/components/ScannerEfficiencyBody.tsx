@@ -138,7 +138,8 @@ export default function ScannerEfficiencyBody({ vm, level1Push }: Props) {
     })
     const items: { key: TabKey; label: ReactNode; disabled?: boolean }[] = [
       attendanceTab(TAB_KEYS.WAREHOUSE, '开仓效率 / 总体效率'),
-      attendanceTab(TAB_KEYS.SCANNER, '分拣员个人效率'),
+      // 一级分拣仅依赖到件扫描，不要求考勤
+      { key: TAB_KEYS.SCANNER, label: '分拣员个人效率' },
       { key: TAB_KEYS.FRONT_DESK, label: '包裹分配密度' },
       { key: TAB_KEYS.CANCEL_SCAN, label: '细分错误率分析' },
       attendanceTab(TAB_KEYS.WEEKLY, '周报生成器'),
@@ -349,19 +350,11 @@ export default function ScannerEfficiencyBody({ vm, level1Push }: Props) {
                   scannerTotalRows={scannerResult.scannerTotalRows}
                 />
 
-                {attendanceResult ? (
+                {attendanceResult && (
                   <ScannerPersonTotalEfficiencySection
                     columns={scannerTotalEfficiencyColumns}
                     rows={scannerTotalEfficiencyRows}
                   />
-                ) : (
-                  <section className="se-alert-warn overflow-hidden">
-                    <SectionTitle
-                      bare
-                      title="分拣员总效率未启用"
-                      description="需同时上传考勤文件，才能计算扫描量 ÷ 总工时的分拣员总效率。"
-                    />
-                  </section>
                 )}
 
                 <ScannerPersonSortingHourlySection

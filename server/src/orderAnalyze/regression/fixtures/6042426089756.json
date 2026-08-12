@@ -3,9 +3,9 @@
   "orderNo": "6042426089756",
   "capturedAt": "2026-05-25T02:36:23.361Z",
   "expected": {
-    "lossScope": "需人工判断",
-    "exceptionCategoryId": "",
-    "reason": ""
+    "lossScope": "库内丢失",
+    "exceptionCategoryId": "扫描员丢失",
+    "reason": "最终责任点为 2026-05-08 20:15:37 ADL 前台装箱集包（目的地 Melbourne Center），距今 17 天，超过 ADL DS 的 15 天阈值；装箱后既无发车也无到达扫描，责任停留在 ADL DS。无分配-取消循环，子类型为扫描员丢失。"
   },
   "tracks": [
     {

@@ -1,6 +1,12 @@
 import type { TrackEvent } from '../imile/track'
 import type { ScanInterceptLog } from '../imile/interceptLogs'
-import type { LossResponsibilityOwner, ResponsibilitySegment, TrackFacts, WarehouseProfile } from './types'
+import type {
+  FirstAssignCancelDriver,
+  LossResponsibilityOwner,
+  ResponsibilitySegment,
+  TrackFacts,
+  WarehouseProfile,
+} from './types'
 import {
   DEFAULT_WAREHOUSE_LOSS_TIMEOUT_DAYS,
   classifyOperatorForWarehouse,
@@ -101,6 +107,72 @@ function countMaxConsecutiveAssignCancelPairs(
     }
   }
   return maxPairs
+}
+
+const ASSIGNED_DRIVER_NAME_RE = /派件员\s*[:：]\s*([^,，)）]+)/
+const ASSIGNED_DRIVER_ID_RE = /\bID\s*[:：]\s*(D[0-9A-Za-z-]+)/i
+const CANCELLED_DRIVER_NAME_RE = /取消分配给\s*[[【]([^\]】]+)[\]】]/
+
+function isDeliveryAssignEvent(event: TrackEvent): boolean {
+  return event.content.includes('派送任务已分配给派件员')
+}
+
+function isDeliveryCancelEvent(event: TrackEvent): boolean {
+  return event.content.includes('取消分配') || event.content.includes('撤销分配')
+}
+
+/**
+ * 最后一次库内实物确认（inWarehouseStartTime）之后，第一个「分配→取消」配对的派件员。
+ *
+ * 取这个口径而不是「最早的分配」或「最长循环段的第一个」：盘点/回站意味着包裹在那一刻仍被
+ * 实物确认在仓内，此前被分配又取消的司机已被洗清嫌疑（真实案例 3781059314407：08-05 盘点后
+ * 才是嫌疑窗口，07-23 的司机无关）。锚点与子类型判定用的 dispatchAfterInWarehouseStart 同源。
+ *
+ * ⚠️ 只读扫描，产出仅用于展示，不参与任何判定。
+ */
+function findFirstAssignCancelDriverAfterInWarehouseStart(
+  sorted: TrackEvent[],
+  inWarehouseStartTime: string | null,
+  profile: WarehouseProfile | null
+): FirstAssignCancelDriver | null {
+  const isInterruptingEvent = (event: TrackEvent): boolean => {
+    if (isProblemEvent(event) || isDeliveryCompletionEvent(event)) return true
+    if (event.content.includes('订单异常完结')) return true
+    return getTrackResponsibilityPoint(event, profile) !== null
+  }
+
+  let pendingAssign: TrackEvent | null = null
+
+  for (const event of sorted) {
+    if (inWarehouseStartTime !== null && event.time <= inWarehouseStartTime) continue
+
+    if (isDeliveryAssignEvent(event)) {
+      // 连续两次分配未夹取消时，以最近一次分配为准（前一次分配被静默改派）
+      pendingAssign = event
+      continue
+    }
+
+    if (isDeliveryCancelEvent(event)) {
+      if (!pendingAssign) continue
+      const driverName = ASSIGNED_DRIVER_NAME_RE.exec(pendingAssign.content)?.[1]?.trim() ?? ''
+      if (!driverName) {
+        pendingAssign = null
+        continue
+      }
+      return {
+        driverName,
+        driverId: ASSIGNED_DRIVER_ID_RE.exec(pendingAssign.content)?.[1]?.trim() ?? '',
+        assignTime: pendingAssign.time,
+        cancelTime: event.time,
+        cancelDriverName: CANCELLED_DRIVER_NAME_RE.exec(event.content)?.[1]?.trim() ?? '',
+      }
+    }
+
+    // 真实物理操作打断分配-取消链条，此前挂起的分配作废（与循环计数同源口径）
+    if (isInterruptingEvent(event)) pendingAssign = null
+  }
+
+  return null
 }
 
 const STATION_LOSS_RE = /loss_in_the_station|station_loss|站点丢失|站内丢失|站内丢包/i
@@ -934,6 +1006,7 @@ function makeEmptyFacts(input: {
     lastInventoryTime: null,
     lastInventoryDaysDiff: -1,
     assignCancelLoopWithoutDispatch: false,
+    firstAssignCancelDriver: null,
     stationLossCompletion: false,
     hasInterceptLogs: input.interceptLogs.length > 0,
     latestInterceptTime: input.latestIntercept?.gmtIntercept ?? null,
@@ -1122,6 +1195,9 @@ export function deriveTrackFacts(
     lastDispatchedOut !== null &&
     (inWarehouseStartTime === null || lastDispatchedOut.time > inWarehouseStartTime)
   const assignCancelLoopWithoutDispatch = hasAssignCancelLoop && !dispatchAfterInWarehouseStart
+  const firstAssignCancelDriver = shouldComputeWarehouseFacts
+    ? findFirstAssignCancelDriverAfterInWarehouseStart(activeEvents, inWarehouseStartTime, activeProfile)
+    : null
   const latestAssignmentAfterLastDispatch =
     lastDeliveryAssignment !== null &&
     lastDispatchedOut !== null &&
@@ -1318,6 +1394,7 @@ export function deriveTrackFacts(
     lastInventoryTime: lastInventory?.time ?? null,
     lastInventoryDaysDiff: lastInventory ? daysDiff(lastInventory.time) : -1,
     assignCancelLoopWithoutDispatch,
+    firstAssignCancelDriver,
     stationLossCompletion,
     hasInterceptLogs: interceptLogs.length > 0,
     latestInterceptTime,

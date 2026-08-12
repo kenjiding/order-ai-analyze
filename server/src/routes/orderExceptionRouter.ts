@@ -2,6 +2,7 @@ import { Router, type Request, type Response } from 'express'
 import { eq } from 'drizzle-orm'
 import { runOrderAnalyzePipeline } from '../orderAnalyze/pipeline'
 import { reclassifyOutWarehouseLossWithCancelScan } from '../orderAnalyze/cancelScanReclassify'
+import { enrichTheftSuspectDriverVendor } from '../orderAnalyze/driverVendorEnrich'
 import { parseWarehouseConfigInput } from '../orderAnalyze/warehouseProfiles'
 import type { AnalyzeTarget } from '../openaiOrderAnalyze'
 import {
@@ -470,8 +471,16 @@ orderExceptionRouter.post('/analyze', async (req: Request, res: Response) => {
     })
     const aiMs = Math.round(performance.now() - aiStartedAt)
 
-    const { results, meta: cancelScanRecheck } = await reclassifyOutWarehouseLossWithCancelScan({
-      results: pipelineResults,
+    const { results: recheckedResults, meta: cancelScanRecheck } =
+      await reclassifyOutWarehouseLossWithCancelScan({
+        results: pipelineResults,
+        trackFacts,
+        imileToken: token,
+        scanStationCode: body.scanStationCode,
+      })
+
+    const { results, meta: driverVendorEnrich } = await enrichTheftSuspectDriverVendor({
+      results: recheckedResults,
       trackFacts,
       imileToken: token,
       scanStationCode: body.scanStationCode,
@@ -486,6 +495,7 @@ orderExceptionRouter.post('/analyze', async (req: Request, res: Response) => {
       timing: { imileMs, aiMs },
       trackFacts,
       cancelScanRecheck,
+      driverVendorEnrich,
     })
   } catch (e) {
     res.status(500).json({ error: (e as Error).message || '分析失败' })

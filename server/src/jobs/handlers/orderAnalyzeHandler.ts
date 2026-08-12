@@ -3,6 +3,7 @@ import { getDb } from '../../db'
 import { orderExceptionWarehouseConfigs } from '../../db/schema'
 import type { AnalyzeTarget } from '../../openaiOrderAnalyze'
 import { reclassifyOutWarehouseLossWithCancelScan } from '../../orderAnalyze/cancelScanReclassify'
+import { enrichTheftSuspectDriverVendor } from '../../orderAnalyze/driverVendorEnrich'
 import { runOrderAnalyzePipeline } from '../../orderAnalyze/pipeline'
 import { DEFAULT_WAREHOUSE_CONFIG, parseWarehouseConfigInput } from '../../orderAnalyze/warehouseProfiles'
 import { fetchOrderExceptionSourcesForAnalyze } from '../../routes/orderExceptionData'
@@ -66,8 +67,16 @@ export const orderAnalyzeHandler: JobHandler = {
       warehouseConfig,
     })
 
-    const { results, meta: cancelScanRecheck } = await reclassifyOutWarehouseLossWithCancelScan({
-      results: pipelineResults,
+    const { results: recheckedResults, meta: cancelScanRecheck } =
+      await reclassifyOutWarehouseLossWithCancelScan({
+        results: pipelineResults,
+        trackFacts,
+        imileToken,
+        scanStationCode,
+      })
+
+    const { results, meta: driverVendorEnrich } = await enrichTheftSuspectDriverVendor({
+      results: recheckedResults,
       trackFacts,
       imileToken,
       scanStationCode,
@@ -83,6 +92,7 @@ export const orderAnalyzeHandler: JobHandler = {
       tokenUsage,
       trackFacts,
       cancelScanRecheck,
+      driverVendorEnrich,
     }
 
     await ctx.reportProgress({ phase: 'done', percent: 100 })

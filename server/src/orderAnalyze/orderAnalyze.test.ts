@@ -1707,3 +1707,99 @@ test('共享工位账号（XX OPSn）到仓扫描视为真实责任点，但 Sys
   assert.equal(sorterWithoutEvidenceFacts.hasRealOperatorScan, false)
   assert.equal(sorterWithoutEvidenceFacts.finalResponsibilityOwner, null)
 })
+
+test('疑似派件员窃取取库内实物确认后的首个分配-取消派件员（真实案例 6072226537863）', () => {
+  // 07-27 上游同城仓真实扫描后连续 6 组分配-取消、全程无出库，涉及 Parth/VIVEK/gurpeet 三名派件员，
+  // 首个嫌疑人应为 07-28 首次被分配的 Parth。
+  const facts = deriveTrackFacts(
+    [
+      track('2026-07-22 17:37:16', '已通过[OpenApi]成功下单', '', '订单提交'),
+      track('2026-07-27 13:20:30', '【Adelaide Center】已揽收, 操作员【System】。', '', '已揽件'),
+      track('2026-07-27 13:21:00', '【Adelaide Center】已到达。操作员【ADL-DC-Hunter】 。', '', '转运'),
+      track('2026-07-27 13:21:01', '【Adelaide Center】完成待转发件，目的地【ADL DS】。操作员【System】', '', '转运'),
+      track('2026-07-27 13:21:02', '【ADL DS】已到达。操作员【System】 。', '', '派送'),
+      track('2026-07-28 10:15:03', '【ADL DS】派送任务已分配给派件员(派件员：ADL-KAS-Parth Jagdishchandra,电话：+61 400213096)，待派件员领取包裹。 操作员【cornerstone】', '', '派送'),
+      track('2026-07-28 18:48:21', '【ADL DS】包裹已取消分配给[ADL-KAS-Parth Jagdishchandra]。操作员【The Trustee】', '', '派送'),
+      track('2026-07-29 19:32:54', '【ADL DS】派送任务已分配给派件员(派件员：ADL-KAS-Parth Jagdishchandra,电话：+61 400213096)，待派件员领取包裹。 操作员【cornerstone】', '', '派送'),
+      track('2026-07-30 09:01:22', '【ADL DS】包裹已取消分配给[ADL-KAS-Parth Jagdishchandra]。操作员【The Trustee】', '', '派送'),
+      track('2026-07-31 07:32:35', '【ADL DS】派送任务已分配给派件员(派件员：ADL-KAS-VIVEK KUMAR,电话：+61 432920025)，待派件员领取包裹。 操作员【cornerstone】', '', '派送'),
+      track('2026-07-31 19:55:55', '【ADL DS】包裹已取消分配给[ADL-KAS-VIVEK KUMAR]。操作员【The Trustee】', '', '派送'),
+      track('2026-08-04 09:30:24', '【ADL DS】派送任务已分配给派件员(派件员：ADL-KAS-gurpeet,电话：+61 450998963)，待派件员领取包裹。 操作员【cornerstone】', '', '派送'),
+      track('2026-08-04 18:56:44', '【ADL DS】包裹已取消分配给[ADL-KAS-gurpeet]。操作员【The Trustee】', '', '派送'),
+      track('2026-08-06 08:52:44', '【ADL DS】派送任务已分配给派件员(派件员：ADL-KAS-Parth Jagdishchandra,电话：+61 400213096)，待派件员领取包裹。 操作员【cornerstone】', '', '派送'),
+      track('2026-08-06 22:19:13', '【ADL DS】包裹已取消分配给[ADL-KAS-Parth Jagdishchandra]。操作员【The Trustee】', '', '派送'),
+      track('2026-08-07 20:34:22', '【ADL DS】派送任务已分配给派件员(派件员：ADL-KAS-gurpeet,电话：+61 450998963)，待派件员领取包裹。 操作员【cornerstone】', '', '派送'),
+      track('2026-08-10 20:14:36', '【ADL DS】包裹已取消分配给[ADL-KAS-gurpeet]。操作员【The Trustee】', '', '派送'),
+    ],
+    [],
+    { analysisDate: '2026-08-11' }
+  )
+  const result = classifyOrderFromFacts({ orderNo: '6072226537863', facts })
+
+  assert.equal(result.lossScope, '库内丢失')
+  assert.equal(result.exceptionCategoryId, '疑似派件员窃取')
+  assert.deepEqual(facts.firstAssignCancelDriver, {
+    driverName: 'ADL-KAS-Parth Jagdishchandra',
+    driverId: '',
+    assignTime: '2026-07-28 10:15:03',
+    cancelTime: '2026-07-28 18:48:21',
+    cancelDriverName: 'ADL-KAS-Parth Jagdishchandra',
+  })
+})
+
+test('首个嫌疑派件员只取最后一次盘点之后的分配，此前被盘点洗清的司机不算（3781059314407）', () => {
+  // 与「分配取消循环未达仓库超时阈值」用例同一轨迹：08-05 14:20 仍盘点到包裹，
+  // 说明 07-23 被取消分配的 sunning 与包裹丢失无关，首个嫌疑人应是盘点之后的 city-A。
+  const facts = deriveTrackFacts(
+    [
+      track('2026-07-22 12:15:11', '【ADL DS】已到达。操作员【System】 。'),
+      track('2026-07-23 10:27:58', '【ADL DS】派送任务已分配给派件员(派件员：ADL-CXH-369-sunning,电话：***)，待派件员领取包裹。 操作员【cornerstone】'),
+      track('2026-07-23 10:44:30', '【ADL DS】包裹已取消分配给[ADL-CXH-369-sunning]。操作员【ADL OP1】'),
+      track('2026-07-28 09:14:25', '【ADL DS】派送任务已分配给派件员(派件员：ADL-JC-city-A,电话：***)，待派件员领取包裹。 操作员【cornerstone】'),
+      track('2026-07-28 11:08:37', '【ADL DS】包裹已取消分配给[ADL-JC-city-A]。操作员【ADL OP1】'),
+      track('2026-07-31 15:08:33', '【ADL DS】已盘点，库位编号[01]。操作员【ADL-前台】'),
+      track('2026-08-01 08:55:17', '【ADL DS】派送任务已分配给派件员(派件员：ADL-JC-city-A,电话：***)，待派件员领取包裹。 操作员【cornerstone】'),
+      track('2026-08-01 10:20:58', '【ADL DS】包裹已取消分配给[ADL-JC-city-A]。操作员【ADL OP1】'),
+      track('2026-08-04 09:01:38', '【ADL DS】派送任务已分配给派件员(派件员：ADL-JC-city-A,电话：***)，待派件员领取包裹。 操作员【cornerstone】'),
+      track('2026-08-04 10:29:56', '【ADL DS】包裹已取消分配给[ADL-JC-city-A]。操作员【ADL OP1】'),
+      track('2026-08-04 15:19:50', '【ADL DS】已盘点，库位编号[01]。操作员【ADL-前台】'),
+      track('2026-08-05 14:20:45', '【ADL DS】已盘点，库位编号[01]。操作员【ADL-前台】'),
+      track('2026-08-05 19:05:44', '【ADL DS】派送任务已分配给派件员(派件员：ADL-JC-city-A,电话：***)，待派件员领取包裹。 操作员【cornerstone】'),
+      track('2026-08-05 20:09:38', '【ADL DS】包裹已取消分配给[ADL-JC-city-A]。操作员【ADL OP1】'),
+    ],
+    [],
+    { analysisDate: '2026-08-10' }
+  )
+
+  assert.equal(facts.inWarehouseStartTime, '2026-08-05 14:20:45')
+  assert.equal(facts.firstAssignCancelDriver?.driverName, 'ADL-JC-city-A')
+  assert.equal(facts.firstAssignCancelDriver?.assignTime, '2026-08-05 19:05:44')
+})
+
+test('库内实物确认后只有分配没有取消时不推断嫌疑派件员', () => {
+  const facts = deriveTrackFacts([
+    track(daysAgo(20), '【ADL DS】包号[2603191734601]已到达。操作员【ADL-DC-Tong】 。'),
+    track(daysAgo(19), '【ADL DS】派送任务已分配给派件员(派件员：ADL-JC-city-A,电话：***)，待派件员领取包裹。 操作员【cornerstone】'),
+  ])
+
+  assert.equal(facts.firstAssignCancelDriver, null)
+})
+
+test('出库打断后不把出库前的派件员当作嫌疑人（3781059456380）', () => {
+  const facts = deriveTrackFacts([
+    track(daysAgo(18), '【ADL DS】已到达。操作员【System】 。'),
+    track(daysAgo(18, '20:00:36'), '【ADL DS】派送任务已分配给派件员(派件员：D064,电话：***)，待派件员领取包裹。 操作员【cornerstone】'),
+    track(daysAgo(17), '【ADL DS】包裹正在派送中(派件员: D064,ID: D21021656901,电话: ***)。操作员【D064】', 'Delivery', '派送'),
+    track(daysAgo(16, '09:37:42'), '【ADL DS】登记问题件[AUS| 店铺关门], 操作员【D064】。', 'Problem', '派送'),
+    track(daysAgo(16, '11:05:39'), '【ADL DS】派件员已回到网点。操作员【ADL-前台】'),
+    track(daysAgo(16, '15:01:58'), '【ADL DS】已盘点，库位编号[01]。操作员【ADL-前台】'),
+    track(daysAgo(15), '【ADL DS】派送任务已分配给派件员(派件员：MAN A,电话：***)，待派件员领取包裹。 操作员【cornerstone】'),
+    track(daysAgo(14), '【ADL DS】包裹已取消分配给[MAN A]。操作员【ADARSH AA】'),
+    track(daysAgo(11), '【ADL DS】派送任务已分配给派件员(派件员：ARYAN P,电话：***)，待派件员领取包裹。 操作员【cornerstone】'),
+    track(daysAgo(10), '【ADL DS】包裹已取消分配给[ARYAN P]。操作员【ADARSH AA】'),
+  ])
+
+  // 回仓/盘点之后的第一个分配是 MAN A，出库前挂在 D064 名下的那次分配不参与
+  assert.equal(facts.assignCancelLoopWithoutDispatch, true)
+  assert.equal(facts.firstAssignCancelDriver?.driverName, 'MAN A')
+})

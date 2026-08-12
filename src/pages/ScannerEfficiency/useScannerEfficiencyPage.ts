@@ -317,17 +317,11 @@ export function useScannerEfficiencyPage() {
     }
     if (manualTab === TAB_KEYS.CANCEL_SCAN) return TAB_KEYS.CANCEL_SCAN
     if (manualTab === TAB_KEYS.FRONT_DESK) return TAB_KEYS.FRONT_DESK
-    // WAREHOUSE / SCANNER
-    if (!hasAttendance) return TAB_KEYS.FRONT_DESK
-    const coerced: TabKey | null =
-      attendanceEfficiencyBase && !scannerResult
-        ? TAB_KEYS.WAREHOUSE
-        : !attendanceEfficiencyBase && scannerResult
-          ? TAB_KEYS.SCANNER
-          : !attendanceEfficiencyBase && !scannerResult
-            ? TAB_KEYS.WAREHOUSE
-            : null
-    return coerced ?? manualTab
+    // 一级分拣仅依赖到件扫描，不要求考勤
+    if (manualTab === TAB_KEYS.SCANNER) return TAB_KEYS.SCANNER
+    // 默认开仓 tab：无考勤时，有一级分拣则展示分拣员效率，否则回退包裹分配密度
+    if (!hasAttendance) return scannerResult ? TAB_KEYS.SCANNER : TAB_KEYS.FRONT_DESK
+    return manualTab
   }, [manualTab, attendanceEfficiencyBase, scannerResult, showPushTab])
 
   const setActiveTab = (tab: TabKey) => setManualTab(tab)

@@ -17,6 +17,7 @@ import {
   type OrderAnalyzeInterceptLog,
   type OrderAnalyzeAiProvider,
   type OrderAnalyzeApiTiming,
+  type OrderAnalyzeExtraData,
   type OrderAnalyzeResultItem,
   type OrderAnalyzeResponsibilityOwner,
   type OrderTrackFacts,
@@ -98,6 +99,8 @@ export type AnalysisRow = {
   crossCheckedBy?: string | null
   status?: AnalysisRowStatus
   orderInfo?: OrderQueryInfo | null
+  /** 与判定无关的补充信息，服务端富化阶段填充；缺失表示该单无额外数据 */
+  extraData?: OrderAnalyzeExtraData
 }
 
 export type AnalyzeProgress = {
@@ -270,6 +273,7 @@ function mapAnalyzeHitToRow(
     detectedDriverId: deriveDetectedDriverId(hit.latestResponsibility, trackEvents, interceptLogs),
     needsReview: hit.needsReview ?? false,
     crossCheckedBy: hit.crossCheckedBy ?? null,
+    extraData: hit.extraData,
     status: 'done',
   }
 }
@@ -502,6 +506,9 @@ export function useOrderExceptionManagementPage() {
       if (artifact.cancelScanRecheck?.error) {
         showToast(`库外丢失取消扫描核验未完成：${artifact.cancelScanRecheck.error}`, 'error')
       }
+      if (artifact.driverVendorEnrich?.errors.length) {
+        showToast(`部分嫌疑派件员供应商未查到：${artifact.driverVendorEnrich.errors[0]}`, 'error')
+      }
     } catch (e) {
       showToast((e as Error).message || '加载结果失败', 'error')
     }
@@ -649,6 +656,7 @@ export function useOrderExceptionManagementPage() {
       let accumulatedTokenUsage: OrderAnalyzeTokenUsage | null = null
       let accumulatedApiTiming: OrderAnalyzeApiTiming | null = null
       let cancelScanRecheckWarned = false
+      let driverVendorEnrichWarned = false
 
       for (const orderNo of orderNos) {
         if (isStaleRun()) return
@@ -664,8 +672,17 @@ export function useOrderExceptionManagementPage() {
         )
 
         try {
-          const { results, trackInfo, orderInfo, interceptLogs, tokenUsage, timing, trackFacts, cancelScanRecheck } =
-            await postOrderExceptionAnalyze({
+          const {
+            results,
+            trackInfo,
+            orderInfo,
+            interceptLogs,
+            tokenUsage,
+            timing,
+            trackFacts,
+            cancelScanRecheck,
+            driverVendorEnrich,
+          } = await postOrderExceptionAnalyze({
             imileToken: token,
             orderNos: [orderNo],
             aiProvider: analyzeAiProvider,
@@ -684,6 +701,10 @@ export function useOrderExceptionManagementPage() {
           setAnalysisRows((prev) => prev.map((r) => (r.orderNo === orderNo ? row : r)))
           accumulatedTokenUsage = mergeAnalyzeTokenUsage(accumulatedTokenUsage, tokenUsage)
           setAnalyzeTokenUsage(accumulatedTokenUsage)
+          if (driverVendorEnrich?.errors.length && !driverVendorEnrichWarned) {
+            driverVendorEnrichWarned = true
+            showToast(`部分嫌疑派件员供应商未查到：${driverVendorEnrich.errors[0]}`, 'error')
+          }
           if (cancelScanRecheck?.error && !cancelScanRecheckWarned) {
             cancelScanRecheckWarned = true
             showToast(`库外丢失取消扫描核验未完成：${cancelScanRecheck.error}`, 'error')

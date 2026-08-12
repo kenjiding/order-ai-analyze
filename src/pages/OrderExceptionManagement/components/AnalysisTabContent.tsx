@@ -217,6 +217,9 @@ function SubmittedBanner({
   )
 }
 
+/** 「额外数据」列固定宽度：单行展示、超出省略，完整内容由 hover Tooltip 给出 */
+const EXTRA_DATA_COLUMN_WIDTH_CLASS = 'w-[420px]'
+
 function buildColumns(
   onOpenOrderDetail: (row: Row) => void,
   visitedOrders: Set<string>,
@@ -408,6 +411,19 @@ function buildColumns(
       },
     },
     {
+      key: 'extraData',
+      title: '额外数据',
+      render: (row) => {
+        const r = row as unknown as Row
+        if (!r.extraData) return <span className="text-slate-400">—</span>
+        return (
+          <Tooltip title={r.extraData.summary} placement="topLeft">
+            <div className={`${EXTRA_DATA_COLUMN_WIDTH_CLASS} truncate`}>{r.extraData.summary}</div>
+          </Tooltip>
+        )
+      },
+    },
+    {
       key: 'reason',
       title: '判定依据',
       render: (row) => renderReasonCell(row as unknown as Row),
@@ -474,10 +490,10 @@ const CROSS_CHECKED_LABEL: Record<string, string> = {
 }
 
 /**
- * 与 onExportResults 列顺序一致：订单号、异常类型、子类型、当前责任站点、路由码、置信度、判定依据、
- * 是否需复核、交叉验证模型、最新责任人、最新责任时间、最新责任操作、无操作天数
+ * 与 onExportResults 列顺序一致：订单号、异常类型、子类型、当前责任站点、路由码、置信度、额外数据、
+ * 判定依据、是否需复核、交叉验证模型、最新责任人、最新责任时间、最新责任操作、无操作天数
  */
-const ANALYZE_EXPORT_COLUMN_WIDTHS = [24, 14, 16, 28, 16, 10, 80, 12, 16, 20, 20, 24, 14] as const
+const ANALYZE_EXPORT_COLUMN_WIDTHS = [24, 14, 16, 28, 16, 10, 44, 80, 12, 16, 20, 20, 24, 14] as const
 
 export function AnalysisTabContent({
   analyzeOrderText,
@@ -650,6 +666,7 @@ export function AnalysisTabContent({
       当前责任站点: r.currentResponsibilityParty,
       路由码: r.orderInfo?.consigneeRouteCode || '—',
       置信度: r.confidence,
+      额外数据: r.extraData?.summary ?? '—',
       判定依据: r.reason,
       是否需复核: r.needsReview ? '是' : '否',
       交叉验证模型: r.crossCheckedBy ? (CROSS_CHECKED_LABEL[r.crossCheckedBy] ?? r.crossCheckedBy) : '—',

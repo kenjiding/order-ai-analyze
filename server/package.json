@@ -13,7 +13,7 @@
     "db:init": "bash scripts/init-local-db.sh",
     "db:generate": "drizzle-kit generate",
     "typecheck": "tsc -p tsconfig.json",
-    "test:order-analyze": "tsx --test src/orderAnalyze/orderAnalyze.test.ts",
+    "test:order-analyze": "tsx --test src/orderAnalyze/orderAnalyze.test.ts src/orderAnalyze/driverVendorEnrich.test.ts",
     "test:vendor-metrics": "tsx --test src/vendorAnalysis/metricsCatalog.test.ts",
     "test:vendor-ranking": "tsx --test src/vendorAnalysis/rankingScore.test.ts",
     "test:vendor-scope": "tsx --test src/vendorAnalysis/supplierScope.test.ts src/vendorAnalysis/before11Aggregate.test.ts src/imile/before11Exit.test.ts",
