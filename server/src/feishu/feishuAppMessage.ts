@@ -5,6 +5,17 @@ const FEISHU_MESSAGES_URL = 'https://open.feishu.cn/open-apis/im/v1/messages'
 
 const MAX_PAGES = 20
 
+/**
+ * 批量场景下调用方需要收紧单次调用的时间预算（默认 15s×3 次重试对批量接口太慢），透传给 fetchFeishuJson。
+ * deadlineAt 额外约束分页循环：MAX_PAGES 是串行翻页，只靠单页超时兜不住总耗时。
+ */
+export type FeishuCallOptions = { timeoutMs?: number; maxRetries?: number; deadlineAt?: number }
+
+/** 翻页前检查总预算，超了就整条按失败返回——返回半截名单会让未读人数算错，比报错更糟 */
+function deadlineExceeded(options: FeishuCallOptions | undefined, page: number): boolean {
+  return page > 0 && typeof options?.deadlineAt === 'number' && Date.now() >= options.deadlineAt
+}
+
 function asRecord(v: unknown): Record<string, unknown> | null {
   return typeof v === 'object' && v !== null ? (v as Record<string, unknown>) : null
 }
@@ -103,17 +114,19 @@ export type FeishuReadUser = { userId: string; readAtMs: number }
 export async function getFeishuMessageReadUsers(
   tenantToken: string,
   messageId: string,
+  options?: FeishuCallOptions,
 ): Promise<{ ok: true; readUsers: FeishuReadUser[] } | { ok: false; error: string }> {
   const readUsers: FeishuReadUser[] = []
   let pageToken = ''
   for (let page = 0; page < MAX_PAGES; page++) {
+    if (deadlineExceeded(options, page)) return { ok: false, error: '查询已读用户超时（分页未取完）' }
     const qs = new URLSearchParams({ user_id_type: 'open_id', page_size: '100' })
     if (pageToken) qs.set('page_token', pageToken)
     const url = `${FEISHU_MESSAGES_URL}/${encodeURIComponent(messageId)}/read_users?${qs.toString()}`
     const result = await fetchFeishuJson(url, {
       method: 'GET',
       headers: { Authorization: `Bearer ${tenantToken}` },
-    })
+    }, options)
     if (!result.ok) return { ok: false, error: result.error }
     const obj = asRecord(result.json)
     const code = obj && typeof obj.code === 'number' ? obj.code : NaN
@@ -145,17 +158,19 @@ export type FeishuChatMember = { userId: string; name: string }
 export async function listFeishuChatMembers(
   tenantToken: string,
   chatId: string,
+  options?: FeishuCallOptions,
 ): Promise<{ ok: true; members: FeishuChatMember[] } | { ok: false; error: string }> {
   const members: FeishuChatMember[] = []
   let pageToken = ''
   for (let page = 0; page < MAX_PAGES; page++) {
+    if (deadlineExceeded(options, page)) return { ok: false, error: '获取群成员列表超时（分页未取完）' }
     const qs = new URLSearchParams({ member_id_type: 'open_id', page_size: '100' })
     if (pageToken) qs.set('page_token', pageToken)
     const url = `${FEISHU_CHATS_URL}/${encodeURIComponent(chatId)}/members?${qs.toString()}`
     const result = await fetchFeishuJson(url, {
       method: 'GET',
       headers: { Authorization: `Bearer ${tenantToken}` },
-    })
+    }, options)
     if (!result.ok) return { ok: false, error: result.error }
     const obj = asRecord(result.json)
     const code = obj && typeof obj.code === 'number' ? obj.code : NaN

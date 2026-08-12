@@ -29,6 +29,7 @@ import { buildFleetRichMessageCard } from '../feishu/buildFleetRichMessageCard'
 import { uploadFeishuImageFromBase64 } from '../feishu/feishuImageUpload'
 import { upsertFeishuPushSnapshot } from '../feishu/pushSnapshotRepository'
 import { fetchFeishuJson } from '../feishu/feishuHttpClient'
+import { mapWithConcurrency } from '../orderAnalyze/runtime'
 import {
   getFeishuMessageReadUsers,
   listFeishuBotChats,
@@ -926,26 +927,53 @@ feishuWebhookTestRouter.get('/push-messages', async (req: AuthenticatedRequest, 
   }
 })
 
-/** 按 chatId 去重后并发拉取群成员，避免同一个群在批量接口里被重复查询多次 */
+/**
+ * 批量已读接口的时间预算：整条路由必须在 Nginx 默认 proxy_read_timeout（60s）之前主动返回，
+ * 否则前端拿到的是 Nginx 的 HTML 504、解析不出 JSON，只能显示"无法访问后端"这种无从排查的错误。
+ * 单次飞书调用也收紧到 8s×1 次重试——默认的 15s×3 次（约 46s）单条就能吃掉整个预算。
+ */
+const READ_STATUS_DEADLINE_MS = 25_000
+const READ_STATUS_CONCURRENCY = 8
+const READ_STATUS_CALL_OPTIONS = { timeoutMs: 8_000, maxRetries: 1 }
+
+/** 超出时间预算后剩余任务不再发起，直接按失败返回，让前端明确知道是"没查完"而不是"没有数据" */
+const DEADLINE_EXCEEDED_ERROR = '查询超时，本条已跳过（可稍后重新点击查询）'
+
+/**
+ * 按 chatId 去重后限并发拉取群成员，避免同一个群在批量接口里被重复查询多次。
+ * 单个群失败不影响其余群：失败原因按 chatId 返回，由调用方落到对应的消息上。
+ */
 async function fetchChatMembersByChatIds(
   tenant: string,
   chatIds: string[],
-): Promise<{ ok: true; membersByChatId: Map<string, Map<string, string>> } | { ok: false; error: string }> {
+  deadlineAt: number,
+): Promise<{
+  membersByChatId: Map<string, Map<string, string>>
+  errorsByChatId: Map<string, string>
+}> {
   const uniqueChatIds = [...new Set(chatIds)]
-  const results = await Promise.all(uniqueChatIds.map((chatId) => listFeishuChatMembers(tenant, chatId)))
   const membersByChatId = new Map<string, Map<string, string>>()
+  const errorsByChatId = new Map<string, string>()
+  const results = await mapWithConcurrency(uniqueChatIds, READ_STATUS_CONCURRENCY, async (chatId) => {
+    if (Date.now() >= deadlineAt) return { ok: false as const, error: DEADLINE_EXCEEDED_ERROR }
+    return listFeishuChatMembers(tenant, chatId, { ...READ_STATUS_CALL_OPTIONS, deadlineAt })
+  })
   for (let i = 0; i < uniqueChatIds.length; i++) {
     const result = results[i]
-    if (!result.ok) return { ok: false, error: result.error }
+    if (!result.ok) {
+      errorsByChatId.set(uniqueChatIds[i], result.error)
+      continue
+    }
     membersByChatId.set(uniqueChatIds[i], new Map(result.members.map((m) => [m.userId, m.name])))
   }
-  return { ok: true, membersByChatId }
+  return { membersByChatId, errorsByChatId }
 }
 
 /**
  * 「推送数据监控」批量已读详情：一次性查询多条消息的已读/未读名单。
- * 展开一个日期行时该日期下可能有几十条消息，前端不再逐条调用单条接口，改为一次批量请求；
- * 同一 chatId 的群成员查询在此去重，飞书 read_users 本身不支持批量仍需逐条并发调用。
+ * 前端按「推送类型」分组、点击后才拉取，一次的条数是一个分组的量级；
+ * 同一 chatId 的群成员查询在此去重，飞书 read_users 本身不支持批量仍需逐条并发调用（限并发 + 总预算）。
+ * 单条消息查询失败只影响它自己：成功的进 data、失败的进 errors，不再整批 502。
  */
 feishuWebhookTestRouter.get('/push-messages/read-status', async (req: AuthenticatedRequest, res: Response) => {
   const idsRaw = typeof req.query.ids === 'string' ? req.query.ids : ''
@@ -977,23 +1005,31 @@ feishuWebhookTestRouter.get('/push-messages/read-status', async (req: Authentica
     return
   }
   const tenant = tenantRes.token
+  const deadlineAt = Date.now() + READ_STATUS_DEADLINE_MS
 
-  const membersRes = await fetchChatMembersByChatIds(tenant, records.map((r) => r.chatId))
-  if (!membersRes.ok) {
-    res.status(502).json({ ok: false, error: membersRes.error })
-    return
-  }
+  const { membersByChatId, errorsByChatId } = await fetchChatMembersByChatIds(
+    tenant,
+    records.map((r) => r.chatId),
+    deadlineAt,
+  )
 
-  const readResults = await Promise.all(records.map((r) => getFeishuMessageReadUsers(tenant, r.messageId)))
+  const readResults = await mapWithConcurrency(records, READ_STATUS_CONCURRENCY, async (record) => {
+    // 群成员没拿到就算查到已读也算不出未读名单，不必再为它打一次飞书
+    if (errorsByChatId.has(record.chatId)) return { ok: false as const, error: errorsByChatId.get(record.chatId)! }
+    if (Date.now() >= deadlineAt) return { ok: false as const, error: DEADLINE_EXCEEDED_ERROR }
+    return getFeishuMessageReadUsers(tenant, record.messageId, { ...READ_STATUS_CALL_OPTIONS, deadlineAt })
+  })
+
   const data: Record<string, unknown> = {}
+  const errors: Record<string, string> = {}
   for (let i = 0; i < records.length; i++) {
     const record = records[i]
     const readRes = readResults[i]
     if (!readRes.ok) {
-      res.status(502).json({ ok: false, error: readRes.error })
-      return
+      errors[record.id] = readRes.error
+      continue
     }
-    const memberMap = membersRes.membersByChatId.get(record.chatId) ?? new Map<string, string>()
+    const memberMap = membersByChatId.get(record.chatId) ?? new Map<string, string>()
     const readIdSet = new Set(readRes.readUsers.map((u) => u.userId))
     const readUsers = readRes.readUsers.map((u) => ({
       userId: u.userId,
@@ -1013,7 +1049,7 @@ feishuWebhookTestRouter.get('/push-messages/read-status', async (req: Authentica
     }
   }
 
-  res.json({ ok: true, data })
+  res.json({ ok: true, data, errors })
 })
 
 /** 查询某条应用机器人消息的已读/未读名单：已读来自 read_users，未读 = 群成员 - 已读 */
@@ -1190,15 +1226,18 @@ feishuWebhookTestRouter.get('/push-messages/click-events', async (req: Authentic
     return
   }
 
-  // 点击事件本身不受 7 天限制（我方落库），姓名映射尽力而为：拿不到 tenant token / 群成员时退化成只显示 openId
+  // 点击事件本身不受 7 天限制（我方落库），姓名映射尽力而为：拿不到 tenant token / 群成员时退化成只显示 openId。
+  // 这里同样受时间预算约束——姓名查不到只是少个名字，不值得让整个接口卡到超时。
   const nameByOpenId = new Map<string, string>()
   const tenantRes = await getFeishuTenantAccessToken()
   if (tenantRes.ok) {
-    const membersRes = await fetchChatMembersByChatIds(tenantRes.token, records.map((r) => r.chatId))
-    if (membersRes.ok) {
-      for (const memberMap of membersRes.membersByChatId.values()) {
-        for (const [userId, name] of memberMap) nameByOpenId.set(userId, name)
-      }
+    const { membersByChatId } = await fetchChatMembersByChatIds(
+      tenantRes.token,
+      records.map((r) => r.chatId),
+      Date.now() + READ_STATUS_DEADLINE_MS,
+    )
+    for (const memberMap of membersByChatId.values()) {
+      for (const [userId, name] of memberMap) nameByOpenId.set(userId, name)
     }
   }
 

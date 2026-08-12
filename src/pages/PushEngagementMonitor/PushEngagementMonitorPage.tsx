@@ -62,8 +62,11 @@ export default function PushEngagementMonitorPage() {
           loading={page.rowsLoading}
           expandedDates={page.expandedDates}
           onExpandDate={page.onExpandDate}
+          expandedGroupKeys={page.expandedGroupKeys}
           readStatusByGroup={page.readStatusByGroup}
           clickEventsByGroup={page.clickEventsByGroup}
+          onExpandGroup={page.onExpandGroup}
+          onRefreshGroup={page.refreshGroup}
         />
       </section>
     </div>

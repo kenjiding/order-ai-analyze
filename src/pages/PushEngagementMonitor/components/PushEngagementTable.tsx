@@ -1,6 +1,6 @@
 import { Empty, Table, Tag } from 'antd'
 import type { ColumnsType } from 'antd/es/table'
-import { groupRowsByLabel, type DateGroup } from '../pushEngagementGrouping'
+import { groupRowsByLabel, type DateGroup, type LabelGroup } from '../pushEngagementGrouping'
 import { clickActionLabel, PUSH_LABEL_COLOR, type DetailState, type PushClickEvent, type PushReadStatus } from '../pushEngagementTypes'
 import { PushLabelBreakdown } from './PushLabelBreakdown'
 
@@ -23,15 +23,21 @@ export function PushEngagementTable({
   loading,
   expandedDates,
   onExpandDate,
+  expandedGroupKeys,
   readStatusByGroup,
   clickEventsByGroup,
+  onExpandGroup,
+  onRefreshGroup,
 }: {
   dateGroups: DateGroup[]
   loading: boolean
   expandedDates: string[]
   onExpandDate: (expanded: boolean, date: string) => void
+  expandedGroupKeys: string[]
   readStatusByGroup: Record<string, DetailState<PushReadStatus>>
   clickEventsByGroup: Record<string, DetailState<PushClickEvent[]>>
+  onExpandGroup: (expanded: boolean, date: string, labelGroup: LabelGroup) => void
+  onRefreshGroup: (date: string, labelGroup: LabelGroup) => void
 }) {
   const columns: ColumnsType<DateGroup> = [
     {
@@ -80,8 +86,11 @@ export function PushEngagementTable({
           <PushLabelBreakdown
             date={group.date}
             labelGroups={groupRowsByLabel(group.rows)}
+            expandedGroupKeys={expandedGroupKeys}
             readStatusByGroup={readStatusByGroup}
             clickEventsByGroup={clickEventsByGroup}
+            onExpandGroup={onExpandGroup}
+            onRefreshGroup={onRefreshGroup}
           />
         ),
       }}

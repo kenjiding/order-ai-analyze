@@ -9,10 +9,11 @@ export const PUSH_LABEL_COLOR: Record<string, string> = {
   工单推送: 'purple',
 }
 
+/** 未展开的分组压根没有 state（undefined），展开即触发加载，所以没有 idle 态 */
 export type DetailState<T> =
   | { status: 'loading' }
   | { status: 'error'; error: string }
-  | { status: 'ready'; data: T }
+  | { status: 'ready'; data: T; partialError?: string }
   | { status: 'expired' }
 
 /** 卡片按钮点击事件的 actionType → 展示文案 */
