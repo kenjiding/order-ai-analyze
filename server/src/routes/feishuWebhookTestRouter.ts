@@ -3,6 +3,7 @@ import { Router } from 'express'
 import { and, desc, eq, gte, inArray, lte, sql } from 'drizzle-orm'
 import type { AuthenticatedRequest } from '../auth/middleware'
 import { requirePushApiScope } from '../permissions/pushNotificationAccess'
+import { SUPER_ADMIN_ROLE } from '../permissions/registry'
 import { getFeishuTenantAccessToken } from '../feishuServerEnv'
 import { getDb, schema } from '../db'
 import {
@@ -1130,9 +1131,12 @@ feishuWebhookTestRouter.get('/push-engagement', async (req: AuthenticatedRequest
   const supplierConfigId = typeof req.query.supplierConfigId === 'string' ? req.query.supplierConfigId.trim() : ''
   const regionFilter = typeof req.query.regionCode === 'string' ? req.query.regionCode.trim() : ''
 
-  // 同州 + 历史遗留 global 两类可见，与「供应商配置」列表接口（fleetSupplierPushRouter）口径一致
+  // 普通账号：同州 + 历史遗留 global 两类可见，与「供应商配置」列表接口（fleetSupplierPushRouter）口径一致。
+  // 超管不属于任何州（regionCode = 'system'），按州收窄会把每个州的数据都挡在外面——包括墨尔本(VIC)，
+  // 结果是全站唯一该看全量的账号反而什么都看不到。这里按角色放行，判定口径与 requireSuperAdmin 一致。
+  const isSuperAdmin = req.authUser?.role === SUPER_ADMIN_ROLE
   const userRegionCode = req.authUser?.regionCode?.trim() || LEGACY_GLOBAL_SUPPLIER_REGION_CODE
-  let configs = await listSupplierPushConfigs(userRegionCode)
+  let configs = await listSupplierPushConfigs(isSuperAdmin ? undefined : userRegionCode)
   if (supplierConfigId) configs = configs.filter((c) => c.id === supplierConfigId)
   if (regionFilter) configs = configs.filter((c) => c.regionCode === regionFilter)
   if (configs.length === 0) {
