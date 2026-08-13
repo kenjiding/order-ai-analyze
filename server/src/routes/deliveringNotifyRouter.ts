@@ -3,11 +3,16 @@ import type { AuthenticatedRequest } from '../auth/middleware'
 import { readImileTokenFromRequest } from './imileAuth'
 import { fetchSearchWaybillByNos } from '../imile/inboundWaybillIndex'
 import { resolveRegionTz, localDateInTz } from '../imile/ausTimezone'
-import { computeFeishuWebhookSign, parseSafeWebhookUrl } from '../feishuWebhookHelpers'
 import { buildDeliveringNotifyCard, type DeliveringNotifyCourierGroup } from '../feishu/buildDeliveringNotifyCard'
-import { isSupplierWebhookConfigured, listSupplierPushConfigs, supplierDisplayName } from '../supplierPushConfigs'
+import { classifyDeliveringNotifyWaybill } from '../feishu/deliveringNotifyClassify'
+import { uploadFeishuImageFromBase64 } from '../feishu/feishuImageUpload'
+import { sendSupplierPushCard } from '../feishu/sendSupplierPushCard'
+import { getFeishuTenantAccessToken } from '../feishuServerEnv'
+import { isSupplierPushConfigured, listSupplierPushConfigs, supplierDisplayName } from '../supplierPushConfigs'
 
 export const deliveringNotifyRouter = Router()
+
+const MAX_PUSH_IMAGES = 6
 
 type WaybillDeliveryRow = {
   waybillNo?: string
@@ -16,16 +21,26 @@ type WaybillDeliveryRow = {
   courierVendor?: string
   courierVendorCode?: string
   routeCode?: string
-  /** 签收时间；非空即代表运单已签收，不再是「派送中」状态 */
+  deliveryTime?: string
+  lastScanStatusCode?: unknown
+  /** 签收时间；非空即代表运单已签收，不再推送 */
   signDate?: string
   [key: string]: unknown
+}
+
+type CourierMap = Map<string, DeliveringNotifyCourierGroup>
+
+type VendorBucket = {
+  outForDelivery: CourierMap
+  oversizedUncollected: CourierMap
 }
 
 type PushResult = {
   vendorCode: string
   vendorName: string
   waybillCount: number
-  couriers: DeliveringNotifyCourierGroup[]
+  outForDelivery: DeliveringNotifyCourierGroup[]
+  oversizedUncollected: DeliveringNotifyCourierGroup[]
   pushed: boolean
   error?: string
 }
@@ -33,7 +48,25 @@ type PushResult = {
 type NoConfigVendor = {
   courierVendorCode: string
   waybillCount: number
-  couriers: DeliveringNotifyCourierGroup[]
+  outForDelivery: DeliveringNotifyCourierGroup[]
+  oversizedUncollected: DeliveringNotifyCourierGroup[]
+}
+
+function courierGroupsOf(map: CourierMap): DeliveringNotifyCourierGroup[] {
+  return Array.from(map.values())
+}
+
+function waybillCountOf(outForDelivery: DeliveringNotifyCourierGroup[], oversized: DeliveringNotifyCourierGroup[]): number {
+  const count = (groups: DeliveringNotifyCourierGroup[]) => groups.reduce((sum, c) => sum + c.waybillNos.length, 0)
+  return count(outForDelivery) + count(oversized)
+}
+
+function addWaybillToCourierMap(map: CourierMap, record: WaybillDeliveryRow, waybillNo: string): void {
+  const courierCode = (record.courierCode ?? '').trim()
+  const courier = (record.courier ?? '').trim()
+  const key = courierCode || courier || '未知司机'
+  if (!map.has(key)) map.set(key, { courier, courierCode, waybillNos: [] })
+  map.get(key)!.waybillNos.push(waybillNo)
 }
 
 deliveringNotifyRouter.post('/push', async (req: AuthenticatedRequest, res: Response) => {
@@ -43,7 +76,7 @@ deliveringNotifyRouter.post('/push', async (req: AuthenticatedRequest, res: Resp
     return
   }
 
-  type PushBody = { waybillNos?: unknown; stationCode?: unknown }
+  type PushBody = { waybillNos?: unknown; stationCode?: unknown; images?: unknown }
   const body = req.body as PushBody
 
   const stationCode = typeof body.stationCode === 'string' ? body.stationCode.trim() : ''
@@ -65,6 +98,10 @@ deliveringNotifyRouter.post('/push', async (req: AuthenticatedRequest, res: Resp
     res.status(400).json({ ok: false, error: '缺少必填字段: waybillNos' })
     return
   }
+
+  const images = Array.isArray(body.images)
+    ? body.images.filter((item): item is string => typeof item === 'string' && item.trim().length > 0).slice(0, MAX_PUSH_IMAGES)
+    : []
 
   const tz = resolveRegionTz(req.authUser?.regionCode)
   const dateStr = localDateInTz(Date.now(), tz)
@@ -91,81 +128,98 @@ deliveringNotifyRouter.post('/push', async (req: AuthenticatedRequest, res: Resp
   }
 
   const unmatchedWaybillNos = waybillNos.filter((no) => !recordByWaybillNo.has(no))
-
-  // signDate 非空说明已签收，最新状态不再是「派送中」，不参与推送
   const notInDeliveryWaybillNos: string[] = []
+  const vendorGroups = new Map<string, VendorBucket>()
 
-  // 按 courierVendorCode → courierCode 分组
-  const vendorGroups = new Map<string, Map<string, DeliveringNotifyCourierGroup>>()
   for (const no of waybillNos) {
     const record = recordByWaybillNo.get(no)
     if (!record) continue
-    if ((record.signDate ?? '').trim()) {
+    const kind = classifyDeliveringNotifyWaybill(record)
+    if (kind === 'skip') {
       notInDeliveryWaybillNos.push(no)
       continue
     }
     const vendorCode = (record.courierVendorCode ?? '').trim()
-    if (!vendorCode) continue
-    const courierCode = (record.courierCode ?? '').trim()
-    const courier = (record.courier ?? '').trim()
-
-    if (!vendorGroups.has(vendorCode)) vendorGroups.set(vendorCode, new Map())
-    const courierGroups = vendorGroups.get(vendorCode)!
-    const key = courierCode || courier || '未知司机'
-    if (!courierGroups.has(key)) courierGroups.set(key, { courier, courierCode, waybillNos: [] })
-    courierGroups.get(key)!.waybillNos.push(no)
+    if (!vendorCode) {
+      notInDeliveryWaybillNos.push(no)
+      continue
+    }
+    if (!vendorGroups.has(vendorCode)) {
+      vendorGroups.set(vendorCode, { outForDelivery: new Map(), oversizedUncollected: new Map() })
+    }
+    const bucket = vendorGroups.get(vendorCode)!
+    addWaybillToCourierMap(kind === 'outForDelivery' ? bucket.outForDelivery : bucket.oversizedUncollected, record, no)
   }
 
   const configs = (await listSupplierPushConfigs(req.authUser?.regionCode ?? undefined)).filter((c) =>
-    isSupplierWebhookConfigured(c.webhookUrl),
+    isSupplierPushConfigured(c),
   )
   const configByVendorCode = new Map(configs.map((c) => [c.vendorCode.trim().toUpperCase(), c]))
 
   const pushResults: PushResult[] = []
   const noConfigVendors: NoConfigVendor[] = []
+  const vendorsToPush = [...vendorGroups.entries()].filter(([vendorCode]) =>
+    configByVendorCode.has(vendorCode.toUpperCase()),
+  )
 
-  for (const [vendorCode, courierGroups] of vendorGroups) {
-    const couriers = Array.from(courierGroups.values())
-    const waybillCount = couriers.reduce((sum, c) => sum + c.waybillNos.length, 0)
+  let imageKeys: string[] = []
+  if (images.length > 0 && vendorsToPush.length > 0) {
+    const tenantRes = await getFeishuTenantAccessToken()
+    if (!tenantRes.ok) {
+      res.status(tenantRes.reason === 'not_configured' ? 400 : 502).json({
+        ok: false,
+        error:
+          tenantRes.reason === 'not_configured'
+            ? '服务器未配置飞书开放接口凭证（FEISHU_APP_ID / FEISHU_APP_SECRET），无法上传现场照片'
+            : tenantRes.error || '获取飞书凭证失败，无法上传现场照片',
+      })
+      return
+    }
+    for (let i = 0; i < images.length; i += 1) {
+      const upload = await uploadFeishuImageFromBase64(tenantRes.token, images[i]!)
+      if (!upload.ok) {
+        res.status(502).json({ ok: false, error: `第 ${i + 1} 张现场照片上传失败：${upload.error}` })
+        return
+      }
+      imageKeys.push(upload.imageKey)
+    }
+  }
+
+  for (const [vendorCode, bucket] of vendorGroups) {
+    const outForDelivery = courierGroupsOf(bucket.outForDelivery)
+    const oversizedUncollected = courierGroupsOf(bucket.oversizedUncollected)
+    const waybillCount = waybillCountOf(outForDelivery, oversizedUncollected)
     const config = configByVendorCode.get(vendorCode.toUpperCase())
 
     if (!config) {
-      noConfigVendors.push({ courierVendorCode: vendorCode, waybillCount, couriers })
+      noConfigVendors.push({ courierVendorCode: vendorCode, waybillCount, outForDelivery, oversizedUncollected })
       continue
     }
 
     const vendorName = supplierDisplayName(config)
-    const card = buildDeliveringNotifyCard({ vendorName, stationCode, date: dateStr, tz, couriers })
+    const card = buildDeliveringNotifyCard({
+      vendorName,
+      stationCode,
+      date: dateStr,
+      tz,
+      outForDelivery,
+      oversizedUncollected,
+      imageKeys,
+    })
 
-    try {
-      const webhookHref = parseSafeWebhookUrl(config.webhookUrl).href
-      const payload: Record<string, unknown> = { msg_type: 'interactive', card }
-      if (config.signingSecret) {
-        const timestampSec = Math.floor(Date.now() / 1000)
-        payload.timestamp = String(timestampSec)
-        payload.sign = computeFeishuWebhookSign(config.signingSecret, timestampSec)
-      }
-      const upstream = await fetch(webhookHref, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
+    const sent = await sendSupplierPushCard(config, card)
+    if (sent.ok) {
+      pushResults.push({ vendorCode, vendorName, waybillCount, outForDelivery, oversizedUncollected, pushed: true })
+    } else {
+      pushResults.push({
+        vendorCode,
+        vendorName,
+        waybillCount,
+        outForDelivery,
+        oversizedUncollected,
+        pushed: false,
+        error: sent.reason ?? '推送失败',
       })
-      const feishuData = (await upstream.json().catch(() => ({}))) as Record<string, unknown>
-      const code = feishuData.code
-      if (upstream.ok && typeof code === 'number' && code === 0) {
-        pushResults.push({ vendorCode, vendorName, waybillCount, couriers, pushed: true })
-      } else {
-        pushResults.push({
-          vendorCode,
-          vendorName,
-          waybillCount,
-          couriers,
-          pushed: false,
-          error: `飞书返回 code=${String(code)}`,
-        })
-      }
-    } catch {
-      pushResults.push({ vendorCode, vendorName, waybillCount, couriers, pushed: false, error: '网络错误' })
     }
   }
 

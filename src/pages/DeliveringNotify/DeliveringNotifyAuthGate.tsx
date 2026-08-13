@@ -1,41 +1,31 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { Button, Field, Form } from 'react-vant'
 import 'react-vant/es/form/style/index.css'
 import 'react-vant/es/field/style/index.css'
 import 'react-vant/es/button/style/index.css'
 import { BellRing, CircleX, Eye, EyeOff, KeyRound, Loader2, User } from 'lucide-react'
-import { fetchAuthMe, fetchLogin, fetchLogout } from '../../api/authApi'
 import { useAppSettings } from '../../context/AppSettingsContext'
+import { useAuthStore } from '../../stores/authStore'
 import DeliveringNotifyPage from './DeliveringNotifyPage'
 
-type GateStatus = 'checking' | 'anon' | 'authed'
-
 /**
- * 独立入口页脱离主 SPA 的 Router/authStore，PDA 浏览器可能从未登录过主站，
- * 因此在这里自行做一次最小化的登录态检查与登录表单，登录成功后 cookie 与主站共享。
+ * 独立入口无 Router，但必须走 authStore：AppSettingsProvider 依赖 isAuthenticated
+ * 才会拉取 iMile Token，useGlobalStationBootstrap 才能拉责任站点。
  */
 export function DeliveringNotifyAuthGate() {
   const { refreshSettings } = useAppSettings()
-  const [status, setStatus] = useState<GateStatus>('checking')
-  const [displayName, setDisplayName] = useState('')
+  const loading = useAuthStore((s) => s.loading)
+  const isAuthenticated = useAuthStore((s) => s.isAuthenticated)
+  const user = useAuthStore((s) => s.user)
+  const login = useAuthStore((s) => s.login)
+  const logout = useAuthStore((s) => s.logout)
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
   const [showPassword, setShowPassword] = useState(false)
   const [loginError, setLoginError] = useState('')
   const [loggingIn, setLoggingIn] = useState(false)
 
-  useEffect(() => {
-    void fetchAuthMe()
-      .then((session) => {
-        if (session) {
-          setDisplayName(session.user.displayName || session.user.username)
-          setStatus('authed')
-        } else {
-          setStatus('anon')
-        }
-      })
-      .catch(() => setStatus('anon'))
-  }, [])
+  const displayName = user?.displayName || user?.username || ''
 
   const handleLogin = async () => {
     if (!username.trim() || !password.trim()) {
@@ -45,10 +35,8 @@ export function DeliveringNotifyAuthGate() {
     setLoggingIn(true)
     setLoginError('')
     try {
-      const session = await fetchLogin(username.trim(), password)
-      setDisplayName(session.user.displayName || session.user.username)
+      await login(username.trim(), password)
       setPassword('')
-      setStatus('authed')
       void refreshSettings()
     } catch (err) {
       setLoginError(err instanceof Error ? err.message : '登录失败')
@@ -57,12 +45,16 @@ export function DeliveringNotifyAuthGate() {
     }
   }
 
-  const handleLogout = async () => {
-    await fetchLogout()
-    setStatus('anon')
+  const handleUnauthorized = () => {
+    useAuthStore.setState({
+      user: null,
+      permissions: [],
+      isAuthenticated: false,
+      isSuperAdmin: false,
+    })
   }
 
-  if (status === 'checking') {
+  if (loading) {
     return (
       <div className="flex min-h-[100dvh] items-center justify-center bg-gradient-to-b from-slate-50 via-white to-blue-50/40">
         <Loader2 className="h-6 w-6 animate-spin text-blue-600" aria-hidden strokeWidth={2} />
@@ -70,7 +62,7 @@ export function DeliveringNotifyAuthGate() {
     )
   }
 
-  if (status === 'anon') {
+  if (!isAuthenticated) {
     return (
       <div className="relative flex min-h-[100dvh] items-center justify-center overflow-hidden bg-gradient-to-b from-slate-50 via-white to-blue-50/40 px-3">
         <div
@@ -147,8 +139,8 @@ export function DeliveringNotifyAuthGate() {
   return (
     <DeliveringNotifyPage
       displayName={displayName}
-      onUnauthorized={() => setStatus('anon')}
-      onLogout={() => void handleLogout()}
+      onUnauthorized={handleUnauthorized}
+      onLogout={() => void logout()}
     />
   )
 }

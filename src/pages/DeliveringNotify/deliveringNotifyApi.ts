@@ -10,7 +10,8 @@ export type DeliveringNotifyPushResult = {
   vendorCode: string
   vendorName: string
   waybillCount: number
-  couriers: DeliveringNotifyCourierGroup[]
+  outForDelivery: DeliveringNotifyCourierGroup[]
+  oversizedUncollected: DeliveringNotifyCourierGroup[]
   pushed: boolean
   error?: string
 }
@@ -18,14 +19,15 @@ export type DeliveringNotifyPushResult = {
 export type DeliveringNotifyNoConfigVendor = {
   courierVendorCode: string
   waybillCount: number
-  couriers: DeliveringNotifyCourierGroup[]
+  outForDelivery: DeliveringNotifyCourierGroup[]
+  oversizedUncollected: DeliveringNotifyCourierGroup[]
 }
 
 export type DeliveringNotifyPushData = {
   totalScanned: number
   matchedCount: number
   unmatchedWaybillNos: string[]
-  /** 已查到运单，但 signDate 非空（已签收），最新状态不是「派送中」，未参与推送 */
+  /** 已查到运单，但未命中「正在派送」或「超大件未取」，未参与推送 */
   notInDeliveryWaybillNos: string[]
   pushResults: DeliveringNotifyPushResult[]
   noConfigVendors: DeliveringNotifyNoConfigVendor[]
@@ -37,6 +39,7 @@ export async function pushDeliveringNotify(params: {
   imileToken: string
   stationCode: string
   waybillNos: string[]
+  images?: string[]
 }): Promise<{ ok: true; data: DeliveringNotifyPushData } | DeliveringNotifyPushFail> {
   const path = '/api/delivering-notify/push'
   try {
@@ -46,7 +49,11 @@ export async function pushDeliveringNotify(params: {
         'Content-Type': 'application/json',
         Authorization: `Bearer ${params.imileToken}`,
       },
-      body: JSON.stringify({ stationCode: params.stationCode, waybillNos: params.waybillNos }),
+      body: JSON.stringify({
+        stationCode: params.stationCode,
+        waybillNos: params.waybillNos,
+        images: params.images,
+      }),
     })
     if (res.status === 401) {
       return { ok: false, error: '登录已过期，请重新登录', unauthorized: true }

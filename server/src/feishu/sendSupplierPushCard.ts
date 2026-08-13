@@ -58,7 +58,7 @@ async function pushCardViaAppBot(
 /**
  * 供应商卡片发送：webhookUrl / chatId 二选一，webhookUrl 优先（历史配置默认走法不变，
  * 且信息更全——支持签名校验）；都未配置时视为不可推送。
- * 出仓告警 / 24H 派签告警 / 催派推送 / 工单推送 4 类定时任务共用，避免各自重复实现
+ * 出仓告警 / 24H 派签告警 / 催派推送 / 工单推送 / 派送中通知 共用，避免各自重复实现
  * webhook 发送逻辑（曾经 4 份 pushCardToWebhook 完全相同代码），也让 chatId-only 的
  * 供应商配置真正可用——此前只在"供应商配置"表单里放行保存，实际 4 类定时推送从不消费 chatId。
  */

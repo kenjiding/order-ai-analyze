@@ -33,10 +33,8 @@ export function isSupplierWebhookConfigured(webhookUrl: string | null | undefine
 }
 
 /**
- * 供出仓告警/24H派签告警/催派推送/工单推送 4 类定时任务判断"是否可推送"：
+ * 供出仓告警/24H派签告警/催派推送/工单推送/派送中通知判断"是否可推送"：
  * webhookUrl / chatId 二选一即可（sendSupplierPushCard 两条通道都支持发送）。
- * 「派送中通知」（deliveringNotifyRouter）目前仍只支持 webhook 通道，继续用上面的
- * isSupplierWebhookConfigured，不要在那里换成本函数。
  */
 export function isSupplierPushConfigured(
   config: Pick<FleetSupplierPushConfig, 'webhookUrl' | 'chatId'>,

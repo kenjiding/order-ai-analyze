@@ -5,6 +5,7 @@ import 'react-vant/es/field/style/index.css'
 import type { FieldInstance } from 'react-vant'
 import {
   BellRing,
+  Camera,
   CircleCheck,
   CircleX,
   LogOut,
@@ -15,11 +16,19 @@ import {
   TriangleAlert,
   X,
 } from 'lucide-react'
+import { GlobalCountrySelector } from '../../components/Layout/GlobalCountrySelector'
 import { GlobalStationSelector } from '../../components/Layout/GlobalStationSelector'
 import { useGlobalStationBootstrap } from '../../components/Layout/useGlobalStationBootstrap'
 import { useAppSettings } from '../../context/AppSettingsContext'
 import { useGlobalFilterStore } from '../../stores/globalFilterStore'
-import { pushDeliveringNotify, type DeliveringNotifyPushData } from './deliveringNotifyApi'
+import {
+  pushDeliveringNotify,
+  type DeliveringNotifyCourierGroup,
+  type DeliveringNotifyPushData,
+} from './deliveringNotifyApi'
+import { compressCameraPhoto, DELIVERING_NOTIFY_MAX_PHOTOS } from './compressCameraPhoto'
+
+type CameraPhoto = { id: string; dataUrl: string }
 
 export default function DeliveringNotifyPage({
   displayName,
@@ -44,7 +53,10 @@ export default function DeliveringNotifyPage({
   const [errorMsg, setErrorMsg] = useState('')
   const [result, setResult] = useState<DeliveringNotifyPushData | null>(null)
   const [menuOpen, setMenuOpen] = useState(false)
+  const [photos, setPhotos] = useState<CameraPhoto[]>([])
+  const [capturing, setCapturing] = useState(false)
   const inputRef = useRef<FieldInstance>(null)
+  const cameraInputRef = useRef<HTMLInputElement>(null)
 
   const handleCommitScan = () => {
     const value = inputValue.trim()
@@ -57,6 +69,28 @@ export default function DeliveringNotifyPage({
     setScannedList((prev) => prev.filter((item) => item !== no))
   }
 
+  const handleCapturePhotos = async (files: FileList | null) => {
+    if (!files || files.length === 0) return
+    const remaining = DELIVERING_NOTIFY_MAX_PHOTOS - photos.length
+    if (remaining <= 0) return
+    setCapturing(true)
+    setErrorMsg('')
+    try {
+      const picked = Array.from(files).slice(0, remaining)
+      const next: CameraPhoto[] = []
+      for (const file of picked) {
+        const dataUrl = await compressCameraPhoto(file)
+        next.push({ id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`, dataUrl })
+      }
+      setPhotos((prev) => [...prev, ...next].slice(0, DELIVERING_NOTIFY_MAX_PHOTOS))
+    } catch (err) {
+      setErrorMsg(err instanceof Error ? err.message : '拍照失败，请重试')
+    } finally {
+      setCapturing(false)
+      if (cameraInputRef.current) cameraInputRef.current.value = ''
+    }
+  }
+
   const handlePush = async () => {
     if (scannedList.length === 0 || !stationCode || !imileToken.trim()) return
     setPushing(true)
@@ -66,6 +100,7 @@ export default function DeliveringNotifyPage({
       imileToken,
       stationCode,
       waybillNos: scannedList,
+      images: photos.map((p) => p.dataUrl),
     })
     setPushing(false)
     if (!res.ok) {
@@ -79,6 +114,7 @@ export default function DeliveringNotifyPage({
     setResult(res.data)
     // 已成功推送/已查明归属的单号从列表移除，未查到派送信息的保留以便重试或人工核实
     setScannedList(res.data.unmatchedWaybillNos)
+    if (res.data.pushResults.some((r) => r.pushed)) setPhotos([])
     inputRef.current?.focus()
   }
 
@@ -138,7 +174,11 @@ export default function DeliveringNotifyPage({
             <div className="h-1 bg-gradient-to-r from-blue-600 to-indigo-600" aria-hidden />
             <div className="space-y-2 p-2">
               <div className="space-y-1 border-b border-zinc-100 pb-2">
-                <span className="block px-1 text-[11px] font-medium text-zinc-400">责任站点</span>
+                <span className="block px-1 text-[11px] font-medium text-zinc-400">国家</span>
+                <div className="[&_.ant-select]:w-full">
+                  <GlobalCountrySelector />
+                </div>
+                <span className="block px-1 pt-1 text-[11px] font-medium text-zinc-400">责任站点</span>
                 <div className="[&_.ant-select]:w-full">
                   <GlobalStationSelector />
                 </div>
@@ -231,6 +271,60 @@ export default function DeliveringNotifyPage({
           )}
         </div>
 
+        <div className="rounded-xl border border-zinc-200 bg-white shadow-sm shadow-blue-900/5">
+          <div className="flex items-center justify-between border-b border-zinc-100 px-3 py-1.5">
+            <span className="text-xs font-medium text-zinc-600">现场照片</span>
+            <span className="rounded-full bg-blue-50 px-2 py-0.5 font-mono text-xs font-semibold text-blue-700">
+              {photos.length}/{DELIVERING_NOTIFY_MAX_PHOTOS}
+            </span>
+          </div>
+          <div className="space-y-2 p-3">
+            <input
+              ref={cameraInputRef}
+              type="file"
+              accept="image/*"
+              capture="environment"
+              className="sr-only"
+              tabIndex={-1}
+              disabled={!stationCode || capturing || photos.length >= DELIVERING_NOTIFY_MAX_PHOTOS}
+              onChange={(e) => void handleCapturePhotos(e.target.files)}
+            />
+            <Button
+              type="primary"
+              block
+              loading={capturing}
+              disabled={!stationCode || photos.length >= DELIVERING_NOTIFY_MAX_PHOTOS}
+              icon={<Camera className="h-4 w-4" aria-hidden strokeWidth={2} />}
+              onClick={() => cameraInputRef.current?.click()}
+            >
+              {capturing ? '处理中...' : photos.length >= DELIVERING_NOTIFY_MAX_PHOTOS ? '已达上限' : '拍照'}
+            </Button>
+            {photos.length === 0 ? (
+              <p className="text-center text-xs text-zinc-400">拍摄前台滞留包裹，将随通知发到供应商群</p>
+            ) : (
+              <ul className="flex flex-wrap gap-2" aria-label="已拍照片">
+                {photos.map((photo, index) => (
+                  <li key={photo.id} className="relative">
+                    <img
+                      src={photo.dataUrl}
+                      alt={`现场照片 ${index + 1}`}
+                      className="h-16 w-16 rounded-lg border border-zinc-200 object-cover"
+                    />
+                    <button
+                      type="button"
+                      aria-label={`删除第 ${index + 1} 张照片`}
+                      className="absolute -right-1.5 -top-1.5 flex h-5 w-5 items-center justify-center rounded-full bg-zinc-800 text-white"
+                      onClick={() => setPhotos((prev) => prev.filter((item) => item.id !== photo.id))}
+                    >
+                      <X className="h-3 w-3" aria-hidden strokeWidth={2} />
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        </div>
+
         {errorMsg && (
           <div className="flex items-center gap-1.5 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-xs font-medium text-red-700">
             <CircleX className="h-3.5 w-3.5 shrink-0" aria-hidden strokeWidth={2} />
@@ -252,7 +346,7 @@ export default function DeliveringNotifyPage({
               ) : (
                 <TriangleAlert className="h-3.5 w-3.5 shrink-0" aria-hidden strokeWidth={2} />
               )}
-              本次共 {result.totalScanned} 件，查到派送信息 {result.matchedCount} 件
+              本次共 {result.totalScanned} 件，可推送 {result.matchedCount} 件
             </div>
 
             {result.pushResults.map((r) => (
@@ -285,19 +379,11 @@ export default function DeliveringNotifyPage({
                   )}
                 </div>
                 {!r.pushed && r.error && <p className="mt-1 text-[11px] text-red-600">{r.error}</p>}
-                {r.couriers.length > 0 && (
-                  <ul className="mt-1.5 space-y-1 border-t border-zinc-100 pt-1.5">
-                    {r.couriers.map((c) => (
-                      <li key={`${c.courierCode}-${c.courier}`} className="text-[11px] text-zinc-600">
-                        <span className="font-medium text-zinc-700">
-                          {c.courier || '未知司机'}
-                          {c.courierCode ? `（${c.courierCode}）` : ''}
-                        </span>
-                        <span className="ml-1 font-mono text-zinc-500">{c.waybillNos.join('、')}</span>
-                      </li>
-                    ))}
-                  </ul>
-                )}
+                <CategoryCourierList
+                  outForDelivery={r.outForDelivery}
+                  oversizedUncollected={r.oversizedUncollected}
+                  tone="default"
+                />
               </div>
             ))}
 
@@ -307,17 +393,11 @@ export default function DeliveringNotifyPage({
                   <TriangleAlert className="h-3.5 w-3.5 shrink-0" aria-hidden strokeWidth={2} />
                   供应商代码 {v.courierVendorCode} 未配置推送群（{v.waybillCount} 件），需人工联系
                 </p>
-                <ul className="mt-1.5 space-y-1 border-t border-amber-100 pt-1.5">
-                  {v.couriers.map((c) => (
-                    <li key={`${c.courierCode}-${c.courier}`} className="text-[11px] text-amber-700">
-                      <span className="font-medium">
-                        {c.courier || '未知司机'}
-                        {c.courierCode ? `（${c.courierCode}）` : ''}
-                      </span>
-                      <span className="ml-1 font-mono">{c.waybillNos.join('、')}</span>
-                    </li>
-                  ))}
-                </ul>
+                <CategoryCourierList
+                  outForDelivery={v.outForDelivery}
+                  oversizedUncollected={v.oversizedUncollected}
+                  tone="warning"
+                />
               </div>
             ))}
 
@@ -337,12 +417,12 @@ export default function DeliveringNotifyPage({
               <div className="rounded-xl border-l-4 border-amber-500 bg-amber-50 px-3 py-2">
                 <p className="flex items-center gap-1 text-xs font-semibold text-amber-800">
                   <TriangleAlert className="h-3.5 w-3.5 shrink-0" aria-hidden strokeWidth={2} />
-                  以下包裹的最新状态不是派送中，已跳过推送
+                  以下包裹不符合推送条件（已签收，或既无派件时间也非超大件未取），已跳过
                 </p>
                 <ul className="mt-1 space-y-0.5 font-mono text-[11px] leading-relaxed text-amber-700">
                   {result.notInDeliveryWaybillNos.map((no) => (
                     <li key={no} className="break-all">
-                      {no} 包裹的最新状态不是派送中
+                      {no}
                     </li>
                   ))}
                 </ul>
@@ -365,6 +445,51 @@ export default function DeliveringNotifyPage({
           {pushing ? '推送中...' : `推送给供应商（${scannedList.length}）`}
         </Button>
       </div>
+    </div>
+  )
+}
+
+function CategoryCourierList({
+  outForDelivery,
+  oversizedUncollected,
+  tone,
+}: {
+  outForDelivery: DeliveringNotifyCourierGroup[]
+  oversizedUncollected: DeliveringNotifyCourierGroup[]
+  tone: 'default' | 'warning'
+}) {
+  const itemClass = tone === 'warning' ? 'text-[11px] text-amber-700' : 'text-[11px] text-zinc-600'
+  const nameClass = tone === 'warning' ? 'font-medium' : 'font-medium text-zinc-700'
+  const noClass = tone === 'warning' ? 'ml-1 font-mono' : 'ml-1 font-mono text-zinc-500'
+  const titleClass = tone === 'warning' ? 'text-[11px] font-semibold text-amber-800' : 'text-[11px] font-semibold text-zinc-700'
+
+  const renderGroups = (groups: DeliveringNotifyCourierGroup[]) =>
+    groups.map((c) => (
+      <li key={`${c.courierCode}-${c.courier}`} className={itemClass}>
+        <span className={nameClass}>
+          {c.courier || '未知司机'}
+          {c.courierCode ? `（${c.courierCode}）` : ''}
+        </span>
+        <span className={noClass}>{c.waybillNos.join('、')}</span>
+      </li>
+    ))
+
+  if (outForDelivery.length === 0 && oversizedUncollected.length === 0) return null
+
+  return (
+    <div className="mt-1.5 space-y-1.5 border-t border-zinc-100 pt-1.5">
+      {outForDelivery.length > 0 && (
+        <div>
+          <p className={titleClass}>正在派送</p>
+          <ul className="mt-0.5 space-y-1">{renderGroups(outForDelivery)}</ul>
+        </div>
+      )}
+      {oversizedUncollected.length > 0 && (
+        <div>
+          <p className={titleClass}>超大件未取</p>
+          <ul className="mt-0.5 space-y-1">{renderGroups(oversizedUncollected)}</ul>
+        </div>
+      )}
     </div>
   )
 }
