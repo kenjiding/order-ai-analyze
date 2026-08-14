@@ -6,6 +6,7 @@ import { useAppSettings } from '../../context/AppSettingsContext'
 import { getDefaultRouteForPermissions, getDefaultRouteFromPermissionKeys } from '../../components/Layout/sidebarMenu'
 import { showToast } from '../../utils/toast'
 import { useLoginRive } from './useLoginRive'
+import { leaveLoginTo, readSafeLoginReturnTo } from './loginReturnTo'
 import './login.css'
 
 const REMEMBER_KEY = 'rememberMe'
@@ -36,10 +37,12 @@ export default function LoginPage() {
   const [passwordShake, setPasswordShake] = useState(false)
 
   useEffect(() => {
-    if (!loading && isAuthenticated) {
-      navigate(getDefaultRouteForPermissions(hasPermission, isSuperAdmin), { replace: true })
-    }
-  }, [loading, isAuthenticated, navigate, hasPermission, isSuperAdmin])
+    if (loading || !isAuthenticated) return
+    const from = readSafeLoginReturnTo(location.search, (location.state as { from?: string } | null)?.from)
+    const target = from || getDefaultRouteForPermissions(hasPermission, isSuperAdmin)
+    if (target === '/login') return
+    leaveLoginTo(target, navigate)
+  }, [loading, isAuthenticated, navigate, hasPermission, isSuperAdmin, location.search, location.state])
 
   useEffect(() => {
     if (localStorage.getItem(REMEMBER_KEY) === 'true') {
@@ -94,7 +97,10 @@ export default function LoginPage() {
           localStorage.removeItem(REMEMBER_KEY)
           localStorage.removeItem(USERNAME_KEY)
         }
-        const from = (location.state as { from?: string } | null)?.from
+        const from = readSafeLoginReturnTo(
+          location.search,
+          (location.state as { from?: string } | null)?.from,
+        )
         const defaultRoute = getDefaultRouteFromPermissionKeys(
           session.permissions,
           session.user.role === 'super_admin',
@@ -104,7 +110,7 @@ export default function LoginPage() {
           triggerPasswordError('账号未分配任何可访问页面，请联系管理员')
           return
         }
-        navigate(target, { replace: true })
+        leaveLoginTo(target, navigate)
       })
       .catch((e: unknown) => {
         const message = e instanceof Error ? e.message : '登录失败'

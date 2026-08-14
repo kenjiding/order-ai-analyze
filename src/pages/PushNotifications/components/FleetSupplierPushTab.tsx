@@ -8,7 +8,7 @@ import { aggregateFleetRowsForRoute } from '../fleetSupplierAggregate'
 import { captureFleetRouteReportPng } from '../fleetReportCapture'
 import { parseFleetRouteCodes } from '../fleetRouteCodeParse'
 import { parseFleetScanFiles } from '../fleetScanParse'
-import { fetchDeliveryWeatherLarkMd, summarizeFeishuTestFailure } from '../feishuWebhookTestApi'
+import { fetchDeliveryWeatherLarkMd, fetchFeishuAppBotChats, summarizeFeishuTestFailure } from '../feishuWebhookTestApi'
 import { WEATHER_LOCATION_PRESETS } from '../weatherLocations'
 import { readWeatherPushSettings, writeWeatherPushSettings } from '../weatherPushSettings'
 import {
@@ -49,10 +49,19 @@ function truncateMiddle(s: string, maxChars: number): string {
   return `${s.slice(0, edge)}…${s.slice(s.length - edge)}`
 }
 
+function formatMentionNames(contacts: FleetSupplierConfig['mentionOpenIds'] | undefined): string {
+  const list = contacts ?? []
+  const names = list.map((c) => c.name.trim()).filter(Boolean)
+  if (names.length > 0) return names.join('、')
+  if (list.length > 0) return `${list.length} 人`
+  return ''
+}
+
 type Props = {
   /**
-   * `hidden`：独立入口页，供应商表中不展示 webhook/密钥，表单也不可编辑这两项（新建仍为空的 webhook）。
-   * `full`：飞书推送页完整能力。
+   * `hidden`：独立入口页，表单不可编辑 webhook/密钥（新建仍为空的 webhook）。
+   * `full`：飞书推送页完整能力，表单可维护 webhook/密钥。
+   * 供应商表一律展示飞书群名称与 @ 相关人员，不展示 webhook/密钥。
    */
   supplierSecretsVisibility?: 'full' | 'hidden'
 }
@@ -73,6 +82,7 @@ export function FleetSupplierPushTab({
   }, [weatherEnabled, weatherCity])
   const [pushImages, setPushImages] = useState<LocalPushImage[]>([])
   const [suppliers, setSuppliers] = useState<FleetSupplierConfig[]>([])
+  const [chatNameById, setChatNameById] = useState<Map<string, string>>(new Map())
   const [vendors, setVendors] = useState<Array<{ vendorCode: string; vendorNameEn: string }>>([])
   const [vendorsLoading, setVendorsLoading] = useState(false)
   const [configsLoading, setConfigsLoading] = useState(true)
@@ -115,6 +125,15 @@ export function FleetSupplierPushTab({
         setConfigsLoading(false)
       }
     })()
+    return () => { cancelled = true }
+  }, [])
+
+  useEffect(() => {
+    let cancelled = false
+    void fetchFeishuAppBotChats().then((res) => {
+      if (cancelled || !res.ok) return
+      setChatNameById(new Map(res.chats.map((c) => [c.chatId, c.name])))
+    })
     return () => { cancelled = true }
   }, [])
 
@@ -500,32 +519,6 @@ export function FleetSupplierPushTab({
   }
 
   const columns: ColumnsType<FleetSupplierConfig> = (() => {
-    const secretCols: ColumnsType<FleetSupplierConfig> = [
-      {
-        title: '飞书 webhook',
-        dataIndex: 'webhookUrl',
-        key: 'webhookUrl',
-        render: (url: string) => (
-          <Tooltip title={url}>
-            <span className="block max-w-[min(420px,50vw)] font-mono text-xs text-slate-700">
-              {truncateMiddle(url || '', 48)}
-            </span>
-          </Tooltip>
-        ),
-      },
-      {
-        title: '密钥',
-        key: 'signingSecret',
-        width: 80,
-        render: (_, row) =>
-          row.signingSecret ? (
-            <span className="text-[var(--admin-accent)]">已配置</span>
-          ) : (
-            <span className="text-slate-400">—</span>
-          ),
-      },
-    ]
-
     return [
       {
         title: '供应商',
@@ -578,7 +571,33 @@ export function FleetSupplierPushTab({
             <span className="text-slate-400">—</span>
           ),
       },
-      ...(secretsHidden ? [] : secretCols),
+      {
+        title: '飞书群名称',
+        key: 'chatName',
+        width: 180,
+        ellipsis: true,
+        render: (_, row) => {
+          const chatId = row.chatId?.trim()
+          if (!chatId) return <span className="text-slate-400">—</span>
+          const name = chatNameById.get(chatId)?.trim()
+          if (name) return name
+          return (
+            <Tooltip title={chatId}>
+              <span>{truncateMiddle(chatId, 24)}</span>
+            </Tooltip>
+          )
+        },
+      },
+      {
+        title: '@ 相关人员',
+        key: 'mentionOpenIds',
+        width: 180,
+        ellipsis: true,
+        render: (_, row) => {
+          const label = formatMentionNames(row.mentionOpenIds)
+          return label ? label : <span className="text-slate-400">—</span>
+        },
+      },
       {
         title: '供应商推送内容',
         dataIndex: 'pushContent',
@@ -818,7 +837,7 @@ export function FleetSupplierPushTab({
                   ? '暂无供应商，可点击「添加供应商」「导入供应商配置」，或在「飞书推送」页维护含 webhook 的完整信息。'
                   : '暂无供应商，请点击「添加供应商」维护路由与 webhook。',
               }}
-              scroll={{ x: secretsHidden ? 860 : 1200 }}
+              scroll={{ x: 1100 }}
             />
           </div>
         </div>

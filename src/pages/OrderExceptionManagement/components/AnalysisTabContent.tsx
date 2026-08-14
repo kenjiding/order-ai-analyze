@@ -24,6 +24,8 @@ type Row = AnalysisRow
 type ColumnFilters = {
   lossScope: string[]
   categoryName: string[]
+  noOperationDays: string[]
+  consigneeRouteCode: string[]
   currentResponsibilityParty: string[]
   latestResponsibilityPerson: string[]
   latestResponsibilityAction: string[]
@@ -220,6 +222,14 @@ function SubmittedBanner({
 /** 「额外数据」列固定宽度：单行展示、超出省略，完整内容由 hover Tooltip 给出 */
 const EXTRA_DATA_COLUMN_WIDTH_CLASS = 'w-[420px]'
 
+function noOperationDaysLabel(r: Row): string {
+  return r.latestResponsibility ? String(r.latestResponsibility.noOperationDays) : '—'
+}
+
+function routeCodeLabel(r: Row): string {
+  return r.orderInfo?.consigneeRouteCode || '—'
+}
+
 function buildColumns(
   onOpenOrderDetail: (row: Row) => void,
   visitedOrders: Set<string>,
@@ -227,6 +237,8 @@ function buildColumns(
   onColumnFilterChange: (key: keyof ColumnFilters, next: string[]) => void,
   lossScopeOptions: string[],
   categoryNameOptions: string[],
+  noOperationDaysOptions: string[],
+  consigneeRouteCodeOptions: string[],
   responsibilityOptions: string[],
   latestResponsibilityPersonOptions: string[],
   latestResponsibilityActionOptions: string[],
@@ -295,12 +307,39 @@ function buildColumns(
     {
       key: 'noOperationDays',
       title: '无操作天数',
+      renderTitle: () => (
+        <FilterableHeader
+          title="无操作天数"
+          options={noOperationDaysOptions}
+          selected={columnFilters.noOperationDays}
+          onChange={(next) => onColumnFilterChange('noOperationDays', next)}
+        />
+      ),
       render: (row) => {
         const r = row as unknown as Row
         if (r.status === 'pending' || r.status === 'analyzing') {
           return <span className="text-slate-400">—</span>
         }
-        return <span>{r.latestResponsibility ? r.latestResponsibility.noOperationDays : '—'}</span>
+        return <span>{noOperationDaysLabel(r)}</span>
+      },
+    },
+    {
+      key: 'consigneeRouteCode',
+      title: '路由码',
+      renderTitle: () => (
+        <FilterableHeader
+          title="路由码"
+          options={consigneeRouteCodeOptions}
+          selected={columnFilters.consigneeRouteCode}
+          onChange={(next) => onColumnFilterChange('consigneeRouteCode', next)}
+        />
+      ),
+      render: (row) => {
+        const r = row as unknown as Row
+        if (r.status === 'pending' || r.status === 'analyzing') {
+          return <span className="text-slate-400">—</span>
+        }
+        return <span>{routeCodeLabel(r)}</span>
       },
     },
     {
@@ -369,17 +408,6 @@ function buildColumns(
           return <span className="text-slate-400">—</span>
         }
         return <span>{String(r.currentResponsibilityParty ?? '—')}</span>
-      },
-    },
-    {
-      key: 'consigneeRouteCode',
-      title: '路由码',
-      render: (row) => {
-        const r = row as unknown as Row
-        if (r.status === 'pending' || r.status === 'analyzing') {
-          return <span className="text-slate-400">—</span>
-        }
-        return <span>{r.orderInfo?.consigneeRouteCode || '—'}</span>
       },
     },
     {
@@ -533,6 +561,8 @@ export function AnalysisTabContent({
   const [columnFilters, setColumnFilters] = useState<ColumnFilters>({
     lossScope: [],
     categoryName: [],
+    noOperationDays: [],
+    consigneeRouteCode: [],
     currentResponsibilityParty: [],
     latestResponsibilityPerson: [],
     latestResponsibilityAction: [],
@@ -552,6 +582,22 @@ export function AnalysisTabContent({
     () => [...new Set(doneRows.map((r) => r.categoryName ?? '').filter(Boolean))].sort(),
     [doneRows],
   )
+  const noOperationDaysOptions = useMemo(
+    () =>
+      [
+        ...new Set(
+          doneRows
+            .map((r) => (r.latestResponsibility ? String(r.latestResponsibility.noOperationDays) : ''))
+            .filter(Boolean),
+        ),
+      ].sort((a, b) => Number(a) - Number(b)),
+    [doneRows],
+  )
+  const consigneeRouteCodeOptions = useMemo(
+    () =>
+      [...new Set(doneRows.map((r) => r.orderInfo?.consigneeRouteCode ?? '').filter((v) => v && v !== '—'))].sort(),
+    [doneRows],
+  )
   const responsibilityOptions = useMemo(
     () =>
       [...new Set(doneRows.map((r) => r.currentResponsibilityParty ?? '').filter((v) => v && v !== '—'))].sort(),
@@ -569,11 +615,20 @@ export function AnalysisTabContent({
   )
 
   const columnFilteredRows = useMemo(() => {
-    const { lossScope, categoryName, currentResponsibilityParty, latestResponsibilityPerson, latestResponsibilityAction } =
-      columnFilters
+    const {
+      lossScope,
+      categoryName,
+      noOperationDays,
+      consigneeRouteCode,
+      currentResponsibilityParty,
+      latestResponsibilityPerson,
+      latestResponsibilityAction,
+    } = columnFilters
     const hasFilter =
       lossScope.length > 0 ||
       categoryName.length > 0 ||
+      noOperationDays.length > 0 ||
+      consigneeRouteCode.length > 0 ||
       currentResponsibilityParty.length > 0 ||
       latestResponsibilityPerson.length > 0 ||
       latestResponsibilityAction.length > 0
@@ -582,6 +637,8 @@ export function AnalysisTabContent({
       if (r.status !== 'done') return true
       if (lossScope.length > 0 && !lossScope.includes(r.lossScope ?? '')) return false
       if (categoryName.length > 0 && !categoryName.includes(r.categoryName ?? '')) return false
+      if (noOperationDays.length > 0 && !noOperationDays.includes(noOperationDaysLabel(r))) return false
+      if (consigneeRouteCode.length > 0 && !consigneeRouteCode.includes(routeCodeLabel(r))) return false
       if (currentResponsibilityParty.length > 0 && !currentResponsibilityParty.includes(r.currentResponsibilityParty ?? '')) return false
       if (latestResponsibilityPerson.length > 0 || latestResponsibilityAction.length > 0) {
         const person = r.latestResponsibility?.person ?? '—'
@@ -636,6 +693,8 @@ export function AnalysisTabContent({
         onColumnFilterChange,
         lossScopeOptions,
         categoryNameOptions,
+        noOperationDaysOptions,
+        consigneeRouteCodeOptions,
         responsibilityOptions,
         latestResponsibilityPersonOptions,
         latestResponsibilityActionOptions,
@@ -647,6 +706,8 @@ export function AnalysisTabContent({
       onColumnFilterChange,
       lossScopeOptions,
       categoryNameOptions,
+      noOperationDaysOptions,
+      consigneeRouteCodeOptions,
       responsibilityOptions,
       latestResponsibilityPersonOptions,
       latestResponsibilityActionOptions,
