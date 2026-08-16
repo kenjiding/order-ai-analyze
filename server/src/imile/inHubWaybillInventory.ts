@@ -43,16 +43,23 @@ export function computeInHubStockRange(
 
 type ApiError = { ok: false; status: number; message: string; rawText?: string }
 
-/**
- * 查询库内在库运单（stockReportType=allTotal），按 start/end 过滤入库日期，返回去重后的运单号列表。
- */
-export async function fetchInHubWaybillInventory(
+type FetchInHubWaybillNosParams = {
+  stationCode: string
+  start: string
+  end: string
+  scanType: string
+  stockReportType: string
+  ocCenterCode: string
+  label: string
+}
+
+async function fetchInHubWaybillNos(
   token: string,
-  params: { stationCode: string; start: string; end: string },
+  params: FetchInHubWaybillNosParams,
 ): Promise<{ ok: true; data: string[] } | ApiError> {
   const stationCode = params.stationCode.trim()
   if (!stationCode) {
-    return { ok: false, status: 400, message: '库内异常订单查询缺少站点编码' }
+    return { ok: false, status: 400, message: `${params.label}缺少站点编码` }
   }
 
   const normalizedToken = normalizeImileToken(token)
@@ -60,24 +67,24 @@ export async function fetchInHubWaybillInventory(
   const headers = makeInHubHeaders(normalizedToken, stationCode)
 
   const pageResult = await fetchPaginatedResultRows({
-    label: '库内异常订单查询',
+    label: params.label,
     pageShowCount: IN_HUB_WAYBILL_PAGE_SHOW_COUNT,
     buildPageBody: ({ currentPage, showCount }) => ({
       country: resolveImileCountry(),
       currentPage,
       end: params.end,
       fromOc: false,
-      ocCenterCode: 'S210206',
+      ocCenterCode: params.ocCenterCode,
       orderTypes: [],
-      scanType: '',
+      scanType: params.scanType,
       scanTypeList: [],
       showCount,
       start: params.start,
-      stockReportType: 'allTotal',
+      stockReportType: params.stockReportType,
       stockStationCodes: [stationCode],
     }),
     requestPage: (body) =>
-      requestImileApi({ url, method: 'POST', headers, body, label: '库内异常订单查询' }),
+      requestImileApi({ url, method: 'POST', headers, body, label: params.label }),
   })
 
   if (!pageResult.ok) {
@@ -97,4 +104,116 @@ export async function fetchInHubWaybillInventory(
   }
 
   return { ok: true, data: [...waybillNos] }
+}
+
+/**
+ * 查询库内在库运单（stockReportType=allTotal），按 start/end 过滤入库日期，返回去重后的运单号列表。
+ */
+export async function fetchInHubWaybillInventory(
+  token: string,
+  params: { stationCode: string; start: string; end: string },
+): Promise<{ ok: true; data: string[] } | ApiError> {
+  return fetchInHubWaybillNos(token, {
+    stationCode: params.stationCode,
+    start: params.start,
+    end: params.end,
+    scanType: '',
+    stockReportType: 'allTotal',
+    ocCenterCode: 'S210206',
+    label: '库内异常订单查询',
+  })
+}
+
+export const IN_HUB_PACKAGE_LOSS_SCAN_TYPES = ['1504', '400'] as const
+export const IN_HUB_PACKAGE_LOSS_STOCK_REPORT_TYPES = ['notClosed', 'closed'] as const
+
+export type InHubPackageLossScanType = (typeof IN_HUB_PACKAGE_LOSS_SCAN_TYPES)[number]
+export type InHubPackageLossStockReportType =
+  (typeof IN_HUB_PACKAGE_LOSS_STOCK_REPORT_TYPES)[number]
+
+export type InHubPackageLossQuery = {
+  scanType: InHubPackageLossScanType
+  stockReportType: InHubPackageLossStockReportType
+}
+
+/** 库内丢包取号：未关闭 + 已关闭，各拉 scanType 1504 / 400。 */
+export const IN_HUB_PACKAGE_LOSS_QUERIES: readonly InHubPackageLossQuery[] =
+  IN_HUB_PACKAGE_LOSS_STOCK_REPORT_TYPES.flatMap((stockReportType) =>
+    IN_HUB_PACKAGE_LOSS_SCAN_TYPES.map((scanType) => ({ scanType, stockReportType })),
+  )
+
+export type MergedWaybillNos = {
+  waybillNos: string[]
+  total: number
+  byScanType: Record<string, number>
+}
+
+/** 合并多组运单号并去重；同 scanType 多组（未关闭/已关闭）先并集再计数。 */
+export function mergeWaybillNosByScanType(
+  groups: { scanType: string; waybillNos: string[] }[],
+): MergedWaybillNos {
+  const byScanTypeSets: Record<string, Set<string>> = {}
+  const merged = new Set<string>()
+  for (const group of groups) {
+    if (!byScanTypeSets[group.scanType]) byScanTypeSets[group.scanType] = new Set()
+    for (const raw of group.waybillNos) {
+      const no = raw.trim()
+      if (!no) continue
+      byScanTypeSets[group.scanType].add(no)
+      merged.add(no)
+    }
+  }
+  const byScanType: Record<string, number> = {}
+  for (const [scanType, set] of Object.entries(byScanTypeSets)) {
+    byScanType[scanType] = set.size
+  }
+  return { waybillNos: [...merged], total: merged.size, byScanType }
+}
+
+export async function fetchInHubPackageLossByQuery(
+  token: string,
+  params: { stationCode: string } & InHubPackageLossQuery,
+): Promise<{ ok: true; data: string[] } | ApiError> {
+  return fetchInHubWaybillNos(token, {
+    stationCode: params.stationCode,
+    start: '',
+    end: '',
+    scanType: params.scanType,
+    stockReportType: params.stockReportType,
+    ocCenterCode: '',
+    label: `库内丢包查询 scanType=${params.scanType} stockReportType=${params.stockReportType}`,
+  })
+}
+
+export async function fetchInHubPackageLossWaybills(
+  token: string,
+  stationCode: string,
+): Promise<({ ok: true } & MergedWaybillNos) | ApiError> {
+  const results = await Promise.all(
+    IN_HUB_PACKAGE_LOSS_QUERIES.map(async (query) => {
+      const result = await fetchInHubPackageLossByQuery(token, { stationCode, ...query })
+      return { ...query, result }
+    }),
+  )
+
+  for (const { scanType, stockReportType, result } of results) {
+    if (!result.ok) {
+      return {
+        ok: false,
+        status: result.status,
+        message: `scanType ${scanType} / ${stockReportType}：${result.message}`,
+        rawText: result.rawText,
+      }
+    }
+  }
+
+  return {
+    ok: true,
+    ...mergeWaybillNosByScanType(
+      results.map(({ scanType, result }) => ({
+        scanType,
+        waybillNos: result.ok ? result.data : [],
+      })),
+    ),
+  }
 }

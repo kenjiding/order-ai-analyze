@@ -86,4 +86,6 @@ export const PERMISSION_KEYS = {
   menuChaseDispatch: 'menu:chase-dispatch',
   menuWorkOrderPush: 'menu:work-order-push',
   menuAttendanceWorkTime: 'menu:attendance-work-time',
+  menuPackageLossMonitor: 'menu:package-loss-monitor',
+  btnPackageLossMonitorAnalyze: 'btn:package-loss-monitor:analyze',
 } as const

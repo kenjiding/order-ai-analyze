@@ -3,7 +3,7 @@ import { eq } from 'drizzle-orm'
 import { runOrderAnalyzePipeline } from '../orderAnalyze/pipeline'
 import { reclassifyOutWarehouseLossWithCancelScan } from '../orderAnalyze/cancelScanReclassify'
 import { enrichTheftSuspectDriverVendor } from '../orderAnalyze/driverVendorEnrich'
-import { parseWarehouseConfigInput } from '../orderAnalyze/warehouseProfiles'
+import { applyLossTimeoutDaysOverride, parseWarehouseConfigInput } from '../orderAnalyze/warehouseProfiles'
 import type { AnalyzeTarget } from '../openaiOrderAnalyze'
 import {
   addClosureException,
@@ -34,6 +34,13 @@ function readJson<T>(req: Request): T {
 
 function readImileToken(req: Request, bodyToken: unknown): string {
   return readImileTokenFromRequest(req, bodyToken, { allowQuery: true })
+}
+
+function readOptionalPositiveInt(value: unknown): number | undefined {
+  if (value == null || value === '') return undefined
+  const n = typeof value === 'number' ? value : Number(String(value).trim())
+  if (!Number.isFinite(n) || n < 1) return undefined
+  return Math.floor(n)
 }
 
 registerOrderExceptionRegressionRoutes(orderExceptionRouter, {
@@ -413,6 +420,7 @@ orderExceptionRouter.post('/analyze', async (req: Request, res: Response) => {
       aiProvider?: string
       enableAiExplain?: boolean
       scanStationCode?: string
+      lossTimeoutDays?: unknown
     }>(req)
     const token = readImileToken(req, body.imileToken)
     const orderNos = Array.isArray(body.orderNos)
@@ -462,7 +470,16 @@ orderExceptionRouter.post('/analyze', async (req: Request, res: Response) => {
     const enableAiExplain = body.enableAiExplain === true
 
     const aiStartedAt = performance.now()
-    const warehouseConfig = parseWarehouseConfigInput(warehouseConfigPayload)
+    const parsedWarehouseConfig = parseWarehouseConfigInput(warehouseConfigPayload)
+    const lossTimeoutOverride = readOptionalPositiveInt(body.lossTimeoutDays)
+    if (body.lossTimeoutDays != null && body.lossTimeoutDays !== '' && lossTimeoutOverride == null) {
+      res.status(400).json({ error: 'lossTimeoutDays 须为 ≥ 1 的整数' })
+      return
+    }
+    const warehouseConfig =
+      lossTimeoutOverride != null
+        ? applyLossTimeoutDaysOverride(parsedWarehouseConfig ?? DEFAULT_WAREHOUSE_CONFIG, lossTimeoutOverride)
+        : parsedWarehouseConfig
     const { results: pipelineResults, tokenUsage, trackFacts } = await runOrderAnalyzePipeline({
       targets,
       aiProvider,

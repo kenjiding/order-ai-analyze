@@ -316,6 +316,8 @@ export async function postOrderExceptionAnalyze(payload: {
   orderNos: string[]
   aiProvider?: OrderAnalyzeAiProvider
   scanStationCode?: string
+  /** 仅本次请求生效，不写回「分析配置」里的仓库丢失超时 */
+  lossTimeoutDays?: number
 }): Promise<{
   results: OrderAnalyzeResultItem[]
   trackInfo: Record<string, TrackEvent[]>

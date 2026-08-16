@@ -20,6 +20,7 @@ export {
   createWarehouseProfileContext,
   defaultWarehouseProfileContext,
   parseWarehouseConfigInput,
+  applyLossTimeoutDaysOverride,
 } from './warehouseConfig'
 
 export const DEFAULT_WAREHOUSE_LOSS_TIMEOUT_DAYS = DEFAULT_WAREHOUSE_CONFIG.global.defaultLossTimeoutDays

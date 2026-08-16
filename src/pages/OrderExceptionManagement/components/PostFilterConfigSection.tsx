@@ -55,7 +55,7 @@ type Props = {
 }
 
 export function PostFilterConfigSection({ draft, applied, onChange, onApply, maxHeight }: Props) {
-  const [expanded, setExpanded] = useState(true)
+  const [expanded, setExpanded] = useState(false)
   const { amountFilter, weightFilter, merchantFilter, timeoutFilter } = draft
   const appliedCount = countActivePostFilters(applied)
 

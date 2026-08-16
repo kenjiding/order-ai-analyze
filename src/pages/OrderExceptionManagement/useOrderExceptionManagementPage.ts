@@ -14,20 +14,14 @@ import {
   getJobArtifact,
   runRegression,
   type PublicJob,
-  type OrderAnalyzeInterceptLog,
   type OrderAnalyzeAiProvider,
   type OrderAnalyzeApiTiming,
-  type OrderAnalyzeExtraData,
   type OrderAnalyzeResultItem,
-  type OrderAnalyzeResponsibilityOwner,
   type OrderTrackFacts,
-  type LatestResponsibility,
   type OrderAnalyzeTokenUsage,
-  type OrderQueryInfo,
   type RegressionCaseListItem,
   type RegressionCaseResult,
 } from './orderExceptionApi'
-import type { TrackEvent } from './types'
 import { useAppSettings } from '../../context/AppSettingsContext'
 import { useGlobalFilterStore } from '../../stores/globalFilterStore'
 import { parseOrderNumbersFromFile } from './parseOrderNumbersFromFile'
@@ -40,10 +34,24 @@ import { validateWarehouseConfig } from './warehouseConfig/validateWarehouseConf
 import { DEFAULT_POST_FILTER_CONFIG } from './postFilter/defaults'
 import { applyPostFilter } from './postFilter/applyPostFilter'
 import type { PostFilterConfig } from './postFilter/types'
+import {
+  type AnalysisRow,
+  type AnalyzeProgress,
+  type ImportedAnalyzeOrders,
+  type SubmittedJobBanner,
+} from './analysisTypes'
+import { createPendingAnalysisRow, mapAnalyzeHitToRow } from './mapAnalyzeHitToRow'
+
+export type {
+  AnalysisRow,
+  AnalysisRowStatus,
+  AnalyzeProgress,
+  ImportedAnalyzeOrders,
+  SubmittedJobBanner,
+} from './analysisTypes'
 
 const ANALYZE_AI_PROVIDER_KEY = 'order_exception_analyze_ai_v1'
 const BATCH_ANALYZE_KEY = 'order_exception_batch_analyze_v1'
-const TRACK_DRIVER_ID_RE = /\bID\s*[:：]\s*(D[0-9A-Za-z-]+)/i
 const JOBS_POLL_INTERVAL_MS = 3000
 const JOBS_LIST_TYPE = 'order.analyze'
 
@@ -73,46 +81,6 @@ export type InHubQueryMeta = {
   start: string
   end: string
   totalResult: number
-}
-
-export type SubmittedJobBanner = {
-  jobId: string
-  orderCount: number
-}
-
-export type AnalysisRowStatus = 'pending' | 'analyzing' | 'done' | 'error'
-
-export type AnalysisRow = {
-  orderNo: string
-  lossScope: string
-  categoryName: string
-  currentResponsibilityParty: string
-  activeResponsibilityOwner?: OrderAnalyzeResponsibilityOwner
-  reason: string
-  confidence: string
-  trackEvents: TrackEvent[]
-  interceptLogs: OrderAnalyzeInterceptLog[]
-  /** 最新责任点：责任人/操作/时间/无操作天数，服务端解析好的统一字段 */
-  latestResponsibility?: LatestResponsibility | null
-  detectedDriverId?: string
-  needsReview?: boolean
-  crossCheckedBy?: string | null
-  status?: AnalysisRowStatus
-  orderInfo?: OrderQueryInfo | null
-  /** 与判定无关的补充信息，服务端富化阶段填充；缺失表示该单无额外数据 */
-  extraData?: OrderAnalyzeExtraData
-}
-
-export type AnalyzeProgress = {
-  total: number
-  completed: number
-  succeeded: number
-  failed: number
-}
-
-export type ImportedAnalyzeOrders = {
-  fileName: string
-  orderNos: string[]
 }
 
 function mergeAnalyzeTokenUsage(
@@ -181,101 +149,6 @@ function logOrderAnalysisFacts(orderNo: string, facts: OrderTrackFacts | undefin
     }
   }
   console.groupEnd()
-}
-
-function createPendingAnalysisRow(orderNo: string): AnalysisRow {
-  return {
-    orderNo,
-    lossScope: '—',
-    categoryName: '—',
-    currentResponsibilityParty: '—',
-    reason: '待分析',
-    confidence: '—',
-    trackEvents: [],
-    interceptLogs: [],
-    detectedDriverId: '',
-    status: 'pending',
-  }
-}
-
-function extractDriverIdFromTrackContent(content: string): string {
-  const match = TRACK_DRIVER_ID_RE.exec(content)
-  return match?.[1]?.trim() ?? ''
-}
-
-function deriveDetectedDriverId(
-  latestResponsibility: LatestResponsibility | null | undefined,
-  trackEvents: TrackEvent[],
-  interceptLogs: OrderAnalyzeInterceptLog[]
-): string {
-  if (latestResponsibility?.source === 'track') {
-    const matchedTrack = trackEvents.find((event) => event.time === latestResponsibility.time)
-    const fromTrack = matchedTrack ? extractDriverIdFromTrackContent(matchedTrack.content) : ''
-    if (fromTrack) return fromTrack
-  }
-
-  if (latestResponsibility?.source === 'intercept') {
-    const matchedIntercept = interceptLogs.find((log) => log.gmtIntercept === latestResponsibility.time)
-    const fromIntercept = matchedIntercept?.scanUserCode.trim() ?? ''
-    if (fromIntercept) return fromIntercept
-  }
-
-  const latestTrackDriverId = [...trackEvents]
-    .sort((a, b) => b.time.localeCompare(a.time))
-    .map((event) => extractDriverIdFromTrackContent(event.content))
-    .find(Boolean)
-  if (latestTrackDriverId) return latestTrackDriverId
-
-  const latestInterceptDriverId = [...interceptLogs]
-    .sort((a, b) => b.gmtIntercept.localeCompare(a.gmtIntercept))
-    .map((log) => log.scanUserCode.trim())
-    .find(Boolean)
-  return latestInterceptDriverId ?? ''
-}
-
-function mapAnalyzeHitToRow(
-  orderNo: string,
-  hit: OrderAnalyzeResultItem | undefined,
-  trackInfo: Record<string, TrackEvent[]>,
-  interceptLogsByOrder: Record<string, OrderAnalyzeInterceptLog[]>,
-  orderInfoByOrder: Record<string, OrderQueryInfo | null>
-): AnalysisRow {
-  const trackEvents = trackInfo[orderNo] ?? []
-  const interceptLogs = interceptLogsByOrder[orderNo] ?? []
-  const orderInfo = orderInfoByOrder[orderNo] ?? null
-  if (!hit) {
-    const hasTrack = trackEvents.length > 0
-    return {
-      orderNo,
-      lossScope: '—',
-      categoryName: '—',
-      currentResponsibilityParty: '—',
-      reason: hasTrack ? '模型未返回该单行，请重试或缩小批量' : '无轨迹数据',
-      confidence: '—',
-      trackEvents,
-      interceptLogs,
-      orderInfo,
-      status: 'done',
-    }
-  }
-  return {
-    orderNo: hit.orderNo,
-    lossScope: hit.lossScope,
-    categoryName: hit.exceptionCategoryId || '—',
-    currentResponsibilityParty: hit.currentResponsibilityParty || '—',
-    activeResponsibilityOwner: hit.activeResponsibilityOwner,
-    reason: hit.reason,
-    confidence: Number.isFinite(hit.confidence) ? hit.confidence.toFixed(2) : String(hit.confidence),
-    trackEvents,
-    interceptLogs,
-    orderInfo,
-    latestResponsibility: hit.latestResponsibility ?? null,
-    detectedDriverId: deriveDetectedDriverId(hit.latestResponsibility, trackEvents, interceptLogs),
-    needsReview: hit.needsReview ?? false,
-    crossCheckedBy: hit.crossCheckedBy ?? null,
-    extraData: hit.extraData,
-    status: 'done',
-  }
 }
 
 export function useOrderExceptionManagementPage() {

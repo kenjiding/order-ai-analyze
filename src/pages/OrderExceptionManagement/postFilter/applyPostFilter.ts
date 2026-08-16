@@ -1,5 +1,5 @@
 import type { TrackEvent } from '../types'
-import type { AnalysisRow } from '../useOrderExceptionManagementPage'
+import type { AnalysisRow } from '../analysisTypes'
 import {
   isAmountFilterActive,
   isMerchantFilterActive,

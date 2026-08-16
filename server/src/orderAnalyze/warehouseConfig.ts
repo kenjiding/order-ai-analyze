@@ -326,6 +326,25 @@ export function parseWarehouseConfigInput(raw: unknown): WarehouseConfigDto | nu
   return { global, profiles }
 }
 
+/** 仅作用于本次分析的内存副本，不写回仓库配置 */
+export function applyLossTimeoutDaysOverride(
+  config: WarehouseConfigDto,
+  days: number,
+): WarehouseConfigDto {
+  const lossTimeoutDays = Math.max(1, Math.floor(days))
+  return {
+    ...config,
+    global: {
+      ...config.global,
+      defaultLossTimeoutDays: lossTimeoutDays,
+    },
+    profiles: config.profiles.map((profile) => ({
+      ...profile,
+      lossTimeoutDays,
+    })),
+  }
+}
+
 export function createWarehouseProfileContext(config: WarehouseConfigDto): WarehouseProfileContext {
   const global = sanitizeGlobal(config.global, DEFAULT_WAREHOUSE_CONFIG.global)
   const profiles = config.profiles.map(toRuntimeProfile)

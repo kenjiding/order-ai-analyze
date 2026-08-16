@@ -1,4 +1,5 @@
 import {
+  Activity,
   AlarmClock,
   BarChart2,
   Calculator,
@@ -11,6 +12,7 @@ import {
   History,
   Megaphone,
   HammerIcon,
+  PackageMinus,
   PackageSearch,
   ScanSearch,
   Settings,
@@ -155,6 +157,21 @@ const groups: SidebarMenuGroup[] = [
         label: '工单推送',
         icon: Ticket,
         description: '未处理工单定时推送提醒供应商',
+      },
+    ],
+  },
+  {
+    id: 'data-monitor',
+    label: '数据监控',
+    icon: Activity,
+    items: [
+      {
+        id: 'package-loss-monitor',
+        path: '/package-loss-monitor',
+        permissionKey: 'menu:package-loss-monitor',
+        label: '丢包监控',
+        icon: PackageMinus,
+        description: '库内/库外丢包运单监控与异常分析',
       },
     ],
   },

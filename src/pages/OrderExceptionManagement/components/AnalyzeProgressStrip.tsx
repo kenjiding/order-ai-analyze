@@ -1,4 +1,4 @@
-import type { AnalyzeProgress } from '../useOrderExceptionManagementPage'
+import type { AnalyzeProgress } from '../analysisTypes'
 
 type Props = {
   progress: AnalyzeProgress

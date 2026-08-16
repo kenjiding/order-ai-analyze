@@ -39,6 +39,13 @@ export const PERMISSION_REGISTRY: PermissionDefinition[] = [
   },
   { key: 'menu:chase-dispatch', type: 'menu', label: '催派推送', description: '按滞留时间统计供应商滞留订单并定时推送催派', sortOrder: 39 },
   { key: 'menu:work-order-push', type: 'menu', label: '工单推送', description: '未处理工单定时推送提醒供应商', sortOrder: 39 },
+  {
+    key: 'menu:package-loss-monitor',
+    type: 'menu',
+    label: '丢包监控',
+    description: '库内/库外丢包运单监控与异常分析',
+    sortOrder: 42,
+  },
   { key: 'menu:push-notifications', type: 'menu', label: '推送功能', description: '飞书群机器人推送配置', sortOrder: 40 },
   {
     key: 'menu:push-engagement-monitor',
@@ -140,6 +147,13 @@ export const PERMISSION_REGISTRY: PermissionDefinition[] = [
     label: '导出检查表',
     menuKey: 'warehouse-safety',
     sortOrder: 510,
+  },
+  {
+    key: 'btn:package-loss-monitor:analyze',
+    type: 'button',
+    label: '查询并分析',
+    menuKey: 'package-loss-monitor',
+    sortOrder: 420,
   },
 ]
 
