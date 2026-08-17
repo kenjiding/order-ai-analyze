@@ -17,6 +17,8 @@ import {
   resolveScopeDrillView,
   scopeSubtypeRouteKey,
   uniqueRouteCodes,
+  uniqueSubtypes,
+  filterFlowsBySubtypes,
   type SankeyDimKey,
 } from './inHubLossAnalytics'
 
@@ -89,7 +91,7 @@ function nodeOf(
   return graphOf(analytics, dims).nodes.find((node) => node.id === id)
 }
 
-test('DEFAULT_SANKEY_DIMS 默认只勾选路由码与首个嫌疑派件员', () => {
+test('DEFAULT_SANKEY_DIMS 默认勾选路由码与首个嫌疑派件员', () => {
   assert.deepEqual(
     SANKEY_DIM_OPTIONS.map((option) => option.value),
     ['vendor', 'route', 'suspect', 'person'],
@@ -153,21 +155,25 @@ test('buildInHubLossAnalytics 忽略未完成行，并统计库内丢失流向',
     source: 's:扫描员丢失',
     target: 'v:未标注供应商',
     value: 2,
+    vendor: '未标注供应商',
   })
   assert.deepEqual(linkOf(analytics, 'v:未标注供应商', 'r:R1'), {
     source: 'v:未标注供应商',
     target: 'r:R1',
     value: 2,
+    vendor: '未标注供应商',
   })
   assert.deepEqual(linkOf(analytics, 'r:R1', 'd:未标注嫌疑派件员'), {
     source: 'r:R1',
     target: 'd:未标注嫌疑派件员',
     value: 2,
+    vendor: '未标注供应商',
   })
   assert.deepEqual(linkOf(analytics, 'd:未标注嫌疑派件员', 'p:张三'), {
     source: 'd:未标注嫌疑派件员',
     target: 'p:张三',
     value: 2,
+    vendor: '未标注供应商',
   })
   assert.equal(nodeOf(analytics, 'd:未标注嫌疑派件员')?.detail, '未标注供应商')
   assert.ok(analytics.insight?.includes('库内丢失 2 单'))
@@ -266,21 +272,25 @@ test('buildInHubLossAnalytics 从额外数据提取首个嫌疑派件员', () =>
     source: 's:疑似派件员窃取',
     target: 'v:V1',
     value: 2,
+    vendor: 'V1',
   })
   assert.deepEqual(linkOf(analytics, 'v:V1', 'r:R1'), {
     source: 'v:V1',
     target: 'r:R1',
     value: 2,
+    vendor: 'V1',
   })
   assert.deepEqual(linkOf(analytics, 'r:R1', 'd:ADL-KAS-Parth'), {
     source: 'r:R1',
     target: 'd:ADL-KAS-Parth',
     value: 2,
+    vendor: 'V1',
   })
   assert.deepEqual(linkOf(analytics, 'd:ADL-KAS-Parth', 'p:仓管A'), {
     source: 'd:ADL-KAS-Parth',
     target: 'p:仓管A',
     value: 2,
+    vendor: 'V1',
   })
   assert.equal(nodeOf(analytics, 'd:ADL-KAS-Parth')?.detail, 'V1')
   assert.ok(analytics.insight?.includes('首个嫌疑派件员集中在 ADL-KAS-Parth'))
@@ -320,6 +330,64 @@ test('buildSankeyGraph 嫌疑派件员节点 hover 汇总多名供应商', () =>
     }),
   ])
   assert.equal(nodeOf(analytics, 'd:张派')?.detail, '甲供应商（2）、乙供应商（1）')
+  const toSuspect = graphOf(analytics)
+    .links.filter((link) => link.target === 'd:张派')
+    .map((link) => ({ vendor: link.vendor, value: link.value }))
+    .sort((a, b) => a.vendor.localeCompare(b.vendor, 'zh-CN'))
+  assert.deepEqual(toSuspect, [
+    { vendor: '甲供应商', value: 2 },
+    { vendor: '乙供应商', value: 1 },
+  ])
+})
+
+test('buildSankeyGraph 嫌疑派件员按供应商分组，未标注垫底', () => {
+  function extra(suspect: string, vendor: string) {
+    return {
+      summary: `首个嫌疑派件员：${suspect}｜供应商：${vendor}`,
+      entries: [
+        { label: '首个嫌疑派件员', value: suspect },
+        { label: '所属供应商', value: vendor },
+      ],
+    }
+  }
+
+  const analytics = buildInHubLossAnalytics([
+    row({
+      orderNo: 'jia-1',
+      extraData: extra('张派', '甲供应商'),
+    }),
+    row({
+      orderNo: 'jia-2',
+      extraData: extra('张派', '甲供应商'),
+    }),
+    row({
+      orderNo: 'jia-3',
+      extraData: extra('王派', '甲供应商'),
+    }),
+    row({
+      orderNo: 'yi-1',
+      extraData: extra('李派', '乙供应商'),
+    }),
+    row({
+      orderNo: 'blank-1',
+    }),
+    row({
+      orderNo: 'blank-2',
+    }),
+    row({
+      orderNo: 'blank-3',
+    }),
+  ])
+
+  const suspectKeys = graphOf(analytics, ['suspect'])
+    .nodes.filter((node) => node.id.startsWith('d:'))
+    .map((node) => node.key)
+  assert.deepEqual(suspectKeys, ['张派', '王派', '李派', '未标注嫌疑派件员'])
+
+  const vendorKeys = graphOf(analytics, ['vendor'])
+    .nodes.filter((node) => node.id.startsWith('v:'))
+    .map((node) => node.key)
+  assert.deepEqual(vendorKeys, ['甲供应商', '乙供应商', '未标注供应商'])
 })
 
 test('buildSankeyGraph 只展示选中的维度，并按单量降序排列列内节点', () => {
@@ -355,6 +423,7 @@ test('buildSankeyGraph 只展示选中的维度，并按单量降序排列列内
     source: 's:扫描员丢失',
     target: 'p:仓管A',
     value: 2,
+    vendor: '未标注供应商',
   })
 
   const routeNodes = graphOf(analytics, ['route']).nodes.filter((node) => node.id.startsWith('r:'))
@@ -371,6 +440,7 @@ test('buildSankeyGraph 只展示选中的维度，并按单量降序排列列内
     source: 's:扫描员丢失',
     target: 'v:未标注供应商',
     value: 2,
+    vendor: '未标注供应商',
   })
 })
 
@@ -453,6 +523,7 @@ test('buildSankeyGraph 只保留丢失单量达到下限的路由码', () => {
     source: 's:扫描员丢失',
     target: 'r:EE033',
     value: 3,
+    vendor: '未标注供应商',
   })
   assert.equal(graphOf(analytics, ['route'], 4).links.length, 0)
 })
@@ -484,12 +555,67 @@ test('buildSankeyGraph 排除指定路由码后不再展示，大小写不敏感
     source: 's:扫描员丢失',
     target: 'r:EE045',
     value: 2,
+    vendor: '未标注供应商',
   })
   assert.deepEqual(uniqueRouteCodes(analytics.flows), ['EE033', 'EE045', 'gs909', 'Tjj00'])
   assert.deepEqual(canonicalizeExcludedRouteCodes(['ee033', ' EE033 ', 'xx'], uniqueRouteCodes(analytics.flows)), [
     'EE033',
     'xx',
   ])
+})
+
+test('filterFlowsBySubtypes 只保留勾选的子类型，桑基图不再出现未勾选节点', () => {
+  const analytics = buildInHubLossAnalytics([
+    row({
+      orderNo: 'scan-1',
+      categoryName: '扫描员丢失',
+      orderInfo: orderInfo('EE033'),
+      latestResponsibility: responsibility('仓管A', 1),
+    }),
+    row({
+      orderNo: 'scan-2',
+      categoryName: '扫描员丢失',
+      orderInfo: orderInfo('EE033'),
+      latestResponsibility: responsibility('仓管A', 1),
+    }),
+    row({
+      orderNo: 'steal-1',
+      categoryName: '疑似派件员窃取',
+      orderInfo: orderInfo('Tjj00'),
+      latestResponsibility: responsibility('仓管B', 1),
+    }),
+    row({
+      orderNo: 'keeper-1',
+      categoryName: '仓管丢失',
+      orderInfo: orderInfo('gs909'),
+      latestResponsibility: responsibility('仓管C', 1),
+    }),
+  ])
+
+  assert.deepEqual(uniqueSubtypes(analytics.flows), ['扫描员丢失', '仓管丢失', '疑似派件员窃取'])
+  assert.deepEqual(filterFlowsBySubtypes(analytics.flows, []), [])
+
+  const filtered = filterFlowsBySubtypes(analytics.flows, ['疑似派件员窃取', '仓管丢失'])
+  assert.equal(filtered.length, 2)
+  assert.deepEqual(
+    [...new Set(filtered.map((flow) => flow.subtype))].sort(),
+    ['仓管丢失', '疑似派件员窃取'],
+  )
+
+  const graph = buildSankeyGraph(filtered, ['route'])
+  assert.equal(
+    graph.nodes.some((node) => node.id === 's:扫描员丢失'),
+    false,
+  )
+  assert.equal(
+    graph.nodes.some((node) => node.id === 's:疑似派件员窃取'),
+    true,
+  )
+  assert.equal(
+    graph.nodes.some((node) => node.id === 's:仓管丢失'),
+    true,
+  )
+  assert.equal(graph.nodes.some((node) => node.id === 'r:EE033'), false)
 })
 
 test('filterAnalyticsByExcludedRouteCodes 同步过滤判定构成与滞留天数', () => {

@@ -7,9 +7,11 @@ import {
   buildSankeyGraph,
   buildInHubLossFlowTableRows,
   filterChartAnalytics,
+  filterFlowsBySubtypes,
   nextScopeDrillPath,
   resolveSankeyColumns,
   resolveScopeDrillView,
+  uniqueSubtypes,
   type InHubLossAnalytics,
   type SankeyDimKey,
   type ScopeDrillPath,
@@ -26,19 +28,32 @@ type Props = {
 
 export function InHubLossAnalyticsPanel({ analytics, minRouteCount, excludedRouteCodes }: Props) {
   const [selectedDims, setSelectedDims] = useState<SankeyDimKey[]>([...DEFAULT_SANKEY_DIMS])
+  const [selectedSubtypes, setSelectedSubtypes] = useState<string[] | null>(null)
   const [scopeDrill, setScopeDrill] = useState<ScopeDrillPath>(EMPTY_SCOPE_DRILL)
   const columns = useMemo(() => resolveSankeyColumns(selectedDims), [selectedDims])
   const chartAnalytics = useMemo(
     () => filterChartAnalytics(analytics, excludedRouteCodes, minRouteCount),
     [analytics, excludedRouteCodes, minRouteCount],
   )
+  const subtypeOptions = useMemo(() => uniqueSubtypes(chartAnalytics.flows), [chartAnalytics.flows])
+  const effectiveSubtypes = useMemo(() => {
+    if (subtypeOptions.length === 0) return []
+    if (selectedSubtypes === null) return subtypeOptions
+    const kept = selectedSubtypes.filter((name) => subtypeOptions.includes(name))
+    if (kept.length === 0 && selectedSubtypes.length > 0) return subtypeOptions
+    return kept
+  }, [selectedSubtypes, subtypeOptions])
+  const visibleFlows = useMemo(
+    () => filterFlowsBySubtypes(chartAnalytics.flows, effectiveSubtypes),
+    [chartAnalytics.flows, effectiveSubtypes],
+  )
   const graph = useMemo(
-    () => buildSankeyGraph(chartAnalytics.flows, selectedDims),
-    [chartAnalytics.flows, selectedDims],
+    () => buildSankeyGraph(visibleFlows, selectedDims),
+    [visibleFlows, selectedDims],
   )
   const flowTableRows = useMemo(
-    () => buildInHubLossFlowTableRows(chartAnalytics.flows, selectedDims),
-    [chartAnalytics.flows, selectedDims],
+    () => buildInHubLossFlowTableRows(visibleFlows, selectedDims),
+    [visibleFlows, selectedDims],
   )
   const scopeDrillView = useMemo(
     () => resolveScopeDrillView(chartAnalytics, scopeDrill),
@@ -47,13 +62,25 @@ export function InHubLossAnalyticsPanel({ analytics, minRouteCount, excludedRout
 
   if (analytics.doneCount === 0) return null
 
-  const noMatchingRoutes = analytics.flows.length > 0 && graph.links.length === 0 && selectedDims.length > 0
+  const noMatchingRoutes = chartAnalytics.flows.length > 0 && graph.links.length === 0 && selectedDims.length > 0
 
   return (
     <div className="package-loss-viz">
       <div className="package-loss-viz-block">
         <h3 className="package-loss-viz-title">库内丢失流向</h3>
         <div className="package-loss-sankey-toolbar">
+          {subtypeOptions.length > 0 ? (
+            <div className="package-loss-sankey-filter">
+              <span className="package-loss-sankey-filter-label">子类型</span>
+              <Checkbox.Group
+                className="package-loss-sankey-filter-checks"
+                value={effectiveSubtypes}
+                options={subtypeOptions.map((name) => ({ value: name, label: name }))}
+                onChange={(next) => setSelectedSubtypes(next as string[])}
+                aria-label="筛选子类型"
+              />
+            </div>
+          ) : null}
           <div className="package-loss-sankey-filter">
             <span className="package-loss-sankey-filter-label">展示维度</span>
             <Checkbox.Group
@@ -68,10 +95,12 @@ export function InHubLossAnalyticsPanel({ analytics, minRouteCount, excludedRout
             />
           </div>
         </div>
-        {selectedDims.length === 0 ? (
+        {effectiveSubtypes.length === 0 && subtypeOptions.length > 0 ? (
+          <p className="package-loss-viz-empty">请至少选择一个子类型</p>
+        ) : selectedDims.length === 0 ? (
           <p className="package-loss-viz-empty">请至少选择一个维度</p>
         ) : noMatchingRoutes ? (
-          <p className="package-loss-viz-empty">没有可展示的路由码</p>
+          <p className="package-loss-viz-empty">当前筛选下没有可展示的流向</p>
         ) : (
           <InHubLossSankeyChart graph={graph} columns={columns} />
         )}

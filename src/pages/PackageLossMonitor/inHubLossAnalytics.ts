@@ -4,7 +4,7 @@ export const IN_HUB_LOSS_SCOPE = '库内丢失'
 
 const UNLABELED_ROUTE = '未标注路由'
 const UNLABELED_SUSPECT = '未标注嫌疑派件员'
-const UNLABELED_VENDOR = '未标注供应商'
+export const UNLABELED_VENDOR = '未标注供应商'
 const UNLABELED_PERSON = '未标注责任人'
 const SUSPECT_LABEL = '首个嫌疑派件员'
 const VENDOR_LABEL = '所属供应商'
@@ -29,6 +29,7 @@ export type SankeyLink = {
   source: string
   target: string
   value: number
+  vendor: string
 }
 
 export type SankeyGraph = {
@@ -191,8 +192,8 @@ function bump(map: Map<string, number>, key: string, by = 1): void {
   map.set(key, (map.get(key) ?? 0) + by)
 }
 
-function bumpLink(map: Map<string, number>, source: string, target: string, by = 1): void {
-  const key = `${source}\t${target}`
+function bumpLink(map: Map<string, number>, source: string, target: string, vendor: string, by = 1): void {
+  const key = `${source}\t${target}\t${vendor}`
   map.set(key, (map.get(key) ?? 0) + by)
 }
 
@@ -258,6 +259,69 @@ function compareRouteCodeNodes(
   const prefixB = routeCodePrefix(b.key)
   if (prefixA !== prefixB) return (prefixOrder.get(prefixA) ?? 0) - (prefixOrder.get(prefixB) ?? 0)
   return b.value - a.value || compareCode(a.key, b.key)
+}
+
+function isUnlabeledVendor(name: string): boolean {
+  return name === UNLABELED_VENDOR
+}
+
+function isUnlabeledSuspect(name: string): boolean {
+  return name === UNLABELED_SUSPECT
+}
+
+function compareLabeledThenCountThenName(
+  a: { key: string; value: number; unlabeled: boolean },
+  b: { key: string; value: number; unlabeled: boolean },
+): number {
+  if (a.unlabeled !== b.unlabeled) return a.unlabeled ? 1 : -1
+  return b.value - a.value || a.key.localeCompare(b.key, 'zh-CN')
+}
+
+/** 供应商列：未标注垫底，其余按单量降序。 */
+function compareVendorNodes(a: { key: string; value: number }, b: { key: string; value: number }): number {
+  return compareLabeledThenCountThenName(
+    { key: a.key, value: a.value, unlabeled: isUnlabeledVendor(a.key) },
+    { key: b.key, value: b.value, unlabeled: isUnlabeledVendor(b.key) },
+  )
+}
+
+function primaryVendorOf(vendorCounts: Map<string, number> | undefined): string {
+  if (!vendorCounts || vendorCounts.size === 0) return UNLABELED_VENDOR
+  const entries = [...vendorCounts.entries()].sort((left, right) =>
+    compareLabeledThenCountThenName(
+      { key: left[0], value: left[1], unlabeled: isUnlabeledVendor(left[0]) },
+      { key: right[0], value: right[1], unlabeled: isUnlabeledVendor(right[0]) },
+    ),
+  )
+  return entries[0][0]
+}
+
+function buildVendorOrder(vendorTotals: Map<string, number>): Map<string, number> {
+  return new Map(
+    [...vendorTotals.entries()]
+      .sort((left, right) =>
+        compareVendorNodes({ key: left[0], value: left[1] }, { key: right[0], value: right[1] }),
+      )
+      .map(([vendor], index) => [vendor, index]),
+  )
+}
+
+/** 嫌疑派件员列：按主供应商分组（与供应商列同一顺序），组内按单量；未标注派件员垫底。 */
+function compareSuspectNodes(
+  a: { id: string; key: string; value: number },
+  b: { id: string; key: string; value: number },
+  primaryVendorBySuspectId: Map<string, string>,
+  vendorOrder: Map<string, number>,
+): number {
+  const unlabeledA = isUnlabeledSuspect(a.key)
+  const unlabeledB = isUnlabeledSuspect(b.key)
+  if (unlabeledA !== unlabeledB) return unlabeledA ? 1 : -1
+  const vendorA = primaryVendorBySuspectId.get(a.id) ?? UNLABELED_VENDOR
+  const vendorB = primaryVendorBySuspectId.get(b.id) ?? UNLABELED_VENDOR
+  const orderA = vendorOrder.get(vendorA) ?? Number.MAX_SAFE_INTEGER
+  const orderB = vendorOrder.get(vendorB) ?? Number.MAX_SAFE_INTEGER
+  if (orderA !== orderB) return orderA - orderB
+  return b.value - a.value || a.key.localeCompare(b.key, 'zh-CN')
 }
 
 /** 路由码柱状图与桑基图同一套排序：前缀分组，组内按单量降序。 */
@@ -338,11 +402,11 @@ const DIM_SPEC: Record<
   person: { layer: 'p', title: '最新责任人', valueOf: (flow) => flow.person },
 }
 
-/** 固定顺序：子类型 → 所属供应商 → 路由码 → 首个嫌疑派件员 → 最新责任人；未勾选的维度跳过。 */
+/** 子类型始终作为第一列；其余按固定顺序：所属供应商 → 路由码 → 首个嫌疑派件员 → 最新责任人。 */
 export function resolveSankeyColumns(selected: readonly SankeyDimKey[]): SankeyColumn[] {
   const selectedSet = new Set(selected)
   return [
-    { key: 'subtype', title: DIM_SPEC.subtype.title },
+    { key: 'subtype', title: '子类型' },
     ...SANKEY_DIM_OPTIONS.filter((option) => selectedSet.has(option.value)).map((option) => ({
       key: option.value,
       title: option.label,
@@ -350,7 +414,7 @@ export function resolveSankeyColumns(selected: readonly SankeyDimKey[]): SankeyC
   ]
 }
 
-/** 流向表明细列与桑基图同一套聚合顺序：子类型 → 勾选维度。 */
+/** 流向表明细列与桑基图同一套勾选维度。 */
 export function resolveFlowTableColumns(selected: readonly SankeyDimKey[]): SankeyColumn[] {
   return resolveSankeyColumns(selected)
 }
@@ -392,7 +456,7 @@ function attachFlowTableRowSpans(rows: InHubLossFlowTableRow[], dimKeys: FlowTab
   }
 }
 
-/** 按 子类型 → 所属供应商 → 路由码 → 首个嫌疑派件员 → 最新责任人 聚合；未勾选的维度跳过。 */
+/** 按勾选维度聚合；未勾选的维度跳过。 */
 export function buildInHubLossFlowTableRows(
   flows: InHubLossFlow[],
   selected: readonly SankeyDimKey[],
@@ -566,6 +630,21 @@ export function uniqueRouteCodes(flows: InHubLossFlow[]): string[] {
   ).map((item) => item.key)
 }
 
+/** 当前流向里实际出现的子类型，按单量降序。 */
+export function uniqueSubtypes(flows: InHubLossFlow[]): string[] {
+  const counts = new Map<string, number>()
+  for (const flow of flows) bump(counts, flow.subtype)
+  return [...counts.entries()]
+    .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0], 'zh-CN'))
+    .map(([key]) => key)
+}
+
+export function filterFlowsBySubtypes(flows: InHubLossFlow[], selected: readonly string[]): InHubLossFlow[] {
+  if (selected.length === 0) return []
+  const kept = new Set(selected)
+  return flows.filter((flow) => kept.has(flow.subtype))
+}
+
 export function canonicalizeExcludedRouteCodes(
   values: readonly string[],
   knownRouteCodes: readonly string[],
@@ -613,7 +692,7 @@ export function buildSankeyGraph(
       return id
     })
     for (let i = 0; i < ids.length - 1; i += 1) {
-      bumpLink(linkCounts, ids[i], ids[i + 1])
+      bumpLink(linkCounts, ids[i], ids[i + 1], flow.vendor)
     }
     const suspectId = layerId('d', flow.suspect)
     let vendorMap = suspectVendorCounts.get(suspectId)
@@ -634,20 +713,36 @@ export function buildSankeyGraph(
     return node
   })
   const routePrefixOrder = buildRoutePrefixOrder(nodes.filter((node) => node.id.startsWith('r:')))
+  const vendorTotals = new Map<string, number>()
+  const primaryVendorBySuspectId = new Map<string, string>()
+  for (const [suspectId, vendorMap] of suspectVendorCounts) {
+    primaryVendorBySuspectId.set(suspectId, primaryVendorOf(vendorMap))
+    for (const [vendor, count] of vendorMap) bump(vendorTotals, vendor)
+  }
+  const vendorOrder = buildVendorOrder(vendorTotals)
   nodes.sort((a, b) => {
     const layerA = layerOrder.get(a.id[0] as LayerKey) ?? 0
     const layerB = layerOrder.get(b.id[0] as LayerKey) ?? 0
     if (layerA !== layerB) return layerA - layerB
     if (a.id.startsWith('r:') && b.id.startsWith('r:')) return compareRouteCodeNodes(a, b, routePrefixOrder)
+    if (a.id.startsWith('v:') && b.id.startsWith('v:')) return compareVendorNodes(a, b)
+    if (a.id.startsWith('d:') && b.id.startsWith('d:')) {
+      return compareSuspectNodes(a, b, primaryVendorBySuspectId, vendorOrder)
+    }
     return b.value - a.value || a.key.localeCompare(b.key, 'zh-CN')
   })
 
   const links: SankeyLink[] = [...linkCounts.entries()]
     .map(([pair, value]) => {
-      const [source, target] = pair.split('\t')
-      return { source, target, value }
+      const [source, target, vendor] = pair.split('\t')
+      return { source, target, value, vendor: vendor || UNLABELED_VENDOR }
     })
-    .sort((a, b) => b.value - a.value || a.source.localeCompare(b.source, 'zh-CN'))
+    .sort((a, b) => {
+      const orderA = vendorOrder.get(a.vendor) ?? Number.MAX_SAFE_INTEGER
+      const orderB = vendorOrder.get(b.vendor) ?? Number.MAX_SAFE_INTEGER
+      if (orderA !== orderB) return orderA - orderB
+      return b.value - a.value || a.source.localeCompare(b.source, 'zh-CN')
+    })
 
   return { nodes, links }
 }
