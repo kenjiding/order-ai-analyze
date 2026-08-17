@@ -127,7 +127,7 @@ export async function fetchStagnantWaybills(
       end: params.end,
       fromOc: false,
       ocCenterCode: 'S210206',
-      orderTypes: [],
+      orderTypes: ['100'],
       scanType: '',
       scanTypeList: [],
       showCount,

@@ -1,23 +1,24 @@
-import { useMemo, useRef, useState, type ChangeEvent } from 'react'
-import { Button, InputNumber, Select, Tooltip } from 'antd'
+import { useRef, type ChangeEvent } from 'react'
+import { Button, DatePicker, InputNumber, Tooltip } from 'antd'
+import type { Dayjs } from 'dayjs'
+import { FileSpreadsheet, Search, Upload, Warehouse } from 'lucide-react'
 import { PERMISSION_KEYS, usePermission } from '../../../hooks/usePermission'
 import { OrderExceptionAnalysisResults } from '../../OrderExceptionManagement/components/OrderExceptionAnalysisResults'
 import type { AnalysisRow, AnalyzeProgress } from '../../OrderExceptionManagement/analysisTypes'
 import type { PostFilterConfig } from '../../OrderExceptionManagement/postFilter/types'
-import {
-  canonicalizeExcludedRouteCodes,
-  uniqueRouteCodes,
-  type InHubLossAnalytics,
-} from '../inHubLossAnalytics'
+import type { InHubLossAnalytics } from '../inHubLossAnalytics'
 import type { InHubPackageLossWaybills } from '../packageLossMonitorApi'
-import type { PackageLossImportMeta } from '../usePackageLossMonitorPage'
+import type { PackageLossDateRange, PackageLossImportMeta } from '../usePackageLossMonitorPage'
 import { InHubLossAnalyticsPanel } from './InHubLossAnalyticsPanel'
 
-const DEFAULT_MIN_ROUTE_COUNT = 2
+const MAX_QUERY_RANGE_DAYS = 31
+const DATE_FORMAT = 'YYYY-MM-DD'
 
 type Props = {
   stationCode?: string
   stationLabel: string
+  dateRange: PackageLossDateRange
+  onDateRangeChange: (next: PackageLossDateRange) => void
   lossTimeoutDays: number
   onLossTimeoutDaysChange: (value: number) => void
   isQuerying: boolean
@@ -40,6 +41,8 @@ type Props = {
 export function InHubPackageLossTab({
   stationCode,
   stationLabel,
+  dateRange,
+  onDateRangeChange,
   lossTimeoutDays,
   onLossTimeoutDaysChange,
   isQuerying,
@@ -62,10 +65,11 @@ export function InHubPackageLossTab({
   const canAnalyze = usePermission(PERMISSION_KEYS.btnPackageLossMonitorAnalyze)
   const busy = isQuerying || isAnalyzing
   const timeoutInvalid = !Number.isFinite(lossTimeoutDays) || lossTimeoutDays < 1
-  const [minRouteCount, setMinRouteCount] = useState(DEFAULT_MIN_ROUTE_COUNT)
-  const [excludedRouteCodes, setExcludedRouteCodes] = useState<string[]>([])
-  const routeCodeOptions = useMemo(() => uniqueRouteCodes(analytics.flows), [analytics.flows])
-  const analyzeDisabled = busy || !canAnalyze || !stationCode || timeoutInvalid
+  const dateRangeInvalid =
+    !dateRange[0]?.isValid() || !dateRange[1]?.isValid() || dateRange[1].isBefore(dateRange[0])
+  const exceedsRangeLimit =
+    !dateRangeInvalid && dateRange[1].diff(dateRange[0], 'day', true) > MAX_QUERY_RANGE_DAYS
+  const analyzeDisabled = busy || !canAnalyze || !stationCode || timeoutInvalid || dateRangeInvalid || exceedsRangeLimit
   const importDisabled = busy || !canAnalyze
   const analyzeTooltip = !canAnalyze
     ? '无操作权限'
@@ -73,8 +77,14 @@ export function InHubPackageLossTab({
       ? '请先在右上角选择责任站点'
       : timeoutInvalid
         ? '请填写有效的超时天数'
-        : undefined
+        : dateRangeInvalid
+          ? '请选择有效的时间范围'
+          : exceedsRangeLimit
+            ? '时间范围不能超过 1 个月'
+            : undefined
   const importTooltip = !canAnalyze ? '无操作权限' : undefined
+  const hasRunSurface = Boolean(queryMeta || importMeta || busy)
+  const showIdleEmpty = !hasRunSurface && analytics.doneCount === 0 && rows.length === 0
 
   const onImportFileChange = (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0]
@@ -83,127 +93,126 @@ export function InHubPackageLossTab({
     void onImport(file)
   }
 
+  const disableDateOutOfOneMonth = (current: Dayjs, info?: { from?: Dayjs }) => {
+    const anchor = info?.from
+    if (!anchor) return false
+    return Math.abs(current.diff(anchor, 'day', true)) > MAX_QUERY_RANGE_DAYS
+  }
+
   return (
     <div className="space-y-5">
       <section className="admin-panel overflow-hidden">
-        <div className="package-loss-command">
-          <div className="package-loss-command-meta">
+        <div className="package-loss-query">
+          <div className="package-loss-query-head">
+            <div className="min-w-0">
+              <h3 className="package-loss-query-title">查询条件</h3>
+              <p className="package-loss-query-desc">按站点与时间取号，超过无操作天数的运单进入分析。</p>
+            </div>
             {stationCode ? (
-              <span className="package-loss-station">{stationLabel || stationCode}</span>
+              <span className="package-loss-station-badge">{stationLabel || stationCode}</span>
             ) : (
               <p className="package-loss-warn">请先在右上角选择责任站点</p>
             )}
           </div>
-          <div className="package-loss-command-actions">
-            <InputNumber
-              min={1}
-              value={lossTimeoutDays}
-              onChange={(value) => {
-                if (value == null) return
-                onLossTimeoutDaysChange(Number(value))
-              }}
-              addonBefore="无操作天数"
-              disabled={busy}
-              className="w-16"
-              aria-label="订单分析的超时天数"
-            />
-            <Tooltip title="例如AA091有1单, BB087有2单, 填 2 表示只显示BB087, 不显示AA091。">
-              <span className="inline-flex">
+
+          <div className="package-loss-query-row">
+            <div className="package-loss-query-fields">
+              <div className="package-loss-field">
+                <label className="package-loss-field-label" htmlFor="in-hub-date-range">
+                  库内丢包时间范围
+                </label>
+                <DatePicker.RangePicker
+                  id="in-hub-date-range"
+                  value={dateRange}
+                  format={DATE_FORMAT}
+                  disabled={busy}
+                  allowClear={false}
+                  disabledDate={disableDateOutOfOneMonth}
+                  onChange={(values) => {
+                    if (!values || !values[0] || !values[1]) return
+                    onDateRangeChange([values[0], values[1]])
+                  }}
+                  className="w-64"
+                />
+                <span className="package-loss-field-hint">最长 31 天</span>
+              </div>
+
+              <div className="package-loss-field">
+                <label className="package-loss-field-label" htmlFor="in-hub-timeout-days">
+                  无操作天数
+                </label>
                 <InputNumber
+                  id="in-hub-timeout-days"
                   min={1}
-                  precision={0}
-                  value={minRouteCount}
+                  value={lossTimeoutDays}
                   onChange={(value) => {
                     if (value == null) return
-                    setMinRouteCount(Number(value))
+                    onLossTimeoutDaysChange(Number(value))
                   }}
-                  addonBefore="路由码丢失数量 ≥"
-                  className="w-16"
-                  aria-label="路由码丢失数量下限"
+                  disabled={busy}
+                  className="w-28"
+                  aria-label="订单分析的超时天数"
                 />
-              </span>
-            </Tooltip>
-            <Select
-              mode="tags"
-              allowClear
-              value={excludedRouteCodes}
-              options={routeCodeOptions.map((code) => ({ value: code, label: code }))}
-              onChange={(values) => {
-                setExcludedRouteCodes(canonicalizeExcludedRouteCodes(values, routeCodeOptions))
-              }}
-              tokenSeparators={[',', '，', ' ']}
-              placeholder="剔除路由码"
-              className="package-loss-exclude-routes-select"
-              aria-label="剔除路由码"
-            />
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept=".xlsx,.xls,.csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel,text/csv"
-              className="hidden"
-              disabled={importDisabled}
-              onChange={onImportFileChange}
-            />
-            <Tooltip title={importTooltip}>
-              <span className={importDisabled ? 'inline-flex cursor-not-allowed' : 'inline-flex'}>
-                <Button disabled={importDisabled} onClick={() => fileInputRef.current?.click()}>
-                  导入数据
-                </Button>
-              </span>
-            </Tooltip>
-            <Tooltip title={analyzeTooltip}>
-              <span className={analyzeDisabled ? 'inline-flex cursor-not-allowed' : 'inline-flex'}>
-                <Button type="primary" disabled={analyzeDisabled} loading={busy} onClick={() => void onAnalyze()}>
-                  {isQuerying ? '取号中' : isAnalyzing ? '分析中' : '查询并分析'}
-                </Button>
-              </span>
-            </Tooltip>
+                <span className="package-loss-field-hint">超过此天数视为滞留</span>
+              </div>
+            </div>
+
+            <div className="package-loss-query-actions">
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept=".xlsx,.xls,.csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel,text/csv"
+                className="hidden"
+                disabled={importDisabled}
+                onChange={onImportFileChange}
+              />
+              <Tooltip title={importTooltip}>
+                <span className={importDisabled ? 'inline-flex cursor-not-allowed' : 'inline-flex'}>
+                  <Button
+                    disabled={importDisabled}
+                    icon={<Upload className="h-4 w-4" aria-hidden />}
+                    onClick={() => fileInputRef.current?.click()}
+                  >
+                    导入数据
+                  </Button>
+                </span>
+              </Tooltip>
+              <Tooltip title={analyzeTooltip}>
+                <span className={analyzeDisabled ? 'inline-flex cursor-not-allowed' : 'inline-flex'}>
+                  <Button
+                    type="primary"
+                    disabled={analyzeDisabled}
+                    loading={busy}
+                    icon={busy ? undefined : <Search className="h-4 w-4" aria-hidden />}
+                    onClick={() => void onAnalyze()}
+                  >
+                    {isQuerying ? '取号中' : isAnalyzing ? '分析中' : '查询并分析'}
+                  </Button>
+                </span>
+              </Tooltip>
+            </div>
           </div>
         </div>
 
-        {importMeta ? (
-          <div className="package-loss-counts package-loss-counts--import" aria-live="polite">
-            <div className="package-loss-count package-loss-count--accent">
-              <span className="package-loss-count-label">已导入</span>
-              <span className="package-loss-count-value">{importMeta.total}</span>
-            </div>
-            <div className="package-loss-count">
-              <span className="package-loss-count-label">文件</span>
-              <span className="package-loss-count-file" title={importMeta.fileName}>
-                {importMeta.fileName}
-              </span>
-            </div>
-          </div>
-        ) : queryMeta ? (
-          <div className="package-loss-counts" aria-live="polite">
-            <div className="package-loss-count">
-              <span className="package-loss-count-label">scanType 1504</span>
-              <span className="package-loss-count-value">{queryMeta.byScanType['1504'] ?? 0}</span>
-            </div>
-            <div className="package-loss-count">
-              <span className="package-loss-count-label">scanType 400</span>
-              <span className="package-loss-count-value">{queryMeta.byScanType['400'] ?? 0}</span>
-            </div>
-            <div className="package-loss-count package-loss-count--accent">
-              <span className="package-loss-count-label">去重后</span>
-              <span className="package-loss-count-value">{queryMeta.total}</span>
-            </div>
-            <div className="package-loss-count">
-              <span className="package-loss-count-label">已分析</span>
-              <span className="package-loss-count-value">
-                {analyzeProgress ? `${analyzeProgress.succeeded}/${analyzeProgress.total}` : '0'}
-              </span>
-            </div>
+        {hasRunSurface ? (
+          <InHubRunStatus
+            isQuerying={isQuerying}
+            isAnalyzing={isAnalyzing}
+            queryMeta={queryMeta}
+            importMeta={importMeta}
+            analyzeProgress={analyzeProgress}
+          />
+        ) : null}
+
+        {showIdleEmpty ? (
+          <div className="package-loss-idle">
+            <Warehouse className="package-loss-idle-icon" aria-hidden />
+            <p className="package-loss-idle-title">还没有库内丢包结果</p>
+            <p className="package-loss-idle-desc">选择责任站点与时间后查询，或导入上次导出的 Excel。</p>
           </div>
         ) : null}
 
-        {analytics.doneCount > 0 ? (
-          <InHubLossAnalyticsPanel
-            analytics={analytics}
-            minRouteCount={minRouteCount}
-            excludedRouteCodes={excludedRouteCodes}
-          />
-        ) : null}
+        {analytics.doneCount > 0 ? <InHubLossAnalyticsPanel analytics={analytics} /> : null}
       </section>
 
       <OrderExceptionAnalysisResults
@@ -217,9 +226,101 @@ export function InHubPackageLossTab({
         appliedPostFilter={appliedPostFilter}
         onRunPostFilter={onRunPostFilter}
         exportPermission={exportPermission}
-        emptyText="暂无结果。选择责任站点后点击查询并分析，或导入上次导出的 Excel。"
+        emptyText="暂无明细。查询完成后单票结果会出现在这里。"
         showPushSection={false}
       />
+    </div>
+  )
+}
+
+function InHubRunStatus({
+  isQuerying,
+  isAnalyzing,
+  queryMeta,
+  importMeta,
+  analyzeProgress,
+}: {
+  isQuerying: boolean
+  isAnalyzing: boolean
+  queryMeta: InHubPackageLossWaybills | null
+  importMeta: PackageLossImportMeta | null
+  analyzeProgress: AnalyzeProgress | null
+}) {
+  const progressPercent =
+    analyzeProgress && analyzeProgress.total > 0
+      ? Math.round((analyzeProgress.completed / analyzeProgress.total) * 100)
+      : 0
+
+  if (importMeta) {
+    return (
+      <div className="package-loss-status" aria-live="polite">
+        <div className="package-loss-counts package-loss-counts--import">
+          <StatusMetric label="已导入" value={String(importMeta.total)} accent />
+          <div className="package-loss-count">
+            <span className="package-loss-count-label">文件</span>
+            <span className="package-loss-count-file" title={importMeta.fileName}>
+              <FileSpreadsheet className="h-3.5 w-3.5 shrink-0" aria-hidden />
+              {importMeta.fileName}
+            </span>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <div className="package-loss-status" aria-live="polite">
+      <div className="package-loss-counts">
+        <StatusMetric label="取消扫描" value={String(queryMeta?.byScanType['1504'] ?? 0)} />
+        <StatusMetric label="未取件" value={String(queryMeta?.byScanType['400'] ?? 0)} />
+        <StatusMetric label="异常完结" value={String(queryMeta?.exceptionClosedCount ?? 0)} />
+        <StatusMetric label="待分析" value={String(queryMeta?.total ?? 0)} accent />
+        <StatusMetric
+          label="已分析"
+          value={analyzeProgress ? `${analyzeProgress.succeeded}/${analyzeProgress.total}` : '0'}
+        />
+      </div>
+      {isQuerying || isAnalyzing ? (
+        <div className="package-loss-progress-row">
+          <div
+            className={
+              isQuerying
+                ? 'package-loss-progress package-loss-progress--indeterminate'
+                : 'package-loss-progress'
+            }
+            role="progressbar"
+            aria-valuemin={0}
+            aria-valuemax={100}
+            aria-valuenow={isQuerying ? undefined : progressPercent}
+            aria-label={isQuerying ? '正在取号' : '分析进度'}
+          >
+            <span
+              className="package-loss-progress-value"
+              style={isQuerying ? undefined : { width: `${progressPercent}%` }}
+            />
+          </div>
+          <span className="package-loss-progress-label">
+            {isQuerying ? '正在取号' : `${analyzeProgress?.completed ?? 0} / ${analyzeProgress?.total ?? 0}`}
+          </span>
+        </div>
+      ) : null}
+    </div>
+  )
+}
+
+function StatusMetric({
+  label,
+  value,
+  accent = false,
+}: {
+  label: string
+  value: string
+  accent?: boolean
+}) {
+  return (
+    <div className={accent ? 'package-loss-count package-loss-count--accent' : 'package-loss-count'}>
+      <span className="package-loss-count-label">{label}</span>
+      <span className="package-loss-count-value">{value}</span>
     </div>
   )
 }

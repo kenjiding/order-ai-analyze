@@ -7,6 +7,7 @@ import {
 import { requestImileApi } from './client'
 import { buildImilePortalHeaders, IMILE_DS_CLOSURE_PORTAL } from './portal'
 import { readResultListRows, readResultObject } from './resultObject'
+import { fetchPaginatedResultRows } from './paginatedQuery'
 
 export type ClosureVendorOption = {
   key: string
@@ -35,6 +36,10 @@ type ClosureApiError = {
   rawText?: string
 }
 
+const DEFAULT_CLOSE_SEARCH_URL = 'https://ds.imile.com/saastms/v1/biz/exception/close/search'
+const DEFAULT_CLOSE_SEARCH_REASON = 'aus_Packet_loss_in_the_station'
+const CLOSE_SEARCH_PAGE_SHOW_COUNT = 1000
+
 function makeClosureHeaders(token: string): Record<string, string> {
   return buildImilePortalHeaders({
     token,
@@ -42,6 +47,103 @@ function makeClosureHeaders(token: string): Record<string, string> {
     defaults: IMILE_DS_CLOSURE_PORTAL,
     sharedEnvPrefixes: ['IMILE_TRACK'],
   })
+}
+
+type CloseSearchPayload = {
+  auditStatus: 'finish'
+  currentPage: number
+  dateSearchType: 'end'
+  end: string
+  exceptionCloseReason: string
+  orderCode: string
+  selectAll: false
+  showCount: number
+  start: string
+  waybillNos: string[]
+}
+
+export function buildCloseSearchPayload(input: {
+  start: string
+  end: string
+  currentPage: number
+  showCount: number
+  exceptionCloseReason: string
+}): CloseSearchPayload {
+  return {
+    auditStatus: 'finish',
+    currentPage: input.currentPage,
+    dateSearchType: 'end',
+    end: input.end,
+    exceptionCloseReason: input.exceptionCloseReason,
+    orderCode: '',
+    selectAll: false,
+    showCount: input.showCount,
+    start: input.start,
+    waybillNos: [],
+  }
+}
+
+export function extractClosedPacketLossWaybillNos(records: unknown[]): string[] {
+  const waybillNos = new Set<string>()
+  for (const row of records) {
+    if (!isRecord(row)) continue
+    const waybillNo = String(row.waybillNo ?? '').trim()
+    if (waybillNo) waybillNos.add(waybillNo)
+  }
+  return [...waybillNos]
+}
+
+export async function queryClosedPacketLossWaybills(input: {
+  imileToken: string
+  start: string
+  end: string
+  exceptionCloseReason?: string
+}): Promise<{ ok: true; waybillNos: string[] } | ClosureApiError> {
+  const token = normalizeImileToken(input.imileToken)
+  const start = String(input.start ?? '').trim()
+  const end = String(input.end ?? '').trim()
+  if (!start || !end) {
+    return { ok: false, status: 400, message: '异常闭环查询缺少 start 或 end' }
+  }
+  const exceptionCloseReason = String(
+    input.exceptionCloseReason ?? DEFAULT_CLOSE_SEARCH_REASON,
+  ).trim()
+  if (!exceptionCloseReason) {
+    return { ok: false, status: 400, message: '异常闭环查询缺少 exceptionCloseReason' }
+  }
+
+  const url = envFirstOr(['IMILE_CLOSURE_SEARCH_URL'], DEFAULT_CLOSE_SEARCH_URL)
+  const headers = makeClosureHeaders(token)
+  const pageResult = await fetchPaginatedResultRows({
+    label: '异常闭环搜索',
+    pageShowCount: CLOSE_SEARCH_PAGE_SHOW_COUNT,
+    buildPageBody: ({ currentPage, showCount }) =>
+      buildCloseSearchPayload({
+        start,
+        end,
+        currentPage,
+        showCount,
+        exceptionCloseReason,
+      }),
+    requestPage: (body) =>
+      requestImileApi({
+        url,
+        method: 'POST',
+        headers,
+        body,
+        label: '异常闭环搜索',
+      }),
+  })
+  if (!pageResult.ok) {
+    return {
+      ok: false,
+      status: pageResult.status,
+      message: pageResult.message,
+      rawText: pageResult.rawText,
+    }
+  }
+
+  return { ok: true, waybillNos: extractClosedPacketLossWaybillNos(pageResult.records) }
 }
 
 function readVendorRows(payload: unknown): unknown[] {

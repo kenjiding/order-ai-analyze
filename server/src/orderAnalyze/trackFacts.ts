@@ -417,6 +417,17 @@ function isOrderExceptionClosedEvent(t: TrackEvent): boolean {
   return ORDER_EXCEPTION_CLOSED_RE.test((t.content ?? '').trim())
 }
 
+export function isStationLossClosureEvent(t: TrackEvent): boolean {
+  const content = (t.content ?? '').trim()
+  return isOrderExceptionClosedEvent(t) && STATION_LOSS_RE.test(content)
+}
+
+/** 删除「订单异常完结 + 站内丢包」结单轨迹；无命中时返回原数组引用。 */
+export function stripStationLossClosureEvents(tracks: TrackEvent[]): TrackEvent[] {
+  const filtered = tracks.filter((event) => !isStationLossClosureEvent(event))
+  return filtered.length === tracks.length ? tracks : filtered
+}
+
 function isReturnOrInventoryEvent(t: TrackEvent): boolean {
   return t.content.includes('已回到网点') || t.content.includes('已盘点') || t.content.includes('已归班')
 }

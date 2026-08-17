@@ -52,7 +52,7 @@ export const PERMISSION_REGISTRY: PermissionDefinition[] = [
     type: 'menu',
     label: '推送数据监控',
     description: '监控供应商对出仓/24H派签/催派/工单推送的已读与按钮点击情况',
-    sortOrder: 41,
+    sortOrder: 43,
   },
   { key: 'menu:warehouse-safety', type: 'menu', label: '仓库安全日常检查', description: '安全自查表填写与导出', sortOrder: 50 },
   {

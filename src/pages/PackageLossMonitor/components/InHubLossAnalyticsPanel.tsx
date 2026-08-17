@@ -1,4 +1,4 @@
-import { Checkbox } from 'antd'
+import { InputNumber, Select, Tag, Tooltip } from 'antd'
 import { useMemo, useState } from 'react'
 import {
   DEFAULT_SANKEY_DIMS,
@@ -6,11 +6,13 @@ import {
   SANKEY_DIM_OPTIONS,
   buildSankeyGraph,
   buildInHubLossFlowTableRows,
+  canonicalizeExcludedRouteCodes,
   filterChartAnalytics,
   filterFlowsBySubtypes,
   nextScopeDrillPath,
   resolveSankeyColumns,
   resolveScopeDrillView,
+  uniqueRouteCodes,
   uniqueSubtypes,
   type InHubLossAnalytics,
   type SankeyDimKey,
@@ -20,13 +22,15 @@ import { InHubLossBarChart } from './InHubLossBarChart'
 import { InHubLossFlowTable } from './InHubLossFlowTable'
 import { InHubLossSankeyChart } from './InHubLossSankeyChart'
 
+const DEFAULT_MIN_ROUTE_COUNT = 2
+
 type Props = {
   analytics: InHubLossAnalytics
-  minRouteCount: number
-  excludedRouteCodes: string[]
 }
 
-export function InHubLossAnalyticsPanel({ analytics, minRouteCount, excludedRouteCodes }: Props) {
+export function InHubLossAnalyticsPanel({ analytics }: Props) {
+  const [minRouteCount, setMinRouteCount] = useState(DEFAULT_MIN_ROUTE_COUNT)
+  const [excludedRouteCodes, setExcludedRouteCodes] = useState<string[]>([])
   const [selectedDims, setSelectedDims] = useState<SankeyDimKey[]>([...DEFAULT_SANKEY_DIMS])
   const [selectedSubtypes, setSelectedSubtypes] = useState<string[] | null>(null)
   const [scopeDrill, setScopeDrill] = useState<ScopeDrillPath>(EMPTY_SCOPE_DRILL)
@@ -35,6 +39,7 @@ export function InHubLossAnalyticsPanel({ analytics, minRouteCount, excludedRout
     () => filterChartAnalytics(analytics, excludedRouteCodes, minRouteCount),
     [analytics, excludedRouteCodes, minRouteCount],
   )
+  const routeCodeOptions = useMemo(() => uniqueRouteCodes(analytics.flows), [analytics.flows])
   const subtypeOptions = useMemo(() => uniqueSubtypes(chartAnalytics.flows), [chartAnalytics.flows])
   const effectiveSubtypes = useMemo(() => {
     if (subtypeOptions.length === 0) return []
@@ -67,34 +72,90 @@ export function InHubLossAnalyticsPanel({ analytics, minRouteCount, excludedRout
   return (
     <div className="package-loss-viz">
       <div className="package-loss-viz-block">
-        <h3 className="package-loss-viz-title">库内丢失流向</h3>
-        <div className="package-loss-sankey-toolbar">
-          {subtypeOptions.length > 0 ? (
-            <div className="package-loss-sankey-filter">
-              <span className="package-loss-sankey-filter-label">子类型</span>
-              <Checkbox.Group
-                className="package-loss-sankey-filter-checks"
-                value={effectiveSubtypes}
-                options={subtypeOptions.map((name) => ({ value: name, label: name }))}
-                onChange={(next) => setSelectedSubtypes(next as string[])}
-                aria-label="筛选子类型"
+        <div className="package-loss-viz-head">
+          <div className="min-w-0">
+            <h3 className="package-loss-viz-title">库内丢失流向</h3>
+            <p className="package-loss-viz-caption">按路由、派件员与责任人看丢失集中在哪一段。</p>
+          </div>
+          <div className="package-loss-viz-filters">
+            <div className="package-loss-field">
+              <label className="package-loss-field-label" htmlFor="in-hub-min-route-count">
+                <Tooltip title="例如 AA091 有 1 单、BB087 有 2 单。填 2 只显示 BB087。">
+                  <span className="cursor-help">路由码丢失 ≥</span>
+                </Tooltip>
+              </label>
+              <InputNumber
+                id="in-hub-min-route-count"
+                min={1}
+                precision={0}
+                value={minRouteCount}
+                onChange={(value) => {
+                  if (value == null) return
+                  setMinRouteCount(Number(value))
+                }}
+                className="w-full"
+                aria-label="路由码丢失数量下限"
               />
             </div>
-          ) : null}
-          <div className="package-loss-sankey-filter">
-            <span className="package-loss-sankey-filter-label">展示维度</span>
-            <Checkbox.Group
-              className="package-loss-sankey-filter-checks"
-              value={selectedDims}
-              options={SANKEY_DIM_OPTIONS.map((option) => ({
-                value: option.value,
-                label: option.label,
-              }))}
-              onChange={(next) => setSelectedDims(next as SankeyDimKey[])}
-              aria-label="选择桑基图展示维度"
-            />
+            <div className="package-loss-field">
+              <label className="package-loss-field-label" htmlFor="in-hub-exclude-routes">
+                剔除路由码
+              </label>
+              <Select
+                id="in-hub-exclude-routes"
+                mode="tags"
+                allowClear
+                value={excludedRouteCodes}
+                options={routeCodeOptions.map((code) => ({ value: code, label: code }))}
+                onChange={(values) => {
+                  setExcludedRouteCodes(canonicalizeExcludedRouteCodes(values, routeCodeOptions))
+                }}
+                tokenSeparators={[',', '，', ' ']}
+                placeholder="输入或选择"
+                className="w-full"
+                aria-label="剔除路由码"
+              />
+            </div>
           </div>
         </div>
+
+        {subtypeOptions.length > 0 ? (
+          <div className="package-loss-chip-row">
+            <span className="package-loss-chip-label">子类型</span>
+            {subtypeOptions.map((name) => (
+              <Tag.CheckableTag
+                key={name}
+                checked={effectiveSubtypes.includes(name)}
+                onChange={(checked) => {
+                  const current = effectiveSubtypes
+                  setSelectedSubtypes(checked ? [...current, name] : current.filter((item) => item !== name))
+                }}
+                className="package-loss-chip"
+              >
+                {name}
+              </Tag.CheckableTag>
+            ))}
+          </div>
+        ) : null}
+
+        <div className="package-loss-chip-row">
+          <span className="package-loss-chip-label">展示维度</span>
+          {SANKEY_DIM_OPTIONS.map((option) => (
+            <Tag.CheckableTag
+              key={option.value}
+              checked={selectedDims.includes(option.value)}
+              onChange={(checked) => {
+                setSelectedDims((prev) =>
+                  checked ? [...prev, option.value] : prev.filter((item) => item !== option.value),
+                )
+              }}
+              className="package-loss-chip"
+            >
+              {option.label}
+            </Tag.CheckableTag>
+          ))}
+        </div>
+
         {effectiveSubtypes.length === 0 && subtypeOptions.length > 0 ? (
           <p className="package-loss-viz-empty">请至少选择一个子类型</p>
         ) : selectedDims.length === 0 ? (

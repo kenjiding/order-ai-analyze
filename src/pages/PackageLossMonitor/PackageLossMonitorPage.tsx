@@ -11,13 +11,11 @@ export default function PackageLossMonitorPage() {
   return (
     <div className="admin-page package-loss-page space-y-5">
       <section className="admin-panel overflow-hidden">
-        <div className="package-loss-header">
-          <h2 className="package-loss-title">
-            <span className="inline-flex items-center gap-2">
-              <PackageMinus className="h-5 w-5 text-[#2f8f87]" aria-hidden />
-              丢包监控
-            </span>
-          </h2>
+        <div className="package-loss-pagehead">
+          <h1 className="package-loss-title">
+            <PackageMinus className="h-5 w-5 shrink-0 text-[#2f8f87]" aria-hidden />
+            丢包监控
+          </h1>
           <p className="package-loss-lead">
             {v.activeTab === 'in-hub'
               ? '责任在仓内。轨迹可辅助定位最后接触包裹的司机。'
@@ -38,6 +36,8 @@ export default function PackageLossMonitorPage() {
         <InHubPackageLossTab
           stationCode={v.stationCode}
           stationLabel={v.stationLabel}
+          dateRange={v.dateRange}
+          onDateRangeChange={v.setDateRange}
           isQuerying={v.isQuerying}
           isAnalyzing={v.isAnalyzing}
           queryMeta={v.queryMeta}

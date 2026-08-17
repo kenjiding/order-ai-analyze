@@ -7,7 +7,13 @@ import { compareRegressionCase } from './regression/compare'
 import { applyFactGuardrails, classifyOrderFromFacts } from './decisionRules'
 import { normalizeSubType } from './exceptionCatalog'
 import { parseOrderAnalyzeResults, prepareAnalyzeCategories } from './prompt'
-import { deriveTrackFacts, isSorterChuteAssignmentEvent, summarizeTracks } from './trackFacts'
+import {
+  deriveTrackFacts,
+  isSorterChuteAssignmentEvent,
+  isStationLossClosureEvent,
+  stripStationLossClosureEvents,
+  summarizeTracks,
+} from './trackFacts'
 import { formatCurrentResponsibilityParty } from './pipeline'
 import {
   classifyOperatorForWarehouse,
@@ -153,6 +159,64 @@ test('历史轨迹出现订单异常完结但最新轨迹继续推进时不使�
     }),
     ''
   )
+})
+
+test('站内丢包异常完结轨迹剥离后按库内事实判定，不再短路为订单已完结', () => {
+  const tracks = [
+    track('2026-07-01 09:00:00', '【ADL DS】已盘点，库位编号[01]。操作员【ADL-DC-Tong】', '', '派送'),
+    track(
+      '2026-07-02 09:00:00',
+      '【ADL DS】派送任务已分配给派件员(派件员：ADL-JC-city-A,电话：+61 400000000)，待派件员领取包裹。 操作员【cornerstone】',
+      '',
+      '派送'
+    ),
+    track('2026-07-02 11:00:00', '【ADL DS】包裹已取消分配给[ADL-JC-city-A]。操作员【ADL OP1】', '', '派送'),
+    track(
+      '2026-07-03 09:00:00',
+      '【ADL DS】派送任务已分配给派件员(派件员：ADL-JC-city-B,电话：+61 411111111)，待派件员领取包裹。 操作员【cornerstone】',
+      '',
+      '派送'
+    ),
+    track('2026-07-03 11:00:00', '【ADL DS】包裹已取消分配给[ADL-JC-city-B]。操作员【ADL OP1】', '', '派送'),
+    track(
+      '2026-07-29 17:34:35',
+      '订单异常完结，原因【aus_Packet_loss_in_the_station】。操作员【Kuangyi Gao】',
+      '',
+      '异常完结'
+    ),
+  ]
+  const withoutStripFacts = deriveTrackFacts(tracks, [], { analysisDate: '2026-08-17' })
+  const withoutStripResult = classifyOrderFromFacts({ orderNo: 'T1', facts: withoutStripFacts })
+
+  const strippedTracks = stripStationLossClosureEvents(tracks)
+  const strippedFacts = deriveTrackFacts(strippedTracks, [], { analysisDate: '2026-08-17' })
+  const strippedResult = classifyOrderFromFacts({ orderNo: 'T1', facts: strippedFacts })
+
+  assert.equal(withoutStripFacts.latestOrderExceptionClosed, true)
+  assert.equal(withoutStripResult.lossScope, '暂无异常')
+  assert.equal(withoutStripResult.exceptionCategoryId, '订单已完结')
+  assert.equal(strippedFacts.latestOrderExceptionClosed, false)
+  assert.equal(strippedResult.lossScope, '库内丢失')
+  assert.equal(strippedResult.exceptionCategoryId, '疑似派件员窃取')
+})
+
+test('仅站内丢包原因的异常完结会被剥离，客户取消不剥离', () => {
+  const stationLossClosure = track(
+    '2026-07-29 17:34:35',
+    '订单异常完结，原因【aus_Packet_loss_in_the_station】。操作员【Kuangyi Gao】',
+    '',
+    '异常完结'
+  )
+  const customerCancelClosure = track(
+    '2026-07-29 17:34:35',
+    '订单异常完结，原因【客户取消】。操作员【Kuangyi Gao】',
+    '',
+    '异常完结'
+  )
+  assert.equal(isStationLossClosureEvent(stationLossClosure), true)
+  assert.equal(isStationLossClosureEvent(customerCancelClosure), false)
+  assert.equal(stripStationLossClosureEvents([stationLossClosure]).length, 0)
+  assert.equal(stripStationLossClosureEvents([customerCancelClosure]).length, 1)
 })
 
 test('NDR 退返商家终态优先于当前责任段缺证据兜底', () => {

@@ -1,4 +1,5 @@
 import { useCallback, useMemo, useRef, useState } from 'react'
+import dayjs, { type Dayjs } from 'dayjs'
 import { PERMISSION_KEYS } from '../../hooks/usePermission'
 import { useAppSettings } from '../../context/AppSettingsContext'
 import { useGlobalFilterStore } from '../../stores/globalFilterStore'
@@ -8,12 +9,16 @@ import { applyPostFilter } from '../OrderExceptionManagement/postFilter/applyPos
 import type { PostFilterConfig } from '../OrderExceptionManagement/postFilter/types'
 import type { AnalysisRow, AnalyzeProgress } from '../OrderExceptionManagement/analysisTypes'
 import { createPendingAnalysisRow, mapAnalyzeHitToRow } from '../OrderExceptionManagement/mapAnalyzeHitToRow'
-import { postOrderExceptionAnalyze } from '../OrderExceptionManagement/orderExceptionApi'
 import { parseAnalysisResultsFromFile } from '../OrderExceptionManagement/analysisExport'
-import { postInHubPackageLossWaybills, type InHubPackageLossWaybills } from './packageLossMonitorApi'
+import {
+  postInHubPackageLossAnalyze,
+  postInHubPackageLossWaybills,
+  type InHubPackageLossWaybills,
+} from './packageLossMonitorApi'
 import { buildInHubLossAnalytics } from './inHubLossAnalytics'
 
 export type PackageLossTabId = 'in-hub' | 'out-hub'
+export type PackageLossDateRange = [Dayjs, Dayjs]
 
 export type PackageLossImportMeta = {
   fileName: string
@@ -21,6 +26,8 @@ export type PackageLossImportMeta = {
 }
 
 export const DEFAULT_PACKAGE_LOSS_TIMEOUT_DAYS = 3
+const MAX_QUERY_RANGE_DAYS = 31
+const DATE_TIME_FORMAT = 'YYYY-MM-DD HH:mm:ss'
 
 export function usePackageLossMonitorPage() {
   const { imileToken } = useAppSettings()
@@ -31,6 +38,10 @@ export function usePackageLossMonitorPage() {
 
   const [activeTab, setActiveTab] = useState<PackageLossTabId>('in-hub')
   const [lossTimeoutDays, setLossTimeoutDays] = useState<number>(DEFAULT_PACKAGE_LOSS_TIMEOUT_DAYS)
+  const [dateRange, setDateRange] = useState<PackageLossDateRange>([
+    dayjs().subtract(30, 'day'),
+    dayjs(),
+  ])
   const [isQuerying, setIsQuerying] = useState(false)
   const [isAnalyzing, setIsAnalyzing] = useState(false)
   const [queryMeta, setQueryMeta] = useState<InHubPackageLossWaybills | null>(null)
@@ -96,7 +107,23 @@ export function usePackageLossMonitorPage() {
       showToast('请填写有效的超时天数', 'error')
       return
     }
+    const [startAt, endAt] = dateRange
+    if (!startAt || !endAt || !startAt.isValid() || !endAt.isValid()) {
+      showToast('请选择有效的时间范围', 'error')
+      return
+    }
+    if (endAt.isBefore(startAt)) {
+      showToast('结束时间不能早于开始时间', 'error')
+      return
+    }
+    const diffDays = endAt.diff(startAt, 'day', true)
+    if (diffDays > MAX_QUERY_RANGE_DAYS) {
+      showToast('异常完结查询时间范围不能超过 1 个月', 'error')
+      return
+    }
     const timeoutDays = Math.floor(lossTimeoutDays)
+    const start = startAt.startOf('day').format(DATE_TIME_FORMAT)
+    const end = endAt.endOf('day').format(DATE_TIME_FORMAT)
 
     const runId = analyzeRunIdRef.current + 1
     analyzeRunIdRef.current = runId
@@ -107,7 +134,7 @@ export function usePackageLossMonitorPage() {
 
     let waybillNos: string[]
     try {
-      const fetched = await postInHubPackageLossWaybills({ imileToken: token, stationCode })
+      const fetched = await postInHubPackageLossWaybills({ imileToken: token, stationCode, start, end })
       if (isStaleRun()) return
       setQueryMeta(fetched)
       if (fetched.waybillNos.length === 0) {
@@ -137,10 +164,9 @@ export function usePackageLossMonitorPage() {
         ),
       )
       try {
-        const { results, trackInfo, orderInfo, interceptLogs } = await postOrderExceptionAnalyze({
+        const { results, trackInfo, orderInfo, interceptLogs } = await postInHubPackageLossAnalyze({
           imileToken: token,
           orderNos: [orderNo],
-          aiProvider: 'deepseek',
           scanStationCode: stationCode,
           lossTimeoutDays: timeoutDays,
         })
@@ -191,13 +217,15 @@ export function usePackageLossMonitorPage() {
     } else {
       showToast(`分析结束：${succeeded} 单成功，${failed} 单失败`, 'error')
     }
-  }, [imileToken, lossTimeoutDays, resetResultView, stationCode])
+  }, [dateRange, imileToken, lossTimeoutDays, resetResultView, stationCode])
 
   return {
     activeTab,
     setActiveTab,
     stationCode,
     stationLabel,
+    dateRange,
+    setDateRange,
     lossTimeoutDays,
     setLossTimeoutDays,
     isQuerying,
