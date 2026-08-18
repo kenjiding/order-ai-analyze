@@ -64,6 +64,13 @@ export const PERMISSION_REGISTRY: PermissionDefinition[] = [
   },
   { key: 'menu:system-users', type: 'menu', label: '用户管理', description: '系统用户与权限管理', sortOrder: 60 },
   {
+    key: 'menu:supplier-configs',
+    type: 'menu',
+    label: '供应商配置',
+    description: '供应商路由、站点、飞书群与推送文案的统一维护',
+    sortOrder: 61,
+  },
+  {
     key: 'btn:wage-salary:export',
     type: 'button',
     label: '导出工资',

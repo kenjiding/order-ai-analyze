@@ -68,6 +68,7 @@ export const PERMISSION_KEYS = {
   menuPushEngagementMonitor: 'menu:push-engagement-monitor',
   menuWarehouseSafety: 'menu:warehouse-safety',
   menuSystemUsers: 'menu:system-users',
+  menuSupplierConfigs: 'menu:supplier-configs',
   btnWageSalaryExport: 'btn:wage-salary:export',
   btnWageSalaryEdit: 'btn:wage-salary:edit',
   btnOrderExceptionAnalyze: 'btn:order-exception:analyze',

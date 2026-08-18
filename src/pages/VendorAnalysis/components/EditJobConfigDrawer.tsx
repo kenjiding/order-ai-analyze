@@ -149,7 +149,7 @@ export function EditJobConfigDrawer({ open, onClose, job, catalogConfigs, onSave
           </header>
           <div className="px-4 py-4">
             {catalogConfigs.length === 0 ? (
-              <p className="text-xs text-slate-400">暂无供应商配置，请前往「飞书推送」维护。</p>
+              <p className="text-xs text-slate-400">暂无供应商配置，请前往「系统管理 → 供应商配置」维护。</p>
             ) : (
               <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
                 {catalogConfigs.map((c) => {

@@ -88,14 +88,12 @@ export type WhitelistStat = {
   zoneBreakdown: Record<string, ZoneStats>
 }
 
-/** 路由出仓率高于此值视为达标，不在「未出仓」磁贴里展示——主统计与白名单面板共用同一口径 */
-const COMPLIANT_RATE = 90
-
+/** 只有全部出仓（pending === 0）的路由才隐藏，不再按出仓率阈值剔除——主统计与白名单面板共用同一口径 */
 function filterNonCompliantZones(
   zoneBreakdown: Record<string, ZoneStats>,
 ): [string, ZoneStats][] {
   return Object.entries(zoneBreakdown)
-    .filter(([, s]) => s.pending > 0 && (s.total > 0 ? ((s.total - s.pending) / s.total) * 100 : 0) <= COMPLIANT_RATE)
+    .filter(([, s]) => s.pending > 0)
     .sort((a, b) => b[1].pending - a[1].pending)
 }
 
@@ -120,7 +118,7 @@ function buildWhitelistPanel(whitelistStat: WhitelistStat, pushTime: string): Ca
     ]),
   ]
 
-  // 出仓率高于 90% 视为达标，不展示——跟主统计的路由明细磁贴口径保持一致
+  // 只隐藏全部出仓的路由——跟主统计的路由明细磁贴口径保持一致
   const pendingZones = filterNonCompliantZones(zoneBreakdown)
   if (pendingZones.length === 0) {
     panelElements.push(md(colored('✅ All whitelisted routes meet exit target', 'green')))
@@ -223,7 +221,7 @@ export function buildExitAlarmCard(params: {
 
   elements.push(hr())
 
-  // 各路由码明细磁贴：出仓率高于 90% 视为达标，不展示
+  // 各路由码明细磁贴：只有全部出仓（未出仓 0 件）的路由不展示
   const pendingZones = filterNonCompliantZones(zoneBreakdown)
 
   if (pendingZones.length === 0) {

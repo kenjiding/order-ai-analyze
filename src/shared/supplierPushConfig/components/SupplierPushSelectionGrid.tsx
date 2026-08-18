@@ -32,7 +32,7 @@ export function SupplierPushSelectionGrid({
   disabled = false,
   togglingId = null,
   saving = false,
-  emptyText = '暂无供应商配置，请前往「飞书推送」维护。',
+  emptyText = '暂无供应商配置，请前往「系统管理 → 供应商配置」维护。',
   columns = 4,
 }: Props) {
   const duplicateVendorCodeSet = useMemo(() => {

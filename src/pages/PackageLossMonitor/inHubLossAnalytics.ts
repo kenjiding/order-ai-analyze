@@ -717,7 +717,7 @@ export function buildSankeyGraph(
   const primaryVendorBySuspectId = new Map<string, string>()
   for (const [suspectId, vendorMap] of suspectVendorCounts) {
     primaryVendorBySuspectId.set(suspectId, primaryVendorOf(vendorMap))
-    for (const [vendor, count] of vendorMap) bump(vendorTotals, vendor)
+    for (const [vendor] of vendorMap) bump(vendorTotals, vendor)
   }
   const vendorOrder = buildVendorOrder(vendorTotals)
   nodes.sort((a, b) => {

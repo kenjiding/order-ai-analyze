@@ -179,6 +179,208 @@
   border: 1px solid rgba(47, 143, 135, 0.25);
 }
 
+/* 推送对象磁贴多选 */
+.fleet-supplier-push-tab .fs-target-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(248px, 1fr));
+  gap: 8px;
+}
+
+/* 磁贴外面还包了一层（禁用态要挂 Tooltip），让它把高度撑满，同一行的卡片等高 */
+.fleet-supplier-push-tab .fs-target-grid > * {
+  display: flex;
+  min-width: 0;
+}
+
+.fleet-supplier-push-tab .fs-target-card {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px 12px;
+  border: 1px solid var(--admin-line);
+  border-radius: 10px;
+  background: var(--admin-surface);
+  cursor: pointer;
+  transition: border-color 0.15s ease, background 0.15s ease, box-shadow 0.15s ease;
+}
+
+.fleet-supplier-push-tab .fs-target-card:hover:not(.is-disabled) {
+  border-color: #9fc4dd;
+  background: #fbfdff;
+}
+
+.fleet-supplier-push-tab .fs-target-card:focus-visible {
+  outline: 2px solid var(--admin-accent);
+  outline-offset: 2px;
+}
+
+.fleet-supplier-push-tab .fs-target-card.is-selected {
+  border-color: var(--admin-accent);
+  background: var(--admin-accent-soft);
+  box-shadow: inset 0 0 0 1px var(--admin-accent);
+}
+
+.fleet-supplier-push-tab .fs-target-card.is-disabled {
+  cursor: not-allowed;
+  background: var(--admin-surface-soft);
+  border-style: dashed;
+}
+
+.fleet-supplier-push-tab .fs-target-card.is-disabled .fs-target-name,
+.fleet-supplier-push-tab .fs-target-card.is-disabled .fs-target-sub {
+  color: var(--admin-muted);
+}
+
+.fleet-supplier-push-tab .fs-target-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.fleet-supplier-push-tab .fs-target-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 13px;
+  font-weight: 650;
+  color: var(--admin-text);
+}
+
+.fleet-supplier-push-tab .fs-target-mark {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  flex: none;
+  border-radius: 5px;
+  border: 1px solid var(--admin-line);
+  background: #fff;
+  color: #fff;
+}
+
+.fleet-supplier-push-tab .fs-target-card.is-selected .fs-target-mark {
+  border-color: var(--admin-accent);
+  background: var(--admin-accent);
+}
+
+.fleet-supplier-push-tab .fs-target-card.is-disabled .fs-target-mark {
+  background: var(--admin-surface-soft);
+}
+
+.fleet-supplier-push-tab .fs-target-sub {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  min-width: 0;
+  font-size: 11px;
+  color: var(--admin-muted);
+}
+
+.fleet-supplier-push-tab .fs-target-code {
+  flex: none;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 10.5px;
+  color: #7a93a6;
+}
+
+.fleet-supplier-push-tab .fs-target-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.fleet-supplier-push-tab .fs-target-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 1px 6px;
+  border-radius: 5px;
+  border: 1px solid #d9e6f0;
+  background: var(--admin-sky-soft);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 10.5px;
+  line-height: 1.5;
+  color: #25526e;
+}
+
+.fleet-supplier-push-tab .fs-target-chip.is-accent {
+  border-color: rgba(47, 143, 135, 0.3);
+  background: var(--admin-accent-soft);
+  color: #1f6f68;
+  font-family: inherit;
+}
+
+.fleet-supplier-push-tab .fs-target-chip.is-warn {
+  border-color: #f3d3a3;
+  background: #fdf6ea;
+  color: #99650f;
+  font-family: inherit;
+}
+
+.fleet-supplier-push-tab .fs-target-chip.is-muted {
+  border-color: var(--admin-line);
+  background: var(--admin-surface-soft);
+  color: #93a5b2;
+  font-family: inherit;
+}
+
+.fleet-supplier-push-tab .fs-target-foot {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+  min-width: 0;
+  font-size: 11px;
+  color: #5b7182;
+}
+
+.fleet-supplier-push-tab .fs-target-foot-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.fleet-supplier-push-tab .fs-target-skeleton {
+  height: 96px;
+  border-radius: 10px;
+  border: 1px solid var(--admin-line);
+  background: linear-gradient(90deg, #f4f8fb 25%, #eaf1f7 37%, #f4f8fb 63%);
+  background-size: 400% 100%;
+  animation: fs-target-shimmer 1.4s ease infinite;
+}
+
+@keyframes fs-target-shimmer {
+  0% { background-position: 100% 50%; }
+  100% { background-position: 0 50%; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .fleet-supplier-push-tab .fs-target-skeleton {
+    animation: none;
+  }
+  .fleet-supplier-push-tab .fs-target-card {
+    transition: none;
+  }
+}
+
+.fleet-supplier-push-tab .fs-target-empty {
+  padding: 28px 12px;
+  border: 1px dashed var(--admin-line);
+  border-radius: 10px;
+  background: var(--admin-surface-soft);
+  text-align: center;
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--admin-muted);
+}
+
 /* 供应商表 */
 .fleet-supplier-push-tab .fs-supplier-table-wrap .ant-table {
   border-radius: 8px;

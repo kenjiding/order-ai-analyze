@@ -219,6 +219,14 @@ const systemGroup: SidebarMenuGroup = {
       icon: Users,
       description: '系统用户与权限配置',
     },
+    {
+      id: 'supplier-configs',
+      path: '/system/supplier-configs',
+      permissionKey: 'menu:supplier-configs',
+      label: '供应商配置',
+      icon: Truck,
+      description: '供应商路由、站点、飞书群与推送文案的统一维护',
+    },
   ],
 }
 
@@ -227,7 +235,10 @@ export function buildSidebarMenuGroups(
   isSuperAdmin: boolean,
 ): SidebarMenuGroup[] {
   const allGroups: SidebarMenuGroup[] = [...groups]
-  if (isSuperAdmin) allGroups.push(systemGroup)
+  // 系统管理组内既有超管专属项（用户管理），也有可分配项（供应商配置），故按权限判断是否展示
+  const showSystemGroup =
+    isSuperAdmin || systemGroup.items.some((item) => hasPermission(item.permissionKey))
+  if (showSystemGroup) allGroups.push(systemGroup)
 
   return allGroups
     .map((group) => ({

@@ -1,9 +1,18 @@
-import { Button, Image, Modal, Radio, Select, Switch, Table, Tooltip, Upload } from 'antd'
-import type { UploadFile } from 'antd/es/upload/interface'
-import type { ColumnsType } from 'antd/es/table'
-import { AlertTriangle, CloudRain, Download, Image as ImageIcon, PencilLine, Plus, RefreshCw, Send, Trash2, UploadCloud, X } from 'lucide-react'
-import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent, type Key } from 'react'
-import { saveAs } from 'file-saver'
+import { Button, Image, Input, Select, Switch, Tooltip } from 'antd'
+import {
+  AlertTriangle,
+  CheckCheck,
+  CloudRain,
+  ExternalLink,
+  FlipHorizontal2,
+  Image as ImageIcon,
+  RefreshCw,
+  Search,
+  Send,
+  UploadCloud,
+  X,
+} from 'lucide-react'
+import { useEffect, useMemo, useRef, useState, type ChangeEvent, type Key } from 'react'
 import { aggregateFleetRowsForRoute } from '../fleetSupplierAggregate'
 import { captureFleetRouteReportPng } from '../fleetReportCapture'
 import { parseFleetRouteCodes } from '../fleetRouteCodeParse'
@@ -16,61 +25,30 @@ import {
   hasEditorContent,
   mergeEditorHtmlParts,
   prepareFleetRichPayload,
-  stripEditorContentForPreview,
 } from '../../../components/FeishuLarkMdEditor'
 import { pushFleetRichMessage } from '../pushFleetRichMessage'
-import type { FleetSupplierConfig, FleetSupplierConfigDraft } from '../fleetSupplierPushTypes'
-import { LEGACY_GLOBAL_SUPPLIER_REGION_CODE, supplierDisplayName } from '../fleetSupplierPushTypes'
-import {
-  apiCreateFleetSupplier,
-  apiDeleteFleetSupplier,
-  apiImportFleetSuppliers,
-  apiLoadFleetSuppliers,
-  apiUpdateFleetSupplier,
-} from '../fleetSupplierApi'
-import {
-  buildFleetSuppliersXlsxBlob,
-  parseFleetSuppliersImportFile,
-} from '../fleetSupplierExportImport'
+import type { FleetSupplierConfig } from '../fleetSupplierPushTypes'
+import { supplierDisplayName } from '../fleetSupplierPushTypes'
+import { apiLoadFleetSuppliers } from '../fleetSupplierApi'
 import { readLocalPushImage, type LocalPushImage } from '../pushImageLocal'
 import { withRetry } from '../feishuPushRetry'
 import { showToast } from '../../../utils/toast'
-import { confirmDialog } from '../../../utils/confirmDialog'
 import { PERMISSION_KEYS, usePermission } from '../../../hooks/usePermission'
-import { SupplierMentionToggle } from '../../../shared/supplierPushConfig'
-import { useAppSettings } from '../../../context/AppSettingsContext'
-import { fetchVendors } from '../../VendorAnalysis/vendorAnalysisApi'
-import { FleetSupplierEditModal } from './FleetSupplierEditModal'
+import {
+  isSupplierPushEligible,
+  SUPPLIER_PUSH_CONFIG_MAINTAIN_PATH,
+  SupplierMentionToggle,
+} from '../../../shared/supplierPushConfig'
+import { SupplierPushTargetPicker } from './SupplierPushTargetPicker'
 import './fleetSupplierPushTab.css'
 
-function truncateMiddle(s: string, maxChars: number): string {
-  if (s.length <= maxChars) return s
-  const edge = Math.max(4, Math.floor((maxChars - 1) / 2))
-  return `${s.slice(0, edge)}…${s.slice(s.length - edge)}`
-}
-
-function formatMentionNames(contacts: FleetSupplierConfig['mentionOpenIds'] | undefined): string {
-  const list = contacts ?? []
-  const names = list.map((c) => c.name.trim()).filter(Boolean)
-  if (names.length > 0) return names.join('、')
-  if (list.length > 0) return `${list.length} 人`
-  return ''
-}
-
-type Props = {
-  /**
-   * `hidden`：独立入口页，表单不可编辑 webhook/密钥（新建仍为空的 webhook）。
-   * `full`：飞书推送页完整能力，表单可维护 webhook/密钥。
-   * 供应商表一律展示飞书群名称与 @ 相关人员，不展示 webhook/密钥。
-   */
-  supplierSecretsVisibility?: 'full' | 'hidden'
-}
-
-export function FleetSupplierPushTab({
-  supplierSecretsVisibility = 'full',
-}: Props) {
-  const { imileToken } = useAppSettings()
+/**
+ * 车队供应商推送：只读展示供应商配置并勾选本次推送对象。
+ * 配置的新增/编辑/删除/导入导出统一在「系统管理 → 供应商配置」维护。
+ */
+export function FleetSupplierPushTab() {
   const canSend = usePermission(PERMISSION_KEYS.btnPushNotificationsFleetSupplier)
+  const canMaintainConfig = usePermission(PERMISSION_KEYS.menuSupplierConfigs)
   const [globalPushText, setGlobalPushText] = useState('')
   // 天气预报开关与城市：从 localStorage 恢复，设置一次后长期保留
   const [weatherEnabled, setWeatherEnabled] = useState(() => readWeatherPushSettings().enabled)
@@ -83,25 +61,15 @@ export function FleetSupplierPushTab({
   const [pushImages, setPushImages] = useState<LocalPushImage[]>([])
   const [suppliers, setSuppliers] = useState<FleetSupplierConfig[]>([])
   const [chatNameById, setChatNameById] = useState<Map<string, string>>(new Map())
-  const [vendors, setVendors] = useState<Array<{ vendorCode: string; vendorNameEn: string }>>([])
-  const [vendorsLoading, setVendorsLoading] = useState(false)
   const [configsLoading, setConfigsLoading] = useState(true)
   const [selectedSupplierKeys, setSelectedSupplierKeys] = useState<Key[]>([])
+  const [supplierKeyword, setSupplierKeyword] = useState('')
 
   const [scanRowCount, setScanRowCount] = useState(0)
   const [scanDropped, setScanDropped] = useState(0)
   const [scanFileLabel, setScanFileLabel] = useState('')
   const [scanRows, setScanRows] = useState<Awaited<ReturnType<typeof parseFleetScanFiles>>['rows']>([])
 
-  const [modalOpen, setModalOpen] = useState(false)
-  const [editing, setEditing] = useState<FleetSupplierConfig | null>(null)
-
-  const [importOpen, setImportOpen] = useState(false)
-  const [importMerge, setImportMerge] = useState(true)
-  const [importFileList, setImportFileList] = useState<UploadFile[]>([])
-  const [importing, setImporting] = useState(false)
-
-  const secretsHidden = supplierSecretsVisibility === 'hidden'
   const [pushing, setPushing] = useState(false)
   const [scanParsing, setScanParsing] = useState(false)
 
@@ -137,19 +105,6 @@ export function FleetSupplierPushTab({
     return () => { cancelled = true }
   }, [])
 
-  useEffect(() => {
-    let cancelled = false
-    setVendorsLoading(true)
-    void fetchVendors(imileToken).then((res) => {
-      if (cancelled) return
-      setVendorsLoading(false)
-      if (res.ok) {
-        setVendors(res.data.map((v) => ({ vendorCode: v.vendorCode, vendorNameEn: v.vendorNameEn })))
-      }
-    })
-    return () => { cancelled = true }
-  }, [imileToken])
-
   const supplierIdSet = useMemo(() => new Set(suppliers.map((s) => s.id)), [suppliers])
   const effectiveSelectedKeys = useMemo(
     () => selectedSupplierKeys.filter((id) => supplierIdSet.has(String(id))),
@@ -162,15 +117,51 @@ export function FleetSupplierPushTab({
     return suppliers.some((s) => sel.has(s.id) && hasEditorContent(s.pushContent))
   }, [globalPushText, effectiveSelectedKeys, suppliers])
 
-  const openCreate = () => {
-    setEditing(null)
-    setModalOpen(true)
+  /** 供应商多时用关键字缩小勾选范围：昵称 / 供应商名 / 编码 / 路由 / 站点 / 飞书群名 */
+  const filteredSuppliers = useMemo(() => {
+    const kw = supplierKeyword.trim().toLowerCase()
+    if (!kw) return suppliers
+    return suppliers.filter((s) => {
+      const chatName = s.chatId?.trim() ? chatNameById.get(s.chatId.trim()) ?? '' : ''
+      return [s.supplierNickname, s.vendorName, s.vendorCode, s.routeCode, s.stationCode, chatName]
+        .some((field) => (field ?? '').toLowerCase().includes(kw))
+    })
+  }, [suppliers, supplierKeyword, chatNameById])
+
+  /** 当前筛选结果里可推送的供应商：全选 / 反选都只作用于这批，避免误勾到被搜索隐藏的行 */
+  const eligibleFilteredIds = useMemo(
+    () => filteredSuppliers.filter(isSupplierPushEligible).map((s) => s.id),
+    [filteredSuppliers],
+  )
+
+  const selectedIdSet = useMemo(
+    () => new Set(effectiveSelectedKeys.map(String)),
+    [effectiveSelectedKeys],
+  )
+
+  const toggleSupplierSelected = (configId: string) => {
+    setSelectedSupplierKeys((prev) =>
+      prev.includes(configId) ? prev.filter((id) => id !== configId) : [...prev, configId],
+    )
   }
 
-  const openEdit = (row: FleetSupplierConfig) => {
-    setEditing(row)
-    setModalOpen(true)
+  const selectAllFiltered = () => {
+    setSelectedSupplierKeys((prev) => Array.from(new Set([...prev.map(String), ...eligibleFilteredIds])))
   }
+
+  const invertFiltered = () => {
+    setSelectedSupplierKeys((prev) => {
+      const next = new Set(prev.map(String))
+      for (const id of eligibleFilteredIds) {
+        if (next.has(id)) next.delete(id)
+        else next.add(id)
+      }
+      return [...next]
+    })
+  }
+
+  const allFilteredSelected =
+    eligibleFilteredIds.length > 0 && eligibleFilteredIds.every((id) => selectedIdSet.has(id))
 
   const handleScanFiles = async (files: File[]) => {
     if (!files.length) return
@@ -204,29 +195,6 @@ export function FleetSupplierPushTab({
     } finally {
       setScanParsing(false)
     }
-  }
-
-  const handleCommitted = async (values: FleetSupplierConfigDraft) => {
-    if (editing) {
-      const res = await apiUpdateFleetSupplier(editing.id, values)
-      if (!res.ok) { showToast(`更新失败：${res.error}`, 'error'); return }
-      setSuppliers((prev) => prev.map((s) => s.id === editing.id ? res.data : s))
-      showToast(`已更新供应商「${values.supplierNickname || editing.supplierNickname}」。`, 'success')
-    } else {
-      const res = await apiCreateFleetSupplier(values)
-      if (!res.ok) { showToast(`添加失败：${res.error}`, 'error'); return }
-      setSuppliers((prev) => [...prev, res.data])
-      showToast(`已添加供应商「${values.supplierNickname}」。`, 'success')
-    }
-    setModalOpen(false)
-    setEditing(null)
-  }
-
-  const removeSupplier = async (row: FleetSupplierConfig) => {
-    const res = await apiDeleteFleetSupplier(row.id)
-    if (!res.ok) { showToast(`删除失败：${res.error}`, 'error'); return }
-    setSuppliers((prev) => prev.filter((s) => s.id !== row.id))
-    showToast(`已移除「${supplierDisplayName(row)}」。`, 'success')
   }
 
   const removePushImage = (id: string) => {
@@ -455,182 +423,6 @@ export function FleetSupplierPushTab({
     scanFileInputRef.current?.click()
   }
 
-  const handleExportSuppliers = useCallback(() => {
-    if (!suppliers.length) {
-      showToast('暂无供应商可导出。', 'error')
-      return
-    }
-    const blob = buildFleetSuppliersXlsxBlob(suppliers, { includeSecrets: !secretsHidden })
-    const stamp = new Date().toISOString().slice(0, 10)
-    saveAs(blob, `fleet-supplier-config-${stamp}.xlsx`)
-    showToast(
-      secretsHidden
-        ? '已导出 xlsx（不含 webhook / 密钥列）。'
-        : '已导出 xlsx（含 webhook / 密钥，请妥善保管）。',
-      'success'
-    )
-  }, [suppliers, secretsHidden])
-
-  const openImportModal = () => {
-    setImportMerge(true)
-    setImportFileList([])
-    setImportOpen(true)
-  }
-
-  const closeImportModal = () => {
-    setImportOpen(false)
-    setImportFileList([])
-  }
-
-  const runImport = async () => {
-    const raw = importFileList[0]?.originFileObj
-    const file = raw instanceof File ? raw : undefined
-    if (!file) { showToast('请先选择文件。', 'error'); return }
-    setImporting(true)
-    try {
-      const r = await parseFleetSuppliersImportFile(file, { vendors })
-      if (!r.ok) { showToast(r.error, 'error'); return }
-      if (!importMerge) {
-        const confirmed = await confirmDialog({
-          title: '确认替换全部供应商配置？',
-          content: `将删除当前 ${suppliers.length} 条配置，仅保留文件中的 ${r.suppliers.length} 条${
-            r.skipped > 0 ? `（另有 ${r.skipped} 条因缺少 vendorCode 将跳过）` : ''
-          }。`,
-          okText: '替换',
-          danger: true,
-        })
-        if (!confirmed) return
-      }
-      const res = await apiImportFleetSuppliers(importMerge ? 'merge' : 'replace', r.suppliers)
-      if (!res.ok) { showToast(`导入失败：${res.error}`, 'error'); return }
-      setSuppliers(res.data)
-      closeImportModal()
-      const skippedTotal = r.skipped
-      const skipNote = skippedTotal > 0 ? `，跳过 ${skippedTotal} 条（缺少 vendorCode 且无法匹配主数据）` : ''
-      showToast(
-        importMerge
-          ? `已合并导入 ${res.imported} 条（相同 id 以文件为准）${skipNote}`
-          : `已导入并替换为 ${res.imported} 条供应商${skipNote}`,
-        'success',
-      )
-    } finally {
-      setImporting(false)
-    }
-  }
-
-  const columns: ColumnsType<FleetSupplierConfig> = (() => {
-    return [
-      {
-        title: '供应商',
-        key: 'vendor',
-        width: 200,
-        render: (_, row) => (
-          <div>
-            <div className="flex items-center gap-1.5">
-              <span className="font-medium text-slate-800">{supplierDisplayName(row)}</span>
-              {row.regionCode === LEGACY_GLOBAL_SUPPLIER_REGION_CODE ? (
-                <Tooltip title="迁移前的历史配置，不属于某个州，全部州共享可见、可编辑">
-                  <span className="rounded bg-slate-100 px-1.5 py-0.5 text-[10px] text-slate-500">历史·全部州</span>
-                </Tooltip>
-              ) : null}
-            </div>
-            <div className="text-xs text-slate-400">{row.vendorCode || '—'}</div>
-          </div>
-        ),
-      },
-      {
-        title: '路由编码',
-        dataIndex: 'routeCode',
-        key: 'routeCode',
-        width: 120,
-        ellipsis: true,
-      },
-      {
-        title: '路由码白名单',
-        dataIndex: 'routeCodeWhitelist',
-        key: 'routeCodeWhitelist',
-        width: 140,
-        ellipsis: true,
-        render: (v: string) =>
-          v?.trim() ? (
-            v
-          ) : (
-            <span className="text-slate-400">—</span>
-          ),
-      },
-      {
-        title: '站点编码',
-        dataIndex: 'stationCode',
-        key: 'stationCode',
-        width: 110,
-        ellipsis: true,
-        render: (v: string) =>
-          v?.trim() ? (
-            v
-          ) : (
-            <span className="text-slate-400">—</span>
-          ),
-      },
-      {
-        title: '飞书群名称',
-        key: 'chatName',
-        width: 180,
-        ellipsis: true,
-        render: (_, row) => {
-          const chatId = row.chatId?.trim()
-          if (!chatId) return <span className="text-slate-400">—</span>
-          const name = chatNameById.get(chatId)?.trim()
-          if (name) return name
-          return (
-            <Tooltip title={chatId}>
-              <span>{truncateMiddle(chatId, 24)}</span>
-            </Tooltip>
-          )
-        },
-      },
-      {
-        title: '@ 相关人员',
-        key: 'mentionOpenIds',
-        width: 180,
-        ellipsis: true,
-        render: (_, row) => {
-          const label = formatMentionNames(row.mentionOpenIds)
-          return label ? label : <span className="text-slate-400">—</span>
-        },
-      },
-      {
-        title: '供应商推送内容',
-        dataIndex: 'pushContent',
-        key: 'pushContent',
-        ellipsis: true,
-        render: (t: string) =>
-          t?.trim() ? (
-            stripEditorContentForPreview(t)
-          ) : (
-            <span className="text-slate-400" title="推送时仅拼接外层「推送内容」">
-              （未填供应商段）
-            </span>
-          ),
-      },
-      {
-        title: '操作',
-        key: 'actions',
-        width: 140,
-        fixed: 'right',
-        render: (_, row) => (
-          <div className="flex flex-nowrap items-center gap-0">
-            <Button type="link" className="!px-1" icon={<PencilLine className="h-3.5 w-3.5" />} onClick={() => openEdit(row)}>
-              编辑
-            </Button>
-            <Button type="link" className="!px-1" danger icon={<Trash2 className="h-3.5 w-3.5" />} onClick={() => removeSupplier(row)}>
-              删除
-            </Button>
-          </div>
-        ),
-      },
-    ]
-  })()
-
   return (
     <div className="fleet-supplier-push-tab space-y-5">
       <div className="fs-card">
@@ -798,99 +590,71 @@ export function FleetSupplierPushTab({
 
       <div className="fs-card">
         <div className="fs-card-head">
-          <div className="fs-card-head-title">供应商配置</div>
+          <div>
+            <div className="fs-card-head-title">推送对象</div>
+            <div className="fs-card-head-sub">
+              点选磁贴决定本次推送给谁；配置内容只读，需修改请到「系统管理 → 供应商配置」。
+            </div>
+          </div>
           <div className="flex flex-wrap items-center gap-2">
-            <Button type="dashed" icon={<Plus className="h-3.5 w-3.5" />} onClick={openCreate}>
-              添加供应商
-            </Button>
-            {!secretsHidden ? (
-              <Button type="default" icon={<Download className="h-3.5 w-3.5" />} onClick={handleExportSuppliers}>
-                导出配置
+            <Input
+              value={supplierKeyword}
+              onChange={(e) => setSupplierKeyword(e.target.value)}
+              allowClear
+              prefix={<Search className="h-3.5 w-3.5 text-slate-400" aria-hidden />}
+              placeholder="搜索供应商 / 编码 / 路由 / 站点 / 群名"
+              className="!w-64"
+            />
+            <Tooltip title="选中当前列表里全部可推送的供应商">
+              <Button
+                icon={<CheckCheck className="h-4 w-4" />}
+                disabled={configsLoading || eligibleFilteredIds.length === 0 || allFilteredSelected}
+                onClick={selectAllFiltered}
+              >
+                全选
               </Button>
-            ) : null}
-            <Button type="default" onClick={openImportModal}>
-              导入供应商配置
-            </Button>
+            </Tooltip>
+            <Tooltip title="在当前列表内反转勾选状态">
+              <Button
+                icon={<FlipHorizontal2 className="h-4 w-4" />}
+                disabled={configsLoading || eligibleFilteredIds.length === 0}
+                onClick={invertFiltered}
+              >
+                反选
+              </Button>
+            </Tooltip>
             <span className="fs-badge-count">
               已选 {effectiveSelectedKeys.length} / {suppliers.length} 家
             </span>
+            {canMaintainConfig ? (
+              <a
+                className="inline-flex items-center gap-1 text-xs text-[var(--admin-accent)] hover:underline"
+                href={SUPPLIER_PUSH_CONFIG_MAINTAIN_PATH}
+                target="_blank"
+                rel="noreferrer"
+                title="新标签页打开，避免丢失已填写的推送内容"
+              >
+                <ExternalLink className="h-3.5 w-3.5" aria-hidden />
+                维护供应商配置
+              </a>
+            ) : null}
           </div>
         </div>
         <div className="fs-card-body !pt-3">
-          <div className="fs-supplier-table-wrap">
-            <Table<FleetSupplierConfig>
-              rowKey="id"
-              columns={columns}
-              dataSource={suppliers}
-              loading={configsLoading}
-              pagination={false}
-              rowSelection={{
-                selectedRowKeys: effectiveSelectedKeys,
-                onChange: setSelectedSupplierKeys,
-                columnWidth: 44,
-                getCheckboxProps: (row) => ({
-                  disabled: !row.webhookUrl.trim() && !row.chatId?.trim(),
-                }),
-              }}
-              locale={{
-                emptyText: secretsHidden
-                  ? '暂无供应商，可点击「添加供应商」「导入供应商配置」，或在「飞书推送」页维护含 webhook 的完整信息。'
-                  : '暂无供应商，请点击「添加供应商」维护路由与 webhook。',
-              }}
-              scroll={{ x: 1100 }}
-            />
-          </div>
+          <SupplierPushTargetPicker
+            configs={filteredSuppliers}
+            selectedIds={selectedIdSet}
+            chatNameById={chatNameById}
+            loading={configsLoading}
+            onToggle={toggleSupplierSelected}
+            emptyText={
+              supplierKeyword.trim()
+                ? `没有匹配「${supplierKeyword.trim()}」的供应商，换个关键字试试。`
+                : '暂无供应商，请到「系统管理 → 供应商配置」添加或导入后再来推送。'
+            }
+          />
         </div>
       </div>
-
-      <FleetSupplierEditModal
-        open={modalOpen}
-        editing={editing}
-        vendors={vendors}
-        vendorsLoading={vendorsLoading}
-        secretsVisibility={secretsHidden ? 'hidden' : 'full'}
-        onCancel={() => {
-          setModalOpen(false)
-          setEditing(null)
-        }}
-        onCommitted={handleCommitted}
-      />
-
-      <Modal
-        title="导入供应商配置"
-        open={importOpen}
-        onCancel={closeImportModal}
-        onOk={() => void runImport()}
-        okText="开始导入"
-        confirmLoading={importing}
-        destroyOnHidden
-      >
-        <div className="space-y-3 pt-1">
-          <Radio.Group
-            value={importMerge ? 'merge' : 'replace'}
-            onChange={(e) => setImportMerge(e.target.value === 'merge')}
-          >
-            <div className="flex flex-col gap-2">
-              <Radio value="merge">合并（相同 id 以文件为准，其余保留）</Radio>
-              <Radio value="replace">全部替换（清空现有列表后仅保留文件中的条目）</Radio>
-            </div>
-          </Radio.Group>
-          <Upload
-            accept=".xlsx,.xls,.csv,.json,application/json,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel,text/csv"
-            maxCount={1}
-            fileList={importFileList}
-            beforeUpload={() => false}
-            onChange={({ fileList }) => setImportFileList(fileList)}
-          >
-            <Button type="default">选择文件</Button>
-          </Upload>
-          <p className="text-xs text-slate-500">
-            支持 xlsx、xls、csv、json。列名可与导出文件一致（vendorCode、vendorName、supplierNickname 等），也可使用中文表头。
-            旧版 supplierName 列会回填为 supplierNickname；vendorCode 须来自文件列或能匹配供应商主数据，无法确定的行将跳过。
-            完整 webhook / 密钥请在「飞书推送」页导出或向东道主索取含密文的表格后再于此处导入。
-          </p>
-        </div>
-      </Modal>
     </div>
   )
 }
