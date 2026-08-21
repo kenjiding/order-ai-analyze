@@ -276,6 +276,7 @@ export type OrderTrackFacts = {
   latestOrderExceptionClosed: boolean
   stationLossCompletion: boolean
   assignCancelLoopWithoutDispatch: boolean
+  assignCancelPairWithoutDispatch: boolean
   hasInterceptLogs: boolean
   latestInterceptTime: string | null
   latestInterceptUserCode: string | null

@@ -32,21 +32,21 @@ export const EXCEPTION_CATALOG: readonly ExceptionScopeDefinition[] = [
       {
         id: '疑似派件员窃取',
         promptDescription:
-          '已达到库内超时阈值，且最近一次库内起算（回仓/盘点/入库扫描）之后存在无成功出库的分配-取消循环（同一/不同派件员反复领取又被取消，此后未再真正出库）；问题指向具体派件员而非仓库扫描员单纯滞留超时。该起算点之前已回仓闭环的出库不影响本判定。',
+          '已达到库内超时阈值，且最近一次库内实物确认（回仓/盘点/入库扫描）之后出现过至少 1 组「分配→取消」配对、此后未再真正出库；即包裹被实物确认在仓后由派件员领走又取消，从此再无任何真实操作记录。问题指向具体派件员而非仓库扫描员单纯滞留超时。该实物确认点之前的分配-取消已被洗清嫌疑，不计入。',
         inferFromFacts: (facts) =>
           (facts.hasRealOperatorScan &&
             facts.finalResponsibilityOwner === 'in_warehouse' &&
             facts.finalResponsibilityDaysDiff >= facts.activeWarehouseLossTimeoutDays &&
-            facts.assignCancelLoopWithoutDispatch),
+            facts.assignCancelPairWithoutDispatch),
       },
       {
         id: '扫描员丢失',
-        promptDescription: '真实操作员扫描入库后，包裹仍在库内责任域内达到超时阈值，且库内起算之后不存在无成功出库的分配-取消循环。',
+        promptDescription: '真实操作员扫描入库后，包裹仍在库内责任域内达到超时阈值，且最近一次库内实物确认之后不存在「分配→取消」配对（含"配对都发生在该次实物确认之前、已被洗清"的情形）。',
         inferFromFacts: (facts) =>
           (facts.hasRealOperatorScan &&
             facts.finalResponsibilityOwner === 'in_warehouse' &&
             facts.finalResponsibilityDaysDiff >= facts.activeWarehouseLossTimeoutDays &&
-            !facts.assignCancelLoopWithoutDispatch),
+            !facts.assignCancelPairWithoutDispatch),
       },
     ],
   },
@@ -83,11 +83,35 @@ export const EXCEPTION_CATALOG: readonly ExceptionScopeDefinition[] = [
       '规则已明确命中正常、闭环、未超阈值或非我司责任的状态；证据不足不得归入此类，应输出「需人工判断」。',
     subTypes: [
       {
+        id: '订单已完结',
+        promptDescription: 'lossScope 为「暂无异常」且最新轨迹为「订单异常完结，原因【...】。操作员【...】」终态闭环。',
+        inferFromFacts: (facts) => facts.latestOrderExceptionClosed,
+      },
+      {
+        id: '已签收',
+        promptDescription:
+          'lossScope 为「暂无异常」且轨迹命中签收/妥投/派件完成等正常履约完结，且该完结晚于最新商家处理方向。商家 Abandon/退返/暂存指令后仍签收成功的，同样以签收为准判此子类型。',
+        aliases: ['签收', '签收成功', '妥投', '已妥投'],
+        inferFromFacts: (facts) =>
+          facts.deliveryCompletionSupersedesMerchantDirection && !facts.latestOrderExceptionClosed,
+      },
+      {
         id: 'Abandon销毁',
         promptDescription:
           'lossScope 为「暂无异常」且轨迹命中商家 Abandon 处理指令（退件处理意见[Abandon] / NDR处理意见[Abandon]）或退件已销毁物理闭环，且 Abandon 是当前最新商家反馈。与中文「NDR销毁」语义等同，统一使用此子类型。',
         aliases: ['abandon', 'abandon销毁', '销毁'],
-        inferFromFacts: (facts) => facts.merchantAbandonActive || facts.merchantDestroyConfirmed,
+        inferFromFacts: (facts) =>
+          (facts.merchantAbandonActive || facts.merchantDestroyConfirmed) &&
+          !facts.latestOrderExceptionClosed &&
+          !facts.deliveryCompletionSupersedesMerchantDirection,
+      },
+      {
+        id: '暂存',
+        promptDescription: 'lossScope 为「暂无异常」且轨迹命中商家暂存闭环，后续未出现预约派送或新的业务推进。',
+        inferFromFacts: (facts) =>
+          facts.merchantStorageActive &&
+          !facts.latestOrderExceptionClosed &&
+          !facts.deliveryCompletionSupersedesMerchantDirection,
       },
       {
         id: '退返商家',
@@ -96,20 +120,10 @@ export const EXCEPTION_CATALOG: readonly ExceptionScopeDefinition[] = [
         inferFromFacts: (facts) =>
           (facts.merchantReturnClosed || facts.merchantReturnDirectionActive) &&
           !facts.latestOrderExceptionClosed &&
-          !facts.hasDeliveryCompletion &&
+          !facts.deliveryCompletionSupersedesMerchantDirection &&
           !facts.merchantAbandonActive &&
           !facts.merchantDestroyConfirmed &&
           !facts.merchantStorageActive,
-      },
-      {
-        id: '暂存',
-        promptDescription: 'lossScope 为「暂无异常」且轨迹命中商家暂存闭环，后续未出现预约派送或新的业务推进。',
-        inferFromFacts: (facts) => facts.merchantStorageActive,
-      },
-      {
-        id: '订单已完结',
-        promptDescription: 'lossScope 为「暂无异常」且最新轨迹为「订单异常完结，原因【...】。操作员【...】」终态闭环。',
-        inferFromFacts: (facts) => facts.latestOrderExceptionClosed,
       },
     ],
   },

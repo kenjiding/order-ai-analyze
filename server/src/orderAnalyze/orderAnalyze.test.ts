@@ -1047,7 +1047,22 @@ test('已签收终态下阻断日志责任点不应反转为库外丢失', () =>
   assert.equal(facts.finalResponsibilityOwner, 'out_warehouse')
   assert.equal(facts.finalResponsibilityDaysDiff >= 0, true)
   assert.equal(guarded.lossScope, '暂无异常')
-  assert.equal(guarded.appliedDecisionRuleId, undefined)
+  // 空子类型会被对齐为「已签收」，但不得反转为库外丢失
+  assert.equal(guarded.exceptionCategoryId, '已签收')
+  assert.equal(guarded.appliedDecisionRuleId, 'delivery_completion_terminal')
+
+  const idempotent = applyFactGuardrails(
+    baseResult({
+      lossScope: '暂无异常',
+      exceptionCategoryId: '已签收',
+      reason: '已签收/妥投（正常完结）',
+      confidence: 0.99,
+    }),
+    facts
+  )
+  assert.equal(idempotent.lossScope, '暂无异常')
+  assert.equal(idempotent.exceptionCategoryId, '已签收')
+  assert.equal(idempotent.appliedDecisionRuleId, undefined)
 })
 
 test('同城上游仓扫描后出库时，库内起算不得被派件员账号污染', () => {
@@ -1171,7 +1186,7 @@ test('分配-取消循环只看库内起算之后是否出库', () => {
     track('2024-01-03 11:00:00', '【ADL DS】取消分配'),
     track('2024-01-04 10:00:00', '【ADL DS】包裹正在派送中', 'delivery'),
   ])
-  // 只有 1 组分配-取消，未达到循环阈值
+  // 只有 1 组分配-取消：未达到连续循环阈值（≥2），但已构成子类型分流用的配对信号（≥1）
   const singlePairFacts = deriveTrackFacts([
     track('2024-01-01 10:00:00', '【ADL DS】操作员【ADL-DC-Tong】 已盘点'),
     track('2024-01-02 10:00:00', '【ADL DS】包裹正在派送中', 'delivery'),
@@ -1185,6 +1200,12 @@ test('分配-取消循环只看库内起算之后是否出库', () => {
   assert.equal(afterReturnFacts.assignCancelLoopWithoutDispatch, true)
   assert.equal(dispatchAfterLoopFacts.assignCancelLoopWithoutDispatch, false)
   assert.equal(singlePairFacts.assignCancelLoopWithoutDispatch, false)
+
+  // 子类型分流口径：1 组配对即为是；出库后已转移库外责任的仍为否
+  assert.equal(noDispatchFacts.assignCancelPairWithoutDispatch, true)
+  assert.equal(afterReturnFacts.assignCancelPairWithoutDispatch, true)
+  assert.equal(dispatchAfterLoopFacts.assignCancelPairWithoutDispatch, false)
+  assert.equal(singlePairFacts.assignCancelPairWithoutDispatch, true)
 })
 
 test('出库回仓后的分配-取消循环超时判为疑似派件员窃取（3781059456380）', () => {
@@ -1866,4 +1887,171 @@ test('出库打断后不把出库前的派件员当作嫌疑人（3781059456380�
   // 回仓/盘点之后的第一个分配是 MAN A，出库前挂在 D064 名下的那次分配不参与
   assert.equal(facts.assignCancelLoopWithoutDispatch, true)
   assert.equal(facts.firstAssignCancelDriver?.driverName, 'MAN A')
+})
+
+test('库内超时下仅 1 组分配-取消也判疑似派件员窃取', () => {
+  const facts = deriveTrackFacts([
+    track(daysAgo(22), '【ADL DS】已到达。操作员【System】 。'),
+    track(daysAgo(20), '【ADL DS】已盘点，库位编号[01]。操作员【ADL-前台】'),
+    track(daysAgo(19), '【ADL DS】派送任务已分配给派件员(派件员：D064,电话：+61 433975868)，待派件员领取包裹。 操作员【cornerstone】'),
+    track(daysAgo(18), '【ADL DS】包裹已取消分配给[D064]。操作员【ADARSH AA】'),
+  ])
+  const result = classifyOrderFromFacts({ orderNo: 'SINGLE-PAIR-THEFT', facts })
+
+  assert.equal(facts.hasRealOperatorScan, true)
+  assert.equal(facts.finalResponsibilityOwner, 'in_warehouse')
+  // 只有 1 组：连续循环口径为否，配对口径为是
+  assert.equal(facts.assignCancelLoopWithoutDispatch, false)
+  assert.equal(facts.assignCancelPairWithoutDispatch, true)
+  assert.equal(result.lossScope, '库内丢失')
+  assert.equal(result.exceptionCategoryId, '疑似派件员窃取')
+})
+
+test('子类型阈值放宽到 1 组不得波及虚假转运判定（仍要求连续 2 组）', () => {
+  const assign = (day: number) =>
+    track(daysAgo(day), '【ADL DS】派送任务已分配给派件员(派件员：D064,电话：+61 433975868)，待派件员领取包裹。 操作员【cornerstone】')
+  const cancel = (day: number) => track(daysAgo(day), '【ADL DS】包裹已取消分配给[D064]。操作员【ADARSH AA】')
+
+  // 无真实扫描 + 无出库 + 仅 1 组配对 → 证据不足，不得升格为虚假转运
+  const singlePair = deriveTrackFacts([
+    track(daysAgo(20), '【ADL DS】已到达。操作员【System】 。'),
+    assign(19),
+    cancel(18),
+  ])
+  assert.equal(singlePair.hasRealOperatorScan, false)
+  assert.equal(singlePair.assignCancelPairWithoutDispatch, true)
+  assert.equal(singlePair.assignCancelLoopWithoutDispatch, false)
+  assert.equal(classifyOrderFromFacts({ orderNo: 'FAKE-1', facts: singlePair }).lossScope, '需人工判断')
+
+  // 同样条件下连续 2 组仍判虚假转运，原口径不变
+  const twoPairs = deriveTrackFacts([
+    track(daysAgo(20), '【ADL DS】已到达。操作员【System】 。'),
+    assign(19),
+    cancel(18),
+    assign(17),
+    cancel(16),
+  ])
+  assert.equal(twoPairs.assignCancelLoopWithoutDispatch, true)
+  assert.equal(classifyOrderFromFacts({ orderNo: 'FAKE-2', facts: twoPairs }).lossScope, '虚假转运')
+})
+
+test('盘点/归班洗清嫌疑：配对发生在最后一次库内实物确认之前不判窃取', () => {
+  const 盘点 = (d: number, hm = '10:00:00') => track(daysAgo(d, hm), '【ADL DS】已盘点，库位编号[01]。操作员【ADL-前台】')
+  const 归班 = (d: number, hm = '10:00:00') => track(daysAgo(d, hm), '【ADL DS】派件员已回到网点。操作员【ADL-前台】')
+  const 分配 = (d: number, hm = '10:00:00') =>
+    track(daysAgo(d, hm), '【ADL DS】派送任务已分配给派件员(派件员：D064,电话：+61 433975868)，待派件员领取包裹。 操作员【cornerstone】')
+  const 取消 = (d: number, hm = '10:00:00') => track(daysAgo(d, hm), '【ADL DS】包裹已取消分配给[D064]。操作员【ADARSH AA】')
+
+  // 连续 2 组配对，但此后归班+盘点已重新实物确认包裹在仓，之后再无任何动作
+  const beforeAnchorTwoPairs = deriveTrackFacts([
+    盘点(30), 分配(28), 取消(27), 分配(26), 取消(25), 归班(20), 盘点(20, '15:00:00'),
+  ])
+  // 单组配对，同样被其后的归班+盘点洗清
+  const beforeAnchorOnePair = deriveTrackFacts([
+    盘点(30), 分配(28), 取消(27), 归班(20), 盘点(20, '15:00:00'),
+  ])
+  // 对照组：配对发生在最后一次实物确认之后，此后无人再碰、也未出仓
+  const afterAnchor = deriveTrackFacts([盘点(25), 分配(20), 取消(19)])
+
+  // 历史最大连续段仍是 2 组（Loop 口径不受影响），但子类型分流只认锚点之后的配对
+  assert.equal(beforeAnchorTwoPairs.assignCancelLoopWithoutDispatch, true)
+  assert.equal(beforeAnchorTwoPairs.assignCancelPairWithoutDispatch, false)
+  assert.equal(beforeAnchorOnePair.assignCancelPairWithoutDispatch, false)
+  assert.equal(afterAnchor.assignCancelPairWithoutDispatch, true)
+
+  const r1 = classifyOrderFromFacts({ orderNo: 'ANCHOR-2PAIR', facts: beforeAnchorTwoPairs })
+  const r2 = classifyOrderFromFacts({ orderNo: 'ANCHOR-1PAIR', facts: beforeAnchorOnePair })
+  const r3 = classifyOrderFromFacts({ orderNo: 'ANCHOR-AFTER', facts: afterAnchor })
+  assert.equal(r1.lossScope, '库内丢失')
+  assert.equal(r1.exceptionCategoryId, '扫描员丢失')
+  assert.equal(r2.lossScope, '库内丢失')
+  assert.equal(r2.exceptionCategoryId, '扫描员丢失')
+  assert.equal(r3.lossScope, '库内丢失')
+  assert.equal(r3.exceptionCategoryId, '疑似派件员窃取')
+
+  // 不变量：判定命中窃取 ⇔ 嫌疑窗口内存在派件员，绝不允许"判了窃取却指不出人"
+  for (const facts of [beforeAnchorTwoPairs, beforeAnchorOnePair, afterAnchor]) {
+    assert.equal(facts.assignCancelPairWithoutDispatch, facts.firstAssignCancelDriver !== null)
+  }
+})
+
+test('签收成功判定为暂无异常/已签收（6081326923907）', () => {
+  const facts = deriveTrackFacts(
+    [
+      track('2026-08-13 06:12:59', '已通过[OpenApi]成功下单', '', '订单提交'),
+      track('2026-08-18 15:19:30', '【Adelaide Center】已揽收, 操作员【System】。', '', '已揽件'),
+      track('2026-08-18 15:20:00', '【Adelaide Center】已到达。操作员【ADL-DC-PanPan】 。', '', '转运'),
+      track('2026-08-18 15:20:01', '【Adelaide Center】完成待转发件，目的地【ADL DS】。操作员【System】', '', '转运'),
+      track('2026-08-18 15:20:02', '【ADL DS】已到达。操作员【System】 。', '', '派送'),
+      track('2026-08-19 08:00:50', '【ADL DS】派送任务已分配给派件员(派件员：ADL-DPAC-Sai Kumar,电话：+61 432218435)，待派件员领取包裹。 操作员【cornerstone】', 'delivery', '派送'),
+      track('2026-08-19 10:34:47', '【ADL DS】包裹已取消分配给[ADL-DPAC-Sai Kumar]。操作员【JMDSA Logistics 】', 'delivery', '派送'),
+      track('2026-08-19 13:18:28', '【ADL DS】已盘点，库位编号[01]。操作员【ADL-前台】', 'delivery', '派送'),
+      track('2026-08-19 19:52:55', '【ADL DS】包裹正在派送中(派件员: ADL-DPC-19-Deepak,ID: D21022344201,电话: +61 475932880)。操作员【ADL-DPC-19-Deepak】', 'delivery', '派送'),
+      track('2026-08-20 13:47:15', '【ADL DS】签收成功，操作员【ADL-DPC-19-Deepak】【View Proof】', '', '已签收'),
+    ],
+    [],
+    { analysisDate: '2026-08-21' }
+  )
+
+  assert.equal(facts.hasDeliveryCompletion, true)
+  assert.equal(facts.deliveryCompletionSupersedesMerchantDirection, true)
+
+  const result = classifyOrderFromFacts({ orderNo: '6081326923907', facts })
+  assert.equal(result.lossScope, '暂无异常')
+  assert.equal(result.exceptionCategoryId, '已签收')
+  assert.equal(result.needsReview, false)
+})
+
+test('商家 Abandon 后仍签收成功时以签收为准判已签收', () => {
+  const facts = deriveTrackFacts(
+    [
+      track('2026-08-18 15:19:30', '【Adelaide Center】已揽收, 操作员【System】。', '', '已揽件'),
+      track('2026-08-19 08:00:50', '商家已反馈NDR处理意见[Abandon]。 操作人【Merchant】', '', '退件处理'),
+      track('2026-08-19 19:52:55', '【ADL DS】包裹正在派送中(派件员: ADL-DPC-19-Deepak,ID: D21022344201,电话: +61 475932880)。操作员【ADL-DPC-19-Deepak】', 'delivery', '派送'),
+      track('2026-08-20 13:47:15', '【ADL DS】签收成功，操作员【ADL-DPC-19-Deepak】', '', '已签收'),
+    ],
+    [],
+    { analysisDate: '2026-08-21' }
+  )
+
+  assert.equal(facts.merchantAbandonActive, true)
+  assert.equal(facts.deliveryCompletionSupersedesMerchantDirection, true)
+
+  const result = classifyOrderFromFacts({ orderNo: 'ABANDON-THEN-SIGNED', facts })
+  assert.equal(result.lossScope, '暂无异常')
+  assert.equal(result.exceptionCategoryId, '已签收')
+})
+
+test('签收早于商家 Abandon 指令时仍以最新商家方向为准', () => {
+  const facts = deriveTrackFacts(
+    [
+      track('2026-08-18 15:19:30', '【Adelaide Center】已揽收, 操作员【System】。', '', '已揽件'),
+      track('2026-08-19 10:00:00', '【ADL DS】签收成功，操作员【ADL-DPC-19-Deepak】', '', '已签收'),
+      track('2026-08-20 09:00:00', '商家已反馈NDR处理意见[Abandon]。 操作人【Merchant】', '', '退件处理'),
+      track('2026-08-20 18:00:00', '【ADL DS】退件已销毁。操作员【ADL OP1】', '', '退件处理'),
+    ],
+    [],
+    { analysisDate: '2026-08-21' }
+  )
+
+  assert.equal(facts.hasDeliveryCompletion, true)
+  assert.equal(facts.deliveryCompletionSupersedesMerchantDirection, false)
+
+  const result = classifyOrderFromFacts({ orderNo: 'SIGNED-THEN-ABANDON', facts })
+  assert.equal(result.lossScope, '暂无异常')
+  assert.equal(result.exceptionCategoryId, 'Abandon销毁')
+})
+
+test('normalizeSubType 能从事实反推已签收子类型', () => {
+  const facts = deriveTrackFacts(
+    [
+      track('2026-08-19 19:52:55', '【ADL DS】包裹正在派送中(派件员: ADL-DPC-19-Deepak,ID: D1,电话: +61 475932880)。操作员【ADL-DPC-19-Deepak】', 'delivery', '派送'),
+      track('2026-08-20 13:47:15', '【ADL DS】签收成功，操作员【ADL-DPC-19-Deepak】', '', '已签收'),
+    ],
+    [],
+    { analysisDate: '2026-08-21' }
+  )
+
+  assert.equal(normalizeSubType({ lossScope: '暂无异常', subType: '', facts }), '已签收')
+  assert.equal(normalizeSubType({ lossScope: '暂无异常', subType: '签收成功', facts }), '已签收')
 })

@@ -171,6 +171,12 @@ export type TrackFacts = {
   deliveryCompletionTime: string | null
   /** 最新正常完结事件证据（stage/content 摘要） */
   deliveryCompletionEvidence: string | null
+  /**
+   * 正常完结（签收/妥投）是否晚于最新商家处理方向指令。
+   * 商家 Abandon/退返/暂存后仍签收成功时为 true，按「以最新事实为准」应判已签收。
+   * 无任何商家方向指令时，只要存在正常完结即为 true。
+   */
+  deliveryCompletionSupersedesMerchantDirection: boolean
   /** 最新轨迹是否为「订单异常完结，原因【...】。操作员【...】」 */
   latestOrderExceptionClosed: boolean
   /** 最新订单异常完结时间，null 表示未命中 */
@@ -196,6 +202,14 @@ export type TrackFacts = {
    * 出库后已回仓再发起的新一轮分配-取消，**不**触发此标志。
    */
   assignCancelLoopWithoutDispatch: boolean
+  /**
+   * 「最后一次库内实物确认之后出现过分配-取消配对，且此后未再成功出库」
+   * = 以 inWarehouseStartTime（最近一次回仓/盘点/入库扫描）为起算点，其后至少 1 组「分配→取消」
+   *   + 其后无「包裹正在派送中」。起算点之前的配对已被该次实物确认洗清嫌疑，不计入。
+   * 仅用于把库内丢失的子类型定为「疑似派件员窃取」；不参与是否构成丢失的判定。
+   * 与 assignCancelLoopWithoutDispatch（全轨迹历史最大连续 ≥2 组）区分：虚假转运等规则仍走后者。
+   */
+  assignCancelPairWithoutDispatch: boolean
   /**
    * 最后一次库内实物确认（盘点/回站/到仓，即 inWarehouseStartTime）之后，
    * 第一个「分配→取消」配对的派件员。该时点之前被分配又取消的司机已被盘点洗清嫌疑，故不取。

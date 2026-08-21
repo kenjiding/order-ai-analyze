@@ -22,7 +22,7 @@ const LOSS_SCOPE_OPTIONS: OrderAnalyzeResultItem['lossScope'][] = [
 const SUB_TYPE_BY_SCOPE: Partial<Record<OrderAnalyzeResultItem['lossScope'], string[]>> = {
   库内丢失: ['扫描员丢失', '疑似派件员窃取'],
   库外丢失: ['快递员丢失'],
-  暂无异常: ['退返商家', '暂存', ''],
+  暂无异常: ['已签收', '订单已完结', 'Abandon销毁', '暂存', '退返商家', ''],
 }
 
 const ANALYZE_MODEL_OPTIONS: { value: OrderAnalyzeAiProvider; label: string }[] = [

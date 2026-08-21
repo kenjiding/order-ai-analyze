@@ -93,12 +93,16 @@ function expectedScopeFromFinalResponsibility(facts: TrackFacts): AiLossScope | 
 }
 
 /**
- * 库内丢失子类型：已达到仓库超时阈值的前提下，若同时命中「分配-取消循环（库内起算之后无出库）」，
- * 问题更可能是具体某个派件员反复领取又取消、包裹去向不明，用更具体的「疑似派件员窃取」；
- * 其余情形维持「扫描员丢失」。本函数只影响子类型，不参与是否构成丢失的判定。
+ * 库内丢失子类型：已达到仓库超时阈值的前提下，若「最后一次库内实物确认（回仓/盘点/入库扫描）之后」
+ * 出现过「分配→取消」配对（1 组即算）且此后未再成功出库，说明包裹被实物确认在仓后由某个派件员
+ * 领走又取消、从此再无任何真实操作，用更具体的「疑似派件员窃取」；其余情形维持「扫描员丢失」。
+ * 本函数只影响子类型，不参与是否构成丢失的判定。
+ *
+ * 这里用 assignCancelPairWithoutDispatch 而非 assignCancelLoopWithoutDispatch（全轨迹历史最大连续
+ * ≥2 组）：后者仍是虚假转运等规则的口径，两者刻意分开，改子类型口径不得波及那些判定。
  */
 function inWarehouseLossSubType(facts: TrackFacts): string {
-  return facts.assignCancelLoopWithoutDispatch ? '疑似派件员窃取' : '扫描员丢失'
+  return facts.assignCancelPairWithoutDispatch ? '疑似派件员窃取' : '扫描员丢失'
 }
 
 function formatActiveOwner(owner: TrackFacts['activeResponsibilityOwner']): string {
@@ -167,9 +171,12 @@ function buildTimingEvidence(facts: TrackFacts, scope: EvidenceScope): string {
 
 function noExceptionSubTypeFromFacts(facts: TrackFacts): string {
   if (facts.latestOrderExceptionClosed) return '订单已完结'
+  // 签收晚于最新商家方向时以签收为准；商家方向更新时才沿用商家子类型
+  if (facts.deliveryCompletionSupersedesMerchantDirection) return '已签收'
   if (facts.merchantDestroyConfirmed || facts.merchantAbandonActive) return 'Abandon销毁'
   if (facts.merchantStorageActive) return '暂存'
   if (facts.merchantReturnClosed || facts.merchantReturnDirectionActive) return '退返商家'
+  if (facts.hasDeliveryCompletion) return '已签收'
   return ''
 }
 
@@ -201,6 +208,20 @@ function buildDeterministicBaseResult(input: {
       needsReview: false,
       reason: appendEvidence(
         `最新轨迹为订单异常完结（${facts.latestOrderExceptionClosedTime ?? '-'}，${facts.latestOrderExceptionClosedEvidence ?? '命中订单异常完结'}），订单已闭环`,
+        facts,
+        'none'
+      ),
+    }
+  }
+  if (facts.deliveryCompletionSupersedesMerchantDirection) {
+    return {
+      orderNo,
+      lossScope: '暂无异常',
+      exceptionCategoryId: '已签收',
+      confidence: 0.95,
+      needsReview: false,
+      reason: appendEvidence(
+        `轨迹已正常完结（${facts.deliveryCompletionTime ?? '-'}，${facts.deliveryCompletionEvidence ?? '命中签收/妥投/派件完成关键词'}），且晚于最新商家处理方向，订单已履约闭环`,
         facts,
         'none'
       ),
@@ -252,7 +273,7 @@ function buildDeterministicBaseResult(input: {
     return {
       orderNo,
       lossScope: '暂无异常',
-      exceptionCategoryId: '',
+      exceptionCategoryId: '已签收',
       confidence: 0.9,
       needsReview: false,
       reason: appendEvidence(
@@ -397,6 +418,7 @@ export const DECISION_RULES: readonly DecisionRule[] = [
     description: '商家已确认销毁，且指令有效（有物理支撑或尚未超时）时，终态闭环优先于所有丢失归责。',
     match: ({ result, facts }) =>
       isDirectionTerminalEffective(facts.merchantDestroyConfirmed, facts) &&
+      !facts.deliveryCompletionSupersedesMerchantDirection &&
       (result.lossScope !== '暂无异常' || result.exceptionCategoryId !== 'Abandon销毁'),
     resolve: ({ result, facts }) => {
       const hit = `轨迹命中商家销毁终态（${facts.merchantDestroyConfirmTime ?? '-'}，${facts.merchantDestroyEvidence ?? '命中销毁关键词'}），该单已进入商家确认销毁闭环，不应归责为库内/库外/干线异常`
@@ -418,6 +440,7 @@ export const DECISION_RULES: readonly DecisionRule[] = [
     description: '商家已给出 Abandon 处理指令，且指令有效（有物理支撑或尚未超时）时，判定为暂无异常并设置 Abandon销毁 子类型。',
     match: ({ result, facts }) =>
       isDirectionTerminalEffective(facts.merchantAbandonActive, facts) &&
+      !facts.deliveryCompletionSupersedesMerchantDirection &&
       (result.lossScope !== '暂无异常' || result.exceptionCategoryId !== 'Abandon销毁'),
     resolve: ({ result, facts }) => {
       const closedNote = facts.merchantAbandonClosed
@@ -442,6 +465,7 @@ export const DECISION_RULES: readonly DecisionRule[] = [
     description: '商家暂存且后续未预约派送，且指令有效（有物理支撑或尚未超时）时，暂存不适用库内/库外超时逻辑。',
     match: ({ result, facts }) =>
       isDirectionTerminalEffective(facts.merchantStorageActive, facts) &&
+      !facts.deliveryCompletionSupersedesMerchantDirection &&
       (result.lossScope !== '暂无异常' || result.exceptionCategoryId !== '暂存'),
     resolve: ({ result, facts }) => {
       const hit = `轨迹命中商家暂存终态（${facts.merchantStorageConfirmTime ?? '-'}，${facts.merchantStorageEvidence ?? '命中暂存关键词'}），且后续未出现预约派送；暂存不适用库内/库外超时逻辑，后续盘点/退件轨迹不改变结论`
@@ -464,6 +488,7 @@ export const DECISION_RULES: readonly DecisionRule[] = [
     match: ({ result, facts }) =>
       facts.merchantReturnClosed &&
       !facts.merchantAbandonActive &&
+      !facts.deliveryCompletionSupersedesMerchantDirection &&
       (result.lossScope !== '暂无异常' || result.exceptionCategoryId !== '退返商家'),
     resolve: ({ result, facts }) => {
       const hit = `轨迹命中退返商家闭环（${facts.merchantReturnClosedTime ?? '-'}，${facts.merchantReturnClosedEvidence ?? '命中退返闭环关键词'}），该单已完成退返/退回商家，不应归责为库内/库外异常`
@@ -502,18 +527,21 @@ export const DECISION_RULES: readonly DecisionRule[] = [
   },
   {
     id: 'delivery_completion_terminal',
-    priority: 15,
-    description: '轨迹已出现签收/妥投/派件完成等正常完结时，不得再归责为库内/库外/虚假转运。',
+    priority: 9.5,
+    description:
+      '轨迹已出现签收/妥投/派件完成等正常完结时，不得再归责为库内/库外/虚假转运；子类型对齐当前最新事实（签收晚于商家方向判「已签收」，商家方向更新则沿用商家子类型）。',
+    // 期望子类型不是「已签收」时（商家方向更新、或订单异常完结），让位给对应终态规则，保证 reason 文案与结论一致
     match: ({ result, facts }) =>
       facts.hasDeliveryCompletion &&
-      (result.lossScope !== '暂无异常' || result.exceptionCategoryId !== ''),
+      noExceptionSubTypeFromFacts(facts) === '已签收' &&
+      (result.lossScope !== '暂无异常' || result.exceptionCategoryId !== '已签收'),
     resolve: ({ result, facts }) => {
       const hit = `轨迹命中正常完结（${facts.deliveryCompletionTime ?? '-'}，${facts.deliveryCompletionEvidence ?? '命中签收/妥投/派件完成关键词'}），订单已完成履约，不再适用库内/库外超时归责`
       return withRuleHit({
         result,
         ruleId: 'delivery_completion_terminal',
         lossScope: '暂无异常',
-        exceptionCategoryId: '',
+        exceptionCategoryId: '已签收',
         confidence: Math.max(0.88, result.confidence),
         needsReview: false,
         hit,

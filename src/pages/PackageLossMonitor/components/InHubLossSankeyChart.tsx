@@ -30,6 +30,8 @@ const VENDOR_COLORS = [
 
 const UNLABELED_VENDOR_COLOR = '#94a3b8'
 const NODE_FILL = adminColors.tableHeader
+// 列内节点间隙合计占画布高度的比例，其余高度全部分给连线
+const NODE_GAP_RATIO = 0.28
 
 const LAYER_PREFIX: Record<SankeyColumn['key'], string> = {
   subtype: 's',
@@ -107,7 +109,11 @@ export function InHubLossSankeyChart({ graph, columns }: Props) {
     ...columns.map((column) => nodes.filter((node) => node.id.startsWith(`${LAYER_PREFIX[column.key]}:`)).length),
     1,
   )
-  const height = Math.min(720, Math.max(320, 56 + columnSize * 26))
+  // nodePadding 是相对高度的比例，节点多时按列内节点数收敛，避免间隙吃光空间导致连线细到消失
+  const nodePadding = Math.min(0.06, NODE_GAP_RATIO / columnSize)
+  // 先定单条连线的目标厚度（节点越多越细），再反推画布高度，让不同阈值下粗细都落在可读区间
+  const bandPerNode = columnSize <= 8 ? 13 : columnSize <= 20 ? 11 : 9
+  const height = Math.min(1200, Math.max(300, 56 + Math.round((columnSize * bandPerNode) / (1 - NODE_GAP_RATIO))))
   const dataKey = useMemo(
     () =>
       `${columns.map((column) => column.key).join('-')}|${nodes
@@ -144,7 +150,7 @@ export function InHubLossSankeyChart({ graph, columns }: Props) {
       },
       layout: {
         nodeAlign: 'justify',
-        nodePadding: 0.04,
+        nodePadding,
         nodeWidth: 0.018,
         iterations: 0,
         nodeId: (d: { id?: string; key?: string }) => d.id ?? d.key ?? '',
@@ -214,7 +220,7 @@ export function InHubLossSankeyChart({ graph, columns }: Props) {
     return () => {
       chart.destroy()
     }
-  }, [colors, dataKey, height, links, nodes, vendors])
+  }, [colors, dataKey, height, links, nodePadding, nodes, vendors])
 
   if (links.length === 0) {
     return <p className="package-loss-viz-empty">已分析单中尚无库内丢失判定</p>

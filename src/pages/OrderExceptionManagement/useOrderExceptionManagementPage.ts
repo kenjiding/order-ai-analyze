@@ -130,7 +130,7 @@ function logOrderAnalysisFacts(orderNo: string, facts: OrderTrackFacts | undefin
     console.log('   依据:', facts.finalResponsibilityBasis ?? '-')
   }
   console.log('📊 派送分配次数:', facts.deliveryAssignmentCount, '| 取消分配次数:', facts.deliveryCancelCount, '| 问题件次数:', facts.problemCount)
-  console.log('🔄 分配-取消循环(无出库):', facts.assignCancelLoopWithoutDispatch ? '是' : '否')
+  console.log('🔄 分配-取消配对(最后一次库内实物确认之后·定子类型):', facts.assignCancelPairWithoutDispatch ? '是' : '否', '| 全轨迹连续循环(≥2组·虚假转运口径):', facts.assignCancelLoopWithoutDispatch ? '是' : '否')
   if (facts.hasDeliveryCompletion) {
     console.log('✔️ 正常完结:', facts.deliveryCompletionTime ?? '-', facts.deliveryCompletionEvidence ?? '')
   }
