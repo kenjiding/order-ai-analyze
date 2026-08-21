@@ -153,7 +153,7 @@ export function InHubPackageLossTab({
                   className="w-28"
                   aria-label="订单分析的超时天数"
                 />
-                <span className="package-loss-field-hint">超过此天数视为滞留</span>
+                <span className="package-loss-field-hint">超过此天数视为丢包</span>
               </div>
             </div>
 
