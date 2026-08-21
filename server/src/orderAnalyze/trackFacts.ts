@@ -1655,9 +1655,19 @@ export function computeTrackTemporalContext(
   lines.push(
     `当前责任段派送分配次数: ${facts.deliveryAssignmentCount}  取消分配次数: ${facts.deliveryCancelCount}  问题件登记次数: ${facts.problemCount}`
   )
-  lines.push(
-    `正常完结记录: ${facts.hasDeliveryCompletion ? `是（${facts.deliveryCompletionTime ?? '-'}，${facts.deliveryCompletionEvidence ?? '命中签收/妥投/派件完成关键词'}）` : '否'}`
-  )
+  if (facts.hasDeliveryCompletion) {
+    lines.push(
+      `正常完结记录: 是（${facts.deliveryCompletionTime ?? '-'}，${facts.deliveryCompletionEvidence ?? '命中签收/妥投/派件完成关键词'}）；晚于最新商家处理方向: ${
+        facts.deliveryCompletionSupersedesMerchantDirection ? '是' : '否'
+      }  → 订单已履约完结，判定「暂无异常」，${
+        facts.deliveryCompletionSupersedesMerchantDirection
+          ? '子类型建议「已签收」'
+          : '该完结早于最新商家处理方向，子类型以最新商家方向为准'
+      }`
+    )
+  } else {
+    lines.push('正常完结记录: 否')
+  }
   if (facts.latestOrderExceptionClosed) {
     lines.push(
       `订单异常完结终态: 是（${facts.latestOrderExceptionClosedTime ?? '-'}，证据: ${facts.latestOrderExceptionClosedEvidence ?? '命中订单异常完结'}）  → 最新轨迹已显示订单异常闭环，优先判定「暂无异常」，子类型建议「订单已完结」`
@@ -1750,6 +1760,18 @@ export function computeTrackTemporalContext(
   } else if (facts.merchantStorageSupersededByBusinessProgress) {
     lines.push(
       `商家暂存终态: 否（${facts.merchantStorageConfirmTime ?? '-'} 后于 ${facts.merchantStorageBusinessProgressTime ?? '-'} 出现新的业务推进）  → 以最新轨迹为准，不再使用「暂存」子类型；证据: ${facts.merchantStorageBusinessProgressEvidence ?? '命中后续业务轨迹'}`
+    )
+  }
+
+  const hasMerchantDirection =
+    facts.merchantAbandonActive ||
+    facts.merchantDestroyConfirmed ||
+    facts.merchantReturnClosed ||
+    facts.merchantReturnRequested ||
+    facts.merchantStorageActive
+  if (hasMerchantDirection && facts.deliveryCompletionSupersedesMerchantDirection) {
+    lines.push(
+      `⚠️ 上述商家处理方向均早于正常完结记录（${facts.deliveryCompletionTime ?? '-'}）  → 按「以最新事实为准」，该单应判定「暂无异常」且子类型为「已签收」，不得使用商家方向子类型`
     )
   }
 

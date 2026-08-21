@@ -2055,3 +2055,78 @@ test('normalizeSubType 能从事实反推已签收子类型', () => {
   assert.equal(normalizeSubType({ lossScope: '暂无异常', subType: '', facts }), '已签收')
   assert.equal(normalizeSubType({ lossScope: '暂无异常', subType: '签收成功', facts }), '已签收')
 })
+
+test('已签收与商家处理方向的时序优先级矩阵', () => {
+  const sign = (time: string) => track(time, '【ADL DS】签收成功，操作员【ADL-DPC-19-Deepak】', '', '已签收')
+  const pickup = track('2026-08-10 15:19:30', '【Adelaide Center】已揽收, 操作员【System】。', '', '已揽件')
+  const dispatch = (time: string) =>
+    track(time, '【ADL DS】包裹正在派送中(派件员: ADL-A,ID: D1,电话: +61 400000000)。操作员【ADL-A】', 'delivery', '派送')
+
+  const cases: Array<{ name: string; tracks: TrackEvent[]; scope: string; subType: string }> = [
+    {
+      name: '订单异常完结晚于签收时以完结为准',
+      tracks: [pickup, sign('2026-08-15 10:00:00'), track('2026-08-16 10:00:00', '【ADL DS】订单异常完结，原因【客户已自提】。操作员【ADL OP1】')],
+      scope: '暂无异常',
+      subType: '订单已完结',
+    },
+    {
+      name: '退返方向后仍签收成功判已签收',
+      tracks: [pickup, track('2026-08-14 10:00:00', '商家已反馈NDR处理意见[退返商家]。 操作人【M】', '', '退件处理'), sign('2026-08-15 10:00:00')],
+      scope: '暂无异常',
+      subType: '已签收',
+    },
+    {
+      name: '暂存后仍签收成功判已签收',
+      tracks: [pickup, track('2026-08-14 10:00:00', '【ADL DS】包裹确认派送结束, 将按照商家反馈意见[暂存]进行处理。', '', '退件处理'), sign('2026-08-15 10:00:00')],
+      scope: '暂无异常',
+      subType: '已签收',
+    },
+    {
+      name: '签收后出现退返闭环时以退返为准',
+      tracks: [pickup, sign('2026-08-14 10:00:00'), track('2026-08-16 10:00:00', '【ADL DS】退件已退返商家。操作员【ADL OP1】', '', '已退返商家')],
+      scope: '暂无异常',
+      subType: '退返商家',
+    },
+    {
+      name: '同一天内按秒级时序判定，签收在后即已签收',
+      tracks: [pickup, track('2026-08-15 09:00:00', '商家已反馈NDR处理意见[Abandon]。 操作人【M】', '', '退件处理'), sign('2026-08-15 09:00:01')],
+      scope: '暂无异常',
+      subType: '已签收',
+    },
+    {
+      name: '妥投措辞同样判已签收',
+      tracks: [pickup, track('2026-08-15 10:00:00', '【ADL DS】包裹已妥投，操作员【A】', '', '妥投')],
+      scope: '暂无异常',
+      subType: '已签收',
+    },
+    {
+      name: '签收后长期无轨迹也不得判库外丢失',
+      tracks: [pickup, dispatch('2026-07-01 10:00:00'), sign('2026-07-02 10:00:00')],
+      scope: '暂无异常',
+      subType: '已签收',
+    },
+  ]
+
+  for (const item of cases) {
+    const facts = deriveTrackFacts(item.tracks, [], { analysisDate: '2026-08-21' })
+    const result = classifyOrderFromFacts({ orderNo: item.name, facts })
+    assert.equal(result.lossScope, item.scope, item.name)
+    assert.equal(result.exceptionCategoryId, item.subType, item.name)
+  }
+})
+
+test('签收失败等负向措辞不得命中已签收', () => {
+  const facts = deriveTrackFacts(
+    [
+      track('2026-08-10 15:19:30', '【Adelaide Center】已揽收, 操作员【System】。', '', '已揽件'),
+      track('2026-08-14 10:00:00', '【ADL DS】包裹正在派送中(派件员: ADL-A,ID: D1,电话: +61 400000000)。操作员【ADL-A】', 'delivery', '派送'),
+      track('2026-08-15 10:00:00', '【ADL DS】签收失败，操作员【ADL-A】', '', '签收失败'),
+    ],
+    [],
+    { analysisDate: '2026-08-21' }
+  )
+
+  assert.equal(facts.hasDeliveryCompletion, false)
+  assert.equal(facts.deliveryCompletionSupersedesMerchantDirection, false)
+  assert.notEqual(classifyOrderFromFacts({ orderNo: 'SIGN-FAILED', facts }).exceptionCategoryId, '已签收')
+})

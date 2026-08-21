@@ -3,6 +3,7 @@ import { useMemo, useState } from 'react'
 import {
   DEFAULT_SANKEY_DIMS,
   EMPTY_SCOPE_DRILL,
+  EMPTY_VENDOR_DRILL,
   SANKEY_DIM_OPTIONS,
   buildSankeyGraph,
   buildInHubLossFlowTableRows,
@@ -10,13 +11,16 @@ import {
   filterChartAnalytics,
   filterFlowsBySubtypes,
   nextScopeDrillPath,
+  nextVendorDrillPath,
   resolveSankeyColumns,
   resolveScopeDrillView,
+  resolveVendorDrillView,
   uniqueRouteCodes,
   uniqueSubtypes,
   type InHubLossAnalytics,
   type SankeyDimKey,
   type ScopeDrillPath,
+  type VendorDrillPath,
 } from '../inHubLossAnalytics'
 import { InHubLossBarChart } from './InHubLossBarChart'
 import { InHubLossFlowTable } from './InHubLossFlowTable'
@@ -34,6 +38,7 @@ export function InHubLossAnalyticsPanel({ analytics }: Props) {
   const [selectedDims, setSelectedDims] = useState<SankeyDimKey[]>([...DEFAULT_SANKEY_DIMS])
   const [selectedSubtypes, setSelectedSubtypes] = useState<string[] | null>(null)
   const [scopeDrill, setScopeDrill] = useState<ScopeDrillPath>(EMPTY_SCOPE_DRILL)
+  const [vendorDrill, setVendorDrill] = useState<VendorDrillPath>(EMPTY_VENDOR_DRILL)
   const columns = useMemo(() => resolveSankeyColumns(selectedDims), [selectedDims])
   const chartAnalytics = useMemo(
     () => filterChartAnalytics(analytics, excludedRouteCodes, minRouteCount),
@@ -63,6 +68,10 @@ export function InHubLossAnalyticsPanel({ analytics }: Props) {
   const scopeDrillView = useMemo(
     () => resolveScopeDrillView(chartAnalytics, scopeDrill),
     [chartAnalytics, scopeDrill],
+  )
+  const vendorDrillView = useMemo(
+    () => resolveVendorDrillView(chartAnalytics, vendorDrill),
+    [chartAnalytics, vendorDrill],
   )
 
   if (analytics.doneCount === 0) return null
@@ -187,11 +196,20 @@ export function InHubLossAnalyticsPanel({ analytics }: Props) {
           onCrumbClick={setScopeDrill}
         />
         <InHubLossBarChart
-          title="滞留天数"
-          caption="仅库内丢失，按无操作天数"
-          data={chartAnalytics.aging}
-          emptyText="暂无库内丢失滞留分布"
-          ariaLabel="库内丢失无操作天数分布"
+          title="供应商丢包"
+          caption={vendorDrillView.caption}
+          data={vendorDrillView.data}
+          emptyText="暂无库内丢失供应商分布"
+          ariaLabel={vendorDrillView.ariaLabel}
+          crumbs={vendorDrillView.crumbs}
+          vertical
+          colorByKey
+          onBarClick={
+            vendorDrillView.canDrill
+              ? (key) => setVendorDrill(nextVendorDrillPath(vendorDrillView.path, key))
+              : undefined
+          }
+          onCrumbClick={setVendorDrill}
         />
       </div>
     </div>

@@ -3,18 +3,21 @@ import assert from 'node:assert/strict'
 import type { AnalysisRow } from '../OrderExceptionManagement/analysisTypes'
 import type { LatestResponsibility, OrderQueryInfo } from '../OrderExceptionManagement/orderExceptionApi'
 import {
-  agingBucketOf,
   buildInHubLossAnalytics,
   buildSankeyGraph,
   canonicalizeExcludedRouteCodes,
   DEFAULT_SANKEY_DIMS,
   SANKEY_DIM_OPTIONS,
   EMPTY_SCOPE_DRILL,
+  EMPTY_VENDOR_DRILL,
   buildInHubLossFlowTableRows,
   filterAnalyticsByExcludedRouteCodes,
   filterChartAnalytics,
   nextScopeDrillPath,
+  nextVendorDrillPath,
   resolveScopeDrillView,
+  resolveVendorDrillView,
+  vendorDisplayName,
   scopeSubtypeRouteKey,
   uniqueRouteCodes,
   uniqueSubtypes,
@@ -99,16 +102,6 @@ test('DEFAULT_SANKEY_DIMS 默认勾选路由码与首个嫌疑派件员', () => 
   assert.deepEqual(DEFAULT_SANKEY_DIMS, ['route', 'suspect'])
 })
 
-test('agingBucketOf 按无操作天数分桶', () => {
-  assert.equal(agingBucketOf(null), '未知')
-  assert.equal(agingBucketOf(0), '0-2 天')
-  assert.equal(agingBucketOf(2), '0-2 天')
-  assert.equal(agingBucketOf(3), '3-7 天')
-  assert.equal(agingBucketOf(14), '8-14 天')
-  assert.equal(agingBucketOf(15), '15-30 天')
-  assert.equal(agingBucketOf(31), '30 天以上')
-})
-
 test('buildInHubLossAnalytics 忽略未完成行，并统计库内丢失流向', () => {
   const analytics = buildInHubLossAnalytics([
     row({ orderNo: '1', status: 'pending' }),
@@ -150,7 +143,6 @@ test('buildInHubLossAnalytics 忽略未完成行，并统计库内丢失流向',
   assert.deepEqual(analytics.scopeSubtypeRouteMix[scopeSubtypeRouteKey('库内丢失', '扫描员丢失')], [
     { key: 'R1', count: 2, share: 1 },
   ])
-  assert.equal(analytics.aging.find((item) => item.key === '3-7 天')?.count, 2)
   assert.deepEqual(linkOf(analytics, 's:扫描员丢失', 'v:未标注供应商'), {
     source: 's:扫描员丢失',
     target: 'v:未标注供应商',
@@ -219,7 +211,6 @@ test('buildInHubLossAnalytics 同名路由与责任人使用不同节点', () =>
   assert.deepEqual(linkOf(analytics, 'v:未标注供应商', 'r:张三')?.value, 1)
   assert.deepEqual(linkOf(analytics, 'r:张三', 'd:未标注嫌疑派件员')?.value, 1)
   assert.deepEqual(linkOf(analytics, 'd:未标注嫌疑派件员', 'p:张三')?.value, 1)
-  assert.equal(analytics.aging.find((item) => item.key === '15-30 天')?.count, 1)
 })
 
 test('buildInHubLossAnalytics 未标注路由与未标注责任人使用不同节点', () => {
@@ -618,7 +609,7 @@ test('filterFlowsBySubtypes 只保留勾选的子类型，桑基图不再出现�
   assert.equal(graph.nodes.some((node) => node.id === 'r:EE033'), false)
 })
 
-test('filterAnalyticsByExcludedRouteCodes 同步过滤判定构成与滞留天数', () => {
+test('filterAnalyticsByExcludedRouteCodes 同步过滤判定构成与库内流向', () => {
   const analytics = buildInHubLossAnalytics([
     row({
       orderNo: 'in-1',
@@ -658,8 +649,6 @@ test('filterAnalyticsByExcludedRouteCodes 同步过滤判定构成与滞留天�
     filtered.scopeSubtypeRouteMix[scopeSubtypeRouteKey('库内丢失', '仓管丢失')]?.map((item) => item.key),
     ['Tjj00'],
   )
-  assert.equal(filtered.aging.find((item) => item.key === '3-7 天'), undefined)
-  assert.equal(filtered.aging.find((item) => item.key === '0-2 天')?.count, 1)
   assert.equal(filtered.flows.every((flow) => flow.route !== 'EE033'), true)
   assert.equal(filtered.inHubCount, 1)
   assert.equal(filtered.doneCount, 1)
@@ -672,7 +661,7 @@ test('filterAnalyticsByExcludedRouteCodes 同步过滤判定构成与滞留天�
   )
 })
 
-test('filterChartAnalytics 按路由码丢失数量下限同步过滤判定构成与滞留天数', () => {
+test('filterChartAnalytics 按路由码丢失数量下限同步过滤判定构成与库内流向', () => {
   const analytics = buildInHubLossAnalytics([
     row({
       orderNo: 'in-1',
@@ -711,8 +700,6 @@ test('filterChartAnalytics 按路由码丢失数量下限同步过滤判定构�
     filtered.scopeSubtypeRouteMix[scopeSubtypeRouteKey('库内丢失', '扫描员丢失')]?.map((item) => item.key),
     ['EE033'],
   )
-  assert.equal(filtered.aging.find((item) => item.key === '0-2 天'), undefined)
-  assert.equal(filtered.aging.find((item) => item.key === '3-7 天')?.count, 2)
   assert.equal(filtered.flows.every((flow) => flow.route === 'EE033'), true)
   assert.equal(filtered.inHubCount, 2)
   assert.equal(filtered.doneCount, 2)
@@ -907,3 +894,111 @@ test('buildInHubLossFlowTableRows 按子类型、供应商、路由码、嫌疑�
   assert.deepEqual(buildInHubLossFlowTableRows(analytics.flows, []), [])
 })
 
+
+test('供应商下钻：供应商 → 路由码 → 司机，仅统计库内丢失', () => {
+  function extra(suspect: string, vendor: string) {
+    return {
+      summary: `首个嫌疑派件员：${suspect}｜供应商：${vendor}`,
+      entries: [
+        { label: '首个嫌疑派件员', value: suspect },
+        { label: '所属供应商', value: vendor },
+      ],
+    }
+  }
+
+  const analytics = buildInHubLossAnalytics([
+    row({ orderNo: 'a1', orderInfo: orderInfo('EE033'), extraData: extra('张派', '甲供应商') }),
+    row({ orderNo: 'a2', orderInfo: orderInfo('EE033'), extraData: extra('张派', '甲供应商') }),
+    row({ orderNo: 'a3', orderInfo: orderInfo('EE033'), extraData: extra('王派', '甲供应商') }),
+    row({ orderNo: 'a4', orderInfo: orderInfo('Tjj00'), extraData: extra('王派', '甲供应商') }),
+    row({ orderNo: 'b1', orderInfo: orderInfo('R9'), extraData: extra('李派', '乙供应商') }),
+    row({
+      orderNo: 'out1',
+      lossScope: '库外丢失',
+      orderInfo: orderInfo('EE033'),
+      extraData: extra('张派', '甲供应商'),
+    }),
+  ])
+
+  assert.deepEqual(
+    analytics.vendorMix.map((item) => [item.key, item.count]),
+    [
+      ['甲供应商', 4],
+      ['乙供应商', 1],
+    ],
+  )
+
+  const top = resolveVendorDrillView(analytics, EMPTY_VENDOR_DRILL)
+  assert.equal(top.canDrill, true)
+  assert.deepEqual(top.crumbs, [])
+
+  const routeView = resolveVendorDrillView(analytics, nextVendorDrillPath(top.path, '甲供应商'))
+  assert.equal(routeView.path.vendor, '甲供应商')
+  assert.equal(routeView.path.route, null)
+  assert.equal(routeView.canDrill, true)
+  assert.deepEqual(
+    routeView.data.map((item) => [item.key, item.count]),
+    [
+      ['EE033', 3],
+      ['Tjj00', 1],
+    ],
+  )
+  assert.equal(routeView.data[0]?.share, 0.75)
+
+  const suspectView = resolveVendorDrillView(analytics, nextVendorDrillPath(routeView.path, 'EE033'))
+  assert.equal(suspectView.canDrill, false)
+  assert.deepEqual(
+    suspectView.data.map((item) => [item.key, item.count]),
+    [
+      ['张派', 2],
+      ['王派', 1],
+    ],
+  )
+  assert.deepEqual(
+    suspectView.crumbs.map((crumb) => crumb.label),
+    ['全部供应商', '甲供应商', 'EE033'],
+  )
+
+  // 路由码不存在于该供应商下时回退到根视图
+  assert.deepEqual(resolveVendorDrillView(analytics, { vendor: '甲供应商', route: 'R9' }).data, routeView.data)
+  assert.deepEqual(resolveVendorDrillView(analytics, { vendor: '丙供应商', route: null }).data, analytics.vendorMix)
+})
+
+test('vendorDisplayName 去掉尾部供应商编码，柱状图按名称合并', () => {
+  assert.equal(vendorDisplayName('甲供应商 (V1)'), '甲供应商')
+  assert.equal(vendorDisplayName('甲供应商（V1）'), '甲供应商')
+  assert.equal(vendorDisplayName('甲供应商'), '甲供应商')
+  assert.equal(vendorDisplayName('未标注供应商'), '未标注供应商')
+  assert.equal(vendorDisplayName('(V1)'), '(V1)')
+  assert.equal(vendorDisplayName('按名字匹配到 2 条，未确认：张三 / 李四'), '按名字匹配到 2 条，未确认：张三 / 李四')
+
+  function extra(suspect: string, vendor: string) {
+    return {
+      summary: `首个嫌疑派件员：${suspect}｜供应商：${vendor}`,
+      entries: [
+        { label: '首个嫌疑派件员', value: suspect },
+        { label: '所属供应商', value: vendor },
+      ],
+    }
+  }
+
+  const analytics = buildInHubLossAnalytics([
+    row({ orderNo: 'a1', orderInfo: orderInfo('EE033'), extraData: extra('张派', '甲供应商 (V1)') }),
+    row({ orderNo: 'a2', orderInfo: orderInfo('Tjj00'), extraData: extra('王派', '甲供应商 (V1)') }),
+    row({ orderNo: 'b1', orderInfo: orderInfo('R9'), extraData: extra('李派', '乙供应商 (V2)') }),
+  ])
+
+  assert.deepEqual(
+    analytics.vendorMix.map((item) => [item.key, item.count]),
+    [
+      ['甲供应商', 2],
+      ['乙供应商', 1],
+    ],
+  )
+  assert.deepEqual(
+    resolveVendorDrillView(analytics, { vendor: '甲供应商', route: null }).data.map((item) => item.key),
+    ['EE033', 'Tjj00'],
+  )
+  // 桑基图与流向表仍保留带编码的原值
+  assert.equal(analytics.flows[0]?.vendor, '甲供应商 (V1)')
+})

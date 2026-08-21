@@ -47,7 +47,6 @@ export type InHubLossFlow = {
 
 export type InHubLossFact = InHubLossFlow & {
   scope: string
-  aging: string
   inHub: boolean
 }
 
@@ -76,7 +75,12 @@ export type InHubLossAnalytics = {
   scopeSubtypeMix: Record<string, CountDatum[]>
   /** key = scopeSubtypeRouteKey(异常类型, 子类型)；占比相对该子类型内部 */
   scopeSubtypeRouteMix: Record<string, CountDatum[]>
-  aging: CountDatum[]
+  /** 仅库内丢失，按供应商名（不含编码） */
+  vendorMix: CountDatum[]
+  /** key = 供应商名；仅库内丢失，占比相对该供应商内部 */
+  vendorRouteMix: Record<string, CountDatum[]>
+  /** key = vendorRouteKey(供应商名, 路由码)；仅库内丢失，占比相对该路由码内部 */
+  vendorRouteSuspectMix: Record<string, CountDatum[]>
   flows: InHubLossFlow[]
   facts: InHubLossFact[]
   insight: string | null
@@ -86,6 +90,23 @@ export function scopeSubtypeRouteKey(scope: string, subtype: string): string {
   return `${scope}\t${subtype}`
 }
 
+/** 富化写入的供应商形如「名称 (编码)」，柱状图只看名称。 */
+const VENDOR_CODE_SUFFIX_RE = /\s*[（(][^（()）]*[)）]\s*$/
+
+export function vendorDisplayName(vendor: string): string {
+  const name = vendor.replace(VENDOR_CODE_SUFFIX_RE, '').trim()
+  return name || vendor
+}
+
+export function vendorRouteKey(vendor: string, route: string): string {
+  return `${vendor}\t${route}`
+}
+
+export type DrillCrumb<TPath> = {
+  label: string
+  path: TPath
+}
+
 export type ScopeDrillPath = {
   scope: string | null
   subtype: string | null
@@ -93,18 +114,29 @@ export type ScopeDrillPath = {
 
 export const EMPTY_SCOPE_DRILL: ScopeDrillPath = { scope: null, subtype: null }
 
-export type ScopeDrillCrumb = {
-  label: string
-  path: ScopeDrillPath
-}
-
 export type ScopeDrillView = {
   path: ScopeDrillPath
   data: CountDatum[]
   caption: string
   ariaLabel: string
   canDrill: boolean
-  crumbs: ScopeDrillCrumb[]
+  crumbs: DrillCrumb<ScopeDrillPath>[]
+}
+
+export type VendorDrillPath = {
+  vendor: string | null
+  route: string | null
+}
+
+export const EMPTY_VENDOR_DRILL: VendorDrillPath = { vendor: null, route: null }
+
+export type VendorDrillView = {
+  path: VendorDrillPath
+  data: CountDatum[]
+  caption: string
+  ariaLabel: string
+  canDrill: boolean
+  crumbs: DrillCrumb<VendorDrillPath>[]
 }
 
 function nestedBump(root: Map<string, Map<string, number>>, outer: string, inner: string): void {
@@ -161,27 +193,11 @@ export function subtypeOf(row: AnalysisRow): string {
   return name && name !== '—' ? name : '未分类'
 }
 
-function noOperationDaysOf(row: AnalysisRow): number | null {
-  const days = row.latestResponsibility?.noOperationDays
-  return typeof days === 'number' && Number.isFinite(days) ? days : null
-}
-
-export function agingBucketOf(days: number | null): string {
-  if (days == null) return '未知'
-  if (days <= 2) return '0-2 天'
-  if (days <= 7) return '3-7 天'
-  if (days <= 14) return '8-14 天'
-  if (days <= 30) return '15-30 天'
-  return '30 天以上'
-}
-
-const AGING_ORDER = ['0-2 天', '3-7 天', '8-14 天', '15-30 天', '30 天以上', '未知']
-
-function toCountData(map: Map<string, number>, order?: string[]): CountDatum[] {
+function toCountData(map: Map<string, number>): CountDatum[] {
   const total = [...map.values()].reduce((sum, n) => sum + n, 0)
-  const keys = order
-    ? order.filter((key) => map.has(key))
-    : [...map.keys()].sort((a, b) => (map.get(b) ?? 0) - (map.get(a) ?? 0) || a.localeCompare(b, 'zh-CN'))
+  const keys = [...map.keys()].sort(
+    (a, b) => (map.get(b) ?? 0) - (map.get(a) ?? 0) || a.localeCompare(b, 'zh-CN'),
+  )
   return keys.map((key) => {
     const count = map.get(key) ?? 0
     return { key, count, share: total > 0 ? count / total : 0 }
@@ -336,6 +352,26 @@ export function sortRouteCountData(data: CountDatum[]): CountDatum[] {
   )
 }
 
+/** 供应商列：未标注垫底，其余按单量降序。 */
+export function sortVendorCountData(data: CountDatum[]): CountDatum[] {
+  return [...data].sort((a, b) =>
+    compareLabeledThenCountThenName(
+      { key: a.key, value: a.count, unlabeled: isUnlabeledVendor(a.key) },
+      { key: b.key, value: b.count, unlabeled: isUnlabeledVendor(b.key) },
+    ),
+  )
+}
+
+/** 司机（首个嫌疑派件员）列：未标注垫底，其余按单量降序。 */
+export function sortSuspectCountData(data: CountDatum[]): CountDatum[] {
+  return [...data].sort((a, b) =>
+    compareLabeledThenCountThenName(
+      { key: a.key, value: a.count, unlabeled: isUnlabeledSuspect(a.key) },
+      { key: b.key, value: b.count, unlabeled: isUnlabeledSuspect(b.key) },
+    ),
+  )
+}
+
 export function resolveScopeDrillView(
   analytics: InHubLossAnalytics,
   path: ScopeDrillPath,
@@ -386,6 +422,59 @@ export function resolveScopeDrillView(
 export function nextScopeDrillPath(path: ScopeDrillPath, key: string): ScopeDrillPath {
   if (!path.scope) return { scope: key, subtype: null }
   if (!path.subtype) return { scope: path.scope, subtype: key }
+  return path
+}
+
+export function resolveVendorDrillView(
+  analytics: InHubLossAnalytics,
+  path: VendorDrillPath,
+): VendorDrillView {
+  const vendor = path.vendor
+  const routes = vendor ? analytics.vendorRouteMix[vendor] : undefined
+  if (!vendor || !routes?.length) {
+    return {
+      path: EMPTY_VENDOR_DRILL,
+      data: analytics.vendorMix,
+      caption: '仅库内丢失，按供应商。点击柱形下钻到路由码',
+      ariaLabel: '库内丢失供应商单量分布',
+      canDrill: analytics.vendorMix.length > 0,
+      crumbs: [],
+    }
+  }
+
+  const route = path.route
+  const suspects = route ? analytics.vendorRouteSuspectMix[vendorRouteKey(vendor, route)] : undefined
+  if (!route || !suspects?.length) {
+    return {
+      path: { vendor, route: null },
+      data: routes,
+      caption: `${vendor} · 按路由码。点击柱形下钻到司机`,
+      ariaLabel: `${vendor}路由码单量分布`,
+      canDrill: routes.length > 0,
+      crumbs: [
+        { label: '全部供应商', path: EMPTY_VENDOR_DRILL },
+        { label: vendor, path: { vendor, route: null } },
+      ],
+    }
+  }
+
+  return {
+    path: { vendor, route },
+    data: suspects,
+    caption: `${vendor} / ${route} · 按司机（首个嫌疑派件员）`,
+    ariaLabel: `${vendor}${route}司机单量分布`,
+    canDrill: false,
+    crumbs: [
+      { label: '全部供应商', path: EMPTY_VENDOR_DRILL },
+      { label: vendor, path: { vendor, route: null } },
+      { label: route, path: { vendor, route } },
+    ],
+  }
+}
+
+export function nextVendorDrillPath(path: VendorDrillPath, key: string): VendorDrillPath {
+  if (!path.vendor) return { vendor: key, route: null }
+  if (!path.route) return { vendor: path.vendor, route: key }
   return path
 }
 
@@ -614,7 +703,7 @@ export function filterChartAnalytics(
   return buildAnalyticsFromFacts(remaining)
 }
 
-/** 按路由码过滤后重算判定构成、滞留天数与库内流向，供三张图共用。 */
+/** 按路由码过滤后重算判定构成、供应商分布与库内流向，供各图共用。 */
 export function filterAnalyticsByExcludedRouteCodes(
   analytics: InHubLossAnalytics,
   excludedRouteCodes: readonly string[],
@@ -790,7 +879,6 @@ function factOf(row: AnalysisRow): InHubLossFact {
     scope,
     subtype: subtypeOf(row),
     route: routeCodeOf(row),
-    aging: agingBucketOf(noOperationDaysOf(row)),
     inHub: scope === IN_HUB_LOSS_SCOPE,
     suspect: suspectCourierOf(row),
     vendor: vendorOf(row),
@@ -824,13 +912,18 @@ function buildAnalyticsFromFacts(facts: InHubLossFact[]): InHubLossAnalytics {
   const routeMap = new Map<string, number>()
   const suspectMap = new Map<string, number>()
   const personMap = new Map<string, number>()
-  const agingMap = new Map<string, number>()
+  const vendorMap = new Map<string, number>()
+  const routeByVendor = new Map<string, Map<string, number>>()
+  const suspectByVendorRoute = new Map<string, Map<string, number>>()
   for (const fact of inHub) {
     bump(subtypeMap, fact.subtype)
     bump(routeMap, fact.route)
     bump(suspectMap, fact.suspect)
     bump(personMap, fact.person)
-    bump(agingMap, fact.aging)
+    const vendorName = vendorDisplayName(fact.vendor)
+    bump(vendorMap, vendorName)
+    nestedBump(routeByVendor, vendorName, fact.route)
+    nestedBump(suspectByVendorRoute, vendorRouteKey(vendorName, fact.route), fact.suspect)
   }
 
   const subtypes = toCountData(subtypeMap)
@@ -846,7 +939,9 @@ function buildAnalyticsFromFacts(facts: InHubLossFact[]): InHubLossAnalytics {
     scopeMix: toCountData(scopeMap),
     scopeSubtypeMix: recordFromNested(subtypeByScope),
     scopeSubtypeRouteMix: recordFromNested(routeByScopeSubtype, sortRouteCountData),
-    aging: toCountData(agingMap, AGING_ORDER),
+    vendorMix: sortVendorCountData(toCountData(vendorMap)),
+    vendorRouteMix: recordFromNested(routeByVendor, sortRouteCountData),
+    vendorRouteSuspectMix: recordFromNested(suspectByVendorRoute, sortSuspectCountData),
     flows: inHub.map(flowOf),
     facts,
     insight: buildInsight(

@@ -7,28 +7,13 @@ import {
   type SankeyGraph,
   type SankeyLink,
 } from '../inHubLossAnalytics'
+import { UNLABELED_COLOR, categoryColorMap } from '../lossChartColors'
 
 type Props = {
   graph: SankeyGraph
   columns: SankeyColumn[]
 }
 
-const VENDOR_COLORS = [
-  '#1f6f68',
-  '#d97706',
-  '#2563eb',
-  '#7c3aed',
-  '#db2777',
-  '#0f766e',
-  '#ea580c',
-  '#0284c7',
-  '#4d7c0f',
-  '#9333ea',
-  '#b45309',
-  '#0e7490',
-]
-
-const UNLABELED_VENDOR_COLOR = '#94a3b8'
 const NODE_FILL = adminColors.tableHeader
 // 列内节点间隙合计占画布高度的比例，其余高度全部分给连线
 const NODE_GAP_RATIO = 0.28
@@ -74,16 +59,6 @@ function uniqueVendors(links: SankeyLink[]): string[] {
   return vendors
 }
 
-function vendorColorMap(vendors: readonly string[]): Map<string, string> {
-  const labeled = vendors.filter((vendor) => vendor !== UNLABELED_VENDOR)
-  const colors = new Map<string, string>()
-  labeled.forEach((vendor, index) => {
-    colors.set(vendor, VENDOR_COLORS[index % VENDOR_COLORS.length])
-  })
-  if (vendors.includes(UNLABELED_VENDOR)) colors.set(UNLABELED_VENDOR, UNLABELED_VENDOR_COLOR)
-  return colors
-}
-
 function linkVendor(d: unknown, links: SankeyLink[]): string {
   if (d && typeof d === 'object') {
     const rec = d as { vendor?: unknown; index?: unknown; source?: unknown; target?: unknown; value?: unknown }
@@ -104,7 +79,7 @@ export function InHubLossSankeyChart({ graph, columns }: Props) {
   const containerRef = useRef<HTMLDivElement>(null)
   const { nodes, links } = graph
   const vendors = useMemo(() => uniqueVendors(links), [links])
-  const colors = useMemo(() => vendorColorMap(vendors), [vendors])
+  const colors = useMemo(() => categoryColorMap(vendors), [vendors])
   const columnSize = Math.max(
     ...columns.map((column) => nodes.filter((node) => node.id.startsWith(`${LAYER_PREFIX[column.key]}:`)).length),
     1,
@@ -180,7 +155,7 @@ export function InHubLossSankeyChart({ graph, columns }: Props) {
         labelFontWeight: 500,
         nodeFill: NODE_FILL,
         nodeStrokeWidth: 0,
-        linkFill: (d: unknown) => colors.get(linkVendor(d, links)) ?? UNLABELED_VENDOR_COLOR,
+        linkFill: (d: unknown) => colors.get(linkVendor(d, links)) ?? UNLABELED_COLOR,
         linkFillOpacity: 0.45,
       },
       tooltip: {

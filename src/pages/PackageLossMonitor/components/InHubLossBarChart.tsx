@@ -2,34 +2,47 @@ import { Button } from 'antd'
 import { Chart } from '@antv/g2'
 import { useEffect, useMemo, useRef } from 'react'
 import { adminColors } from '../../../theme/adminColors'
-import type { CountDatum, ScopeDrillCrumb, ScopeDrillPath } from '../inHubLossAnalytics'
+import type { CountDatum, DrillCrumb } from '../inHubLossAnalytics'
+import { categoryColorMap } from '../lossChartColors'
 
-type Props = {
+type Props<TPath> = {
   title: string
   caption?: string
   data: CountDatum[]
   emptyText: string
   ariaLabel: string
-  crumbs?: ScopeDrillCrumb[]
+  crumbs?: DrillCrumb<TPath>[]
+  /** true 时柱形竖立（类目在 x 轴），默认横向 */
+  vertical?: boolean
+  /** true 时每个类目取不同颜色，与桑基图共用同一套色板 */
+  colorByKey?: boolean
   onBarClick?: (key: string) => void
-  onCrumbClick?: (path: ScopeDrillPath) => void
+  onCrumbClick?: (path: TPath) => void
 }
 
-export function InHubLossBarChart({
+const VERTICAL_HEIGHT = 320
+
+export function InHubLossBarChart<TPath>({
   title,
   caption,
   data,
   emptyText,
   ariaLabel,
   crumbs,
+  vertical = false,
+  colorByKey = false,
   onBarClick,
   onCrumbClick,
-}: Props) {
+}: Props<TPath>) {
   const containerRef = useRef<HTMLDivElement>(null)
   const onBarClickRef = useRef(onBarClick)
-  const height = Math.min(480, Math.max(160, 80 + data.length * 36))
+  const height = vertical ? VERTICAL_HEIGHT : Math.min(480, Math.max(160, 80 + data.length * 36))
   const dataKey = useMemo(() => data.map((d) => `${d.key}:${d.count}`).join('|'), [data])
   const interactive = Boolean(onBarClick)
+  const colors = useMemo(
+    () => (colorByKey ? categoryColorMap(data.map((d) => d.key)) : null),
+    [colorByKey, data],
+  )
 
   useEffect(() => {
     onBarClickRef.current = onBarClick
@@ -46,8 +59,8 @@ export function InHubLossBarChart({
       theme: 'light',
       paddingTop: 8,
       paddingRight: 16,
-      paddingBottom: 12,
-      paddingLeft: 108,
+      paddingBottom: vertical ? 64 : 12,
+      paddingLeft: vertical ? 48 : 108,
     })
 
     chart.scale('x', { type: 'band', paddingInner: 0.28 })
@@ -58,17 +71,22 @@ export function InHubLossBarChart({
       gridLineDash: [4, 4],
       gridStroke: adminColors.line,
     })
-    chart.axis('x', { title: false, labelFontSize: 11 })
+    chart.axis('x', {
+      title: false,
+      labelFontSize: 11,
+      labelAutoRotate: vertical,
+      labelAutoHide: vertical,
+    })
     chart.interaction('tooltip', true)
     if (interactive) chart.interaction('elementHighlight', true)
 
-    chart
-      .interval()
-      .coordinate({ transform: [{ type: 'transpose' }] })
+    const interval = chart.interval()
+    if (!vertical) interval.coordinate({ transform: [{ type: 'transpose' }] })
+    interval
       .data(data)
       .encode('x', 'key')
       .encode('y', 'count')
-      .style('fill', adminColors.accent)
+      .style('fill', (d: CountDatum) => colors?.get(d.key) ?? adminColors.accent)
       .style('fillOpacity', 0.9)
       .tooltip({
         title: (d: CountDatum) => d.key,
@@ -93,7 +111,7 @@ export function InHubLossBarChart({
     return () => {
       chart.destroy()
     }
-  }, [data, dataKey, height, interactive])
+  }, [colors, data, dataKey, height, interactive, vertical])
 
   return (
     <div>
