@@ -50,7 +50,15 @@ function readPageError(page: DepartmentPage): string | null {
   return null
 }
 
-/** 对外 API 字段：dept_name 对应 name，parent_dept 为 null 表示根节点 */
+/** parent_dept 实测是嵌套对象 {id, dept_code, dept_name, parent_dept}，嵌套深处又退化成裸 id，两种都要认；null 表示根节点 */
+function readParentId(raw: unknown): number {
+  if (raw == null) return 0
+  const value = typeof raw === 'object' ? (raw as Record<string, unknown>).id : raw
+  const parentId = Number(value)
+  return Number.isFinite(parentId) ? parentId : 0
+}
+
+/** 对外 API 字段：dept_name 对应 name，parent_dept 对应 pId */
 function parseDepartmentNodes(rows: unknown[]): ZktDepartmentNode[] {
   const departments: ZktDepartmentNode[] = []
   for (const item of rows) {
@@ -58,11 +66,10 @@ function parseDepartmentNodes(rows: unknown[]): ZktDepartmentNode[] {
     const row = item as Record<string, unknown>
     const id = Number(row.id)
     const name = String(row.dept_name ?? '').trim()
-    const parentId = Number(row.parent_dept ?? 0)
     if (!Number.isFinite(id) || !name) continue
     departments.push({
       id,
-      pId: Number.isFinite(parentId) ? parentId : 0,
+      pId: readParentId(row.parent_dept),
       name,
     })
   }
