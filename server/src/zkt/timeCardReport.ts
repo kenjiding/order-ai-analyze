@@ -1,5 +1,5 @@
 import { ZKT_ATTENDANCE_BASE_URL } from './constants'
-import { getZktSession, invalidateZktSession } from './session'
+import { getZktToken, invalidateZktToken, zktAuthHeaders } from './token'
 
 const REPORT_PATH = '/att/api/totalTimeCardReportV2/'
 const MAX_PAGE_SIZE = 10_000
@@ -76,16 +76,11 @@ function readPageError(page: ReportPage): string | null {
 
 async function fetchReportPage(input: {
   url: string
-  session: { cookieHeader: string; csrfToken: string }
+  token: string
 }): Promise<{ ok: true; page: ReportPage; text: string } | { ok: false; status: number; text: string }> {
   const res = await fetch(input.url, {
     method: 'GET',
-    headers: {
-      Accept: 'application/json, text/javascript, */*; q=0.01',
-      Referer: `${input.url.split('/att/')[0]}/`,
-      Cookie: input.session.cookieHeader,
-      'X-CSRFToken': input.session.csrfToken,
-    },
+    headers: zktAuthHeaders(input.token),
   })
   const text = await res.text()
   if (!res.ok) {
@@ -107,7 +102,7 @@ export async function queryZktTimeCardReport(
   const groups = String(input.groups ?? '-1').trim() || '-1'
   const employees = String(input.employees ?? '-1').trim() || '-1'
 
-  let session = await getZktSession(credentials)
+  let token = await getZktToken(credentials)
   const records: unknown[] = []
   const rawPages: unknown[] = []
   let page = 1
@@ -127,13 +122,13 @@ export async function queryZktTimeCardReport(
       employees,
     })
 
-    let result = await fetchReportPage({ url, session })
+    let result = await fetchReportPage({ url, token })
 
     if (!result.ok && (result.status === 401 || result.status === 403) && !retried) {
-      invalidateZktSession(credentials)
-      session = await getZktSession(credentials, true)
+      invalidateZktToken(credentials)
+      token = await getZktToken(credentials, true)
       retried = true
-      result = await fetchReportPage({ url, session })
+      result = await fetchReportPage({ url, token })
     }
 
     if (!result.ok) {
@@ -142,7 +137,7 @@ export async function queryZktTimeCardReport(
         status: result.status,
         message:
           result.status === 401 || result.status === 403
-            ? 'ZKT 考勤会话已失效，请检查系统设置中的账号密码'
+            ? 'ZKT 考勤 token 已失效，请检查系统设置中的账号密码'
             : `ZKT 考勤接口 HTTP ${result.status}`,
         rawText: result.text.slice(0, 500),
       }
@@ -151,12 +146,6 @@ export async function queryZktTimeCardReport(
     rawPages.push(JSON.parse(result.text))
     const pageError = readPageError(result.page)
     if (pageError) {
-      if (!retried && /登录|session|csrf/i.test(pageError)) {
-        invalidateZktSession(credentials)
-        session = await getZktSession(credentials, true)
-        retried = true
-        continue
-      }
       return { ok: false, status: 502, message: pageError, rawText: result.text.slice(0, 500) }
     }
 
