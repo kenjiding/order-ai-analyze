@@ -1,5 +1,5 @@
 import { splitFeishuWebhookTextChunks } from '../sortEfficiencyFeishuAnalysis'
-import { FEISHU_BLOCK_MARKER, FEISHU_BODY_MARKER_RE, FEISHU_HR_MARKER } from './feishuLarkMdMarkers'
+import { FEISHU_BLOCK_MARKER, FEISHU_BODY_MARKER_RE, FEISHU_GAP_MARKER, FEISHU_HR_MARKER } from './feishuLarkMdMarkers'
 import { buildMentionLarkMd, type SupplierMentionContact } from './feishuMentionHelpers'
 
 /** 编辑器里一个空行在卡片上对应的高度（markdown 组件正文行高，normal 字号约 22px） */
@@ -7,6 +7,9 @@ const FEISHU_BLANK_LINE_PX = 22
 
 /** margin 官方允许 [-99,99]px，连续空行最多留 4 行的间距 */
 const FEISHU_MAX_BLANK_LINES = 4
+
+/** 多段文案拼接接缝的间距：看得出分段，又比一整行空行窄 */
+const FEISHU_GAP_PX = 8
 
 /** 一张卡片最多 200 个元素（官方限制），超了飞书直接拒收整条消息 */
 const FEISHU_CARD_MAX_ELEMENTS = 200
@@ -135,10 +138,13 @@ export function buildFleetRichMessageCard(params: {
 
   // 编辑器里的空段落不发成空元素，而是攒起来写进下一个元素的上外边距
   let pendingBlankLines = 0
+  let pendingGapPx = 0
 
   const emit = (element: Record<string, unknown>) => {
-    const top = Math.min(pendingBlankLines, FEISHU_MAX_BLANK_LINES) * FEISHU_BLANK_LINE_PX
+    const top =
+      Math.min(pendingBlankLines, FEISHU_MAX_BLANK_LINES) * FEISHU_BLANK_LINE_PX + pendingGapPx
     pendingBlankLines = 0
+    pendingGapPx = 0
     if (top > 0) element.margin = `${top}px 0px 0px 0px`
     elements.push(element)
   }
@@ -185,6 +191,12 @@ export function buildFleetRichMessageCard(params: {
     }
 
     for (const block of raw.split(FEISHU_BLOCK_MARKER)) {
+      if (block.trim() === FEISHU_GAP_MARKER) {
+        // 多段文案的接缝：不生成元素，只把小间距记到下一个元素上（先 flush，否则会并进上一个元素）
+        flushPlain()
+        pendingGapPx += FEISHU_GAP_PX
+        continue
+      }
       if (!block.trim()) {
         flushPlain()
         pendingBlankLines += 1

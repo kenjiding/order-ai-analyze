@@ -1,5 +1,5 @@
 import { htmlToLarkMd, larkMdToHtml } from './feishuLarkMdConvert'
-import { feishuImageMarker } from './feishuLarkMdMarkers'
+import { FEISHU_GAP_MARKER, feishuImageMarker } from './feishuLarkMdMarkers'
 
 /** 判断存储值是否为 TipTap HTML（兼容旧版 lark_md 纯文本） */
 export function isEditorHtml(value: string): boolean {
@@ -14,13 +14,40 @@ export function editorContentFromStored(value: string): string {
   return larkMdToHtml(value)
 }
 
+/** 段落块是否为空（无文字、也无图片/分割线等实体内容） */
+function isEmptyEditorBlock(el: Element): boolean {
+  if (el.querySelector('img, hr')) return false
+  return ((el.textContent ?? '').replace(/\u00a0/g, ' ').trim()) === ''
+}
+
+/**
+ * 去掉一段编辑器 HTML 首尾的空段落。
+ * 编辑器里回车收尾会留下空 `<p>`，与拼接时插入的空段落叠加后，
+ * 卡片上就是两行空行；剥掉后接缝恰好一个空行。
+ */
+function stripEdgeEmptyBlocks(html: string): string {
+  const doc = new DOMParser().parseFromString(`<div>${html}</div>`, 'text/html')
+  const root = doc.body.firstElementChild
+  if (!root) return html
+  while (root.firstElementChild && isEmptyEditorBlock(root.firstElementChild)) {
+    root.firstElementChild.remove()
+  }
+  while (root.lastElementChild && isEmptyEditorBlock(root.lastElementChild)) {
+    root.lastElementChild.remove()
+  }
+  return root.innerHTML
+}
+
 export function mergeEditorHtmlParts(parts: string[]): string {
   const htmlParts = parts
     .map((p) => p.trim())
     .filter(Boolean)
     .map((p) => (isEditorHtml(p) ? p : larkMdToHtml(p)))
+    .map((p) => stripEdgeEmptyBlocks(p))
+    .filter((p) => p.trim())
   if (!htmlParts.length) return ''
-  return htmlParts.join('<p></p>')
+  // 段与段之间只留一小段间距（空段落会撑出整整一行空行，太宽）
+  return htmlParts.join(`<p>${FEISHU_GAP_MARKER}</p>`)
 }
 
 /** 飞书卡片 img size 自定义像素上限（官方允许 [1,1000]px） */

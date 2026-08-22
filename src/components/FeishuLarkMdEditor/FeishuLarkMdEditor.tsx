@@ -24,6 +24,7 @@ import {
 import { useEffect, useRef, useState, type ChangeEvent, type MouseEvent } from 'react'
 import { editorContentFromStored } from './feishuEditorContent'
 import { FeishuAtAll } from './feishuAtAllExtension'
+import { FeishuEnterBehavior } from './feishuEnterExtension'
 import './feishuLarkMdEditor.css'
 
 type Props = {
@@ -121,6 +122,7 @@ export function FeishuLarkMdEditor({
         placeholder: placeholder ?? '输入推送内容…',
       }),
       FeishuAtAll,
+      FeishuEnterBehavior,
     ],
     content: editorContentFromStored(value),
     editable: !disabled,
