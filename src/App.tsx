@@ -40,6 +40,9 @@ const DispatchAlarmPage = lazy(() => import('./pages/DispatchAlarm/DispatchAlarm
 const ChaseDispatchPage = lazy(() => import('./pages/ChaseDispatch/ChaseDispatchPage'))
 const WorkOrderPushPage = lazy(() => import('./pages/WorkOrderPush/WorkOrderPushPage'))
 const AttendanceWorkTimePage = lazy(() => import('./pages/AttendanceWorkTime/AttendanceWorkTimePage'))
+const ContainerLedgerPage = lazy(() => import('./pages/ContainerLedger/ContainerLedgerPage'))
+const ContainerAccountsPage = lazy(() => import('./pages/ContainerAccounts/ContainerAccountsPage'))
+const ContainerTransfersPage = lazy(() => import('./pages/ContainerTransfers/ContainerTransfersPage'))
 const PushEngagementMonitorPage = lazy(() => import('./pages/PushEngagementMonitor/PushEngagementMonitorPage'))
 const PackageLossMonitorPage = lazy(() => import('./pages/PackageLossMonitor/PackageLossMonitorPage'))
 
@@ -264,6 +267,30 @@ function AppRoutes() {
             element={
               <KeptPage cacheKey="page-attendance-work-time" name="attendance-work-time">
                 <AttendanceWorkTimePage />
+              </KeptPage>
+            }
+          />
+          <Route
+            path="/container/ledger"
+            element={
+              <KeptPage cacheKey="page-container-ledger" name="container-ledger">
+                <ContainerLedgerPage />
+              </KeptPage>
+            }
+          />
+          <Route
+            path="/container/accounts"
+            element={
+              <KeptPage cacheKey="page-container-accounts" name="container-accounts">
+                <ContainerAccountsPage />
+              </KeptPage>
+            }
+          />
+          <Route
+            path="/container/transfers"
+            element={
+              <KeptPage cacheKey="page-container-transfers" name="container-transfers">
+                <ContainerTransfersPage />
               </KeptPage>
             }
           />
