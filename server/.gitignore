@@ -3,3 +3,6 @@ dist
 .env
 .env.*
 
+
+# 容器管理凭证图片的本地存储（运行时产生）
+upload-storage/
