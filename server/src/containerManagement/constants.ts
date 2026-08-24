@@ -1,0 +1,79 @@
+/** 容器管理：品类、主体类型、流转类型/状态、台账原因类型的常量与中文标签 */
+
+export const CONTAINER_TYPES = ['BIG_BASKET', 'SILVER_BOX'] as const
+export type ContainerType = (typeof CONTAINER_TYPES)[number]
+
+export const containerTypeLabel: Record<ContainerType, string> = {
+  BIG_BASKET: '大篮筐',
+  SILVER_BOX: '银框',
+}
+
+export const ACCOUNT_KINDS = ['BROKER', 'CUSTOMER', 'INTERNAL_WAREHOUSE'] as const
+export type AccountKind = (typeof ACCOUNT_KINDS)[number]
+
+export const accountKindLabel: Record<AccountKind, string> = {
+  BROKER: '清关行',
+  CUSTOMER: '客户',
+  INTERNAL_WAREHOUSE: '内部仓库',
+}
+
+export const TRANSFER_KINDS = [
+  'LEND',
+  'RETURN',
+  'INTERNAL_TRANSFER',
+  'IN_TRANSIT_OUT',
+  'IN_TRANSIT_IN',
+] as const
+export type TransferKind = (typeof TRANSFER_KINDS)[number]
+
+export const TRANSFER_STATUSES = ['PENDING_RECEIVER', 'DISPUTED', 'CONFIRMED', 'CANCELLED'] as const
+export type TransferStatus = (typeof TRANSFER_STATUSES)[number]
+
+/** 借出与归还需接收方确认后双方库存才变动；其余类型创建时即记账 */
+export function transferKindNeedsReceiverConfirmation(kind: TransferKind): boolean {
+  return kind === 'LEND' || kind === 'RETURN'
+}
+
+/** 未确认的借出/归还会占用转出方的可用量 */
+export const PENDING_OUTBOUND_STATUSES: TransferStatus[] = ['PENDING_RECEIVER', 'DISPUTED']
+
+export const BALANCE_REASON_TYPES = [
+  'INITIAL_STOCKTAKE',
+  'STOCKTAKE_CORRECTION',
+  'DAMAGE_SCRAP',
+  'LOSS_REPORT',
+  'HISTORICAL_BACKFILL',
+  'TRANSFER_SETTLEMENT',
+] as const
+export type BalanceReasonType = (typeof BALANCE_REASON_TYPES)[number]
+
+/** 手工调账可选的原因类型；TRANSFER_SETTLEMENT 只由流转记账写入，不开放给用户选 */
+export const MANUAL_BALANCE_REASON_TYPES = BALANCE_REASON_TYPES.filter(
+  (item) => item !== 'TRANSFER_SETTLEMENT',
+) as readonly BalanceReasonType[]
+
+export const BALANCE_AUDIT_ACTIONS = ['CREATE', 'UPDATE', 'DELETE', 'TRANSFER'] as const
+export type BalanceAuditAction = (typeof BALANCE_AUDIT_ACTIONS)[number]
+
+export const TRANSFER_CHANGE_ACTIONS = ['UPDATE', 'DELETE'] as const
+export type TransferChangeAction = (typeof TRANSFER_CHANGE_ACTIONS)[number]
+
+export function isContainerType(value: unknown): value is ContainerType {
+  return CONTAINER_TYPES.includes(value as ContainerType)
+}
+
+export function isAccountKind(value: unknown): value is AccountKind {
+  return ACCOUNT_KINDS.includes(value as AccountKind)
+}
+
+export function isTransferKind(value: unknown): value is TransferKind {
+  return TRANSFER_KINDS.includes(value as TransferKind)
+}
+
+export function isTransferStatus(value: unknown): value is TransferStatus {
+  return TRANSFER_STATUSES.includes(value as TransferStatus)
+}
+
+export function isManualBalanceReasonType(value: unknown): value is BalanceReasonType {
+  return MANUAL_BALANCE_REASON_TYPES.includes(value as BalanceReasonType)
+}

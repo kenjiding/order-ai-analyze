@@ -26,6 +26,7 @@ import { dispatchAlarmRouter } from './routes/dispatchAlarmRouter'
 import { dispatchAlarmPortalRouter } from './routes/dispatchAlarmPortalRouter'
 import { deliveringNotifyRouter } from './routes/deliveringNotifyRouter'
 import { attendanceWorkTimeRouter } from './routes/attendanceWorkTimeRouter'
+import { containerManagementRouter } from './routes/containerManagementRouter'
 import { packageLossMonitorRouter } from './routes/packageLossMonitorRouter'
 import { supplierConfigScopeRouter } from './routes/supplierConfigScopeRouter'
 import { userPreferencesRouter } from './routes/userPreferencesRouter'
@@ -88,6 +89,7 @@ app.use('/api/dispatch-alarm', requireAuth, dispatchAlarmRouter)
 app.use('/api/dispatch-alarm-portal', dispatchAlarmPortalRouter)
 app.use('/api/delivering-notify', requireAuth, deliveringNotifyRouter)
 app.use('/api/attendance-work-time', requireAuth, attendanceWorkTimeRouter)
+app.use('/api/container-management', requireAuth, containerManagementRouter)
 app.use('/api/package-loss-monitor', requireAuth, packageLossMonitorRouter)
 
 export { app }
