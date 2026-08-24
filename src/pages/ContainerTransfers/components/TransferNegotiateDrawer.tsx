@@ -1,30 +1,18 @@
 /**
  * 「协商」抽屉：状态与主张实收概览、转出方认可结算（内联二次确认）、
- * 当前申报原因与证据、接收方修改实收申报。结构与原系统 TransferNegotiateDrawer 一致。
+ * 当前申报原因与证据、接收方修改实收申报、协商留言。
  */
 import { useState } from 'react'
-import { Loader2, Send } from 'lucide-react'
+import { Alert, Button, Image, Input, Tag } from 'antd'
+import { Send } from 'lucide-react'
 import { AdminDrawer } from '../../../components/Drawer/AdminDrawer'
 import {
   containerTypeName,
+  transferStatusColor,
   transferStatusLabel,
 } from '../../../containerManagement/constants'
 import type { TransferDetail, TransferLineDraft } from '../../../containerManagement/types'
 import { TransferLineItemsInput } from './TransferLineItemsInput'
-
-/** 与列表状态徽章同一套语义配色 */
-function statusBadgeClass(status: TransferDetail['status']): string {
-  switch (status) {
-    case 'PENDING_RECEIVER':
-      return 'bg-amber-500/10 text-amber-800'
-    case 'DISPUTED':
-      return 'bg-violet-500/10 text-violet-800'
-    case 'CONFIRMED':
-      return 'bg-emerald-500/10 text-emerald-800'
-    case 'CANCELLED':
-      return 'bg-slate-200/70 text-slate-600'
-  }
-}
 
 function declaredSummary(detail: TransferDetail): string {
   return detail.items
@@ -75,13 +63,13 @@ export function TransferNegotiateDrawer({
   onSendMessage,
 }: Props) {
   const [acceptConfirmOpen, setAcceptConfirmOpen] = useState(false)
-  const [message, setMessage] = useState('')
-  const [sending, setSending] = useState(false)
   const [patchLines, setPatchLines] = useState<TransferLineDraft[] | null>(null)
   const [patchReason, setPatchReason] = useState<string | null>(null)
   const [patchError, setPatchError] = useState<string | null>(null)
+  const [message, setMessage] = useState('')
+  const [sending, setSending] = useState(false)
 
-  // 首次渲染前拿不到 detail，用 null 表示「尚未从 detail 初始化」
+  // null 表示尚未被用户改动，直接展示 detail 的当前值
   const lines: TransferLineDraft[] =
     patchLines ??
     (detail?.items ?? []).map((item) => ({
@@ -148,11 +136,9 @@ export function TransferNegotiateDrawer({
         <div className="space-y-5">
           <div className="flex w-full items-start gap-2">
             <div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-2 gap-y-1">
-              <span
-                className={`inline-flex items-center rounded px-2 py-0.5 text-xs font-medium ${statusBadgeClass(detail.status)}`}
-              >
+              <Tag color={transferStatusColor[detail.status]}>
                 {transferStatusLabel[detail.status]}
-              </span>
+              </Tag>
               {detail.receivedTotal !== null ? (
                 <div className="text-sm text-slate-500">
                   <span>
@@ -180,7 +166,7 @@ export function TransferNegotiateDrawer({
               ) : null}
               {detail.settledTotal !== null ? (
                 <span className="text-sm text-slate-500">
-                  认可结算：{' '}
+                  已落表：{' '}
                   <span className="font-semibold tabular-nums text-slate-900">
                     {detail.settledTotal}
                   </span>
@@ -188,88 +174,69 @@ export function TransferNegotiateDrawer({
               ) : null}
             </div>
             {detail.status === 'DISPUTED' && isSender && !acceptConfirmOpen ? (
-              <div className="shrink-0 self-center">
-                <button
-                  type="button"
-                  className="rounded bg-[#2f8f87] px-3 py-1.5 text-sm font-medium text-white transition hover:bg-[#25746d] disabled:opacity-50"
-                  disabled={busy || detail.receivedTotal === null}
-                  onClick={() => setAcceptConfirmOpen(true)}
-                >
-                  认可申报数量
-                </button>
-              </div>
+              <Button
+                type="primary"
+                className="shrink-0 self-center"
+                disabled={busy || detail.receivedTotal === null}
+                onClick={() => setAcceptConfirmOpen(true)}
+              >
+                认可申报数量
+              </Button>
             ) : null}
           </div>
 
           {acceptConfirmOpen && detail.status === 'DISPUTED' && isSender ? (
-            <div className="rounded border border-amber-500/35 bg-amber-50 p-3">
-              <p className="text-sm leading-relaxed text-slate-900">
-                {acceptConfirmDescription(detail)}
-              </p>
-              <div className="mt-3 flex flex-wrap justify-end gap-2">
-                <button
-                  type="button"
-                  className="rounded border border-slate-300 px-3 py-1.5 text-sm text-slate-700 transition hover:bg-slate-50 disabled:opacity-50"
-                  disabled={busy}
-                  onClick={() => setAcceptConfirmOpen(false)}
-                >
-                  取消
-                </button>
-                <button
-                  type="button"
-                  className="inline-flex items-center gap-1.5 rounded bg-[#2f8f87] px-3 py-1.5 text-sm font-medium text-white transition hover:bg-[#25746d] disabled:opacity-50"
-                  disabled={busy}
-                  onClick={async () => {
-                    const ok = await onAcceptSettlement(detail)
-                    if (ok) setAcceptConfirmOpen(false)
-                  }}
-                >
-                  {busy ? (
-                    <>
-                      <Loader2 className="size-3.5 shrink-0 animate-spin" aria-hidden />
-                      处理中…
-                    </>
-                  ) : (
-                    '确认认可'
-                  )}
-                </button>
-              </div>
-            </div>
+            <Alert
+              type="warning"
+              showIcon
+              message={acceptConfirmDescription(detail)}
+              action={
+                <div className="flex flex-wrap gap-2">
+                  <Button disabled={busy} onClick={() => setAcceptConfirmOpen(false)}>
+                    取消
+                  </Button>
+                  <Button
+                    type="primary"
+                    loading={busy}
+                    onClick={async () => {
+                      const ok = await onAcceptSettlement(detail)
+                      if (ok) setAcceptConfirmOpen(false)
+                    }}
+                  >
+                    确认认可
+                  </Button>
+                </div>
+              }
+            />
           ) : null}
 
-          <div className="rounded border border-slate-200 bg-slate-50 p-4 text-sm">
-            <p className="text-lg font-medium text-slate-900">当前申报原因</p>
+          <section className="rounded-lg border border-slate-200 bg-slate-50 p-4">
+            <h2 className="text-sm font-semibold text-slate-900">当前申报原因</h2>
             {detail.receiverReportReason?.trim() ? (
-              <p className="mt-2 whitespace-pre-wrap rounded border border-slate-200 bg-white p-3 leading-relaxed text-slate-800">
+              <p className="mt-2 whitespace-pre-wrap rounded-md border border-slate-200 bg-white p-3 text-sm leading-relaxed text-slate-700">
                 {detail.receiverReportReason.trim()}
               </p>
             ) : (
-              <p className="mt-2 text-slate-500">暂无申报原因。</p>
+              <p className="mt-2 text-sm text-slate-500">暂无申报原因。</p>
             )}
             {detail.receiverReportImageUrl ? (
               <div className="mt-3 space-y-1.5">
                 <p className="text-xs text-slate-500">申报证据</p>
-                <a
-                  href={detail.receiverReportImageUrl}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="block w-fit rounded border border-slate-200 bg-white p-1 transition hover:border-[#2f8f87]/45"
-                >
-                  <img
-                    src={detail.receiverReportImageUrl}
-                    alt="申报证据"
-                    className="max-h-44 max-w-full rounded object-contain"
-                  />
-                </a>
+                <Image
+                  src={detail.receiverReportImageUrl}
+                  alt="申报证据"
+                  width={180}
+                  className="rounded-md"
+                />
               </div>
             ) : null}
-          </div>
+          </section>
 
           {detail.status === 'DISPUTED' ? (
             <>
               {isReceiver ? (
-                <div className="rounded border border-slate-200 bg-slate-50 p-4 text-sm">
-                  <h2 className="mb-3 text-lg font-medium text-slate-900">修改申报</h2>
+                <section className="rounded-lg border border-slate-200 bg-slate-50 p-4">
+                  <h2 className="mb-3 text-sm font-semibold text-slate-900">修改申报</h2>
                   <div className="space-y-4">
                     <div className="space-y-1.5">
                       <span className="text-xs text-slate-500">
@@ -291,72 +258,63 @@ export function TransferNegotiateDrawer({
                       <span className="text-xs text-slate-500">
                         原因 <span className="text-rose-500">*</span>
                       </span>
-                      <textarea
+                      <Input.TextArea
                         rows={2}
                         maxLength={2000}
-                        className="w-full resize-y rounded border border-slate-300 px-3 py-2 text-sm outline-none focus:border-[#2f8f87]"
                         value={reason}
                         onChange={(e) => setPatchReason(e.target.value)}
                       />
                     </label>
-                    <button
-                      type="button"
-                      className="inline-flex items-center gap-1.5 rounded border border-slate-300 px-3 py-1.5 text-sm text-slate-700 transition hover:bg-white disabled:opacity-50"
-                      disabled={busy}
-                      onClick={() => void handleSubmitPatch()}
-                    >
-                      {busy ? (
-                        <>
-                          <Loader2 className="size-3.5 shrink-0 animate-spin" aria-hidden />
-                          更新中…
-                        </>
-                      ) : (
-                        '更新实收申报'
-                      )}
-                    </button>
+                    <Button loading={busy} onClick={() => void handleSubmitPatch()}>
+                      更新实收申报
+                    </Button>
                   </div>
-                </div>
+                </section>
               ) : null}
+
               {isSender || isReceiver ? (
-                <div className="rounded border border-slate-200 bg-slate-50 p-4 text-sm">
-                  <h2 className="mb-3 text-lg font-medium text-slate-900">协商留言</h2>
+                <section className="rounded-lg border border-slate-200 bg-slate-50 p-4">
+                  <h2 className="mb-3 text-sm font-semibold text-slate-900">协商留言</h2>
                   {detail.messages.length > 0 ? (
                     <ul className="m-0 mb-3 list-none space-y-2 p-0">
                       {detail.messages.map((item) => (
-                        <li key={item.id} className="rounded border border-slate-200 bg-white p-3">
+                        <li
+                          key={item.id}
+                          className="rounded-md border border-slate-200 bg-white p-3"
+                        >
                           <div className="flex flex-wrap items-baseline gap-x-2">
-                            <span className="font-medium text-slate-900">
+                            <span className="text-sm font-medium text-slate-900">
                               {item.authorUsername ?? '未知用户'}
                             </span>
                             <time
                               dateTime={item.createdAt}
-                              className="font-mono text-[0.7rem] tabular-nums text-slate-500"
+                              className="font-mono text-xs tabular-nums text-slate-400"
                             >
                               {new Date(item.createdAt).toLocaleString()}
                             </time>
                           </div>
-                          <p className="mt-1 whitespace-pre-wrap leading-relaxed text-slate-700">
+                          <p className="mt-1 whitespace-pre-wrap text-sm leading-relaxed text-slate-700">
                             {item.body}
                           </p>
                         </li>
                       ))}
                     </ul>
                   ) : (
-                    <p className="mb-3 text-slate-500">暂无留言。</p>
+                    <p className="mb-3 text-sm text-slate-500">暂无留言。</p>
                   )}
-                  <textarea
+                  <Input.TextArea
                     rows={2}
                     maxLength={4000}
-                    className="w-full resize-y rounded border border-slate-300 px-3 py-2 text-sm outline-none focus:border-[#2f8f87]"
                     placeholder="补充说明、拍照复核结论等"
                     value={message}
                     onChange={(e) => setMessage(e.target.value)}
                   />
                   <div className="mt-2 flex justify-end">
-                    <button
-                      type="button"
-                      className="inline-flex items-center gap-1.5 rounded bg-[#2f8f87] px-3 py-1.5 text-sm font-medium text-white transition hover:bg-[#25746d] disabled:opacity-50"
-                      disabled={sending || !message.trim()}
+                    <Button
+                      type="primary"
+                      icon={<Send className="h-4 w-4" aria-hidden />}
+                      loading={sending}
+                      disabled={!message.trim()}
                       onClick={async () => {
                         setSending(true)
                         const ok = await onSendMessage(detail.id, message.trim())
@@ -364,18 +322,14 @@ export function TransferNegotiateDrawer({
                         if (ok) setMessage('')
                       }}
                     >
-                      {sending ? (
-                        <Loader2 className="size-3.5 shrink-0 animate-spin" aria-hidden />
-                      ) : (
-                        <Send className="size-3.5 shrink-0" aria-hidden />
-                      )}
                       发送留言
-                    </button>
+                    </Button>
                   </div>
-                </div>
+                </section>
               ) : null}
+
               {!isSender && !isReceiver ? (
-                <p className="text-slate-500">仅转出方与接收方可操作</p>
+                <Alert type="info" showIcon message="仅转出方与接收方可操作" />
               ) : null}
             </>
           ) : null}

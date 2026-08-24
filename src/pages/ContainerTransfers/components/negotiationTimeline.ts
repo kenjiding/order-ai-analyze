@@ -2,7 +2,11 @@
  * 协商时间线的事件构建。节点与文案对齐原 box-tracking 系统，
  * 数量一律来自 items 的 declared / received / settled 三个字段。
  */
-import { containerTypeName, transferKindLabel } from '../../../containerManagement/constants'
+import {
+  containerTypeName,
+  transferKindLabel,
+  transferKindNeedsReceiverConfirmation,
+} from '../../../containerManagement/constants'
 import type { TransferDetail, TransferItem } from '../../../containerManagement/types'
 
 export type NegotiationTimelineEvent =
@@ -12,6 +16,8 @@ export type NegotiationTimelineEvent =
       kind: 'create' | 'report' | 'accept' | 'simple_confirm' | 'pending'
       when?: string
       title: string
+      /** 该节点发生后流转所处的状态，时间线上用颜色标签醒目展示 */
+      statusLabel: string
       description: string
       /** 按品类展开的数量说明（与时间线正文搭配） */
       quantityLines?: string[]
@@ -27,6 +33,7 @@ export type NegotiationTimelineEvent =
       kind: 'finalize'
       when: string
       title: string
+      statusLabel: string
       description: string
       tone: 'success' | 'destructive' | 'muted'
       quantityLines?: string[]
@@ -78,6 +85,7 @@ export function buildNegotiationTimelineEvents(
   const createdMs = Date.parse(detail.createdAt)
   const noteText = detail.note?.trim()
   const kindLabel = transferKindLabel[detail.kind] ?? detail.kind
+  const needsConfirm = transferKindNeedsReceiverConfirmation(detail.kind)
 
   entries.push({
     key: 'create',
@@ -85,6 +93,7 @@ export function buildNegotiationTimelineEvents(
     kind: 'create',
     when: detail.createdAt,
     title: `发起${kindLabel}`,
+    statusLabel: needsConfirm ? '待接收方确认' : '创建即记账',
     description: `${detail.fromAccountName} → ${detail.toAccountName}`,
     quantityLines: declaredQuantityLines(detail),
   })
@@ -106,6 +115,7 @@ export function buildNegotiationTimelineEvents(
       kind: 'report',
       when: new Date(reportMs).toISOString(),
       title: '接收方申报实收',
+      statusLabel: '转入协商',
       description:
         reportLines.length > 0
           ? '按品类申报实收如下。'
@@ -131,6 +141,7 @@ export function buildNegotiationTimelineEvents(
         kind: 'accept',
         when: detail.senderAcceptedAt,
         title: '转出方认可结算',
+        statusLabel: '已认可',
         description: '转出方已认可按下列数量结算。',
         quantityLines: acceptSettlementLines(detail),
       })
@@ -148,6 +159,7 @@ export function buildNegotiationTimelineEvents(
         kind: 'simple_confirm',
         when: detail.respondedAt,
         title: '接收方确认收货',
+        statusLabel: '已确认',
         description: [
           partial
             ? '实收与申报合计不一致，已按实收合计记账。'
@@ -164,6 +176,7 @@ export function buildNegotiationTimelineEvents(
         kind: 'finalize',
         when: detail.respondedAt,
         title: mergedAcceptAndBook ? '转出方认可并完成落表' : '落表完成',
+        statusLabel: '已记账',
         description: ['库存已按下列各品类数量调整。', noteText ? ` ${noteText}` : ''].join(''),
         quantityLines: bookedQuantityLines(detail),
         tone: 'success',
@@ -175,6 +188,7 @@ export function buildNegotiationTimelineEvents(
         kind: 'finalize',
         when: detail.respondedAt,
         title: `${kindLabel}已取消`,
+        statusLabel: '已取消',
         description: noteText ?? '双方库存未变更',
         tone: 'muted',
       })
@@ -185,6 +199,7 @@ export function buildNegotiationTimelineEvents(
         kind: 'finalize',
         when: detail.respondedAt,
         title: '接收方操作',
+        statusLabel: '已处理',
         description: noteText ?? '',
         tone: 'muted',
       })
@@ -198,6 +213,7 @@ export function buildNegotiationTimelineEvents(
       sort: tailSort,
       kind: 'pending',
       title: '进行中',
+      statusLabel: '协商中',
       pendingLabel: '协商中',
       description: '接收方可更新实收申报与原因说明，转出方可认可申报数量。',
     })
@@ -207,6 +223,7 @@ export function buildNegotiationTimelineEvents(
       sort: tailSort,
       kind: 'pending',
       title: '进行中',
+      statusLabel: '待接收方处理',
       pendingLabel: '待接收方处理',
       description: '等待接收方确认收货或进行差异申报。',
     })
@@ -215,42 +232,32 @@ export function buildNegotiationTimelineEvents(
   return entries.sort((a, b) => a.sort[0] - b.sort[0] || a.sort[1] - b.sort[1])
 }
 
-/** 节点圆形图标的描边与底色 */
-export function timelineNodeClass(kind: NegotiationTimelineEvent['kind']): string {
-  switch (kind) {
-    case 'create':
-      return 'border-sky-500/45 bg-sky-500/[0.08] text-sky-700'
-    case 'report':
-      return 'border-amber-500/45 bg-amber-500/[0.09] text-amber-800'
-    case 'accept':
-      return 'border-emerald-500/45 bg-emerald-500/[0.08] text-emerald-800'
-    case 'simple_confirm':
-      return 'border-teal-500/45 bg-teal-500/[0.08] text-teal-800'
-    case 'finalize':
-      return ''
-    case 'pending':
-      return 'border-[#2f8f87]/35 bg-[#2f8f87]/[0.06] text-[#2f8f87]'
-    default:
-      return 'border-slate-200 bg-slate-100 text-slate-500'
-  }
-}
+/** 时间线色调：每个节点一种颜色，状态标签、圆点、数量色条共用 */
+export type TimelineTone =
+  | 'create'
+  | 'report'
+  | 'accept'
+  | 'confirm'
+  | 'booked'
+  | 'cancelled'
+  | 'neutral'
+  | 'pending'
 
-/** 数量明细列表左侧的竖色条 */
-export function quantityListBorderClass(ev: NegotiationTimelineEvent): string {
+export function timelineTone(ev: NegotiationTimelineEvent): TimelineTone {
   switch (ev.kind) {
-    case 'report':
-      return 'border-amber-500/40'
     case 'create':
-      return 'border-sky-500/35'
+      return 'create'
+    case 'report':
+      return 'report'
     case 'accept':
-      return 'border-emerald-500/35'
+      return 'accept'
     case 'simple_confirm':
-      return 'border-teal-500/35'
+      return 'confirm'
+    case 'pending':
+      return 'pending'
     case 'finalize':
-      if (ev.tone === 'success') return 'border-emerald-500/40'
-      if (ev.tone === 'destructive') return 'border-rose-500/35'
-      return 'border-slate-200'
-    default:
-      return 'border-slate-200'
+      if (ev.tone === 'success') return 'booked'
+      if (ev.tone === 'destructive') return 'cancelled'
+      return ev.statusLabel === '已取消' ? 'cancelled' : 'neutral'
   }
 }

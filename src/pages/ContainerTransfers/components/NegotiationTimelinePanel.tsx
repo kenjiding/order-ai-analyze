@@ -1,7 +1,6 @@
 /**
- * 协商时间线面板。结构与样式对齐原 box-tracking 系统的 NegotiationHistoryPanel：
- * 手写竖线时间线（非组件库 Timeline），左侧圆形节点带连接线，右侧标题 + 时间 +
- * 描述 + 带色条的数量明细，差异申报节点额外展示原因与证据图。
+ * 协商时间线：手写竖线布局，每个节点按状态用不同颜色醒目区分
+ * （实心圆点 + 状态标签 + 数量明细左侧色条三处同色）。
  */
 import type { ReactNode } from 'react'
 import {
@@ -16,10 +15,72 @@ import {
 import type { TransferDetail } from '../../../containerManagement/types'
 import {
   buildNegotiationTimelineEvents,
-  quantityListBorderClass,
-  timelineNodeClass,
+  timelineTone,
   type NegotiationTimelineEvent,
+  type TimelineTone,
 } from './negotiationTimeline'
+
+type ToneStyle = {
+  /** 圆形节点：实心底色 + 白色图标，颜色对比拉满 */
+  dot: string
+  /** 圆点外发光，进一步强化状态色 */
+  ring: string
+  /** 状态标签 */
+  chip: string
+  /** 数量明细左侧色条 */
+  bar: string
+}
+
+const TONE_STYLE: Record<TimelineTone, ToneStyle> = {
+  create: {
+    dot: 'bg-sky-500 text-white border-sky-500',
+    ring: 'ring-4 ring-sky-500/15',
+    chip: 'border-sky-200 bg-sky-50 text-sky-700',
+    bar: 'border-sky-400',
+  },
+  report: {
+    dot: 'bg-amber-500 text-white border-amber-500',
+    ring: 'ring-4 ring-amber-500/15',
+    chip: 'border-amber-200 bg-amber-50 text-amber-800',
+    bar: 'border-amber-400',
+  },
+  accept: {
+    dot: 'bg-violet-500 text-white border-violet-500',
+    ring: 'ring-4 ring-violet-500/15',
+    chip: 'border-violet-200 bg-violet-50 text-violet-700',
+    bar: 'border-violet-400',
+  },
+  confirm: {
+    dot: 'bg-teal-500 text-white border-teal-500',
+    ring: 'ring-4 ring-teal-500/15',
+    chip: 'border-teal-200 bg-teal-50 text-teal-700',
+    bar: 'border-teal-400',
+  },
+  booked: {
+    dot: 'bg-emerald-600 text-white border-emerald-600',
+    ring: 'ring-4 ring-emerald-600/15',
+    chip: 'border-emerald-200 bg-emerald-50 text-emerald-700',
+    bar: 'border-emerald-500',
+  },
+  cancelled: {
+    dot: 'bg-rose-500 text-white border-rose-500',
+    ring: 'ring-4 ring-rose-500/15',
+    chip: 'border-rose-200 bg-rose-50 text-rose-700',
+    bar: 'border-rose-400',
+  },
+  neutral: {
+    dot: 'bg-slate-400 text-white border-slate-400',
+    ring: 'ring-4 ring-slate-400/15',
+    chip: 'border-slate-200 bg-slate-100 text-slate-600',
+    bar: 'border-slate-300',
+  },
+  pending: {
+    dot: 'bg-[#2f8f87] text-white border-[#2f8f87]',
+    ring: 'ring-4 ring-[#2f8f87]/15',
+    chip: 'border-[#2f8f87]/30 bg-[#e1f5f1] text-[#1f6f68]',
+    bar: 'border-[#2f8f87]',
+  },
+}
 
 function cx(...values: (string | false | null | undefined)[]): string {
   return values.filter(Boolean).join(' ')
@@ -36,21 +97,21 @@ function formatTime(iso: string): string {
 function nodeIcon(ev: NegotiationTimelineEvent): ReactNode {
   switch (ev.kind) {
     case 'create':
-      return <ArrowRightLeft className="size-3.5 sm:size-4" aria-hidden />
+      return <ArrowRightLeft className="size-4" aria-hidden />
     case 'report':
-      return <ClipboardList className="size-3.5 sm:size-4" aria-hidden />
+      return <ClipboardList className="size-4" aria-hidden />
     case 'accept':
-      return <BadgeCheck className="size-3.5 sm:size-4" aria-hidden />
+      return <BadgeCheck className="size-4" aria-hidden />
     case 'simple_confirm':
-      return <CircleCheck className="size-3.5 sm:size-4" aria-hidden />
+      return <CircleCheck className="size-4" aria-hidden />
     case 'finalize':
-      if (ev.tone === 'destructive') return <XCircle className="size-3.5 sm:size-4" aria-hidden />
-      if (ev.tone === 'success') return <CircleCheck className="size-3.5 sm:size-4" aria-hidden />
-      return <Ban className="size-3.5" aria-hidden />
+      if (ev.tone === 'destructive') return <XCircle className="size-4" aria-hidden />
+      if (ev.tone === 'success') return <CircleCheck className="size-4" aria-hidden />
+      return <Ban className="size-4" aria-hidden />
     case 'pending':
-      return <Clock className="size-3.5 animate-pulse sm:size-4" aria-hidden />
+      return <Clock className="size-4 animate-pulse" aria-hidden />
     default:
-      return <CircleCheck className="size-3.5 sm:size-4" aria-hidden />
+      return <CircleCheck className="size-4" aria-hidden />
   }
 }
 
@@ -58,7 +119,7 @@ type Props = {
   detail: TransferDetail | null
   loading: boolean
   error?: string | null
-  /** inline：表格展开区，带顶边线与标题；drawer：侧栏内嵌 */
+  /** inline：页面内嵌，带标题；drawer：抽屉内 */
   variant?: 'inline' | 'drawer'
 }
 
@@ -68,20 +129,14 @@ export function NegotiationTimelinePanel({
   error,
   variant = 'drawer',
 }: Props) {
-  const shell = variant === 'drawer' ? 'border-0 bg-transparent' : 'border-t border-slate-200'
-  const pad = variant === 'drawer' ? 'px-0 py-0' : 'px-3 py-4 sm:px-5'
-  const innerPad = variant === 'drawer' ? 'px-0 py-0' : 'px-4 py-5 sm:px-5'
-
   if (loading) {
     return (
-      <div className={cx(shell, 'bg-gradient-to-b from-slate-100/60 to-transparent', innerPad)} aria-busy>
-        <div className="animate-pulse space-y-5">
-          <div className="h-3.5 w-28 rounded-full bg-slate-200" />
-          <div className="space-y-3">
-            <div className="h-16 rounded bg-slate-200/70" />
-            <div className="h-14 rounded bg-slate-200/50" />
-            <div className="h-20 rounded bg-slate-200/70" />
-          </div>
+      <div className="animate-pulse space-y-5" aria-busy>
+        <div className="h-3.5 w-28 rounded-full bg-slate-200" />
+        <div className="space-y-3">
+          <div className="h-16 rounded-lg bg-slate-200/70" />
+          <div className="h-14 rounded-lg bg-slate-200/50" />
+          <div className="h-20 rounded-lg bg-slate-200/70" />
         </div>
       </div>
     )
@@ -89,13 +144,7 @@ export function NegotiationTimelinePanel({
 
   if (error) {
     return (
-      <div
-        className={cx(
-          variant === 'drawer'
-            ? 'border-0 bg-rose-50/60 px-0 py-3'
-            : 'border-t border-rose-200 bg-rose-50/60 px-4 py-3 sm:px-5',
-        )}
-      >
+      <div className="rounded-lg border border-rose-200 bg-rose-50 px-4 py-3">
         <p className="text-sm text-rose-600">{error}</p>
       </div>
     )
@@ -106,18 +155,16 @@ export function NegotiationTimelinePanel({
   const events = buildNegotiationTimelineEvents(detail)
 
   return (
-    <div className={cx(shell, 'text-sm', pad)}>
+    <div className={cx('text-sm', variant === 'inline' && 'border-t border-slate-200 pt-4')}>
       {variant === 'inline' ? (
         <div className="mb-4 flex items-center justify-between gap-2">
-          <h4 className="text-[0.8125rem] font-semibold uppercase tracking-[0.14em] text-slate-500">
-            协商时间线
-          </h4>
-          <span className="rounded border border-slate-200 px-1.5 py-0.5 font-mono text-[0.65rem] text-slate-500">
+          <h4 className="text-sm font-semibold text-slate-900">协商时间线</h4>
+          <span className="rounded-md bg-slate-100 px-2 py-0.5 font-mono text-xs text-slate-500">
             {events.length} 个节点
           </span>
         </div>
       ) : (
-        <p className="mb-3 text-xs text-slate-500">
+        <p className="mb-4 text-xs text-slate-500">
           共 <span className="font-mono tabular-nums">{events.length}</span> 个节点
         </p>
       )}
@@ -125,45 +172,46 @@ export function NegotiationTimelinePanel({
       <ol className="m-0 list-none space-y-0 p-0">
         {events.map((ev, index) => {
           const isLast = index === events.length - 1
+          const tone = TONE_STYLE[timelineTone(ev)]
           const quantityLines =
             'quantityLines' in ev && ev.quantityLines?.length ? ev.quantityLines : undefined
           const evidenceSrc = ev.kind === 'report' ? ev.receiverReportImageUrl : undefined
-
-          const iconWrap = cx(
-            'flex size-8 shrink-0 items-center justify-center rounded-full border-2 bg-white shadow-sm sm:size-9',
-            ev.kind === 'finalize'
-              ? ev.tone === 'success'
-                ? 'border-emerald-500/50 bg-emerald-500/[0.1] text-emerald-700'
-                : ev.tone === 'destructive'
-                  ? 'border-rose-500/45 bg-rose-500/[0.08] text-rose-600'
-                  : 'border-slate-300 bg-slate-100 text-slate-500'
-              : timelineNodeClass(ev.kind),
-          )
 
           return (
             <li key={ev.key} className="flex gap-3 sm:gap-4">
               <div className="relative flex shrink-0 flex-col items-center self-stretch pt-0.5">
                 {!isLast ? (
                   <span
-                    className="absolute left-1/2 top-[calc(0.125rem+2rem)] bottom-0 z-0 w-px -translate-x-1/2 bg-slate-200 sm:top-[calc(0.125rem+2.25rem)]"
+                    className="absolute left-1/2 top-11 bottom-0 z-0 w-px -translate-x-1/2 bg-slate-200"
                     aria-hidden
                   />
                 ) : null}
-                <span className={cx(iconWrap, 'relative z-[1]')}>{nodeIcon(ev)}</span>
+                <span
+                  className={cx(
+                    'relative z-[1] flex size-9 shrink-0 items-center justify-center rounded-full border shadow-sm',
+                    tone.dot,
+                    tone.ring,
+                  )}
+                >
+                  {nodeIcon(ev)}
+                </span>
               </div>
 
-              <div className="min-w-0 flex-1 space-y-1.5 pb-5">
-                <div className="flex flex-wrap items-baseline gap-x-2.5 gap-y-1">
+              <div className="min-w-0 flex-1 space-y-2 pb-6">
+                <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1">
                   <span className="font-semibold leading-tight text-slate-900">{ev.title}</span>
-                  {ev.kind === 'pending' && ev.pendingLabel ? (
-                    <span className="inline-flex h-5 items-center rounded bg-slate-100 px-1.5 text-[0.65rem] font-normal text-slate-600">
-                      {ev.pendingLabel}
-                    </span>
-                  ) : null}
+                  <span
+                    className={cx(
+                      'inline-flex items-center rounded-md border px-2 py-0.5 text-xs font-medium',
+                      tone.chip,
+                    )}
+                  >
+                    {ev.statusLabel}
+                  </span>
                   {ev.kind !== 'pending' && ev.when ? (
                     <time
                       dateTime={ev.when}
-                      className="font-mono text-[0.7rem] tabular-nums text-slate-500"
+                      className="font-mono text-xs tabular-nums text-slate-400"
                     >
                       {formatTime(ev.when)}
                     </time>
@@ -177,7 +225,7 @@ export function NegotiationTimelinePanel({
                     <ul
                       className={cx(
                         'm-0 list-none space-y-1 border-l-2 py-0.5 pl-3',
-                        quantityListBorderClass(ev),
+                        tone.bar,
                       )}
                     >
                       {quantityLines.map((text, li) => (
@@ -192,26 +240,22 @@ export function NegotiationTimelinePanel({
                   ) : null}
 
                   {ev.kind === 'report' && ev.receiverReportReason ? (
-                    <div className="space-y-1 rounded bg-slate-100/70 px-3 py-2.5">
-                      <p className="text-[0.65rem] font-semibold uppercase tracking-[0.12em] text-slate-500">
-                        申报原因
-                      </p>
-                      <p className="whitespace-pre-wrap text-sm leading-relaxed text-red-600">
+                    <div className="space-y-1 rounded-lg border border-amber-200 bg-amber-50/70 px-3 py-2.5">
+                      <p className="text-xs font-medium text-amber-800">申报原因</p>
+                      <p className="whitespace-pre-wrap text-sm leading-relaxed text-slate-700">
                         {ev.receiverReportReason}
                       </p>
                     </div>
                   ) : null}
 
                   {evidenceSrc ? (
-                    <div className="space-y-1 rounded bg-slate-100/70 px-3 py-2.5">
-                      <p className="text-[0.65rem] font-semibold uppercase tracking-[0.12em] text-slate-500">
-                        申报证据
-                      </p>
+                    <div className="space-y-1.5 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5">
+                      <p className="text-xs font-medium text-slate-600">申报证据</p>
                       <a
                         href={evidenceSrc}
                         target="_blank"
                         rel="noreferrer"
-                        className="block w-fit rounded border border-slate-200 bg-white p-1 transition hover:border-[#2f8f87]/45"
+                        className="block w-fit rounded-md border border-slate-200 bg-white p-1 transition hover:border-[#2f8f87]"
                       >
                         <img
                           src={evidenceSrc}
