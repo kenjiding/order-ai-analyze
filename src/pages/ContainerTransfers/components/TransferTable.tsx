@@ -21,7 +21,8 @@ type Props = {
   canActAs: (accountId: string) => boolean
   onConfirm: (transfer: Transfer) => void
   onDispute: (transfer: Transfer) => void
-  onDetail: (transfer: Transfer) => void
+  onTimeline: (transfer: Transfer) => void
+  onNegotiate: (transfer: Transfer) => void
   onEdit: (transfer: Transfer) => void
   onDelete: (transfer: Transfer) => void
 }
@@ -36,7 +37,8 @@ export function TransferTable({
   canActAs,
   onConfirm,
   onDispute,
-  onDetail,
+  onTimeline,
+  onNegotiate,
   onEdit,
   onDelete,
 }: Props) {
@@ -49,8 +51,11 @@ export function TransferTable({
       items.push({ key: 'confirm', label: '确认收货', onClick: () => onConfirm(record) })
       items.push({ key: 'dispute', label: '差异申报', onClick: () => onDispute(record) })
     }
-    items.push({ key: 'detail', label: '查看记录', onClick: () => onDetail(record) })
-    // 协商中改主张走详情抽屉，列表不再单独提供「编辑」入口
+    if (record.status === 'DISPUTED' && (isSender || isReceiver)) {
+      items.push({ key: 'negotiate', label: '协商', onClick: () => onNegotiate(record) })
+    }
+    items.push({ key: 'timeline', label: '查看记录', onClick: () => onTimeline(record) })
+    // 协商中改主张走「协商」抽屉，列表不提供「编辑」入口
     if (record.status === 'PENDING_RECEIVER' && isSender) {
       items.push({ key: 'edit', label: '编辑', onClick: () => onEdit(record) })
     }

@@ -1,13 +1,12 @@
-import { useState } from 'react'
 import { ArrowLeftRight, History, Plus, Repeat } from 'lucide-react'
 import { Button } from 'antd'
 import { PageSectionTabs } from '../../components/PageSectionTabs'
-import type { Transfer } from '../../containerManagement/types'
 import { ConfirmReceiptModal } from './components/ConfirmReceiptModal'
 import { DisputeReportModal } from './components/DisputeReportModal'
 import { TransferChangePanel } from './components/TransferChangePanel'
 import { TransferDeleteModal } from './components/TransferDeleteModal'
-import { TransferDetailDrawer } from './components/TransferDetailDrawer'
+import { TransferNegotiateDrawer } from './components/TransferNegotiateDrawer'
+import { TransferTimelineDrawer } from './components/TransferTimelineDrawer'
 import { TransferFilterBar } from './components/TransferFilterBar'
 import { TransferFormModal } from './components/TransferFormModal'
 import { TransferTable } from './components/TransferTable'
@@ -15,8 +14,6 @@ import { useContainerTransfersPage } from './useContainerTransfersPage'
 
 export default function ContainerTransfersPage() {
   const page = useContainerTransfersPage()
-  /** 协商中修改实收申报，与列表的「差异申报」共用同一个弹窗 */
-  const [editingReport, setEditingReport] = useState<Transfer | null>(null)
 
   return (
     <div className="admin-page space-y-5">
@@ -73,7 +70,8 @@ export default function ContainerTransfersPage() {
                 canActAs={page.canActAs}
                 onConfirm={page.openConfirm}
                 onDispute={page.openDispute}
-                onDetail={(transfer) => void page.openDetail(transfer)}
+                onTimeline={page.openTimeline}
+                onNegotiate={page.openNegotiate}
                 onEdit={page.openEdit}
                 onDelete={page.openDelete}
               />
@@ -117,20 +115,6 @@ export default function ContainerTransfersPage() {
         onCancel={page.closeDispute}
         onSubmit={page.submitDispute}
       />
-      {editingReport ? (
-        <DisputeReportModal
-          key={`edit-report-${editingReport.id}`}
-          target={editingReport}
-          isUpdate
-          submitting={page.submitting}
-          onCancel={() => setEditingReport(null)}
-          onSubmit={async (lines, reason, imageUrl, isUpdate, transferId) => {
-            const ok = await page.submitDispute(lines, reason, imageUrl, isUpdate, transferId)
-            if (ok) setEditingReport(null)
-            return ok
-          }}
-        />
-      ) : null}
       <TransferDeleteModal
         key={`delete-${page.deleteTarget?.id ?? 'none'}`}
         target={page.deleteTarget}
@@ -138,15 +122,25 @@ export default function ContainerTransfersPage() {
         onCancel={page.closeDelete}
         onSubmit={page.submitDelete}
       />
-      <TransferDetailDrawer
+      <TransferTimelineDrawer
+        open={page.drawer === 'timeline'}
         detail={page.detail}
         loading={page.detailLoading}
-        canActAs={page.canActAs}
-        submitting={page.submitting}
-        onClose={page.closeDetail}
+        onClose={page.closeDrawer}
+      />
+      <TransferNegotiateDrawer
+        open={page.drawer === 'negotiate'}
+        detail={page.detail}
+        loading={page.detailLoading}
+        busy={page.submitting}
+        isSender={page.detail ? page.canActAs(page.detail.fromAccountId) : false}
+        isReceiver={page.detail ? page.canActAs(page.detail.toAccountId) : false}
+        onClose={page.closeDrawer}
+        onAcceptSettlement={page.submitAcceptSettlement}
         onSendMessage={page.sendMessage}
-        onEditReport={setEditingReport}
-        onAcceptSettlement={(transfer) => void page.submitAcceptSettlement(transfer)}
+        onUpdateReport={(detail, lines, reason) =>
+          page.submitDispute(lines, reason, detail.receiverReportImageUrl, true, detail.id)
+        }
       />
     </div>
   )

@@ -25,7 +25,6 @@ import type {
   TransferStatus,
 } from '../../containerManagement/types'
 import { useAuthStore } from '../../stores/authStore'
-import { confirmDialog } from '../../utils/confirmDialog'
 import { showToast } from '../../utils/toast'
 
 const PAGE_SIZE = 12
@@ -102,6 +101,8 @@ export function useContainerTransfersPage() {
   const [deleteTarget, setDeleteTarget] = useState<Transfer | null>(null)
   const [detail, setDetail] = useState<TransferDetail | null>(null)
   const [detailLoading, setDetailLoading] = useState(false)
+  /** 与原系统一致：「查看记录」只看时间线，「协商」才有操作表单，两个抽屉分开 */
+  const [drawer, setDrawer] = useState<'timeline' | 'negotiate' | null>(null)
 
   /** 所有可选主体（转出方 + 接收方去重），用于筛选与展示 */
   const allAccounts = useMemo(() => {
@@ -209,16 +210,22 @@ export function useContainerTransfersPage() {
     if (tab === 'changes') await loadChanges(changePage, changeFilters)
   }, [loadTransfers, loadChanges, page, filters, tab, changePage, changeFilters])
 
-  const openDetail = useCallback(async (transfer: Transfer) => {
-    setDetailLoading(true)
-    const res = await fetchTransferDetail(transfer.id)
-    setDetailLoading(false)
-    if (!res.ok) {
-      showToast(res.error, 'error')
-      return
-    }
-    setDetail(res.data)
-  }, [])
+  const openDrawer = useCallback(
+    async (transfer: Transfer, mode: 'timeline' | 'negotiate') => {
+      setDrawer(mode)
+      setDetail(null)
+      setDetailLoading(true)
+      const res = await fetchTransferDetail(transfer.id)
+      setDetailLoading(false)
+      if (!res.ok) {
+        showToast(res.error, 'error')
+        setDrawer(null)
+        return
+      }
+      setDetail(res.data)
+    },
+    [],
+  )
 
   const reloadDetail = useCallback(async (transferId: string) => {
     const res = await fetchTransferDetail(transferId)
@@ -318,28 +325,21 @@ export function useContainerTransfersPage() {
     [reloadDetail],
   )
 
+  /** 二次确认由协商抽屉内联展示（与原系统一致），这里只负责提交 */
   const submitAcceptSettlement = useCallback(
-    async (transfer: Transfer): Promise<void> => {
+    async (transfer: Transfer): Promise<boolean> => {
       const received = transfer.receivedTotal ?? 0
-      const confirmed = await confirmDialog({
-        title: '确认按接收方申报的数量结算？',
-        content:
-          received === 0
-            ? '接收方申报实收 0，认可后本条流转将被取消，双方库存不变。'
-            : `认可后立即按各品类实收数量记账，合计 ${received} 个（申报 ${transfer.declaredTotal} 个）。该操作不可撤销。`,
-        danger: received === 0,
-      })
-      if (!confirmed) return
       setSubmitting(true)
       const res = await acceptSettlement(transfer.id)
       setSubmitting(false)
       if (!res.ok) {
         showToast(res.error, 'error')
-        return
+        return false
       }
       showToast(received === 0 ? '已取消该流转' : '已认可结算数量并完成记账', 'success')
       await refresh()
       if (detail?.id === transfer.id) await reloadDetail(transfer.id)
+      return true
     },
     [refresh, detail, reloadDetail],
   )
@@ -417,8 +417,13 @@ export function useContainerTransfersPage() {
       submitDelete,
       detail,
       detailLoading,
-      openDetail,
-      closeDetail: () => setDetail(null),
+      drawer,
+      openTimeline: (transfer: Transfer) => void openDrawer(transfer, 'timeline'),
+      openNegotiate: (transfer: Transfer) => void openDrawer(transfer, 'negotiate'),
+      closeDrawer: () => {
+        setDrawer(null)
+        setDetail(null)
+      },
       sendMessage,
       submitAcceptSettlement,
     }),
@@ -453,7 +458,8 @@ export function useContainerTransfersPage() {
       submitDelete,
       detail,
       detailLoading,
-      openDetail,
+      drawer,
+      openDrawer,
       sendMessage,
       submitAcceptSettlement,
     ],
