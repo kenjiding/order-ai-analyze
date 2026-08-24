@@ -5,6 +5,7 @@ import dayjs from 'dayjs'
 import type { Dayjs } from 'dayjs'
 import {
   containerTypeLabel,
+  formatTransferNo,
   transferChangeActionLabel,
 } from '../../../containerManagement/constants'
 import type {
@@ -91,12 +92,12 @@ export function TransferChangePanel({
       ),
     },
     {
-      title: '记录 ID',
+      title: '记录编号',
       key: 'transferId',
-      width: 130,
+      width: 120,
       render: (_, record) => (
         <span className="font-mono text-xs text-slate-500">
-          {record.transferId ?? record.beforeData.id}
+          {formatTransferNo(record.transferId ?? record.beforeData.id)}
         </span>
       ),
     },
@@ -153,10 +154,10 @@ export function TransferChangePanel({
       </p>
       <div className="flex flex-wrap items-end gap-3">
         <label className="flex flex-col gap-1.5">
-          <span className="text-xs text-slate-500">记录 ID</span>
+          <span className="text-xs text-slate-500">记录编号</span>
           <Input
             className="w-44 font-mono"
-            placeholder="完整 ID 或前缀"
+            placeholder="如 123 或 TR-000123"
             allowClear
             value={draft.transferId}
             onChange={(e) => setDraft((prev) => ({ ...prev, transferId: e.target.value }))}

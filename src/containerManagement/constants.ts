@@ -104,3 +104,20 @@ export function containerTypeName(code: string): string {
 export function transferKindNeedsReceiverConfirmation(kind: TransferKind): boolean {
   return kind === 'LEND' || kind === 'RETURN'
 }
+
+/** 流转记录对外编号：主键是自增数字，展示统一补零加前缀（与后端 constants 保持一致） */
+export const TRANSFER_NO_PREFIX = 'TR-'
+
+export function formatTransferNo(id: number): string {
+  return `${TRANSFER_NO_PREFIX}${String(id).padStart(6, '0')}`
+}
+
+/** 解析用户输入的编号：允许 123 / TR-000123 / tr000123 三种写法 */
+export function parseTransferNo(raw: string): number | null {
+  const text = raw.trim()
+  if (!text) return null
+  const digits = text.replace(/^tr[-\s]?/i, '').replace(/^0+(?=\d)/, '')
+  if (!/^\d+$/.test(digits)) return null
+  const value = Number(digits)
+  return Number.isSafeInteger(value) && value > 0 ? value : null
+}

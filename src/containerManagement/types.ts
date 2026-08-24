@@ -56,7 +56,7 @@ export type BalanceAudit = {
   delta: number | null
   reasonType: BalanceReasonType
   reason: string
-  transferId: string | null
+  transferId: number | null
   actorUsername: string | null
   createdAt: string
 }
@@ -69,7 +69,7 @@ export type TransferItem = {
 }
 
 export type Transfer = {
-  id: string
+  id: number
   kind: TransferKind
   status: TransferStatus
   fromAccountId: string
@@ -102,7 +102,7 @@ export type TransferMessage = {
 export type TransferDetail = Transfer & { messages: TransferMessage[] }
 
 export type TransferSnapshot = {
-  id: string
+  id: number
   kind: TransferKind
   status: TransferStatus
   fromAccountId: string
@@ -114,7 +114,7 @@ export type TransferSnapshot = {
 
 export type TransferChange = {
   id: string
-  transferId: string | null
+  transferId: number | null
   action: TransferChangeAction
   reason: string
   beforeData: TransferSnapshot

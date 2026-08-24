@@ -77,3 +77,20 @@ export function isTransferStatus(value: unknown): value is TransferStatus {
 export function isManualBalanceReasonType(value: unknown): value is BalanceReasonType {
   return MANUAL_BALANCE_REASON_TYPES.includes(value as BalanceReasonType)
 }
+
+/** 流转记录对外编号：主键是自增数字，展示统一补零加前缀 */
+export const TRANSFER_NO_PREFIX = 'TR-'
+
+export function formatTransferNo(id: number): string {
+  return `${TRANSFER_NO_PREFIX}${String(id).padStart(6, '0')}`
+}
+
+/** 解析用户输入的编号：允许 123 / TR-000123 / tr000123 三种写法 */
+export function parseTransferNo(raw: unknown): number | null {
+  const text = String(raw ?? '').trim()
+  if (!text) return null
+  const digits = text.replace(/^tr[-\s]?/i, '').replace(/^0+(?=\d)/, '')
+  if (!/^\d+$/.test(digits)) return null
+  const value = Number(digits)
+  return Number.isSafeInteger(value) && value > 0 ? value : null
+}

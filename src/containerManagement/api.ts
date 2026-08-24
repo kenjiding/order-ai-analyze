@@ -134,7 +134,7 @@ export function fetchBalanceAudits(params: {
 // ------------------------------------------------------------ 流转记录
 
 export function fetchTransfers(params: {
-  transferId?: string
+  transferId?: number
   fromAccountId?: string
   toAccountId?: string
   status?: TransferStatus | ''
@@ -146,7 +146,7 @@ export function fetchTransfers(params: {
   return apiFetch<Paged<Transfer>>(`/transfers${toQuery(params)}`)
 }
 
-export function fetchTransferDetail(id: string): Promise<ApiResult<TransferDetail>> {
+export function fetchTransferDetail(id: number): Promise<ApiResult<TransferDetail>> {
   return apiFetch<TransferDetail>(`/transfers/${id}`)
 }
 
@@ -162,7 +162,7 @@ export function createTransfer(body: {
 }
 
 export function updateTransfer(
-  id: string,
+  id: number,
   body: {
     lineItems?: { containerType: ContainerType; quantity: number }[]
     imageUrl?: string | null
@@ -173,14 +173,14 @@ export function updateTransfer(
   return apiFetch<Transfer>(`/transfers/${id}`, { method: 'PATCH', body: JSON.stringify(body) })
 }
 
-export function deleteTransfer(id: string, reason: string): Promise<ApiResult<null>> {
+export function deleteTransfer(id: number, reason: string): Promise<ApiResult<null>> {
   return apiFetch<null>(`/transfers/${id}`, {
     method: 'DELETE',
     body: JSON.stringify({ reason }),
   })
 }
 
-export function confirmTransfer(id: string, note: string): Promise<ApiResult<Transfer>> {
+export function confirmTransfer(id: number, note: string): Promise<ApiResult<Transfer>> {
   return apiFetch<Transfer>(`/transfers/${id}/confirm`, {
     method: 'PATCH',
     body: JSON.stringify({ note }),
@@ -188,7 +188,7 @@ export function confirmTransfer(id: string, note: string): Promise<ApiResult<Tra
 }
 
 export function reportReceipt(
-  id: string,
+  id: number,
   body: {
     lineItems: { containerType: ContainerType; quantity: number }[]
     reason: string
@@ -203,7 +203,7 @@ export function reportReceipt(
 }
 
 export function addTransferMessage(
-  id: string,
+  id: number,
   body: { body: string; proposedQuantity?: number | null },
 ): Promise<ApiResult<TransferMessage[]>> {
   return apiFetch<TransferMessage[]>(`/transfers/${id}/messages`, {
@@ -212,7 +212,7 @@ export function addTransferMessage(
   })
 }
 
-export function acceptSettlement(id: string): Promise<ApiResult<Transfer>> {
+export function acceptSettlement(id: number): Promise<ApiResult<Transfer>> {
   return apiFetch<Transfer>(`/transfers/${id}/accept-settlement`, {
     method: 'PATCH',
     body: JSON.stringify({}),
@@ -220,7 +220,7 @@ export function acceptSettlement(id: string): Promise<ApiResult<Transfer>> {
 }
 
 export function fetchTransferChanges(params: {
-  transferId?: string
+  transferId?: number
   action?: string
   start?: string
   end?: string

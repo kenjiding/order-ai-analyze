@@ -14,6 +14,7 @@ import {
   reportReceipt,
   updateTransfer,
 } from '../../containerManagement/api'
+import { parseTransferNo } from '../../containerManagement/constants'
 import type {
   ContainerAccount,
   ContainerType,
@@ -128,7 +129,7 @@ export function useContainerTransfersPage() {
     async (nextPage = page, nextFilters = filters) => {
       setLoading(true)
       const res = await fetchTransfers({
-        transferId: nextFilters.transferId.trim() || undefined,
+        transferId: parseTransferNo(nextFilters.transferId) ?? undefined,
         fromAccountId: nextFilters.fromAccountId || undefined,
         toAccountId: nextFilters.toAccountId || undefined,
         status: nextFilters.status || undefined,
@@ -152,7 +153,7 @@ export function useContainerTransfersPage() {
     async (nextPage = changePage, nextFilters = changeFilters) => {
       setChangeLoading(true)
       const res = await fetchTransferChanges({
-        transferId: nextFilters.transferId.trim() || undefined,
+        transferId: parseTransferNo(nextFilters.transferId) ?? undefined,
         action: nextFilters.action || undefined,
         start: nextFilters.range?.[0].startOf('day').toISOString(),
         end: nextFilters.range?.[1].endOf('day').toISOString(),
@@ -227,7 +228,7 @@ export function useContainerTransfersPage() {
     [],
   )
 
-  const reloadDetail = useCallback(async (transferId: string) => {
+  const reloadDetail = useCallback(async (transferId: number) => {
     const res = await fetchTransferDetail(transferId)
     if (res.ok) setDetail(res.data)
   }, [])
@@ -288,7 +289,7 @@ export function useContainerTransfersPage() {
       reason: string,
       imageUrl: string | null,
       isUpdate: boolean,
-      transferId?: string,
+      transferId?: number,
     ): Promise<boolean> => {
       const id = transferId ?? disputeTarget?.id
       if (!id) return false
@@ -313,7 +314,7 @@ export function useContainerTransfersPage() {
   )
 
   const sendMessage = useCallback(
-    async (transferId: string, body: string): Promise<boolean> => {
+    async (transferId: number, body: string): Promise<boolean> => {
       const res = await addTransferMessage(transferId, { body })
       if (!res.ok) {
         showToast(res.error, 'error')

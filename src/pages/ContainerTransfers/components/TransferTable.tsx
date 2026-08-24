@@ -4,6 +4,7 @@ import type { MenuProps } from 'antd'
 import { MoreHorizontal } from 'lucide-react'
 import dayjs from 'dayjs'
 import {
+  formatTransferNo,
   transferKindLabel,
   transferStatusColor,
   transferStatusLabel,
@@ -76,11 +77,13 @@ export function TransferTable({
       ),
     },
     {
-      title: 'ID',
+      title: '编号',
       dataIndex: 'id',
       key: 'id',
-      width: 120,
-      render: (value: string) => <span className="font-mono text-xs text-slate-500">{value}</span>,
+      width: 110,
+      render: (value: number) => (
+        <span className="font-mono text-xs text-slate-500">{formatTransferNo(value)}</span>
+      ),
     },
     {
       title: '类型',

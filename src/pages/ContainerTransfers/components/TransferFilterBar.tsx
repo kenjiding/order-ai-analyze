@@ -35,10 +35,10 @@ export function TransferFilterBar({ accounts, filters, loading, onApply }: Props
   return (
     <div className="flex flex-wrap items-end gap-3">
       <label className="flex flex-col gap-1.5">
-        <span className="text-xs text-slate-500">记录 ID</span>
+        <span className="text-xs text-slate-500">记录编号</span>
         <Input
           className="w-44 font-mono"
-          placeholder="完整 ID 或前缀"
+          placeholder="如 123 或 TR-000123"
           allowClear
           autoComplete="off"
           spellCheck={false}

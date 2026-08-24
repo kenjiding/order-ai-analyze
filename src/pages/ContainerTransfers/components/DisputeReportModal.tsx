@@ -15,7 +15,7 @@ type Props = {
     reason: string,
     imageUrl: string | null,
     isUpdate: boolean,
-    transferId: string,
+    transferId: number,
   ) => Promise<boolean>
 }
 

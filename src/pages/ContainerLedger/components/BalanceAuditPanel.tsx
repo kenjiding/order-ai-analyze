@@ -9,6 +9,7 @@ import {
   balanceAuditActionLabel,
   balanceReasonTypeLabel,
   containerTypeLabel,
+  formatTransferNo,
 } from '../../../containerManagement/constants'
 import type {
   BalanceAudit,
@@ -143,13 +144,13 @@ export function BalanceAuditPanel({
       dataIndex: 'transferId',
       key: 'transferId',
       width: 130,
-      render: (value: string | null) =>
+      render: (value: number | null) =>
         value ? (
           <Link
             className="font-mono text-xs text-[#2f8f87] hover:underline"
             to={`/container/transfers?transferId=${value}`}
           >
-            {value}
+            {formatTransferNo(value)}
           </Link>
         ) : (
           <span className="text-slate-400">—</span>

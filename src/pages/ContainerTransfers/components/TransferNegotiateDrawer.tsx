@@ -8,6 +8,7 @@ import { Send } from 'lucide-react'
 import { AdminDrawer } from '../../../components/Drawer/AdminDrawer'
 import {
   containerTypeName,
+  formatTransferNo,
   transferStatusColor,
   transferStatusLabel,
 } from '../../../containerManagement/constants'
@@ -47,7 +48,7 @@ type Props = {
     lines: TransferLineDraft[],
     reason: string,
   ) => Promise<boolean>
-  onSendMessage: (transferId: string, body: string) => Promise<boolean>
+  onSendMessage: (transferId: number, body: string) => Promise<boolean>
 }
 
 export function TransferNegotiateDrawer({
@@ -113,7 +114,7 @@ export function TransferNegotiateDrawer({
       open={open}
       onClose={onClose}
       width={560}
-      eyebrow={detail?.id}
+      eyebrow={detail ? formatTransferNo(detail.id) : undefined}
       title="协商"
       subtitle={
         detail ? (

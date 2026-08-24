@@ -7,13 +7,14 @@
  * 记账时对余额行加 FOR UPDATE 行锁再校验再扣减，并同步写台账审计，
  * 保证「谁拿了多少」与「怎么流的」在数据层是连通的。
  */
-import { and, asc, count, desc, eq, gte, inArray, like, lte, or, sql } from 'drizzle-orm'
+import { and, asc, count, desc, eq, gte, inArray, lte, or, sql } from 'drizzle-orm'
 import { alias } from 'drizzle-orm/pg-core'
 import { getDb, schema } from '../db'
 import { ContainerBusinessError } from './accountService'
 import { sumPendingOutbound, writeBalanceAudit } from './balanceService'
 import {
   containerTypeLabel,
+  formatTransferNo,
   transferKindNeedsReceiverConfirmation,
   type ContainerType,
   type TransferKind,
@@ -32,7 +33,7 @@ export type TransferItemView = {
 }
 
 export type TransferView = {
-  id: string
+  id: number
   kind: string
   status: string
   fromAccountId: string
@@ -54,19 +55,8 @@ export type TransferView = {
   createdAt: string
 }
 
-const TRANSFER_ID_PREFIX = 'TR'
-
 function labelOf(containerType: string): string {
   return containerTypeLabel[containerType as ContainerType] ?? containerType
-}
-
-async function generateTransferId(tx: Tx): Promise<string> {
-  const rows = await tx.execute<{ seq: string }>(
-    sql`SELECT nextval('container_transfer_id_seq')::text AS seq`,
-  )
-  const seq = rows[0]?.seq
-  if (!seq) throw new Error('生成流转记录 ID 失败')
-  return `${TRANSFER_ID_PREFIX}${seq.padStart(8, '0')}`
 }
 
 function normalizeLineItems(lineItems: TransferLineInput[]): TransferLineInput[] {
@@ -122,7 +112,7 @@ async function applyBalances(
     toAccountId: string
     containerType: string
     quantity: number
-    transferId: string
+    transferId: number
     actorUserId: string | null
   },
 ): Promise<void> {
@@ -163,7 +153,7 @@ async function applyBalances(
     newQuantity: fromNext,
     delta: -quantity,
     reasonType: 'TRANSFER_SETTLEMENT',
-    reason: `流转 ${transferId} 转出`,
+    reason: `流转 ${formatTransferNo(transferId)} 转出`,
     transferId,
     actorUserId,
   })
@@ -175,7 +165,7 @@ async function applyBalances(
     newQuantity: toNext,
     delta: quantity,
     reasonType: 'TRANSFER_SETTLEMENT',
-    reason: `流转 ${transferId} 转入`,
+    reason: `流转 ${formatTransferNo(transferId)} 转入`,
     transferId,
     actorUserId,
   })
@@ -186,7 +176,7 @@ async function assertAvailable(
   tx: Tx,
   fromAccountId: string,
   lineItems: TransferLineInput[],
-  excludeTransferId?: string,
+  excludeTransferId?: number,
 ): Promise<void> {
   for (const item of lineItems) {
     const balance = await lockBalance(tx, fromAccountId, item.containerType)
@@ -225,7 +215,7 @@ export async function createTransfer(input: {
   imageUrl?: string | null
   note?: string | null
   actorUserId: string | null
-}): Promise<string> {
+}): Promise<number> {
   const lineItems = normalizeLineItems(input.lineItems)
   if (input.fromAccountId === input.toAccountId) {
     throw new ContainerBusinessError('转出方与接收方不能相同')
@@ -239,14 +229,13 @@ export async function createTransfer(input: {
   const needsConfirm = transferKindNeedsReceiverConfirmation(input.kind)
 
   return getDb().transaction(async (tx) => {
-    const transferId = await generateTransferId(tx)
-
     if (needsConfirm) {
       await assertAvailable(tx, input.fromAccountId, lineItems)
     }
 
-    await tx.insert(schema.containerTransfers).values({
-      id: transferId,
+    const [created] = await tx
+      .insert(schema.containerTransfers)
+      .values({
       kind: input.kind,
       status: needsConfirm ? 'PENDING_RECEIVER' : 'CONFIRMED',
       fromAccountId: input.fromAccountId,
@@ -256,7 +245,9 @@ export async function createTransfer(input: {
       respondedAt: needsConfirm ? null : new Date(),
       respondedBy: needsConfirm ? null : input.actorUserId,
       createdBy: input.actorUserId,
-    })
+      })
+      .returning({ id: schema.containerTransfers.id })
+    const transferId = created.id
 
     await tx.insert(schema.containerTransferItems).values(
       lineItems.map((item) => ({
@@ -284,7 +275,7 @@ export async function createTransfer(input: {
   })
 }
 
-async function loadTransferForUpdate(tx: Tx, transferId: string) {
+async function loadTransferForUpdate(tx: Tx, transferId: number) {
   const rows = await tx
     .select()
     .from(schema.containerTransfers)
@@ -303,7 +294,7 @@ async function loadTransferForUpdate(tx: Tx, transferId: string) {
 
 /** 无争议确认收货：按申报数量全额落表 */
 export async function confirmTransfer(input: {
-  transferId: string
+  transferId: number
   actorUserId: string | null
   responseNote?: string | null
 }): Promise<void> {
@@ -364,7 +355,7 @@ function applyReceivedLineItems(
 
 /** 差异/拒收申报：进入协商，不动库存 */
 export async function reportReceipt(input: {
-  transferId: string
+  transferId: number
   lineItems: TransferLineInput[]
   reason: string
   receiverReportImageUrl?: string | null
@@ -405,7 +396,7 @@ export async function reportReceipt(input: {
 }
 
 export async function addTransferMessage(input: {
-  transferId: string
+  transferId: number
   actorUserId: string | null
   body: string
   proposedQuantity?: number | null
@@ -436,7 +427,7 @@ export async function addTransferMessage(input: {
 
 /** 转出方认可接收方申报的实收数量：按品类实收落表；全部为 0 则整单取消 */
 export async function acceptSettlement(input: {
-  transferId: string
+  transferId: number
   actorUserId: string | null
 }): Promise<void> {
   await getDb().transaction(async (tx) => {
@@ -515,7 +506,7 @@ function snapshotForChangeLog(
 }
 
 export async function updateTransfer(input: {
-  transferId: string
+  transferId: number
   lineItems?: TransferLineInput[]
   imageUrl?: string | null
   note?: string | null
@@ -570,7 +561,7 @@ export async function updateTransfer(input: {
 }
 
 export async function deleteTransfer(input: {
-  transferId: string
+  transferId: number
   reason: string
   actorUserId: string | null
 }): Promise<void> {
@@ -631,7 +622,7 @@ const toAccountTable = alias(schema.containerAccounts, 'to_account')
 const creatorTable = alias(schema.users, 'transfer_creator')
 
 type TransferRow = {
-  id: string
+  id: number
   kind: string
   status: string
   fromAccountId: string
@@ -687,7 +678,7 @@ async function attachItems(rows: TransferRow[]): Promise<TransferView[]> {
       ),
     )
     .orderBy(asc(schema.containerTransferItems.containerType))
-  const byTransfer = new Map<string, TransferItemView[]>()
+  const byTransfer = new Map<number, TransferItemView[]>()
   for (const item of items) {
     const list = byTransfer.get(item.transferId) ?? []
     list.push({
@@ -703,7 +694,7 @@ async function attachItems(rows: TransferRow[]): Promise<TransferView[]> {
 
 export type TransferQuery = {
   visibleAccountIds: string[] | null
-  transferId?: string
+  transferId?: number
   fromAccountId?: string
   toAccountId?: string
   status?: TransferStatus
@@ -734,9 +725,8 @@ export async function listTransfers(query: TransferQuery) {
   if (query.status) conditions.push(eq(schema.containerTransfers.status, query.status))
   if (query.start) conditions.push(gte(schema.containerTransfers.createdAt, query.start))
   if (query.end) conditions.push(lte(schema.containerTransfers.createdAt, query.end))
-  if (query.transferId) {
-    const raw = query.transferId.trim().toUpperCase()
-    conditions.push(like(schema.containerTransfers.id, `${raw}%`))
+  if (query.transferId !== undefined) {
+    conditions.push(eq(schema.containerTransfers.id, query.transferId))
   }
   const where = conditions.length ? and(...conditions) : undefined
 
@@ -750,13 +740,13 @@ export async function listTransfers(query: TransferQuery) {
   return { items: await attachItems(rows), total: totalRow?.n ?? 0 }
 }
 
-export async function getTransfer(transferId: string): Promise<TransferView | null> {
+export async function getTransfer(transferId: number): Promise<TransferView | null> {
   const rows = await transferSelectQuery(getDb()).where(eq(schema.containerTransfers.id, transferId))
   const views = await attachItems(rows)
   return views[0] ?? null
 }
 
-export async function listTransferMessages(transferId: string) {
+export async function listTransferMessages(transferId: number) {
   const rows = await getDb()
     .select({
       id: schema.containerTransferMessages.id,
@@ -774,7 +764,7 @@ export async function listTransferMessages(transferId: string) {
 
 export type TransferChangeQuery = {
   visibleAccountIds: string[] | null
-  transferId?: string
+  transferId?: number
   action?: string
   start?: Date
   end?: Date
@@ -800,8 +790,8 @@ export async function listTransferChanges(query: TransferChangeQuery) {
       ),
     )
   }
-  if (query.transferId) {
-    conditions.push(like(schema.containerTransferChanges.transferId, `${query.transferId.trim().toUpperCase()}%`))
+  if (query.transferId !== undefined) {
+    conditions.push(eq(schema.containerTransferChanges.transferId, query.transferId))
   }
   if (query.action) conditions.push(eq(schema.containerTransferChanges.action, query.action))
   if (query.start) conditions.push(gte(schema.containerTransferChanges.createdAt, query.start))

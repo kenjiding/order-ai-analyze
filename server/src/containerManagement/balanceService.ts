@@ -99,7 +99,7 @@ export async function writeBalanceAudit(
     delta: number | null
     reasonType: BalanceReasonType
     reason?: string
-    transferId?: string | null
+    transferId?: number | null
     actorUserId: string | null
     actorIp?: string | null
   },

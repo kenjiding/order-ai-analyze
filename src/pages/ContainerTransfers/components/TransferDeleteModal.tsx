@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { Alert, Button, Input, Modal } from 'antd'
+import { formatTransferNo } from '../../../containerManagement/constants'
 import type { Transfer } from '../../../containerManagement/types'
 
 type Props = {
@@ -43,7 +44,8 @@ export function TransferDeleteModal({ target, submitting, onCancel, onSubmit }: 
     >
       {target ? (
         <p className="mt-4 text-sm text-slate-600">
-          将删除 <span className="font-mono">{target.id}</span>（{target.fromAccountName} →{' '}
+          将删除 <span className="font-mono">{formatTransferNo(target.id)}</span>（
+          {target.fromAccountName} →{' '}
           {target.toAccountName}）。
         </p>
       ) : null}

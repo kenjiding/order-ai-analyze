@@ -1,5 +1,6 @@
 /** 「查看记录」抽屉：只展示协商时间线，与原系统的 TransferTimelineDrawer 一致 */
 import { AdminDrawer } from '../../../components/Drawer/AdminDrawer'
+import { formatTransferNo } from '../../../containerManagement/constants'
 import type { TransferDetail } from '../../../containerManagement/types'
 import { NegotiationTimelinePanel } from './NegotiationTimelinePanel'
 
@@ -16,7 +17,7 @@ export function TransferTimelineDrawer({ detail, open, loading, onClose }: Props
       open={open}
       onClose={onClose}
       width={520}
-      eyebrow={detail?.id}
+      eyebrow={detail ? formatTransferNo(detail.id) : undefined}
       title="协商时间线"
       subtitle={
         detail

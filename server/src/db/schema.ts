@@ -1,4 +1,6 @@
 import {
+  bigint,
+  bigserial,
   boolean,
   doublePrecision,
   index,
@@ -679,8 +681,8 @@ export const containerBalances = pgTable(
 export const containerTransfers = pgTable(
   'container_transfers',
   {
-    /** 业务 ID，形如 TR00000001，取自 container_transfer_id_seq */
-    id: varchar('id', { length: 24 }).primaryKey(),
+    /** 自增主键；对外展示为 TR-000123，格式化只在展示层做 */
+    id: bigserial('id', { mode: 'number' }).primaryKey(),
     /** LEND 借出 | RETURN 归还 | INTERNAL_TRANSFER 仓间调拨 | IN_TRANSIT_OUT 在途发出 | IN_TRANSIT_IN 在途签收 */
     kind: varchar('kind', { length: 32 }).notNull(),
     /** PENDING_RECEIVER 待接收方确认 | DISPUTED 协商中 | CONFIRMED 已确认 | CANCELLED 已取消 */
@@ -718,7 +720,7 @@ export const containerTransferItems = pgTable(
   'container_transfer_items',
   {
     id: uuid('id').primaryKey().defaultRandom(),
-    transferId: varchar('transfer_id', { length: 24 })
+    transferId: bigint('transfer_id', { mode: 'number' })
       .notNull()
       .references(() => containerTransfers.id, { onDelete: 'cascade' }),
     containerType: varchar('container_type', { length: 32 }).notNull(),
@@ -752,7 +754,7 @@ export const containerBalanceAudits = pgTable(
     /** INITIAL_STOCKTAKE | STOCKTAKE_CORRECTION | DAMAGE_SCRAP | LOSS_REPORT | HISTORICAL_BACKFILL | TRANSFER_SETTLEMENT */
     reasonType: varchar('reason_type', { length: 32 }).notNull(),
     reason: text('reason').notNull().default(''),
-    transferId: varchar('transfer_id', { length: 24 }).references(() => containerTransfers.id, {
+    transferId: bigint('transfer_id', { mode: 'number' }).references(() => containerTransfers.id, {
       onDelete: 'set null',
     }),
     actorUserId: uuid('actor_user_id').references(() => users.id, { onDelete: 'set null' }),
@@ -771,7 +773,7 @@ export const containerTransferMessages = pgTable(
   'container_transfer_messages',
   {
     id: uuid('id').primaryKey().defaultRandom(),
-    transferId: varchar('transfer_id', { length: 24 })
+    transferId: bigint('transfer_id', { mode: 'number' })
       .notNull()
       .references(() => containerTransfers.id, { onDelete: 'cascade' }),
     authorUserId: uuid('author_user_id').references(() => users.id, { onDelete: 'set null' }),
@@ -787,7 +789,7 @@ export const containerTransferChanges = pgTable(
   'container_transfer_changes',
   {
     id: uuid('id').primaryKey().defaultRandom(),
-    transferId: varchar('transfer_id', { length: 24 }).references(() => containerTransfers.id, {
+    transferId: bigint('transfer_id', { mode: 'number' }).references(() => containerTransfers.id, {
       onDelete: 'set null',
     }),
     /** UPDATE | DELETE */

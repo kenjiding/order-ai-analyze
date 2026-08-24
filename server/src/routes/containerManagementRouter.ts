@@ -36,6 +36,7 @@ import {
   type BalanceReasonType,
   type ContainerType,
   type TransferKind,
+  parseTransferNo,
   type TransferStatus,
 } from '../containerManagement/constants'
 import { readImage, saveImageFromDataUrl } from '../containerManagement/imageStorage'
@@ -315,7 +316,7 @@ containerManagementRouter.get('/transfers', async (req: AuthenticatedRequest, re
     const statusRaw = String(req.query.status ?? '').trim()
     const data = await listTransfers({
       visibleAccountIds: visible,
-      transferId: String(req.query.transferId ?? '').trim() || undefined,
+      transferId: parseTransferNo(req.query.transferId) ?? undefined,
       fromAccountId: String(req.query.fromAccountId ?? '').trim() || undefined,
       toAccountId: String(req.query.toAccountId ?? '').trim() || undefined,
       status: isTransferStatus(statusRaw) ? (statusRaw as TransferStatus) : undefined,
@@ -336,7 +337,7 @@ containerManagementRouter.get('/transfer-changes', async (req: AuthenticatedRequ
     const { page, pageSize } = parsePagination(req.query as Record<string, unknown>)
     const data = await listTransferChanges({
       visibleAccountIds: visible,
-      transferId: String(req.query.transferId ?? '').trim() || undefined,
+      transferId: parseTransferNo(req.query.transferId) ?? undefined,
       action: String(req.query.action ?? '').trim() || undefined,
       start: parseDate(req.query.start),
       end: parseDate(req.query.end),
@@ -394,7 +395,12 @@ async function loadTransferWithRole(
   res: Response,
   role: 'from' | 'to' | 'any',
 ): Promise<{ transfer: NonNullable<Awaited<ReturnType<typeof getTransfer>>>; visible: VisibleAccounts } | null> {
-  const transfer = await getTransfer(String(req.params.id ?? '').trim())
+  const transferId = parseTransferNo(req.params.id)
+  if (transferId === null) {
+    fail(res, 404, '流转记录不存在')
+    return null
+  }
+  const transfer = await getTransfer(transferId)
   if (!transfer) {
     fail(res, 404, '流转记录不存在')
     return null
