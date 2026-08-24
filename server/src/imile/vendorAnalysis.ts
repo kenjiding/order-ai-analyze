@@ -8,7 +8,13 @@ import {
   IMILE_DC_SCAN_QUERY_PORTAL,
   IMILE_STATION_LIST_PORTAL,
 } from './portal'
-import { envFirstOr, normalizeImileToken, resolveImileCountry, runWithImileCountry } from './shared'
+import {
+  envFirstOr,
+  normalizeImileToken,
+  resolveImileCountry,
+  runWithImileCountry,
+  type ImileBusinessFailure,
+} from './shared'
 import { resolveRegionTz } from './ausTimezone'
 import { computeBefore11ThresholdMs } from './before11Exit'
 import { fetchWaybillDetailsByInboundIndex } from './inboundWaybillIndex'
@@ -32,7 +38,14 @@ const DEFAULT_WAYBILL_URL =
 const DEFAULT_LONG_TAIL_URL =
   'https://ds.imile.com/saastms/v1/report/stock/daWaybillInventory'
 
-export type VendorAnalysisError = { ok: false; status: number; message: string; rawText?: string }
+export type VendorAnalysisError = {
+  ok: false
+  status: number
+  message: string
+  rawText?: string
+  /** 业务失败时的原始错误码，供调用方区分 token 失效 / 系统繁忙等分支 */
+  businessFailure?: ImileBusinessFailure
+}
 export type VendorAnalysisSuccess<T> = { ok: true; data: T }
 
 function makeStationListHeaders(token: string): Record<string, string> {
@@ -98,7 +111,15 @@ async function fetchVendorStationsWithCountry(
   const headers = makeStationListHeaders(normalizedToken)
 
   const result = await requestImileApi({ url, method: 'GET', headers, label: '责任站点列表' })
-  if (!result.ok) return { ok: false, status: result.status, message: result.message, rawText: result.rawText }
+  if (!result.ok) {
+    return {
+      ok: false,
+      status: result.status,
+      message: result.message,
+      rawText: result.rawText,
+      businessFailure: result.businessFailure,
+    }
+  }
 
   const json = result.json as Record<string, unknown>
   const items = Array.isArray(json?.resultObject) ? (json.resultObject as unknown[]) : []

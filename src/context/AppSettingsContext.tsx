@@ -5,6 +5,11 @@ import {
   normalizeZktAttendanceSettings,
   type ZktAttendanceSettings,
 } from '../imile/zktAttendanceSettings'
+import {
+  DEFAULT_TOKEN_ALERT_CONTACTS,
+  normalizeTokenAlertContacts,
+  type TokenAlertContacts,
+} from '../imile/tokenAlertContacts'
 import { useAuthStore } from '../stores/authStore'
 
 /* Context 模块同时导出 Provider 与 hooks，故关闭 react-refresh 的仅导出组件规则。 */
@@ -16,17 +21,20 @@ const APP_SETTINGS_PREF_KEY = 'app-settings'
 export type StoredAppSettings = {
   imileToken: string
   zktAttendance: ZktAttendanceSettings
+  tokenAlertContacts: TokenAlertContacts
 }
 
 const DEFAULT_APP_SETTINGS: StoredAppSettings = {
   imileToken: '',
   zktAttendance: { ...DEFAULT_ZKT_ATTENDANCE_SETTINGS },
+  tokenAlertContacts: { ...DEFAULT_TOKEN_ALERT_CONTACTS },
 }
 
 function normalizeStoredAppSettings(raw: Partial<StoredAppSettings> | null | undefined): StoredAppSettings {
   return {
     imileToken: String(raw?.imileToken ?? ''),
     zktAttendance: normalizeZktAttendanceSettings(raw?.zktAttendance),
+    tokenAlertContacts: normalizeTokenAlertContacts(raw?.tokenAlertContacts),
   }
 }
 
@@ -35,6 +43,7 @@ export type UpdateSettingsResult = { ok: true } | { ok: false; error: string }
 export type AppSettingsContextValue = {
   imileToken: string
   zktAttendance: ZktAttendanceSettings
+  tokenAlertContacts: TokenAlertContacts
   /** 服务端首次拉取是否已完成；拉取完成前 imileToken 等字段可能仍是默认值 */
   settingsLoaded: boolean
   /** 整体覆盖式保存，落地到当前登录账号的服务端偏好；成功后才更新本地状态 */
@@ -94,6 +103,7 @@ export function AppSettingsProvider({ children }: { children: React.ReactNode })
     () => ({
       imileToken: settings.imileToken,
       zktAttendance: settings.zktAttendance,
+      tokenAlertContacts: settings.tokenAlertContacts,
       settingsLoaded,
       updateSettings,
       refreshSettings,

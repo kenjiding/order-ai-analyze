@@ -48,3 +48,27 @@ export function isValidUsername(raw: string): boolean {
   if (value.length < 2 || value.length > 64) return false
   return /^[\w.-]+$/.test(value)
 }
+
+/**
+ * 各区域对应的 IANA 时区：定时任务按用户所属区域的本地时间触发时使用。
+ * 用 IANA 名而非固定偏移，夏令时切换交给 Intl 处理。
+ */
+const REGION_TIME_ZONES: Record<string, string> = {
+  NSW: 'Australia/Sydney',
+  VIC: 'Australia/Melbourne',
+  QLD: 'Australia/Brisbane',
+  SA: 'Australia/Adelaide',
+  WA: 'Australia/Perth',
+  TAS: 'Australia/Hobart',
+  ACT: 'Australia/Sydney',
+  NT: 'Australia/Darwin',
+  NZ: 'Pacific/Auckland',
+}
+
+/** 未分配区域（含 system 超管）时的兜底时区，与其余定时推送保持一致 */
+export const DEFAULT_REGION_TIME_ZONE = 'Australia/Adelaide'
+
+export function getRegionTimeZone(code: string | null | undefined): string {
+  if (!code) return DEFAULT_REGION_TIME_ZONE
+  return REGION_TIME_ZONES[code] ?? DEFAULT_REGION_TIME_ZONE
+}

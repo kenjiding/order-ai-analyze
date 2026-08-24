@@ -7,6 +7,11 @@ import {
   type ZktAttendanceSettings,
 } from '../../imile/zktAttendanceSettings'
 import { ZktDepartmentCascader } from './ZktDepartmentCascader'
+import { TokenAlertContactPicker } from './TokenAlertContactPicker'
+import {
+  normalizeTokenAlertContacts,
+  type TokenAlertContacts,
+} from '../../imile/tokenAlertContacts'
 import { showToast } from '../../utils/toast'
 
 export type SettingsSectionId = 'imile' | 'general'
@@ -19,6 +24,7 @@ const SECTIONS: { id: SettingsSectionId; label: string; icon: typeof Truck }[] =
 type ImileSettingsDraft = {
   imileToken: string
   zktAttendance: ZktAttendanceSettings
+  tokenAlertContacts: TokenAlertContacts
 }
 
 type Props = {
@@ -29,30 +35,32 @@ type Props = {
 function buildDraftFromSettings(input: {
   imileToken: string
   zktAttendance: ZktAttendanceSettings
+  tokenAlertContacts: TokenAlertContacts
 }): ImileSettingsDraft {
   return {
     imileToken: input.imileToken,
     zktAttendance: normalizeZktAttendanceSettings(input.zktAttendance),
+    tokenAlertContacts: normalizeTokenAlertContacts(input.tokenAlertContacts),
   }
 }
 
 export function GlobalSettingsModal({ isOpen, onClose }: Props) {
-  const { imileToken, zktAttendance, updateSettings } = useAppSettings()
+  const { imileToken, zktAttendance, tokenAlertContacts, updateSettings } = useAppSettings()
   const [activeSection, setActiveSection] = useState<SettingsSectionId>('imile')
   const [draft, setDraft] = useState<ImileSettingsDraft>(() =>
-    buildDraftFromSettings({ imileToken, zktAttendance }),
+    buildDraftFromSettings({ imileToken, zktAttendance, tokenAlertContacts }),
   )
   const [saving, setSaving] = useState(false)
   const wasOpenRef = useRef(false)
 
   useEffect(() => {
     if (isOpen && !wasOpenRef.current) {
-      setDraft(buildDraftFromSettings({ imileToken, zktAttendance }))
+      setDraft(buildDraftFromSettings({ imileToken, zktAttendance, tokenAlertContacts }))
       setActiveSection('imile')
       setSaving(false)
     }
     wasOpenRef.current = isOpen
-  }, [isOpen, imileToken, zktAttendance])
+  }, [isOpen, imileToken, zktAttendance, tokenAlertContacts])
 
   const handleSave = async () => {
     if (saving) return
@@ -140,6 +148,17 @@ export function GlobalSettingsModal({ isOpen, onClose }: Props) {
               <p className="text-xs text-slate-500">
                 Token 与考勤 API 配置将保存到服务器并绑定当前账号，用同一账号在其他电脑登录后自动生效。
               </p>
+
+              <div>
+                <span className="block text-base font-semibold text-slate-950">token 失效联系人</span>
+                <div className="mt-3">
+                  <TokenAlertContactPicker
+                    active={isOpen && activeSection === 'imile'}
+                    value={draft.tokenAlertContacts}
+                    onChange={(tokenAlertContacts) => setDraft((prev) => ({ ...prev, tokenAlertContacts }))}
+                  />
+                </div>
+              </div>
 
               <div className="border-t border-slate-200 pt-4">
                 <h4 className="text-base font-semibold text-slate-950">ZKT 考勤 API</h4>

@@ -23,6 +23,7 @@ import { purgeOldPushEngagementData } from '../feishu/pushEngagementRetention'
 import { purgeOldChaseDispatchShareSnapshots } from '../feishu/chaseDispatchShareSnapshot'
 import { purgeOldDispatchAlarmShareSnapshots } from '../feishu/dispatchAlarmShareSnapshot'
 import { purgeOldDriverMapWaybillPoints } from '../driverMap/driverMapPointsQuery'
+import { runImileTokenHealthCheck } from '../imile/tokenHealthCheck'
 import { readJobSchedulerEnabled } from './config'
 
 export function startJobScheduler(): { stop: () => void } {
@@ -203,6 +204,17 @@ export function startJobScheduler(): { stop: () => void } {
   console.log(
     `[scheduler] 已启动供应商日报/催派分享/司机地图/推送数据监控保留期清理任务 cron="${vendorReportRetentionCronValid}" timezone="${INBOUND_INDEX_ADELAIDE_TZ}"`,
   )
+
+  // iMile token 失效检测：每分钟轮询，实际只在各账号所属区域本地时间 08:00 / 15:00 触发探活
+  const imileTokenCheckTask = cron.schedule('* * * * *', async () => {
+    try {
+      await runImileTokenHealthCheck()
+    } catch (err) {
+      console.error('[scheduler/imile-token-check] 检测异常:', err)
+    }
+  })
+  tasks.push(imileTokenCheckTask)
+  console.log('[scheduler] 已启动 iMile token 失效检测任务（每账号本地 08:00 / 15:00）')
 
   return {
     stop: () => {

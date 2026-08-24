@@ -72,20 +72,23 @@ export async function listFeishuBotChats(
 
 /**
  * 通过自建应用机器人发消息（服务端 API，非 webhook），返回 message_id 供后续查已读。
+ * receiveIdType 决定 receiveId 的含义：chat_id 发群、open_id 私聊到人。
  * @see https://open.feishu.cn/document/server-docs/im-v1/message/create
  */
 export async function sendFeishuAppMessage(
   tenantToken: string,
-  chatId: string,
+  receiveId: string,
   msgType: 'text' | 'interactive' | 'image',
   content: Record<string, unknown>,
+  /** 收件人类型：默认发群；传 open_id 则是发给个人的私聊 */
+  receiveIdType: 'chat_id' | 'open_id' = 'chat_id',
 ): Promise<{ ok: true; messageId: string; feishu: unknown } | { ok: false; error: string; feishu?: unknown }> {
-  const qs = new URLSearchParams({ receive_id_type: 'chat_id' })
+  const qs = new URLSearchParams({ receive_id_type: receiveIdType })
   const result = await fetchFeishuJson(`${FEISHU_MESSAGES_URL}?${qs.toString()}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${tenantToken}` },
     body: JSON.stringify({
-      receive_id: chatId,
+      receive_id: receiveId,
       msg_type: msgType,
       content: JSON.stringify(content),
     }),

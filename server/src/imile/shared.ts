@@ -240,6 +240,18 @@ export function isRetryableUnauthorizedFailure(failure: ImileBusinessFailure): b
   return /unauthorized data access/i.test(failure.message)
 }
 
+/**
+ * iMile 登录态不可用：HTTP 仍是 200，靠 body 的 resultCode 表达，实测有两个码：
+ * - 00018「Token失效」：token 曾有效但已过期
+ * - 00002「Invalid access token: xxx」：token 不被识别（格式错/已作废）
+ * 二者都意味着需要换 token，一并判定。
+ * 与 22190（unauthorized data access，数据权限抖动，可重试）语义不同，勿混用。
+ */
+export function isImileTokenExpiredFailure(failure: ImileBusinessFailure): boolean {
+  if (failure.code === '00018' || failure.code === '00002') return true
+  return /token\s*失效/i.test(failure.message) || /invalid\s+(access\s+)?token/i.test(failure.message)
+}
+
 export function isRetryableBusyFailure(failure: ImileBusinessFailure): boolean {
   if (failure.code === '44882') return true
   return /system is busy/i.test(failure.message) || /系统繁忙/.test(failure.message)
