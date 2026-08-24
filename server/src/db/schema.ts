@@ -622,3 +622,200 @@ export type DriverMapWaybillPoint = typeof driverMapWaybillPoints.$inferSelect
 export type NewDriverMapWaybillPoint = typeof driverMapWaybillPoints.$inferInsert
 export type ChaseDispatchShareSnapshot = typeof chaseDispatchShareSnapshots.$inferSelect
 export type NewChaseDispatchShareSnapshot = typeof chaseDispatchShareSnapshots.$inferInsert
+
+/** 容器管理：主体账户（RTI 责任主体目录，借出/归还/调拨均基于账户关系记账） */
+export const containerAccounts = pgTable(
+  'container_accounts',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    name: varchar('name', { length: 200 }).notNull(),
+    /** BROKER 清关行 | CUSTOMER 客户 | INTERNAL_WAREHOUSE 内部仓库 */
+    kind: varchar('kind', { length: 32 }).notNull(),
+    createdBy: uuid('created_by').references(() => users.id, { onDelete: 'set null' }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [index('container_accounts_kind_idx').on(table.kind)],
+)
+
+/** 容器管理：用户与主体账户的绑定关系，决定该用户可见与可操作的数据范围 */
+export const containerAccountUsers = pgTable(
+  'container_account_users',
+  {
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    accountId: uuid('account_id')
+      .notNull()
+      .references(() => containerAccounts.id, { onDelete: 'cascade' }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    primaryKey({ columns: [table.userId, table.accountId] }),
+    index('container_account_users_account_idx').on(table.accountId),
+  ],
+)
+
+/** 容器管理：容器台账（主体 × 品类 的库存余额基线） */
+export const containerBalances = pgTable(
+  'container_balances',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    accountId: uuid('account_id')
+      .notNull()
+      .references(() => containerAccounts.id, { onDelete: 'restrict' }),
+    /** BIG_BASKET 大篮筐 | SILVER_BOX 银框 */
+    containerType: varchar('container_type', { length: 32 }).notNull(),
+    quantity: integer('quantity').notNull().default(0),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    uniqueIndex('container_balances_account_type_unique').on(table.accountId, table.containerType),
+  ],
+)
+
+/** 容器管理：流转记录主表。数量不落在这里，全部收敛到 container_transfer_items */
+export const containerTransfers = pgTable(
+  'container_transfers',
+  {
+    /** 业务 ID，形如 TR00000001，取自 container_transfer_id_seq */
+    id: varchar('id', { length: 24 }).primaryKey(),
+    /** LEND 借出 | RETURN 归还 | INTERNAL_TRANSFER 仓间调拨 | IN_TRANSIT_OUT 在途发出 | IN_TRANSIT_IN 在途签收 */
+    kind: varchar('kind', { length: 32 }).notNull(),
+    /** PENDING_RECEIVER 待接收方确认 | DISPUTED 协商中 | CONFIRMED 已确认 | CANCELLED 已取消 */
+    status: varchar('status', { length: 32 }).notNull(),
+    fromAccountId: uuid('from_account_id')
+      .notNull()
+      .references(() => containerAccounts.id, { onDelete: 'restrict' }),
+    toAccountId: uuid('to_account_id')
+      .notNull()
+      .references(() => containerAccounts.id, { onDelete: 'restrict' }),
+    imageUrl: text('image_url'),
+    note: text('note'),
+    /** 接收方差异申报 */
+    receiverReportReason: text('receiver_report_reason'),
+    receiverReportImageUrl: text('receiver_report_image_url'),
+    /** 无争议确认时的补充说明 */
+    responseNote: text('response_note'),
+    senderAcceptedAt: timestamp('sender_accepted_at', { withTimezone: true }),
+    senderAcceptedBy: uuid('sender_accepted_by').references(() => users.id, { onDelete: 'set null' }),
+    respondedAt: timestamp('responded_at', { withTimezone: true }),
+    respondedBy: uuid('responded_by').references(() => users.id, { onDelete: 'set null' }),
+    createdBy: uuid('created_by').references(() => users.id, { onDelete: 'set null' }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    index('container_transfers_created_at_idx').on(table.createdAt),
+    index('container_transfers_from_account_idx').on(table.fromAccountId),
+    index('container_transfers_to_account_idx').on(table.toAccountId),
+    index('container_transfers_status_idx').on(table.status),
+  ],
+)
+
+/** 容器管理：流转明细，逐品类记录「申报 / 实收 / 落表」三个数量，是数量的唯一真相源 */
+export const containerTransferItems = pgTable(
+  'container_transfer_items',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    transferId: varchar('transfer_id', { length: 24 })
+      .notNull()
+      .references(() => containerTransfers.id, { onDelete: 'cascade' }),
+    containerType: varchar('container_type', { length: 32 }).notNull(),
+    /** 转出方申报数量 */
+    declaredQuantity: integer('declared_quantity').notNull(),
+    /** 接收方差异申报的实收数量；未申报时为 null */
+    receivedQuantity: integer('received_quantity'),
+    /** 最终记账落表数量；未落表时为 null */
+    settledQuantity: integer('settled_quantity'),
+  },
+  (table) => [
+    uniqueIndex('container_transfer_items_transfer_type_unique').on(table.transferId, table.containerType),
+    index('container_transfer_items_transfer_idx').on(table.transferId),
+  ],
+)
+
+/** 容器管理：台账变更审计。手工增删改与流转记账都会写入，流转来源带 transferId */
+export const containerBalanceAudits = pgTable(
+  'container_balance_audits',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    /** CREATE | UPDATE | DELETE | TRANSFER */
+    action: varchar('action', { length: 16 }).notNull(),
+    accountId: uuid('account_id')
+      .notNull()
+      .references(() => containerAccounts.id, { onDelete: 'restrict' }),
+    containerType: varchar('container_type', { length: 32 }).notNull(),
+    prevQuantity: integer('prev_quantity'),
+    newQuantity: integer('new_quantity'),
+    delta: integer('delta'),
+    /** INITIAL_STOCKTAKE | STOCKTAKE_CORRECTION | DAMAGE_SCRAP | LOSS_REPORT | HISTORICAL_BACKFILL | TRANSFER_SETTLEMENT */
+    reasonType: varchar('reason_type', { length: 32 }).notNull(),
+    reason: text('reason').notNull().default(''),
+    transferId: varchar('transfer_id', { length: 24 }).references(() => containerTransfers.id, {
+      onDelete: 'set null',
+    }),
+    actorUserId: uuid('actor_user_id').references(() => users.id, { onDelete: 'set null' }),
+    actorIp: varchar('actor_ip', { length: 64 }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    index('container_balance_audits_account_created_idx').on(table.accountId, table.createdAt),
+    index('container_balance_audits_created_at_idx').on(table.createdAt),
+    index('container_balance_audits_transfer_idx').on(table.transferId),
+  ],
+)
+
+/** 容器管理：流转协商留言 */
+export const containerTransferMessages = pgTable(
+  'container_transfer_messages',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    transferId: varchar('transfer_id', { length: 24 })
+      .notNull()
+      .references(() => containerTransfers.id, { onDelete: 'cascade' }),
+    authorUserId: uuid('author_user_id').references(() => users.id, { onDelete: 'set null' }),
+    body: text('body').notNull(),
+    proposedQuantity: integer('proposed_quantity'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [index('container_transfer_messages_transfer_idx').on(table.transferId, table.createdAt)],
+)
+
+/** 容器管理：流转记录编辑/删除审计，记录删除后 transferId 置空但保留快照 */
+export const containerTransferChanges = pgTable(
+  'container_transfer_changes',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    transferId: varchar('transfer_id', { length: 24 }).references(() => containerTransfers.id, {
+      onDelete: 'set null',
+    }),
+    /** UPDATE | DELETE */
+    action: varchar('action', { length: 16 }).notNull(),
+    reason: text('reason').notNull().default(''),
+    beforeData: jsonb('before_data').notNull(),
+    afterData: jsonb('after_data'),
+    actorUserId: uuid('actor_user_id').references(() => users.id, { onDelete: 'set null' }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    index('container_transfer_changes_transfer_idx').on(table.transferId),
+    index('container_transfer_changes_created_at_idx').on(table.createdAt),
+  ],
+)
+
+export type ContainerAccount = typeof containerAccounts.$inferSelect
+export type NewContainerAccount = typeof containerAccounts.$inferInsert
+export type ContainerAccountUser = typeof containerAccountUsers.$inferSelect
+export type ContainerBalance = typeof containerBalances.$inferSelect
+export type NewContainerBalance = typeof containerBalances.$inferInsert
+export type ContainerBalanceAudit = typeof containerBalanceAudits.$inferSelect
+export type NewContainerBalanceAudit = typeof containerBalanceAudits.$inferInsert
+export type ContainerTransfer = typeof containerTransfers.$inferSelect
+export type NewContainerTransfer = typeof containerTransfers.$inferInsert
+export type ContainerTransferItem = typeof containerTransferItems.$inferSelect
+export type NewContainerTransferItem = typeof containerTransferItems.$inferInsert
+export type ContainerTransferMessage = typeof containerTransferMessages.$inferSelect
+export type NewContainerTransferMessage = typeof containerTransferMessages.$inferInsert
+export type ContainerTransferChange = typeof containerTransferChanges.$inferSelect
+export type NewContainerTransferChange = typeof containerTransferChanges.$inferInsert
