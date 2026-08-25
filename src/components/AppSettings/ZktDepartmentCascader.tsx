@@ -109,7 +109,6 @@ export function ZktDepartmentCascader({ username, password, value, onChange }: P
             path.some((option) => String(option.label ?? '').toLowerCase().includes(input.toLowerCase())),
         }}
         style={{ width: '100%' }}
-        className="mt-1.5"
       />
       {error ? <p className="mt-1.5 text-xs text-red-600">{error}</p> : null}
       {!error && leafDepartmentIds ? (

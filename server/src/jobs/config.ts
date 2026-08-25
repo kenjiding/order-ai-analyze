@@ -40,6 +40,20 @@ export function readJobSchedulerEnabled(): boolean {
   return String(process.env.JOB_SCHEDULER_ENABLED ?? '').trim().toLowerCase() === 'true'
 }
 
+/** iMile token 失效检测的 cron 表达式；默认每天 08:00 与 15:00 各一次 */
+export const DEFAULT_IMILE_TOKEN_CHECK_CRON = '0 8,15 * * *'
+
+/** 检测时刻所在时区；与业务口径一致，默认墨尔本 */
+export const DEFAULT_IMILE_TOKEN_CHECK_TIME_ZONE = 'Australia/Melbourne'
+
+export function readImileTokenCheckCron(): string {
+  return process.env.IMILE_TOKEN_CHECK_CRON?.trim() || DEFAULT_IMILE_TOKEN_CHECK_CRON
+}
+
+export function readImileTokenCheckTimeZone(): string {
+  return process.env.IMILE_TOKEN_CHECK_TIMEZONE?.trim() || DEFAULT_IMILE_TOKEN_CHECK_TIME_ZONE
+}
+
 export function createWorkerId(): string {
   return `${os.hostname()}-${process.pid}-${Date.now().toString(36)}`
 }

@@ -61,7 +61,7 @@ export function TokenAlertContactPicker({ active, value, onChange }: Props) {
   const hasChatId = Boolean(value.chatId.trim())
 
   return (
-    <div className="grid max-w-xl gap-3 sm:grid-cols-2">
+    <div className="grid gap-4 sm:grid-cols-2">
       <label className="block text-sm font-medium text-slate-700">
         飞书群 Chat ID
         <Select
@@ -80,7 +80,7 @@ export function TokenAlertContactPicker({ active, value, onChange }: Props) {
       </label>
 
       <label className="block text-sm font-medium text-slate-700">
-        token 失效联系人
+        接收人
         <Select
           className="mt-1.5 w-full"
           mode="multiple"

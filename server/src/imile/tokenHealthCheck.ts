@@ -1,6 +1,5 @@
 import { and, eq } from 'drizzle-orm'
 import { getDb, schema } from '../db'
-import { getRegionTimeZone } from '../regions/registry'
 import { getFeishuTenantAccessToken } from '../feishuServerEnv'
 import { sendFeishuAppMessage } from '../feishu/feishuAppMessage'
 import {
@@ -8,13 +7,11 @@ import {
   type SupplierMentionContact,
 } from '../feishu/feishuMentionHelpers'
 import { claimScheduledSlot } from '../jobs/scheduledClaim'
+import { readImileTokenCheckTimeZone } from '../jobs/config'
 import { fetchVendorStations } from './vendorAnalysis'
 import { isImileTokenExpiredFailure } from './shared'
 
 const APP_SETTINGS_PREF_KEY = 'app-settings'
-
-/** 每天在用户所属区域本地时间的这两个时刻各检测一次 */
-const CHECK_TIMES_HHMM = ['08:00', '15:00']
 
 type TokenAlertContacts = {
   chatId: string
@@ -24,13 +21,12 @@ type TokenAlertContacts = {
 type CheckTarget = {
   userId: string
   displayName: string
-  timeZone: string
   imileToken: string
   contacts: TokenAlertContacts
 }
 
 /** 解析 app-settings 里的「token 失效联系人」配置 */
-export function parseTokenAlertContacts(raw: unknown): TokenAlertContacts {
+function parseTokenAlertContacts(raw: unknown): TokenAlertContacts {
   const obj = raw && typeof raw === 'object' ? (raw as Record<string, unknown>) : {}
   return {
     chatId: typeof obj.chatId === 'string' ? obj.chatId.trim() : '',
@@ -38,10 +34,10 @@ export function parseTokenAlertContacts(raw: unknown): TokenAlertContacts {
   }
 }
 
-/** 目标时区的当天日期与时刻，用于命中检测时刻与按天幂等 */
-function nowInTimeZone(timeZone: string): { dateStr: string; timeHHmm: string } {
+/** 配置时区下的当前日期与时刻，用于按「日期+时刻」幂等抢占 */
+function nowInCheckTimeZone(): { dateStr: string; timeHHmm: string } {
   const parts = new Intl.DateTimeFormat('en-CA', {
-    timeZone,
+    timeZone: readImileTokenCheckTimeZone(),
     year: 'numeric',
     month: '2-digit',
     day: '2-digit',
@@ -56,7 +52,7 @@ function nowInTimeZone(timeZone: string): { dateStr: string; timeHHmm: string } 
   }
 }
 
-/** 读取所有配置了 iMile token 的账号，连带其区域时区与告警联系人 */
+/** 读取所有配置了 iMile token 的启用账号 */
 async function loadCheckTargets(): Promise<CheckTarget[]> {
   const db = getDb()
   const rows = await db
@@ -65,8 +61,6 @@ async function loadCheckTargets(): Promise<CheckTarget[]> {
       value: schema.userPreferences.value,
       username: schema.users.username,
       displayName: schema.users.displayName,
-      regionId: schema.users.regionId,
-      isActive: schema.users.isActive,
     })
     .from(schema.userPreferences)
     .innerJoin(schema.users, eq(schema.users.id, schema.userPreferences.userId))
@@ -85,7 +79,6 @@ async function loadCheckTargets(): Promise<CheckTarget[]> {
     targets.push({
       userId: row.userId,
       displayName: row.displayName?.trim() || row.username,
-      timeZone: getRegionTimeZone(row.regionId),
       imileToken,
       contacts: parseTokenAlertContacts(settings.tokenAlertContacts),
     })
@@ -115,11 +108,11 @@ async function probeTokenExpired(token: string): Promise<{ expired: boolean; det
   return { expired: false, detail: redactToken(result.message) }
 }
 
-function buildAlertText(target: CheckTarget, detail: string, timeHHmm: string): string {
+function buildAlertText(displayName: string, detail: string, timeHHmm: string): string {
   return [
     '【iMile Token 失效提醒】',
-    `账号：${target.displayName}`,
-    `检测时间：${timeHHmm}（${target.timeZone}）`,
+    `账号：${displayName}`,
+    `检测时间：${timeHHmm}（${readImileTokenCheckTimeZone()}）`,
     `接口返回：${detail}`,
     '',
     '受影响：出仓告警、催派推送、工单推送、供应商日报等所有依赖该 token 的定时任务已无法取数。',
@@ -128,10 +121,14 @@ function buildAlertText(target: CheckTarget, detail: string, timeHHmm: string): 
 }
 
 /** 私聊通知配置的每一位联系人；返回成功条数 */
-async function notifyContacts(target: CheckTarget, text: string): Promise<number> {
-  const mentions = target.contacts.mentions.filter((m) => m.openId)
+async function notifyTokenAlertContacts(
+  contacts: TokenAlertContacts,
+  displayName: string,
+  text: string,
+): Promise<number> {
+  const mentions = contacts.mentions.filter((m) => m.openId)
   if (!mentions.length) {
-    console.warn(`[imile-token-check] 账号 ${target.displayName} 未配置 token 失效联系人，无法通知`)
+    console.warn(`[imile-token-check] 账号 ${displayName} 未配置 token 失效联系人，无法通知`)
     return 0
   }
 
@@ -160,8 +157,8 @@ async function notifyContacts(target: CheckTarget, text: string): Promise<number
 }
 
 /**
- * 每分钟调用一次；只有当某账号所属区域的本地时间正好命中 08:00 / 15:00 时才真正探活。
- * 探活到 token 失效则私聊该账号配置的联系人。同一账号同一时刻靠 claim 保证只发一次。
+ * 由 cron 按 IMILE_TOKEN_CHECK_CRON 配置的时刻触发：逐个账号探活，失效则私聊其配置的联系人。
+ * 同一账号同一时刻靠 claim 保证多 worker 下只发一次。
  */
 export async function runImileTokenHealthCheck(): Promise<void> {
   let targets: CheckTarget[]
@@ -172,10 +169,9 @@ export async function runImileTokenHealthCheck(): Promise<void> {
     return
   }
 
-  for (const target of targets) {
-    const { dateStr, timeHHmm } = nowInTimeZone(target.timeZone)
-    if (!CHECK_TIMES_HHMM.includes(timeHHmm)) continue
+  const { dateStr, timeHHmm } = nowInCheckTimeZone()
 
+  for (const target of targets) {
     const claimed = await claimScheduledSlot(`imile-token-check:${target.userId}`, `${dateStr}|${timeHHmm}`)
     if (!claimed) continue
 
@@ -185,7 +181,11 @@ export async function runImileTokenHealthCheck(): Promise<void> {
         console.log(`[imile-token-check] ${target.displayName} ${timeHHmm} token 正常`)
         continue
       }
-      const sent = await notifyContacts(target, buildAlertText(target, probe.detail, timeHHmm))
+      const sent = await notifyTokenAlertContacts(
+        target.contacts,
+        target.displayName,
+        buildAlertText(target.displayName, probe.detail, timeHHmm),
+      )
       console.warn(
         `[imile-token-check] ${target.displayName} token 已失效（${probe.detail}），已私聊通知 ${sent} 人`,
       )

@@ -24,7 +24,12 @@ import { purgeOldChaseDispatchShareSnapshots } from '../feishu/chaseDispatchShar
 import { purgeOldDispatchAlarmShareSnapshots } from '../feishu/dispatchAlarmShareSnapshot'
 import { purgeOldDriverMapWaybillPoints } from '../driverMap/driverMapPointsQuery'
 import { runImileTokenHealthCheck } from '../imile/tokenHealthCheck'
-import { readJobSchedulerEnabled } from './config'
+import {
+  DEFAULT_IMILE_TOKEN_CHECK_CRON,
+  readImileTokenCheckCron,
+  readImileTokenCheckTimeZone,
+  readJobSchedulerEnabled,
+} from './config'
 
 export function startJobScheduler(): { stop: () => void } {
   const tasks: ReturnType<typeof cron.schedule>[] = []
@@ -205,16 +210,32 @@ export function startJobScheduler(): { stop: () => void } {
     `[scheduler] 已启动供应商日报/催派分享/司机地图/推送数据监控保留期清理任务 cron="${vendorReportRetentionCronValid}" timezone="${INBOUND_INDEX_ADELAIDE_TZ}"`,
   )
 
-  // iMile token 失效检测：每分钟轮询，实际只在各账号所属区域本地时间 08:00 / 15:00 触发探活
-  const imileTokenCheckTask = cron.schedule('* * * * *', async () => {
-    try {
-      await runImileTokenHealthCheck()
-    } catch (err) {
-      console.error('[scheduler/imile-token-check] 检测异常:', err)
-    }
-  })
+  // iMile token 失效检测：默认墨尔本时间每天 08:00 与 15:00 各一次，可用 env 覆盖
+  const imileTokenCheckCron = readImileTokenCheckCron()
+  if (!cron.validate(imileTokenCheckCron)) {
+    console.error(
+      `[scheduler] IMILE_TOKEN_CHECK_CRON 表达式无效: "${imileTokenCheckCron}"，使用默认值 "${DEFAULT_IMILE_TOKEN_CHECK_CRON}"`,
+    )
+  }
+  const imileTokenCheckCronValid = cron.validate(imileTokenCheckCron)
+    ? imileTokenCheckCron
+    : DEFAULT_IMILE_TOKEN_CHECK_CRON
+  const imileTokenCheckTimeZone = readImileTokenCheckTimeZone()
+  const imileTokenCheckTask = cron.schedule(
+    imileTokenCheckCronValid,
+    async () => {
+      try {
+        await runImileTokenHealthCheck()
+      } catch (err) {
+        console.error('[scheduler/imile-token-check] 检测异常:', err)
+      }
+    },
+    { timezone: imileTokenCheckTimeZone },
+  )
   tasks.push(imileTokenCheckTask)
-  console.log('[scheduler] 已启动 iMile token 失效检测任务（每账号本地 08:00 / 15:00）')
+  console.log(
+    `[scheduler] 已启动 iMile token 失效检测任务 cron="${imileTokenCheckCronValid}" timezone="${imileTokenCheckTimeZone}"`,
+  )
 
   return {
     stop: () => {
