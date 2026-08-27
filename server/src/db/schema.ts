@@ -317,7 +317,7 @@ export const vendorShareLinks = pgTable(
   ],
 )
 
-/** 11点前出仓告警：定时推送配置（一个账号可有多条，按站点区分） */
+/** 滞留数据告警：定时推送配置（一个账号可有多条，按站点区分） */
 export const exitAlarmSchedules = pgTable('exit_alarm_schedules', {
   id: uuid('id').primaryKey().defaultRandom(),
   /** 拥有该配置的账号；时区按该账号的 regionCode 判断，未设置兜底阿德莱德 */
@@ -335,6 +335,8 @@ export const exitAlarmSchedules = pgTable('exit_alarm_schedules', {
   mentionEnabled: boolean('mention_enabled').notNull().default(false),
   /** 是否推送白名单路由码的 11 点前出仓数据（附加在同一张卡片里） */
   routeCodeWhitelistPushEnabled: boolean('route_code_whitelist_push_enabled').notNull().default(false),
+  /** 「立刻推送」使用的到件扫描日期 YYYY-MM-DD；为空时按自动计算的最近工作日兜底，不影响自动定时推送 */
+  arrivalScanDate: varchar('arrival_scan_date', { length: 10 }),
   /** 定时拉数使用的 iMile token（保存配置时从全局设置同步，不对外返回） */
   imileToken: varchar('imile_token', { length: 2048 }),
   updatedBy: uuid('updated_by').references(() => users.id, { onDelete: 'set null' }),

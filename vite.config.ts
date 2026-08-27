@@ -23,6 +23,7 @@ export default defineConfig(() => ({
         main: resolve(__dirname, 'index.html'),
         fleetSupplierPush: resolve(__dirname, 'fleet-supplier-push.html'),
         deliveringNotify: resolve(__dirname, 'delivering-notify.html'),
+        returnToMerchant: resolve(__dirname, 'return-to-merchant.html'),
       },
     },
   },

@@ -142,9 +142,9 @@ const groups: SidebarMenuGroup[] = [
         id: 'exit-alarm',
         path: '/exit-alarm',
         permissionKey: 'menu:exit-alarm',
-        label: '11点前出仓告警',
+        label: '滞留数据告警',
         icon: AlarmClock,
-        description: '监控供应商11点前出仓率并定时推送告警',
+        description: '监控供应商滞留未出仓数据并定时推送告警',
       },
       {
         id: 'dispatch-alarm',

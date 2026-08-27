@@ -1,9 +1,9 @@
 /** 4 类定时推送的 pushLabel（与后端 recordFeishuPushMessage 落库的值一一对应） */
-export const PUSH_LABELS = ['11点出仓告警', '24H派签告警', '催派推送', '工单推送'] as const
+export const PUSH_LABELS = ['滞留数据告警', '24H派签告警', '催派推送', '工单推送'] as const
 export type PushLabel = (typeof PUSH_LABELS)[number]
 
 export const PUSH_LABEL_COLOR: Record<string, string> = {
-  '11点出仓告警': 'orange',
+  滞留数据告警: 'orange',
   '24H派签告警': 'blue',
   催派推送: 'volcano',
   工单推送: 'purple',

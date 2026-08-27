@@ -1,0 +1,18 @@
+/**
+ * 独立移动端入口：整页窗口不滚动，只有主体区域内部滚动。
+ *
+ * index.css 的 body{min-height:100vh} 在移动端等于「大视口」高度（地址栏收起时），
+ * 比根容器的 100dvh 高出一个地址栏，文档因此整体可滚。主站需要那条规则，只能按页覆盖。
+ */
+html,
+body {
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+  /* 顺带禁掉下拉刷新与橡皮筋回弹：扫码时误触很烦 */
+  overscroll-behavior: none;
+}
+
+#root {
+  height: 100%;
+}

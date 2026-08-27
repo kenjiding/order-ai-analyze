@@ -1,4 +1,4 @@
-import { Button, Checkbox, Drawer, TimePicker } from 'antd'
+import { Button, Checkbox, DatePicker, Drawer, TimePicker } from 'antd'
 import dayjs from 'dayjs'
 import { AlarmClock, Clock, Plus, Save, Settings, Truck, X } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
@@ -30,6 +30,10 @@ const WEEKDAYS: { value: WeekdayNum; label: string }[] = [
 
 function generateId(): string {
   return `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`
+}
+
+function yesterday(): string {
+  return dayjs().subtract(1, 'day').format('YYYY-MM-DD')
 }
 
 type Props = {
@@ -89,6 +93,7 @@ export function ExitAlarmScheduleDrawer({
   const [pushConfigIds, setPushConfigIds] = useState<string[]>([])
   const [mentionEnabled, setMentionEnabled] = useState(false)
   const [routeCodeWhitelistPushEnabled, setRouteCodeWhitelistPushEnabled] = useState(false)
+  const [arrivalScanDate, setArrivalScanDate] = useState<string>(yesterday())
 
   useEffect(() => {
     if (!open) return
@@ -98,6 +103,7 @@ export function ExitAlarmScheduleDrawer({
     setPushConfigIds(editingSchedule?.pushConfigIds ?? [])
     setMentionEnabled(editingSchedule?.mentionEnabled ?? false)
     setRouteCodeWhitelistPushEnabled(editingSchedule?.routeCodeWhitelistPushEnabled ?? false)
+    setArrivalScanDate(editingSchedule?.arrivalScanDate ?? yesterday())
   }, [open, editingSchedule])
 
   const handleAddTime = () => setPushTimes((prev) => [...prev, { id: generateId(), time: '11:00' }])
@@ -134,6 +140,7 @@ export function ExitAlarmScheduleDrawer({
       pushConfigIds: scopedPushConfigIds,
       mentionEnabled,
       routeCodeWhitelistPushEnabled,
+      arrivalScanDate,
     }
     const ok = await onSubmit(draft)
     if (ok) onClose()
@@ -149,7 +156,7 @@ export function ExitAlarmScheduleDrawer({
       title={
         <div className="flex items-center gap-2">
           <AlarmClock className="h-4 w-4 text-[var(--admin-accent)]" aria-hidden />
-          <span>{editingSchedule ? '编辑出仓告警' : '添加出仓告警'}</span>
+          <span>{editingSchedule ? '编辑滞留数据告警' : '添加滞留数据告警'}</span>
         </div>
       }
       footer={
@@ -164,8 +171,31 @@ export function ExitAlarmScheduleDrawer({
       }
     >
       <div className="space-y-5">
-        <FormSection icon={AlarmClock} title="站点">
-          <StationSelect value={stationCode} onChange={setStationCode} disabled={saving} />
+        <FormSection icon={AlarmClock} title="基础配置">
+          <div className="space-y-1">
+            <div className="flex items-center justify-between gap-4">
+              <div className="flex shrink-0 items-center gap-2">
+                <span className="text-xs font-medium text-slate-500">站点</span>
+                <StationSelect value={stationCode} onChange={setStationCode} disabled={saving} />
+              </div>
+              <div className="flex shrink-0 items-center gap-2">
+                <span className="text-xs font-medium text-slate-500">到件扫描时间</span>
+                <DatePicker
+                  value={dayjs(arrivalScanDate, 'YYYY-MM-DD')}
+                  format="YYYY-MM-DD"
+                  allowClear={false}
+                  disabled={saving}
+                  disabledDate={(current) => Boolean(current) && current.format('YYYY-MM-DD') > dayjs().format('YYYY-MM-DD')}
+                  onChange={(val) => {
+                    if (val) setArrivalScanDate(val.format('YYYY-MM-DD'))
+                  }}
+                />
+              </div>
+            </div>
+            <p className="text-right text-xs text-slate-400">
+              到件扫描时间只影响立即推送
+            </p>
+          </div>
         </FormSection>
 
         <FormSection icon={Clock} title="定时推送配置" description="推送星期 / 推送时间点">

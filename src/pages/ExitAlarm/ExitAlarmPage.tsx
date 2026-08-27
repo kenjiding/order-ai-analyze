@@ -17,7 +17,7 @@ export default function ExitAlarmPage() {
             <div className="admin-eyebrow">SLA Monitoring</div>
             <h2 className="admin-title mt-1 flex items-center gap-2">
               <AlarmClock className="h-5 w-5 text-[var(--admin-accent)]" aria-hidden />
-              11点前出仓告警
+              滞留数据告警
             </h2>
           </div>
           <div className="flex items-center gap-4">
@@ -29,7 +29,7 @@ export default function ExitAlarmPage() {
               </div>
             </div>
             <Button type="primary" icon={<Plus className="h-4 w-4" />} onClick={v.openCreateDrawer}>
-              添加出仓告警
+              添加滞留数据告警
             </Button>
           </div>
         </div>

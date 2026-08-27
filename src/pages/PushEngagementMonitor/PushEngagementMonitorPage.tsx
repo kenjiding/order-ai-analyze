@@ -26,7 +26,7 @@ export default function PushEngagementMonitorPage() {
           <div>
             <h1 className="text-lg font-semibold text-slate-950">推送数据监控</h1>
             <p className="mt-1 max-w-2xl text-sm text-slate-600">
-              监控 11点出仓告警、24H派签告警、催派推送、工单推送 的已读与按钮点击情况，观察供应商对推送数据的关注度。
+              监控 滞留数据告警、24H派签告警、催派推送、工单推送 的已读与按钮点击情况，观察供应商对推送数据的关注度。
             </p>
           </div>
         </div>

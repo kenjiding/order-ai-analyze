@@ -435,6 +435,13 @@
       "when": 1785700000033,
       "tag": "0061_vendor_share_links_supplier_key",
       "breakpoints": true
+    },
+    {
+      "idx": 62,
+      "version": "7",
+      "when": 1785700000034,
+      "tag": "0062_exit_alarm_arrival_scan_date",
+      "breakpoints": true
     }
   ]
 }

@@ -14,10 +14,10 @@ import {
 } from './exitAlarmApi'
 
 const MESSAGES: ScheduleListCrudMessages = {
-  missingImileToken: '请先在全局设置中配置 iMile token，再保存出仓告警',
-  loadError: '出仓告警配置加载失败',
-  createSuccess: '出仓告警已添加',
-  updateSuccess: '出仓告警已更新',
+  missingImileToken: '请先在全局设置中配置 iMile token，再保存滞留数据告警',
+  loadError: '滞留数据告警配置加载失败',
+  createSuccess: '滞留数据告警已添加',
+  updateSuccess: '滞留数据告警已更新',
   saveError: '保存失败',
   deleteSuccess: '已删除',
   deleteError: '删除失败',
@@ -58,6 +58,7 @@ export function useExitAlarmPage() {
         pushConfigIds: schedule.pushConfigIds,
         mentionEnabled: schedule.mentionEnabled,
         routeCodeWhitelistPushEnabled: schedule.routeCodeWhitelistPushEnabled,
+        arrivalScanDate: schedule.arrivalScanDate,
       }
       return crud.toggleEnabled(schedule, draft, imileToken)
     },

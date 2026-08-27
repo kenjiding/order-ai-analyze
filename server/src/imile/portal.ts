@@ -168,6 +168,19 @@ export const IMILE_DC_SCAN_QUERY_PORTAL: ImilePortalDefaults = {
   path: '/DCoperation/DCScanmanagement/ScanQuery',
 }
 
+/**
+ * dc.imile.com 退返商家（RTC）门户默认配置。
+ * resource-code / path 未经抓包确认，如鉴权失败可用 IMILE_RTC_RESOURCE_CODE / IMILE_RTC_PATH 勘误。
+ */
+export const IMILE_DC_RTC_PORTAL: ImilePortalDefaults = {
+  resourceCode: 'RTC',
+  sysName: 'DS',
+  sysPortal: 'DC',
+  origin: 'https://dc.imile.com',
+  referer: 'https://dc.imile.com/',
+  path: '/DCoperation/DCScanmanagement/RTC',
+}
+
 /** ds.imile.com 异常闭环门户默认配置 */
 export const IMILE_DS_CLOSURE_PORTAL: ImilePortalDefaults = {
   resourceCode: 'orderExceptionClosure',

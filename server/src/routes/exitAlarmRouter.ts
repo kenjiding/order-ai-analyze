@@ -27,6 +27,7 @@ type ScheduleBody = {
   pushConfigIds?: unknown
   mentionEnabled?: unknown
   routeCodeWhitelistPushEnabled?: unknown
+  arrivalScanDate?: unknown
   imileToken?: unknown
 }
 
@@ -39,10 +40,24 @@ type PublicExitAlarmSchedule = {
   pushConfigIds: string[]
   mentionEnabled: boolean
   routeCodeWhitelistPushEnabled: boolean
+  /** 「立刻推送」使用的到件扫描日期 YYYY-MM-DD；为空时按自动计算的最近工作日兜底 */
+  arrivalScanDate: string | null
   /** 拥有该配置的账号所属州/区域，决定 pushTimes/weekdays 按哪个时区判断；只读，随账号信息变化 */
   regionCode: string | null
   updatedAt: Date
   hasImileToken: boolean
+}
+
+const DATE_STR_RE = /^\d{4}-\d{2}-\d{2}$/
+
+function normalizeArrivalScanDate(raw: unknown): string | null {
+  const s = typeof raw === 'string' ? raw.trim() : ''
+  return DATE_STR_RE.test(s) ? s : null
+}
+
+/** 滞留数据看的是「到现在还有多少没出仓」，当天到件也有意义，因此只挡未来日期 */
+function isArrivalScanDateNotFuture(dateStr: string, regionCode: string | null | undefined): boolean {
+  return dateStr <= getRegionNow(resolveRegionTz(regionCode)).dateStr
 }
 
 async function toPublicSchedule(
@@ -58,6 +73,7 @@ async function toPublicSchedule(
     pushConfigIds: parsePushConfigIds(row.pushConfigIds),
     mentionEnabled: row.mentionEnabled,
     routeCodeWhitelistPushEnabled: row.routeCodeWhitelistPushEnabled,
+    arrivalScanDate: row.arrivalScanDate ?? null,
     regionCode,
     updatedAt: row.updatedAt,
     hasImileToken: await hasExitAlarmImileToken(row),
@@ -86,6 +102,7 @@ function extractScheduleFields(body: ScheduleBody) {
     pushConfigIds: parsePushConfigIds(body.pushConfigIds),
     mentionEnabled: body.mentionEnabled === true,
     routeCodeWhitelistPushEnabled: body.routeCodeWhitelistPushEnabled === true,
+    arrivalScanDate: normalizeArrivalScanDate(body.arrivalScanDate),
   }
 }
 
@@ -105,7 +122,7 @@ exitAlarmRouter.get('/schedules', async (req: AuthenticatedRequest, res: Respons
     const data = await Promise.all(rows.map((row) => toPublicSchedule(row, req.authUser?.regionCode ?? null)))
     res.json({ ok: true, data })
   } catch {
-    res.status(500).json({ ok: false, error: '读取出仓告警配置失败' })
+    res.status(500).json({ ok: false, error: '读取滞留数据告警配置失败' })
   }
 })
 
@@ -123,6 +140,10 @@ exitAlarmRouter.post('/schedules', async (req: AuthenticatedRequest, res: Respon
   const fields = extractScheduleFields(body)
   if (!fields.stationCode) {
     res.status(400).json({ ok: false, error: '缺少必填字段: stationCode' })
+    return
+  }
+  if (fields.arrivalScanDate && !isArrivalScanDateNotFuture(fields.arrivalScanDate, req.authUser?.regionCode)) {
+    res.status(400).json({ ok: false, error: '到件扫描时间不能选今天之后的日期' })
     return
   }
 
@@ -160,13 +181,14 @@ exitAlarmRouter.post('/schedules', async (req: AuthenticatedRequest, res: Respon
         pushConfigIds: fields.pushConfigIds,
         mentionEnabled: fields.mentionEnabled,
         routeCodeWhitelistPushEnabled: fields.routeCodeWhitelistPushEnabled,
+        arrivalScanDate: fields.arrivalScanDate,
         imileToken: nextImileToken ? normalizeImileToken(nextImileToken) : null,
         updatedBy: userId,
       })
       .returning()
     res.json({ ok: true, data: await toPublicSchedule(created, req.authUser?.regionCode ?? null) })
   } catch {
-    res.status(500).json({ ok: false, error: '新增出仓告警配置失败' })
+    res.status(500).json({ ok: false, error: '新增滞留数据告警配置失败' })
   }
 })
 
@@ -184,6 +206,10 @@ exitAlarmRouter.put('/schedules/:id', async (req: AuthenticatedRequest, res: Res
   const fields = extractScheduleFields(body)
   if (!fields.stationCode) {
     res.status(400).json({ ok: false, error: '缺少必填字段: stationCode' })
+    return
+  }
+  if (fields.arrivalScanDate && !isArrivalScanDateNotFuture(fields.arrivalScanDate, req.authUser?.regionCode)) {
+    res.status(400).json({ ok: false, error: '到件扫描时间不能选今天之后的日期' })
     return
   }
 
@@ -227,6 +253,7 @@ exitAlarmRouter.put('/schedules/:id', async (req: AuthenticatedRequest, res: Res
         pushConfigIds: fields.pushConfigIds,
         mentionEnabled: fields.mentionEnabled,
         routeCodeWhitelistPushEnabled: fields.routeCodeWhitelistPushEnabled,
+        arrivalScanDate: fields.arrivalScanDate,
         ...(nextImileToken ? { imileToken: normalizeImileToken(nextImileToken) } : {}),
         updatedBy: userId,
         updatedAt: new Date(),
@@ -235,7 +262,7 @@ exitAlarmRouter.put('/schedules/:id', async (req: AuthenticatedRequest, res: Res
       .returning()
     res.json({ ok: true, data: await toPublicSchedule(updated, req.authUser?.regionCode ?? null) })
   } catch {
-    res.status(500).json({ ok: false, error: '保存出仓告警配置失败' })
+    res.status(500).json({ ok: false, error: '保存滞留数据告警配置失败' })
   }
 })
 
@@ -255,7 +282,7 @@ exitAlarmRouter.delete('/schedules/:id', async (req: AuthenticatedRequest, res: 
     await db.delete(schema.exitAlarmSchedules).where(eq(schema.exitAlarmSchedules.id, existing.id))
     res.json({ ok: true, data: null })
   } catch {
-    res.status(500).json({ ok: false, error: '删除出仓告警配置失败' })
+    res.status(500).json({ ok: false, error: '删除滞留数据告警配置失败' })
   }
 })
 
@@ -304,7 +331,9 @@ exitAlarmRouter.post('/schedules/:id/push-now', async (req: AuthenticatedRequest
 
     const tz = resolveRegionTz(req.authUser?.regionCode)
     const { dateStr: todayDateStr, prevDateStr, timeHHmm: pushTime } = getRegionNow(tz)
-    const date = lastSortingWorkdayOnOrBefore(prevDateStr)
+    // 已保存到件扫描日期则按该日期拉数（用户手动指定，不做工作日兜底）；否则沿用自动计算的最近工作日。
+    // todayDateStr 仍是今天：阈值锚点=此刻，选历史到件日就是看那批件到现在还滞留多少未出仓。
+    const date = schedule.arrivalScanDate?.trim() || lastSortingWorkdayOnOrBefore(prevDateStr)
 
     const result = await executeExitAlarmPush({
       token,
@@ -365,7 +394,7 @@ exitAlarmRouter.post('/search-waybills', async (req: AuthenticatedRequest, res: 
       stationCode,
       dateStr,
       tz: resolveRegionTz(req.authUser?.regionCode),
-      label: '出仓告警运单查询',
+      label: '滞留数据告警运单查询',
     })
 
     if (!result.ok) {

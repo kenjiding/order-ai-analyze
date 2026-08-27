@@ -245,7 +245,7 @@ export async function executeExitAlarmPush(params: {
         continue
       }
 
-      void recordFeishuPushMessage({ supplierConfigId: config.id, chatId, messageId, pushLabel: '11点出仓告警' })
+      void recordFeishuPushMessage({ supplierConfigId: config.id, chatId, messageId, pushLabel: '滞留数据告警' })
       pushedCount++
       console.log(`${label} ✓ 推送成功: ${vendorName}`)
     } catch (err) {

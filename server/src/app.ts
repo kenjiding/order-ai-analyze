@@ -26,6 +26,7 @@ import { workOrderPushRouter } from './routes/workOrderPushRouter'
 import { dispatchAlarmRouter } from './routes/dispatchAlarmRouter'
 import { dispatchAlarmPortalRouter } from './routes/dispatchAlarmPortalRouter'
 import { deliveringNotifyRouter } from './routes/deliveringNotifyRouter'
+import { returnToMerchantRouter } from './routes/returnToMerchantRouter'
 import { attendanceWorkTimeRouter } from './routes/attendanceWorkTimeRouter'
 import { containerManagementRouter } from './routes/containerManagementRouter'
 import { packageLossMonitorRouter } from './routes/packageLossMonitorRouter'
@@ -90,6 +91,7 @@ app.use('/api/dispatch-alarm', requireAuth, dispatchAlarmRouter)
 // 24小时派签告警外部门户：凭分享 token 查看未达标运单明细，不走登录鉴权
 app.use('/api/dispatch-alarm-portal', dispatchAlarmPortalRouter)
 app.use('/api/delivering-notify', requireAuth, deliveringNotifyRouter)
+app.use('/api/return-to-merchant', requireAuth, returnToMerchantRouter)
 app.use('/api/attendance-work-time', requireAuth, attendanceWorkTimeRouter)
 app.use('/api/container-management', requireAuth, containerManagementRouter)
 app.use('/api/package-loss-monitor', requireAuth, packageLossMonitorRouter)

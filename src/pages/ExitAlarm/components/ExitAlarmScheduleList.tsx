@@ -40,7 +40,7 @@ export function ExitAlarmScheduleList({
   if (!loading && schedules.length === 0) {
     return (
       <div className="admin-panel px-5 py-10">
-        <Empty description="暂无出仓告警配置，点击右上角「添加出仓告警」新建" />
+        <Empty description="暂无滞留数据告警配置，点击右上角「添加滞留数据告警」新建" />
       </div>
     )
   }
@@ -100,7 +100,7 @@ export function ExitAlarmScheduleList({
                   disabled={unqualifiedTotal === 0}
                   onClick={() => {
                     if (unqualifiedTotal === 0) {
-                      showToast('本次推送所有运单均已在 11 点前出仓，无需导出', 'info')
+                      showToast('本次推送没有滞留未出仓运单，无需导出', 'info')
                       return
                     }
                     void exportUnqualifiedWaybillsExcel(pushResult)
@@ -112,7 +112,7 @@ export function ExitAlarmScheduleList({
               <Button icon={<Pencil className="h-3.5 w-3.5" />} onClick={() => onEdit(schedule)}>
                 编辑
               </Button>
-              <Popconfirm title="确认删除该出仓告警配置？" onConfirm={() => onDelete(schedule.id)} okText="删除" cancelText="取消">
+              <Popconfirm title="确认删除该滞留数据告警配置？" onConfirm={() => onDelete(schedule.id)} okText="删除" cancelText="取消">
                 <Button danger icon={<Trash2 className="h-3.5 w-3.5" />}>
                   删除
                 </Button>

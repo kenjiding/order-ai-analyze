@@ -25,7 +25,7 @@ function sanitizeSheetName(name: string, usedNames: Set<string>): string {
 /** 按供应商分 sheet，导出本次「立刻推送」中未在阈值前出仓（未达标）的运单号，含主统计与路由码白名单两部分（「类型」列区分） */
 export async function exportUnqualifiedWaybillsExcel(result: ExitAlarmPushNowResult): Promise<void> {
   const workbook = new ExcelJS.Workbook()
-  workbook.creator = '11点前出仓告警'
+  workbook.creator = '滞留数据告警'
   workbook.created = new Date()
 
   const usedNames = new Set<string>()
@@ -61,5 +61,5 @@ export async function exportUnqualifiedWaybillsExcel(result: ExitAlarmPushNowRes
   const blob = new Blob([buffer], {
     type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
   })
-  saveAs(blob, `11点前出仓告警_未达标运单_${result.stationCode}_${result.date}.xlsx`)
+  saveAs(blob, `滞留数据告警_未达标运单_${result.stationCode}_${result.date}.xlsx`)
 }
