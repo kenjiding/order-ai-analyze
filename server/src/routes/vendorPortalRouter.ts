@@ -75,6 +75,8 @@ type ReportDriver = {
 }
 
 type ReportVendor = {
+  /** 供应商单位键；老快照无此字段时回退 vendorCode */
+  supplierKey?: unknown
   vendorCode?: unknown
   vendorName?: unknown
   complaintRate?: unknown
@@ -158,6 +160,8 @@ function toRankingInput(raw: ReportVendor): VendorRankingInput {
   const dispatch24hTotal = numOrNull(raw.dispatch24hTotal)
   const dispatch24hCount = numOrNull(raw.dispatch24hCount)
   return {
+    // 排名实体标识用供应商单位键；老快照没有该字段时回退 vendorCode
+    supplierKey: str(raw.supplierKey) || str(raw.vendorCode),
     vendorCode: str(raw.vendorCode),
     complaintRate: num(raw.complaintRate),
     complaintCount: num(raw.complaintCount),
@@ -240,7 +244,7 @@ vendorPortalRouter.get('/daily/:token', rateLimit, async (req: Request, res: Res
       enabledSet,
     )
     const ranking: VendorRankingResult | null =
-      rankingPool.byVendorCode.get(str(vendorRaw.vendorCode)) ?? null
+      rankingPool.byKey.get(str(vendorRaw.supplierKey) || str(vendorRaw.vendorCode)) ?? null
 
     // 访问时间异步更新，不阻塞响应，失败不影响本次请求
     void db

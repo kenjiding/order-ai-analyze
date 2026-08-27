@@ -51,8 +51,12 @@ export type VendorMetricRow = {
   /** 推送配置行 id：用于列表渲染 key（vendorCode 在同一供应商配多条推送时可能重复，不能作为唯一键） */
   id: string
   vendorCode: string
+  /** 供应商单位键：与后端汇总 join 用；同 vendorCode 不同路由码的两家各有各的 key */
+  supplierKey: string
   vendorName: string
   supplierNickname: string
+  /** 该 vendorCode 被多家共用：客诉数/未处理工单/客诉率是整个编码的全量值，未按路由码拆分 */
+  sharedVendorCode: boolean
   complaintCount: number
   waybillCount: number
   complaintRate: number

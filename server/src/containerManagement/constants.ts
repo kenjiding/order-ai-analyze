@@ -1,4 +1,4 @@
-/** 容器管理：品类、主体类型、流转类型/状态、台账原因类型的常量与中文标签 */
+/** 容器管理：品类、站点类型、流转类型/状态、台账原因类型的常量与中文标签 */
 
 export const CONTAINER_TYPES = ['BIG_BASKET', 'SILVER_BOX'] as const
 export type ContainerType = (typeof CONTAINER_TYPES)[number]
@@ -26,8 +26,23 @@ export const TRANSFER_KINDS = [
 ] as const
 export type TransferKind = (typeof TRANSFER_KINDS)[number]
 
+export const transferKindLabel: Record<TransferKind, string> = {
+  LEND: '借出',
+  RETURN: '归还',
+  INTERNAL_TRANSFER: '仓间调拨',
+  IN_TRANSIT_OUT: '在途发出',
+  IN_TRANSIT_IN: '在途签收',
+}
+
 export const TRANSFER_STATUSES = ['PENDING_RECEIVER', 'DISPUTED', 'CONFIRMED', 'CANCELLED'] as const
 export type TransferStatus = (typeof TRANSFER_STATUSES)[number]
+
+export const transferStatusLabel: Record<TransferStatus, string> = {
+  PENDING_RECEIVER: '待接收方确认',
+  DISPUTED: '协商中',
+  CONFIRMED: '已确认',
+  CANCELLED: '已取消',
+}
 
 /** 借出与归还需接收方确认后双方库存才变动；其余类型创建时即记账 */
 export function transferKindNeedsReceiverConfirmation(kind: TransferKind): boolean {

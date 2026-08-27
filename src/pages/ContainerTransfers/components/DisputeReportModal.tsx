@@ -80,7 +80,7 @@ export function DisputeReportModal({ target, isUpdate = false, submitting, onCan
         className="mt-4"
         type="warning"
         showIcon
-        message="申报后进入协商，库存暂不变动；待转出方认可你申报的实收数量后才会记账。"
+        message="申报后进入协商，库存暂不变动；待转出方认可你的实收数量后才会入账。"
       />
 
       <div className="mt-4 flex flex-col gap-1.5">

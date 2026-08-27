@@ -4,15 +4,21 @@ import {
   deleteAccount,
   fetchAccounts,
   fetchAssignableUsers,
-  saveAccountUsers,
   updateAccount,
 } from '../../containerManagement/api'
+import type { AccountPushNotify } from '../../containerManagement/pushNotify'
 import type { AccountKind, AssignableUser, ContainerAccount } from '../../containerManagement/types'
 import { usePermission } from '../../hooks/usePermission'
 import { confirmDialog } from '../../utils/confirmDialog'
 import { showToast } from '../../utils/toast'
 
-export type AccountDraft = { name: string; kind: AccountKind }
+/** 一次表单提交携带站点信息、绑定用户与推送配置，后端在同一个事务里落库 */
+export type AccountDraft = {
+  name: string
+  kind: AccountKind
+  userIds: string[]
+  pushNotify: AccountPushNotify
+}
 
 export function useContainerAccountsPage() {
   const canManage = usePermission('btn:container-accounts:manage')
@@ -24,18 +30,17 @@ export function useContainerAccountsPage() {
 
   const [formOpen, setFormOpen] = useState(false)
   const [editing, setEditing] = useState<ContainerAccount | null>(null)
-  const [bindingAccount, setBindingAccount] = useState<ContainerAccount | null>(null)
 
   const loadAccounts = useCallback(async () => {
     setLoading(true)
-    const res = await fetchAccounts()
+    const res = await fetchAccounts(false, canManage ? 'manage' : undefined)
     setLoading(false)
     if (!res.ok) {
       showToast(res.error, 'error')
       return
     }
     setAccounts(res.data)
-  }, [])
+  }, [canManage])
 
   const loadUsers = useCallback(async () => {
     if (!canManage) return
@@ -80,7 +85,7 @@ export function useContainerAccountsPage() {
           ? prev.map((item) => (item.id === res.data.id ? res.data : item))
           : [...prev, res.data].sort((a, b) => a.name.localeCompare(b.name, 'zh-CN')),
       )
-      showToast(editing ? '已更新主体账户' : '已新增主体账户', 'success')
+      showToast(editing ? '已更新站点账户' : '已新增站点账户', 'success')
       closeForm()
       return true
     },
@@ -89,8 +94,8 @@ export function useContainerAccountsPage() {
 
   const removeAccount = useCallback(async (account: ContainerAccount) => {
     const confirmed = await confirmDialog({
-      title: `确认删除主体「${account.name}」？`,
-      content: '若该主体已有容器台账或流转记录，删除会被拒绝。',
+      title: `确认删除站点「${account.name}」？`,
+      content: '若该站点已有容器台账或流转记录，删除会被拒绝。',
       danger: true,
     })
     if (!confirmed) return
@@ -100,30 +105,8 @@ export function useContainerAccountsPage() {
       return
     }
     setAccounts((prev) => prev.filter((item) => item.id !== account.id))
-    showToast('已删除主体账户', 'success')
+    showToast('已删除站点账户', 'success')
   }, [])
-
-  const submitBinding = useCallback(
-    async (userIds: string[]): Promise<boolean> => {
-      if (!bindingAccount) return false
-      setSubmitting(true)
-      const res = await saveAccountUsers(bindingAccount.id, userIds)
-      setSubmitting(false)
-      if (!res.ok) {
-        showToast(res.error, 'error')
-        return false
-      }
-      setAccounts((prev) =>
-        prev.map((item) =>
-          item.id === bindingAccount.id ? { ...item, boundUserIds: userIds } : item,
-        ),
-      )
-      showToast('已保存绑定关系', 'success')
-      setBindingAccount(null)
-      return true
-    },
-    [bindingAccount],
-  )
 
   return useMemo(
     () => ({
@@ -134,15 +117,11 @@ export function useContainerAccountsPage() {
       submitting,
       formOpen,
       editing,
-      bindingAccount,
       openCreate,
       openEdit,
       closeForm,
       submitAccount,
       removeAccount,
-      openBinding: setBindingAccount,
-      closeBinding: () => setBindingAccount(null),
-      submitBinding,
     }),
     [
       canManage,
@@ -152,13 +131,11 @@ export function useContainerAccountsPage() {
       submitting,
       formOpen,
       editing,
-      bindingAccount,
       openCreate,
       openEdit,
       closeForm,
       submitAccount,
       removeAccount,
-      submitBinding,
     ],
   )
 }

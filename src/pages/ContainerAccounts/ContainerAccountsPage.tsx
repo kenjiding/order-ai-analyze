@@ -1,10 +1,9 @@
-import { Building2, Link2, Pencil, Plus, Trash2 } from 'lucide-react'
+import { BellRing, BellOff, Building2, Pencil, Plus, Trash2 } from 'lucide-react'
 import { Button, Table, Tag, Tooltip } from 'antd'
 import type { ColumnsType } from 'antd/es/table'
 import { accountKindLabel } from '../../containerManagement/constants'
 import type { ContainerAccount } from '../../containerManagement/types'
 import { AccountFormModal } from './components/AccountFormModal'
-import { AccountUserBindingModal } from './components/AccountUserBindingModal'
 import { useContainerAccountsPage } from './useContainerAccountsPage'
 
 const KIND_COLOR: Record<string, string> = {
@@ -36,7 +35,7 @@ export default function ContainerAccountsPage() {
       title: '绑定用户',
       dataIndex: 'boundUserIds',
       key: 'boundUserIds',
-      width: 140,
+      width: 120,
       render: (ids: string[]) =>
         ids.length > 0 ? (
           <span className="tabular-nums text-slate-700">{ids.length} 人</span>
@@ -45,9 +44,30 @@ export default function ContainerAccountsPage() {
         ),
     },
     {
+      title: '流转通知',
+      dataIndex: 'pushNotify',
+      key: 'pushNotify',
+      width: 160,
+      render: (config: ContainerAccount['pushNotify']) => {
+        // 开了但没选人等于没开，这里如实显示，不让用户以为已经在推
+        const live = config.enabled && config.mentions.length > 0
+        return live ? (
+          <span className="inline-flex items-center gap-1.5 text-emerald-700">
+            <BellRing className="h-3.5 w-3.5" aria-hidden />
+            <span className="tabular-nums">{config.mentions.length} 人</span>
+          </span>
+        ) : (
+          <span className="inline-flex items-center gap-1.5 text-slate-400">
+            <BellOff className="h-3.5 w-3.5" aria-hidden />
+            {config.enabled ? '未选接收人' : '未开启'}
+          </span>
+        )
+      },
+    },
+    {
       title: '操作',
       key: 'actions',
-      width: 160,
+      width: 120,
       fixed: 'right',
       render: (_, record) => (
         <div className="flex items-center gap-1">
@@ -58,15 +78,6 @@ export default function ContainerAccountsPage() {
               icon={<Pencil className="h-4 w-4" aria-hidden />}
               onClick={() => page.openEdit(record)}
               aria-label="编辑"
-            />
-          </Tooltip>
-          <Tooltip title={page.canManage ? '绑定用户' : '无操作权限'}>
-            <Button
-              type="text"
-              disabled={!page.canManage}
-              icon={<Link2 className="h-4 w-4" aria-hidden />}
-              onClick={() => page.openBinding(record)}
-              aria-label="绑定用户"
             />
           </Tooltip>
           <Tooltip title={page.canManage ? '删除' : '无操作权限'}>
@@ -93,9 +104,9 @@ export default function ContainerAccountsPage() {
               <Building2 className="h-5 w-5" aria-hidden />
             </div>
             <div>
-              <h1 className="text-lg font-semibold text-slate-950">主体账户</h1>
+              <h1 className="text-lg font-semibold text-slate-950">站点账户</h1>
               <p className="mt-1 max-w-2xl text-sm text-slate-600">
-                维护容器责任主体目录并绑定可操作的用户，所有借出 / 归还都基于主体之间的账户关系记账。
+                维护容器责任站点目录并绑定可操作的用户，所有借出 / 归还都基于站点之间的账户关系记账。
               </p>
             </div>
           </div>
@@ -105,12 +116,12 @@ export default function ContainerAccountsPage() {
               icon={<Plus className="h-4 w-4" aria-hidden />}
               onClick={page.openCreate}
             >
-              新增主体
+              新增站点
             </Button>
           ) : null}
         </div>
         <div className="mt-4 inline-flex items-center rounded-md bg-slate-100 px-3 py-1 text-xs text-slate-600">
-          当前主体总数：{page.accounts.length}
+          当前站点总数：{page.accounts.length}
         </div>
       </header>
 
@@ -121,25 +132,19 @@ export default function ContainerAccountsPage() {
           dataSource={page.accounts}
           loading={page.loading}
           pagination={{ pageSize: 10, showSizeChanger: false, showTotal: (t) => `共 ${t} 条` }}
-          scroll={{ x: 720 }}
-          locale={{ emptyText: '暂无主体账户' }}
+          scroll={{ x: 820 }}
+          locale={{ emptyText: '暂无站点账户' }}
         />
       </section>
 
       <AccountFormModal
+        key={page.editing?.id ?? 'create'}
         open={page.formOpen}
         editing={page.editing}
+        users={page.users}
         submitting={page.submitting}
         onCancel={page.closeForm}
         onSubmit={page.submitAccount}
-      />
-      <AccountUserBindingModal
-        key={page.bindingAccount?.id ?? 'none'}
-        account={page.bindingAccount}
-        users={page.users}
-        submitting={page.submitting}
-        onCancel={page.closeBinding}
-        onSubmit={page.submitBinding}
       />
     </div>
   )

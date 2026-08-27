@@ -11,6 +11,7 @@ import { fetchSearchWaybillByNos } from '../imile/inboundWaybillIndex'
 import { fetchSortingGeocodingByWaybillNos } from '../imile/sortingGeocoding'
 import { envFirst } from '../imile/shared'
 import { getGlobalImileToken } from '../feishu/globalImileToken'
+import { isRowInConfigScope } from '../vendorAnalysis/supplierScope'
 
 export type DriverMapPointDto = {
   waybillNo: string
@@ -44,6 +45,50 @@ export type DriverMapPointsResult = {
 export type DriverMapPointsQueryOutcome =
   | { ok: true; data: DriverMapPointsResult }
   | { ok: false; message: string }
+
+/**
+ * 供应商取数范围：同一 vendorCode 可能对应多条供应商配置（ADL-City / ADL-Lu 共用编码、
+ * 各管一批路由码），只按 vendorCode 筛会把两家的单混在一起，必须带路由码一起收窄。
+ * 判定口径与 24H 派签告警的统计完全一致（都走 supplierScope.isRowInConfigScope），
+ * 保证卡片上的单量与地图上的派送单量对得上。
+ */
+export type DriverMapVendorScope = {
+  vendorCode: string
+  /** 路由码纳入名单；空 = 不按路由码收窄 */
+  routeCodes?: string[]
+  /** 路由码白名单：命中则剔除 */
+  routeCodeWhitelist?: string[]
+}
+
+type ScopeRow = { vendorCode: string; consigneeRouteCode: string }
+
+type ScopeFilter = {
+  /** SQL 粗筛：把整站数据砍到「该 vendorCode」+「承运商未回填」两类，精筛仍在内存做 */
+  sqlWhere: ReturnType<typeof or> | undefined
+  accept: (row: ScopeRow) => boolean
+  /** 日志用的范围描述 */
+  label: string
+}
+
+function buildScopeFilter(scope?: DriverMapVendorScope): ScopeFilter {
+  const p = schema.driverMapWaybillPoints
+  const vendorCode = scope?.vendorCode?.trim() ?? ''
+  if (!vendorCode) return { sqlWhere: undefined, accept: () => true, label: '*' }
+
+  const routeCodes = scope?.routeCodes?.map((c) => c.trim()).filter(Boolean) ?? []
+  const whitelist = scope?.routeCodeWhitelist?.map((c) => c.trim()).filter(Boolean) ?? []
+  const configScope = {
+    vendorCode,
+    routeCodes: routeCodes.length > 0 ? new Set(routeCodes) : undefined,
+    routeCodeWhitelist: whitelist.length > 0 ? new Set(whitelist) : undefined,
+  }
+  return {
+    // vendorCode 为空的行是「尚未派件、iMile 未回填承运商」，要留给 routeCode 兜底归属，不能在 SQL 阶段剔除
+    sqlWhere: or(eq(p.vendorCode, vendorCode), eq(p.vendorCode, '')),
+    accept: (row) => isRowInConfigScope(configScope, row.vendorCode, row.consigneeRouteCode),
+    label: routeCodes.length > 0 ? `${vendorCode}/[${routeCodes.join(',')}]` : vendorCode,
+  }
+}
 
 /**
  * 复用用户已在「24小时派签告警」页面保存过的 iMile token，不要求为司机地图单独配置一遍。
@@ -104,27 +149,32 @@ async function applyGeocodedCoordsToPoints(
 /**
  * 为尚无坐标的运单查坐标：按运单号批量查 iMile sorting/pageList，直接拿 lat/lng，
  * 不再需要地址文本、不再需要跨运单地址缓存。
- * 传 vendorCode 时只处理该供应商（门户用）。
+ * 传 scope 时只处理该供应商配置范围内的运单（门户用）。
  */
 export async function geocodePendingMapPoints(input: {
   stationCode: string
   dataDate: string
-  vendorCode?: string
+  scope?: DriverMapVendorScope
   /** 未传则回退 24H 派签告警已保存的 token（同 ensureProblemReasons） */
   token?: string
   /** 每处理一批坐标回调一次，供任务进度上报（顺带充当心跳） */
   onProgress?: (done: number, total: number) => void | Promise<void>
 }): Promise<number> {
-  const { stationCode, dataDate, vendorCode, onProgress } = input
+  const { stationCode, dataDate, scope, onProgress } = input
   const token = input.token?.trim() || (await readDriverMapImileToken())
   if (!token) {
     console.warn('[driver-map/geocode] 未配置 iMile token，跳过坐标查询')
     return 0
   }
 
+  const scopeFilter = buildScopeFilter(scope)
   const db = getDb()
-  const rows = await db
-    .select({ waybillNo: schema.driverMapWaybillPoints.waybillNo })
+  const allRows = await db
+    .select({
+      waybillNo: schema.driverMapWaybillPoints.waybillNo,
+      vendorCode: schema.driverMapWaybillPoints.vendorCode,
+      consigneeRouteCode: schema.driverMapWaybillPoints.consigneeRouteCode,
+    })
     .from(schema.driverMapWaybillPoints)
     .where(
       and(
@@ -132,12 +182,13 @@ export async function geocodePendingMapPoints(input: {
         eq(schema.driverMapWaybillPoints.dataDate, dataDate),
         inArray(schema.driverMapWaybillPoints.status, ['completed', 'problem', 'pending']),
         or(isNull(schema.driverMapWaybillPoints.latitude), isNull(schema.driverMapWaybillPoints.longitude)),
-        vendorCode ? eq(schema.driverMapWaybillPoints.vendorCode, vendorCode) : undefined,
+        scopeFilter.sqlWhere,
       ),
     )
+  const rows = allRows.filter(scopeFilter.accept)
 
   if (rows.length === 0) {
-    console.info(`[driver-map/geocode] station=${stationCode} date=${dataDate} vendor=${vendorCode ?? '*'} pending=0`)
+    console.info(`[driver-map/geocode] station=${stationCode} date=${dataDate} vendor=${scopeFilter.label} pending=0`)
     return 0
   }
 
@@ -164,7 +215,7 @@ export async function geocodePendingMapPoints(input: {
   }
 
   console.info(
-    `[driver-map/geocode] station=${stationCode} date=${dataDate} vendor=${vendorCode ?? '*'} pending=${waybillNos.length} resolved=${entries.length} updatedRows=${updated}`,
+    `[driver-map/geocode] station=${stationCode} date=${dataDate} vendor=${scopeFilter.label} pending=${waybillNos.length} resolved=${entries.length} updatedRows=${updated}`,
   )
   return updated
 }
@@ -276,19 +327,21 @@ export async function hasDriverMapWaybillRows(input: {
   return Boolean(row)
 }
 
-/** 从缓存表组装地图点位（不触发 iMile 拉取） */
+/** 从缓存表组装地图点位（不触发 iMile 拉取）；派送单量等计数只统计 scope 内的运单 */
 export async function queryDriverMapPoints(input: {
   stationCode: string
   dataDate: string
-  vendorCode?: string
+  scope?: DriverMapVendorScope
 }): Promise<DriverMapPointsQueryOutcome> {
-  const { stationCode, dataDate, vendorCode } = input
+  const { stationCode, dataDate, scope } = input
+  const scopeFilter = buildScopeFilter(scope)
   const db = getDb()
   const p = schema.driverMapWaybillPoints
-  const rows = await db
+  const allRows = await db
     .select({
       waybillNo: p.waybillNo,
       vendorCode: p.vendorCode,
+      consigneeRouteCode: p.consigneeRouteCode,
       courierCode: p.courierCode,
       courierName: p.courierName,
       deliveryTime: p.deliveryTime,
@@ -301,13 +354,8 @@ export async function queryDriverMapPoints(input: {
       longitude: p.longitude,
     })
     .from(p)
-    .where(
-      and(
-        eq(p.stationCode, stationCode),
-        eq(p.dataDate, dataDate),
-        vendorCode ? eq(p.vendorCode, vendorCode) : undefined,
-      ),
-    )
+    .where(and(eq(p.stationCode, stationCode), eq(p.dataDate, dataDate), scopeFilter.sqlWhere))
+  const rows = allRows.filter(scopeFilter.accept)
 
   const built = buildDriversFromRows(rows)
   return {
@@ -341,19 +389,22 @@ export type DriverMapRefreshResult = {
 export async function ensureProblemReasons(input: {
   stationCode: string
   dataDate: string
-  vendorCode?: string
+  scope?: DriverMapVendorScope
   /** 未传则回退 24H 派签告警已保存的 token */
   token?: string
 }): Promise<number> {
-  const { stationCode, dataDate, vendorCode } = input
+  const { stationCode, dataDate, scope } = input
+  const scopeFilter = buildScopeFilter(scope)
   const db = getDb()
   const token = input.token?.trim() || (await readDriverMapImileToken())
   if (!token) return 0
 
-  const rows = await db
+  const allRows = await db
     .select({
       waybillNo: schema.driverMapWaybillPoints.waybillNo,
       id: schema.driverMapWaybillPoints.id,
+      vendorCode: schema.driverMapWaybillPoints.vendorCode,
+      consigneeRouteCode: schema.driverMapWaybillPoints.consigneeRouteCode,
     })
     .from(schema.driverMapWaybillPoints)
     .where(
@@ -362,9 +413,10 @@ export async function ensureProblemReasons(input: {
         eq(schema.driverMapWaybillPoints.dataDate, dataDate),
         eq(schema.driverMapWaybillPoints.status, 'problem'),
         eq(schema.driverMapWaybillPoints.problemReason, ''),
-        vendorCode ? eq(schema.driverMapWaybillPoints.vendorCode, vendorCode) : undefined,
+        scopeFilter.sqlWhere,
       ),
     )
+  const rows = allRows.filter(scopeFilter.accept)
 
   if (rows.length === 0) return 0
 
@@ -405,7 +457,7 @@ export async function ensureProblemReasons(input: {
     updated += 1
   }
   console.info(
-    `[driver-map/problem-reason] station=${stationCode} date=${dataDate} vendor=${vendorCode ?? '*'} missing=${rows.length} updated=${updated}`,
+    `[driver-map/problem-reason] station=${stationCode} date=${dataDate} vendor=${scopeFilter.label} missing=${rows.length} updated=${updated}`,
   )
   return updated
 }
@@ -419,14 +471,14 @@ export async function populateDriverMapCache(input: {
   stationCode: string
   dataDate: string
   tz: AusTz
-  vendorCode?: string
+  scope?: DriverMapVendorScope
   label?: string
   /** 只包住真正打 iMile 的步骤（运单同步/补问题原因）；geocode 与 DB 写入不占 iMile 并发闸 */
   imileGate?: <T>(fn: () => Promise<T>) => Promise<T>
   /** geocode 进度回调，供任务进度上报 */
   onGeocodeProgress?: (done: number, total: number) => void | Promise<void>
 }): Promise<{ ok: true; data: DriverMapRefreshResult } | { ok: false; message: string }> {
-  const { token, stationCode, dataDate, vendorCode, tz, onGeocodeProgress } = input
+  const { token, stationCode, dataDate, scope, tz, onGeocodeProgress } = input
   const label = input.label ?? '司机地图同步'
   const imileGate = input.imileGate ?? (<T>(fn: () => Promise<T>) => fn())
 
@@ -441,15 +493,15 @@ export async function populateDriverMapCache(input: {
   )
   if (!synced.ok) return synced
 
-  await imileGate(() => ensureProblemReasons({ stationCode, dataDate, vendorCode, token }))
+  await imileGate(() => ensureProblemReasons({ stationCode, dataDate, scope, token }))
   const geocodedUpdated = await geocodePendingMapPoints({
     stationCode,
     dataDate,
-    vendorCode,
+    scope,
     token,
     onProgress: onGeocodeProgress,
   })
-  const points = await queryDriverMapPoints({ stationCode, dataDate, vendorCode })
+  const points = await queryDriverMapPoints({ stationCode, dataDate, scope })
   if (!points.ok) return points
 
   return {

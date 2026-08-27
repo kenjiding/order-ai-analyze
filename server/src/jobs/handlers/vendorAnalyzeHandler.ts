@@ -20,6 +20,7 @@ import { resolveImileCountry, runWithImileCountry } from '../../imile/shared'
 import type { JobHandler, JobHandlerResult } from '../types'
 import { VENDOR_ANALYSIS_DATA_SOURCES, type VendorAnalysisDataSource } from '../../vendorAnalysis/metricsCatalog'
 import { aggregateVendorAnalysis, type VendorAnalyzeSummary } from '../../vendorAnalysis/aggregate'
+import { parseSupplierUnits, type SupplierUnitIndex } from '../../vendorAnalysis/supplierScope'
 
 export const VENDOR_ANALYZE_JOB_TYPE = 'vendor.analyze'
 
@@ -45,8 +46,8 @@ type VendorAnalyzePayload = {
   before11Date: string
   dayBeforeDate: string
   dataSources: VendorAnalysisDataSource[]
-  routeCodesByVendor: Map<string, Set<string>>
-  routeCodeWhitelistByVendor: Map<string, Set<string>>
+  /** 供应商单位：随任务冻结，worker 侧还原成索引后作为统计主键 */
+  supplierUnits: SupplierUnitIndex
 }
 
 function asStringArray(raw: unknown): string[] {
@@ -58,17 +59,6 @@ function parseDataSources(raw: unknown): VendorAnalysisDataSource[] {
   const valid = new Set<string>(VENDOR_ANALYSIS_DATA_SOURCES)
   const parsed = asStringArray(raw).filter((s): s is VendorAnalysisDataSource => valid.has(s))
   return parsed.length > 0 ? parsed : [...VENDOR_ANALYSIS_DATA_SOURCES]
-}
-
-/** 老任务 payload 无对应字段 → 空 map（不收窄 / 无白名单，改造前行为） */
-function parseRouteCodeSetByVendor(raw: unknown): Map<string, Set<string>> {
-  const map = new Map<string, Set<string>>()
-  if (!raw || typeof raw !== 'object') return map
-  for (const [vendorCode, codes] of Object.entries(raw as Record<string, unknown>)) {
-    const set = new Set(asStringArray(codes))
-    if (set.size > 0) map.set(vendorCode, set)
-  }
-  return map
 }
 
 function parsePayload(raw: Record<string, unknown>): VendorAnalyzePayload | null {
@@ -102,8 +92,7 @@ function parsePayload(raw: Record<string, unknown>): VendorAnalyzePayload | null
     before11Date: raw.before11Date as string,
     dayBeforeDate: raw.dayBeforeDate as string,
     dataSources: parseDataSources(raw.dataSources),
-    routeCodesByVendor: parseRouteCodeSetByVendor(raw.routeCodesByVendor),
-    routeCodeWhitelistByVendor: parseRouteCodeSetByVendor(raw.routeCodeWhitelistByVendor),
+    supplierUnits: parseSupplierUnits(raw.supplierUnits),
   }
 }
 
@@ -293,8 +282,7 @@ async function runVendorAnalyze(
       stationCodes: params.stationCodes,
       tz: resolveRegionTz(ctx.job.regionCode),
       nowMs,
-      routeCodesByVendor: params.routeCodesByVendor,
-      routeCodeWhitelistByVendor: params.routeCodeWhitelistByVendor,
+      supplierUnits: params.supplierUnits,
     })
 
     const artifactData: VendorAnalyzeSummary = {

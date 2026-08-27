@@ -1,7 +1,28 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { aggregateVendorAnalysis, type VendorAnalyzeAggregateInput } from './aggregate'
+import { buildSupplierUnitIndex } from './supplierScope'
 import { AUS_TZ } from '../imile/ausTimezone'
+
+/** 用供应商配置建供应商单位索引（统计主键的来源） */
+function unitsFrom(
+  configs: Array<{
+    vendorCode: string
+    supplierNickname?: string
+    routeCode?: string
+    routeCodeWhitelist?: string
+  }>,
+) {
+  return buildSupplierUnitIndex(
+    configs.map((c) => ({
+      vendorCode: c.vendorCode,
+      vendorName: c.vendorCode,
+      supplierNickname: c.supplierNickname ?? '',
+      routeCode: c.routeCode ?? '',
+      routeCodeWhitelist: c.routeCodeWhitelist ?? '',
+    })) as never,
+  )
+}
 
 // 2024-06-24 是周一，2024-06-28 是周五（用于校验 24H 派签的星期规则）
 function baseInput(overrides: Partial<VendorAnalyzeAggregateInput> = {}): VendorAnalyzeAggregateInput {
@@ -16,8 +37,7 @@ function baseInput(overrides: Partial<VendorAnalyzeAggregateInput> = {}): Vendor
     stationCodes: ['S1'],
     tz: AUS_TZ.Adelaide,
     nowMs: new Date('2024-07-05T00:00:00Z').getTime(),
-    routeCodesByVendor: new Map(),
-    routeCodeWhitelistByVendor: new Map(),
+    supplierUnits: unitsFrom([{ vendorCode: 'V1' }]),
     ...overrides,
   }
 }
@@ -117,7 +137,7 @@ test('路由码白名单：11点前出仓/24H派签口径剔除（含未出仓�
       { waybillNo: 'D1', courierCode: 'C1', courierVendorCode: 'V1', lastScanSiteCode: 'S1', consigneeRouteCode: 'R1', deliveryTime: '2024-06-24 10:00:00', signDate: '2024-06-24 12:00:00' }, // 命中白名单，剔除
       { waybillNo: 'D2', courierCode: 'C1', courierVendorCode: 'V1', lastScanSiteCode: 'S1', consigneeRouteCode: 'R2', deliveryTime: '2024-06-24 10:00:00', signDate: '2024-06-24 12:00:00' },
     ],
-    routeCodeWhitelistByVendor: new Map([['V1', new Set(['R1'])]]),
+    supplierUnits: unitsFrom([{ vendorCode: 'V1', routeCodeWhitelist: 'R1' }]),
   })
   const [v] = aggregateVendorAnalysis(input)
 
@@ -147,8 +167,7 @@ test('24H派签：routeCode 纳入筛选后只统计配置路由；白名单再�
   const [v] = aggregateVendorAnalysis(
     baseInput({
       driverDayBeforeWaybills: rows,
-      routeCodesByVendor: new Map([['V1', new Set(['R-A', 'R-B'])]]),
-      routeCodeWhitelistByVendor: new Map([['V1', new Set(['R-A'])]]),
+      supplierUnits: unitsFrom([{ vendorCode: 'V1', routeCode: 'R-A R-B', routeCodeWhitelist: 'R-A' }]),
     }),
   )
 
@@ -161,4 +180,119 @@ test('24H派签：routeCode 纳入筛选后只统计配置路由；白名单再�
   assert.ok(driver)
   assert.equal(driver.totalDispatchCount, 1)
   assert.equal(driver.dispatch24hCount, 1)
+})
+
+test('同 vendorCode 不同路由码的两家（ADL-City / ADL-Lu）各自独立成行，数据不混算', () => {
+  const input = baseInput({
+    waybills: [
+      { courierVendorCode: 'SRM01', consigneeRouteCode: 'ADL-C1' },
+      { courierVendorCode: 'SRM01', consigneeRouteCode: 'ADL-C1' },
+      { courierVendorCode: 'SRM01', consigneeRouteCode: 'ADL-L1' },
+    ],
+    driverDayBeforeWaybills: [
+      // City：2 单，1 单达标
+      { waybillNo: 'C-1', courierCode: 'DC', courierVendorCode: 'SRM01', lastScanSiteCode: 'S1', consigneeRouteCode: 'ADL-C1', deliveryTime: '2024-06-24 10:00:00', signDate: '2024-06-24 12:00:00' },
+      { waybillNo: 'C-2', courierCode: 'DC', courierVendorCode: 'SRM01', lastScanSiteCode: 'S1', consigneeRouteCode: 'ADL-C1', deliveryTime: '2024-06-24 10:00:00' },
+      // Lu：1 单，达标
+      { waybillNo: 'L-1', courierCode: 'DL', courierVendorCode: 'SRM01', lastScanSiteCode: 'S1', consigneeRouteCode: 'ADL-L1', deliveryTime: '2024-06-24 10:00:00', signDate: '2024-06-24 12:00:00' },
+    ],
+    supplierUnits: unitsFrom([
+      { vendorCode: 'SRM01', supplierNickname: 'ADL-City', routeCode: 'ADL-C1' },
+      { vendorCode: 'SRM01', supplierNickname: 'ADL-Lu', routeCode: 'ADL-L1' },
+    ]),
+  })
+  const result = aggregateVendorAnalysis(input)
+
+  const city = result.find((v) => v.supplierName === 'ADL-City')
+  const lu = result.find((v) => v.supplierName === 'ADL-Lu')
+  assert.ok(city && lu)
+  // 两家共用同一个 vendorCode，但各占一行、各算各的
+  assert.equal(city.vendorCode, 'SRM01')
+  assert.equal(lu.vendorCode, 'SRM01')
+  assert.notEqual(city.supplierKey, lu.supplierKey)
+
+  assert.equal(city.waybillCount, 2)
+  assert.equal(lu.waybillCount, 1)
+  assert.equal(city.dispatch24hTotal, 2)
+  assert.equal(city.dispatch24hCount, 1)
+  assert.deepEqual(city.dispatch24hUnmetWaybillNos, ['C-2'])
+  assert.equal(lu.dispatch24hTotal, 1)
+  assert.equal(lu.dispatch24hCount, 1)
+  assert.deepEqual(lu.dispatch24hUnmetWaybillNos, [])
+
+  // 司机也各归各家，不会互相出现在对方的司机列表里
+  assert.deepEqual(city.drivers.map((d) => d.courierCode), ['DC'])
+  assert.deepEqual(lu.drivers.map((d) => d.courierCode), ['DL'])
+})
+
+test('同 vendorCode 多家时：客诉/工单无路由码拆不开，各家取全量值并标记 sharedVendorCode', () => {
+  const input = baseInput({
+    tickets: [
+      { relatedResponsibleHubCode: 'S1', responsibleDeptCode: 'SRM01', orderCode: 'O1' },
+      { relatedResponsibleHubCode: 'S1', responsibleDeptCode: 'SRM01', orderCode: 'O2' },
+    ],
+    waybills: [
+      { courierVendorCode: 'SRM01', consigneeRouteCode: 'ADL-C1' },
+      { courierVendorCode: 'SRM01', consigneeRouteCode: 'ADL-L1' },
+    ],
+    unprocessedTickets: {
+      normalTickets: [{ currentHandleStationCode: 'S1', currentHandleCode: 'SRM01', orderCode: 'U1' }],
+      complaintTickets: [],
+      arbitrationTickets: [],
+    },
+    supplierUnits: unitsFrom([
+      { vendorCode: 'SRM01', supplierNickname: 'ADL-City', routeCode: 'ADL-C1' },
+      { vendorCode: 'SRM01', supplierNickname: 'ADL-Lu', routeCode: 'ADL-L1' },
+    ]),
+  })
+  const result = aggregateVendorAnalysis(input)
+  const city = result.find((v) => v.supplierName === 'ADL-City')
+  const lu = result.find((v) => v.supplierName === 'ADL-Lu')
+  assert.ok(city && lu)
+
+  // 客诉/工单只有供应商编码，两家都取该编码的全量值，并标记未拆分
+  assert.equal(city.sharedVendorCode, true)
+  assert.equal(lu.sharedVendorCode, true)
+  assert.equal(city.complaintCount, 2)
+  assert.equal(lu.complaintCount, 2)
+  assert.equal(city.unprocessedTicketCount, 1)
+  assert.equal(lu.unprocessedTicketCount, 1)
+  // 客诉率分子拆不开，分母也用编码全量（2/2），不用各家拆分后的揽收量
+  assert.equal(city.complaintRate, 1)
+  assert.equal(lu.complaintRate, 1)
+  // 揽收量本身有路由码，按家拆分
+  assert.equal(city.waybillCount, 1)
+  assert.equal(lu.waybillCount, 1)
+})
+
+test('长尾单/归班预警无路由码，按司机归属落到正确的那一家', () => {
+  const input = baseInput({
+    driverYesterdayWaybills: [
+      { waybillNo: 'P1', courierCode: 'DC', courierVendorCode: 'SRM01', courier: 'City司机', consigneeRouteCode: 'ADL-C1', before11Exit: true },
+      { waybillNo: 'P2', courierCode: 'DL', courierVendorCode: 'SRM01', courier: 'Lu司机', consigneeRouteCode: 'ADL-L1', before11Exit: true },
+    ],
+    longTailOrders: [
+      { driverCode: 'DC', driverVendorCode: 'SRM01', waybillNo: 'L1', driverName: 'City司机' },
+      { driverCode: 'DL', driverVendorCode: 'SRM01', waybillNo: 'L2', driverName: 'Lu司机' },
+      { driverCode: 'DL', driverVendorCode: 'SRM01', waybillNo: 'L3', driverName: 'Lu司机' },
+    ],
+    driverReturnRows: [
+      { driverCode: 'DC', driverVendorCode: 'SRM01', ofdDate: '2024-06-01 00:00:00', waybillNo: 'RW1', driverName: 'City司机' },
+    ],
+    supplierUnits: unitsFrom([
+      { vendorCode: 'SRM01', supplierNickname: 'ADL-City', routeCode: 'ADL-C1' },
+      { vendorCode: 'SRM01', supplierNickname: 'ADL-Lu', routeCode: 'ADL-L1' },
+    ]),
+  })
+  const result = aggregateVendorAnalysis(input)
+  const city = result.find((v) => v.supplierName === 'ADL-City')
+  const lu = result.find((v) => v.supplierName === 'ADL-Lu')
+  assert.ok(city && lu)
+
+  // 长尾：DC 的 1 单归 City，DL 的 2 单归 Lu，不再两家各显示 3 单
+  assert.equal(city.longTailCount, 1)
+  assert.equal(lu.longTailCount, 2)
+  // 归班预警只有 DC 有，只出现在 City 的司机行里
+  assert.equal(city.drivers.find((d) => d.courierCode === 'DC')?.returnWarningCount, 1)
+  assert.equal(lu.drivers.find((d) => d.courierCode === 'DC'), undefined)
 })

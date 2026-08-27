@@ -2,7 +2,7 @@
  * 容器管理：流转记录状态机与库存记账。
  *
  * 数量的唯一真相源是 container_transfer_items：
- *   declaredQuantity 转出方申报 / receivedQuantity 接收方实收 / settledQuantity 最终落表
+ *   declaredQuantity 转出方发出 / receivedQuantity 接收方实收 / settledQuantity 已入账
  *
  * 记账时对余额行加 FOR UPDATE 行锁再校验再扣减，并同步写台账审计，
  * 保证「谁拿了多少」与「怎么流的」在数据层是连通的。
@@ -44,7 +44,8 @@ export type TransferView = {
   declaredTotal: number
   receivedTotal: number | null
   settledTotal: number | null
-  imageUrl: string | null
+  /** 业务发生日期 YYYY-MM-DD */
+  occurredAt: string
   note: string | null
   receiverReportReason: string | null
   receiverReportImageUrl: string | null
@@ -53,6 +54,27 @@ export type TransferView = {
   respondedAt: string | null
   createdByUsername: string | null
   createdAt: string
+}
+
+/** 服务器本地当天的 YYYY-MM-DD */
+function todayIsoDate(): string {
+  const now = new Date()
+  const pad = (n: number) => String(n).padStart(2, '0')
+  return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`
+}
+
+/** 校验业务发生日期：只认 YYYY-MM-DD，且必须是真实存在的日期 */
+export function normalizeOccurredAt(raw: unknown): string {
+  const text = String(raw ?? '').trim()
+  if (!text) return todayIsoDate()
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(text)) {
+    throw new ContainerBusinessError('日期格式不正确，应为 YYYY-MM-DD')
+  }
+  const parsed = new Date(`${text}T00:00:00Z`)
+  if (Number.isNaN(parsed.getTime()) || parsed.toISOString().slice(0, 10) !== text) {
+    throw new ContainerBusinessError('日期不存在')
+  }
+  return text
 }
 
 function labelOf(containerType: string): string {
@@ -207,72 +229,109 @@ async function assertAvailable(
   }
 }
 
-export async function createTransfer(input: {
+export type TransferCreateInput = {
   kind: TransferKind
   fromAccountId: string
   toAccountId: string
   lineItems: TransferLineInput[]
-  imageUrl?: string | null
+  /** 业务发生日期 YYYY-MM-DD，缺省取当天 */
+  occurredAt?: string | null
   note?: string | null
-  actorUserId: string | null
-}): Promise<number> {
+}
+
+/**
+ * 单笔落库，调用方负责开事务。
+ * 批量新增时多组共用一个事务，assertAvailable 能看到同事务内前几组已占用的量，
+ * 「两组都从同一站点转出、加起来超库存」这种情况才拦得住。
+ */
+async function createTransferInTx(
+  tx: Tx,
+  input: TransferCreateInput,
+  actorUserId: string | null,
+): Promise<number> {
   const lineItems = normalizeLineItems(input.lineItems)
   if (input.fromAccountId === input.toAccountId) {
     throw new ContainerBusinessError('转出方与接收方不能相同')
   }
-  const accounts = await getDb()
+  const accounts = await tx
     .select({ id: schema.containerAccounts.id })
     .from(schema.containerAccounts)
     .where(inArray(schema.containerAccounts.id, [input.fromAccountId, input.toAccountId]))
-  if (accounts.length !== 2) throw new ContainerBusinessError('主体账户不存在', 404)
+  if (accounts.length !== 2) throw new ContainerBusinessError('站点账户不存在', 404)
 
   const needsConfirm = transferKindNeedsReceiverConfirmation(input.kind)
+  if (needsConfirm) {
+    await assertAvailable(tx, input.fromAccountId, lineItems)
+  }
 
-  return getDb().transaction(async (tx) => {
-    if (needsConfirm) {
-      await assertAvailable(tx, input.fromAccountId, lineItems)
-    }
-
-    const [created] = await tx
-      .insert(schema.containerTransfers)
-      .values({
+  const [created] = await tx
+    .insert(schema.containerTransfers)
+    .values({
       kind: input.kind,
       status: needsConfirm ? 'PENDING_RECEIVER' : 'CONFIRMED',
       fromAccountId: input.fromAccountId,
       toAccountId: input.toAccountId,
-      imageUrl: input.imageUrl ?? null,
+      occurredAt: input.occurredAt ?? todayIsoDate(),
       note: input.note ?? null,
       respondedAt: needsConfirm ? null : new Date(),
-      respondedBy: needsConfirm ? null : input.actorUserId,
-      createdBy: input.actorUserId,
-      })
-      .returning({ id: schema.containerTransfers.id })
-    const transferId = created.id
+      respondedBy: needsConfirm ? null : actorUserId,
+      createdBy: actorUserId,
+    })
+    .returning({ id: schema.containerTransfers.id })
+  const transferId = created.id
 
-    await tx.insert(schema.containerTransferItems).values(
-      lineItems.map((item) => ({
-        transferId,
+  await tx.insert(schema.containerTransferItems).values(
+    lineItems.map((item) => ({
+      transferId,
+      containerType: item.containerType,
+      declaredQuantity: item.quantity,
+      settledQuantity: needsConfirm ? null : item.quantity,
+    })),
+  )
+
+  if (!needsConfirm) {
+    for (const item of lineItems) {
+      await applyBalances(tx, {
+        fromAccountId: input.fromAccountId,
+        toAccountId: input.toAccountId,
         containerType: item.containerType,
-        declaredQuantity: item.quantity,
-        settledQuantity: needsConfirm ? null : item.quantity,
-      })),
-    )
+        quantity: item.quantity,
+        transferId,
+        actorUserId,
+      })
+    }
+  }
 
-    if (!needsConfirm) {
-      for (const item of lineItems) {
-        await applyBalances(tx, {
-          fromAccountId: input.fromAccountId,
-          toAccountId: input.toAccountId,
-          containerType: item.containerType,
-          quantity: item.quantity,
-          transferId,
-          actorUserId: input.actorUserId,
-        })
+  return transferId
+}
+
+/**
+ * 批量新增：整批放在一个事务里，任何一组不合法就整批回滚。
+ * 部分成功会留下「哪几条进去了」说不清的状态，录入方还得逐条去核对。
+ * 报错时带上序号，否则用户面对一堆表单不知道是哪一组的问题。
+ * unitLabel：手工表单是「组」，Excel 批量导入是「行」，错误提示要对得上用户看到的东西。
+ */
+export async function createTransfersBatch(
+  items: TransferCreateInput[],
+  actorUserId: string | null,
+  unitLabel = '组',
+): Promise<number[]> {
+  if (items.length === 0) throw new ContainerBusinessError(`至少需要一${unitLabel}流转记录`)
+
+  const ids: number[] = []
+  await getDb().transaction(async (tx) => {
+    for (const [index, item] of items.entries()) {
+      try {
+        ids.push(await createTransferInTx(tx, item, actorUserId))
+      } catch (error) {
+        if (error instanceof ContainerBusinessError) {
+          throw new ContainerBusinessError(`第 ${index + 1} ${unitLabel}：${error.message}`, error.status)
+        }
+        throw error
       }
     }
-
-    return transferId
   })
+  return ids
 }
 
 async function loadTransferForUpdate(tx: Tx, transferId: number) {
@@ -292,7 +351,7 @@ async function loadTransferForUpdate(tx: Tx, transferId: number) {
   return { transfer, items }
 }
 
-/** 无争议确认收货：按申报数量全额落表 */
+/** 无争议确认收货：按转出方发出数量全额入账 */
 export async function confirmTransfer(input: {
   transferId: number
   actorUserId: string | null
@@ -395,37 +454,7 @@ export async function reportReceipt(input: {
   })
 }
 
-export async function addTransferMessage(input: {
-  transferId: number
-  actorUserId: string | null
-  body: string
-  proposedQuantity?: number | null
-}): Promise<void> {
-  const body = input.body.trim()
-  if (!body) throw new ContainerBusinessError('留言不能为空')
-  const db = getDb()
-  const rows = await db
-    .select({ status: schema.containerTransfers.status })
-    .from(schema.containerTransfers)
-    .where(eq(schema.containerTransfers.id, input.transferId))
-    .limit(1)
-  if (rows.length === 0) throw new ContainerBusinessError('流转记录不存在', 404)
-  if (rows[0].status !== 'DISPUTED') throw new ContainerBusinessError('仅协商中的记录可留言')
-
-  await db.insert(schema.containerTransferMessages).values({
-    transferId: input.transferId,
-    authorUserId: input.actorUserId,
-    body,
-    proposedQuantity:
-      input.proposedQuantity !== undefined &&
-      input.proposedQuantity !== null &&
-      Number.isInteger(input.proposedQuantity)
-        ? input.proposedQuantity
-        : null,
-  })
-}
-
-/** 转出方认可接收方申报的实收数量：按品类实收落表；全部为 0 则整单取消 */
+/** 转出方认可接收方实收数量：按品类实收入账；全部为 0 则整单取消 */
 export async function acceptSettlement(input: {
   transferId: number
   actorUserId: string | null
@@ -494,7 +523,7 @@ function snapshotForChangeLog(
     status: transfer.status,
     fromAccountId: transfer.fromAccountId,
     toAccountId: transfer.toAccountId,
-    imageUrl: transfer.imageUrl,
+    occurredAt: transfer.occurredAt,
     note: transfer.note,
     items: items.map((item) => ({
       containerType: item.containerType,
@@ -508,7 +537,7 @@ function snapshotForChangeLog(
 export async function updateTransfer(input: {
   transferId: number
   lineItems?: TransferLineInput[]
-  imageUrl?: string | null
+  occurredAt?: string | null
   note?: string | null
   reason?: string
   actorUserId: string | null
@@ -538,11 +567,11 @@ export async function updateTransfer(input: {
       )
     }
 
-    if (input.imageUrl !== undefined || input.note !== undefined) {
+    if (input.occurredAt !== undefined || input.note !== undefined) {
       await tx
         .update(schema.containerTransfers)
         .set({
-          ...(input.imageUrl === undefined ? {} : { imageUrl: input.imageUrl }),
+          ...(input.occurredAt ? { occurredAt: input.occurredAt } : {}),
           ...(input.note === undefined ? {} : { note: input.note }),
         })
         .where(eq(schema.containerTransfers.id, transfer.id))
@@ -605,7 +634,7 @@ function toTransferView(row: TransferRow, items: TransferItemView[]): TransferVi
     settledTotal: hasSettled
       ? items.reduce((sum, item) => sum + (item.settledQuantity ?? 0), 0)
       : null,
-    imageUrl: row.imageUrl,
+    occurredAt: row.occurredAt,
     note: row.note,
     receiverReportReason: row.receiverReportReason,
     receiverReportImageUrl: row.receiverReportImageUrl,
@@ -629,7 +658,7 @@ type TransferRow = {
   fromAccountName: string
   toAccountId: string
   toAccountName: string
-  imageUrl: string | null
+  occurredAt: string
   note: string | null
   receiverReportReason: string | null
   receiverReportImageUrl: string | null
@@ -650,7 +679,7 @@ function transferSelectQuery(db: ReturnType<typeof getDb>) {
       fromAccountName: fromAccountTable.name,
       toAccountId: schema.containerTransfers.toAccountId,
       toAccountName: toAccountTable.name,
-      imageUrl: schema.containerTransfers.imageUrl,
+      occurredAt: schema.containerTransfers.occurredAt,
       note: schema.containerTransfers.note,
       receiverReportReason: schema.containerTransfers.receiverReportReason,
       receiverReportImageUrl: schema.containerTransfers.receiverReportImageUrl,
@@ -744,22 +773,6 @@ export async function getTransfer(transferId: number): Promise<TransferView | nu
   const rows = await transferSelectQuery(getDb()).where(eq(schema.containerTransfers.id, transferId))
   const views = await attachItems(rows)
   return views[0] ?? null
-}
-
-export async function listTransferMessages(transferId: number) {
-  const rows = await getDb()
-    .select({
-      id: schema.containerTransferMessages.id,
-      body: schema.containerTransferMessages.body,
-      proposedQuantity: schema.containerTransferMessages.proposedQuantity,
-      authorUsername: schema.users.username,
-      createdAt: schema.containerTransferMessages.createdAt,
-    })
-    .from(schema.containerTransferMessages)
-    .leftJoin(schema.users, eq(schema.users.id, schema.containerTransferMessages.authorUserId))
-    .where(eq(schema.containerTransferMessages.transferId, transferId))
-    .orderBy(asc(schema.containerTransferMessages.createdAt))
-  return rows.map((row) => ({ ...row, createdAt: row.createdAt.toISOString() }))
 }
 
 export type TransferChangeQuery = {

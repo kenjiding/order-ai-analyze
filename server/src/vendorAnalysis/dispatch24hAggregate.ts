@@ -6,7 +6,13 @@
  * 不重复实现。
  */
 import { iMileStrToMs, localDatePlusDaysMs, weekdayInTz, type AusTz } from '../imile/ausTimezone'
-import { buildRouteCodeVendorsMap, isRowInVendorScope, resolveVendorCodesByRouteCode } from './supplierScope'
+import {
+  buildRouteCodeVendorsMap,
+  isRowInConfigScope,
+  isRowInVendorScope,
+  resolveVendorCodesByRouteCode,
+  type ConfigScope,
+} from './supplierScope'
 
 const DAY_MS = 24 * 60 * 60 * 1000
 
@@ -299,23 +305,18 @@ export function aggregateDispatch24hByVendor(input: {
   return result
 }
 
-export type Dispatch24hScope = {
-  /** 结果 Map 的 key，用配置自己的 id（而非 vendorCode），使同一 vendorCode 的多条配置各自独立累计，互不覆盖 */
-  key: string
-  vendorCode: string
-  /** 路由码纳入名单；undefined/空集 = 不按路由码收窄 */
-  routeCodes?: Set<string>
-  routeCodeWhitelist?: Set<string>
-}
+/** 结果 Map 的 key 用配置自己的 id（而非 vendorCode），使同一 vendorCode 的多条配置各自独立累计，互不覆盖 */
+export type Dispatch24hScope = ConfigScope
 
 /**
  * 按预先给定的多个独立范围一次遍历 rows 完成聚合，每个 scope 各自累计一份统计——
  * 供「同一批运单要按 N 个供应商推送配置（可能同 vendorCode 不同 routeCode 范围）分别出结果」的场景使用
  * （24H 派签逐配置推送），避免每个配置都重新扫一遍全量 rows。
  *
- * 与 aggregateDispatch24hByVendor 的区别：后者按行动态发现 vendorCode（「供应商数据分析」要看全量供应商口径），
- * 这里 vendorCode 由调用方在 scopes 里显式给定，不做动态发现，且不需要 unmetNos（调用方只用 total/met/problemCount/drivers），
- * 故不构建该字段。
+ * （24H 派签告警按推送配置 id 分桶，供应商日报按供应商单位 supplierKey 分桶）。
+ *
+ * 与 aggregateDispatch24hByVendor 的区别：后者按行动态发现 vendorCode，
+ * 这里 vendorCode 由调用方在 scopes 里显式给定，不做动态发现。
  */
 export function aggregateDispatch24hByScopes(input: {
   rows: Dispatch24hWaybillRow[]
@@ -342,16 +343,7 @@ export function aggregateDispatch24hByScopes(input: {
     const courierCode = norm(row.courierCode)
 
     for (const scope of scopes) {
-      // 归属判定：有 explicit vendorCode 时必须精确等于该 scope；否则按 routeCode 兜底，且必须配置了 routeCodes 才能兜底
-      if (explicitVendorCode) {
-        if (explicitVendorCode !== scope.vendorCode) continue
-      } else if (!scope.routeCodes?.has(consigneeRouteCode)) {
-        continue
-      }
-      // 路由码纳入名单收窄（explicit 分支在此生效；fallback 分支上面已确认命中，这里恒真，保留是为了和
-      // isRouteCodeAllowed 语义保持单一实现来源，避免以后各写各的走偏）
-      if (scope.routeCodes && !scope.routeCodes.has(consigneeRouteCode)) continue
-      if (scope.routeCodeWhitelist?.has(consigneeRouteCode)) continue
+      if (!isRowInConfigScope(scope, explicitVendorCode, consigneeRouteCode)) continue
 
       let stat = result.get(scope.key)
       if (!stat) {
@@ -359,7 +351,11 @@ export function aggregateDispatch24hByScopes(input: {
         result.set(scope.key, stat)
       }
       stat.total += 1
-      if (met) stat.met += 1
+      if (met) {
+        stat.met += 1
+      } else if (wbNo) {
+        stat.unmetNos.push(wbNo)
+      }
       if (hasProblem) stat.problemCount += 1
       if (neverSigned) stat.neverSignedCount += 1
       if (lateSigned) stat.lateSignedCount += 1

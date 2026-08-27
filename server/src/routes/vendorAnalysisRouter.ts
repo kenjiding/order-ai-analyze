@@ -9,8 +9,13 @@ import { readImileTokenFromRequest } from './imileAuth'
 import { enqueueJob, getJobById, updateJobPayload } from '../jobs/queue'
 import { VENDOR_ANALYZE_JOB_TYPE } from '../jobs/handlers'
 import { canAccessJob, resolveEnqueueRegionCode, sendJobAccessDenied } from '../jobs/access'
-import { listSupplierPushConfigs } from '../supplierPushConfigs'
-import { buildScopeRecordsFromConfigs } from '../vendorAnalysis/supplierScope'
+import { listSupplierPushConfigs, supplierDisplayName } from '../supplierPushConfigs'
+import {
+  buildSupplierUnitIndex,
+  buildSupplierUnitKey,
+  serializeSupplierUnits,
+  type SupplierUnitRecord,
+} from '../vendorAnalysis/supplierScope'
 import { purgeOldVendorDailyData } from '../vendorAnalysis/retention'
 import { resolveImileCountry } from '../imile/shared'
 import {
@@ -66,14 +71,8 @@ function normalizeVendorAnalyzeCode(code: string): string {
  * dataSources 参与 key：勾选指标集合不同 → 需要抓取的数据不同 → 不能命中旧任务（否则缺数据）。
  * v1 → v2：老 key 永不再命中，避免命中无 dataSources 字段的历史任务。
  * v2 → v3：供应商/数据源列表改为 sha256，避免 jobs.idempotency_key varchar(255) 溢出。
+ * v5 → v6：统计主键由 vendorCode 改为供应商单位（supplierKey），旧任务的汇总结构不兼容，必须不命中。
  */
-function serializeRouteCodeMap(map: Record<string, string[]>): string {
-  return Object.entries(map)
-    .sort(([a], [b]) => a.localeCompare(b))
-    .map(([vendor, codes]) => `${vendor}:${[...codes].sort().join(',')}`)
-    .join(';')
-}
-
 function buildVendorAnalyzeIdempotencyKey(input: {
   regionCode: string | null
   country: string
@@ -83,21 +82,21 @@ function buildVendorAnalyzeIdempotencyKey(input: {
   complaintEnd: string
   vendorCodes: string[]
   dataSources: VendorAnalysisDataSource[]
-  routeCodesByVendor: Record<string, string[]>
-  routeCodeWhitelistByVendor: Record<string, string[]>
+  supplierUnits: SupplierUnitRecord[]
 }): string {
   const region = input.regionCode ?? '_global_'
   const stations = [...new Set(input.stationCodes.map((s) => s.trim()).filter(Boolean))].sort().join(',')
   const vendors = [...new Set(input.vendorCodes.map((s) => s.trim()).filter(Boolean))].sort().join(',')
-  // 纳入名单 / 白名单变化会改变 24H 派签等统计口径，需参与幂等 key
-  const routeCodesText = serializeRouteCodeMap(input.routeCodesByVendor)
-  const whitelistText = serializeRouteCodeMap(input.routeCodeWhitelistByVendor)
+  // 供应商单位（含各自的纳入名单 / 白名单）变化会改变统计口径与分组，需参与幂等 key
+  const unitsText = input.supplierUnits
+    .map((u) => `${u.supplierKey}|${u.routeCodes.join(',')}|${u.routeCodeWhitelist.join(',')}`)
+    .join(';')
   const scopeHash = crypto
     .createHash('sha256')
-    .update(`${vendors}\0${input.dataSources.join(',')}\0${routeCodesText}\0${whitelistText}`)
+    .update(`${vendors}\0${input.dataSources.join(',')}\0${unitsText}`)
     .digest('hex')
   return [
-    'vendor.analyze:v5',
+    'vendor.analyze:v6',
     region,
     input.country,
     stations,
@@ -211,8 +210,9 @@ vendorAnalysisRouter.post('/analyze-async', async (req: AuthenticatedRequest, re
   const configRows = await listSupplierPushConfigs(regionResult ?? undefined)
   const vendorCodes = [...new Set(configRows.map((c) => normalizeVendorAnalyzeCode(c.vendorCode)).filter(Boolean))]
 
-  // 路由码纳入名单 / 白名单：随任务 payload 冻结；同 vendorCode 多配置取并集（统一走 supplierScope 构建）
-  const { routeCodesByVendor, routeCodeWhitelistByVendor } = buildScopeRecordsFromConfigs(configRows)
+  // 供应商单位（vendorCode + 展示名归并，路由码取并集）：随任务 payload 冻结，是统计主键的来源。
+  // 同一 vendorCode 的多家（ADL-City / ADL-Lu）在这里就已经分开，worker 侧不再按编码合并。
+  const supplierUnits = serializeSupplierUnits(buildSupplierUnitIndex(configRows))
 
   const force = body.force === true
   const country = resolveImileCountry()
@@ -227,8 +227,7 @@ vendorAnalysisRouter.post('/analyze-async', async (req: AuthenticatedRequest, re
         complaintEnd: body.complaintEnd as string,
         vendorCodes,
         dataSources,
-        routeCodesByVendor,
-        routeCodeWhitelistByVendor,
+        supplierUnits,
       })
 
   const enqueuePayload = {
@@ -236,8 +235,7 @@ vendorAnalysisRouter.post('/analyze-async', async (req: AuthenticatedRequest, re
     country,
     stationCodes,
     vendorCodes,
-    routeCodesByVendor,
-    routeCodeWhitelistByVendor,
+    supplierUnits,
     referenceDate: body.referenceDate,
     startTime: body.startTime,
     endTime: body.endTime,
@@ -399,7 +397,12 @@ type DailyReportBody = {
   enabledMetricKeys?: unknown
 }
 
-type DailyReportVendor = { vendorCode?: unknown; vendorName?: unknown; isDisabled?: unknown }
+type DailyReportVendor = {
+  supplierKey?: unknown
+  vendorCode?: unknown
+  vendorName?: unknown
+  isDisabled?: unknown
+}
 
 function readPushEnabledIds(payload: unknown): string[] {
   if (!payload || typeof payload !== 'object') return []
@@ -407,15 +410,27 @@ function readPushEnabledIds(payload: unknown): string[] {
   return Array.isArray(ids) ? ids.filter((s): s is string => typeof s === 'string') : []
 }
 
-/** pushEnabledIds 为空时返回 null（老任务兜底：不按配置 id 再过滤） */
-async function resolvePushScopeVendorCodes(pushEnabledIds: string[]): Promise<Set<string> | null> {
+/**
+ * pushEnabledIds 为空时返回 null（老任务兜底：不按配置 id 再过滤）。
+ * 返回供应商单位键集合而不是 vendorCode：同一编码可能有多家（ADL-City / ADL-Lu），
+ * 按编码过滤会让没被勾选的那家也一起通过。
+ */
+async function resolvePushScopeUnitKeys(pushEnabledIds: string[]): Promise<Set<string> | null> {
   if (pushEnabledIds.length === 0) return null
   const db = getDb()
   const rows = await db
-    .select({ vendorCode: schema.fleetSupplierPushConfigs.vendorCode })
+    .select({
+      vendorCode: schema.fleetSupplierPushConfigs.vendorCode,
+      vendorName: schema.fleetSupplierPushConfigs.vendorName,
+      supplierNickname: schema.fleetSupplierPushConfigs.supplierNickname,
+    })
     .from(schema.fleetSupplierPushConfigs)
     .where(inArray(schema.fleetSupplierPushConfigs.id, pushEnabledIds))
-  return new Set(rows.map((r) => r.vendorCode.trim()).filter(Boolean))
+  return new Set(
+    rows
+      .filter((r) => r.vendorCode.trim())
+      .map((r) => buildSupplierUnitKey(r.vendorCode.trim(), supplierDisplayName(r))),
+  )
 }
 
 function filterVendorsInPushScope(vendors: DailyReportVendor[], pushScope: Set<string> | null): DailyReportVendor[] {
@@ -423,7 +438,9 @@ function filterVendorsInPushScope(vendors: DailyReportVendor[], pushScope: Set<s
     const vendorCode = typeof v.vendorCode === 'string' ? v.vendorCode.trim() : ''
     if (!vendorCode) return false
     if (v.isDisabled === true) return false
-    if (pushScope && !pushScope.has(vendorCode)) return false
+    // 老快照没有 supplierKey 时回退 vendorCode，与 resolvePushScopeUnitKeys 的键对不上就不再过滤
+    const supplierKey = typeof v.supplierKey === 'string' ? v.supplierKey.trim() : ''
+    if (pushScope && supplierKey && !pushScope.has(supplierKey)) return false
     return true
   })
 }
@@ -454,7 +471,7 @@ vendorAnalysisRouter.post('/daily-reports', async (req: AuthenticatedRequest, re
     sendJobAccessDenied(res)
     return
   }
-  const pushScope = await resolvePushScopeVendorCodes(readPushEnabledIds(job.payload))
+  const pushScope = await resolvePushScopeUnitKeys(readPushEnabledIds(job.payload))
   const vendors = filterVendorsInPushScope(vendorsRaw, pushScope)
   if (vendors.length === 0) {
     res.status(400).json({ ok: false, error: '无推送范围内的供应商，请先在推送供应商配置中勾选供应商' })
@@ -491,16 +508,25 @@ vendorAnalysisRouter.post('/daily-reports', async (req: AuthenticatedRequest, re
       })
       .returning({ id: schema.vendorDailyReports.id, createdAt: schema.vendorDailyReports.createdAt })
 
-    // 按 (vendorCode, jobId) 自动开通分享链接：已存在则跳过，不轮换 token（同一任务重复发布不能让已发给供应商的链接失效）
+    // 按 (supplierKey, jobId) 自动开通分享链接：已存在则跳过，不轮换 token（同一任务重复发布不能让已发给供应商的链接失效）。
+    // 用 supplierKey 而非 vendorCode：同编码的两家各自一条链接，否则第二家会被静默跳过、拿到第一家的 token。
     try {
-      for (const vendor of payload.vendors as Array<{ vendorCode?: unknown; vendorName?: unknown }>) {
+      for (const vendor of payload.vendors as Array<{
+        supplierKey?: unknown
+        vendorCode?: unknown
+        vendorName?: unknown
+      }>) {
         const vendorCode = typeof vendor.vendorCode === 'string' ? vendor.vendorCode.trim() : ''
         const vendorName = typeof vendor.vendorName === 'string' ? vendor.vendorName.trim() : ''
         if (!vendorCode) continue
+        const supplierKey =
+          (typeof vendor.supplierKey === 'string' ? vendor.supplierKey.trim() : '') ||
+          buildSupplierUnitKey(vendorCode, vendorName)
         await db
           .insert(schema.vendorShareLinks)
           .values({
             jobId,
+            supplierKey,
             vendorCode,
             vendorName,
             reportDate: payload.reportDate,
@@ -508,7 +534,7 @@ vendorAnalysisRouter.post('/daily-reports', async (req: AuthenticatedRequest, re
             createdBy: req.authUser?.id ?? null,
           })
           .onConflictDoNothing({
-            target: [schema.vendorShareLinks.vendorCode, schema.vendorShareLinks.jobId],
+            target: [schema.vendorShareLinks.supplierKey, schema.vendorShareLinks.jobId],
           })
       }
     } catch (err) {
@@ -546,14 +572,14 @@ vendorAnalysisRouter.get('/share-links', requireShare, async (req: Authenticated
       sendJobAccessDenied(res)
       return
     }
-    const pushScope = await resolvePushScopeVendorCodes(readPushEnabledIds(job.payload))
+    const pushScope = await resolvePushScopeUnitKeys(readPushEnabledIds(job.payload))
     const db = getDb()
     const rows = await db
       .select()
       .from(schema.vendorShareLinks)
       .where(eq(schema.vendorShareLinks.jobId, jobId))
       .orderBy(schema.vendorShareLinks.vendorName)
-    const data = pushScope ? rows.filter((row) => pushScope.has(row.vendorCode)) : rows
+    const data = pushScope ? rows.filter((row) => pushScope.has(row.supplierKey)) : rows
     res.json({ ok: true, data })
   } catch {
     res.status(500).json({ ok: false, error: '读取分享链接失败' })

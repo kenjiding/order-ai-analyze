@@ -1,5 +1,5 @@
-import { ArrowLeftRight, History, Plus, Repeat } from 'lucide-react'
-import { Button } from 'antd'
+import { ArrowLeftRight, Download, History, Plus, Repeat, Upload } from 'lucide-react'
+import { Button, Space } from 'antd'
 import { PageSectionTabs } from '../../components/PageSectionTabs'
 import { ConfirmReceiptModal } from './components/ConfirmReceiptModal'
 import { DisputeReportModal } from './components/DisputeReportModal'
@@ -9,6 +9,7 @@ import { TransferNegotiateDrawer } from './components/TransferNegotiateDrawer'
 import { TransferTimelineDrawer } from './components/TransferTimelineDrawer'
 import { TransferFilterBar } from './components/TransferFilterBar'
 import { TransferFormModal } from './components/TransferFormModal'
+import { TransferImportModal } from './components/TransferImportModal'
 import { TransferTable } from './components/TransferTable'
 import { useContainerTransfersPage } from './useContainerTransfersPage'
 
@@ -31,13 +32,28 @@ export default function ContainerTransfersPage() {
             </div>
           </div>
           {page.tab === 'transfers' ? (
-            <Button
-              type="primary"
-              icon={<Plus className="h-4 w-4" aria-hidden />}
-              onClick={page.openCreate}
-            >
-              新增流转记录
-            </Button>
+            <Space>
+              <Button
+                icon={<Download className="h-4 w-4" aria-hidden />}
+                loading={page.templateDownloading}
+                onClick={page.downloadImportTemplate}
+              >
+                下载模板
+              </Button>
+              <Button
+                icon={<Upload className="h-4 w-4" aria-hidden />}
+                onClick={page.openImport}
+              >
+                批量上传
+              </Button>
+              <Button
+                type="primary"
+                icon={<Plus className="h-4 w-4" aria-hidden />}
+                onClick={page.openCreate}
+              >
+                新增流转记录
+              </Button>
+            </Space>
           ) : null}
         </div>
       </header>
@@ -101,6 +117,16 @@ export default function ContainerTransfersPage() {
         onCancel={page.closeForm}
         onSubmit={page.submitTransfer}
       />
+      <TransferImportModal
+        open={page.importOpen}
+        ownAccounts={page.ownAccounts}
+        counterparties={page.counterparties}
+        submitting={page.submitting}
+        templateDownloading={page.templateDownloading}
+        onDownloadTemplate={page.downloadImportTemplate}
+        onCancel={page.closeImport}
+        onSubmit={page.submitImport}
+      />
       <ConfirmReceiptModal
         key={`confirm-${page.confirmTarget?.id ?? 'none'}`}
         target={page.confirmTarget}
@@ -137,7 +163,6 @@ export default function ContainerTransfersPage() {
         isReceiver={page.detail ? page.canActAs(page.detail.toAccountId) : false}
         onClose={page.closeDrawer}
         onAcceptSettlement={page.submitAcceptSettlement}
-        onSendMessage={page.sendMessage}
         onUpdateReport={(detail, lines, reason) =>
           page.submitDispute(lines, reason, detail.receiverReportImageUrl, true, detail.id)
         }

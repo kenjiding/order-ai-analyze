@@ -8,6 +8,8 @@ import {
 } from '../../../shared/vendorAnalysis/rankingScore'
 
 export type RankingSourceRow = {
+  /** 供应商单位键：排名的实体标识，同编码多家靠它区分 */
+  supplierKey: string
   vendorCode: string
   complaintRate: number
   complaintCount: number
@@ -23,6 +25,7 @@ export type RankingSourceRow = {
 
 export function toVendorRankingInput(row: RankingSourceRow): VendorRankingInput {
   return {
+    supplierKey: row.supplierKey,
     vendorCode: row.vendorCode,
     complaintRate: row.complaintRate,
     complaintCount: row.complaintCount,

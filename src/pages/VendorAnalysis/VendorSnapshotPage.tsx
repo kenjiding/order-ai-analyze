@@ -57,8 +57,10 @@ const MOCK_DATA: VendorSnapshotData = {
   webhookConfigs: [],
   vendors: [
     {
+      supplierKey: 'TOPEX001::Top Express',
       vendorCode: 'TOPEX001',
       vendorName: 'Top Express',
+      sharedVendorCode: false,
       complaintRate: 0.0082,
       complaintCount: 3,
       waybillCount: 366,
@@ -80,8 +82,10 @@ const MOCK_DATA: VendorSnapshotData = {
       ],
     },
     {
+      supplierKey: 'SWFT002::Swift Delivery Co.',
       vendorCode: 'SWFT002',
       vendorName: 'Swift Delivery Co.',
+      sharedVendorCode: false,
       complaintRate: 0.0241,
       complaintCount: 9,
       waybillCount: 373,
@@ -280,8 +284,8 @@ export default function VendorSnapshotPage() {
     if (!data?.vendors) return []
     if (!rankingPool || rankingPool.poolSize < 2) return data.vendors
     return [...data.vendors].sort((a, b) => {
-      const ra = rankingPool.byVendorCode.get(a.vendorCode)?.rank ?? 999
-      const rb = rankingPool.byVendorCode.get(b.vendorCode)?.rank ?? 999
+      const ra = rankingPool.byKey.get(a.supplierKey)?.rank ?? 999
+      const rb = rankingPool.byKey.get(b.supplierKey)?.rank ?? 999
       return ra - rb
     })
   }, [data, rankingPool])
@@ -341,7 +345,7 @@ export default function VendorSnapshotPage() {
       if (cancelled || !res.ok) return
       const map: Record<string, string> = {}
       for (const link of res.data) {
-        if (!link.isDisabled) map[link.vendorCode] = link.token
+        if (!link.isDisabled) map[link.supplierKey] = link.token
       }
       shareTokenByVendorRef.current = map
     })
@@ -377,27 +381,29 @@ export default function VendorSnapshotPage() {
     pushingRef.current = true
     setIsPushing(true)
     const initialState: PushStateMap = {}
-    for (const c of enabledConfigs) initialState[c.vendorCode] = { status: 'idle' }
+    // 推送状态/区块定位一律按供应商单位键：同编码两家（ADL-City / ADL-Lu）各推各的，互不覆盖
+    for (const c of enabledConfigs) initialState[c.supplierKey] = { status: 'idle' }
     setPushState(initialState)
 
     for (const config of enabledConfigs) {
-      const vendor = data.vendors.find((v) => v.vendorCode === config.vendorCode)
+      const supplierKey = config.supplierKey
+      const vendor = data.vendors.find((v) => v.supplierKey === supplierKey)
       if (!vendor) continue
 
-      const el = document.getElementById(vendorSectionId(config.vendorCode))
+      const el = document.getElementById(vendorSectionId(supplierKey))
       if (!el) {
-        setPushState((s) => ({ ...s, [config.vendorCode]: { status: 'error', error: t('push.sectionNotFound') } }))
+        setPushState((s) => ({ ...s, [supplierKey]: { status: 'error', error: t('push.sectionNotFound') } }))
         continue
       }
 
-      setPushState((s) => ({ ...s, [config.vendorCode]: { status: 'capturing' } }))
+      setPushState((s) => ({ ...s, [supplierKey]: { status: 'capturing' } }))
       let dataUrl: string
       try {
         dataUrl = await toJpeg(el, { pixelRatio: 1.0, quality: FEISHU_PUSH_JPEG_QUALITY, backgroundColor: '#ffffff' })
       } catch (err) {
         setPushState((s) => ({
           ...s,
-          [config.vendorCode]: {
+          [supplierKey]: {
             status: 'error',
             error: t('push.captureFailed', {
               message: err instanceof Error ? err.message : t('push.unknownError'),
@@ -407,8 +413,8 @@ export default function VendorSnapshotPage() {
         continue
       }
 
-      setPushState((s) => ({ ...s, [config.vendorCode]: { status: 'pushing' } }))
-      const ranking = pushRankingPool?.byVendorCode.get(config.vendorCode)
+      setPushState((s) => ({ ...s, [supplierKey]: { status: 'pushing' } }))
+      const ranking = pushRankingPool?.byKey.get(supplierKey)
       const intro = buildVendorFeishuPushIntro({
         vendorName: config.vendorName,
         vendor,
@@ -416,7 +422,7 @@ export default function VendorSnapshotPage() {
         enabledMetricKeys: enabledSet,
         labels: pushLabels,
       })
-      const shareToken = shareTokenByVendorRef.current[config.vendorCode]
+      const shareToken = shareTokenByVendorRef.current[supplierKey]
       const content = buildVendorFeishuPushContent({
         intro,
         shareUrl: shareToken ? buildVendorShareUrl(shareToken) : undefined,
@@ -433,7 +439,7 @@ export default function VendorSnapshotPage() {
 
       setPushState((s) => ({
         ...s,
-        [config.vendorCode]: result.ok
+        [supplierKey]: result.ok
           ? { status: 'ok' }
           : { status: 'error', error: 'error' in result ? result.error : t('push.failed') },
       }))
@@ -582,12 +588,12 @@ export default function VendorSnapshotPage() {
         {/* Vendor sections */}
         <div className="space-y-4 sm:space-y-6">
           {sortedVendors.map((vendor, i) => {
-            const ps = pushState[vendor.vendorCode]
-            const aiSummary = pickVendorAiSummary(data.aiSummaries, vendor.vendorCode, locale)
+            const ps = pushState[vendor.supplierKey]
+            const aiSummary = pickVendorAiSummary(data.aiSummaries, vendor.supplierKey, locale)
             const showAiLoading =
               aiSummaryLoading && !aiSummary && !isMock && data.vendors.length > 0
             return (
-              <div key={vendor.vendorCode} className="relative">
+              <div key={vendor.supplierKey} className="relative">
                 <VendorSection
                   vendor={vendor}
                   index={i}
@@ -598,7 +604,7 @@ export default function VendorSnapshotPage() {
                   dispatch24hDate={data.dispatch24hDate}
                   complaintDateRange={data.complaintDateRange}
                   enabledMetricKeys={enabledSet}
-                  ranking={pushRankingPool?.byVendorCode.get(vendor.vendorCode)}
+                  ranking={pushRankingPool?.byKey.get(vendor.supplierKey)}
                 />
                 {ps && <VendorPushBadge status={ps.status} error={ps.error} />}
               </div>

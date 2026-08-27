@@ -1,6 +1,7 @@
 import type { DriverPerformanceRow, VendorMetricRow, VendorPushConfig } from './vendorAnalysisTypes'
 import type { FetchedData } from './useVendorAnalysisPage'
 import type { AppLocale } from '../../i18n/types'
+import { buildSupplierUnitKey } from '../../shared/supplierPushConfig'
 
 export type VendorSnapshotAiSummaries = Record<string, Partial<Record<AppLocale, string>>>
 
@@ -24,8 +25,12 @@ export type VendorSnapshotDriver = {
 }
 
 export type VendorSnapshotVendor = {
+  /** 供应商单位键（vendorCode::展示名）：同编码多家时用它区分，排名/推送都按它索引 */
+  supplierKey: string
   vendorCode: string
   vendorName: string
+  /** 该 vendorCode 被多家共用：客诉数/未处理工单/客诉率未按路由码拆分 */
+  sharedVendorCode: boolean
   complaintRate: number
   complaintCount: number
   waybillCount: number
@@ -43,6 +48,7 @@ export type VendorSnapshotVendor = {
 }
 
 export type VendorSnapshotPushConfig = {
+  supplierKey: string
   vendorCode: string
   vendorName: string
   webhookUrl: string
@@ -126,7 +132,8 @@ export function buildVendorSnapshot(params: {
   const { fetchedData, stations, vendorMetrics, driverPerformanceByVendor, configs, aiSummaries, enabledMetricKeys, aiSummaryEnabled, jobId } = params
   const fmt = (s: string) => s.slice(5, 10).replace('-', '/')
   // configs 已经是「本次推送范围（scope 已启用）」的供应商配置；不在其中的即视为未启用
-  const enabledVendorCodes = new Set(configs.map((c) => c.vendorCode))
+  // 按单位键判断启用，避免同编码的另一家被误标成已启用
+  const enabledUnitKeys = new Set(configs.map((c) => buildSupplierUnitKey(c)))
 
   return {
     reportDate: fetchedData.before11Date,
@@ -140,6 +147,7 @@ export function buildVendorSnapshot(params: {
     aiSummaryEnabled,
     jobId,
     webhookConfigs: configs.map((c) => ({
+      supplierKey: buildSupplierUnitKey(c),
       vendorCode: c.vendorCode,
       vendorName: c.vendorName,
       webhookUrl: c.webhookUrl,
@@ -147,8 +155,10 @@ export function buildVendorSnapshot(params: {
       isDisabled: false,
     })),
     vendors: vendorMetrics.map((m) => ({
+      supplierKey: m.supplierKey,
       vendorCode: m.vendorCode,
       vendorName: m.vendorName,
+      sharedVendorCode: m.sharedVendorCode,
       complaintRate: m.complaintRate,
       complaintCount: m.complaintCount,
       waybillCount: m.waybillCount,
@@ -161,8 +171,8 @@ export function buildVendorSnapshot(params: {
       dispatch24hCount: m.dispatch24hCount,
       unprocessedTicketCount: m.unprocessedTicketCount,
       longTailCount: m.longTailCount,
-      isDisabled: !enabledVendorCodes.has(m.vendorCode),
-      drivers: (driverPerformanceByVendor[m.vendorCode] ?? []).map((d) => ({
+      isDisabled: !enabledUnitKeys.has(m.supplierKey),
+      drivers: (driverPerformanceByVendor[m.supplierKey] ?? []).map((d) => ({
         courierCode: d.courierCode,
         courierName: d.courierName,
         routeCode: d.routeCode,

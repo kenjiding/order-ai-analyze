@@ -1,4 +1,5 @@
 /** 容器管理：与后端接口对齐的类型定义 */
+import type { AccountPushNotify } from './pushNotify'
 
 export type ContainerType = 'BIG_BASKET' | 'SILVER_BOX'
 export type AccountKind = 'BROKER' | 'CUSTOMER' | 'INTERNAL_WAREHOUSE'
@@ -24,6 +25,7 @@ export type ContainerAccount = {
   name: string
   kind: AccountKind
   boundUserIds: string[]
+  pushNotify: AccountPushNotify
   createdAt: string
 }
 
@@ -80,7 +82,8 @@ export type Transfer = {
   declaredTotal: number
   receivedTotal: number | null
   settledTotal: number | null
-  imageUrl: string | null
+  /** 业务发生日期 YYYY-MM-DD */
+  occurredAt: string
   note: string | null
   receiverReportReason: string | null
   receiverReportImageUrl: string | null
@@ -91,15 +94,7 @@ export type Transfer = {
   createdAt: string
 }
 
-export type TransferMessage = {
-  id: string
-  body: string
-  proposedQuantity: number | null
-  authorUsername: string | null
-  createdAt: string
-}
-
-export type TransferDetail = Transfer & { messages: TransferMessage[] }
+export type TransferDetail = Transfer
 
 export type TransferSnapshot = {
   id: number
@@ -107,7 +102,7 @@ export type TransferSnapshot = {
   status: TransferStatus
   fromAccountId: string
   toAccountId: string
-  imageUrl: string | null
+  occurredAt: string
   note: string | null
   items: TransferItem[]
 }

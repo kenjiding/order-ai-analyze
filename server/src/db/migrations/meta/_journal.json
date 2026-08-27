@@ -407,6 +407,34 @@
       "when": 1785700000029,
       "tag": "0057_container_transfer_numeric_id",
       "breakpoints": true
+    },
+    {
+      "idx": 58,
+      "version": "7",
+      "when": 1785700000030,
+      "tag": "0058_container_account_push_notify",
+      "breakpoints": true
+    },
+    {
+      "idx": 59,
+      "version": "7",
+      "when": 1785700000031,
+      "tag": "0059_drop_container_transfer_messages",
+      "breakpoints": true
+    },
+    {
+      "idx": 60,
+      "version": "7",
+      "when": 1785700000032,
+      "tag": "0060_container_transfer_occurred_at",
+      "breakpoints": true
+    },
+    {
+      "idx": 61,
+      "version": "7",
+      "when": 1785700000033,
+      "tag": "0061_vendor_share_links_supplier_key",
+      "breakpoints": true
     }
   ]
 }

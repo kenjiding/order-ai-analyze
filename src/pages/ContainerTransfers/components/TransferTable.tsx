@@ -1,8 +1,7 @@
-import { Button, Dropdown, Image, Table, Tag, Tooltip } from 'antd'
+import { Button, Dropdown, Table, Tag, Tooltip } from 'antd'
 import type { ColumnsType } from 'antd/es/table'
 import type { MenuProps } from 'antd'
 import { MoreHorizontal } from 'lucide-react'
-import dayjs from 'dayjs'
 import {
   formatTransferNo,
   transferKindLabel,
@@ -69,11 +68,11 @@ export function TransferTable({
   const columns: ColumnsType<Transfer> = [
     {
       title: '时间',
-      dataIndex: 'createdAt',
-      key: 'createdAt',
+      dataIndex: 'occurredAt',
+      key: 'occurredAt',
       width: 110,
       render: (value: string) => (
-        <span className="whitespace-nowrap text-slate-500">{dayjs(value).format('YYYY-MM-DD')}</span>
+        <span className="whitespace-nowrap text-slate-500">{value}</span>
       ),
     },
     {
@@ -111,18 +110,6 @@ export function TransferTable({
       render: (_, record) => <TransferQuantityCell transfer={record} />,
     },
     {
-      title: '图片',
-      dataIndex: 'imageUrl',
-      key: 'imageUrl',
-      width: 90,
-      render: (value: string | null) =>
-        value ? (
-          <Image src={value} alt="流转凭证" width={64} height={48} className="rounded object-cover" />
-        ) : (
-          <span className="text-slate-400">—</span>
-        ),
-    },
-    {
       title: '备注',
       dataIndex: 'note',
       key: 'note',
@@ -155,23 +142,21 @@ export function TransferTable({
   ]
 
   return (
-    <Image.PreviewGroup>
-      <Table<Transfer>
-        rowKey="id"
-        columns={columns}
-        dataSource={transfers}
-        loading={loading}
-        pagination={{
-          current: page,
-          pageSize,
-          total,
-          showSizeChanger: false,
-          showTotal: (t) => `共 ${t} 条`,
-          onChange: onPageChange,
-        }}
-        scroll={{ x: 1320 }}
-        locale={{ emptyText: '暂无流转记录' }}
-      />
-    </Image.PreviewGroup>
+    <Table<Transfer>
+      rowKey="id"
+      columns={columns}
+      dataSource={transfers}
+      loading={loading}
+      pagination={{
+        current: page,
+        pageSize,
+        total,
+        showSizeChanger: false,
+        showTotal: (t) => `共 ${t} 条`,
+        onChange: onPageChange,
+      }}
+      scroll={{ x: 1230 }}
+      locale={{ emptyText: '暂无流转记录' }}
+    />
   )
 }

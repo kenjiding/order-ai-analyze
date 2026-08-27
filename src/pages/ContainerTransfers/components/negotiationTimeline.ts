@@ -54,13 +54,13 @@ function receiverReportQuantityLines(detail: TransferDetail): string[] {
     .map((item) => line(item, item.receivedQuantity ?? 0))
 }
 
-/** 认可节点：与申报明细一致，无申报时退回申报数量 */
+/** 认可节点：与接收方实收一致，未申报时退回转出方发出数 */
 function acceptSettlementLines(detail: TransferDetail): string[] {
   const received = receiverReportQuantityLines(detail)
   return received.length > 0 ? received : declaredQuantityLines(detail)
 }
 
-/** 落表记账数量：与库存实际调整一致，0 的品类不展示 */
+/** 入账数量：与库存实际调整一致，0 的品类不展示 */
 function bookedQuantityLines(detail: TransferDetail): string[] {
   const settled = detail.items.filter(
     (item) => item.settledQuantity !== null && item.settledQuantity > 0,
@@ -69,7 +69,7 @@ function bookedQuantityLines(detail: TransferDetail): string[] {
   return declaredQuantityLines(detail)
 }
 
-/** 同一请求内转出方认可并落表时，时间戳通常一致或极接近 */
+/** 同一请求内转出方认可并入账时，时间戳通常一致或极接近 */
 export function sameMomentIso(
   a: string | null | undefined,
   b: string | null | undefined,
@@ -103,7 +103,7 @@ export function buildNegotiationTimelineEvents(
   const hasReport = reportLines.length > 0 || (reasonTrimmed?.length ?? 0) > 0
 
   if (hasReport) {
-    // 申报本身没有独立时间戳，排在认可/落表之前一格
+    // 申报本身没有独立时间戳，排在认可/入账之前一格
     let reportMs: number
     if (detail.senderAcceptedAt) reportMs = Date.parse(detail.senderAcceptedAt) - 1
     else if (detail.respondedAt) reportMs = Date.parse(detail.respondedAt) - 1
@@ -175,7 +175,7 @@ export function buildNegotiationTimelineEvents(
         sort: [ms, 5],
         kind: 'finalize',
         when: detail.respondedAt,
-        title: mergedAcceptAndBook ? '转出方认可并完成落表' : '落表完成',
+        title: mergedAcceptAndBook ? '转出方认可并完成入账' : '入账完成',
         statusLabel: '已记账',
         description: ['库存已按下列各品类数量调整。', noteText ? ` ${noteText}` : ''].join(''),
         quantityLines: bookedQuantityLines(detail),
@@ -215,7 +215,7 @@ export function buildNegotiationTimelineEvents(
       title: '进行中',
       statusLabel: '协商中',
       pendingLabel: '协商中',
-      description: '接收方可更新实收申报与原因说明，转出方可认可申报数量。',
+      description: '接收方可更新实收数量与原因说明，转出方可认可接收方实收。',
     })
   } else if (!detail.respondedAt && detail.status === 'PENDING_RECEIVER') {
     entries.push({

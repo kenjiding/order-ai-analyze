@@ -99,11 +99,11 @@ test('综合排名：履约更好者靠前；小样本排在有效样本之后',
   ])
 
   assert.equal(pool.rankings[0]!.vendorCode, 'STRONG')
-  assert.equal(pool.byVendorCode.get('STRONG')!.rank, 1)
-  assert.equal(pool.byVendorCode.get('WEAK')!.rank, 2)
-  assert.equal(pool.byVendorCode.get('TINY')!.sampleInsufficient, true)
-  assert.equal(pool.byVendorCode.get('TINY')!.rank, 3)
-  assert.ok(pool.byVendorCode.get('STRONG')!.score > pool.byVendorCode.get('WEAK')!.score)
+  assert.equal(pool.byKey.get('STRONG')!.rank, 1)
+  assert.equal(pool.byKey.get('WEAK')!.rank, 2)
+  assert.equal(pool.byKey.get('TINY')!.sampleInsufficient, true)
+  assert.equal(pool.byKey.get('TINY')!.rank, 3)
+  assert.ok(pool.byKey.get('STRONG')!.score > pool.byKey.get('WEAK')!.score)
 })
 
 test('指标取消后权重重归一化，仅对启用项打分', () => {
@@ -131,7 +131,7 @@ test('指标取消后权重重归一化，仅对启用项打分', () => {
     ],
     enabled,
   )
-  assert.equal(pool.byVendorCode.get('A')!.rank, 1)
-  const aComplaint = pool.byVendorCode.get('A')!.breakdown.find((b) => b.key === 'vendor.complaintRate')
+  assert.equal(pool.byKey.get('A')!.rank, 1)
+  const aComplaint = pool.byKey.get('A')!.breakdown.find((b) => b.key === 'vendor.complaintRate')
   assert.equal(aComplaint?.included, false)
 })

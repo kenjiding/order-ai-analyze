@@ -126,16 +126,19 @@ export async function executeDispatchAlarmPush(params: {
   // 用 config.id 当 key（而非 vendorCode）一次遍历 rows 拿到全部配置的统计，
   // 不再对每条配置各自重新扫一遍全量运单——大站点几万条时这是聚合阶段的主要开销。
   const scopes: Dispatch24hScope[] = []
+  const scopeByConfigId = new Map<string, Dispatch24hScope>()
   for (const config of configs) {
     const vendorCode = config.vendorCode.trim()
     if (!vendorCode) continue
     const scope = buildScopeMapsFromConfig(config)
-    scopes.push({
+    const configScope: Dispatch24hScope = {
       key: config.id,
       vendorCode,
       routeCodes: scope.routeCodesByVendor.get(vendorCode),
       routeCodeWhitelist: scope.routeCodeWhitelistByVendor.get(vendorCode),
-    })
+    }
+    scopes.push(configScope)
+    scopeByConfigId.set(config.id, configScope)
   }
   const statsByConfigId = aggregateDispatch24hByScopes({ rows, stationCodes: [stationCode], tz, scopes })
 
@@ -163,6 +166,9 @@ export async function executeDispatchAlarmPush(params: {
         stat.total - stat.met > 0 || stat.problemCount > 0
           ? await createDispatchAlarmShareSnapshot({
               vendorCode: config.vendorCode,
+              // 落地页的司机地图靠这两个字段再按路由码收窄，口径与本次统计完全一致
+              routeCodes: [...(scopeByConfigId.get(config.id)?.routeCodes ?? [])],
+              routeCodeWhitelist: [...(scopeByConfigId.get(config.id)?.routeCodeWhitelist ?? [])],
               vendorName,
               stationCode,
               date,

@@ -411,8 +411,12 @@ function DriverRow({ driver, isOdd, flags }: { driver: VendorSnapshotDriver; isO
 
 // ── Vendor Section ────────────────────────────────────────────────────
 
-export function vendorSectionId(vendorCode: string) {
-  return `vendor-section-${vendorCode}`
+/**
+ * 区块 DOM id：按供应商单位键而不是 vendorCode——
+ * ADL-City 和 ADL-Lu 共用编码，用编码会让两个区块 id 相同，截图时永远抓到同一个。
+ */
+export function vendorSectionId(supplierKey: string) {
+  return `vendor-section-${supplierKey}`
 }
 
 /** 行内 **加粗**：AI 总结的 Markdown 子集，仅解析加粗，其余原样输出 */
@@ -524,7 +528,7 @@ export function VendorSection({
 
   return (
     <div
-      id={vendorSectionId(vendor.vendorCode)}
+      id={vendorSectionId(vendor.supplierKey)}
       className="rounded-xl sm:rounded-2xl border border-slate-100 bg-white overflow-hidden shadow-md"
     >
       {/* Vendor header */}

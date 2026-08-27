@@ -1,19 +1,20 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { Dayjs } from 'dayjs'
 import { useSearchParams } from 'react-router-dom'
 import {
   acceptSettlement,
-  addTransferMessage,
   confirmTransfer,
-  createTransfer,
+  createTransfers,
   deleteTransfer,
   fetchAccounts,
   fetchTransferChanges,
   fetchTransferDetail,
   fetchTransfers,
+  importTransfers,
   reportReceipt,
   updateTransfer,
 } from '../../containerManagement/api'
+import type { TransferCreateItem } from '../../containerManagement/api'
 import { parseTransferNo } from '../../containerManagement/constants'
 import type {
   ContainerAccount,
@@ -25,6 +26,8 @@ import type {
   TransferLineDraft,
   TransferStatus,
 } from '../../containerManagement/types'
+import { mapImportErrorRowNo } from './transferImportParse'
+import { downloadTransferImportTemplate } from './transferImportTemplate'
 import { useAuthStore } from '../../stores/authStore'
 import { showToast } from '../../utils/toast'
 
@@ -45,12 +48,14 @@ export type ChangeFilters = {
   range: [Dayjs, Dayjs] | null
 }
 
+/** 表单里的一组流转；新增可以有多组，编辑只有一组 */
 export type TransferDraft = {
   kind: TransferKind
   fromAccountId: string
   toAccountId: string
   lines: TransferLineDraft[]
-  imageUrl: string | null
+  /** 业务发生日期 YYYY-MM-DD */
+  occurredAt: string
   note: string
 }
 
@@ -96,6 +101,8 @@ export function useContainerTransfersPage() {
   const [changeFilters, setChangeFilters] = useState<ChangeFilters>(emptyChangeFilters)
 
   const [formOpen, setFormOpen] = useState(false)
+  const [importOpen, setImportOpen] = useState(false)
+  const [templateDownloading, setTemplateDownloading] = useState(false)
   const [editing, setEditing] = useState<Transfer | null>(null)
   const [confirmTarget, setConfirmTarget] = useState<Transfer | null>(null)
   const [disputeTarget, setDisputeTarget] = useState<Transfer | null>(null)
@@ -105,7 +112,7 @@ export function useContainerTransfersPage() {
   /** 与原系统一致：「查看记录」只看时间线，「协商」才有操作表单，两个抽屉分开 */
   const [drawer, setDrawer] = useState<'timeline' | 'negotiate' | null>(null)
 
-  /** 所有可选主体（转出方 + 接收方去重），用于筛选与展示 */
+  /** 所有可选站点（转出方 + 接收方去重），用于筛选与展示 */
   const allAccounts = useMemo(() => {
     const map = new Map<string, ContainerAccount>()
     for (const account of [...ownAccounts, ...counterparties]) map.set(account.id, account)
@@ -233,36 +240,122 @@ export function useContainerTransfersPage() {
     if (res.ok) setDetail(res.data)
   }, [])
 
+  /**
+   * 飞书卡片按钮带 ?transferId=&action= 进来时，列表就位后自动打开对应弹窗。
+   * 卡片是发出时的状态，用户点开时可能已经变了，对不上就退回时间线并说明原因。
+   */
+  const deepLinkHandled = useRef(false)
+  useEffect(() => {
+    if (deepLinkHandled.current) return
+    const action = searchParams.get('action')
+    const targetId = parseTransferNo(searchParams.get('transferId') ?? '')
+    if (!action || targetId === null || transfers.length === 0) return
+    deepLinkHandled.current = true
+
+    const next = new URLSearchParams(searchParams)
+    next.delete('action')
+    setSearchParams(next, { replace: true })
+
+    const target = transfers.find((item) => item.id === targetId)
+    if (!target) {
+      showToast('没找到这笔流转，可能已被删除或你无权查看', 'error')
+      return
+    }
+    if (action === 'confirm') {
+      if (target.status !== 'PENDING_RECEIVER') {
+        showToast('这笔流转已经不在待确认状态，为你打开记录', 'info')
+        void openDrawer(target, 'timeline')
+        return
+      }
+      if (!canActAs(target.toAccountId)) {
+        showToast('只有接收方可以确认收货，为你打开记录', 'info')
+        void openDrawer(target, 'timeline')
+        return
+      }
+      setConfirmTarget(target)
+      return
+    }
+    if (action === 'negotiate') {
+      if (target.status !== 'DISPUTED') {
+        showToast('这笔流转已经不在协商中，为你打开记录', 'info')
+        void openDrawer(target, 'timeline')
+        return
+      }
+      void openDrawer(target, 'negotiate')
+      return
+    }
+    void openDrawer(target, 'timeline')
+  }, [transfers, searchParams, setSearchParams, openDrawer, canActAs])
+
+  /** 新增走整批提交，编辑只改当前这一条 */
   const submitTransfer = useCallback(
-    async (draft: TransferDraft): Promise<boolean> => {
+    async (drafts: TransferDraft[]): Promise<boolean> => {
+      if (drafts.length === 0) return false
       setSubmitting(true)
-      const lineItems = toLineItems(draft.lines)
       const res = editing
         ? await updateTransfer(editing.id, {
-            lineItems: editing.status === 'PENDING_RECEIVER' ? lineItems : undefined,
-            imageUrl: draft.imageUrl,
+            lineItems:
+              editing.status === 'PENDING_RECEIVER' ? toLineItems(drafts[0].lines) : undefined,
+            occurredAt: drafts[0].occurredAt,
             reason: '',
           })
-        : await createTransfer({
-            kind: draft.kind,
-            fromAccountId: draft.fromAccountId,
-            toAccountId: draft.toAccountId,
-            lineItems,
-            imageUrl: draft.imageUrl,
-            note: draft.note.trim() || null,
-          })
+        : await createTransfers(
+            drafts.map((draft) => ({
+              kind: draft.kind,
+              fromAccountId: draft.fromAccountId,
+              toAccountId: draft.toAccountId,
+              lineItems: toLineItems(draft.lines),
+              occurredAt: draft.occurredAt,
+              note: draft.note.trim() || null,
+            })),
+          )
       setSubmitting(false)
       if (!res.ok) {
         showToast(res.error, 'error')
         return false
       }
-      showToast(editing ? '已更新流转记录' : '已创建流转记录', 'success')
+      showToast(
+        editing ? '已更新流转记录' : `已创建 ${drafts.length} 条流转记录`,
+        'success',
+      )
       setFormOpen(false)
       setEditing(null)
       await refresh()
       return true
     },
     [editing, refresh],
+  )
+
+  /** 模板里的转出方/接收方下拉取值就是这两份账户列表，所以在 hook 里出模板 */
+  const downloadImportTemplate = useCallback(async () => {
+    setTemplateDownloading(true)
+    try {
+      await downloadTransferImportTemplate(ownAccounts, counterparties)
+    } catch (error) {
+      console.error('[container-transfer-import] 模板生成失败', error)
+      showToast('模板生成失败，请重试', 'error')
+    } finally {
+      setTemplateDownloading(false)
+    }
+  }, [ownAccounts, counterparties])
+
+  /** Excel 批量导入：整批一个事务，行已在前端逐条校验过，这里只处理后端返回 */
+  const submitImport = useCallback(
+    async (items: TransferCreateItem[], rowNos: number[]): Promise<boolean> => {
+      if (items.length === 0) return false
+      setSubmitting(true)
+      const res = await importTransfers(items)
+      setSubmitting(false)
+      if (!res.ok) {
+        showToast(mapImportErrorRowNo(res.error, rowNos), 'error')
+        return false
+      }
+      showToast(`已导入 ${res.data.created} 条流转记录`, 'success')
+      setImportOpen(false)
+      await refresh()
+      return true
+    },
+    [refresh],
   )
 
   const submitConfirm = useCallback(
@@ -311,19 +404,6 @@ export function useContainerTransfersPage() {
       return true
     },
     [disputeTarget, refresh, detail, reloadDetail],
-  )
-
-  const sendMessage = useCallback(
-    async (transferId: number, body: string): Promise<boolean> => {
-      const res = await addTransferMessage(transferId, { body })
-      if (!res.ok) {
-        showToast(res.error, 'error')
-        return false
-      }
-      await reloadDetail(transferId)
-      return true
-    },
-    [reloadDetail],
   )
 
   /** 二次确认由协商抽屉内联展示（与原系统一致），这里只负责提交 */
@@ -404,6 +484,12 @@ export function useContainerTransfersPage() {
         setEditing(null)
       },
       submitTransfer,
+      importOpen,
+      templateDownloading,
+      downloadImportTemplate: () => void downloadImportTemplate(),
+      openImport: () => setImportOpen(true),
+      closeImport: () => setImportOpen(false),
+      submitImport,
       confirmTarget,
       openConfirm: setConfirmTarget,
       closeConfirm: () => setConfirmTarget(null),
@@ -425,7 +511,6 @@ export function useContainerTransfersPage() {
         setDrawer(null)
         setDetail(null)
       },
-      sendMessage,
       submitAcceptSettlement,
     }),
     [
@@ -451,6 +536,10 @@ export function useContainerTransfersPage() {
       formOpen,
       editing,
       submitTransfer,
+      importOpen,
+      templateDownloading,
+      downloadImportTemplate,
+      submitImport,
       confirmTarget,
       submitConfirm,
       disputeTarget,
@@ -461,7 +550,6 @@ export function useContainerTransfersPage() {
       detailLoading,
       drawer,
       openDrawer,
-      sendMessage,
       submitAcceptSettlement,
     ],
   )

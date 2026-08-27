@@ -24,6 +24,13 @@ export const PERMISSION_REGISTRY: PermissionDefinition[] = [
   { key: 'menu:problem-package-audit', type: 'menu', label: 'AI问题件审核', description: '问题件图片AI智能审核', sortOrder: 37 },
   { key: 'menu:vendor-analysis', type: 'menu', label: '供应商数据分析', description: '供应商客诉率与工单数据推送', sortOrder: 38 },
   {
+    key: 'menu:vendor-region-map',
+    type: 'menu',
+    label: '供应商区域地图',
+    description: '按阿德莱德收件邮编查看供应商货量 3D 分布',
+    sortOrder: 38,
+  },
+  {
     key: 'menu:exit-alarm',
     type: 'menu',
     label: '11点前出仓告警',
@@ -159,14 +166,14 @@ export const PERMISSION_REGISTRY: PermissionDefinition[] = [
     key: 'menu:container-ledger',
     type: 'menu',
     label: '容器台账',
-    description: '主体×品类的容器库存基线与变更记录',
+    description: '站点×品类的容器库存基线与变更记录',
     sortOrder: 62,
   },
   {
     key: 'menu:container-accounts',
     type: 'menu',
-    label: '主体账户',
-    description: '维护容器责任主体目录与用户绑定关系',
+    label: '站点账户',
+    description: '维护容器责任站点目录与用户绑定关系',
     sortOrder: 63,
   },
   {
@@ -179,8 +186,8 @@ export const PERMISSION_REGISTRY: PermissionDefinition[] = [
   {
     key: 'btn:container-accounts:manage',
     type: 'button',
-    label: '管理主体账户与绑定',
-    description: '新增/编辑/删除主体账户，并维护用户绑定',
+    label: '管理站点账户与绑定',
+    description: '新增/编辑/删除站点账户，并维护用户绑定',
     menuKey: 'container-accounts',
     sortOrder: 620,
   },

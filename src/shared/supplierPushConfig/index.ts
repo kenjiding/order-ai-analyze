@@ -13,7 +13,7 @@ export { LEGACY_GLOBAL_SUPPLIER_REGION_CODE } from './types'
 
 export { SUPPLIER_PUSH_CONFIG_MAINTAIN_PATH } from './constants'
 
-export { supplierDisplayName, truncateSupplierFieldMid } from './display'
+export { buildSupplierUnitKey, supplierDisplayName, truncateSupplierFieldMid } from './display'
 
 export {
   isSupplierPushEligible,

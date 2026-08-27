@@ -132,7 +132,7 @@ export async function createBalance(input: {
     .from(schema.containerAccounts)
     .where(eq(schema.containerAccounts.id, input.accountId))
     .limit(1)
-  if (account.length === 0) throw new ContainerBusinessError('主体账户不存在', 404)
+  if (account.length === 0) throw new ContainerBusinessError('站点账户不存在', 404)
 
   const existing = await db
     .select({ id: schema.containerBalances.id })
@@ -145,7 +145,7 @@ export async function createBalance(input: {
     )
     .limit(1)
   if (existing.length > 0) {
-    throw new ContainerBusinessError('该主体在此品类下已有台账记录，请直接编辑', 409)
+    throw new ContainerBusinessError('该站点在此品类下已有台账记录，请直接编辑', 409)
   }
 
   const row = await db.transaction(async (tx) => {
@@ -217,7 +217,7 @@ export async function updateBalance(
     const existing = locked[0]
     if (!existing) throw new ContainerBusinessError('台账记录不存在', 404)
 
-    // 调低到低于已承诺出去的数量，会让待确认的流转永远无法落表
+    // 调低到低于已承诺出去的数量，会让待确认的流转永远无法入账
     if (input.quantity < existing.quantity) {
       const pending = await sumPendingOutbound(
         tx,

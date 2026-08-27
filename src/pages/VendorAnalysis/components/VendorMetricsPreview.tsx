@@ -1,4 +1,4 @@
-import { Alert, Table } from 'antd'
+import { Alert, Table, Tooltip } from 'antd'
 import type { ColumnsType } from 'antd/es/table'
 import { TrendingUp, Users, ChevronDown } from 'lucide-react'
 import { useMemo, useState } from 'react'
@@ -343,6 +343,13 @@ function VendorCard({ row, fetchedData, drivers, enabledMetricKeys, driverColumn
       >
         <span className="text-sm font-semibold text-slate-800">{row.supplierNickname || row.vendorName}</span>
         <span className="text-xs text-slate-400">{row.vendorName} · {row.vendorCode}</span>
+        {row.sharedVendorCode && (
+          <Tooltip title={`供应商编码 ${row.vendorCode} 下有多家供应商（按路由码区分）。客诉、未处理工单的原始数据只有编码、没有路由码，无法拆分到各家，因此这两项及客诉率显示的是该编码的合计值，多家相加会重复计数。揽收量、11点前出仓、24H派签均已按路由码拆分到本家。`}>
+            <span className="cursor-help rounded bg-amber-50 px-1.5 py-0.5 text-[11px] font-medium text-amber-600">
+              编码共用
+            </span>
+          </Tooltip>
+        )}
         <span className="ml-auto text-[11px] font-medium uppercase tracking-wide text-slate-400">
           数据概览
         </span>
@@ -414,6 +421,9 @@ function VendorCard({ row, fetchedData, drivers, enabledMetricKeys, driverColumn
                   row.complaintCount > 0 ? (
                     <span className="text-[11px] text-slate-400">
                       {row.complaintCount} 件 · 揽收 {row.waybillCount} 件
+                      {row.sharedVendorCode && (
+                        <span className="text-amber-600">（客诉与客诉率按编码合计）</span>
+                      )}
                     </span>
                   ) : undefined
                 }
@@ -432,7 +442,12 @@ function VendorCard({ row, fetchedData, drivers, enabledMetricKeys, driverColumn
                 label="未处理工单（件）"
                 sub={
                   row.unprocessedTicketCount > 0 ? (
-                    <span className="text-[11px] font-semibold text-red-500">需及时处理</span>
+                    <span className="text-[11px] font-semibold text-red-500">
+                      需及时处理
+                      {row.sharedVendorCode && (
+                        <span className="font-normal text-amber-600">（按编码合计）</span>
+                      )}
+                    </span>
                   ) : undefined
                 }
               />
@@ -580,7 +595,7 @@ export function VendorMetricsPreview({
             key={row.id}
             row={row}
             fetchedData={fetchedData}
-            drivers={driverPerformanceByVendor[row.vendorCode] ?? []}
+            drivers={driverPerformanceByVendor[row.supplierKey] ?? []}
             enabledMetricKeys={enabledMetricKeys}
             driverColumns={driverColumns}
           />

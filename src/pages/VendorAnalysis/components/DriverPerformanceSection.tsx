@@ -4,6 +4,7 @@ import type { ColumnsType } from 'antd/es/table'
 import { ChevronDown, Users } from 'lucide-react'
 import { WaybillListPopover } from '../../../components/WaybillPopover'
 import type { DriverPerformanceRow, VendorPushConfig } from '../vendorAnalysisTypes'
+import { buildSupplierUnitKey } from '../../../shared/supplierPushConfig'
 
 type Props = {
   configs: VendorPushConfig[]
@@ -265,7 +266,7 @@ function VendorBlock({ config, drivers }: VendorBlockProps) {
 export function DriverPerformanceSection({ configs, driverPerformanceByVendor }: Props) {
   if (configs.length === 0) return null
 
-  const allDrivers = configs.flatMap((c) => driverPerformanceByVendor[c.vendorCode] ?? [])
+  const allDrivers = configs.flatMap((c) => driverPerformanceByVendor[buildSupplierUnitKey(c)] ?? [])
   const totalReturnWarning = allDrivers.reduce((s, d) => s + d.returnWarningCount, 0)
   const lowDispatchCount = allDrivers.filter(
     (d) => d.dispatchRate24h != null && d.dispatchRate24h < 0.92,
@@ -302,9 +303,9 @@ export function DriverPerformanceSection({ configs, driverPerformanceByVendor }:
       <div className="divide-y divide-[var(--admin-line)]">
         {configs.map((config) => (
           <VendorBlock
-            key={config.vendorCode}
+            key={buildSupplierUnitKey(config)}
             config={config}
-            drivers={driverPerformanceByVendor[config.vendorCode] ?? []}
+            drivers={driverPerformanceByVendor[buildSupplierUnitKey(config)] ?? []}
           />
         ))}
       </div>

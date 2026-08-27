@@ -14,13 +14,13 @@ export default function ContainerLedgerPage() {
 
   const columns: ColumnsType<ContainerBalance> = [
     {
-      title: '主体账户',
+      title: '站点账户',
       dataIndex: 'accountName',
       key: 'accountName',
       render: (value: string) => <span className="font-medium text-slate-900">{value}</span>,
     },
     {
-      title: '主体类型',
+      title: '站点类型',
       dataIndex: 'accountKind',
       key: 'accountKind',
       width: 130,
@@ -88,7 +88,7 @@ export default function ContainerLedgerPage() {
             <div>
               <h1 className="text-lg font-semibold text-slate-950">容器台账</h1>
               <p className="mt-1 max-w-2xl text-sm text-slate-600">
-                按主体 × 品类维护容器库存基线，手工调账与流转确认都会留下变更记录。
+                按站点 × 品类维护容器库存基线，手工调账与流转确认都会留下变更记录。
               </p>
             </div>
           </div>
@@ -134,7 +134,7 @@ export default function ContainerLedgerPage() {
                 showTotal: (t) => `共 ${t} 条`,
               }}
               scroll={{ x: 780 }}
-              locale={{ emptyText: '暂无台账记录，请先在「主体账户」建立主体后新增。' }}
+              locale={{ emptyText: '暂无台账记录，请先在「站点账户」建立站点后新增。' }}
             />
           ) : (
             <BalanceAuditPanel

@@ -1,5 +1,5 @@
 /**
- * 容器管理：流转凭证图片的本地磁盘存储。
+ * 容器管理：接收方差异申报证据图片的本地磁盘存储。
  * 前端已把图片压缩成 dataURL 随 JSON 提交，这里解码校验后落盘，只把 URL 存进数据库。
  */
 import { randomUUID } from 'node:crypto'

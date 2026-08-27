@@ -35,7 +35,7 @@ export function TransferImageUpload({ value, onChange, disabled }: Props) {
   if (value) {
     return (
       <div className="flex items-center gap-3">
-        <Image src={value} alt="凭证图片" width={96} height={72} className="rounded-md object-cover" />
+        <Image src={value} alt="申报证据" width={96} height={72} className="rounded-md object-cover" />
         {!disabled ? (
           <Button
             type="text"

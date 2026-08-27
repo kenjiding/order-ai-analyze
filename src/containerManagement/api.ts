@@ -1,5 +1,6 @@
 /** 容器管理：全部后端请求 */
 import { backendFetch } from '../api/httpClient'
+import type { AccountPushNotify } from './pushNotify'
 import type {
   AssignableUser,
   BalanceAudit,
@@ -12,7 +13,6 @@ import type {
   TransferChange,
   TransferDetail,
   TransferKind,
-  TransferMessage,
   TransferStatus,
 } from './types'
 
@@ -45,10 +45,16 @@ function toQuery(params: Record<string, string | number | undefined | null>): st
   return qs ? `?${qs}` : ''
 }
 
-// ------------------------------------------------------------ 主体账户
+// ------------------------------------------------------------ 站点账户
 
-export function fetchAccounts(counterparty = false): Promise<ApiResult<ContainerAccount[]>> {
-  return apiFetch<ContainerAccount[]>(`/accounts${counterparty ? '?counterparty=1' : ''}`)
+/** scope='manage' 用于站点账户维护页：有维护权限时返回全部站点，与改名/删除的作用域一致 */
+export function fetchAccounts(
+  counterparty = false,
+  scope?: 'manage',
+): Promise<ApiResult<ContainerAccount[]>> {
+  return apiFetch<ContainerAccount[]>(
+    `/accounts${toQuery({ counterparty: counterparty ? '1' : '', scope })}`,
+  )
 }
 
 export function fetchAssignableUsers(): Promise<ApiResult<AssignableUser[]>> {
@@ -58,13 +64,15 @@ export function fetchAssignableUsers(): Promise<ApiResult<AssignableUser[]>> {
 export function createAccount(body: {
   name: string
   kind: string
+  userIds: string[]
+  pushNotify: AccountPushNotify
 }): Promise<ApiResult<ContainerAccount>> {
   return apiFetch<ContainerAccount>('/accounts', { method: 'POST', body: JSON.stringify(body) })
 }
 
 export function updateAccount(
   id: string,
-  body: { name?: string; kind?: string },
+  body: { name?: string; kind?: string; userIds?: string[]; pushNotify?: AccountPushNotify },
 ): Promise<ApiResult<ContainerAccount>> {
   return apiFetch<ContainerAccount>(`/accounts/${id}`, {
     method: 'PATCH',
@@ -150,22 +158,34 @@ export function fetchTransferDetail(id: number): Promise<ApiResult<TransferDetai
   return apiFetch<TransferDetail>(`/transfers/${id}`)
 }
 
-export function createTransfer(body: {
+export type TransferCreateItem = {
   kind: TransferKind
   fromAccountId: string
   toAccountId: string
   lineItems: { containerType: ContainerType; quantity: number }[]
-  imageUrl?: string | null
+  /** 业务发生日期 YYYY-MM-DD */
+  occurredAt: string
   note?: string | null
-}): Promise<ApiResult<Transfer>> {
-  return apiFetch<Transfer>('/transfers', { method: 'POST', body: JSON.stringify(body) })
+}
+
+/** 整批一个事务：任何一组不合法都整批失败，错误信息带组序号 */
+export function createTransfers(items: TransferCreateItem[]): Promise<ApiResult<Transfer[]>> {
+  return apiFetch<Transfer[]>('/transfers', { method: 'POST', body: JSON.stringify({ items }) })
+}
+
+/** Excel 批量导入：语义同上，上限 200 行，错误信息带行号；后端不推飞书 */
+export function importTransfers(items: TransferCreateItem[]): Promise<ApiResult<{ created: number }>> {
+  return apiFetch<{ created: number }>('/transfers/import', {
+    method: 'POST',
+    body: JSON.stringify({ items }),
+  })
 }
 
 export function updateTransfer(
   id: number,
   body: {
     lineItems?: { containerType: ContainerType; quantity: number }[]
-    imageUrl?: string | null
+    occurredAt?: string
     note?: string | null
     reason?: string
   },
@@ -198,16 +218,6 @@ export function reportReceipt(
 ): Promise<ApiResult<Transfer>> {
   return apiFetch<Transfer>(`/transfers/${id}/${isUpdate ? 'receiver-report' : 'report-receipt'}`, {
     method: 'PATCH',
-    body: JSON.stringify(body),
-  })
-}
-
-export function addTransferMessage(
-  id: number,
-  body: { body: string; proposedQuantity?: number | null },
-): Promise<ApiResult<TransferMessage[]>> {
-  return apiFetch<TransferMessage[]>(`/transfers/${id}/messages`, {
-    method: 'POST',
     body: JSON.stringify(body),
   })
 }

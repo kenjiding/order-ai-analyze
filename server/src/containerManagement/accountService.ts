@@ -1,13 +1,19 @@
-/** 容器管理：主体账户 CRUD 与用户绑定 */
+/** 容器管理：站点账户 CRUD 与用户绑定 */
 import { and, asc, count, eq, inArray, notInArray, sql } from 'drizzle-orm'
 import { getDb, schema } from '../db'
 import type { AccountKind } from './constants'
+import {
+  DEFAULT_ACCOUNT_PUSH_NOTIFY,
+  normalizeAccountPushNotify,
+  type AccountPushNotify,
+} from './pushNotify'
 
 export type AccountRow = {
   id: string
   name: string
   kind: string
   boundUserIds: string[]
+  pushNotify: AccountPushNotify
   createdAt: string
 }
 
@@ -22,7 +28,9 @@ export class ContainerBusinessError extends Error {
   }
 }
 
-async function attachBoundUsers(rows: { id: string; name: string; kind: string; createdAt: Date }[]): Promise<AccountRow[]> {
+async function attachBoundUsers(
+  rows: { id: string; name: string; kind: string; pushNotify: unknown; createdAt: Date }[],
+): Promise<AccountRow[]> {
   if (rows.length === 0) return []
   const links = await getDb()
     .select({
@@ -47,6 +55,7 @@ async function attachBoundUsers(rows: { id: string; name: string; kind: string; 
     name: row.name,
     kind: row.kind,
     boundUserIds: byAccount.get(row.id) ?? [],
+    pushNotify: normalizeAccountPushNotify(row.pushNotify),
     createdAt: row.createdAt.toISOString(),
   }))
 }
@@ -65,6 +74,7 @@ export async function listAccounts(
       id: schema.containerAccounts.id,
       name: schema.containerAccounts.name,
       kind: schema.containerAccounts.kind,
+      pushNotify: schema.containerAccounts.pushNotify,
       createdAt: schema.containerAccounts.createdAt,
     })
     .from(schema.containerAccounts)
@@ -105,47 +115,82 @@ async function assertNameAvailable(name: string, excludeId?: string): Promise<vo
     .limit(2)
   const conflict = rows.find((row) => row.id !== excludeId)
   if (conflict) {
-    throw new ContainerBusinessError('已存在同名主体账户', 409)
+    throw new ContainerBusinessError('已存在同名站点账户', 409)
   }
 }
 
 export async function createAccount(input: {
   name: string
   kind: AccountKind
+  userIds?: string[]
+  pushNotify?: AccountPushNotify
   createdBy: string | null
 }): Promise<AccountRow> {
   await assertNameAvailable(input.name)
-  const [row] = await getDb()
-    .insert(schema.containerAccounts)
-    .values({ name: input.name, kind: input.kind, createdBy: input.createdBy })
-    .returning()
+  const userIds = await assertUsersExist(input.userIds ?? [])
+  const pushNotify = normalizeAccountPushNotify(input.pushNotify ?? DEFAULT_ACCOUNT_PUSH_NOTIFY)
+
+  // 建账与绑定放同一个事务：否则绑定失败会留下一个没人能看见的孤儿站点
+  const row = await getDb().transaction(async (tx) => {
+    const [created] = await tx
+      .insert(schema.containerAccounts)
+      .values({ name: input.name, kind: input.kind, pushNotify, createdBy: input.createdBy })
+      .returning()
+    if (userIds.length > 0) {
+      await tx
+        .insert(schema.containerAccountUsers)
+        .values(userIds.map((userId) => ({ accountId: created.id, userId })))
+    }
+    return created
+  })
+
   return {
     id: row.id,
     name: row.name,
     kind: row.kind,
-    boundUserIds: [],
+    boundUserIds: userIds,
+    pushNotify,
     createdAt: row.createdAt.toISOString(),
   }
 }
 
 export async function updateAccount(
   id: string,
-  input: { name?: string; kind?: AccountKind },
+  input: { name?: string; kind?: AccountKind; userIds?: string[]; pushNotify?: AccountPushNotify },
 ): Promise<AccountRow> {
   const existing = await getAccountById(id)
-  if (!existing) throw new ContainerBusinessError('主体账户不存在', 404)
+  if (!existing) throw new ContainerBusinessError('站点账户不存在', 404)
   if (input.name && input.name.toLowerCase() !== existing.name.toLowerCase()) {
     await assertNameAvailable(input.name, id)
   }
-  const [row] = await getDb()
-    .update(schema.containerAccounts)
-    .set({
-      ...(input.name === undefined ? {} : { name: input.name }),
-      ...(input.kind === undefined ? {} : { kind: input.kind }),
-      updatedAt: new Date(),
-    })
-    .where(eq(schema.containerAccounts.id, id))
-    .returning()
+  const userIds = input.userIds === undefined ? null : await assertUsersExist(input.userIds)
+
+  const row = await getDb().transaction(async (tx) => {
+    const [updated] = await tx
+      .update(schema.containerAccounts)
+      .set({
+        ...(input.name === undefined ? {} : { name: input.name }),
+        ...(input.kind === undefined ? {} : { kind: input.kind }),
+        ...(input.pushNotify === undefined
+          ? {}
+          : { pushNotify: normalizeAccountPushNotify(input.pushNotify) }),
+        updatedAt: new Date(),
+      })
+      .where(eq(schema.containerAccounts.id, id))
+      .returning()
+    if (userIds !== null) {
+      await tx
+        .delete(schema.containerAccountUsers)
+        .where(eq(schema.containerAccountUsers.accountId, id))
+      if (userIds.length > 0) {
+        await tx
+          .insert(schema.containerAccountUsers)
+          .values(userIds.map((userId) => ({ accountId: id, userId })))
+      }
+    }
+    return updated
+  })
+
   const [withUsers] = await attachBoundUsers([row])
   return withUsers
 }
@@ -157,14 +202,14 @@ export async function updateAccount(
 export async function deleteAccount(id: string): Promise<void> {
   const db = getDb()
   const existing = await getAccountById(id)
-  if (!existing) throw new ContainerBusinessError('主体账户不存在', 404)
+  if (!existing) throw new ContainerBusinessError('站点账户不存在', 404)
 
   const [balance] = await db
     .select({ n: count() })
     .from(schema.containerBalances)
     .where(eq(schema.containerBalances.accountId, id))
   if (balance.n > 0) {
-    throw new ContainerBusinessError('该主体仍有容器台账记录，请先清理台账后再删除', 409)
+    throw new ContainerBusinessError('该站点仍有容器台账记录，请先清理台账后再删除', 409)
   }
 
   const [transfer] = await db
@@ -174,7 +219,7 @@ export async function deleteAccount(id: string): Promise<void> {
       sql`${schema.containerTransfers.fromAccountId} = ${id} OR ${schema.containerTransfers.toAccountId} = ${id}`,
     )
   if (transfer.n > 0) {
-    throw new ContainerBusinessError('该主体已存在流转记录，不能删除', 409)
+    throw new ContainerBusinessError('该站点已存在流转记录，不能删除', 409)
   }
 
   const [audit] = await db
@@ -182,7 +227,7 @@ export async function deleteAccount(id: string): Promise<void> {
     .from(schema.containerBalanceAudits)
     .where(eq(schema.containerBalanceAudits.accountId, id))
   if (audit.n > 0) {
-    throw new ContainerBusinessError('该主体存在台账变更审计，不能删除', 409)
+    throw new ContainerBusinessError('该站点存在台账变更审计，不能删除', 409)
   }
 
   await db.delete(schema.containerAccounts).where(eq(schema.containerAccounts.id, id))
@@ -202,22 +247,27 @@ export async function listAccountBoundUsers(accountId: string) {
     .orderBy(asc(schema.users.username))
 }
 
+/** 去重并校验用户存在，返回去重后的 id 列表 */
+async function assertUsersExist(userIds: string[]): Promise<string[]> {
+  const unique = [...new Set(userIds.map((id) => id.trim()).filter(Boolean))]
+  if (unique.length === 0) return []
+  const found = await getDb()
+    .select({ id: schema.users.id })
+    .from(schema.users)
+    .where(inArray(schema.users.id, unique))
+  if (found.length !== unique.length) {
+    throw new ContainerBusinessError('存在无效的用户 ID', 400)
+  }
+  return unique
+}
+
 /** 全量覆盖绑定关系 */
 export async function replaceAccountBoundUsers(accountId: string, userIds: string[]): Promise<void> {
   const db = getDb()
   const existing = await getAccountById(accountId)
-  if (!existing) throw new ContainerBusinessError('主体账户不存在', 404)
+  if (!existing) throw new ContainerBusinessError('站点账户不存在', 404)
 
-  const unique = [...new Set(userIds)]
-  if (unique.length > 0) {
-    const found = await db
-      .select({ id: schema.users.id })
-      .from(schema.users)
-      .where(inArray(schema.users.id, unique))
-    if (found.length !== unique.length) {
-      throw new ContainerBusinessError('存在无效的用户 ID', 400)
-    }
-  }
+  const unique = await assertUsersExist(userIds)
 
   await db.transaction(async (tx) => {
     await tx
@@ -231,7 +281,7 @@ export async function replaceAccountBoundUsers(accountId: string, userIds: strin
   })
 }
 
-/** 主体账户页的用户下拉：系统内全部启用用户 */
+/** 站点账户页的用户下拉：系统内全部启用用户 */
 export async function listAssignableUsers() {
   return getDb()
     .select({

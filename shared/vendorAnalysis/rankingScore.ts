@@ -36,6 +36,12 @@ const MIN_COMPLAINT_WAYBILLS = 500
 const MIN_EFFECTIVE_WEIGHT_RATIO = 0.5
 
 export type VendorRankingInput = {
+  /**
+   * 参与排名的实体标识：供应商单位键（vendorCode::展示名）。
+   * 不能用 vendorCode——ADL-City 和 ADL-Lu 共用编码，用编码会让两家在排名里互相覆盖。
+   * 省略时回退 vendorCode（老快照/测试数据）。
+   */
+  supplierKey?: string
   vendorCode: string
   complaintRate: number
   complaintCount: number
@@ -67,6 +73,8 @@ export type MetricBreakdown = {
 }
 
 export type VendorRankingResult = {
+  /** 排名实体标识；等于入参的 supplierKey，缺省时回退 vendorCode */
+  supplierKey: string
   vendorCode: string
   score: number
   rank: number
@@ -77,7 +85,8 @@ export type VendorRankingResult = {
 
 export type RankingPoolResult = {
   rankings: VendorRankingResult[]
-  byVendorCode: Map<string, VendorRankingResult>
+  /** 按 supplierKey 索引（不是 vendorCode：同编码可能有多家） */
+  byKey: Map<string, VendorRankingResult>
   poolSize: number
   poolMedianScore: number | null
   topScore: number | null
@@ -319,7 +328,7 @@ export function rankVendors(
   if (poolSize === 0) {
     return {
       rankings: [],
-      byVendorCode: new Map(),
+      byKey: new Map(),
       poolSize: 0,
       poolMedianScore: null,
       topScore: null,
@@ -328,11 +337,14 @@ export function rankVendors(
   }
 
   type Scored = {
+    supplierKey: string
     vendorCode: string
     partials: PartialScore[]
     score: number
     sampleInsufficient: boolean
   }
+
+  const unitKeyOf = (v: VendorRankingInput): string => v.supplierKey?.trim() || v.vendorCode
 
   const scored: Scored[] = vendors.map((v) => {
     const partials = RANKING_METRIC_KEYS.map((key) => scoreOneMetric(key, v, enabledMetricKeys))
@@ -345,6 +357,7 @@ export function rankVendors(
       }
     }
     return {
+      supplierKey: unitKeyOf(v),
       vendorCode: v.vendorCode,
       partials,
       score: round1(score),
@@ -365,7 +378,7 @@ export function rankVendors(
     if (complaintScore(b) !== complaintScore(a)) return complaintScore(b) - complaintScore(a)
     if (dispatchScore(b) !== dispatchScore(a)) return dispatchScore(b) - dispatchScore(a)
     if (before11Score(b) !== before11Score(a)) return before11Score(b) - before11Score(a)
-    return a.vendorCode.localeCompare(b.vendorCode)
+    return a.supplierKey.localeCompare(b.supplierKey)
   })
 
   const rankings: VendorRankingResult[] = scored.map((s, idx) => {
@@ -392,6 +405,7 @@ export function rankVendors(
     })
 
     return {
+      supplierKey: s.supplierKey,
       vendorCode: s.vendorCode,
       score: s.score,
       rank,
@@ -406,7 +420,7 @@ export function rankVendors(
 
   return {
     rankings,
-    byVendorCode: new Map(rankings.map((r) => [r.vendorCode, r])),
+    byKey: new Map(rankings.map((r) => [r.supplierKey, r])),
     poolSize,
     poolMedianScore: median(scoreAsc),
     topScore: rankings[0]?.score ?? null,

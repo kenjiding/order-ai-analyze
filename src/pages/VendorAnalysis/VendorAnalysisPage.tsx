@@ -42,9 +42,9 @@ export default function VendorAnalysisPage() {
 
   const previewDriverPerformanceByVendor = useMemo(() => {
     if (v.viewedPushEnabledIds.length === 0) return v.driverPerformanceByVendor
-    const enabledVendorCodes = new Set(previewMetrics.map((m) => m.vendorCode))
+    const enabledUnitKeys = new Set(previewMetrics.map((m) => m.supplierKey))
     return Object.fromEntries(
-      Object.entries(v.driverPerformanceByVendor).filter(([code]) => enabledVendorCodes.has(code)),
+      Object.entries(v.driverPerformanceByVendor).filter(([supplierKey]) => enabledUnitKeys.has(supplierKey)),
     )
   }, [v.driverPerformanceByVendor, v.viewedPushEnabledIds, previewMetrics])
 

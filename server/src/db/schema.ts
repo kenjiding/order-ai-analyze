@@ -2,6 +2,7 @@ import {
   bigint,
   bigserial,
   boolean,
+  date,
   doublePrecision,
   index,
   integer,
@@ -293,6 +294,11 @@ export const vendorShareLinks = pgTable(
     id: uuid('id').primaryKey().defaultRandom(),
     /** 该链接对应的分析任务；删除任务级联删除其链接 */
     jobId: uuid('job_id').notNull().references(() => jobs.id, { onDelete: 'cascade' }),
+    /**
+     * 供应商单位键（vendorCode::展示名）：链接按「一家供应商」开通，不是按编码。
+     * ADL-City 和 ADL-Lu 共用编码，按编码建链接会让两家共用一个 token、看到对方的数据。
+     */
+    supplierKey: varchar('supplier_key', { length: 320 }).notNull(),
     vendorCode: varchar('vendor_code', { length: 64 }).notNull(),
     vendorName: varchar('vendor_name', { length: 255 }).notNull(),
     /** 业务日期，仅供展示，不再作为唯一键 */
@@ -305,7 +311,7 @@ export const vendorShareLinks = pgTable(
     lastAccessedAt: timestamp('last_accessed_at', { withTimezone: true }),
   },
   (table) => [
-    uniqueIndex('vendor_share_links_vendor_job_unique').on(table.vendorCode, table.jobId),
+    uniqueIndex('vendor_share_links_unit_job_unique').on(table.supplierKey, table.jobId),
     uniqueIndex('vendor_share_links_token_unique').on(table.token),
     index('vendor_share_links_job_id_idx').on(table.jobId),
   ],
@@ -625,7 +631,7 @@ export type NewDriverMapWaybillPoint = typeof driverMapWaybillPoints.$inferInser
 export type ChaseDispatchShareSnapshot = typeof chaseDispatchShareSnapshots.$inferSelect
 export type NewChaseDispatchShareSnapshot = typeof chaseDispatchShareSnapshots.$inferInsert
 
-/** 容器管理：主体账户（RTI 责任主体目录，借出/归还/调拨均基于账户关系记账） */
+/** 容器管理：站点账户（RTI 责任站点目录，借出/归还/调拨均基于账户关系记账） */
 export const containerAccounts = pgTable(
   'container_accounts',
   {
@@ -633,6 +639,8 @@ export const containerAccounts = pgTable(
     name: varchar('name', { length: 200 }).notNull(),
     /** BROKER 清关行 | CUSTOMER 客户 | INTERNAL_WAREHOUSE 内部仓库 */
     kind: varchar('kind', { length: 32 }).notNull(),
+    /** 流转变更时的飞书通知配置 { enabled, chatId, mentions }：选群仅用于拉成员名单，实际按 openId 私聊 */
+    pushNotify: jsonb('push_notify').notNull().default({ enabled: false, chatId: '', mentions: [] }),
     createdBy: uuid('created_by').references(() => users.id, { onDelete: 'set null' }),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
@@ -640,7 +648,7 @@ export const containerAccounts = pgTable(
   (table) => [index('container_accounts_kind_idx').on(table.kind)],
 )
 
-/** 容器管理：用户与主体账户的绑定关系，决定该用户可见与可操作的数据范围 */
+/** 容器管理：用户与站点账户的绑定关系，决定该用户可见与可操作的数据范围 */
 export const containerAccountUsers = pgTable(
   'container_account_users',
   {
@@ -658,7 +666,7 @@ export const containerAccountUsers = pgTable(
   ],
 )
 
-/** 容器管理：容器台账（主体 × 品类 的库存余额基线） */
+/** 容器管理：容器台账（站点 × 品类 的库存余额基线） */
 export const containerBalances = pgTable(
   'container_balances',
   {
@@ -693,7 +701,8 @@ export const containerTransfers = pgTable(
     toAccountId: uuid('to_account_id')
       .notNull()
       .references(() => containerAccounts.id, { onDelete: 'restrict' }),
-    imageUrl: text('image_url'),
+    /** 业务发生日期（精确到日）：补录历史流转时与录入时间 createdAt 不同 */
+    occurredAt: date('occurred_at').notNull().defaultNow(),
     note: text('note'),
     /** 接收方差异申报 */
     receiverReportReason: text('receiver_report_reason'),
@@ -709,13 +718,14 @@ export const containerTransfers = pgTable(
   },
   (table) => [
     index('container_transfers_created_at_idx').on(table.createdAt),
+    index('container_transfers_occurred_at_idx').on(table.occurredAt),
     index('container_transfers_from_account_idx').on(table.fromAccountId),
     index('container_transfers_to_account_idx').on(table.toAccountId),
     index('container_transfers_status_idx').on(table.status),
   ],
 )
 
-/** 容器管理：流转明细，逐品类记录「申报 / 实收 / 落表」三个数量，是数量的唯一真相源 */
+/** 容器管理：流转明细，逐品类记录「转出方发出 / 接收方实收 / 已入账」三个数量，是数量的唯一真相源 */
 export const containerTransferItems = pgTable(
   'container_transfer_items',
   {
@@ -724,11 +734,11 @@ export const containerTransferItems = pgTable(
       .notNull()
       .references(() => containerTransfers.id, { onDelete: 'cascade' }),
     containerType: varchar('container_type', { length: 32 }).notNull(),
-    /** 转出方申报数量 */
+    /** 转出方发出数量 */
     declaredQuantity: integer('declared_quantity').notNull(),
     /** 接收方差异申报的实收数量；未申报时为 null */
     receivedQuantity: integer('received_quantity'),
-    /** 最终记账落表数量；未落表时为 null */
+    /** 最终入账数量；未入账时为 null */
     settledQuantity: integer('settled_quantity'),
   },
   (table) => [
@@ -768,22 +778,6 @@ export const containerBalanceAudits = pgTable(
   ],
 )
 
-/** 容器管理：流转协商留言 */
-export const containerTransferMessages = pgTable(
-  'container_transfer_messages',
-  {
-    id: uuid('id').primaryKey().defaultRandom(),
-    transferId: bigint('transfer_id', { mode: 'number' })
-      .notNull()
-      .references(() => containerTransfers.id, { onDelete: 'cascade' }),
-    authorUserId: uuid('author_user_id').references(() => users.id, { onDelete: 'set null' }),
-    body: text('body').notNull(),
-    proposedQuantity: integer('proposed_quantity'),
-    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
-  },
-  (table) => [index('container_transfer_messages_transfer_idx').on(table.transferId, table.createdAt)],
-)
-
 /** 容器管理：流转记录编辑/删除审计，记录删除后 transferId 置空但保留快照 */
 export const containerTransferChanges = pgTable(
   'container_transfer_changes',
@@ -817,7 +811,5 @@ export type ContainerTransfer = typeof containerTransfers.$inferSelect
 export type NewContainerTransfer = typeof containerTransfers.$inferInsert
 export type ContainerTransferItem = typeof containerTransferItems.$inferSelect
 export type NewContainerTransferItem = typeof containerTransferItems.$inferInsert
-export type ContainerTransferMessage = typeof containerTransferMessages.$inferSelect
-export type NewContainerTransferMessage = typeof containerTransferMessages.$inferInsert
 export type ContainerTransferChange = typeof containerTransferChanges.$inferSelect
 export type NewContainerTransferChange = typeof containerTransferChanges.$inferInsert

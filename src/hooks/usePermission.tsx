@@ -85,6 +85,7 @@ export const PERMISSION_KEYS = {
   btnPushNotificationsOrderException: 'btn:push-notifications:order-exception',
   btnWarehouseSafetyExport: 'btn:warehouse-safety:export',
   menuVendorAnalysis: 'menu:vendor-analysis',
+  menuVendorRegionMap: 'menu:vendor-region-map',
   btnVendorAnalysisPush: 'btn:vendor-analysis:push',
   btnVendorAnalysisShare: 'btn:vendor-analysis:share',
   menuExitAlarm: 'menu:exit-alarm',

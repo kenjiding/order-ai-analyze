@@ -70,7 +70,10 @@ dispatchAlarmPortalRouter.get('/driver-map/:token', rateLimit, async (req: Reque
       res.json({ ok: true, data: null })
       return
     }
-    const { stationCode, date: dataDate, vendorCode } = snapshot
+    const { stationCode, date: dataDate, vendorCode, routeCodes, routeCodeWhitelist } = snapshot
+    // 同一 vendorCode 可能对应多条供应商配置（ADL-City / ADL-Lu），必须连路由码一起收窄，
+    // 否则地图点位与派送单量会把同编码另一家的单也算进来
+    const scope = { vendorCode, routeCodes, routeCodeWhitelist }
     if (!stationCode || !/^\d{4}-\d{2}-\d{2}$/.test(dataDate)) {
       res.json({ ok: true, data: null })
       return
@@ -88,7 +91,7 @@ dispatchAlarmPortalRouter.get('/driver-map/:token', rateLimit, async (req: Reque
         stationCode,
         dataDate,
         tz: AUS_TZ.Adelaide,
-        vendorCode,
+        scope,
         label: '24H派签告警落地页首次同步',
       })
       if (!synced.ok) {
@@ -99,9 +102,9 @@ dispatchAlarmPortalRouter.get('/driver-map/:token', rateLimit, async (req: Reque
       return
     }
 
-    await ensureProblemReasons({ stationCode, dataDate, vendorCode })
-    await geocodePendingMapPoints({ stationCode, dataDate, vendorCode })
-    const points = await queryDriverMapPoints({ stationCode, dataDate, vendorCode })
+    await ensureProblemReasons({ stationCode, dataDate, scope })
+    await geocodePendingMapPoints({ stationCode, dataDate, scope })
+    const points = await queryDriverMapPoints({ stationCode, dataDate, scope })
     if (!points.ok) {
       res.status(502).json({ ok: false, error: points.message })
       return

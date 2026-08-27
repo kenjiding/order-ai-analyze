@@ -98,9 +98,9 @@ export function BalanceFormModal({
         {!isEdit ? (
           <>
             <Form.Item
-              label="主体账户"
+              label="站点账户"
               name="accountId"
-              rules={[{ required: true, message: '请选择主体账户' }]}
+              rules={[{ required: true, message: '请选择站点账户' }]}
             >
               <Select
                 placeholder="选择…"

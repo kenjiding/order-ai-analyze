@@ -3,7 +3,8 @@
  *
  * 与后端 server/src/vendorAnalysis/aggregate.ts 的 VendorSummary / DriverSummary /
  * VendorAnalyzeSummary 逐字段对应（字符串契约，参照 metricsCatalog 前后端各一份的既有约定）。
- * 前端不再持有原始明细，直接读这份汇总渲染/推送；供应商名称/昵称/配置 id 由前端按 vendorCode join。
+ * 前端不再持有原始明细，直接读这份汇总渲染/推送；供应商名称/昵称/配置 id 由前端按 supplierKey join
+ * （不是 vendorCode——ADL-City 和 ADL-Lu 共用编码但各是一行，见 buildSupplierUnitKey）。
  */
 
 export type DriverSummary = {
@@ -27,9 +28,20 @@ export type DriverSummary = {
 }
 
 export type VendorSummary = {
+  /** 统计主键：vendorCode::展示名。同编码不同路由码的两家（ADL-City / ADL-Lu）各占一行 */
+  supplierKey: string
+  supplierName: string
   vendorCode: string
+  /**
+   * 该 vendorCode 是否被多家供应商共用。
+   * true 时 complaintCount / unprocessedTicketCount / complaintRate 是整个编码的全量值
+   * （这些数据源没有路由码，拆不开），需在 UI 标注「未按路由码拆分」。
+   */
+  sharedVendorCode: boolean
   complaintCount: number
+  /** 本家的揽收量（按路由码拆分） */
   waybillCount: number
+  /** 客诉率 = 该编码全量客诉 ÷ 该编码全量揽收；分子拆不开，故分母也用全量 */
   complaintRate: number
   complaintOrderCodes: string[]
   unprocessedTicketCount: number

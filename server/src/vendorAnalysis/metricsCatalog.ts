@@ -250,7 +250,8 @@ ${driverBullets}
 - 若某家供应商所有指标均达标，则以积极语气简要肯定（60~80字即可），并从司机数据中找出表现最优司机予以点名
 - 禁止出现：AI、大模型、自动生成、人工智能
 
-返回严格 JSON（UTF-8，无 markdown wrapper）：{"summaries":{"<vendorCode>":"<analysis>",...}}`
+返回严格 JSON（UTF-8，无 markdown wrapper）：{"summaries":{"<supplierKey>":"<analysis>",...}}
+注意：key 必须原样使用每个供应商的 supplierKey 字段（同一 vendorCode 可能对应多家供应商，只有 supplierKey 唯一）。`
   }
   return `You are a senior operations analyst at iMile Australia, producing in-depth, actionable performance reports for courier vendors.
 
@@ -272,5 +273,6 @@ ${driverBullets}
 - If all metrics are on target, give brief positive feedback (60–80 words) and name top-performing couriers
 - Do not mention: AI, LLM, auto-generated, artificial intelligence
 
-Return strict JSON (UTF-8, no markdown wrapper): {"summaries":{"<vendorCode>":"<analysis>",...}}`
+Return strict JSON (UTF-8, no markdown wrapper): {"summaries":{"<supplierKey>":"<analysis>",...}}
+Note: the key MUST be each supplier's supplierKey field verbatim (one vendorCode may map to several suppliers; only supplierKey is unique).`
 }

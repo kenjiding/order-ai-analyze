@@ -31,3 +31,18 @@ export function buildDispatchAlarmShareUrl(token: string): string | null {
   if (!origin) return null
   return `${origin}/dispatch-alarm-share/${encodeURIComponent(token)}`
 }
+
+/**
+ * 容器流转记录的深链：带 transferId 定位到这一笔，action 决定进页面后自动打开哪个弹窗。
+ * origin 未配置时返回 null（卡片退化为纯展示，不带按钮）。
+ */
+export function buildContainerTransferUrl(
+  transferId: number,
+  action?: 'confirm' | 'negotiate' | 'timeline',
+): string | null {
+  const origin = resolvePublicWebOrigin()
+  if (!origin) return null
+  const query = new URLSearchParams({ transferId: String(transferId) })
+  if (action) query.set('action', action)
+  return `${origin}/container/transfers?${query.toString()}`
+}

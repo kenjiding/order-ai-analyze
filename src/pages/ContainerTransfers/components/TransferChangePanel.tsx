@@ -47,10 +47,8 @@ function buildChangeItems(before: TransferSnapshot, after: TransferSnapshot | nu
     else if (next === undefined) changes.push(`移除品类 ${label}（原 ${prev}）`)
     else changes.push(`${label}: ${prev} → ${next}`)
   }
-  if (before.imageUrl !== after.imageUrl) {
-    changes.push(
-      !before.imageUrl ? '新增凭证图片' : !after.imageUrl ? '移除凭证图片' : '更换凭证图片',
-    )
+  if (before.occurredAt !== after.occurredAt) {
+    changes.push(`日期 ${before.occurredAt} → ${after.occurredAt}`)
   }
   if (before.note !== after.note) changes.push(`备注: ${before.note || '空'} → ${after.note || '空'}`)
   return changes.length > 0 ? changes : ['无字段变化']

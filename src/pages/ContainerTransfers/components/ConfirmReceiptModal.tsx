@@ -51,7 +51,7 @@ export function ConfirmReceiptModal({ target, submitting, onCancel, onSubmit }: 
             className="mt-3"
             type="info"
             showIcon
-            message="若实收与申报不一致，请改用「差异申报」进入协商流程。"
+            message="若实收与转出方发出数不一致，请改用「差异申报」进入协商流程。"
           />
           <label className="mt-4 flex flex-col gap-1.5">
             <span className="text-sm text-slate-700">备注（选填）</span>

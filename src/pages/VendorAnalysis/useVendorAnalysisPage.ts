@@ -22,6 +22,7 @@ import {
   type VendorAnalyzeAsyncParams,
 } from './vendorAnalysisApi'
 import {
+  buildSupplierUnitKey,
   isSupplierPushEligible,
   useSupplierConfigScopeBinding,
   useSupplierPushCatalog,
@@ -491,19 +492,23 @@ export function useVendorAnalysisPage() {
 
   const activeJobCount = jobsList.filter((j) => j.status === 'pending' || j.status === 'running').length
 
-  // 供应商指标行：直接读 worker 落库的汇总，按 vendorCode join 配置（名称/昵称/id）；
+  // 供应商指标行：直接读 worker 落库的汇总，按 supplierKey join 配置（名称/昵称/id）。
+  // 用 supplierKey 而不是 vendorCode：ADL-City 和 ADL-Lu 共用编码，按编码 join 会让两家读到同一份合并数据。
   // 以 configs 为主循环，已配置但本次无数据的供应商补 0（保持既有展示行为）。
   const vendorMetrics = useMemo<VendorMetricRow[]>(() => {
     if (!fetchedData) return []
-    const byVendor = new Map(fetchedData.vendors.map((v) => [v.vendorCode, v]))
+    const byUnit = new Map(fetchedData.vendors.map((v) => [v.supplierKey, v]))
     return configs.map((config) => {
       const vendorCode = normalizeVendorCode(config.vendorCode)
-      const s = byVendor.get(vendorCode)
+      const supplierKey = buildSupplierUnitKey(config)
+      const s = byUnit.get(supplierKey)
       return {
         id: config.id,
         vendorCode,
+        supplierKey,
         vendorName: config.vendorName,
         supplierNickname: config.supplierNickname,
+        sharedVendorCode: s?.sharedVendorCode ?? false,
         complaintCount: s?.complaintCount ?? 0,
         waybillCount: s?.waybillCount ?? 0,
         complaintRate: s?.complaintRate ?? 0,
@@ -524,17 +529,18 @@ export function useVendorAnalysisPage() {
     })
   }, [fetchedData, configs])
 
-  // 司机绩效：读汇总里每供应商的 drivers，补上配置的 vendorName（汇总不含供应商名）。
+  // 司机绩效：读汇总里每个供应商单位的 drivers，补上配置的 vendorName（汇总不含供应商名）。
+  // key 同样用 supplierKey，保证同编码两家各自只看到自己的司机。
   const driverPerformanceByVendor = useMemo<Record<string, DriverPerformanceRow[]>>(() => {
     if (!fetchedData) return {}
-    const byVendor = new Map(fetchedData.vendors.map((v) => [v.vendorCode, v]))
+    const byUnit = new Map(fetchedData.vendors.map((v) => [v.supplierKey, v]))
     const result: Record<string, DriverPerformanceRow[]> = {}
     for (const config of configs) {
-      const vendorCode = normalizeVendorCode(config.vendorCode)
-      const s = byVendor.get(vendorCode)
-      result[vendorCode] = (s?.drivers ?? []).map((d) => ({
+      const supplierKey = buildSupplierUnitKey(config)
+      const s = byUnit.get(supplierKey)
+      result[supplierKey] = (s?.drivers ?? []).map((d) => ({
         ...d,
-        vendorCode,
+        vendorCode: normalizeVendorCode(config.vendorCode),
         vendorName: config.vendorName,
       }))
     }

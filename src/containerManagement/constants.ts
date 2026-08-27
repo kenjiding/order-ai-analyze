@@ -81,7 +81,7 @@ export const balanceReasonTypeHint: Record<BalanceReasonType, string> = {
   DAMAGE_SCRAP: '容器破损且已报废，不再计入可用库存。',
   LOSS_REPORT: '容器丢失或无法追回时的损失登记。',
   HISTORICAL_BACKFILL: '补录历史期间遗漏的台账变更。',
-  TRANSFER_SETTLEMENT: '由流转记录确认落表自动产生，不可手工选择。',
+  TRANSFER_SETTLEMENT: '由流转记录确认入账自动产生，不可手工选择。',
 }
 
 export const balanceAuditActionLabel: Record<BalanceAuditAction, string> = {

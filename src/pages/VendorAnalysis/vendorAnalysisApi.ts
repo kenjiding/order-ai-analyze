@@ -121,6 +121,8 @@ export type VendorAiDriverInput = {
 }
 
 export type VendorAiInput = {
+  /** AI 返回 summaries 的 key：同 vendorCode 可能有多家，只有 supplierKey 唯一 */
+  supplierKey: string
   vendorCode: string
   vendorName: string
   /** 以下字段均对应可自由取消的指标，未勾选时省略 */
@@ -157,9 +159,10 @@ export async function postDailyReport(
 ): Promise<{ ok: true; data: { id: string; createdAt: string } } | { ok: false; error: string }> {
   // 对外日报与分享链接仅含「推送供应商配置」范围内供应商（与快照页 webhookConfigs / isDisabled 口径一致）
   const vendors = snapshot.vendors.filter((v) => !v.isDisabled)
-  const enabledCodes = new Set(vendors.map((v) => v.vendorCode))
+  // aiSummaries 按 supplierKey 索引（同编码多家各有各的摘要）
+  const enabledKeys = new Set(vendors.map((v) => v.supplierKey))
   const aiSummaries = snapshot.aiSummaries
-    ? Object.fromEntries(Object.entries(snapshot.aiSummaries).filter(([code]) => enabledCodes.has(code)))
+    ? Object.fromEntries(Object.entries(snapshot.aiSummaries).filter(([key]) => enabledKeys.has(key)))
     : undefined
   const payload = {
     jobId,
@@ -182,6 +185,8 @@ export async function postDailyReport(
 export type VendorShareLink = {
   id: string
   jobId: string
+  /** 供应商单位键：链接按「一家供应商」开通，同编码两家各有各的 token */
+  supplierKey: string
   vendorCode: string
   vendorName: string
   reportDate: string
@@ -192,7 +197,7 @@ export type VendorShareLink = {
   lastAccessedAt: string | null
 }
 
-/** 分享链接按 (vendorCode, jobId) 绑定，发布日报时自动开通；这里查某个任务的全部 */
+/** 分享链接按 (supplierKey, jobId) 绑定，发布日报时自动开通；这里查某个任务的全部 */
 export async function listShareLinks(
   jobId: string,
 ): Promise<{ ok: true; data: VendorShareLink[] } | { ok: false; error: string }> {

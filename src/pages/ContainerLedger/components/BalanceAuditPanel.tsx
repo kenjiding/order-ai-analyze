@@ -69,7 +69,7 @@ export function BalanceAuditPanel({
         </span>
       ),
     },
-    { title: '主体账户', dataIndex: 'accountName', key: 'accountName', width: 150 },
+    { title: '站点账户', dataIndex: 'accountName', key: 'accountName', width: 150 },
     {
       title: '品类',
       dataIndex: 'containerType',
@@ -168,11 +168,11 @@ export function BalanceAuditPanel({
   return (
     <div className="space-y-4">
       <p className="text-sm text-slate-600">
-        记录每次库存变更，包含手工调账与流转确认落表；流转产生的记录可点「关联流转」追溯来源。
+        记录每次库存变更，包含手工调账与流转确认入账；流转产生的记录可点「关联流转」追溯来源。
       </p>
       <div className="flex flex-wrap items-end gap-3">
         <label className="flex flex-col gap-1.5">
-          <span className="text-xs text-slate-500">主体账户</span>
+          <span className="text-xs text-slate-500">站点账户</span>
           <Select
             className="w-44"
             placeholder="全部"

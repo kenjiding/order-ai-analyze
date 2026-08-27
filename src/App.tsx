@@ -45,6 +45,7 @@ const ContainerAccountsPage = lazy(() => import('./pages/ContainerAccounts/Conta
 const ContainerTransfersPage = lazy(() => import('./pages/ContainerTransfers/ContainerTransfersPage'))
 const PushEngagementMonitorPage = lazy(() => import('./pages/PushEngagementMonitor/PushEngagementMonitorPage'))
 const PackageLossMonitorPage = lazy(() => import('./pages/PackageLossMonitor/PackageLossMonitorPage'))
+const VendorRegionMapPage = lazy(() => import('./pages/VendorRegionMap/VendorRegionMapPage'))
 
 function RouteLoadingFallback() {
   return (
@@ -195,6 +196,14 @@ function AppRoutes() {
             element={
               <KeptPage cacheKey="page-vendor-analysis" name="vendor-analysis">
                 <VendorAnalysisPage />
+              </KeptPage>
+            }
+          />
+          <Route
+            path="/vendor-region-map"
+            element={
+              <KeptPage cacheKey="page-vendor-region-map" name="vendor-region-map">
+                <VendorRegionMapPage />
               </KeptPage>
             }
           />

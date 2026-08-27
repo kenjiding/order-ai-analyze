@@ -10,6 +10,14 @@ export const DISPATCH_ALARM_SHARE_TTL_MS = DISPATCH_ALARM_SHARE_RETENTION_DAYS *
 
 export type DispatchAlarmSharePayload = {
   vendorCode: string
+  /**
+   * 推送当时这条供应商配置的路由码纳入名单（空 = 不按路由码收窄）。
+   * 同一 vendorCode 可能有多条配置（ADL-City / ADL-Lu），落地页的司机地图必须靠它再收窄一次，
+   * 否则会把同编码另一家的单也画进来、派送单量也跟着多算。
+   */
+  routeCodes: string[]
+  /** 推送当时这条供应商配置的路由码白名单（命中则剔除） */
+  routeCodeWhitelist: string[]
   vendorName: string
   stationCode: string
   date: string
@@ -44,6 +52,8 @@ export async function purgeOldDispatchAlarmShareSnapshots(
 /** 推送时落库快照并返回可打开的落地页 URL；失败返回 null（推送仍可继续，仅无链接） */
 export async function createDispatchAlarmShareSnapshot(params: {
   vendorCode: string
+  routeCodes: string[]
+  routeCodeWhitelist: string[]
   vendorName: string
   stationCode: string
   date: string
@@ -57,6 +67,8 @@ export async function createDispatchAlarmShareSnapshot(params: {
 }): Promise<{ token: string; url: string } | null> {
   const {
     vendorCode,
+    routeCodes,
+    routeCodeWhitelist,
     vendorName,
     stationCode,
     date,
@@ -77,6 +89,8 @@ export async function createDispatchAlarmShareSnapshot(params: {
   const token = newShareToken()
   const payload: DispatchAlarmSharePayload = {
     vendorCode,
+    routeCodes,
+    routeCodeWhitelist,
     vendorName,
     stationCode,
     date,
@@ -147,6 +161,10 @@ export async function loadDispatchAlarmShareSnapshot(
 
   return {
     vendorCode: String(payload.vendorCode ?? row.vendorCode),
+    routeCodes: Array.isArray(payload.routeCodes) ? payload.routeCodes.map(String) : [],
+    routeCodeWhitelist: Array.isArray(payload.routeCodeWhitelist)
+      ? payload.routeCodeWhitelist.map(String)
+      : [],
     vendorName: String(payload.vendorName ?? row.vendorName),
     stationCode: String(payload.stationCode ?? row.stationCode),
     date: String(payload.date ?? row.date),

@@ -9,7 +9,7 @@ import {
 
 type Props = {
   pool: RankingPoolResult
-  /** vendorCode → 展示名 */
+  /** supplierKey → 展示名（同 vendorCode 可能有多家，只有 supplierKey 唯一） */
   nameByCode: Map<string, string>
 }
 
@@ -130,13 +130,13 @@ export function VendorRankingBoard({ pool, nameByCode }: Props) {
       </p>
       <div className="divide-y divide-[var(--admin-line)]">
         {pool.rankings.map((row) => {
-          const name = nameByCode.get(row.vendorCode) ?? row.vendorCode
-          const open = expandedCode === row.vendorCode
+          const name = nameByCode.get(row.supplierKey) ?? row.vendorCode
+          const open = expandedCode === row.supplierKey
           return (
-            <div key={row.vendorCode}>
+            <div key={row.supplierKey}>
               <button
                 type="button"
-                onClick={() => setExpandedCode(open ? null : row.vendorCode)}
+                onClick={() => setExpandedCode(open ? null : row.supplierKey)}
                 className="flex w-full items-center gap-3 px-5 py-3 text-left transition-colors hover:bg-slate-50"
               >
                 <RankBadge rank={row.rank} />

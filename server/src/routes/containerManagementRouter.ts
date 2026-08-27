@@ -1,4 +1,4 @@
-/** 容器管理：主体账户 / 容器台账 / 流转记录 的接口 */
+/** 容器管理：站点账户 / 容器台账 / 流转记录 的接口 */
 import { Router, type Response } from 'express'
 import type { AuthenticatedRequest } from '../auth/middleware'
 import {
@@ -41,23 +41,38 @@ import {
 } from '../containerManagement/constants'
 import { readImage, saveImageFromDataUrl } from '../containerManagement/imageStorage'
 import {
+  normalizeAccountPushNotify,
+  type AccountPushNotify,
+} from '../containerManagement/pushNotify'
+import {
   acceptSettlement,
-  addTransferMessage,
   confirmTransfer,
-  createTransfer,
+  createTransfersBatch,
+  normalizeOccurredAt,
   deleteTransfer,
   getTransfer,
   listTransferChanges,
-  listTransferMessages,
   listTransfers,
   reportReceipt,
   updateTransfer,
+  type TransferCreateInput,
   type TransferLineInput,
+  type TransferView,
 } from '../containerManagement/transferService'
+import {
+  notifyTransferEvent,
+  type TransferNotifyEvent,
+} from '../containerManagement/transferNotify'
 
 export const containerManagementRouter = Router()
 
 const MANAGE_ACCOUNTS = 'btn:container-accounts:manage'
+
+/** 一次提交的流转组数上限：整批一个事务，太多组会长时间占住行锁 */
+const MAX_TRANSFER_BATCH = 20
+
+/** Excel 批量导入的行数上限：同样是单事务整批回滚，200 行是行锁时长可接受的边界 */
+const MAX_TRANSFER_IMPORT = 200
 const DELETE_LEDGER = 'btn:container-ledger:delete'
 
 function fail(res: Response, status: number, error: string): void {
@@ -104,15 +119,55 @@ function parseLineItems(raw: unknown): TransferLineInput[] | string {
   return result
 }
 
-// ---------------------------------------------------------------- 主体账户
+/**
+ * 逐条解析流转创建入参，返回字符串即错误信息（风格同 parseLineItems）。
+ * unitLabel 决定错误前缀：手工表单是「第 N 组」，Excel 导入是「第 N 行」。
+ */
+function parseTransferCreateItems(rawItems: unknown[], unitLabel: string): TransferCreateInput[] | string {
+  const parsed: TransferCreateInput[] = []
+  for (const [index, raw] of rawItems.entries()) {
+    const at = `第 ${index + 1} ${unitLabel}：`
+    const item = raw as {
+      kind?: unknown
+      fromAccountId?: unknown
+      toAccountId?: unknown
+      lineItems?: unknown
+      occurredAt?: unknown
+      note?: unknown
+    }
+    if (!isTransferKind(item.kind)) return `${at}业务类型不合法`
+    const fromAccountId = String(item.fromAccountId ?? '').trim()
+    const toAccountId = String(item.toAccountId ?? '').trim()
+    if (!fromAccountId) return `${at}请选择转出方`
+    if (!toAccountId) return `${at}请选择接收方`
+    const lineItems = parseLineItems(item.lineItems)
+    if (typeof lineItems === 'string') return `${at}${lineItems}`
+    const note = item.note === undefined || item.note === null ? null : String(item.note)
+    if (note !== null && note.length > 2000) return `${at}备注过长`
+    let occurredAt: string
+    try {
+      occurredAt = normalizeOccurredAt(item.occurredAt)
+    } catch (error) {
+      return `${at}${error instanceof Error ? error.message : '日期不合法'}`
+    }
+    parsed.push({ kind: item.kind as TransferKind, fromAccountId, toAccountId, lineItems, occurredAt, note })
+  }
+  return parsed
+}
+
+// ---------------------------------------------------------------- 站点账户
 
 containerManagementRouter.get('/accounts', async (req: AuthenticatedRequest, res) => {
   try {
-    const visible = await resolveVisibleAccountIds(req)
+    // scope=manage：站点账户维护页。改名/删除本就是全局的（只认 MANAGE_ACCOUNTS），
+    // 列表若仍按绑定过滤，会出现「列表空却提示已存在同名」的矛盾，故此处读写范围保持一致。
+    const manageScope =
+      String(req.query.scope ?? '') === 'manage' && hasContainerPermission(req, MANAGE_ACCOUNTS)
+    const visible = manageScope ? null : await resolveVisibleAccountIds(req)
     const counterparty = String(req.query.counterparty ?? '') === '1'
     res.json({ ok: true, data: await listAccounts(visible, counterparty) })
   } catch (error) {
-    handleError(res, error, '获取主体账户失败')
+    handleError(res, error, '获取站点账户失败')
   }
 })
 
@@ -127,44 +182,61 @@ containerManagementRouter.get('/accounts/assignable-users', async (req: Authenti
 
 containerManagementRouter.post('/accounts', async (req: AuthenticatedRequest, res) => {
   if (!hasContainerPermission(req, MANAGE_ACCOUNTS)) return fail(res, 403, '无操作权限')
-  const body = req.body as { name?: unknown; kind?: unknown }
+  const body = req.body as { name?: unknown; kind?: unknown; userIds?: unknown; pushNotify?: unknown }
   const name = String(body.name ?? '').trim()
-  if (!name) return fail(res, 400, '请填写主体名称')
-  if (name.length > 200) return fail(res, 400, '主体名称过长')
-  if (!isAccountKind(body.kind)) return fail(res, 400, '主体类型不合法')
+  if (!name) return fail(res, 400, '请填写站点名称')
+  if (name.length > 200) return fail(res, 400, '站点名称过长')
+  if (!isAccountKind(body.kind)) return fail(res, 400, '站点类型不合法')
+  if (body.userIds !== undefined && !Array.isArray(body.userIds)) {
+    return fail(res, 400, '绑定用户格式不正确')
+  }
   try {
     const data = await createAccount({
       name,
       kind: body.kind as AccountKind,
+      userIds: Array.isArray(body.userIds) ? body.userIds.map((item) => String(item)) : [],
+      pushNotify: normalizeAccountPushNotify(body.pushNotify),
       createdBy: req.authUser?.id ?? null,
     })
     res.status(201).json({ ok: true, data })
   } catch (error) {
-    handleError(res, error, '创建主体账户失败')
+    handleError(res, error, '创建站点账户失败')
   }
 })
 
 containerManagementRouter.patch('/accounts/:id', async (req: AuthenticatedRequest, res) => {
   if (!hasContainerPermission(req, MANAGE_ACCOUNTS)) return fail(res, 403, '无操作权限')
-  const body = req.body as { name?: unknown; kind?: unknown }
-  const patch: { name?: string; kind?: AccountKind } = {}
+  const body = req.body as { name?: unknown; kind?: unknown; userIds?: unknown; pushNotify?: unknown }
+  const patch: {
+    name?: string
+    kind?: AccountKind
+    userIds?: string[]
+    pushNotify?: AccountPushNotify
+  } = {}
   if (body.name !== undefined) {
     const name = String(body.name).trim()
-    if (!name) return fail(res, 400, '主体名称不能为空')
-    if (name.length > 200) return fail(res, 400, '主体名称过长')
+    if (!name) return fail(res, 400, '站点名称不能为空')
+    if (name.length > 200) return fail(res, 400, '站点名称过长')
     patch.name = name
   }
   if (body.kind !== undefined) {
-    if (!isAccountKind(body.kind)) return fail(res, 400, '主体类型不合法')
+    if (!isAccountKind(body.kind)) return fail(res, 400, '站点类型不合法')
     patch.kind = body.kind as AccountKind
   }
-  if (patch.name === undefined && patch.kind === undefined) {
+  if (body.userIds !== undefined) {
+    if (!Array.isArray(body.userIds)) return fail(res, 400, '绑定用户格式不正确')
+    patch.userIds = body.userIds.map((item) => String(item))
+  }
+  if (body.pushNotify !== undefined) {
+    patch.pushNotify = normalizeAccountPushNotify(body.pushNotify)
+  }
+  if (Object.keys(patch).length === 0) {
     return fail(res, 400, '未检测到可修改字段')
   }
   try {
     res.json({ ok: true, data: await updateAccount(String(req.params.id ?? '').trim(), patch) })
   } catch (error) {
-    handleError(res, error, '更新主体账户失败')
+    handleError(res, error, '更新站点账户失败')
   }
 })
 
@@ -174,7 +246,7 @@ containerManagementRouter.delete('/accounts/:id', async (req: AuthenticatedReque
     await deleteAccount(String(req.params.id ?? '').trim())
     res.json({ ok: true, data: null })
   } catch (error) {
-    handleError(res, error, '删除主体账户失败')
+    handleError(res, error, '删除站点账户失败')
   }
 })
 
@@ -214,13 +286,13 @@ containerManagementRouter.get('/balances', async (req: AuthenticatedRequest, res
 containerManagementRouter.post('/balances', async (req: AuthenticatedRequest, res) => {
   const body = req.body as { accountId?: unknown; containerType?: unknown; quantity?: unknown }
   const accountId = String(body.accountId ?? '').trim()
-  if (!accountId) return fail(res, 400, '请选择主体账户')
+  if (!accountId) return fail(res, 400, '请选择站点账户')
   if (!isContainerType(body.containerType)) return fail(res, 400, '品类不合法')
   const quantity = Number(body.quantity)
   if (!Number.isInteger(quantity) || quantity < 0) return fail(res, 400, '数量必须为 0 或正整数')
   try {
     const visible = await resolveVisibleAccountIds(req)
-    if (!canActAsAccount(visible, accountId)) return fail(res, 403, '无权操作该主体账户')
+    if (!canActAsAccount(visible, accountId)) return fail(res, 403, '无权操作该站点账户')
     const data = await createBalance({
       accountId,
       containerType: body.containerType as ContainerType,
@@ -246,7 +318,7 @@ containerManagementRouter.patch('/balances/:id', async (req: AuthenticatedReques
     const existing = await getBalanceById(String(req.params.id ?? '').trim())
     if (!existing) return fail(res, 404, '台账记录不存在')
     const visible = await resolveVisibleAccountIds(req)
-    if (!canActAsAccount(visible, existing.accountId)) return fail(res, 403, '无权操作该主体账户')
+    if (!canActAsAccount(visible, existing.accountId)) return fail(res, 403, '无权操作该站点账户')
     const data = await updateBalance(String(req.params.id ?? '').trim(), {
       quantity,
       reasonType: body.reasonType as BalanceReasonType,
@@ -270,7 +342,7 @@ containerManagementRouter.delete('/balances/:id', async (req: AuthenticatedReque
     const existing = await getBalanceById(String(req.params.id ?? '').trim())
     if (!existing) return fail(res, 404, '台账记录不存在')
     const visible = await resolveVisibleAccountIds(req)
-    if (!canActAsAccount(visible, existing.accountId)) return fail(res, 403, '无权操作该主体账户')
+    if (!canActAsAccount(visible, existing.accountId)) return fail(res, 403, '无权操作该站点账户')
     await deleteBalance(String(req.params.id ?? '').trim(), {
       reasonType: body.reasonType as BalanceReasonType,
       reason,
@@ -288,7 +360,7 @@ containerManagementRouter.get('/balance-audits', async (req: AuthenticatedReques
     const visible = await resolveVisibleAccountIds(req)
     const { page, pageSize } = parsePagination(req.query as Record<string, unknown>)
     const accountId = String(req.query.accountId ?? '').trim() || undefined
-    if (accountId && !canActAsAccount(visible, accountId)) return fail(res, 403, '无权查看该主体账户')
+    if (accountId && !canActAsAccount(visible, accountId)) return fail(res, 403, '无权查看该站点账户')
     const containerTypeRaw = String(req.query.containerType ?? '').trim()
     const data = await listBalanceAudits({
       visibleAccountIds: visible,
@@ -351,41 +423,64 @@ containerManagementRouter.get('/transfer-changes', async (req: AuthenticatedRequ
 })
 
 containerManagementRouter.post('/transfers', async (req: AuthenticatedRequest, res) => {
-  const body = req.body as {
-    kind?: unknown
-    fromAccountId?: unknown
-    toAccountId?: unknown
-    lineItems?: unknown
-    imageUrl?: unknown
-    note?: unknown
+  const rawItems = (req.body as { items?: unknown }).items
+  if (!Array.isArray(rawItems) || rawItems.length === 0) {
+    return fail(res, 400, '至少需要一组流转记录')
   }
-  if (!isTransferKind(body.kind)) return fail(res, 400, '业务类型不合法')
-  const fromAccountId = String(body.fromAccountId ?? '').trim()
-  const toAccountId = String(body.toAccountId ?? '').trim()
-  if (!fromAccountId) return fail(res, 400, '请选择转出方')
-  if (!toAccountId) return fail(res, 400, '请选择接收方')
-  const lineItems = parseLineItems(body.lineItems)
-  if (typeof lineItems === 'string') return fail(res, 400, lineItems)
-  const note = body.note === undefined || body.note === null ? null : String(body.note)
-  if (note !== null && note.length > 2000) return fail(res, 400, '备注过长')
+  if (rawItems.length > MAX_TRANSFER_BATCH) {
+    return fail(res, 400, `一次最多提交 ${MAX_TRANSFER_BATCH} 组`)
+  }
+
+  const parsed = parseTransferCreateItems(rawItems, '组')
+  if (typeof parsed === 'string') return fail(res, 400, parsed)
 
   try {
     const visible = await resolveVisibleAccountIds(req)
-    if (!canActAsAccount(visible, fromAccountId)) {
-      return fail(res, 403, '只能以自己绑定的主体账户作为转出方')
+    for (const [index, item] of parsed.entries()) {
+      if (!canActAsAccount(visible, item.fromAccountId)) {
+        return fail(res, 403, `第 ${index + 1} 组：只能以自己绑定的站点账户作为转出方`)
+      }
     }
-    const transferId = await createTransfer({
-      kind: body.kind as TransferKind,
-      fromAccountId,
-      toAccountId,
-      lineItems,
-      imageUrl: body.imageUrl === undefined ? null : (body.imageUrl as string | null),
-      note,
-      actorUserId: req.authUser?.id ?? null,
-    })
-    res.status(201).json({ ok: true, data: await getTransfer(transferId) })
+    const ids = await createTransfersBatch(parsed, req.authUser?.id ?? null, '组')
+    const created = (await Promise.all(ids.map((id) => getTransfer(id)))).filter(
+      (item): item is NonNullable<typeof item> => item !== null,
+    )
+    res.status(201).json({ ok: true, data: created })
+    for (const transfer of created) {
+      fireTransferNotify(req, transfer, 'created', transfer.note ? `备注：${transfer.note}` : null)
+    }
   } catch (error) {
     handleError(res, error, '创建流转记录失败')
+  }
+})
+
+/**
+ * Excel 批量导入：与 POST /transfers 同一套校验与事务语义，只是上限更高、错误前缀是「第 N 行」。
+ * 刻意不推飞书：一次几十上百条会把接收方的群刷屏，导入弹窗里已提示需另行告知接收方确认。
+ */
+containerManagementRouter.post('/transfers/import', async (req: AuthenticatedRequest, res) => {
+  const rawItems = (req.body as { items?: unknown }).items
+  if (!Array.isArray(rawItems) || rawItems.length === 0) {
+    return fail(res, 400, '至少需要一行流转记录')
+  }
+  if (rawItems.length > MAX_TRANSFER_IMPORT) {
+    return fail(res, 400, `一次最多导入 ${MAX_TRANSFER_IMPORT} 行`)
+  }
+
+  const parsed = parseTransferCreateItems(rawItems, '行')
+  if (typeof parsed === 'string') return fail(res, 400, parsed)
+
+  try {
+    const visible = await resolveVisibleAccountIds(req)
+    for (const [index, item] of parsed.entries()) {
+      if (!canActAsAccount(visible, item.fromAccountId)) {
+        return fail(res, 403, `第 ${index + 1} 行：只能以自己绑定的站点账户作为转出方`)
+      }
+    }
+    const ids = await createTransfersBatch(parsed, req.authUser?.id ?? null, '行')
+    res.status(201).json({ ok: true, data: { created: ids.length } })
+  } catch (error) {
+    handleError(res, error, '导入流转记录失败')
   }
 })
 
@@ -423,29 +518,54 @@ async function loadTransferWithRole(
   return { transfer, visible }
 }
 
+/**
+ * 业务提交成功、响应已发出后再推飞书，通知失败不影响本次接口结果。
+ * 收件人是转出方与接收方两个站点各自配置的联系人，见 transferNotify。
+ */
+function fireTransferNotify(
+  req: AuthenticatedRequest,
+  transfer: TransferView | null,
+  event: TransferNotifyEvent,
+  extra: string | null = null,
+): void {
+  if (!transfer) return
+  const actor = req.authUser?.displayName?.trim() || req.authUser?.username || ''
+  void notifyTransferEvent(transfer, event, actor, extra)
+}
+
 containerManagementRouter.get('/transfers/:id', async (req: AuthenticatedRequest, res) => {
   try {
     const loaded = await loadTransferWithRole(req, res, 'any')
     if (!loaded) return
-    res.json({
-      ok: true,
-      data: { ...loaded.transfer, messages: await listTransferMessages(loaded.transfer.id) },
-    })
+    res.json({ ok: true, data: loaded.transfer })
   } catch (error) {
     handleError(res, error, '获取流转详情失败')
   }
 })
 
 containerManagementRouter.patch('/transfers/:id', async (req: AuthenticatedRequest, res) => {
-  const body = req.body as { lineItems?: unknown; imageUrl?: unknown; note?: unknown; reason?: unknown }
+  const body = req.body as {
+    lineItems?: unknown
+    occurredAt?: unknown
+    note?: unknown
+    reason?: unknown
+  }
   let lineItems: TransferLineInput[] | undefined
   if (body.lineItems !== undefined) {
     const parsed = parseLineItems(body.lineItems)
     if (typeof parsed === 'string') return fail(res, 400, parsed)
     lineItems = parsed
   }
-  if (lineItems === undefined && body.imageUrl === undefined && body.note === undefined) {
+  if (lineItems === undefined && body.occurredAt === undefined && body.note === undefined) {
     return fail(res, 400, '至少修改一个字段')
+  }
+  let occurredAt: string | undefined
+  if (body.occurredAt !== undefined) {
+    try {
+      occurredAt = normalizeOccurredAt(body.occurredAt)
+    } catch (error) {
+      return fail(res, 400, error instanceof Error ? error.message : '日期不合法')
+    }
   }
   try {
     const loaded = await loadTransferWithRole(req, res, 'from')
@@ -453,7 +573,7 @@ containerManagementRouter.patch('/transfers/:id', async (req: AuthenticatedReque
     await updateTransfer({
       transferId: loaded.transfer.id,
       lineItems,
-      imageUrl: body.imageUrl === undefined ? undefined : (body.imageUrl as string | null),
+      occurredAt,
       note: body.note === undefined ? undefined : (body.note as string | null),
       reason: body.reason === undefined ? '' : String(body.reason),
       actorUserId: req.authUser?.id ?? null,
@@ -493,7 +613,9 @@ containerManagementRouter.patch('/transfers/:id/confirm', async (req: Authentica
       actorUserId: req.authUser?.id ?? null,
       responseNote: note,
     })
-    res.json({ ok: true, data: await getTransfer(loaded.transfer.id) })
+    const confirmed = await getTransfer(loaded.transfer.id)
+    res.json({ ok: true, data: confirmed })
+    fireTransferNotify(req, confirmed, 'confirmed', note.trim() ? `收货备注：${note.trim()}` : null)
   } catch (error) {
     handleError(res, error, '确认收货失败')
   }
@@ -523,7 +645,11 @@ async function handleReceiverReport(
           : (body.receiverReportImageUrl as string | null),
       isUpdate,
     })
-    res.json({ ok: true, data: await getTransfer(loaded.transfer.id) })
+    const reported = await getTransfer(loaded.transfer.id)
+    res.json({ ok: true, data: reported })
+    if (!isUpdate) {
+      fireTransferNotify(req, reported, 'reported', `申报原因：${reason}`)
+    }
   } catch (error) {
     handleError(res, error, isUpdate ? '修改实收申报失败' : '差异申报失败')
   }
@@ -537,29 +663,6 @@ containerManagementRouter.patch('/transfers/:id/receiver-report', (req: Authenti
   handleReceiverReport(req, res, true),
 )
 
-containerManagementRouter.post('/transfers/:id/messages', async (req: AuthenticatedRequest, res) => {
-  const body = req.body as { body?: unknown; proposedQuantity?: unknown }
-  const text = String(body.body ?? '').trim()
-  if (!text) return fail(res, 400, '留言不能为空')
-  if (text.length > 4000) return fail(res, 400, '留言过长')
-  try {
-    const loaded = await loadTransferWithRole(req, res, 'any')
-    if (!loaded) return
-    await addTransferMessage({
-      transferId: loaded.transfer.id,
-      actorUserId: req.authUser?.id ?? null,
-      body: text,
-      proposedQuantity:
-        body.proposedQuantity === undefined || body.proposedQuantity === null
-          ? null
-          : Number(body.proposedQuantity),
-    })
-    res.status(201).json({ ok: true, data: await listTransferMessages(loaded.transfer.id) })
-  } catch (error) {
-    handleError(res, error, '发送留言失败')
-  }
-})
-
 containerManagementRouter.patch('/transfers/:id/accept-settlement', async (req: AuthenticatedRequest, res) => {
   try {
     const loaded = await loadTransferWithRole(req, res, 'from')
@@ -568,7 +671,10 @@ containerManagementRouter.patch('/transfers/:id/accept-settlement', async (req: 
       transferId: loaded.transfer.id,
       actorUserId: req.authUser?.id ?? null,
     })
-    res.json({ ok: true, data: await getTransfer(loaded.transfer.id) })
+    const accepted = await getTransfer(loaded.transfer.id)
+    res.json({ ok: true, data: accepted })
+    // 接收方申报完差异就在等这一下，是协商路径的结清，与「确认收货」同等重要
+    fireTransferNotify(req, accepted, 'accepted')
   } catch (error) {
     handleError(res, error, '认可结算数量失败')
   }

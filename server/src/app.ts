@@ -17,6 +17,7 @@ import { efficiencyInsightRouter } from './routes/efficiencyInsightRouter'
 import { jobsRouter } from './routes/jobsRouter'
 import { vendorAnalysisRouter } from './routes/vendorAnalysisRouter'
 import { vendorPortalRouter } from './routes/vendorPortalRouter'
+import { vendorRegionMapRouter } from './routes/vendorRegionMapRouter'
 import { chaseDispatchPortalRouter } from './routes/chaseDispatchPortalRouter'
 import { fleetSupplierPushRouter } from './routes/fleetSupplierPushRouter'
 import { exitAlarmRouter } from './routes/exitAlarmRouter'
@@ -73,6 +74,7 @@ app.use('/api/efficiency-insight', requireAuth, efficiencyInsightRouter)
 app.use('/api/jobs', jobsRouter)
 app.use('/api/problem-audit', requireAuth, problemPackageAuditRouter)
 app.use('/api/vendor-analysis', requireAuth, vendorAnalysisRouter)
+app.use('/api/vendor-region-map', requireAuth, vendorRegionMapRouter)
 // 供应商日报外部门户：凭分享 token 访问，不走登录鉴权
 app.use('/api/vendor-portal', vendorPortalRouter)
 // 催派推送外部门户：凭分享 token 查看滞留运单明细，不走登录鉴权

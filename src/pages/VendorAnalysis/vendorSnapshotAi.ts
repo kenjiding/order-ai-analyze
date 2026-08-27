@@ -26,6 +26,7 @@ function sortDriversForAi(vendors: VendorSnapshotVendor[], enabledSet?: Readonly
       .slice(0, 30)
     const dispatchRate24h = v.dispatchRate24hText ? parseFloat(v.dispatchRate24hText) / 100 : null
     return {
+      supplierKey: v.supplierKey,
       vendorCode: v.vendorCode,
       vendorName: v.vendorName,
       ...(includeBefore11 ? { before11ExitRate: v.before11ExitRate } : {}),
@@ -57,10 +58,10 @@ export function buildVendorAiInputsFromSnapshot(
 
 export function pickVendorAiSummary(
   summaries: VendorSnapshotAiSummaries | undefined,
-  vendorCode: string,
+  supplierKey: string,
   locale: AppLocale,
 ): string | undefined {
-  const text = summaries?.[vendorCode]?.[locale]
+  const text = summaries?.[supplierKey]?.[locale]
   return text?.trim() ? text : undefined
 }
 
@@ -83,5 +84,5 @@ export function hasAiSummariesForLocale(
   locale: AppLocale,
 ): boolean {
   if (!vendors.length) return true
-  return vendors.every((v) => Boolean(pickVendorAiSummary(summaries, v.vendorCode, locale)))
+  return vendors.every((v) => Boolean(pickVendorAiSummary(summaries, v.supplierKey, locale)))
 }

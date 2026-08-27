@@ -10,9 +10,11 @@
 import { isBefore11Exit } from '../imile/before11Exit'
 import {
   buildRouteCodeVendorsMap,
+  isRowInConfigScopeIgnoringWhitelist,
   isRowInVendorScope,
   normCode,
   resolveVendorCodesByRouteCode,
+  type ConfigScope,
   type VendorScopeMaps,
 } from './supplierScope'
 
@@ -126,14 +128,11 @@ export function projectBefore11ZoneBreakdown(
   return zoneBreakdown
 }
 
-export type Before11Scope = {
-  /** 结果 Map 的 key，用配置自己的 id（而非 vendorCode），使同一 vendorCode 的多条配置各自独立累计，互不覆盖 */
-  key: string
-  vendorCode: string
-  /** 路由码纳入名单；undefined = 不按路由码收窄 */
-  routeCodes?: Set<string>
-  routeCodeWhitelist?: Set<string>
-}
+/**
+ * 结果 Map 的 key 由调用方决定含义：告警按推送配置 id 分桶，供应商日报按供应商单位 supplierKey 分桶。
+ * 两者都是「同一 vendorCode 的多个范围各自独立累计，互不覆盖」。
+ */
+export type Before11Scope = ConfigScope
 
 export type Before11ScopedStat = {
   totalWaybills: number
@@ -170,12 +169,8 @@ export function aggregateBefore11ByScopes(input: {
     const routeCode = row.consigneeRouteCode
 
     for (const scope of scopes) {
-      if (explicitVendorCode) {
-        if (explicitVendorCode !== scope.vendorCode) continue
-      } else if (!scope.routeCodes?.has(routeCode)) {
-        continue
-      }
-      if (scope.routeCodes && !scope.routeCodes.has(routeCode)) continue
+      // 白名单命中的行下面要单独计入 whitelistStat，故这里用不含白名单剔除的判定
+      if (!isRowInConfigScopeIgnoringWhitelist(scope, explicitVendorCode, routeCode)) continue
 
       let stat = result.get(scope.key)
       if (!stat) {
