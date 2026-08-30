@@ -278,6 +278,7 @@ async function runVendorAnalyze(
       longTailOrders: longTailOrders as never,
       driverYesterdayWaybills,
       driverDayBeforeWaybills: driverDayBeforeWaybills as never,
+      dayBeforeDate: params.dayBeforeDate,
       driverReturnRows: driverReturnRows as never,
       stationCodes: params.stationCodes,
       tz: resolveRegionTz(ctx.job.regionCode),

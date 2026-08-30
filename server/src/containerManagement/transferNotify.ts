@@ -15,6 +15,10 @@ import {
   buildContainerTransferCard,
   type TransferCardEvent,
 } from '../feishu/buildContainerTransferCard'
+import {
+  buildContainerTransferBatchCard,
+  type TransferBatchEntry,
+} from '../feishu/buildContainerTransferBatchCard'
 import { normalizeAccountPushNotify, type MentionContact } from './pushNotify'
 import type { TransferView } from './transferService'
 
@@ -37,22 +41,48 @@ export async function resolveTransferNotifyRecipients(
   fromAccountId: string,
   toAccountId: string,
 ): Promise<TransferRecipient[]> {
+  const contactsByAccount = await loadAccountContacts([fromAccountId, toAccountId])
+  return collectRecipients(contactsByAccount, fromAccountId, toAccountId)
+}
+
+/**
+ * 一次查出多个站点账户的联系人，未启用推送的账户不进结果。
+ * 批量通知靠这个把 N 笔流转压成一次查询，别在循环里调 resolveTransferNotifyRecipients。
+ */
+async function loadAccountContacts(accountIds: string[]): Promise<Map<string, MentionContact[]>> {
+  const ids = [...new Set(accountIds)].filter((id) => id)
+  if (ids.length === 0) return new Map()
+
   const rows = await getDb()
     .select({
       id: schema.containerAccounts.id,
       pushNotify: schema.containerAccounts.pushNotify,
     })
     .from(schema.containerAccounts)
-    .where(inArray(schema.containerAccounts.id, [fromAccountId, toAccountId]))
+    .where(inArray(schema.containerAccounts.id, ids))
 
-  const byOpenId = new Map<string, TransferRecipient>()
+  const byAccount = new Map<string, MentionContact[]>()
   for (const row of rows) {
     const config = normalizeAccountPushNotify(row.pushNotify)
-    if (!config.enabled) continue
-    const side: TransferSide | null =
-      row.id === fromAccountId ? 'from' : row.id === toAccountId ? 'to' : null
-    if (!side) continue
-    for (const contact of config.mentions) {
+    if (!config.enabled || config.mentions.length === 0) continue
+    byAccount.set(row.id, config.mentions)
+  }
+  return byAccount
+}
+
+/** 两侧联系人按 openId 合并去重；同一个人同时是双方联系人时 sides 会有两项。纯内存，不查库。 */
+function collectRecipients(
+  contactsByAccount: Map<string, MentionContact[]>,
+  fromAccountId: string,
+  toAccountId: string,
+): TransferRecipient[] {
+  const byOpenId = new Map<string, TransferRecipient>()
+  const sides: Array<[string, TransferSide]> = [
+    [fromAccountId, 'from'],
+    [toAccountId, 'to'],
+  ]
+  for (const [accountId, side] of sides) {
+    for (const contact of contactsByAccount.get(accountId) ?? []) {
       const existing = byOpenId.get(contact.openId)
       if (existing) {
         if (!existing.sides.includes(side)) existing.sides.push(side)
@@ -118,5 +148,102 @@ export async function notifyTransferEvent(
     }
   } catch (error) {
     console.error(`[container-transfer-notify] ${formatTransferNo(transfer.id)} ${event} 通知异常`, error)
+  }
+}
+
+/**
+ * 少于等于这个笔数时仍逐笔发单笔卡片：信息更全、能直接点进那一笔确认收货；
+ * 超过就归并成汇总卡，避免一次导入把接收方私聊刷屏。
+ */
+const BATCH_NOTIFY_THRESHOLD = 2
+
+export type BatchRecipientBucket = { contact: MentionContact; entries: TransferBatchEntry[] }
+
+/**
+ * 把 N 笔流转按收件人归并：一个人同时是多个站点的联系人时，这些站点的流转都进他那一个桶。
+ * 纯内存，导出以便单测。
+ */
+export function groupBatchEntriesByRecipient(
+  contactsByAccount: Map<string, MentionContact[]>,
+  transfers: TransferView[],
+): Map<string, BatchRecipientBucket> {
+  const byOpenId = new Map<string, BatchRecipientBucket>()
+  for (const transfer of transfers) {
+    for (const recipient of collectRecipients(
+      contactsByAccount,
+      transfer.fromAccountId,
+      transfer.toAccountId,
+    )) {
+      let bucket = byOpenId.get(recipient.openId)
+      if (!bucket) {
+        bucket = { contact: { name: recipient.name, openId: recipient.openId }, entries: [] }
+        byOpenId.set(recipient.openId, bucket)
+      }
+      bucket.entries.push({ transfer, sides: recipient.sides })
+    }
+  }
+  return byOpenId
+}
+
+/**
+ * 批量新建（Excel 导入 / 手工多组提交）的通知入口。永不抛出。
+ *
+ * 归并维度是「人」不是「站点线路」：一个人可能是好几个站点的联系人，
+ * 按 openId 归并后他只收一条，卡片里再按他在各笔中的身份分块。
+ */
+export async function notifyTransferBatchCreated(
+  transfers: TransferView[],
+  actorName: string,
+): Promise<void> {
+  if (transfers.length === 0) return
+  if (transfers.length <= BATCH_NOTIFY_THRESHOLD) {
+    for (const transfer of transfers) {
+      await notifyTransferEvent(
+        transfer,
+        'created',
+        actorName,
+        transfer.note ? `备注：${transfer.note}` : null,
+      )
+    }
+    return
+  }
+
+  try {
+    const contactsByAccount = await loadAccountContacts(
+      transfers.flatMap((transfer) => [transfer.fromAccountId, transfer.toAccountId]),
+    )
+    if (contactsByAccount.size === 0) return
+
+    const byOpenId = groupBatchEntriesByRecipient(contactsByAccount, transfers)
+    if (byOpenId.size === 0) return
+
+    const tokenResult = await getFeishuTenantAccessToken()
+    if (!tokenResult.ok) {
+      console.error(`[container-transfer-notify] 获取飞书 tenant token 失败：${tokenResult.reason}`)
+      return
+    }
+
+    let failed = 0
+    for (const { contact, entries } of byOpenId.values()) {
+      const card = buildContainerTransferBatchCard({ entries, actorName })
+      const res = await sendFeishuAppMessage(
+        tokenResult.token,
+        contact.openId,
+        'interactive',
+        card,
+        'open_id',
+      )
+      if (!res.ok) {
+        failed += 1
+        console.error(
+          `[container-transfer-notify] 批量 ${transfers.length} 笔私聊 ${contact.name || contact.openId} 失败：${res.error}`,
+        )
+      }
+    }
+    console.info(
+      `[container-transfer-notify] 批量 ${transfers.length} 笔已归并为 ${byOpenId.size} 条推送，失败 ${failed} 条`,
+    )
+  } catch (error) {
+    console.error(`[container-transfer-notify] 批量 ${transfers.length} 笔通知异常`, error)
   }
 }

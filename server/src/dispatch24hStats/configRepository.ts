@@ -1,0 +1,298 @@
+/**
+ * 出仓派签达成分析的站点配置读写，以及列表页要用的「各站点最近一批结算概览」。
+ *
+ * 列表页不是光秃秃的配置注册表：每行直接带该站点最近已结算那天的两个率，
+ * 一眼看出哪个站点有问题，再点进详情页下钻到供应商/路由码/司机。
+ */
+import { and, asc, desc, eq, inArray, ne, or, sql } from 'drizzle-orm'
+import { getDb, schema } from '../db'
+import type { DispatchPerformanceConfig } from '../db/schema'
+import { LEGACY_GLOBAL_SUPPLIER_REGION_CODE, listSupplierPushConfigs, parsePushConfigIds } from '../supplierPushConfigs'
+import { buildSupplierUnitIndex } from '../vendorAnalysis/supplierScope'
+import { toMetrics, type DispatchPerformanceMetrics } from './repository'
+
+/** 该站点最近一个有数据的到件日及其汇总指标；从未结算过则为 null */
+export type DispatchPerformanceLatestSnapshot = {
+  arrivalDate: string
+  metrics: DispatchPerformanceMetrics
+}
+
+export type DispatchPerformanceConfigView = {
+  id: string
+  stationCode: string
+  stationName: string
+  regionCode: string
+  isEnabled: boolean
+  createdAt: string
+  updatedAt: string
+  /** 纳入统计的供应商 = fleet_supplier_push_configs 的行 id 列表，用户在配置抽屉里勾选 */
+  pushConfigIds: string[]
+  /** 每天几点触发结算，HH:mm，按该站点所属州的本地时间 */
+  settleTime: string
+  /** 上面这些配置归并出的供应商单位数（同一家的多条配置算一家），实时算、不落库 */
+  supplierCount: number
+  /** 最近一个有数据的到件日（出仓率看它）。派签在这天多半还没结算 */
+  latest: DispatchPerformanceLatestSnapshot | null
+  /**
+   * 最近一个**派签已结算**的到件日，比 latest 早一天左右。
+   *
+   * 派签率不能读 latest：两个指标结算时机差一天，最新那天的派签**必然**还没结算，
+   * 读 latest 会让这一列永远显示「结算中」，用户点多少次「立刻统计」都不会变。
+   */
+  latestDispatch: DispatchPerformanceLatestSnapshot | null
+}
+
+/** 站点归属本账号可见范围：历史 global 数据对所有人可见，其余按州隔离，与供应商配置一致 */
+function regionVisible(regionCode: string | null | undefined) {
+  const t = schema.dispatchPerformanceConfigs
+  if (!regionCode) return or(eq(t.regionCode, LEGACY_GLOBAL_SUPPLIER_REGION_CODE), eq(t.regionCode, ''))
+  return or(
+    eq(t.regionCode, regionCode),
+    eq(t.regionCode, LEGACY_GLOBAL_SUPPLIER_REGION_CODE),
+    eq(t.regionCode, ''),
+  )
+}
+
+export async function listDispatchPerformanceConfigs(
+  regionCode: string | null | undefined,
+): Promise<DispatchPerformanceConfig[]> {
+  const db = getDb()
+  const t = schema.dispatchPerformanceConfigs
+  return db.select().from(t).where(regionVisible(regionCode)).orderBy(asc(t.createdAt))
+}
+
+/** 结算任务用：所有已启用的配置，不做州过滤（系统级任务没有账号上下文） */
+export async function listEnabledDispatchPerformanceConfigs(): Promise<DispatchPerformanceConfig[]> {
+  const db = getDb()
+  const t = schema.dispatchPerformanceConfigs
+  return db.select().from(t).where(eq(t.isEnabled, true)).orderBy(asc(t.createdAt))
+}
+
+export async function findDispatchPerformanceConfig(
+  id: string,
+): Promise<DispatchPerformanceConfig | null> {
+  const db = getDb()
+  const t = schema.dispatchPerformanceConfigs
+  const rows = await db.select().from(t).where(eq(t.id, id)).limit(1)
+  return rows[0] ?? null
+}
+
+/** 站点是否已被别的配置占用（新增时 excludeId 为空，编辑时排除自己） */
+export async function isStationTaken(stationCode: string, excludeId?: string): Promise<boolean> {
+  const db = getDb()
+  const t = schema.dispatchPerformanceConfigs
+  const conditions = [eq(t.stationCode, stationCode)]
+  if (excludeId) conditions.push(ne(t.id, excludeId))
+  const rows = await db.select({ id: t.id }).from(t).where(and(...conditions)).limit(1)
+  return rows.length > 0
+}
+
+export async function createDispatchPerformanceConfig(input: {
+  stationCode: string
+  stationName: string
+  regionCode: string
+  pushConfigIds: string[]
+  settleTime: string
+  isEnabled: boolean
+  userId: string | null
+}): Promise<DispatchPerformanceConfig> {
+  const db = getDb()
+  const rows = await db
+    .insert(schema.dispatchPerformanceConfigs)
+    .values({
+      stationCode: input.stationCode,
+      stationName: input.stationName,
+      regionCode: input.regionCode,
+      pushConfigIds: input.pushConfigIds,
+      settleTime: input.settleTime,
+      isEnabled: input.isEnabled,
+      createdBy: input.userId,
+      updatedBy: input.userId,
+    })
+    .returning()
+  return rows[0]
+}
+
+export async function updateDispatchPerformanceConfig(
+  id: string,
+  input: {
+    stationCode?: string
+    stationName?: string
+    pushConfigIds?: string[]
+    settleTime?: string
+    isEnabled?: boolean
+    userId: string | null
+  },
+): Promise<DispatchPerformanceConfig | null> {
+  const db = getDb()
+  const rows = await db
+    .update(schema.dispatchPerformanceConfigs)
+    .set({
+      ...(input.stationCode != null ? { stationCode: input.stationCode } : {}),
+      ...(input.stationName != null ? { stationName: input.stationName } : {}),
+      ...(input.pushConfigIds != null ? { pushConfigIds: input.pushConfigIds } : {}),
+      ...(input.settleTime != null ? { settleTime: input.settleTime } : {}),
+      ...(input.isEnabled != null ? { isEnabled: input.isEnabled } : {}),
+      updatedBy: input.userId,
+      updatedAt: new Date(),
+    })
+    .where(eq(schema.dispatchPerformanceConfigs.id, id))
+    .returning()
+  return rows[0] ?? null
+}
+
+/**
+ * 删除配置。已结算的日度数据**不一起删** —— 那是历史统计事实，
+ * 与「今后还统计不统计这个站点」是两回事；重新添加同一站点即可继续看到历史。
+ */
+export async function deleteDispatchPerformanceConfig(id: string): Promise<boolean> {
+  const db = getDb()
+  const rows = await db
+    .delete(schema.dispatchPerformanceConfigs)
+    .where(eq(schema.dispatchPerformanceConfigs.id, id))
+    .returning({ id: schema.dispatchPerformanceConfigs.id })
+  return rows.length > 0
+}
+
+/**
+ * 每条配置勾选的那些供应商配置，归并出多少个「供应商单位」。
+ *
+ * 不能直接数 pushConfigIds 的长度：同一家供应商会在多个 region 各建一条配置
+ * （ADL-Lu 在 SA 和 system 各一条），按行数会把一家数成两家。归并口径与结算完全一致。
+ */
+function countSupplierUnits(
+  configs: DispatchPerformanceConfig[],
+  supplierConfigs: Awaited<ReturnType<typeof listSupplierPushConfigs>>,
+): Map<string, number> {
+  const byId = new Map(supplierConfigs.map((c) => [c.id, c]))
+  return new Map(
+    configs.map((config) => {
+      const picked = parsePushConfigIds(config.pushConfigIds)
+        .map((id) => byId.get(id))
+        .filter((c): c is (typeof supplierConfigs)[number] => c != null && Boolean(c.vendorCode?.trim()))
+      return [config.id, buildSupplierUnitIndex(picked).units.size]
+    }),
+  )
+}
+
+/**
+ * 各站点最近一个有数据的到件日 + 该日汇总指标。
+ *
+ * 两步走：先按站点取 max(arrival_date)，再只聚合那一天的格子——
+ * 直接把全部历史行拉回来在内存里挑最新，站点一多就是无谓的全表扫描。
+ */
+async function loadLatestSnapshots(
+  stationCodes: string[],
+  /** true = 只看派签已结算的那些天，用于「24H派签率」列 */
+  dispatchSettledOnly = false,
+): Promise<Map<string, DispatchPerformanceLatestSnapshot>> {
+  const result = new Map<string, DispatchPerformanceLatestSnapshot>()
+  if (stationCodes.length === 0) return result
+
+  const db = getDb()
+  const t = schema.dispatchPerformanceDailyStats
+
+  const scope = dispatchSettledOnly
+    ? and(inArray(t.stationCode, stationCodes), eq(t.dispatchSettled, true))
+    : inArray(t.stationCode, stationCodes)
+
+  const latestDates = await db
+    .select({ stationCode: t.stationCode, arrivalDate: sql<string>`max(${t.arrivalDate})` })
+    .from(t)
+    .where(scope)
+    .groupBy(t.stationCode)
+  if (latestDates.length === 0) return result
+
+  const pairs = sql.join(
+    latestDates.map((d) => sql`(${d.stationCode}, ${d.arrivalDate})`),
+    sql`, `,
+  )
+  const rows = await db
+    .select({
+      stationCode: t.stationCode,
+      arrivalDate: t.arrivalDate,
+      total: sql<number>`sum(${t.total})::int`,
+      before11Met: sql<number>`sum(${t.before11Met})::int`,
+      exitMetSignMet: sql<number>`sum(${t.exitMetSignMet})::int`,
+      exitMetSignUnmet: sql<number>`sum(${t.exitMetSignUnmet})::int`,
+      exitUnmetSignMet: sql<number>`sum(${t.exitUnmetSignMet})::int`,
+      exitUnmetSignUnmet: sql<number>`sum(${t.exitUnmetSignUnmet})::int`,
+      problemCount: sql<number>`sum(${t.problemCount})::int`,
+      neverSignedCount: sql<number>`sum(${t.neverSignedCount})::int`,
+      lateSignedCount: sql<number>`sum(${t.lateSignedCount})::int`,
+      // 只要该日混进一行未结算，整日就算未结算——宁可显示结算中，也不摆出算了一半的数
+      dispatchSettled: sql<boolean>`bool_and(${t.dispatchSettled})`,
+    })
+    .from(t)
+    .where(sql`(${t.stationCode}, ${t.arrivalDate}) IN (${pairs})`)
+    .groupBy(t.stationCode, t.arrivalDate)
+
+  for (const row of rows) {
+    result.set(row.stationCode, {
+      arrivalDate: row.arrivalDate,
+      metrics: toMetrics({
+        total: row.total,
+        before11Met: row.before11Met,
+        exitMetSignMet: row.exitMetSignMet,
+        exitMetSignUnmet: row.exitMetSignUnmet,
+        exitUnmetSignMet: row.exitUnmetSignMet,
+        exitUnmetSignUnmet: row.exitUnmetSignUnmet,
+        problemCount: row.problemCount,
+        neverSignedCount: row.neverSignedCount,
+        lateSignedCount: row.lateSignedCount,
+        dispatchSettled: row.dispatchSettled,
+      }),
+    })
+  }
+  return result
+}
+
+/** 列表页数据：配置 + 供应商数 + 最近一批结算概览 */
+export async function listDispatchPerformanceConfigViews(
+  regionCode: string | null | undefined,
+): Promise<DispatchPerformanceConfigView[]> {
+  const configs = await listDispatchPerformanceConfigs(regionCode)
+  const stationCodes = [...new Set(configs.map((c) => c.stationCode))]
+  const [supplierConfigs, snapshots, dispatchSnapshots] = await Promise.all([
+    listSupplierPushConfigs(),
+    loadLatestSnapshots(stationCodes),
+    loadLatestSnapshots(stationCodes, true),
+  ])
+  const supplierCounts = countSupplierUnits(configs, supplierConfigs)
+
+  return configs.map((config) => ({
+    id: config.id,
+    stationCode: config.stationCode,
+    stationName: config.stationName,
+    regionCode: config.regionCode,
+    isEnabled: config.isEnabled,
+    createdAt: new Date(config.createdAt).toISOString(),
+    updatedAt: new Date(config.updatedAt).toISOString(),
+    pushConfigIds: parsePushConfigIds(config.pushConfigIds),
+    settleTime: config.settleTime,
+    supplierCount: supplierCounts.get(config.id) ?? 0,
+    latest: snapshots.get(config.stationCode) ?? null,
+    latestDispatch: dispatchSnapshots.get(config.stationCode) ?? null,
+  }))
+}
+
+/** 最近 N 个已结算到件日（降序），供详情页展示「结算进度」 */
+export async function listRecentSettledBatches(
+  stationCode: string,
+  limit = 10,
+): Promise<{ arrivalDate: string; exitSettled: boolean; dispatchSettled: boolean; waybillCount: number }[]> {
+  const db = getDb()
+  const t = schema.dispatchPerformanceSettledBatches
+  const rows = await db
+    .select()
+    .from(t)
+    .where(eq(t.stationCode, stationCode))
+    .orderBy(desc(t.arrivalDate))
+    .limit(limit)
+  return rows.map((r) => ({
+    arrivalDate: r.arrivalDate,
+    exitSettled: r.exitSettledAt != null,
+    dispatchSettled: r.dispatchSettledAt != null,
+    waybillCount: r.waybillCount,
+  }))
+}

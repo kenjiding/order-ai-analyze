@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { AUS_TZ, iMileStrToMs } from '../imile/ausTimezone'
+import { AUS_TZ, iMileStrToMs, localDateTimeToMs } from '../imile/ausTimezone'
 import {
   aggregateDispatch24hByScopes,
   aggregateDispatch24hByVendor,
@@ -8,13 +8,18 @@ import {
   isDispatch24hMet,
   isDispatch24hProblem,
   isDispatch24hTerminal,
+  dispatchExitThresholdMs,
   isDispatch24hWindowExpired,
+  resolveDispatch24hWindowRule,
   selectWaybillNosNeedingRefresh,
   type Dispatch24hScope,
   type Dispatch24hWaybillRow,
 } from './dispatch24hAggregate'
 
 const tz = AUS_TZ.Adelaide
+// 本文件的样例 deliveryTime 都落在工作日、且批次到件日在周一~周四，走滚动 24h 窗口。
+// 到件日 → 窗口规则的日历推导另见 resolveDispatch24hWindowRule 的专项用例。
+const rule = resolveDispatch24hWindowRule('2024-06-24', tz) // 周一到件 → rolling24h
 
 test('isDispatch24hTerminal：已达标视为终态，无需再拉', () => {
   const row: Dispatch24hWaybillRow = {
@@ -22,8 +27,8 @@ test('isDispatch24hTerminal：已达标视为终态，无需再拉', () => {
     deliveryTime: '2024-06-24 10:00:00',
     signDate: '2024-06-24 12:00:00',
   }
-  assert.equal(isDispatch24hMet(row, tz), true)
-  assert.equal(isDispatch24hTerminal(row, tz), true)
+  assert.equal(isDispatch24hMet(row, rule), true)
+  assert.equal(isDispatch24hTerminal(row, rule), true)
 })
 
 test('isDispatch24hTerminal：未拿到签收时间时，即使窗口已过、缓存已是窗口后同步的，也不能锁定终态；signDate 一旦写入即为终态', () => {
@@ -31,19 +36,19 @@ test('isDispatch24hTerminal：未拿到签收时间时，即使窗口已过、�
     waybillNo: 'W2',
     deliveryTime: '2024-06-24 10:00:00',
   }
-  const deadline = getDispatch24hDeadlineMs(row, tz)
+  const deadline = getDispatch24hDeadlineMs(row, rule)
   assert.ok(deadline != null)
   const withinWindow = deadline - 60_000
   const afterWindow = deadline + 60_000
 
-  assert.equal(isDispatch24hWindowExpired(row, tz, withinWindow), false)
-  assert.equal(isDispatch24hTerminal(row, tz), false)
-  assert.equal(isDispatch24hMet(row, tz), false)
-  assert.equal(isDispatch24hWindowExpired(row, tz, afterWindow), true)
+  assert.equal(isDispatch24hWindowExpired(row, rule, withinWindow), false)
+  assert.equal(isDispatch24hTerminal(row, rule), false)
+  assert.equal(isDispatch24hMet(row, rule), false)
+  assert.equal(isDispatch24hWindowExpired(row, rule, afterWindow), true)
 
   // 窗口已过，但 signDate 仍为空：iMile 可能之后才补上签收记录（签收超时），不能锁定终态，必须继续拉
   const staleSynced: Dispatch24hWaybillRow = { ...row, syncedAtMs: afterWindow }
-  assert.equal(isDispatch24hTerminal(staleSynced, tz), false)
+  assert.equal(isDispatch24hTerminal(staleSynced, rule), false)
 
   // 窗口过后才补上的签收记录（签收超时）：signDate 一旦写入就不会再变，视为终态
   const lateSigned: Dispatch24hWaybillRow = {
@@ -51,8 +56,8 @@ test('isDispatch24hTerminal：未拿到签收时间时，即使窗口已过、�
     signDate: '2024-06-26 09:00:00',
     syncedAtMs: afterWindow,
   }
-  assert.equal(isDispatch24hMet(lateSigned, tz), false)
-  assert.equal(isDispatch24hTerminal(lateSigned, tz), true)
+  assert.equal(isDispatch24hMet(lateSigned, rule), false)
+  assert.equal(isDispatch24hTerminal(lateSigned, rule), true)
 })
 
 test('selectWaybillNosNeedingRefresh：只返回未终态单号', () => {
@@ -65,7 +70,7 @@ test('selectWaybillNosNeedingRefresh：只返回未终态单号', () => {
     waybillNo: 'B',
     deliveryTime: '2024-06-24 10:00:00',
   }
-  const deadline = getDispatch24hDeadlineMs(open, tz)!
+  const deadline = getDispatch24hDeadlineMs(open, rule)!
   // 窗口已过、缓存也是窗口后同步的，但 signDate 仍为空：不能锁定终态，仍需刷新（防止漏掉签收超时的单）
   const expiredSynced: Dispatch24hWaybillRow = {
     waybillNo: 'C',
@@ -86,8 +91,8 @@ test('selectWaybillNosNeedingRefresh：只返回未终态单号', () => {
     ['E', lateSigned],
   ])
 
-  assert.deepEqual(selectWaybillNosNeedingRefresh(['A', 'B', 'C', 'D'], cached, tz), ['B', 'C', 'D'])
-  assert.deepEqual(selectWaybillNosNeedingRefresh(['A', 'B', 'C', 'D', 'E'], cached, tz), [
+  assert.deepEqual(selectWaybillNosNeedingRefresh(['A', 'B', 'C', 'D'], cached, rule), ['B', 'C', 'D'])
+  assert.deepEqual(selectWaybillNosNeedingRefresh(['A', 'B', 'C', 'D', 'E'], cached, rule), [
     'B',
     'C',
     'D',
@@ -118,14 +123,14 @@ test('isDispatch24hProblem：问题件时间需晚于派件时间才算本次派
 })
 
 test('isDispatch24hMet：重新派送后旧问题件不能再当作达标依据', () => {
-  const deadline = getDispatch24hDeadlineMs({ deliveryTime: '2024-06-25 09:00:00' }, tz)!
+  const deadline = getDispatch24hDeadlineMs({ deliveryTime: '2024-06-25 09:00:00' }, rule)!
   // 未签收、问题件是重新派送前的旧记录（早于本次 deliveryTime），即使在 deadline 前也不能判定达标
   const row: Dispatch24hWaybillRow = {
     deliveryTime: '2024-06-25 09:00:00',
     lastProblemDate: '2024-06-24 18:00:00',
   }
   assert.ok(deadline > iMileStrToMs('2024-06-24 18:00:00'))
-  assert.equal(isDispatch24hMet(row, tz), false)
+  assert.equal(isDispatch24hMet(row, rule), false)
 })
 
 test('aggregateDispatch24hByVendor：同 vendorCode 按不同 routeCode 纳入时可拆成独立统计', () => {
@@ -153,14 +158,14 @@ test('aggregateDispatch24hByVendor：同 vendorCode 按不同 routeCode 纳入�
   const regionA = aggregateDispatch24hByVendor({
     rows,
     stationCodes: ['S1'],
-    tz,
+    rule,
     routeCodesByVendor: new Map([['V1', new Set(['R-A'])]]),
     routeCodeWhitelistByVendor: new Map(),
   }).get('V1')
   const regionB = aggregateDispatch24hByVendor({
     rows,
     stationCodes: ['S1'],
-    tz,
+    rule,
     routeCodesByVendor: new Map([['V1', new Set(['R-B'])]]),
     routeCodeWhitelistByVendor: new Map(),
   }).get('V1')
@@ -208,7 +213,7 @@ test('aggregateDispatch24hByVendor：problemCount 按供应商与司机两级统
   const stat = aggregateDispatch24hByVendor({
     rows,
     stationCodes: ['S1'],
-    tz,
+    rule,
     routeCodeWhitelistByVendor: new Map(),
   }).get('V1')
 
@@ -262,7 +267,7 @@ test('aggregateDispatch24hByVendor：未达标运单按 neverSigned/lateSigned �
   const stat = aggregateDispatch24hByVendor({
     rows,
     stationCodes: ['S1'],
-    tz,
+    rule,
     routeCodeWhitelistByVendor: new Map(),
   }).get('V1')
   const c1 = stat?.drivers.find((d) => d.courierCode === 'C1')
@@ -303,7 +308,7 @@ test('aggregateDispatch24hByVendor：尚未派件（无 deliveryTime）的单也
   const stat = aggregateDispatch24hByVendor({
     rows,
     stationCodes: ['S1'],
-    tz,
+    rule,
     routeCodeWhitelistByVendor: new Map(),
   }).get('V1')
 
@@ -343,7 +348,7 @@ test('aggregateDispatch24hByVendor：courierVendorCode 为空时按 consigneeRou
   const result = aggregateDispatch24hByVendor({
     rows,
     stationCodes: ['S1'],
-    tz,
+    rule,
     routeCodesByVendor: new Map([
       ['V1', new Set(['R-A', 'R-SHARED'])],
       ['V2', new Set(['R-SHARED'])],
@@ -385,7 +390,7 @@ test('aggregateDispatch24hByScopes：同 vendorCode 两条配置各自不同 rou
     { key: 'config-region-a', vendorCode: 'V1', routeCodes: new Set(['R-A']) },
     { key: 'config-region-b', vendorCode: 'V1', routeCodes: new Set(['R-B']) },
   ]
-  const result = aggregateDispatch24hByScopes({ rows, stationCodes: ['S1'], tz, scopes })
+  const result = aggregateDispatch24hByScopes({ rows, stationCodes: ['S1'], rule, scopes })
 
   assert.equal(result.get('config-region-a')?.total, 1)
   assert.equal(result.get('config-region-b')?.total, 1)
@@ -401,7 +406,7 @@ test('aggregateDispatch24hByScopes：两个不同 vendorCode 共担同一路由�
     { key: 'cfg-v1', vendorCode: 'V1', routeCodes: new Set(['R-A', 'R-SHARED']) },
     { key: 'cfg-v2', vendorCode: 'V2', routeCodes: new Set(['R-SHARED']) },
   ]
-  const result = aggregateDispatch24hByScopes({ rows, stationCodes: ['S1'], tz, scopes })
+  const result = aggregateDispatch24hByScopes({ rows, stationCodes: ['S1'], rule, scopes })
 
   assert.equal(result.get('cfg-v1')?.total, 2)
   assert.equal(result.get('cfg-v2')?.total, 1)
@@ -429,7 +434,7 @@ test('aggregateDispatch24hByScopes：explicit courierVendorCode 不匹配任何 
     },
   ]
   const scopes: Dispatch24hScope[] = [{ key: 'cfg-v1-norestrict', vendorCode: 'V1' }]
-  const result = aggregateDispatch24hByScopes({ rows, stationCodes: ['S1'], tz, scopes })
+  const result = aggregateDispatch24hByScopes({ rows, stationCodes: ['S1'], rule, scopes })
 
   // V1 未配置 routeCode（scope.routeCodes 缺省）→ explicit 归属不受路由限制，G1 计入
   assert.equal(result.get('cfg-v1-norestrict')?.total, 1)
@@ -465,7 +470,7 @@ test('aggregateDispatch24hByScopes：路由码白名单剔除在单次遍历下�
   const scopes: Dispatch24hScope[] = [
     { key: 'cfg-v1', vendorCode: 'V1', routeCodeWhitelist: new Set(['R-BLOCKED']) },
   ]
-  const result = aggregateDispatch24hByScopes({ rows, stationCodes: ['S1'], tz, scopes })
+  const result = aggregateDispatch24hByScopes({ rows, stationCodes: ['S1'], rule, scopes })
 
   assert.equal(result.get('cfg-v1')?.total, 1)
   assert.deepEqual(result.get('cfg-v1')?.drivers[0]?.total, 1)
@@ -493,7 +498,7 @@ test('aggregateDispatch24hByScopes：与 aggregateDispatch24hByVendor 逐配置�
       aggregateDispatch24hByVendor({
         rows,
         stationCodes: ['S1'],
-        tz,
+        rule,
         routeCodesByVendor: c.routeCodes ? new Map([[c.vendorCode, c.routeCodes]]) : new Map(),
         routeCodeWhitelistByVendor: c.routeCodeWhitelist ? new Map([[c.vendorCode, c.routeCodeWhitelist]]) : new Map(),
       }).get(c.vendorCode),
@@ -504,7 +509,7 @@ test('aggregateDispatch24hByScopes：与 aggregateDispatch24hByVendor 逐配置�
   const actual = aggregateDispatch24hByScopes({
     rows,
     stationCodes: ['S1'],
-    tz,
+    rule,
     scopes: configs.map((c) => ({ key: c.key, vendorCode: c.vendorCode, routeCodes: c.routeCodes, routeCodeWhitelist: c.routeCodeWhitelist })),
   })
 
@@ -522,4 +527,50 @@ test('aggregateDispatch24hByScopes：与 aggregateDispatch24hByVendor 逐配置�
       `${c.key} drivers`,
     )
   }
+})
+
+test('resolveDispatch24hWindowRule：周一~周四到件走滚动24h，周五/周六/周日到件统一压到下周一23:59:59', () => {
+  // 2024-06-24 周一 … 2024-06-30 周日
+  for (const d of ['2024-06-24', '2024-06-25', '2024-06-26', '2024-06-27']) {
+    assert.deepEqual(resolveDispatch24hWindowRule(d, tz), { kind: 'rolling24h' }, d)
+  }
+
+  // 周五/周六/周日三批的截止时刻必须是同一个：下周一 07-01 23:59:59（本地）
+  const expected = localDateTimeToMs('2024-07-01 23:59:59', tz)
+  for (const d of ['2024-06-28', '2024-06-29', '2024-06-30']) {
+    assert.deepEqual(resolveDispatch24hWindowRule(d, tz), { kind: 'fixedDeadline', deadlineMs: expected }, d)
+  }
+})
+
+test('resolveDispatch24hWindowRule：周四到件的批次不因「周五出仓」被误判成周末顺延', () => {
+  // 这是本次口径修正的核心：窗口按到件日判，不按 deliveryTime 的星期判。
+  // 周四 06-27 到件 → 周五 06-28 出仓 → 截止是周六 06-29 同时刻，而不是下周一 23:59:59。
+  const rule = resolveDispatch24hWindowRule('2024-06-27', tz)
+  assert.deepEqual(rule, { kind: 'rolling24h' })
+
+  const row: Dispatch24hWaybillRow = { waybillNo: 'THU', deliveryTime: '2024-06-28 09:00:00' }
+  assert.equal(getDispatch24hDeadlineMs(row, rule), iMileStrToMs('2024-06-29 09:00:00'))
+
+  // 周六 08:00 签收 → 达标；下周一才签收 → 不达标（旧口径下会误判成达标）
+  assert.equal(isDispatch24hMet({ ...row, signDate: '2024-06-29 08:00:00' }, rule), true)
+  assert.equal(isDispatch24hMet({ ...row, signDate: '2024-07-01 20:00:00' }, rule), false)
+})
+
+test('getDispatch24hDeadlineMs：固定截止批次即使尚未派件也有截止时刻（滚动批次则无法起算）', () => {
+  const fixed = resolveDispatch24hWindowRule('2024-06-28', tz)
+  assert.equal(getDispatch24hDeadlineMs({ waybillNo: 'X' }, fixed), localDateTimeToMs('2024-07-01 23:59:59', tz))
+  assert.equal(getDispatch24hDeadlineMs({ waybillNo: 'X' }, { kind: 'rolling24h' }), null)
+})
+
+test('dispatchExitThresholdMs：出仓阈值恒锚在到件日次日的11:00，周末不跳过', () => {
+  // 周三到件 → 周四 11:00
+  assert.equal(dispatchExitThresholdMs('2024-06-26', tz), localDateTimeToMs('2024-06-27 11:00:00', tz))
+  // 周五到件 → 周六 11:00。周六不开仓分拣，但司机照常来取周五分拣好的货出仓派送，
+  // 按分拣日历推到下周一会让周六整天算不出出仓率（本次口径修正的核心）。
+  assert.equal(dispatchExitThresholdMs('2024-06-28', tz), localDateTimeToMs('2024-06-29 11:00:00', tz))
+  // 出仓阈值与派签窗口就此脱钩：同一批周五到件的货，出仓看周六 11:00、派签仍到下周一 23:59:59
+  assert.deepEqual(resolveDispatch24hWindowRule('2024-06-28', tz), {
+    kind: 'fixedDeadline',
+    deadlineMs: localDateTimeToMs('2024-07-01 23:59:59', tz),
+  })
 })

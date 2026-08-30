@@ -91,6 +91,14 @@ function parseLocalStrMs(str: string, tz: string): number {
 }
 
 /**
+ * 指定时区的本地日期时间字符串（"YYYY-MM-DD HH:mm:ss"，无时区信息）→ UTC 毫秒。
+ * 供「按本地日历日的某个固定时刻」算阈值/截止时刻的场景使用（如 24H 派签窗口、11 点前出仓阈值）。
+ */
+export function localDateTimeToMs(localStr: string, tz: AusTz): number {
+  return parseLocalStrMs(localStr, tz)
+}
+
+/**
  * 把 iMile 返回的时间字符串（墨尔本本地时间）解析为 UTC 毫秒数。
  */
 export function iMileStrToMs(str: string): number {

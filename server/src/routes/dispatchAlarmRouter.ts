@@ -67,9 +67,9 @@ function normalizeArrivalScanDate(raw: unknown): string | null {
   return DATE_STR_RE.test(s) ? s : null
 }
 
-/** 今天的分拣扫描尚未结束，到件数据仍在变化中，只允许选今天之前的日期 */
-function isArrivalScanDateBeforeToday(dateStr: string, regionCode: string | null | undefined): boolean {
-  return dateStr < getRegionNow(resolveRegionTz(regionCode)).dateStr
+/** 当天到件也可能已开始派签，允许选今天，只挡未来日期 */
+function isArrivalScanDateNotFuture(dateStr: string, regionCode: string | null | undefined): boolean {
+  return dateStr <= getRegionNow(resolveRegionTz(regionCode)).dateStr
 }
 
 async function toPublicSchedule(
@@ -156,8 +156,8 @@ dispatchAlarmRouter.post('/schedules', async (req: AuthenticatedRequest, res: Re
     res.status(400).json({ ok: false, error: '缺少必填字段: stationCode' })
     return
   }
-  if (fields.arrivalScanDate && !isArrivalScanDateBeforeToday(fields.arrivalScanDate, req.authUser?.regionCode)) {
-    res.status(400).json({ ok: false, error: '到件扫描时间只能选今天之前的日期' })
+  if (fields.arrivalScanDate && !isArrivalScanDateNotFuture(fields.arrivalScanDate, req.authUser?.regionCode)) {
+    res.status(400).json({ ok: false, error: '到件扫描时间不能选今天之后的日期' })
     return
   }
 
@@ -223,8 +223,8 @@ dispatchAlarmRouter.put('/schedules/:id', async (req: AuthenticatedRequest, res:
     res.status(400).json({ ok: false, error: '缺少必填字段: stationCode' })
     return
   }
-  if (fields.arrivalScanDate && !isArrivalScanDateBeforeToday(fields.arrivalScanDate, req.authUser?.regionCode)) {
-    res.status(400).json({ ok: false, error: '到件扫描时间只能选今天之前的日期' })
+  if (fields.arrivalScanDate && !isArrivalScanDateNotFuture(fields.arrivalScanDate, req.authUser?.regionCode)) {
+    res.status(400).json({ ok: false, error: '到件扫描时间不能选今天之后的日期' })
     return
   }
 

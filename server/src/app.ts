@@ -24,6 +24,7 @@ import { exitAlarmRouter } from './routes/exitAlarmRouter'
 import { chaseDispatchRouter } from './routes/chaseDispatchRouter'
 import { workOrderPushRouter } from './routes/workOrderPushRouter'
 import { dispatchAlarmRouter } from './routes/dispatchAlarmRouter'
+import { dispatchPerformanceRouter } from './routes/dispatchPerformanceRouter'
 import { dispatchAlarmPortalRouter } from './routes/dispatchAlarmPortalRouter'
 import { deliveringNotifyRouter } from './routes/deliveringNotifyRouter'
 import { returnToMerchantRouter } from './routes/returnToMerchantRouter'
@@ -88,6 +89,7 @@ app.use('/api/exit-alarm', requireAuth, exitAlarmRouter)
 app.use('/api/chase-dispatch', requireAuth, chaseDispatchRouter)
 app.use('/api/work-order-push', requireAuth, workOrderPushRouter)
 app.use('/api/dispatch-alarm', requireAuth, dispatchAlarmRouter)
+app.use('/api/dispatch-performance', requireAuth, dispatchPerformanceRouter)
 // 24小时派签告警外部门户：凭分享 token 查看未达标运单明细，不走登录鉴权
 app.use('/api/dispatch-alarm-portal', dispatchAlarmPortalRouter)
 app.use('/api/delivering-notify', requireAuth, deliveringNotifyRouter)

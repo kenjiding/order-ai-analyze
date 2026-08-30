@@ -775,6 +775,13 @@ export async function getTransfer(transferId: number): Promise<TransferView | nu
   return views[0] ?? null
 }
 
+/** 批量取流转视图：批量通知用，一次查询取回，不要在循环里逐笔调 getTransfer。返回顺序不保证与入参一致。 */
+export async function getTransfersByIds(ids: number[]): Promise<TransferView[]> {
+  if (ids.length === 0) return []
+  const rows = await transferSelectQuery(getDb()).where(inArray(schema.containerTransfers.id, ids))
+  return attachItems(rows)
+}
+
 export type TransferChangeQuery = {
   visibleAccountIds: string[] | null
   transferId?: number

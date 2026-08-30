@@ -108,8 +108,25 @@ export type EfficiencyAttendanceDayRecord = {
 /** @deprecated 使用 EfficiencyAttendanceDayRecord */
 export type DailyEfficiencyRecordPayload = EfficiencyAttendanceDayRecord
 
+/**
+ * 存档日的类型：
+ * - full：有到件也有考勤，正常统计日
+ * - attendanceOnly：有考勤无到件（无到件补录日），只贡献工时分母
+ * - scanOnly：有到件无考勤，只贡献货量分子
+ */
+export type EfficiencyAttendanceDayKind = 'full' | 'attendanceOnly' | 'scanOnly'
+
+export function resolveEfficiencyAttendanceDayKind(
+  daily: AttendanceEfficiencyResult['dailyRows'][number],
+): EfficiencyAttendanceDayKind {
+  if (!daily.hasAttendance) return 'scanOnly'
+  if (daily.isAttendanceOnly) return 'attendanceOnly'
+  return 'full'
+}
+
 export type EfficiencyAttendanceDayRecordListItem = {
   date: string
+  kind: EfficiencyAttendanceDayKind
   updatedAt: string
   volume: number | null
   dayEfficiency: number | null
@@ -169,10 +186,6 @@ function round2(value: number): number {
   return Math.round(value * 100) / 100
 }
 
-function round4(value: number): number {
-  return Math.round(value * 10000) / 10000
-}
-
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === 'object' && !Array.isArray(value)
 }
@@ -207,7 +220,7 @@ function resolvePayrollForDate(
 ): EfficiencyAttendancePayrollData | null {
   const totalLaborCost = attendancePayroll?.wagesByDate[date]
   if (totalLaborCost == null || !Number.isFinite(totalLaborCost)) return null
-  return { totalLaborCost: round2(totalLaborCost) }
+  return { totalLaborCost }
 }
 
 function buildScannerTotalRowsForDay(
@@ -276,57 +289,14 @@ function buildScannerTotalRowsForDay(
         cainiaoShare,
         cainiaoCorrectionFactor,
         activeDays,
-        effectiveHours: round4(effectiveHours),
-        efficiency: round2(efficiency),
-        reliabilityWeight: round4(reliabilityWeight),
-        adjustedEfficiency: round2(adjustedEfficiency),
-        cainiaoAdjustedEfficiency: round2(cainiaoAdjustedEfficiency),
+        effectiveHours,
+        efficiency,
+        reliabilityWeight,
+        adjustedEfficiency,
+        cainiaoAdjustedEfficiency,
       }
     })
     .sort((a, b) => b.cainiaoAdjustedEfficiency - a.cainiaoAdjustedEfficiency)
-}
-
-function buildPersonRowsFromPersonDayRows(
-  personDayRows: EfficiencyAttendancePersonDayRow[],
-  isOpenDay: boolean,
-): AttendanceEfficiencyResult['personRows'] {
-  const map = new Map<
-    string,
-    {
-      sorterKey: string
-      sorterName: string
-      totalHours: number
-      matchNames: Set<string>
-    }
-  >()
-
-  for (const row of personDayRows) {
-    if (!map.has(row.sorterKey)) {
-      map.set(row.sorterKey, {
-        sorterKey: row.sorterKey,
-        sorterName: row.sorterName || row.sorterKey,
-        totalHours: 0,
-        matchNames: new Set(),
-      })
-    }
-    const person = map.get(row.sorterKey)!
-    person.totalHours += row.hours
-    ;[row.sorterName, row.sorterKey, row.nameNick, row.nameFull].forEach((label) => {
-      const text = String(label ?? '').trim()
-      if (text) person.matchNames.add(text)
-    })
-  }
-
-  return Array.from(map.values())
-    .map((person) => ({
-      sorterKey: person.sorterKey,
-      sorterName: person.sorterName,
-      totalHours: person.totalHours,
-      activeDays: 1,
-      openDays: isOpenDay ? 1 : 0,
-      efficiencyMatchNames: Array.from(person.matchNames),
-    }))
-    .sort((a, b) => b.totalHours - a.totalHours)
 }
 
 function buildScannerDataForDate(
@@ -353,33 +323,24 @@ function buildScannerDataForDate(
   const scannerTotalRows = buildScannerTotalRowsForDay(dailyScannerRows, totalEfficiency)
 
   return {
-    dailySummaryRow: dailySummaryRow
-      ? {
-          ...dailySummaryRow,
-          scanCount: dailySummaryRow.scanCount,
-          effectiveHours: round4(dailySummaryRow.effectiveHours),
-          efficiency: round2(dailySummaryRow.efficiency),
-        }
-      : totalScanCount > 0
+    dailySummaryRow:
+      dailySummaryRow ??
+      (totalScanCount > 0
         ? {
             date,
             scanCount: totalScanCount,
             scannerCount: new Set(dailyScannerRows.map((row) => row.scanner)).size,
-            effectiveHours: round4(totalEffectiveHours),
-            efficiency: round2(totalEfficiency),
+            effectiveHours: totalEffectiveHours,
+            efficiency: totalEfficiency,
           }
-        : null,
-    dailyScannerRows: dailyScannerRows.map((row) => ({
-      ...row,
-      effectiveHours: round4(row.effectiveHours),
-      efficiency: round2(row.efficiency),
-    })),
+        : null),
+    dailyScannerRows,
     scannerHourlyRows,
     scannerTotalRows,
     summary: {
       totalScanCount,
-      totalEffectiveHours: round4(totalEffectiveHours),
-      totalEfficiency: round2(totalEfficiency),
+      totalEffectiveHours,
+      totalEfficiency,
       totalDays: dailySummaryRow || dailyScannerRows.length ? 1 : 0,
       totalScanners: scannerTotalRows.length,
     },
@@ -419,7 +380,7 @@ function buildAttendancePayrollFromRecords(
 
   return {
     wageRows: [],
-    totalWages: round2(totalWages),
+    totalWages,
     wagesByDate,
     validationErrors: [],
   }
@@ -528,8 +489,8 @@ function mergeScannerData(records: EfficiencyAttendanceDayRecord[]): ScannerEffi
     scannerTotalRows,
     summary: {
       totalScanCount,
-      totalEffectiveHours: round4(totalEffectiveHours),
-      totalEfficiency: round2(totalEfficiency),
+      totalEffectiveHours,
+      totalEfficiency,
       totalDays: dailySummaryRows.length,
       totalScanners: scannerTotalRows.length,
     },
@@ -537,6 +498,7 @@ function mergeScannerData(records: EfficiencyAttendanceDayRecord[]): ScannerEffi
 }
 
 function mergeSourceInfo(items: SourceInfo[], label: string): SourceInfo {
+  if (items.length === 1) return items[0]!
   const fileNames = Array.from(new Set(items.flatMap((item) => item.fileNames)))
   return {
     fileCount: fileNames.length,
@@ -545,38 +507,6 @@ function mergeSourceInfo(items: SourceInfo[], label: string): SourceInfo {
     duplicateWaybillRows: items.reduce((sum, item) => sum + (item.duplicateWaybillRows ?? 0), 0),
     fileNames: fileNames.length ? fileNames : [label],
   }
-}
-
-function buildScannerResultFromData(scanner: EfficiencyAttendanceScannerData): ScannerEfficiencyResult {
-  const totalEfficiency = scanner.summary.totalEfficiency
-  const scannerTotalRows = buildScannerTotalRowsForDay(scanner.dailyScannerRows, totalEfficiency)
-  return {
-    dailyScannerRows: scanner.dailyScannerRows,
-    scannerHourlyRows: scanner.scannerHourlyRows,
-    dailySummaryRows: scanner.dailySummaryRow ? [scanner.dailySummaryRow] : [],
-    scannerTotalRows,
-    summary: {
-      ...scanner.summary,
-      totalScanners: scannerTotalRows.length,
-    },
-  }
-}
-
-function resolvePersonRowsForRestore(
-  warehouse: EfficiencyAttendanceWarehouseData,
-  daily: AttendanceEfficiencyResult['dailyRows'][number],
-  legacyPersonRows?: AttendanceEfficiencyResult['personRows'],
-): AttendanceEfficiencyResult['personRows'] {
-  if (warehouse.personDayRows.length) {
-    return buildPersonRowsFromPersonDayRows(warehouse.personDayRows, daily.isOpenDay)
-  }
-  if (!legacyPersonRows?.length) return []
-  return legacyPersonRows.map((row) => ({
-    ...row,
-    totalHours: row.activeDays > 1 ? round4(row.totalHours / row.activeDays) : row.totalHours,
-    activeDays: 1,
-    openDays: daily.isOpenDay ? 1 : 0,
-  }))
 }
 
 function parseDateKeyToUtcMs(dateKey: string): number {
@@ -639,7 +569,7 @@ function readLegacyPayroll(raw: unknown): EfficiencyAttendancePayrollData | null
   if (!isRecord(raw)) return null
   const totalLaborCost = Number(raw.totalLaborCost)
   if (!Number.isFinite(totalLaborCost)) return null
-  return { totalLaborCost: round2(totalLaborCost) }
+  return { totalLaborCost }
 }
 
 /** 将 DB 中的 v1/v2 payload 规范化为 v2 存档模型 */
@@ -738,8 +668,9 @@ export function captureEfficiencyAttendanceDayRecords(
     allocation: allocationSourceInfo,
   }
 
+  // 存档必须覆盖窗口内的每一天：仅考勤日（无到件）的工时进「总体/开仓效率」分母，
+  // 无考勤日的货量进分子。漏存任何一类，回填口径都会和实时计算对不上。
   const dates = attendanceResult.dailyRows
-    .filter((row) => row.hasAttendance && !row.isAttendanceOnly)
     .map((row) => row.date)
     .sort((a, b) => a.localeCompare(b))
 
@@ -789,14 +720,25 @@ export function summarizeEfficiencyAttendanceDayRecord(
   record: EfficiencyAttendanceDayRecord,
 ): Omit<EfficiencyAttendanceDayRecordListItem, 'updatedAt'> {
   const daily = record.warehouse.daily
-  const dayEfficiency = daily.dayEfficiency
-  const openEfficiency =
-    daily.isOpenDay && daily.totalHours > 0 ? daily.volume / daily.totalHours : dayEfficiency
-  const overallEfficiency = daily.totalHours > 0 ? daily.volume / daily.totalHours : dayEfficiency
+  const kind = resolveEfficiencyAttendanceDayKind(daily)
+  // 仅考勤日（分子为 0）与无考勤日（分母为 0）都算不出当日效率，列表显示「—」而非 0
+  const hasDayEfficiency = kind === 'full'
+  const dayEfficiency = hasDayEfficiency ? daily.dayEfficiency : null
+  const openEfficiency = hasDayEfficiency
+    ? daily.isOpenDay && daily.totalHours > 0
+      ? daily.volume / daily.totalHours
+      : dayEfficiency
+    : null
+  const overallEfficiency = hasDayEfficiency
+    ? daily.totalHours > 0
+      ? daily.volume / daily.totalHours
+      : dayEfficiency
+    : null
   const totalLaborCost = record.payroll?.totalLaborCost ?? null
 
   return {
     date: record.date,
+    kind,
     volume: daily.volume,
     dayEfficiency: dayEfficiency != null ? round2(dayEfficiency) : null,
     openEfficiency: openEfficiency != null ? round2(openEfficiency) : null,
@@ -814,82 +756,6 @@ export function summarizeDailyEfficiencyRecord(record: EfficiencyAttendanceDayRe
   return { ...summarizeEfficiencyAttendanceDayRecord(record), updatedAt: '' }
 }
 
-function restorePageFromSingleRecord(record: EfficiencyAttendanceDayRecord): EfficiencyAttendancePageRestore {
-  const { date, warehouse, scanner, frontDesk, computation, provenance } = record
-  const daily = warehouse.daily
-  const legacyPersonRows = (record.warehouse as DailyEfficiencyWarehouseSlice).personRows
-
-  const scanAggregate: ScanAggregate = {
-    dailyRows: [
-      {
-        date,
-        volume: daily.volume,
-        cainiaoVolume: daily.cainiaoVolume,
-        cainiaoShare: daily.cainiaoShare,
-        scannerCount: daily.sorterCount,
-      },
-    ],
-    dailyMap: new Map(),
-    summary: {
-      totalVolume: daily.volume,
-      totalCainiaoVolume: daily.cainiaoVolume,
-      cainiaoShareWindow: daily.cainiaoShare,
-      totalDays: 1,
-      hasScanner: daily.sorterCount > 0,
-    },
-  }
-
-  const openHours = daily.isOpenDay ? daily.totalHours : 0
-  const openDayVolume = daily.isOpenDay ? daily.volume : 0
-
-  const attendanceResult: AttendanceEfficiencyResult = {
-    dailyRows: [daily],
-    personRows: resolvePersonRowsForRestore(warehouse, daily, legacyPersonRows),
-    summary: {
-      uploadedVolume: daily.volume,
-      efficiencyRangeStart: date,
-      efficiencyRangeEnd: date,
-      attendanceSheetRangeStart: date,
-      attendanceSheetRangeEnd: date,
-      matchedVolume: daily.volume,
-      intersectionMatchHours: daily.totalHours,
-      allHours: daily.totalHours,
-      openHours,
-      openDayVolume,
-      openDayCount: daily.isOpenDay ? 1 : 0,
-      matchedDayCount: 1,
-      unmatchedDayCount: 0,
-      unmatchedDates: [],
-      attendanceOnlyDates: [],
-      attendanceOnlyDateCount: 0,
-      attendanceOnlyInWindowCount: 0,
-      openEfficiency: openHours > 0 ? daily.volume / openHours : 0,
-      overallEfficiency: daily.totalHours > 0 ? daily.volume / daily.totalHours : 0,
-      openDayVolumeEfficiency: openHours > 0 ? openDayVolume / openHours : 0,
-      totalCainiaoVolume: daily.cainiaoVolume,
-      cainiaoShareWindow: daily.cainiaoShare,
-      cainiaoShareOpenDays: daily.isOpenDay ? daily.cainiaoShare : 0,
-    },
-  }
-
-  return {
-    settings: computation,
-    scanAggregate,
-    attendanceResult,
-    attendanceRows: personDayRowsToAttendanceRows(warehouse.personDayRows),
-    scannerResult: scanner ? buildScannerResultFromData(scanner) : null,
-    allocationDensityRows: frontDesk?.densityRows ?? [],
-    frontDeskClockOutRows: frontDesk?.clockOut ? [frontDesk.clockOut] : [],
-    scanSourceInfo: provenance.scan,
-    attendanceSourceInfo: provenance.attendance,
-    allocationSourceInfo: provenance.allocation,
-    attendancePayroll: buildAttendancePayrollFromRecords([record]),
-    cancelScanAnalysis: record.cancelScanAnalysis ?? null,
-    restoredDate: date,
-    restoredDates: [date],
-  }
-}
-
 /** 将一条或多条按日存档还原为效率考勤页只读态（查看入口） */
 export function restoreEfficiencyAttendancePage(
   records: EfficiencyAttendanceDayRecord[],
@@ -899,10 +765,6 @@ export function restoreEfficiencyAttendancePage(
   }
 
   const sorted = [...records].sort((a, b) => a.date.localeCompare(b.date))
-  if (sorted.length === 1) {
-    return restorePageFromSingleRecord(sorted[0]!)
-  }
-
   const dates = sorted.map((record) => record.date)
   const settings = sorted[0]!.computation
   const dailyRows = sorted.map((record) => record.warehouse.daily).sort((a, b) => a.date.localeCompare(b.date))

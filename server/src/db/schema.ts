@@ -815,3 +815,148 @@ export type ContainerTransferItem = typeof containerTransferItems.$inferSelect
 export type NewContainerTransferItem = typeof containerTransferItems.$inferInsert
 export type ContainerTransferChange = typeof containerTransferChanges.$inferSelect
 export type NewContainerTransferChange = typeof containerTransferChanges.$inferInsert
+
+/**
+ * 出仓派签达成分析的日度指标表：以「到件日 D」为批次，在两个指标都定终值后一次性结算落库。
+ *
+ * 只存最细粒度格子（供应商单位 × 路由码 × 司机），路由码层与供应商层查询时 SUM 得到——
+ * 同一份数据不存三份，也就没有三份之间的一致性问题。
+ * 四象限 exit_*_sign_* 之和恒等于 total，两个指标的分子分母全部由它导出：
+ *   24H 派签达标 = exit_met_sign_met + exit_unmet_sign_met
+ *   11点前出仓达标 = exit_met_sign_met + exit_met_sign_unmet
+ * courier_code / route_code 用空串表示「未派件（无司机）」「无路由码」，保证司机行加总 = 供应商总数。
+ */
+export const dispatchPerformanceDailyStats = pgTable(
+  'dispatch_performance_daily_stats',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    /** 到件日 D（YYYY-MM-DD，账号州时区的本地日历日） */
+    arrivalDate: varchar('arrival_date', { length: 10 }).notNull(),
+    stationCode: varchar('station_code', { length: 64 }).notNull(),
+    /** 统计主键：buildSupplierUnitKey 生成的 vendorCode::展示名，不是裸 vendorCode */
+    supplierKey: varchar('supplier_key', { length: 512 }).notNull(),
+    vendorCode: varchar('vendor_code', { length: 64 }).notNull().default(''),
+    supplierName: varchar('supplier_name', { length: 255 }).notNull().default(''),
+    routeCode: varchar('route_code', { length: 128 }).notNull().default(''),
+    courierCode: varchar('courier_code', { length: 64 }).notNull().default(''),
+    courierName: varchar('courier_name', { length: 255 }).notNull().default(''),
+
+    total: integer('total').notNull().default(0),
+    /**
+     * 11点前出仓达标数。单独存而不是从四象限反推：出仓那一趟（D+1）就已定终值，
+     * 此时派签还没结算、四象限填不出来，反推不了。
+     * 派签结算后应恒等于 exitMetSignMet + exitMetSignUnmet。
+     */
+    before11Met: integer('before11_met').notNull().default(0),
+    /** 派签是否已结算（D+2 那一趟）。false 时以下四象限全为 0，派签率必须显示为「结算中」而非 0% */
+    dispatchSettled: boolean('dispatch_settled').notNull().default(false),
+    exitMetSignMet: integer('exit_met_sign_met').notNull().default(0),
+    exitMetSignUnmet: integer('exit_met_sign_unmet').notNull().default(0),
+    exitUnmetSignMet: integer('exit_unmet_sign_met').notNull().default(0),
+    exitUnmetSignUnmet: integer('exit_unmet_sign_unmet').notNull().default(0),
+
+    problemCount: integer('problem_count').notNull().default(0),
+    neverSignedCount: integer('never_signed_count').notNull().default(0),
+    lateSignedCount: integer('late_signed_count').notNull().default(0),
+
+    neverSignedWaybillNos: jsonb('never_signed_waybill_nos').notNull().default([]),
+    lateSignedWaybillNos: jsonb('late_signed_waybill_nos').notNull().default([]),
+    problemWaybillNos: jsonb('problem_waybill_nos').notNull().default([]),
+    before11UnmetWaybillNos: jsonb('before11_unmet_waybill_nos').notNull().default([]),
+
+    computedAt: timestamp('computed_at', { withTimezone: true }).notNull().defaultNow(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    uniqueIndex('dispatch_performance_daily_stats_cell_unique').on(
+      table.arrivalDate,
+      table.stationCode,
+      table.supplierKey,
+      table.routeCode,
+      table.courierCode,
+    ),
+    index('dispatch_performance_daily_stats_station_date_idx').on(table.arrivalDate, table.stationCode),
+    index('dispatch_performance_daily_stats_supplier_idx').on(table.supplierKey, table.arrivalDate),
+  ],
+)
+
+/**
+ * 出仓派签达成分析的站点配置：一个站点一条，确认后即开启该站点的每日两趟结算。
+ *
+ * 按站点全局唯一而非每账号一份——结算是系统级任务、产出共享数据，
+ * 两个账号都配同一站点会重复结算、重复打 iMile。regionCode / createdBy 只用于
+ * 列表可见性与审计，不参与调度。
+ *
+ * 统计范围就在这里配：pushConfigIds 显式勾选 fleetSupplierPushConfigs 的行，与四个告警同一套。
+ * 早期版本靠 stationCode 反查该站点下的供应商，已被证伪——那张表的 station_code 大量为空
+ * （老的全局配置）或绑在别的站点上，反查会把整站供应商漏光，聚合出 0 个格子却照样标记「已结算」。
+ * 代价是漏勾的供应商历史数据会永久缺失（结算不回补），安全网见 settleOneArrivalDate。
+ */
+export const dispatchPerformanceConfigs = pgTable(
+  'dispatch_performance_configs',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    stationCode: varchar('station_code', { length: 64 }).notNull(),
+    /** 保存那一刻的站点展示名，避免列表页为了显示名字再去查 iMile */
+    stationName: varchar('station_name', { length: 255 }).notNull().default(''),
+    regionCode: varchar('region_code', { length: 32 }).notNull().default(''),
+    /**
+     * 纳入统计的供应商 = fleet_supplier_push_configs 的行 id 列表，与四个告警的 pushConfigIds 同一套。
+     *
+     * 不靠 stationCode 反查该站点下的供应商：那张表的 station_code 大量为空（老的全局配置），
+     * 反查会把整站的供应商静默漏光——聚合出 0 个格子，却照样标记「已结算」。
+     */
+    pushConfigIds: jsonb('push_config_ids').notNull().default([]),
+    /**
+     * 每天几点触发结算，HH:mm，**按本行 regionCode 所属州的本地时间**。
+     * 默认 16:00：出仓阈值 11:00 + 24h 窗口上界都已过，不会把「窗口还没到期」记成未达标。
+     */
+    settleTime: varchar('settle_time', { length: 5 }).notNull().default('16:00'),
+    isEnabled: boolean('is_enabled').notNull().default(true),
+    createdBy: uuid('created_by').references(() => users.id, { onDelete: 'set null' }),
+    updatedBy: uuid('updated_by').references(() => users.id, { onDelete: 'set null' }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    uniqueIndex('dispatch_performance_configs_station_unique').on(table.stationCode),
+  ],
+)
+
+export type DispatchPerformanceConfig = typeof dispatchPerformanceConfigs.$inferSelect
+export type NewDispatchPerformanceConfig = typeof dispatchPerformanceConfigs.$inferInsert
+
+/**
+ * 结算台账：记录「某站点某到件日的两趟结算各自跑过没」，与「跑出来有没有数据」分开。
+ *
+ * 不分拣的工作日 inbound/query 本就没数据、聚合出 0 个格子；若靠日度表有没有行判重，
+ * 这类日期会被每天重新拉一遍直到滑出回看窗口。台账只认「跑过」这个事实。
+ */
+export const dispatchPerformanceSettledBatches = pgTable(
+  'dispatch_performance_settled_batches',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    stationCode: varchar('station_code', { length: 64 }).notNull(),
+    arrivalDate: varchar('arrival_date', { length: 10 }).notNull(),
+    /** 出仓那一趟（D+1）完成时刻；null = 还没跑 */
+    exitSettledAt: timestamp('exit_settled_at', { withTimezone: true }),
+    /** 派签那一趟（D+2）完成时刻；null = 还没跑 */
+    dispatchSettledAt: timestamp('dispatch_settled_at', { withTimezone: true }),
+    /** 最近一趟拉到的运单数与落库格子数，供排查「这天为什么没数据」 */
+    waybillCount: integer('waybill_count').notNull().default(0),
+    cellCount: integer('cell_count').notNull().default(0),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    uniqueIndex('dispatch_performance_settled_batches_unique').on(
+      table.stationCode,
+      table.arrivalDate,
+    ),
+  ],
+)
+
+export type DispatchPerformanceDailyStat = typeof dispatchPerformanceDailyStats.$inferSelect
+export type NewDispatchPerformanceDailyStat = typeof dispatchPerformanceDailyStats.$inferInsert
+export type DispatchPerformanceSettledBatch = typeof dispatchPerformanceSettledBatches.$inferSelect

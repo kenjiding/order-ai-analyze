@@ -13,12 +13,16 @@
  *   同编码的各单位都取该编码的全量值，并置 sharedVendorCode=true 供前端标注「未按路由码拆分」。
  *   长尾单 / 归班预警虽然也没有路由码，但带 driverCode，改由司机归属拆分（见 buildDriverUnitMap）。
  * - 站点口径来自任务的 stationCodes（冻结），不再随查看时的全局筛选变化。
- * - 24H 内比较、归班 48h、"现在"均为绝对时刻，与时区无关；仅「星期判断」和「周五~日的下周一 23:59:59
- *   截止」依赖 targetTz。nowMs = worker 完成时刻。
+ * - 24H 内比较、归班 48h、"现在"均为绝对时刻，与时区无关；仅「到件日的星期判断」和「周五~日到件批次
+ *   的下周一 23:59:59 截止」依赖 targetTz。nowMs = worker 完成时刻。
  */
 import { iMileStrToMs, type AusTz } from '../imile/ausTimezone'
 import type { SlimPickupRow } from '../imile/vendorAnalysis'
-import { aggregateDispatch24hByScopes, type Dispatch24hDriverStat } from './dispatch24hAggregate'
+import {
+  aggregateDispatch24hByScopes,
+  resolveDispatch24hWindowRule,
+  type Dispatch24hDriverStat,
+} from './dispatch24hAggregate'
 import { aggregateBefore11ByScopes } from './before11Aggregate'
 import { supplierUnitsToScopes, type SupplierUnitIndex } from './supplierScope'
 
@@ -87,6 +91,8 @@ export type VendorAnalyzeAggregateInput = {
   /** 11点前出仓运单：全量原始打标行；出仓率/未出仓单号的白名单过滤与投影在本文件业务层实现 */
   driverYesterdayWaybills: SlimPickupRow[]
   driverDayBeforeWaybills: DriverWaybillRow[]
+  /** driverDayBeforeWaybills 对应的到件日（YYYY-MM-DD）——24H 派签窗口规则按它判定 */
+  dayBeforeDate: string
   driverReturnRows: DriverReturnRow[]
   stationCodes: string[]
   tz: AusTz
@@ -179,6 +185,7 @@ export function aggregateVendorAnalysis(input: VendorAnalyzeAggregateInput): Ven
     longTailOrders,
     driverYesterdayWaybills,
     driverDayBeforeWaybills,
+    dayBeforeDate,
     driverReturnRows,
     stationCodes,
     tz,
@@ -251,10 +258,11 @@ export function aggregateVendorAnalysis(input: VendorAnalyzeAggregateInput): Ven
   // 24H派签率 & 11点前出仓率：都用逐范围聚合器，按供应商单位分桶——与两个告警走的是同一套聚合器
   // 和同一套归属判定（vendorCode 归属 → routeCode 纳入 → 白名单剔除），只是 key 换成 supplierKey。
   const unitScopes = supplierUnitsToScopes(supplierUnits)
+  // 24H 派签窗口规则按「到件日」定；driverDayBeforeWaybills 拉的就是 dayBeforeDate 那天的到件批次
   const dispatch24hByUnit = aggregateDispatch24hByScopes({
     rows: driverDayBeforeWaybills,
     stationCodes,
-    tz,
+    rule: resolveDispatch24hWindowRule(dayBeforeDate, tz),
     scopes: unitScopes,
   })
   const before11ByUnit = aggregateBefore11ByScopes({ rows: driverYesterdayWaybills, scopes: unitScopes })

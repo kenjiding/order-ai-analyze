@@ -46,3 +46,20 @@ export function buildContainerTransferUrl(
   if (action) query.set('action', action)
   return `${origin}/container/transfers?${query.toString()}`
 }
+
+/**
+ * 容器流转列表页深链：批量汇总卡片用，只预置筛选、不定位到具体某一笔。
+ * origin 未配置时返回 null（卡片退化为纯展示，不带按钮）。
+ */
+export function buildContainerTransferListUrl(params: {
+  toAccountId?: string
+  status?: string
+}): string | null {
+  const origin = resolvePublicWebOrigin()
+  if (!origin) return null
+  const query = new URLSearchParams()
+  if (params.toAccountId) query.set('toAccountId', params.toAccountId)
+  if (params.status) query.set('status', params.status)
+  const suffix = query.toString()
+  return suffix ? `${origin}/container/transfers?${suffix}` : `${origin}/container/transfers`
+}

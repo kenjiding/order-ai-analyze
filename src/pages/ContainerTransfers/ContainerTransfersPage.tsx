@@ -1,4 +1,4 @@
-import { ArrowLeftRight, Download, History, Plus, Repeat, Upload } from 'lucide-react'
+import { ArrowLeftRight, History, Plus, Repeat, Upload } from 'lucide-react'
 import { Button, Space } from 'antd'
 import { PageSectionTabs } from '../../components/PageSectionTabs'
 import { ConfirmReceiptModal } from './components/ConfirmReceiptModal'
@@ -33,13 +33,6 @@ export default function ContainerTransfersPage() {
           </div>
           {page.tab === 'transfers' ? (
             <Space>
-              <Button
-                icon={<Download className="h-4 w-4" aria-hidden />}
-                loading={page.templateDownloading}
-                onClick={page.downloadImportTemplate}
-              >
-                下载模板
-              </Button>
               <Button
                 icon={<Upload className="h-4 w-4" aria-hidden />}
                 onClick={page.openImport}

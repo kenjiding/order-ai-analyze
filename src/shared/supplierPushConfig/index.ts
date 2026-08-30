@@ -48,6 +48,8 @@ export {
 
 export { SupplierMentionToggle } from './components/SupplierMentionToggle'
 
+export { SupplierPushConfigSection } from './components/SupplierPushConfigSection'
+
 /**
  * 扩展新业务 scope  checklist:
  * 1. server/supplierConfigScopes/types.ts 增加 scope key

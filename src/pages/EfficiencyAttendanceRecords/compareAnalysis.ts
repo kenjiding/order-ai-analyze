@@ -1,4 +1,7 @@
-import type { EfficiencyAttendanceDayRecord } from '../ScannerEfficiency/dailyEfficiencyRecordSnapshot'
+import {
+  resolveEfficiencyAttendanceDayKind,
+  type EfficiencyAttendanceDayRecord,
+} from '../ScannerEfficiency/dailyEfficiencyRecordSnapshot'
 
 /** 与 aggregates.ts 一致：菜鸟件仅需普通件约 75% 时间，占比越高当日效率天然偏高 */
 const CAINIAO_EASE_DISCOUNT = 0.25
@@ -85,8 +88,22 @@ function fmt2(n: number): string {
   return n.toFixed(2)
 }
 
+/** 只有「到件+考勤」齐全的日子才有当日效率，无到件补录日与缺考勤日不能进最优/最差日对比 */
+export function selectComparableRecords(
+  records: EfficiencyAttendanceDayRecord[],
+): EfficiencyAttendanceDayRecord[] {
+  return records.filter(
+    (record) => resolveEfficiencyAttendanceDayKind(record.warehouse.daily) === 'full',
+  )
+}
+
 export function computeCompareAnalysis(records: EfficiencyAttendanceDayRecord[]): CompareAnalysisResult {
-  const rawMetrics = records.map((record) => {
+  const comparableRecords = selectComparableRecords(records)
+  if (comparableRecords.length < 2) {
+    throw new Error('可对比的日期不足 2 天')
+  }
+
+  const rawMetrics = comparableRecords.map((record) => {
     const daily = record.warehouse.daily
     const personDayRows = record.warehouse.personDayRows ?? []
     const sorterCount = daily.sorterCount ?? 0

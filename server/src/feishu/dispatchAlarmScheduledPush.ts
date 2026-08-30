@@ -18,6 +18,7 @@ import {
 import { buildScopeMapsFromConfig } from '../vendorAnalysis/supplierScope'
 import {
   aggregateDispatch24hByScopes,
+  resolveDispatch24hWindowRule,
   type Dispatch24hScope,
   type Dispatch24hWaybillRow,
 } from '../vendorAnalysis/dispatch24hAggregate'
@@ -140,7 +141,9 @@ export async function executeDispatchAlarmPush(params: {
     scopes.push(configScope)
     scopeByConfigId.set(config.id, configScope)
   }
-  const statsByConfigId = aggregateDispatch24hByScopes({ rows, stationCodes: [stationCode], tz, scopes })
+  // 窗口规则按到件日定；date 即本次拉数的到件扫描日
+  const rule = resolveDispatch24hWindowRule(date, tz)
+  const statsByConfigId = aggregateDispatch24hByScopes({ rows, stationCodes: [stationCode], rule, scopes })
 
   for (const config of configs) {
     const vendorCode = config.vendorCode.trim()
@@ -256,7 +259,14 @@ async function runOneScheduledPush(schedule: DispatchAlarmSchedule, regionCode: 
   const tz = resolveRegionTz(regionCode)
   const weekdays = schedule.weekdays as number[]
   const pushTimes = schedule.pushTimes as Array<{ id: string; time: string }>
-  const dueSlots = resolveDueScheduledSlots({ tz, weekdays, pushTimes })
+  const dueSlots = resolveDueScheduledSlots({
+    tz,
+    weekdays,
+    pushTimes,
+    // 配置刚保存/刚启用时，早于保存那一分钟的时间槽从未生效过，不能当成「漏跑」补发
+    effectiveSince: schedule.updatedAt,
+    label,
+  })
   if (dueSlots.length === 0) return
 
   for (const slot of dueSlots) {

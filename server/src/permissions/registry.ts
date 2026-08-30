@@ -44,6 +44,13 @@ export const PERMISSION_REGISTRY: PermissionDefinition[] = [
     description: '监控供应商24小时派签率并定时推送告警',
     sortOrder: 39,
   },
+  {
+    key: 'menu:dispatch-performance',
+    type: 'menu',
+    label: '出仓派签达成分析',
+    description: '11点前出仓率与24小时派签率的最终值、交叉归因与历史回看',
+    sortOrder: 39,
+  },
   { key: 'menu:chase-dispatch', type: 'menu', label: '催派推送', description: '按滞留时间统计供应商滞留订单并定时推送催派', sortOrder: 39 },
   { key: 'menu:work-order-push', type: 'menu', label: '工单推送', description: '未处理工单定时推送提醒供应商', sortOrder: 39 },
   {

@@ -36,3 +36,20 @@ export function lastSortingWorkdayOnOrBefore(dateStr: string): string {
   }
   return s
 }
+
+/**
+ * 返回 > dateStr 的第一个工作日（不含 dateStr 本身）。入参/出参均为 YYYY-MM-DD。
+ * 例：周四 → 周五；周五 → 下周一；周六 → 下周一。
+ *
+ * **不要拿它推「出仓日」**：分拣日历只管「哪天开仓分拣」，不管哪天出仓。周五分拣好的货，
+ * 司机周六照常来 11 点前取货出仓派送——「不开仓分拣」不等于「不出仓派送」。出仓日恒为
+ * 分拣日次日，见 vendorAnalysis/dispatch24hAggregate 的 resolveExitDate。
+ */
+export function nextSortingWorkdayAfter(dateStr: string): string {
+  const [y, m, d] = dateStr.split('-').map(Number)
+  const cur = new Date(Date.UTC(y, m - 1, d))
+  do {
+    cur.setUTCDate(cur.getUTCDate() + 1)
+  } while (!isSortingWorkday(cur.toISOString().slice(0, 10)))
+  return cur.toISOString().slice(0, 10)
+}

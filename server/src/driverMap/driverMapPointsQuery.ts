@@ -519,11 +519,14 @@ export async function populateDriverMapCache(input: {
 }
 
 /**
- * 司机地图缓存保留天数：这张表只是 iMile 的缓存（本地无数据时会自动整表重新拉取，不会丢数据），
- * 唯一还在用它的 24H 派签告警落地页，分享快照本身就是保留 1 天（见 dispatchAlarmShareSnapshot.ts），
- * 这里多留 1 天做缓冲，避免快照还没过期、底层点位数据先被清掉。
+ * 司机地图缓存保留天数：这张表只是 iMile 的缓存（本地无数据时会自动整表重新拉取，不会丢数据）。
+ *
+ * 取 6 天由「出仓派签达成分析」的结算跨度决定：到件日周五的批次要到下周二才结算（见
+ * dispatch24hStats/settledArrivalDates），跨度 4 天；留到 6 天给补跑和手动重算余量。
+ * 保留期短于这个跨度不会出错，只是结算时缓存全空、退化成整批重新 searchWaybill。
+ * 派签告警落地页的分享快照保留 1 天，同样被这个范围覆盖。
  */
-export const DRIVER_MAP_RETENTION_DAYS = 2
+export const DRIVER_MAP_RETENTION_DAYS = 6
 
 /** 删除超过保留期的司机地图缓存行（按业务日期 dataDate，不是 updatedAt——重跑历史分析会刷新 updatedAt 但业务日期不变） */
 export async function purgeOldDriverMapWaybillPoints(

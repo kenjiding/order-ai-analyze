@@ -15,7 +15,7 @@ import {
   updateTransfer,
 } from '../../containerManagement/api'
 import type { TransferCreateItem } from '../../containerManagement/api'
-import { parseTransferNo } from '../../containerManagement/constants'
+import { TRANSFER_STATUSES, parseTransferNo } from '../../containerManagement/constants'
 import type {
   ContainerAccount,
   ContainerType,
@@ -69,6 +69,12 @@ const emptyFilters: TransferFilters = {
 
 const emptyChangeFilters: ChangeFilters = { transferId: '', action: '', range: null }
 
+/**
+ * 可以从 URL 带入的筛选项：台账跳转带 transferId，
+ * 批量流转汇总卡片的按钮带 toAccountId + status（它指不到具体某一笔）。
+ */
+const URL_SEED_FILTER_KEYS = ['transferId', 'fromAccountId', 'toAccountId', 'status'] as const
+
 export function toLineItems(lines: TransferLineDraft[]) {
   return lines.map((line) => ({
     containerType: line.containerType as ContainerType,
@@ -90,8 +96,14 @@ export function useContainerTransfersPage() {
   const [loading, setLoading] = useState(false)
   const [submitting, setSubmitting] = useState(false)
   const [filters, setFilters] = useState<TransferFilters>(() => {
-    const fromUrl = searchParams.get('transferId')
-    return fromUrl ? { ...emptyFilters, transferId: fromUrl } : emptyFilters
+    const status = searchParams.get('status') ?? ''
+    return {
+      ...emptyFilters,
+      transferId: searchParams.get('transferId') ?? '',
+      fromAccountId: searchParams.get('fromAccountId') ?? '',
+      toAccountId: searchParams.get('toAccountId') ?? '',
+      status: TRANSFER_STATUSES.includes(status as TransferStatus) ? (status as TransferStatus) : '',
+    }
   })
 
   const [changes, setChanges] = useState<TransferChange[]>([])
@@ -197,8 +209,10 @@ export function useContainerTransfersPage() {
     (next: TransferFilters) => {
       setFilters(next)
       setPage(1)
-      // URL 上的 transferId 只用于从台账跳转带入，应用筛选后即清掉
-      if (searchParams.has('transferId')) setSearchParams({}, { replace: true })
+      // URL 上的筛选只用于从台账/飞书卡片跳转带入，应用筛选后即清掉
+      if (URL_SEED_FILTER_KEYS.some((key) => searchParams.has(key))) {
+        setSearchParams({}, { replace: true })
+      }
       void loadTransfers(1, next)
     },
     [loadTransfers, searchParams, setSearchParams],

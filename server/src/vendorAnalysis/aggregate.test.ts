@@ -24,7 +24,8 @@ function unitsFrom(
   )
 }
 
-// 2024-06-24 是周一，2024-06-28 是周五（用于校验 24H 派签的星期规则）
+// 2024-06-24 是周一，2024-06-28 是周五。24H 派签窗口按「到件日」定规则（见 resolveDispatch24hWindowRule），
+// 默认 dayBeforeDate 取周一 → 整批走滚动 24h；校验固定截止的批次时在用例里覆盖成周五。
 function baseInput(overrides: Partial<VendorAnalyzeAggregateInput> = {}): VendorAnalyzeAggregateInput {
   return {
     tickets: [],
@@ -33,6 +34,7 @@ function baseInput(overrides: Partial<VendorAnalyzeAggregateInput> = {}): Vendor
     longTailOrders: [],
     driverYesterdayWaybills: [],
     driverDayBeforeWaybills: [],
+    dayBeforeDate: '2024-06-24',
     driverReturnRows: [],
     stationCodes: ['S1'],
     tz: AUS_TZ.Adelaide,
@@ -42,16 +44,17 @@ function baseInput(overrides: Partial<VendorAnalyzeAggregateInput> = {}): Vendor
   }
 }
 
-test('24H派签：周一24h内签收达标、超24h不达标、周五按下周一23:59:59截止', () => {
+test('24H派签：周一到件的批次走滚动24h，窗口内签收达标、超窗口不达标', () => {
+  // 到件日 2024-06-24（周一）→ 出仓日周二 06-25，整批 deliveryTime + 24h
   const rows = [
-    // 周一 10:00 派件，当天 12:00 签收 → 24h 内达标
-    { waybillNo: 'W1', courierCode: 'C1', courierVendorCode: 'V1', lastScanSiteCode: 'S1', deliveryTime: '2024-06-24 10:00:00', signDate: '2024-06-24 12:00:00' },
-    // 周一 10:00 派件，周三 10:00:01 签收 → 超 24h 不达标
-    { waybillNo: 'W2', courierCode: 'C1', courierVendorCode: 'V1', lastScanSiteCode: 'S1', deliveryTime: '2024-06-24 10:00:00', signDate: '2024-06-26 10:00:01' },
-    // 周五 10:00 派件，下周一 20:00 签收（<=下周一 23:59:59）→ 达标
-    { waybillNo: 'W3', courierCode: 'C1', courierVendorCode: 'V1', lastScanSiteCode: 'S1', deliveryTime: '2024-06-28 10:00:00', signDate: '2024-07-01 20:00:00' },
+    // 周二 10:00 出仓，当天 12:00 签收 → 24h 内达标
+    { waybillNo: 'W1', courierCode: 'C1', courierVendorCode: 'V1', lastScanSiteCode: 'S1', deliveryTime: '2024-06-25 10:00:00', signDate: '2024-06-25 12:00:00' },
+    // 周二 10:00 出仓，周三 10:00:01 签收 → 超 24h 一秒，不达标
+    { waybillNo: 'W2', courierCode: 'C1', courierVendorCode: 'V1', lastScanSiteCode: 'S1', deliveryTime: '2024-06-25 10:00:00', signDate: '2024-06-26 10:00:01' },
+    // 周二 10:00 出仓，周三 09:00 签收 → 达标
+    { waybillNo: 'W3', courierCode: 'C1', courierVendorCode: 'V1', lastScanSiteCode: 'S1', deliveryTime: '2024-06-25 10:00:00', signDate: '2024-06-26 09:00:00' },
     // 站点 S9 不在口径内 → 被过滤，不计入
-    { waybillNo: 'W4', courierCode: 'C1', courierVendorCode: 'V1', lastScanSiteCode: 'S9', deliveryTime: '2024-06-24 10:00:00', signDate: '2024-06-24 11:00:00' },
+    { waybillNo: 'W4', courierCode: 'C1', courierVendorCode: 'V1', lastScanSiteCode: 'S9', deliveryTime: '2024-06-25 10:00:00', signDate: '2024-06-25 11:00:00' },
   ]
   const [v] = aggregateVendorAnalysis(baseInput({ driverDayBeforeWaybills: rows }))
 
@@ -63,16 +66,17 @@ test('24H派签：周一24h内签收达标、超24h不达标、周五按下周�
   assert.deepEqual(v.dispatch24hUnmetWaybillNos, ['W2'])
 })
 
-test('24H派签：周五~日问题件在下周一23:59:59前达标，超截止或不登记问题件不达标', () => {
+test('24H派签：周五到件的批次统一按下周一23:59:59截止，超截止或无签收无问题件不达标', () => {
+  // 到件日 2024-06-28（周五）→ 周末不分拣，出仓压到下周一 07-01，整批统一截止 07-01 23:59:59
   const rows = [
-    // 周五 10:00 派件，无签收，下周一 18:00 登记问题件 → 达标
-    { waybillNo: 'W5', courierCode: 'C1', courierVendorCode: 'V1', lastScanSiteCode: 'S1', deliveryTime: '2024-06-28 10:00:00', lastProblemDate: '2024-07-01 18:00:00' },
-    // 周六 10:00 派件，无签收，下周二登记问题件 → 超截止不达标
-    { waybillNo: 'W6', courierCode: 'C1', courierVendorCode: 'V1', lastScanSiteCode: 'S1', deliveryTime: '2024-06-29 10:00:00', lastProblemDate: '2024-07-02 10:00:00' },
-    // 周日 10:00 派件，无签收无问题件 → 不达标
-    { waybillNo: 'W7', courierCode: 'C1', courierVendorCode: 'V1', lastScanSiteCode: 'S1', deliveryTime: '2024-06-30 10:00:00' },
+    // 下周一 10:00 出仓，无签收，当天 18:00 登记问题件（≤ 截止）→ 达标
+    { waybillNo: 'W5', courierCode: 'C1', courierVendorCode: 'V1', lastScanSiteCode: 'S1', deliveryTime: '2024-07-01 10:00:00', lastProblemDate: '2024-07-01 18:00:00' },
+    // 下周一 10:00 出仓，无签收，周二才登记问题件 → 超截止不达标
+    { waybillNo: 'W6', courierCode: 'C1', courierVendorCode: 'V1', lastScanSiteCode: 'S1', deliveryTime: '2024-07-01 10:00:00', lastProblemDate: '2024-07-02 10:00:00' },
+    // 下周一 10:00 出仓，无签收无问题件 → 不达标
+    { waybillNo: 'W7', courierCode: 'C1', courierVendorCode: 'V1', lastScanSiteCode: 'S1', deliveryTime: '2024-07-01 10:00:00' },
   ]
-  const [v] = aggregateVendorAnalysis(baseInput({ driverDayBeforeWaybills: rows }))
+  const [v] = aggregateVendorAnalysis(baseInput({ driverDayBeforeWaybills: rows, dayBeforeDate: '2024-06-28' }))
 
   assert.equal(v.dispatch24hTotal, 3)
   assert.equal(v.dispatch24hCount, 1)

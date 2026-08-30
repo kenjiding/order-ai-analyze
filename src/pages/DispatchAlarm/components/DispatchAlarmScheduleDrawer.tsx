@@ -1,13 +1,12 @@
 import { Button, Checkbox, DatePicker, Drawer, InputNumber, TimePicker } from 'antd'
 import dayjs from 'dayjs'
-import { Clock, Gauge, Plus, Save, Truck, X } from 'lucide-react'
-import type { LucideIcon } from 'lucide-react'
-import { useEffect, useState, type ReactNode } from 'react'
+import { Clock, Gauge, Plus, Save, X } from 'lucide-react'
+import { useEffect, useState } from 'react'
+import { FormSection } from '../../../components/FormSection'
 import { StationSelect } from '../../../components/Layout/StationSelect'
 import {
   SupplierMentionToggle,
-  SupplierPushSelectAllButtons,
-  SupplierPushSelectionGrid,
+  SupplierPushConfigSection,
   type SupplierPushConfig,
 } from '../../../shared/supplierPushConfig'
 import { showToast } from '../../../utils/toast'
@@ -47,38 +46,6 @@ type Props = {
   onSubmit: (draft: DispatchAlarmScheduleDraft) => Promise<boolean>
 }
 
-function FormSection({
-  icon: Icon,
-  title,
-  description,
-  action,
-  children,
-}: {
-  icon: LucideIcon
-  title: string
-  description?: string
-  action?: ReactNode
-  children: ReactNode
-}) {
-  return (
-    <section className="rounded-xl border border-[var(--admin-line)] bg-white">
-      <header className="flex items-start justify-between gap-3 border-b border-[var(--admin-line)] bg-[var(--admin-surface-soft)] px-4 py-3">
-        <div className="flex items-start gap-2.5">
-          <span className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-[var(--admin-accent-soft)] text-[var(--admin-accent)]">
-            <Icon className="h-4 w-4" aria-hidden />
-          </span>
-          <div>
-            <h4 className="text-sm font-semibold text-slate-800">{title}</h4>
-            {description && <p className="mt-0.5 text-xs leading-relaxed text-slate-500">{description}</p>}
-          </div>
-        </div>
-        {action && <div className="shrink-0">{action}</div>}
-      </header>
-      <div className="px-4 py-4">{children}</div>
-    </section>
-  )
-}
-
 export function DispatchAlarmScheduleDrawer({
   open,
   onClose,
@@ -114,7 +81,6 @@ export function DispatchAlarmScheduleDrawer({
   const handleTimeChange = (id: string, newTime: string) =>
     setPushTimes((prev) => prev.map((t) => (t.id === id ? { ...t, time: newTime } : t)))
 
-  const enabledIdSet = new Set(pushConfigIds)
   const catalogIdSet = new Set(catalogConfigs.map((config) => config.id))
 
   const handleConfirm = async () => {
@@ -189,7 +155,7 @@ export function DispatchAlarmScheduleDrawer({
                   format="YYYY-MM-DD"
                   allowClear={false}
                   disabled={saving}
-                  disabledDate={(current) => Boolean(current) && current.format('YYYY-MM-DD') >= dayjs().format('YYYY-MM-DD')}
+                  disabledDate={(current) => Boolean(current) && current.format('YYYY-MM-DD') > dayjs().format('YYYY-MM-DD')}
                   onChange={(val) => {
                     if (val) setArrivalScanDate(val.format('YYYY-MM-DD'))
                   }}
@@ -286,34 +252,13 @@ export function DispatchAlarmScheduleDrawer({
           </div>
         </FormSection>
 
-        <FormSection
-          icon={Truck}
-          title="供应商配置"
-          action={
-            <div className="flex items-center gap-3">
-              <SupplierPushSelectAllButtons
-                configs={catalogConfigs}
-                enabledIdSet={enabledIdSet}
-                disabled={saving}
-                saving={catalogLoading}
-                onToggle={(id, next) =>
-                  setPushConfigIds((prev) => (next ? [...prev, id] : prev.filter((x) => x !== id)))
-                }
-              />
-            </div>
-          }
-        >
-          <SupplierPushSelectionGrid
-            configs={catalogConfigs}
-            enabledIdSet={enabledIdSet}
-            disabled={saving}
-            saving={catalogLoading}
-            columns={4}
-            onToggle={(id, next) =>
-              setPushConfigIds((prev) => (next ? [...prev, id] : prev.filter((x) => x !== id)))
-            }
-          />
-        </FormSection>
+        <SupplierPushConfigSection
+          configs={catalogConfigs}
+          value={pushConfigIds}
+          onChange={setPushConfigIds}
+          disabled={saving}
+          catalogLoading={catalogLoading}
+        />
       </div>
     </Drawer>
   )

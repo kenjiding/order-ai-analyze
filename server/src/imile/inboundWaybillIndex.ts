@@ -1,11 +1,16 @@
 /**
  * 站点日到件 waybillNo 索引：inbound/query 预取 + DB 缓存 + 分批 searchWaybill。
- * 供出仓告警、供应商/司机 11 点前出仓率等场景共享。
+ *
+ * 五个业务共享同一份索引（谁先跑谁去打 inbound/query，其余命中缓存）：
+ * 11点前出仓告警、24小时派签告警、出仓派签达成分析、供应商数据分析、司机地图。
+ * 索引之后的 searchWaybill 明细则分两条路：出仓侧全量重拉，派签侧走增量 + 明细缓存
+ * （见 fetchWaybillDetailsByInboundIndex 与 fetchWaybillDetailsIncremental）。
  */
 
 import { and, eq, lt } from 'drizzle-orm'
 import { getDb, schema } from '../db'
 import {
+  resolveDispatch24hWindowRule,
   selectWaybillNosNeedingRefresh,
   type Dispatch24hWaybillRow,
 } from '../vendorAnalysis/dispatch24hAggregate'
@@ -461,7 +466,7 @@ export type IncrementalWaybillFetchSuccess = {
 
 /**
  * 24H 派签增量拉数：到件索引仍全量（可走 DB 缓存），searchWaybill 只拉「未终态」单号。
- * 已达标或已超过 24H/周末窗口的单复用 cachedByWaybillNo，供告警多时段推送与司机地图刷新共用。
+ * 已达标或已拿到签收时间的单复用 cachedByWaybillNo，供告警多时段推送与司机地图刷新共用。
  * 唯一调用方（stationDayWaybillSync）只消费 fetchedRecords，不需要把跳过的缓存行合并回一份
  * 全量 records 数组——大站点几万条时那份合并数组是纯粹的内存浪费，故不再构建。
  */
@@ -481,10 +486,11 @@ export async function fetchWaybillDetailsIncremental(input: {
   })
   if (!indexResult.ok) return indexResult
 
+  // 窗口规则按「到件日」定，dateStr 就是该批次的到件日
   const needNos = selectWaybillNosNeedingRefresh(
     indexResult.waybillNos,
     input.cachedByWaybillNo,
-    input.tz,
+    resolveDispatch24hWindowRule(input.dateStr, input.tz),
   )
 
   const fetched = await fetchSearchWaybillByNos({

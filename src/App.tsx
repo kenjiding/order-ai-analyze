@@ -37,6 +37,12 @@ const VendorPortalPage = lazy(() => import('./pages/VendorPortal/VendorPortalPag
 const ChaseDispatchSharePage = lazy(() => import('./pages/ChaseDispatchShare/ChaseDispatchSharePage'))
 const ExitAlarmPage = lazy(() => import('./pages/ExitAlarm/ExitAlarmPage'))
 const DispatchAlarmPage = lazy(() => import('./pages/DispatchAlarm/DispatchAlarmPage'))
+const DispatchPerformancePage = lazy(
+  () => import('./pages/DispatchPerformance/DispatchPerformancePage'),
+)
+const DispatchPerformanceDetailPage = lazy(
+  () => import('./pages/DispatchPerformance/DispatchPerformanceDetailPage'),
+)
 const ChaseDispatchPage = lazy(() => import('./pages/ChaseDispatch/ChaseDispatchPage'))
 const WorkOrderPushPage = lazy(() => import('./pages/WorkOrderPush/WorkOrderPushPage'))
 const AttendanceWorkTimePage = lazy(() => import('./pages/AttendanceWorkTime/AttendanceWorkTimePage'))
@@ -221,6 +227,23 @@ function AppRoutes() {
               <KeptPage cacheKey="page-dispatch-alarm" name="dispatch-alarm">
                 <DispatchAlarmPage />
               </KeptPage>
+            }
+          />
+          <Route
+            path="/dispatch-performance"
+            element={
+              <KeptPage cacheKey="page-dispatch-performance" name="dispatch-performance">
+                <DispatchPerformancePage />
+              </KeptPage>
+            }
+          />
+          {/* 子路由权限由 matchesSidebarActive 的前缀匹配自动继承 menu:dispatch-performance */}
+          <Route
+            path="/dispatch-performance/:id"
+            element={
+              <LazyBoundary>
+                <DispatchPerformanceDetailPage />
+              </LazyBoundary>
             }
           />
           <Route

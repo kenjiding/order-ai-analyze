@@ -29,6 +29,7 @@ import { formatNumber } from '../ScannerEfficiency/formatAndParse'
 import {
   buildDaySnapshots,
   computeCompareAnalysis,
+  selectComparableRecords,
   type CompareAnalysisResult,
   type RootCauseFactor,
 } from './compareAnalysis'
@@ -1013,6 +1014,7 @@ function SectionLabel({ icon, children }: { icon?: React.ReactNode; children: Re
 
 // ─── 主内容 ───────────────────────────────────────────────────────────────────
 function CompareAnalysisContent({ records }: { records: EfficiencyAttendanceDayRecord[] }) {
+  const comparableCount = useMemo(() => selectComparableRecords(records).length, [records])
   const result = useMemo(() => {
     if (records.length < 2) return null
     try {
@@ -1025,8 +1027,10 @@ function CompareAnalysisContent({ records }: { records: EfficiencyAttendanceDayR
 
   if (!result) {
     return (
-      <div className="flex min-h-[200px] items-center justify-center text-sm text-slate-500">
-        需至少选择 2 天不同日期进行对比分析
+      <div className="flex min-h-[200px] items-center justify-center px-6 text-center text-sm text-slate-500">
+        {comparableCount < 2
+          ? '需至少 2 天「到件+考勤」齐全的记录才能对比；无到件补录日与缺考勤日不参与最优/最差日分析'
+          : '需至少选择 2 天不同日期进行对比分析'}
       </div>
     )
   }

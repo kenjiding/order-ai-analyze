@@ -177,7 +177,7 @@ export function ScanDataIntakePanel({ vm }: Props) {
           <Tooltip
             title={
               canSaveDailyRecords
-                ? '按日写入效率考勤记录，同日覆盖'
+                ? '按日写入效率考勤记录，同日覆盖；统计窗口内每一天都会存档（含无到件补录日），以保证回填口径与当前一致'
                 : '需同时载入到件与考勤'
             }
           >

@@ -1,20 +1,17 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useMemo, useState } from 'react'
 import dayjs, { type Dayjs } from 'dayjs'
 import { useAppSettings } from '../../context/AppSettingsContext'
 import { showToast } from '../../utils/toast'
 import { fetchVendorRegionMap } from './vendorRegionMapApi'
 import { buildVendorColorMap } from './vendorColors'
-import {
-  DEFAULT_RANGE_END,
-  DEFAULT_RANGE_START,
-  type VendorRegionMapResult,
-} from './vendorRegionMapTypes'
+import { type VendorRegionMapResult } from './vendorRegionMapTypes'
 
 export function useVendorRegionMapPage() {
-  const { imileToken, settingsLoaded } = useAppSettings()
+  const { imileToken } = useAppSettings()
+  // 默认当天，进页面不自动拉取，等用户点「查询」
   const [dateRange, setDateRange] = useState<[Dayjs, Dayjs]>([
-    dayjs(DEFAULT_RANGE_START),
-    dayjs(DEFAULT_RANGE_END),
+    dayjs().startOf('day'),
+    dayjs().endOf('day'),
   ])
   const [data, setData] = useState<VendorRegionMapResult | null>(null)
   const [loading, setLoading] = useState(false)
@@ -50,16 +47,6 @@ export function useVendorRegionMapPage() {
       setLoading(false)
     }
   }, [dateRange, imileToken])
-
-  useEffect(() => {
-    if (!settingsLoaded) return
-    const timer = window.setTimeout(() => {
-      void query()
-    }, 0)
-    return () => window.clearTimeout(timer)
-    // 进入页面按默认 08/24–08/25 自动拉一次；之后改日期需点查询
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [settingsLoaded])
 
   const allSupplierKeys = useMemo(
     () => (data?.vendors ?? []).map((vendor) => vendor.supplierKey),

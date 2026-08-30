@@ -51,6 +51,7 @@ import {
   normalizeOccurredAt,
   deleteTransfer,
   getTransfer,
+  getTransfersByIds,
   listTransferChanges,
   listTransfers,
   reportReceipt,
@@ -60,6 +61,7 @@ import {
   type TransferView,
 } from '../containerManagement/transferService'
 import {
+  notifyTransferBatchCreated,
   notifyTransferEvent,
   type TransferNotifyEvent,
 } from '../containerManagement/transferNotify'
@@ -446,9 +448,7 @@ containerManagementRouter.post('/transfers', async (req: AuthenticatedRequest, r
       (item): item is NonNullable<typeof item> => item !== null,
     )
     res.status(201).json({ ok: true, data: created })
-    for (const transfer of created) {
-      fireTransferNotify(req, transfer, 'created', transfer.note ? `备注：${transfer.note}` : null)
-    }
+    fireTransferBatchNotify(req, created)
   } catch (error) {
     handleError(res, error, '创建流转记录失败')
   }
@@ -456,7 +456,7 @@ containerManagementRouter.post('/transfers', async (req: AuthenticatedRequest, r
 
 /**
  * Excel 批量导入：与 POST /transfers 同一套校验与事务语义，只是上限更高、错误前缀是「第 N 行」。
- * 刻意不推飞书：一次几十上百条会把接收方的群刷屏，导入弹窗里已提示需另行告知接收方确认。
+ * 飞书推送走 fireTransferBatchNotify，按收件人归并成一条汇总卡，不会逐笔刷屏。
  */
 containerManagementRouter.post('/transfers/import', async (req: AuthenticatedRequest, res) => {
   const rawItems = (req.body as { items?: unknown }).items
@@ -479,6 +479,7 @@ containerManagementRouter.post('/transfers/import', async (req: AuthenticatedReq
     }
     const ids = await createTransfersBatch(parsed, req.authUser?.id ?? null, '行')
     res.status(201).json({ ok: true, data: { created: ids.length } })
+    fireTransferBatchNotifyByIds(req, ids)
   } catch (error) {
     handleError(res, error, '导入流转记录失败')
   }
@@ -531,6 +532,29 @@ function fireTransferNotify(
   if (!transfer) return
   const actor = req.authUser?.displayName?.trim() || req.authUser?.username || ''
   void notifyTransferEvent(transfer, event, actor, extra)
+}
+
+/**
+ * 批量新建（导入 / 多组提交）的推送：同样在响应发出后 fire-and-forget。
+ * 归并与「几笔以内仍逐笔发」的阈值都在 notifyTransferBatchCreated 里，这里不做判断。
+ */
+function fireTransferBatchNotify(req: AuthenticatedRequest, transfers: TransferView[]): void {
+  if (transfers.length === 0) return
+  const actor = req.authUser?.displayName?.trim() || req.authUser?.username || ''
+  void notifyTransferBatchCreated(transfers, actor)
+}
+
+/**
+ * 同上，但流转视图要现取。响应已经发出，所以加载失败也只能记日志，绝不能再往 res 上写。
+ */
+function fireTransferBatchNotifyByIds(req: AuthenticatedRequest, ids: number[]): void {
+  if (ids.length === 0) return
+  const actor = req.authUser?.displayName?.trim() || req.authUser?.username || ''
+  void getTransfersByIds(ids)
+    .then((transfers) => notifyTransferBatchCreated(transfers, actor))
+    .catch((error) => {
+      console.error(`[container-transfer-notify] 批量 ${ids.length} 笔加载流转失败，已跳过推送`, error)
+    })
 }
 
 containerManagementRouter.get('/transfers/:id', async (req: AuthenticatedRequest, res) => {

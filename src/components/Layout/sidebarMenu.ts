@@ -23,6 +23,7 @@ import {
   Store,
   Ticket,
   Timer,
+  TrendingUp,
   Truck,
   Users,
   Warehouse,
@@ -153,6 +154,14 @@ const groups: SidebarMenuGroup[] = [
         label: '24小时派签告警',
         icon: Gauge,
         description: '监控供应商24小时派签率并定时推送告警',
+      },
+      {
+        id: 'dispatch-performance',
+        path: '/dispatch-performance',
+        permissionKey: 'menu:dispatch-performance',
+        label: '出仓派签达成分析',
+        icon: TrendingUp,
+        description: '11点前出仓率与24小时派签率的最终值、交叉归因与历史回看',
       },
       {
         id: 'chase-dispatch',

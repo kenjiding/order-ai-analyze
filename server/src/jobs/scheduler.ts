@@ -17,6 +17,11 @@ import {
   logInboundIndexSchedulerReadiness,
   runDailyInboundWaybillIndexPrefetch,
 } from '../imile/inboundWaybillIndexScheduler'
+import {
+  logDispatchPerformanceReadiness,
+  runDispatchPerformanceDailyStats,
+} from '../dispatch24hStats/dailyStatsJob'
+import { purgeOldDispatchPerformanceStats } from '../dispatch24hStats/repository'
 import { INBOUND_INDEX_ADELAIDE_TZ } from '../imile/inboundWaybillIndex'
 import { purgeOldVendorDailyData } from '../vendorAnalysis/retention'
 import { purgeOldPushEngagementData } from '../feishu/pushEngagementRetention'
@@ -149,6 +154,20 @@ export function startJobScheduler(): { stop: () => void } {
   )
   void logInboundIndexSchedulerReadiness()
 
+  // 出仓派签达成分析结算：每分钟扫一遍，只跑此刻命中自己「触发统计时间」的站点。
+  // 触发时刻由每条站点配置自带（默认 16:00），按该站点所属州的本地时间判定 —— 不同州的
+  // 站点因此能各按各的本地时间结算，不再被一条全局 cron 绑在阿德莱德时区上。
+  // 有没有可结算的到件批次仍由 resolveSettledArrivalDates 的日历推导决定（周日/周一通常为空）。
+  const dispatchPerformanceCron = '* * * * *'
+  const dispatchPerformanceTask = cron.schedule(dispatchPerformanceCron, async () => {
+    await runDispatchPerformanceDailyStats()
+  })
+  tasks.push(dispatchPerformanceTask)
+  console.log(
+    `[scheduler] 已启动出仓派签达成分析结算任务 cron="${dispatchPerformanceCron}"（触发时刻按各站点配置）`,
+  )
+  void logDispatchPerformanceReadiness(dispatchPerformanceCron)
+
   // 供应商日报/分享链接 + 催派分享快照保留期清理：每日 06:30 阿德莱德
   const vendorReportRetentionCron = process.env.VENDOR_REPORT_RETENTION_CRON?.trim() || '30 6 * * *'
   const vendorReportRetentionCronValid = cron.validate(vendorReportRetentionCron)
@@ -191,6 +210,14 @@ export function startJobScheduler(): { stop: () => void } {
         }
       } catch (err) {
         console.error('[scheduler/driver-map-retention] 清理异常:', err)
+      }
+      try {
+        const purged = await purgeOldDispatchPerformanceStats()
+        if (purged > 0) {
+          console.log(`[scheduler/dispatch-performance-retention] 已清理 ${purged} 条出仓派签日度指标`)
+        }
+      } catch (err) {
+        console.error('[scheduler/dispatch-performance-retention] 清理异常:', err)
       }
       try {
         const { pushMessages, clickEvents } = await purgeOldPushEngagementData()

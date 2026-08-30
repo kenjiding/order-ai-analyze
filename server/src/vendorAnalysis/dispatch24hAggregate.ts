@@ -1,11 +1,15 @@
 /**
  * 24H 派签率——达标判定与按供应商聚合的纯函数。
  *
- * 从 vendorAnalysis/aggregate.ts 抽出，供「供应商数据分析」大盘与独立的
- * 「24小时派签告警」（feishu/dispatchAlarmScheduledPush.ts）共用同一套判定口径，
- * 不重复实现。
+ * 从 vendorAnalysis/aggregate.ts 抽出，供「供应商数据分析」大盘、独立的
+ * 「24小时派签告警」（feishu/dispatchAlarmScheduledPush.ts）与「出仓派签达成分析」
+ * （dispatch24hStats/）共用同一套判定口径，不重复实现。
+ *
+ * 窗口口径按「到件日 D」判定（resolveDispatch24hWindowRule），不是按某一单碰巧哪天出仓判定——
+ * 一批货同属一个到件批次，不能因为其中一单出仓晚了一天就换一套截止规则。
  */
-import { iMileStrToMs, localDatePlusDaysMs, weekdayInTz, type AusTz } from '../imile/ausTimezone'
+import { iMileStrToMs, localDateTimeToMs, type AusTz } from '../imile/ausTimezone'
+import { isSortingWorkday } from '../imile/sortingWorkday'
 import {
   buildRouteCodeVendorsMap,
   isRowInConfigScope,
@@ -75,18 +79,72 @@ function norm(code: unknown): string {
 }
 
 /**
- * 24H 派签窗口截止时刻（本地时区）：
- * - 周一~四：派件后 24h
- * - 周五~日：下周一 23:59:59
- * 无 deliveryTime 时无法判定窗口，返回 null。
+ * 24H 派签窗口规则，**按到件日 D 判定**（不是按 deliveryTime 的星期）。
+ *
+ * 一批货的窗口口径由它「哪天到件」决定，而不是由某一单碰巧哪天出仓决定：
+ * - D ∈ 周一~周四 → 出仓日 O = D+1，每单各自 deliveryTime + 24h
+ * - D ∈ 周五/周六/周日 → 出仓日虽仍是 D+1（周六照常出仓，见 resolveExitDate），但周日不派送，
+ *   整批共用一个固定截止时刻：D 之后第一个周一 23:59:59（本地时区）
+ *
+ * 一次聚合只解析一次日期，逐行判定复用同一个 rule，避免每行重复解析时区。
  */
-export function getDispatch24hDeadlineMs(row: Dispatch24hWaybillRow, tz: AusTz): number | null {
+export type Dispatch24hWindowRule =
+  | { kind: 'rolling24h' }
+  | { kind: 'fixedDeadline'; deadlineMs: number }
+
+/** 到件日 D 之后第一个周一（含跨周），返回 YYYY-MM-DD */
+function nextMondayAfter(dateStr: string): string {
+  const [y, m, d] = dateStr.split('-').map(Number)
+  const cur = new Date(Date.UTC(y, m - 1, d))
+  do {
+    cur.setUTCDate(cur.getUTCDate() + 1)
+  } while (cur.getUTCDay() !== 1)
+  return cur.toISOString().slice(0, 10)
+}
+
+/** 按到件日 D（YYYY-MM-DD，账号州时区的本地日历日）解析本批次的 24H 派签窗口规则 */
+export function resolveDispatch24hWindowRule(arrivalDateStr: string, tz: AusTz): Dispatch24hWindowRule {
+  // 周五到件那批出仓在周六、次日周日不派送，截止顺延到下周一；其余工作日到件走滚动 24h。
+  // 周末到件（周末不开仓分拣，理论上无批次）同样压到下周一兜底。
+  const [y, m, d] = arrivalDateStr.split('-').map(Number)
+  const dow = new Date(Date.UTC(y, m - 1, d)).getUTCDay() // 0=周日 … 6=周六
+  if (isSortingWorkday(arrivalDateStr) && dow !== 5) return { kind: 'rolling24h' }
+  return {
+    kind: 'fixedDeadline',
+    deadlineMs: localDateTimeToMs(`${nextMondayAfter(arrivalDateStr)} 23:59:59`, tz),
+  }
+}
+
+/**
+ * 到件日（= 当天开仓分拣的那批）D 的出仓日 O = **次日自然日**，不跳周末。
+ *
+ * 分拣日历（isSortingWorkday）只管「哪天开仓分拣」，**不决定哪天出仓**：周五分拣好的货，
+ * 司机周六照常来 11 点前取货出仓派送——「不开仓分拣」不等于「不出仓派送」。用
+ * nextSortingWorkdayAfter 推出仓日会把周五那批误推到下周一，周六整天算不出出仓率。
+ *
+ * 与「供应商数据分析」既有的 computeBefore11ThresholdMs（imile/before11Exit.ts）同口径。
+ */
+export function resolveExitDate(arrivalDateStr: string): string {
+  const [y, m, d] = arrivalDateStr.split('-').map(Number)
+  return new Date(Date.UTC(y, m - 1, d + 1)).toISOString().slice(0, 10)
+}
+
+/** 到件日 D 的出仓日 O 当天 hh:mm 对应的 UTC 毫秒——出仓阈值与结算时机共用 */
+export function dispatchExitThresholdMs(arrivalDateStr: string, tz: AusTz, timeHHmm = '11:00'): number {
+  return localDateTimeToMs(`${resolveExitDate(arrivalDateStr)} ${timeHHmm}:00`, tz)
+}
+
+/**
+ * 单件的 24H 派签窗口截止时刻。无 deliveryTime 时滚动窗口无法起算，返回 null；
+ * 固定截止的批次（周五/周末到件）与是否已派件无关，始终返回该批次的统一截止时刻。
+ */
+export function getDispatch24hDeadlineMs(
+  row: Dispatch24hWaybillRow,
+  rule: Dispatch24hWindowRule,
+): number | null {
+  if (rule.kind === 'fixedDeadline') return rule.deadlineMs
   if (!row.deliveryTime) return null
-  const deliveryMs = iMileStrToMs(row.deliveryTime)
-  const dow = weekdayInTz(deliveryMs, tz) // 0=周日 … 6=周六
-  if (dow >= 1 && dow <= 4) return deliveryMs + DAY_MS
-  const daysToMonday = dow === 0 ? 1 : dow === 5 ? 3 : 2
-  return localDatePlusDaysMs(deliveryMs, tz, daysToMonday, 23, 59, 59)
+  return iMileStrToMs(row.deliveryTime) + DAY_MS
 }
 
 /**
@@ -99,9 +157,9 @@ export function isDispatch24hProblem(row: Dispatch24hWaybillRow): boolean {
   return iMileStrToMs(row.lastProblemDate) > iMileStrToMs(row.deliveryTime)
 }
 
-/** 24H 派签是否达标：周一~四 24h 内签收/问题件即达标；周五~日下周一 23:59:59（本地）前签收/问题件达标 */
-export function isDispatch24hMet(row: Dispatch24hWaybillRow, tz: AusTz): boolean {
-  const deadlineMs = getDispatch24hDeadlineMs(row, tz)
+/** 24H 派签是否达标：在本批次窗口（见 resolveDispatch24hWindowRule）截止前签收或产生本次派送的问题件 */
+export function isDispatch24hMet(row: Dispatch24hWaybillRow, rule: Dispatch24hWindowRule): boolean {
+  const deadlineMs = getDispatch24hDeadlineMs(row, rule)
   if (deadlineMs == null) return false
   const signMs = row.signDate ? iMileStrToMs(row.signDate) : null
   const problemMs = isDispatch24hProblem(row) ? iMileStrToMs(row.lastProblemDate as string) : null
@@ -112,10 +170,10 @@ export function isDispatch24hMet(row: Dispatch24hWaybillRow, tz: AusTz): boolean
 /** 派签窗口是否已过（与是否达标无关）；无 deliveryTime 时视为未过期，避免误跳过仍可能补到派件时间的单 */
 export function isDispatch24hWindowExpired(
   row: Dispatch24hWaybillRow,
-  tz: AusTz,
+  rule: Dispatch24hWindowRule,
   nowMs: number = Date.now(),
 ): boolean {
-  const deadlineMs = getDispatch24hDeadlineMs(row, tz)
+  const deadlineMs = getDispatch24hDeadlineMs(row, rule)
   return deadlineMs != null && nowMs > deadlineMs
 }
 
@@ -127,8 +185,8 @@ export function isDispatch24hWindowExpired(
  * 永久误判成「永远不会签收」。
  * 供「24小时派签告警」多时段推送与「司机地图」手动刷新共用，避免已确认结果重复拉数。
  */
-export function isDispatch24hTerminal(row: Dispatch24hWaybillRow, tz: AusTz): boolean {
-  return isDispatch24hMet(row, tz) || Boolean(row.signDate)
+export function isDispatch24hTerminal(row: Dispatch24hWaybillRow, rule: Dispatch24hWindowRule): boolean {
+  return isDispatch24hMet(row, rule) || Boolean(row.signDate)
 }
 
 /**
@@ -140,14 +198,14 @@ export function isDispatch24hTerminal(row: Dispatch24hWaybillRow, tz: AusTz): bo
 export function selectWaybillNosNeedingRefresh(
   indexWaybillNos: string[],
   cachedByWaybillNo: Map<string, Dispatch24hWaybillRow>,
-  tz: AusTz,
+  rule: Dispatch24hWindowRule,
 ): string[] {
   const need: string[] = []
   for (const waybillNo of indexWaybillNos) {
     const no = waybillNo.trim()
     if (!no) continue
     const cached = cachedByWaybillNo.get(no)
-    if (!cached || !isDispatch24hTerminal(cached, tz)) need.push(no)
+    if (!cached || !isDispatch24hTerminal(cached, rule)) need.push(no)
   }
   return need
 }
@@ -233,7 +291,7 @@ function finalizeDriverStats(
 export function aggregateDispatch24hByVendor(input: {
   rows: Dispatch24hWaybillRow[]
   stationCodes: string[]
-  tz: AusTz
+  rule: Dispatch24hWindowRule
   /** 路由码纳入名单；缺省空 map = 不按路由码收窄 */
   routeCodesByVendor?: Map<string, Set<string>>
   routeCodeWhitelistByVendor: Map<string, Set<string>>
@@ -241,7 +299,7 @@ export function aggregateDispatch24hByVendor(input: {
   const {
     rows,
     stationCodes,
-    tz,
+    rule,
     routeCodesByVendor = new Map(),
     routeCodeWhitelistByVendor,
   } = input
@@ -261,7 +319,7 @@ export function aggregateDispatch24hByVendor(input: {
     if (candidateVendorCodes.length === 0) continue
     if (!inStation(row.lastScanSiteCode)) continue
 
-    const met = isDispatch24hMet(row, tz)
+    const met = isDispatch24hMet(row, rule)
     const hasProblem = isDispatch24hProblem(row)
     const neverSigned = !met && !row.signDate
     const lateSigned = !met && Boolean(row.signDate)
@@ -321,10 +379,10 @@ export type Dispatch24hScope = ConfigScope
 export function aggregateDispatch24hByScopes(input: {
   rows: Dispatch24hWaybillRow[]
   stationCodes: string[]
-  tz: AusTz
+  rule: Dispatch24hWindowRule
   scopes: Dispatch24hScope[]
 }): Map<string, Dispatch24hVendorStat> {
-  const { rows, stationCodes, tz, scopes } = input
+  const { rows, stationCodes, rule, scopes } = input
   const stationSet = new Set(stationCodes.map((s) => s.trim()).filter(Boolean))
   const inStation = (code: string | undefined) => stationSet.size === 0 || stationSet.has(norm(code))
 
@@ -335,7 +393,7 @@ export function aggregateDispatch24hByScopes(input: {
     if (!inStation(row.lastScanSiteCode)) continue
     const consigneeRouteCode = norm(row.consigneeRouteCode)
     const explicitVendorCode = norm(row.courierVendorCode)
-    const met = isDispatch24hMet(row, tz)
+    const met = isDispatch24hMet(row, rule)
     const hasProblem = isDispatch24hProblem(row)
     const neverSigned = !met && !row.signDate
     const lateSigned = !met && Boolean(row.signDate)

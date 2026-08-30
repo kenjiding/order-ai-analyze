@@ -442,6 +442,41 @@
       "when": 1785700000034,
       "tag": "0062_exit_alarm_arrival_scan_date",
       "breakpoints": true
+    },
+    {
+      "idx": 63,
+      "version": "7",
+      "when": 1785700000035,
+      "tag": "0063_dispatch_performance_daily_stats",
+      "breakpoints": true
+    },
+    {
+      "idx": 64,
+      "version": "7",
+      "when": 1785700000036,
+      "tag": "0064_dispatch_performance_two_stage",
+      "breakpoints": true
+    },
+    {
+      "idx": 65,
+      "version": "7",
+      "when": 1785700000037,
+      "tag": "0065_dispatch_performance_configs",
+      "breakpoints": true
+    },
+    {
+      "idx": 66,
+      "version": "7",
+      "when": 1785700000038,
+      "tag": "0066_dispatch_performance_supplier_selection",
+      "breakpoints": true
+    },
+    {
+      "idx": 67,
+      "version": "7",
+      "when": 1785700000039,
+      "tag": "0067_dispatch_performance_settle_time",
+      "breakpoints": true
     }
   ]
 }

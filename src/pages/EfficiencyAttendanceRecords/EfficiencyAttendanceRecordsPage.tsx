@@ -10,7 +10,9 @@ import {
 } from '../ScannerEfficiency/scannerEfficiencyApi'
 import {
   normalizeEfficiencyAttendanceDayRecord,
+  resolveEfficiencyAttendanceDayKind,
   toEfficiencyAttendanceDayRecordListItem,
+  type EfficiencyAttendanceDayKind,
   type EfficiencyAttendanceDayRecord,
   type EfficiencyAttendanceDayRecordListItem,
 } from '../ScannerEfficiency/dailyEfficiencyRecordSnapshot'
@@ -31,6 +33,24 @@ function formatSavedAt(value: string): string {
     hour: '2-digit',
     minute: '2-digit',
   })
+}
+
+const DAY_KIND_META: Record<EfficiencyAttendanceDayKind, { label: string; hint: string; className: string }> = {
+  full: {
+    label: '到件+考勤',
+    hint: '有到件也有考勤，正常参与日效率统计',
+    className: 'bg-[var(--admin-accent-soft)] text-[#1f6f68]',
+  },
+  attendanceOnly: {
+    label: '无到件补录',
+    hint: '有考勤无到件：不产生日效率，但工时计入总体/开仓效率的分母',
+    className: 'bg-amber-50 text-amber-700',
+  },
+  scanOnly: {
+    label: '缺考勤',
+    hint: '有到件无考勤：货量计入总货量，但当日无工时可用',
+    className: 'bg-red-50 text-red-600',
+  },
 }
 
 function formatEfficiency(value: number | null): string {
@@ -105,14 +125,32 @@ export default function EfficiencyAttendanceRecordsPage() {
 
   const navigateWithRecords = useCallback(
     (dates: string[]) => {
-      const records = dates
+      const picked = dates
         .map((date) => recordByDate.get(date))
         .filter((record): record is EfficiencyAttendanceDayRecord => record != null)
-        .sort((a, b) => a.date.localeCompare(b.date))
 
-      if (!records.length) {
+      if (!picked.length) {
         showToast('记录数据不可用，请刷新后重试', 'error')
         return
+      }
+
+      // 「总体/开仓效率」的分母是统计窗口内的全部考勤工时，含无到件补录日。
+      // 只回填被勾选的日期会漏掉这些工时，效率虚高，所以按所选区间自动补齐。
+      const pickedDates = new Set(picked.map((record) => record.date))
+      const sortedDates = [...pickedDates].sort((a, b) => a.localeCompare(b))
+      const rangeStart = sortedDates[0]!
+      const rangeEnd = sortedDates[sortedDates.length - 1]!
+      const filled = [...recordByDate.values()].filter(
+        (record) =>
+          !pickedDates.has(record.date) &&
+          record.date >= rangeStart &&
+          record.date <= rangeEnd &&
+          resolveEfficiencyAttendanceDayKind(record.warehouse.daily) === 'attendanceOnly',
+      )
+
+      const records = [...picked, ...filled].sort((a, b) => a.date.localeCompare(b.date))
+      if (filled.length) {
+        showToast(`已自动纳入区间内 ${filled.length} 个无到件补录日的工时`, 'info')
       }
 
       navigate('/efficiency', {
@@ -211,6 +249,22 @@ export default function EfficiencyAttendanceRecordsPage() {
       key: 'date',
       width: 120,
       render: (date: string) => <span className="font-medium tabular-nums text-slate-900">{date}</span>,
+    },
+    {
+      title: '类型',
+      dataIndex: 'kind',
+      key: 'kind',
+      width: 120,
+      render: (kind: EfficiencyAttendanceDayKind) => {
+        const meta = DAY_KIND_META[kind]
+        return (
+          <Tooltip title={meta.hint}>
+            <Tag bordered={false} className={`mr-0 ${meta.className}`}>
+              {meta.label}
+            </Tag>
+          </Tooltip>
+        )
+      },
     },
     {
       title: '货量',

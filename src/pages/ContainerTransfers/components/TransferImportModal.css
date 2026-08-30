@@ -1,0 +1,50 @@
+/* 批量导入弹窗：覆盖 Upload.Dragger 默认外观，贴合 admin token */
+
+.transfer-import-modal .ant-upload-wrapper {
+  display: block;
+}
+
+.transfer-import-dropzone .ant-upload-drag {
+  min-height: 220px;
+  border-radius: 12px;
+  border: 1.5px dashed var(--admin-line);
+  background:
+    radial-gradient(120% 80% at 50% 0%, var(--admin-accent-soft) 0%, transparent 52%),
+    var(--admin-surface);
+  transition:
+    border-color 0.2s cubic-bezier(0.16, 1, 0.3, 1),
+    background-color 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.transfer-import-dropzone .ant-upload-drag:hover,
+.transfer-import-dropzone .ant-upload-drag-hover {
+  border-color: var(--admin-accent);
+  background:
+    radial-gradient(120% 80% at 50% 0%, #d5efe9 0%, transparent 56%),
+    var(--admin-accent-soft);
+}
+
+.transfer-import-dropzone .ant-upload-drag-container {
+  display: flex;
+  min-height: 196px;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 1.5rem 1.25rem;
+}
+
+.transfer-import-preview .ant-table-wrapper {
+  background: transparent;
+}
+
+.transfer-import-preview .ant-table {
+  background: transparent;
+}
+
+.transfer-import-preview .ant-table-container {
+  border-radius: 0;
+}
+
+.transfer-import-preview .ant-pagination {
+  margin: 12px 16px !important;
+}
