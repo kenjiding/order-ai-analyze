@@ -64,6 +64,8 @@ function summarizeCells(cells: DispatchPerformanceCell[]): {
   let signMet = 0
   let problemCount = 0
   for (const cell of cells) {
+    // 与页面上的供应商/站点口径一致：白名单路由不计入两个率
+    if (cell.isWhitelist) continue
     total += cell.total
     before11Met += cell.before11Met
     // 签收达标 = 四象限里签收达标的两格

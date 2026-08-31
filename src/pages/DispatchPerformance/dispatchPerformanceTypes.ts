@@ -52,6 +52,11 @@ export type DispatchDriverNode = DispatchMetrics & {
 
 export type DispatchRouteNode = DispatchMetrics & {
   routeCode: string
+  /**
+   * 本行 total 里有多少单落在白名单上、因而没进供应商行与站点汇总的率。
+   * 0 = 全部计入；等于 total = 整条路由都不计入；介于两者之间 = 区间内改过白名单配置。
+   */
+  whitelistTotal: number
   drivers: DispatchDriverNode[]
 }
 
@@ -59,6 +64,8 @@ export type DispatchSupplierNode = DispatchMetrics & {
   supplierKey: string
   supplierName: string
   vendorCode: string
+  /** 该供应商名下白名单路由的单量：没算进本行的 total 与两个率，展开后能看到明细 */
+  whitelistTotal: number
   routes: DispatchRouteNode[]
 }
 
@@ -133,6 +140,8 @@ export type DispatchPerformanceResult = {
   /** 区间内日历上「出仓趟已该跑完」的到件日；与 arrivalDates 的差集就是结算任务没跑到的天 */
   settledDates: string[]
   overall: DispatchMetrics
+  /** 全站白名单路由的单量：同样没算进 overall */
+  whitelistTotal: number
   suppliers: DispatchSupplierNode[]
   /** 该区间内有数据的供应商，供筛选器用 */
   supplierOptions: DispatchPerformanceSupplierOption[]

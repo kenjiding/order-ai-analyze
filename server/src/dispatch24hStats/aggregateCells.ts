@@ -6,7 +6,9 @@
  * 查询时按格子 SUM 得到——避免同一份数据存三份、还要维护三份一致性。
  *
  * 判定全部复用既有原语，不在这里另写一套口径：
- * - 归属：supplierScope 的 isRowInConfigScope（vendorCode 归属 → routeCode 纳入 → 白名单剔除）
+ * - 归属：supplierScope 的 isRowInConfigScopeIgnoringWhitelist（vendorCode 归属 → routeCode 纳入）。
+ *   白名单路由**不剔除**，而是打 isWhitelist 标记落库 —— 它们不参与考核，但用户要能看见
+ *   这些路由跑成什么样。剔除发生在查询侧的供应商/站点累加（见 queryDispatchPerformance）。
  * - 派签：dispatch24hAggregate 的 isDispatch24hMet / isDispatch24hProblem
  * - 出仓：imile/before11Exit 的 isBefore11Exit
  */
@@ -18,7 +20,7 @@ import {
   type Dispatch24hWaybillRow,
   type Dispatch24hWindowRule,
 } from '../vendorAnalysis/dispatch24hAggregate'
-import { isRowInConfigScope } from '../vendorAnalysis/supplierScope'
+import { isRowInConfigScopeIgnoringWhitelist } from '../vendorAnalysis/supplierScope'
 
 /** 未派件的单没有司机可归，用空串占位，使司机行加总仍等于供应商总数 */
 export const NO_COURIER_CODE = ''
@@ -32,6 +34,8 @@ export type DispatchPerformanceCell = {
   /** scope 的 key，本模块调用方传的是 supplierKey */
   scopeKey: string
   routeCode: string
+  /** 路由码命中该 scope 的白名单：照常统计、照常落库，但不计入供应商与站点的两个率 */
+  isWhitelist: boolean
   courierCode: string
   courierName: string
   total: number
@@ -65,10 +69,12 @@ function newCell(
   routeCode: string,
   courierCode: string,
   courierName: string,
+  isWhitelist: boolean,
 ): DispatchPerformanceCell {
   return {
     scopeKey,
     routeCode,
+    isWhitelist,
     courierCode,
     courierName,
     total: 0,
@@ -131,12 +137,15 @@ export function aggregateDispatchPerformanceCells(input: {
     const wbNo = row.waybillNo ?? ''
 
     for (const scope of scopes) {
-      if (!isRowInConfigScope(scope, explicitVendorCode, routeCode)) continue
+      if (!isRowInConfigScopeIgnoringWhitelist(scope, explicitVendorCode, routeCode)) continue
+      // 白名单只影响「算不算进率」，不影响归属。判定与出仓告警的 whitelistStat 同一写法
+      // （before11Aggregate）；同一 (scope, routeCode) 的标记恒定，故不必进格子主键
+      const isWhitelist = scope.routeCodeWhitelist?.has(routeCode) ?? false
 
       const key = [scope.key, routeCode, courierCode].join(CELL_KEY_SEP)
       let cell = cells.get(key)
       if (!cell) {
-        cell = newCell(scope.key, routeCode, courierCode, courierName)
+        cell = newCell(scope.key, routeCode, courierCode, courierName, isWhitelist)
         cells.set(key, cell)
       }
 

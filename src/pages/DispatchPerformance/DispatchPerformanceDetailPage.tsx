@@ -223,6 +223,14 @@ export default function DispatchPerformanceDetailPage() {
       {v.result ? (
         <>
           <SummaryTiles overall={v.result.overall} />
+          {v.result.whitelistTotal > 0 ? (
+            <Alert
+              type="info"
+              showIcon
+              message={`本区间有 ${v.result.whitelistTotal} 单落在白名单路由上，未计入上面的两个率`}
+              description="白名单路由不参与考核，但数据照常统计：展开供应商即可看到这些路由的单量与达成情况，路由码行上带「白名单」标记。"
+            />
+          ) : null}
           <div className="admin-panel p-4">
             <PerformanceBreakdownTable suppliers={v.result.suppliers} loading={v.loading} />
           </div>

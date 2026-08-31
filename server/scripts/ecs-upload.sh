@@ -133,7 +133,7 @@ upload_via_tar() {
     --exclude 'node_modules' \
     --exclude 'dist' \
     --exclude '.git' \
-    --exclude 'data' \
+    --exclude 'job-artifacts' \
     --exclude '*.log' \
     --exclude 'pnpm-debug.log*' \
     --exclude '.env' \

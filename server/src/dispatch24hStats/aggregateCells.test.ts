@@ -16,12 +16,17 @@ const ARRIVAL = '2024-06-24'
 const rule = resolveDispatch24hWindowRule(ARRIVAL, tz)
 const threshold = dispatchExitThresholdMs(ARRIVAL, tz)
 
-function scope(key: string, vendorCode: string, routeCodes?: string[]): Dispatch24hScope {
+function scope(
+  key: string,
+  vendorCode: string,
+  routeCodes?: string[],
+  whitelist?: string[],
+): Dispatch24hScope {
   return {
     key,
     vendorCode,
     routeCodes: routeCodes ? new Set(routeCodes) : undefined,
-    routeCodeWhitelist: undefined,
+    routeCodeWhitelist: whitelist ? new Set(whitelist) : undefined,
   }
 }
 
@@ -206,4 +211,23 @@ test('固定截止批次（周五到件）：出仓阈值在周六11:00，派签
   })
   assert.equal(cell.exitMetSignMet, 1)
   assert.equal(cell.exitUnmetSignUnmet, 1)
+})
+
+test('白名单路由：照常出格子并打标记，不再被整行剔除', () => {
+  const rows: Dispatch24hWaybillRow[] = [
+    // R1 正常考核
+    { ...base, waybillNo: 'A', courierCode: 'C1', courier: 'D1', consigneeRouteCode: 'R1', deliveryTime: '2024-06-25 09:00:00', signDate: '2024-06-25 15:00:00' },
+    // R2 在白名单里：数据要看得见，但不该计进供应商的率（剔除在查询侧做）
+    { ...base, waybillNo: 'B', courierCode: 'C2', courier: 'D2', consigneeRouteCode: 'R2', deliveryTime: '2024-06-25 13:00:00' },
+  ]
+  const cells = run(rows, [scope('U1', 'V1', ['R1', 'R2'], ['R2'])])
+
+  const byRoute = new Map(cells.map((c) => [c.routeCode, c]))
+  assert.equal(byRoute.size, 2, '白名单路由不再被丢弃')
+  assert.equal(byRoute.get('R1')?.isWhitelist, false)
+  assert.equal(byRoute.get('R2')?.isWhitelist, true)
+  // 标记之外，白名单格子的指标与普通格子按同一口径算
+  assert.equal(byRoute.get('R2')?.total, 1)
+  assert.equal(byRoute.get('R2')?.before11Met, 0)
+  assert.equal(byRoute.get('R2')?.neverSignedCount, 1)
 })

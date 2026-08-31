@@ -55,6 +55,14 @@ export type DispatchPerformanceDriverNode = DispatchPerformanceMetrics & {
 
 export type DispatchPerformanceRouteNode = DispatchPerformanceMetrics & {
   routeCode: string
+  /**
+   * 本行 total 里有多少单落在白名单上、因而没进供应商行与站点汇总的率。
+   *
+   * 用数量而不是布尔：区间跨多天时，同一条路由可能前几天还在考核、后几天才被加进白名单，
+   * 一个布尔只能记住碰到的第一天，会给出忽真忽假的标记。0 = 全部计入，
+   * 等于 total = 全部不计入，介于两者之间 = 这几天里改过配置。
+   */
+  whitelistTotal: number
   drivers: DispatchPerformanceDriverNode[]
 }
 
@@ -62,6 +70,8 @@ export type DispatchPerformanceSupplierNode = DispatchPerformanceMetrics & {
   supplierKey: string
   supplierName: string
   vendorCode: string
+  /** 该供应商名下白名单路由的单量：没算进本行的 total 与两个率，展示出来解释口径差 */
+  whitelistTotal: number
   routes: DispatchPerformanceRouteNode[]
 }
 
@@ -72,6 +82,8 @@ export type DispatchPerformanceQueryResult = {
   /** 区间内实际有数据的到件日（升序），供前端提示哪些天尚未结算 */
   arrivalDates: string[]
   overall: DispatchPerformanceMetrics
+  /** 全站白名单路由的单量：同样没算进 overall */
+  whitelistTotal: number
   suppliers: DispatchPerformanceSupplierNode[]
 }
 
@@ -204,6 +216,7 @@ export async function saveDispatchPerformanceCells(input: SaveCellsInput): Promi
       vendorCode: meta?.vendorCode ?? '',
       supplierName: meta?.supplierName ?? cell.scopeKey,
       routeCode: cell.routeCode,
+      isWhitelist: cell.isWhitelist,
       courierCode: cell.courierCode,
       courierName: cell.courierName,
       total: cell.total,
@@ -300,37 +313,38 @@ function asStrings(value: unknown): string[] {
 }
 
 /**
- * 查询区间内的三层结果。区间跨多天时同一 (supplier, route, courier) 会有多行，按维度累加。
+ * 累加所需的最小行形状：来自日度表，但只声明真正用到的列，
+ * 好让 buildDispatchPerformanceTree 能脱离数据库单测。
  */
-export async function queryDispatchPerformance(params: {
-  stationCode: string
-  startDate: string
-  endDate: string
-  supplierKeys?: string[]
-}): Promise<DispatchPerformanceQueryResult> {
-  const { stationCode, startDate, endDate, supplierKeys } = params
-  const db = getDb()
-  const t = schema.dispatchPerformanceDailyStats
+export type DispatchPerformanceStatRow = Omit<Acc, 'dispatchSettled'> & {
+  arrivalDate: string
+  supplierKey: string
+  supplierName: string
+  vendorCode: string
+  routeCode: string
+  courierCode: string
+  courierName: string
+  isWhitelist: boolean
+  dispatchSettled: boolean
+  neverSignedWaybillNos: unknown
+  lateSignedWaybillNos: unknown
+  problemWaybillNos: unknown
+  before11UnmetWaybillNos: unknown
+}
 
-  const conditions = [
-    eq(t.stationCode, stationCode),
-    gte(t.arrivalDate, startDate),
-    lte(t.arrivalDate, endDate),
-  ]
-  if (supplierKeys?.length) conditions.push(inArray(t.supplierKey, supplierKeys))
-
-  const rows = await db.select().from(t).where(and(...conditions))
-
-  const arrivalDates = [...new Set(rows.map((r) => r.arrivalDate))].sort()
-  const overallAcc = newAcc()
-
-  type SupplierBucket = {
-    supplierKey: string
-    supplierName: string
-    vendorCode: string
-    acc: Acc
-    routes: Map<string, { routeCode: string; acc: Acc; drivers: Map<string, DriverBucket> }>
-  }
+/**
+ * 把日度格子累加成「站点 → 供应商 → 路由码 → 司机」四层结果。纯函数，不碰数据库。
+ *
+ * **白名单口径（本模块唯一的判定处）**：命中路由码白名单的格子不参与考核 ——
+ * 站点汇总与供应商行的累加一律跳过它们，只把单量另记进 whitelistTotal；
+ * 路由码层与司机层照常累加，使这些路由的达成情况仍然看得见。
+ * 因此展开后各路由 total 之和会大于供应商行的 total，差额正是 whitelistTotal。
+ */
+export function buildDispatchPerformanceTree(rows: DispatchPerformanceStatRow[]): {
+  overall: DispatchPerformanceMetrics
+  whitelistTotal: number
+  suppliers: DispatchPerformanceSupplierNode[]
+} {
   type DriverBucket = {
     courierCode: string
     courierName: string
@@ -340,11 +354,31 @@ export async function queryDispatchPerformance(params: {
     problemWaybillNos: string[]
     before11UnmetWaybillNos: string[]
   }
+  type RouteBucket = {
+    routeCode: string
+    /** 本路由里不计入考核的单量，见 DispatchPerformanceRouteNode.whitelistTotal */
+    whitelistTotal: number
+    acc: Acc
+    drivers: Map<string, DriverBucket>
+  }
+  type SupplierBucket = {
+    supplierKey: string
+    supplierName: string
+    vendorCode: string
+    acc: Acc
+    /** 白名单单量，不进 acc */
+    whitelistTotal: number
+    routes: Map<string, RouteBucket>
+  }
 
+  const overallAcc = newAcc()
+  let overallWhitelistTotal = 0
   const suppliers = new Map<string, SupplierBucket>()
 
   for (const row of rows) {
-    addToAcc(overallAcc, row)
+    // 白名单不参与考核：站点汇总与供应商行都跳过，单量另记一笔用于解释口径差
+    if (row.isWhitelist) overallWhitelistTotal += row.total
+    else addToAcc(overallAcc, row)
 
     let supplier = suppliers.get(row.supplierKey)
     if (!supplier) {
@@ -353,17 +387,20 @@ export async function queryDispatchPerformance(params: {
         supplierName: row.supplierName || row.supplierKey,
         vendorCode: row.vendorCode,
         acc: newAcc(),
+        whitelistTotal: 0,
         routes: new Map(),
       }
       suppliers.set(row.supplierKey, supplier)
     }
-    addToAcc(supplier.acc, row)
+    if (row.isWhitelist) supplier.whitelistTotal += row.total
+    else addToAcc(supplier.acc, row)
 
     let route = supplier.routes.get(row.routeCode)
     if (!route) {
-      route = { routeCode: row.routeCode, acc: newAcc(), drivers: new Map() }
+      route = { routeCode: row.routeCode, whitelistTotal: 0, acc: newAcc(), drivers: new Map() }
       supplier.routes.set(row.routeCode, route)
     }
+    if (row.isWhitelist) route.whitelistTotal += row.total
     addToAcc(route.acc, row)
 
     let driver = route.drivers.get(row.courierCode)
@@ -391,6 +428,10 @@ export async function queryDispatchPerformance(params: {
     const unmet = (x: Acc) => x.total - (x.exitMetSignMet + x.exitUnmetSignMet)
     return unmet(b.acc) - unmet(a.acc) || b.acc.total - a.acc.total
   }
+  // 整条都不考核的路由沉到末尾，别挤在最差的那几条前面；部分白名单的仍按未达标排
+  const fullyWhitelisted = (r: RouteBucket) => r.acc.total > 0 && r.whitelistTotal >= r.acc.total
+  const byUnmetWhitelistLast = (a: RouteBucket, b: RouteBucket) =>
+    Number(fullyWhitelisted(a)) - Number(fullyWhitelisted(b)) || byUnmet(a, b)
 
   const supplierNodes: DispatchPerformanceSupplierNode[] = [...suppliers.values()]
     .sort(byUnmet)
@@ -398,11 +439,13 @@ export async function queryDispatchPerformance(params: {
       supplierKey: supplier.supplierKey,
       supplierName: supplier.supplierName,
       vendorCode: supplier.vendorCode,
+      whitelistTotal: supplier.whitelistTotal,
       ...toMetrics(supplier.acc),
       routes: [...supplier.routes.values()]
-        .sort(byUnmet)
+        .sort(byUnmetWhitelistLast)
         .map((route) => ({
           routeCode: route.routeCode,
+          whitelistTotal: route.whitelistTotal,
           ...toMetrics(route.acc),
           drivers: [...route.drivers.values()]
             .sort(byUnmet)
@@ -419,12 +462,40 @@ export async function queryDispatchPerformance(params: {
     }))
 
   return {
+    overall: toMetrics(overallAcc),
+    whitelistTotal: overallWhitelistTotal,
+    suppliers: supplierNodes,
+  }
+}
+
+/**
+ * 查询区间内的三层结果。区间跨多天时同一 (supplier, route, courier) 会有多行，按维度累加。
+ */
+export async function queryDispatchPerformance(params: {
+  stationCode: string
+  startDate: string
+  endDate: string
+  supplierKeys?: string[]
+}): Promise<DispatchPerformanceQueryResult> {
+  const { stationCode, startDate, endDate, supplierKeys } = params
+  const db = getDb()
+  const t = schema.dispatchPerformanceDailyStats
+
+  const conditions = [
+    eq(t.stationCode, stationCode),
+    gte(t.arrivalDate, startDate),
+    lte(t.arrivalDate, endDate),
+  ]
+  if (supplierKeys?.length) conditions.push(inArray(t.supplierKey, supplierKeys))
+
+  const rows = await db.select().from(t).where(and(...conditions))
+
+  return {
     stationCode,
     startDate,
     endDate,
-    arrivalDates,
-    overall: toMetrics(overallAcc),
-    suppliers: supplierNodes,
+    arrivalDates: [...new Set(rows.map((r) => r.arrivalDate))].sort(),
+    ...buildDispatchPerformanceTree(rows),
   }
 }
 

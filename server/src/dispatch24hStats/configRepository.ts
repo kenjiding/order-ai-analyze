@@ -180,6 +180,11 @@ function countSupplierUnits(
  *
  * 两步走：先按站点取 max(arrival_date)，再只聚合那一天的格子——
  * 直接把全部历史行拉回来在内存里挑最新，站点一多就是无谓的全表扫描。
+ *
+ * **两步都要排除白名单格子**：这里出的是列表页那两个率，口径必须与详情页的供应商行一致
+ * （详情页只在路由码/司机两层展示白名单，见 queryDispatchPerformance）。
+ * 只在第二步排除是不够的——那样某天若只有白名单数据，max() 仍会选中它，
+ * 聚合却是空的，这一行会变成「有日期没数据」。
  */
 async function loadLatestSnapshots(
   stationCodes: string[],
@@ -192,9 +197,10 @@ async function loadLatestSnapshots(
   const db = getDb()
   const t = schema.dispatchPerformanceDailyStats
 
+  const assessed = [inArray(t.stationCode, stationCodes), eq(t.isWhitelist, false)]
   const scope = dispatchSettledOnly
-    ? and(inArray(t.stationCode, stationCodes), eq(t.dispatchSettled, true))
-    : inArray(t.stationCode, stationCodes)
+    ? and(...assessed, eq(t.dispatchSettled, true))
+    : and(...assessed)
 
   const latestDates = await db
     .select({ stationCode: t.stationCode, arrivalDate: sql<string>`max(${t.arrivalDate})` })
@@ -224,7 +230,7 @@ async function loadLatestSnapshots(
       dispatchSettled: sql<boolean>`bool_and(${t.dispatchSettled})`,
     })
     .from(t)
-    .where(sql`(${t.stationCode}, ${t.arrivalDate}) IN (${pairs})`)
+    .where(and(sql`(${t.stationCode}, ${t.arrivalDate}) IN (${pairs})`, eq(t.isWhitelist, false)))
     .groupBy(t.stationCode, t.arrivalDate)
 
   for (const row of rows) {

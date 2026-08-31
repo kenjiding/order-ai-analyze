@@ -477,6 +477,13 @@
       "when": 1785700000039,
       "tag": "0067_dispatch_performance_settle_time",
       "breakpoints": true
+    },
+    {
+      "idx": 68,
+      "version": "7",
+      "when": 1785700000040,
+      "tag": "0068_dispatch_performance_whitelist_cells",
+      "breakpoints": true
     }
   ]
 }

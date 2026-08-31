@@ -840,6 +840,13 @@ export const dispatchPerformanceDailyStats = pgTable(
     routeCode: varchar('route_code', { length: 128 }).notNull().default(''),
     courierCode: varchar('courier_code', { length: 64 }).notNull().default(''),
     courierName: varchar('courier_name', { length: 255 }).notNull().default(''),
+    /**
+     * 该格子的路由码命中了供应商配置的路由码白名单。
+     *
+     * 白名单路由「不参与考核」但要看得见：路由码/司机两层照常展示各自指标，
+     * 供应商行与站点汇总在累加时跳过这些格子（见 queryDispatchPerformance）。
+     */
+    isWhitelist: boolean('is_whitelist').notNull().default(false),
 
     total: integer('total').notNull().default(0),
     /**

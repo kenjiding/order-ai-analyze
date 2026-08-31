@@ -1,4 +1,4 @@
-import { Table, Tag, Empty } from 'antd'
+import { Table, Tag, Tooltip, Empty } from 'antd'
 import type { ColumnsType } from 'antd/es/table'
 import { QuadrantBar, QuadrantLegend } from './QuadrantBar'
 import type {
@@ -44,6 +44,29 @@ function RateCell({
     <span className={`tabular-nums font-medium ${rateColor(rate, alertPct, targetPct)}`}>
       {rate.toFixed(2)}%
     </span>
+  )
+}
+
+/**
+ * 白名单标记：该路由在供应商配置的路由码白名单里，不参与考核。
+ * 区间内改过配置时只有部分天数不计入，此时必须说清是「部分」，
+ * 否则用户会以为整条路由都没算进供应商的率。
+ */
+function WhitelistTag({ whitelistTotal, total }: { whitelistTotal: number; total: number }) {
+  if (whitelistTotal <= 0) return null
+  const partial = whitelistTotal < total
+  return (
+    <Tooltip
+      title={
+        partial
+          ? `本区间内该路由有 ${whitelistTotal} / ${total} 单落在白名单上（中途改过白名单配置）：这部分没有计入上面供应商行与站点汇总的两个率，其余照常计入。`
+          : '该路由在供应商配置的路由码白名单里：本行指标照常统计，但不计入上面供应商行与站点汇总的两个率。'
+      }
+    >
+      <Tag color="default" className="m-0 text-xs">
+        {partial ? `白名单 · ${whitelistTotal} 单不计入` : '白名单 · 不计入'}
+      </Tag>
+    </Tooltip>
   )
 }
 
@@ -207,12 +230,16 @@ function RouteTable({ routes }: { routes: DispatchRouteNode[] }) {
     {
       title: '路由码',
       dataIndex: 'routeCode',
-      render: (routeCode: string) =>
-        routeCode ? (
-          <span className="font-mono text-slate-800">{routeCode}</span>
-        ) : (
-          <span className="text-slate-500">（无路由码）</span>
-        ),
+      render: (routeCode: string, row) => (
+        <div className="flex items-center gap-2">
+          {routeCode ? (
+            <span className="font-mono text-slate-800">{routeCode}</span>
+          ) : (
+            <span className="text-slate-500">（无路由码）</span>
+          )}
+          <WhitelistTag whitelistTotal={row.whitelistTotal} total={row.total} />
+        </div>
+      ),
     },
     ...metricColumns<DispatchRouteNode>(),
   ]
@@ -246,6 +273,12 @@ export function PerformanceBreakdownTable({
         <div className="min-w-0">
           <div className="truncate font-medium text-slate-900">{name}</div>
           <div className="font-mono text-xs text-slate-400">{row.vendorCode}</div>
+          {/* 展开后各路由之和会大于本行 total，这里把差额说清楚，免得被当成算错 */}
+          {row.whitelistTotal > 0 ? (
+            <div className="mt-0.5 text-xs text-slate-400">
+              另有 {row.whitelistTotal} 单白名单路由，未计入本行
+            </div>
+          ) : null}
         </div>
       ),
     },
