@@ -477,12 +477,19 @@ export async function fetchWaybillDetailsIncremental(input: {
   label: string
   tz: AusTz
   cachedByWaybillNo: Map<string, Dispatch24hWaybillRow>
+  /**
+   * 强制重拉到件索引，忽略 DB 缓存。
+   * 缓存里的索引可能是「到件日当天」被别的功能（司机地图查今天）写下的半截清单，
+   * 之后永不刷新。要求分母准确的场景（出仓派签达成分析的结算）必须传 true。
+   */
+  forceIndexRefresh?: boolean
 }): Promise<IncrementalWaybillFetchSuccess | InboundWaybillFetchError> {
   const indexResult = await getOrFetchInboundWaybillNos({
     token: input.token,
     stationCode: input.stationCode,
     dateStr: input.dateStr,
     label: `${input.label} 到件索引`,
+    forceRefresh: input.forceIndexRefresh,
   })
   if (!indexResult.ok) return indexResult
 

@@ -22,7 +22,6 @@ export type EfficiencyAttendanceComputationSettings = Pick<
   | 'breakCapMinutes'
   | 'splitThresholdMinutes'
   | 'minSingleScanSessionMinutes'
-  | 'minDayScanCount'
 >
 
 /** @deprecated 使用 EfficiencyAttendanceComputationSettings */
@@ -200,7 +199,6 @@ function pickComputationSettings(settings: ScanSettings): EfficiencyAttendanceCo
     breakCapMinutes: settings.breakCapMinutes,
     splitThresholdMinutes: settings.splitThresholdMinutes,
     minSingleScanSessionMinutes: settings.minSingleScanSessionMinutes,
-    minDayScanCount: settings.minDayScanCount,
   }
 }
 

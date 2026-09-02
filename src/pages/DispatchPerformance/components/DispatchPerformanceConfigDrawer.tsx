@@ -140,6 +140,9 @@ export function DispatchPerformanceConfigDrawer({
           onChange={setPushConfigIds}
           disabled={saving}
           catalogLoading={catalogLoading}
+          // 统计不推送任何消息，没配 Webhook / 飞书群的供应商也必须能勾（后端只要求 vendorCode，
+          // 见 dailyStatsJob.resolveStationTargets）；沿用推送口径会让那家的单永久缺失
+          requirePushable={false}
           description="只统计这里勾选的供应商"
           footnote="漏勾的那家历史数据会永久缺失（结算不回补），请对照该站点实际承运商核对。"
         />

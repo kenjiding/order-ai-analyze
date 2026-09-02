@@ -215,8 +215,8 @@ export default function DispatchPerformanceDetailPage() {
         <Alert
           type="warning"
           showIcon
-          message={`以下到件日没有数据：${v.missingDates.join('、')}`}
-          description="要么当天不分拣、本就没有到件，要么结算任务没跑到。数据由每日定时任务产出，页面不触发重算。"
+          message={`以下到件日的结算任务没跑到：${v.missingDates.join('、')}`}
+          description="台账上没有这几天的出仓结算记录。已过期的批次不回补（回补会读到退仓重派后的状态），可点「立刻统计」看还能不能补上。"
         />
       ) : null}
 

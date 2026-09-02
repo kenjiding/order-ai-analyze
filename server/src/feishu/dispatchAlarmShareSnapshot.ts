@@ -28,6 +28,8 @@ export type DispatchAlarmSharePayload = {
   problemCount: number
   alertThresholdPct: number
   drivers: Dispatch24hDriverStat[]
+  /** 未分配司机（尚未派件）的那部分单，见 Dispatch24hVendorStat.unassigned */
+  unassigned: Dispatch24hDriverStat | null
   /** 是否在落地页展示「司机地图」组件 */
   showDriverMap: boolean
 }
@@ -63,6 +65,7 @@ export async function createDispatchAlarmShareSnapshot(params: {
   problemCount: number
   alertThresholdPct: number
   drivers: Dispatch24hDriverStat[]
+  unassigned: Dispatch24hDriverStat | null
   showDriverMap: boolean
 }): Promise<{ token: string; url: string } | null> {
   const {
@@ -78,6 +81,7 @@ export async function createDispatchAlarmShareSnapshot(params: {
     problemCount,
     alertThresholdPct,
     drivers,
+    unassigned,
     showDriverMap,
   } = params
   const urlProbe = buildDispatchAlarmShareUrl('probe')
@@ -100,6 +104,7 @@ export async function createDispatchAlarmShareSnapshot(params: {
     problemCount,
     alertThresholdPct,
     drivers,
+    unassigned,
     showDriverMap,
   }
 
@@ -174,6 +179,7 @@ export async function loadDispatchAlarmShareSnapshot(
     problemCount: typeof payload.problemCount === 'number' ? payload.problemCount : 0,
     alertThresholdPct: typeof payload.alertThresholdPct === 'number' ? payload.alertThresholdPct : 0,
     drivers: Array.isArray(payload.drivers) ? payload.drivers : [],
+    unassigned: payload.unassigned ?? null,
     showDriverMap: payload.showDriverMap === true,
     createdAt: new Date(row.createdAt).toISOString(),
   }

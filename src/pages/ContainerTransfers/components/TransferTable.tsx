@@ -19,7 +19,10 @@ type Props = {
   pageSize: number
   onPageChange: (page: number) => void
   canActAs: (accountId: string) => boolean
+  /** 有代确认权限时，接收方无系统账号的单子才给「按回单确认」入口 */
+  canProxyConfirm: boolean
   onConfirm: (transfer: Transfer) => void
+  onProxyConfirm: (transfer: Transfer) => void
   onDispute: (transfer: Transfer) => void
   onTimeline: (transfer: Transfer) => void
   onNegotiate: (transfer: Transfer) => void
@@ -35,7 +38,9 @@ export function TransferTable({
   pageSize,
   onPageChange,
   canActAs,
+  canProxyConfirm,
   onConfirm,
+  onProxyConfirm,
   onDispute,
   onTimeline,
   onNegotiate,
@@ -50,6 +55,19 @@ export function TransferTable({
     if (record.status === 'PENDING_RECEIVER' && isReceiver) {
       items.push({ key: 'confirm', label: '确认收货', onClick: () => onConfirm(record) })
       items.push({ key: 'dispute', label: '差异申报', onClick: () => onDispute(record) })
+    }
+    // 接收方登不进系统，这单只能由转出方凭线下回单推进，否则永久卡住并占着可用量
+    if (
+      record.status === 'PENDING_RECEIVER' &&
+      record.toAccountIsExternal &&
+      isSender &&
+      canProxyConfirm
+    ) {
+      items.push({
+        key: 'proxy-confirm',
+        label: '按回单确认',
+        onClick: () => onProxyConfirm(record),
+      })
     }
     if (record.status === 'DISPUTED' && (isSender || isReceiver)) {
       items.push({ key: 'negotiate', label: '协商', onClick: () => onNegotiate(record) })
@@ -95,9 +113,13 @@ export function TransferTable({
       title: '状态',
       dataIndex: 'status',
       key: 'status',
-      width: 120,
-      render: (value: Transfer['status']) => (
-        <Tag color={transferStatusColor[value]}>{transferStatusLabel[value]}</Tag>
+      width: 158,
+      render: (value: Transfer['status'], record) => (
+        <span className="inline-flex flex-wrap items-center gap-1">
+          <Tag color={transferStatusColor[value]}>{transferStatusLabel[value]}</Tag>
+          {/* 没有对方的确认动作，不能和对方本人确认的单子混在一起看 */}
+          {record.proxyConfirmed ? <Tag color="cyan">代确认</Tag> : null}
+        </span>
       ),
     },
     { title: '转出方', dataIndex: 'fromAccountName', key: 'fromAccountName', width: 150 },
@@ -120,7 +142,7 @@ export function TransferTable({
             <span className="text-slate-600">{value}</span>
           </Tooltip>
         ) : (
-          <span className="text-slate-400">—</span>
+          <span className="text-slate-400">-</span>
         ),
     },
     {

@@ -196,6 +196,8 @@ export type SettleOneResult = {
   cellCount: number
   /** 本次落库的格子，供调用方汇总展示，省得为了出一行摘要再查一次库 */
   cells: DispatchPerformanceCell[]
+  /** 写库前复核发现这一趟已被另一条路径跑掉，本次什么都没做 */
+  skipped: boolean
 }
 
 /**
@@ -222,7 +224,14 @@ export async function computeOneArrivalDate(input: {
   const { token, target, arrivalDate, stage } = input
   const { stationCode, tz, regionCode, scopes, supplierUnits } = target
 
-  const fetched = await fetchDriverWaybills(token, { stationCode, dateStr: arrivalDate, regionCode })
+  // 强制重拉到件索引：缓存里那份可能是「到件日当天」被司机地图等写下的半截清单，
+  // 之后永不刷新，直接用会让两个率的分母静默偏小且不回补。
+  const fetched = await fetchDriverWaybills(token, {
+    stationCode,
+    dateStr: arrivalDate,
+    regionCode,
+    forceIndexRefresh: true,
+  })
   if (!fetched.ok) throw new Error(`运单查询失败: ${fetched.message}`)
 
   const rows = fetched.data as Dispatch24hWaybillRow[]
@@ -252,6 +261,23 @@ export async function settleOneArrivalDate(input: {
   provisional?: boolean
 }): Promise<SettleOneResult> {
   const { target, arrivalDate, stage, provisional } = input
+
+  // 写库前复核台账：cron 与「立刻统计」并行时，pending 列表是在对方写库之前算出来的。
+  // 若不复核，手动的出仓趟会把 cron 刚落的四象限 delete 掉重写成 0，而 dispatch_settled_at
+  // 已盖章、派签趟不会再跑 —— 那天的派签率就永远停在「结算中」。
+  const alreadyDone = await listSettledArrivalDates(target.stationCode, [arrivalDate], stage)
+  if (alreadyDone.has(arrivalDate)) {
+    return {
+      stationCode: target.stationCode,
+      arrivalDate,
+      stage,
+      waybillCount: 0,
+      cellCount: 0,
+      cells: [],
+      skipped: true,
+    }
+  }
+
   const { cells, supplierMeta, waybillCount } = await computeOneArrivalDate(input)
 
   // 拉到了运单却一个格子都没聚合出来 = 所选供应商与这天的实际承运商对不上（漏勾，
@@ -275,7 +301,15 @@ export async function settleOneArrivalDate(input: {
     provisional,
   })
 
-  return { stationCode: target.stationCode, arrivalDate, stage, waybillCount, cellCount, cells }
+  return {
+    stationCode: target.stationCode,
+    arrivalDate,
+    stage,
+    waybillCount,
+    cellCount,
+    cells,
+    skipped: false,
+  }
 }
 
 /**
@@ -286,6 +320,28 @@ export async function settleOneArrivalDate(input: {
 export async function resolveStationTz(stationCode: string): Promise<AusTz> {
   const targets = await resolveStationTargets()
   return targets.find((t) => t.stationCode === stationCode)?.tz ?? resolveRegionTz(null)
+}
+
+let settleChain: Promise<unknown> = Promise.resolve()
+
+/**
+ * 结算串行锁。
+ *
+ * cron 的 runDispatchPerformanceDailyStats 与「立刻统计」作业同在 worker 进程里各跑各的，
+ * 作业队列只保证作业之间串行、拦不住 cron。两边对同一个 (station, arrivalDate) 做
+ * delete+insert 会互相清数据：手动的出仓趟可能把 cron 刚落的四象限抹成 0，而台账上
+ * dispatch_settled_at 已盖章、派签趟不会再跑，那天的派签率就永远停在「结算中」。
+ *
+ * 判重读台账也必须在锁内，否则拿到的是对方写库前的旧状态。
+ */
+export function withSettleLock<T>(fn: () => Promise<T>): Promise<T> {
+  // 前一个环节成功或失败都继续排队，不让一次异常卡死整条链
+  const next = settleChain.then(fn, fn)
+  settleChain = next.then(
+    () => undefined,
+    () => undefined,
+  )
+  return next
 }
 
 let isRunning = false
@@ -303,6 +359,17 @@ export async function runDispatchPerformanceDailyStats(): Promise<void> {
   isRunning = true
   try {
     const now = new Date()
+    // 每分钟触发一次，绝大多数分钟无事可做：先用配置行自己的 regionCode 做便宜的到点粗筛，
+    // 命中了再去 resolveStationTargets 拉全量供应商配置建索引。
+    // regionCode 为空/global 时时区要靠所选供应商兜底，这里判不出来，一律放行走完整路径。
+    const enabled = await listEnabledDispatchPerformanceConfigs()
+    const maybeDue = enabled.some((c) => {
+      const region = c.regionCode?.trim()
+      if (!region || region === LEGACY_GLOBAL_SUPPLIER_REGION_CODE) return true
+      return isSettleTriggerDue(c.settleTime, resolveRegionTz(region), now)
+    })
+    if (!maybeDue) return
+
     const allTargets = await resolveStationTargets()
     if (allTargets.length === 0) return
 
@@ -320,8 +387,9 @@ export async function runDispatchPerformanceDailyStats(): Promise<void> {
     let failedCount = 0
 
     for (const target of targets) {
-      // 派签趟先跑：它结算的是更早的批次，会把出仓趟先前写下的那一天整体覆盖成完整数据。
-      // 反过来先跑出仓趟的话，同一天若两趟都待办（比如补跑），出仓趟会把刚补好的派签结果冲掉。
+      // 派签趟先跑：落库是「先删后插」，谁后写谁说了算。同一天若两趟都待办（补跑时会发生），
+      // 派签趟先跑并顺手盖上 exit_settled_at，下面的出仓趟就会被台账判重挡掉，
+      // 不会用 rule=null 把刚补好的四象限清成 0。
       for (const stage of ['dispatch', 'exit'] as const) {
         // 周末不开仓分拣、没有到件批次，不为它去 iMile 空拉一次
         const settled = (
@@ -359,7 +427,9 @@ export async function runDispatchPerformanceDailyStats(): Promise<void> {
 
         for (const arrivalDate of toSettle) {
           try {
-            const result = await settleOneArrivalDate({ token, target, arrivalDate, stage })
+            const result = await withSettleLock(() =>
+              settleOneArrivalDate({ token, target, arrivalDate, stage }),
+            )
             settledCount += 1
             console.log(
               `${LABEL} ✓ station=${result.stationCode} date=${result.arrivalDate} stage=${stage} waybills=${result.waybillCount} cells=${result.cellCount}`,

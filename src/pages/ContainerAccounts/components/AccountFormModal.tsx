@@ -7,7 +7,11 @@
  */
 import { useEffect, useState } from 'react'
 import { Alert, Button, Input, Modal, Select, Switch } from 'antd'
-import { ACCOUNT_KINDS, accountKindLabel } from '../../../containerManagement/constants'
+import {
+  ACCOUNT_KINDS,
+  accountKindLabel,
+  defaultIsExternal,
+} from '../../../containerManagement/constants'
 import {
   DEFAULT_ACCOUNT_PUSH_NOTIFY,
   type AccountPushNotify,
@@ -73,6 +77,9 @@ export function AccountFormModal({ open, editing, users, submitting, onCancel, o
   const isEditing = editing !== null
   const [name, setName] = useState('')
   const [kind, setKind] = useState<AccountKind>('CUSTOMER')
+  const [isExternal, setIsExternal] = useState(false)
+  /** 用户手动动过开关后就别再跟着类型跑，否则他改一下类型勾选被无声冲掉 */
+  const [externalTouched, setExternalTouched] = useState(false)
   const [userIds, setUserIds] = useState<string[]>([])
   const [pushNotify, setPushNotify] = useState<AccountPushNotify>(DEFAULT_ACCOUNT_PUSH_NOTIFY)
   const [error, setError] = useState<string | null>(null)
@@ -81,6 +88,8 @@ export function AccountFormModal({ open, editing, users, submitting, onCancel, o
     if (!open) return
     setName(editing?.name ?? '')
     setKind(editing?.kind ?? 'CUSTOMER')
+    setIsExternal(editing ? editing.isExternal : defaultIsExternal('CUSTOMER'))
+    setExternalTouched(false)
     setUserIds(editing?.boundUserIds ?? [])
     setPushNotify(editing?.pushNotify ?? DEFAULT_ACCOUNT_PUSH_NOTIFY)
     setError(null)
@@ -97,7 +106,7 @@ export function AccountFormModal({ open, editing, users, submitting, onCancel, o
       return
     }
     setError(null)
-    await onSubmit({ name: trimmed, kind, userIds, pushNotify })
+    await onSubmit({ name: trimmed, kind, isExternal, userIds, pushNotify })
   }
 
   return (
@@ -143,13 +152,31 @@ export function AccountFormModal({ open, editing, users, submitting, onCancel, o
             <Field label="类型" required>
               <Select
                 value={kind}
-                onChange={setKind}
+                onChange={(next) => {
+                  setKind(next)
+                  if (!externalTouched) setIsExternal(defaultIsExternal(next))
+                }}
                 options={ACCOUNT_KINDS.map((item) => ({
                   value: item,
                   label: accountKindLabel[item],
                 }))}
               />
             </Field>
+            <div className="sm:col-span-2">
+              <div className="flex items-start gap-3 rounded-lg bg-[var(--admin-surface-soft)] px-3 py-2.5">
+                <Switch
+                  className="mt-0.5 shrink-0"
+                  checked={isExternal}
+                  onChange={(next) => {
+                    setIsExternal(next)
+                    setExternalTouched(true)
+                  }}
+                />
+                <div className="min-w-0">
+                  <div className="text-sm text-slate-800">该站点方没有本系统账号</div>
+                </div>
+              </div>
+            </div>
           </div>
         </Section>
 

@@ -48,9 +48,34 @@ export function usePackageLossMonitorPage() {
   const [importMeta, setImportMeta] = useState<PackageLossImportMeta | null>(null)
   const [analysisRows, setAnalysisRows] = useState<AnalysisRow[]>([])
   const [analyzeProgress, setAnalyzeProgress] = useState<AnalyzeProgress | null>(null)
+  const [isPaused, setIsPaused] = useState(false)
   const [postFilterDraft, setPostFilterDraft] = useState<PostFilterConfig>(DEFAULT_POST_FILTER_CONFIG)
   const [appliedPostFilter, setAppliedPostFilter] = useState<PostFilterConfig>(DEFAULT_POST_FILTER_CONFIG)
   const analyzeRunIdRef = useRef(0)
+  const isPausedRef = useRef(false)
+  const pauseResolveRef = useRef<(() => void) | null>(null)
+
+  /** 逐单分析循环每轮开始前调用；暂停期间挂起，直到 onResumeAnalyze 被调用 */
+  const waitWhilePaused = useCallback(async () => {
+    while (isPausedRef.current) {
+      await new Promise<void>((resolve) => {
+        pauseResolveRef.current = resolve
+      })
+    }
+  }, [])
+
+  /** 清除暂停状态，并唤醒仍挂起的循环（新一轮分析或导入打断时必须调用，否则旧循环永远卡住） */
+  const clearPause = useCallback(() => {
+    isPausedRef.current = false
+    setIsPaused(false)
+    pauseResolveRef.current?.()
+    pauseResolveRef.current = null
+  }, [])
+
+  const onPauseAnalyze = useCallback(() => {
+    isPausedRef.current = true
+    setIsPaused(true)
+  }, [])
 
   const filteredAnalysisRows = useMemo(
     () => applyPostFilter(analysisRows, appliedPostFilter),
@@ -82,6 +107,7 @@ export function usePackageLossMonitorPage() {
     }
 
     analyzeRunIdRef.current += 1
+    clearPause()
     setIsQuerying(false)
     setIsAnalyzing(false)
     setQueryMeta(null)
@@ -91,7 +117,7 @@ export function usePackageLossMonitorPage() {
     setPostFilterDraft(DEFAULT_POST_FILTER_CONFIG)
     setAppliedPostFilter(DEFAULT_POST_FILTER_CONFIG)
     showToast(`已导入 ${parsed.rows.length} 单分析结果`, 'success')
-  }, [])
+  }, [clearPause])
 
   const onAnalyzeInHub = useCallback(async () => {
     const token = imileToken.trim()
@@ -129,6 +155,7 @@ export function usePackageLossMonitorPage() {
     analyzeRunIdRef.current = runId
     const isStaleRun = () => analyzeRunIdRef.current !== runId
 
+    clearPause()
     setIsQuerying(true)
     resetResultView()
 
@@ -157,6 +184,8 @@ export function usePackageLossMonitorPage() {
     let succeeded = 0
     let failed = 0
     for (const orderNo of waybillNos) {
+      if (isStaleRun()) return
+      await waitWhilePaused()
       if (isStaleRun()) return
       setAnalysisRows((prev) =>
         prev.map((row) =>
@@ -209,6 +238,7 @@ export function usePackageLossMonitorPage() {
     }
 
     if (isStaleRun()) return
+    clearPause()
     setIsAnalyzing(false)
     if (failed === 0) {
       showToast('分析完成', 'success')
@@ -217,7 +247,7 @@ export function usePackageLossMonitorPage() {
     } else {
       showToast(`分析结束：${succeeded} 单成功，${failed} 单失败`, 'error')
     }
-  }, [dateRange, imileToken, lossTimeoutDays, resetResultView, stationCode])
+  }, [clearPause, dateRange, imileToken, lossTimeoutDays, resetResultView, stationCode, waitWhilePaused])
 
   return {
     activeTab,
@@ -230,6 +260,9 @@ export function usePackageLossMonitorPage() {
     setLossTimeoutDays,
     isQuerying,
     isAnalyzing,
+    isPaused,
+    onPauseAnalyze,
+    onResumeAnalyze: clearPause,
     queryMeta,
     importMeta,
     analysisRows,

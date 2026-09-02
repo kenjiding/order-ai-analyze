@@ -2,6 +2,7 @@ import { Router, type Request, type Response } from 'express'
 import type { AuthenticatedRequest } from '../auth/middleware'
 import {
   listDispatchPerformanceSuppliers,
+  listSettledArrivalDates,
   queryDispatchPerformance,
 } from '../dispatch24hStats/repository'
 import {
@@ -15,7 +16,11 @@ import {
 } from '../dispatch24hStats/configRepository'
 import { resolveStationTz } from '../dispatch24hStats/dailyStatsJob'
 import { DEFAULT_SETTLE_TIME, isValidSettleTime } from '../dispatch24hStats/settleTime'
-import { resolveExitSettledArrivalDates } from '../dispatch24hStats/settledArrivalDates'
+import {
+  isWorkdayArrival,
+  resolveExitSettledArrivalDates,
+} from '../dispatch24hStats/settledArrivalDates'
+import { resolveRegionTz } from '../imile/ausTimezone'
 import { resolveEnqueueRegionCode, sendJobAccessDenied } from '../jobs/access'
 import { DISPATCH_PERFORMANCE_SETTLE_JOB_TYPE } from '../jobs/handlers'
 import { enqueueJob, listJobs } from '../jobs/queue'
@@ -176,8 +181,9 @@ dispatchPerformanceRouter.delete('/configs/:id', async (req: Request, res: Respo
  * 某条配置对应站点的三层达成结果：供应商 → 路由码 → 司机。
  * 数据全部由每日结算任务产出，本接口只读不算。
  *
- * settledDates 给的是「日历上出仓趟已该跑完」的到件日 —— 它是两趟里更早的那趟，
- * 一个批次只要过了它就该在表里有行了。前端据此区分「这天真的没到件」和「结算任务没跑」。
+ * missingDates 给的是「日历上出仓趟已该跑完、台账里却没有跑过记录」的到件日 —— 只有这种
+ * 才是真的漏跑。不能拿「日度表有没有行」去比：周末不分拣本就没有批次，不分拣的工作日
+ * 聚合出 0 个格子也照样是跑过的，还有供应商筛选会让有数据的天看起来也是空的。
  */
 dispatchPerformanceRouter.get('/configs/:id/data', async (req: Request, res: Response) => {
   const range = parseRange(req.query as Record<string, unknown>)
@@ -192,14 +198,24 @@ dispatchPerformanceRouter.get('/configs/:id/data', async (req: Request, res: Res
       ...range,
       supplierKeys: parseSupplierKeys(req.query.supplierKey ?? req.query.supplierKeys),
     })
-    const tz = await resolveStationTz(config.stationCode)
-    const settledDates = resolveExitSettledArrivalDates(Date.now(), tz, MAX_RANGE_DAYS).filter(
-      (d) => d >= range.startDate && d <= range.endDate,
+    // 时区必须与结算任务一致；本行 regionCode 就是结算取的那个州，只有空/global 才需要
+    // 回落到 resolveStationTargets 那条重路径（全量供应商配置 + 建索引）
+    const configRegion = config.regionCode?.trim()
+    const tz =
+      configRegion && configRegion !== LEGACY_GLOBAL_SUPPLIER_REGION_CODE
+        ? resolveRegionTz(configRegion)
+        : await resolveStationTz(config.stationCode)
+
+    // 周末不分拣、没有到件批次，结算任务本就跳过（isWorkdayArrival），不算漏跑
+    const dueDates = resolveExitSettledArrivalDates(Date.now(), tz, MAX_RANGE_DAYS).filter(
+      (d) => d >= range.startDate && d <= range.endDate && isWorkdayArrival(d),
     )
-    const [supplierOptions, recentBatches] = await Promise.all([
+    const [supplierOptions, recentBatches, exitSettled] = await Promise.all([
       listDispatchPerformanceSuppliers({ stationCode: config.stationCode, ...range }),
       listRecentSettledBatches(config.stationCode),
+      listSettledArrivalDates(config.stationCode, dueDates, 'exit'),
     ])
+    const missingDates = dueDates.filter((d) => !exitSettled.has(d))
 
     return res.json({
       config: {
@@ -209,7 +225,7 @@ dispatchPerformanceRouter.get('/configs/:id/data', async (req: Request, res: Res
         isEnabled: config.isEnabled,
       },
       ...result,
-      settledDates,
+      missingDates,
       supplierOptions,
       recentBatches,
     })

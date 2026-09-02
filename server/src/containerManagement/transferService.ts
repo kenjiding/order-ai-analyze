@@ -38,8 +38,12 @@ export type TransferView = {
   status: string
   fromAccountId: string
   fromAccountName: string
+  /** 转出方在本系统无账号：归还单由内部人员代录 */
+  fromAccountIsExternal: boolean
   toAccountId: string
   toAccountName: string
+  /** 接收方在本系统无账号：借出单由转出方凭线下回单代确认 */
+  toAccountIsExternal: boolean
   items: TransferItemView[]
   declaredTotal: number
   receivedTotal: number | null
@@ -52,7 +56,12 @@ export type TransferView = {
   responseNote: string | null
   senderAcceptedAt: string | null
   respondedAt: string | null
+  /** 本单是我方凭线下回单代对方确认的，不是对方本人确认 */
+  proxyConfirmed: boolean
+  proxyEvidenceUrl: string | null
   createdByUsername: string | null
+  /** 确认/认可的操作人，时间线要区分「谁代了谁」 */
+  respondedByUsername: string | null
   createdAt: string
 }
 
@@ -98,6 +107,22 @@ function normalizeLineItems(lineItems: TransferLineInput[]): TransferLineInput[]
   return lineItems
 }
 
+/**
+ * 外部方（清关行、客户、CSP）的余额是衍生推算量，不是我们能核实的实物数：
+ * 系统上线前就借出去的存量、走系统外补的货，都会让它天然偏低。
+ * 用这个数去拦「容器已经回到我方仓库」的既成事实，结果是我方的真实入库反而记不进账。
+ * 所以他们作为转出方时不做可用量校验，余额允许为负 —— 负数正是「有多少借出没进系统」的对账信号。
+ * 我方仓库的余额是真实库存，校验一律照旧。
+ */
+async function isExternalAccount(tx: Tx, accountId: string): Promise<boolean> {
+  const rows = await tx
+    .select({ isExternal: schema.containerAccounts.isExternal })
+    .from(schema.containerAccounts)
+    .where(eq(schema.containerAccounts.id, accountId))
+    .limit(1)
+  return rows[0]?.isExternal === true
+}
+
 async function ensureBalanceRow(tx: Tx, accountId: string, containerType: string): Promise<void> {
   await tx
     .insert(schema.containerBalances)
@@ -136,6 +161,8 @@ async function applyBalances(
     quantity: number
     transferId: number
     actorUserId: string | null
+    /** 转出方是外部方：余额是推算量，扣成负数也要放行，见 isExternalAccount */
+    allowNegativeFrom?: boolean
   },
 ): Promise<void> {
   const { fromAccountId, toAccountId, containerType, quantity, transferId, actorUserId } = params
@@ -149,7 +176,7 @@ async function applyBalances(
   const fromRow = firstId === fromAccountId ? firstRow : secondRow
   const toRow = firstId === fromAccountId ? secondRow : firstRow
 
-  if (fromRow.quantity < quantity) {
+  if (!params.allowNegativeFrom && fromRow.quantity < quantity) {
     throw new ContainerBusinessError(
       `转出方「${labelOf(containerType)}」余额不足：当前 ${fromRow.quantity}，需要 ${quantity}`,
     )
@@ -193,13 +220,17 @@ async function applyBalances(
   })
 }
 
-/** 校验转出方可用量：在库数量减去已被待确认流转占用的数量 */
+/**
+ * 校验转出方可用量：在库数量减去已被待确认流转占用的数量。
+ * 外部方直接放行，理由见 isExternalAccount。
+ */
 async function assertAvailable(
   tx: Tx,
   fromAccountId: string,
   lineItems: TransferLineInput[],
   excludeTransferId?: number,
 ): Promise<void> {
+  if (await isExternalAccount(tx, fromAccountId)) return
   for (const item of lineItems) {
     const balance = await lockBalance(tx, fromAccountId, item.containerType)
     const conditions = [
@@ -254,10 +285,12 @@ async function createTransferInTx(
     throw new ContainerBusinessError('转出方与接收方不能相同')
   }
   const accounts = await tx
-    .select({ id: schema.containerAccounts.id })
+    .select({ id: schema.containerAccounts.id, isExternal: schema.containerAccounts.isExternal })
     .from(schema.containerAccounts)
     .where(inArray(schema.containerAccounts.id, [input.fromAccountId, input.toAccountId]))
   if (accounts.length !== 2) throw new ContainerBusinessError('站点账户不存在', 404)
+  const fromIsExternal =
+    accounts.find((account) => account.id === input.fromAccountId)?.isExternal === true
 
   const needsConfirm = transferKindNeedsReceiverConfirmation(input.kind)
   if (needsConfirm) {
@@ -298,6 +331,7 @@ async function createTransferInTx(
         quantity: item.quantity,
         transferId,
         actorUserId,
+        allowNegativeFrom: fromIsExternal,
       })
     }
   }
@@ -351,17 +385,25 @@ async function loadTransferForUpdate(tx: Tx, transferId: number) {
   return { transfer, items }
 }
 
-/** 无争议确认收货：按转出方发出数量全额入账 */
+/**
+ * 无争议确认收货：按转出方发出数量全额入账。
+ *
+ * proxy=true 是转出方凭线下回单代确认（接收方无系统账号），账务口径与接收方本人确认完全一致，
+ * 只额外打上 proxyConfirmed 标记与凭证，好让台账争议时能追溯到「这一单没有对方的确认动作」。
+ */
 export async function confirmTransfer(input: {
   transferId: number
   actorUserId: string | null
   responseNote?: string | null
+  proxy?: boolean
+  proxyEvidenceUrl?: string | null
 }): Promise<void> {
   await getDb().transaction(async (tx) => {
     const { transfer, items } = await loadTransferForUpdate(tx, input.transferId)
     if (transfer.status !== 'PENDING_RECEIVER') {
       throw new ContainerBusinessError('仅待接收方确认的记录可确认收货')
     }
+    const allowNegativeFrom = await isExternalAccount(tx, transfer.fromAccountId)
     for (const item of items) {
       await applyBalances(tx, {
         fromAccountId: transfer.fromAccountId,
@@ -370,6 +412,7 @@ export async function confirmTransfer(input: {
         quantity: item.declaredQuantity,
         transferId: transfer.id,
         actorUserId: input.actorUserId,
+        allowNegativeFrom,
       })
       await tx
         .update(schema.containerTransferItems)
@@ -384,6 +427,8 @@ export async function confirmTransfer(input: {
         responseNote: note ? note : null,
         respondedAt: new Date(),
         respondedBy: input.actorUserId,
+        proxyConfirmed: input.proxy === true,
+        proxyEvidenceUrl: input.proxy === true ? (input.proxyEvidenceUrl ?? null) : null,
       })
       .where(eq(schema.containerTransfers.id, transfer.id))
   })
@@ -484,6 +529,7 @@ export async function acceptSettlement(input: {
       return
     }
 
+    const allowNegativeFrom = await isExternalAccount(tx, transfer.fromAccountId)
     for (const item of items) {
       const quantity = item.receivedQuantity ?? 0
       await applyBalances(tx, {
@@ -493,6 +539,7 @@ export async function acceptSettlement(input: {
         quantity,
         transferId: transfer.id,
         actorUserId: input.actorUserId,
+        allowNegativeFrom,
       })
       await tx
         .update(schema.containerTransferItems)
@@ -624,8 +671,10 @@ function toTransferView(row: TransferRow, items: TransferItemView[]): TransferVi
     status: row.status,
     fromAccountId: row.fromAccountId,
     fromAccountName: row.fromAccountName,
+    fromAccountIsExternal: row.fromAccountIsExternal,
     toAccountId: row.toAccountId,
     toAccountName: row.toAccountName,
+    toAccountIsExternal: row.toAccountIsExternal,
     items,
     declaredTotal,
     receivedTotal: hasReceived
@@ -641,7 +690,10 @@ function toTransferView(row: TransferRow, items: TransferItemView[]): TransferVi
     responseNote: row.responseNote,
     senderAcceptedAt: row.senderAcceptedAt?.toISOString() ?? null,
     respondedAt: row.respondedAt?.toISOString() ?? null,
+    proxyConfirmed: row.proxyConfirmed,
+    proxyEvidenceUrl: row.proxyEvidenceUrl,
     createdByUsername: row.createdByUsername,
+    respondedByUsername: row.respondedByUsername,
     createdAt: row.createdAt.toISOString(),
   }
 }
@@ -649,6 +701,7 @@ function toTransferView(row: TransferRow, items: TransferItemView[]): TransferVi
 const fromAccountTable = alias(schema.containerAccounts, 'from_account')
 const toAccountTable = alias(schema.containerAccounts, 'to_account')
 const creatorTable = alias(schema.users, 'transfer_creator')
+const responderTable = alias(schema.users, 'transfer_responder')
 
 type TransferRow = {
   id: number
@@ -656,8 +709,10 @@ type TransferRow = {
   status: string
   fromAccountId: string
   fromAccountName: string
+  fromAccountIsExternal: boolean
   toAccountId: string
   toAccountName: string
+  toAccountIsExternal: boolean
   occurredAt: string
   note: string | null
   receiverReportReason: string | null
@@ -665,7 +720,10 @@ type TransferRow = {
   responseNote: string | null
   senderAcceptedAt: Date | null
   respondedAt: Date | null
+  proxyConfirmed: boolean
+  proxyEvidenceUrl: string | null
   createdByUsername: string | null
+  respondedByUsername: string | null
   createdAt: Date
 }
 
@@ -677,8 +735,10 @@ function transferSelectQuery(db: ReturnType<typeof getDb>) {
       status: schema.containerTransfers.status,
       fromAccountId: schema.containerTransfers.fromAccountId,
       fromAccountName: fromAccountTable.name,
+      fromAccountIsExternal: fromAccountTable.isExternal,
       toAccountId: schema.containerTransfers.toAccountId,
       toAccountName: toAccountTable.name,
+      toAccountIsExternal: toAccountTable.isExternal,
       occurredAt: schema.containerTransfers.occurredAt,
       note: schema.containerTransfers.note,
       receiverReportReason: schema.containerTransfers.receiverReportReason,
@@ -686,13 +746,17 @@ function transferSelectQuery(db: ReturnType<typeof getDb>) {
       responseNote: schema.containerTransfers.responseNote,
       senderAcceptedAt: schema.containerTransfers.senderAcceptedAt,
       respondedAt: schema.containerTransfers.respondedAt,
+      proxyConfirmed: schema.containerTransfers.proxyConfirmed,
+      proxyEvidenceUrl: schema.containerTransfers.proxyEvidenceUrl,
       createdByUsername: creatorTable.username,
+      respondedByUsername: responderTable.username,
       createdAt: schema.containerTransfers.createdAt,
     })
     .from(schema.containerTransfers)
     .innerJoin(fromAccountTable, eq(fromAccountTable.id, schema.containerTransfers.fromAccountId))
     .innerJoin(toAccountTable, eq(toAccountTable.id, schema.containerTransfers.toAccountId))
     .leftJoin(creatorTable, eq(creatorTable.id, schema.containerTransfers.createdBy))
+    .leftJoin(responderTable, eq(responderTable.id, schema.containerTransfers.respondedBy))
 }
 
 async function attachItems(rows: TransferRow[]): Promise<TransferView[]> {

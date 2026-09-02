@@ -151,12 +151,16 @@ function metricColumns<T extends DispatchMetrics>(): ColumnsType<T> {
   ]
 }
 
-function WaybillList({ label, nos }: { label: string; nos: string[] }) {
+/** count 是权威数量；nos 被服务端按司机封顶截断过（见 MAX_WAYBILL_NOS_PER_DRIVER） */
+function WaybillList({ label, nos, count }: { label: string; nos: string[]; count: number }) {
   if (nos.length === 0) return null
   return (
     <div className="space-y-1">
       <div className="text-xs font-medium text-slate-500">
-        {label}（{nos.length}）
+        {label}（{count}）
+        {nos.length < count ? (
+          <span className="ml-1 font-normal text-slate-400">仅显示前 {nos.length} 条</span>
+        ) : null}
       </div>
       <div className="flex flex-wrap gap-1">
         {nos.map((no) => (
@@ -180,10 +184,22 @@ function DriverDetail({ driver }: { driver: DispatchDriverNode }) {
   }
   return (
     <div className="space-y-3 px-4 py-3">
-      <WaybillList label="从未签收" nos={driver.neverSignedWaybillNos} />
-      <WaybillList label="超时签收" nos={driver.lateSignedWaybillNos} />
-      <WaybillList label="问题件" nos={driver.problemWaybillNos} />
-      <WaybillList label="未在11点前出仓" nos={driver.before11UnmetWaybillNos} />
+      <WaybillList
+        label="从未签收"
+        nos={driver.neverSignedWaybillNos}
+        count={driver.neverSignedCount}
+      />
+      <WaybillList
+        label="超时签收"
+        nos={driver.lateSignedWaybillNos}
+        count={driver.lateSignedCount}
+      />
+      <WaybillList label="问题件" nos={driver.problemWaybillNos} count={driver.problemCount} />
+      <WaybillList
+        label="未在11点前出仓"
+        nos={driver.before11UnmetWaybillNos}
+        count={driver.total - driver.before11Met}
+      />
     </div>
   )
 }

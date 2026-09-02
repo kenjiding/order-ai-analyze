@@ -103,6 +103,8 @@ export function buildDispatchAlarmCard(params: {
   /** 问题件数：见 aggregateDispatch24hByVendor 的 isDispatch24hProblem 口径 */
   problemCount: number
   drivers: Dispatch24hDriverStat[]
+  /** 未分配司机（尚未派件）的那部分单，见 Dispatch24hVendorStat.unassigned */
+  unassigned?: Dispatch24hDriverStat | null
   alertThresholdPct: number
   pushDescription?: string | null
   /** 无登录落地页：查看并复制未达标运单号 */
@@ -122,6 +124,7 @@ export function buildDispatchAlarmCard(params: {
     met,
     problemCount,
     drivers,
+    unassigned,
     alertThresholdPct,
     pushDescription,
     detailUrl,
@@ -160,7 +163,10 @@ export function buildDispatchAlarmCard(params: {
   elements.push(hr())
 
   const unmetDrivers = drivers.filter((d) => d.total - d.met > 0)
-  if (unmetDrivers.length === 0) {
+  const unassignedUnmet = unassigned ? unassigned.total - unassigned.met : 0
+  // 结论必须按供应商级 unmet 判定：未派件的单没有 courierCode，不会出现在 drivers 里，
+  // 用 unmetDrivers.length 判断会把「16 单未签收」说成「全部已签收」。
+  if (unmet === 0) {
     elements.push(md(colored('✅ All waybills signed within 24H', 'green')))
   } else {
     const shown = unmetDrivers.slice(0, MAX_DRIVER_LINES)
@@ -174,8 +180,13 @@ export function buildDispatchAlarmCard(params: {
     if (unmetDrivers.length > MAX_DRIVER_LINES) {
       lines.push(`及其他 ${unmetDrivers.length - MAX_DRIVER_LINES} 位司机`)
     }
+    if (unassignedUnmet > 0) {
+      lines.push(
+        `· **Not dispatched (no driver assigned)** ${colored(`${unassignedUnmet} not signed`, 'red')} / ${unassigned!.total} total`,
+      )
+    }
     elements.push(
-      md(`🚨 **Drivers with waybills not signed within 24H (${unmetDrivers.length})**`, {
+      md(`🚨 **Waybills not signed within 24H (${unmet})**`, {
         text_size: 'heading',
       }),
     )

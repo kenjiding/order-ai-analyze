@@ -40,6 +40,9 @@ export default function PackageLossMonitorPage() {
           onDateRangeChange={v.setDateRange}
           isQuerying={v.isQuerying}
           isAnalyzing={v.isAnalyzing}
+          isPaused={v.isPaused}
+          onPauseAnalyze={v.onPauseAnalyze}
+          onResumeAnalyze={v.onResumeAnalyze}
           queryMeta={v.queryMeta}
           rows={v.analysisRows}
           filteredRows={v.filteredAnalysisRows}

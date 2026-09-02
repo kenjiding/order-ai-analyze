@@ -14,6 +14,12 @@ type Props = {
   emptyText?: ReactNode
   /** 大屏下每行展示的卡片数，默认 4（抽屉等较窄容器） */
   columns?: 4 | 5
+  /**
+   * 是否要求供应商「可推送」（配了 Webhook 或飞书群 Chat ID）才允许勾选，默认 true。
+   * 纯统计类表单（出仓派签达成分析）不推送任何消息，必须传 false —— 否则没配推送渠道的
+   * 供应商永远勾不上，那家的单会被静默排除在统计范围外、历史数据永久缺失。
+   */
+  requirePushable?: boolean
 }
 
 const COLUMNS_CLASS: Record<4 | 5, string> = {
@@ -34,6 +40,7 @@ export function SupplierPushSelectionGrid({
   saving = false,
   emptyText = '暂无供应商配置，请前往「系统管理 → 供应商配置」维护。',
   columns = 4,
+  requirePushable = true,
 }: Props) {
   const duplicateVendorCodeSet = useMemo(() => {
     const counts = new Map<string, number>()
@@ -55,7 +62,7 @@ export function SupplierPushSelectionGrid({
     <div className={`grid grid-cols-2 gap-2 ${COLUMNS_CLASS[columns]}`}>
       {configs.map((c) => {
         const checked = enabledIdSet.has(c.id)
-        const eligible = isSupplierPushEligible(c)
+        const eligible = !requirePushable || isSupplierPushEligible(c)
         // 保存期间禁用其余卡片，避免并发切换丢失点击（scope 一次只处理一个）
         const busy = saving && togglingId !== c.id
         const itemDisabled = disabled || !eligible || busy
@@ -138,6 +145,14 @@ type SelectAllButtonsProps = {
   onToggle: (configId: string, next: boolean) => void
   disabled?: boolean
   saving?: boolean
+  /** 同 SupplierPushSelectionGrid.requirePushable，两者必须传一致的值 */
+  requirePushable?: boolean
+  /**
+   * 一次性替换整份选择。**受控父组件（onChange 直接读 props.value）必须传它** ——
+   * 逐条调 onToggle 时每次回调读到的都是同一份 stale value，只有最后一次生效，
+   * 全选/清空看起来「没反应」。用函数式 setState 的调用方可以不传。
+   */
+  onBulkChange?: (ids: string[]) => void
 }
 
 /**
@@ -150,18 +165,33 @@ export function SupplierPushSelectAllButtons({
   onToggle,
   disabled = false,
   saving = false,
+  requirePushable = true,
+  onBulkChange,
 }: SelectAllButtonsProps) {
-  const eligibleConfigs = useMemo(() => configs.filter(isSupplierPushEligible), [configs])
+  const eligibleConfigs = useMemo(
+    () => (requirePushable ? configs.filter(isSupplierPushEligible) : configs),
+    [configs, requirePushable],
+  )
   const selectedEligibleCount = eligibleConfigs.filter((c) => enabledIdSet.has(c.id)).length
   const allEligibleSelected = eligibleConfigs.length > 0 && selectedEligibleCount === eligibleConfigs.length
   const controlsDisabled = disabled || saving
 
   const handleSelectAll = () => {
+    if (onBulkChange) {
+      onBulkChange([...new Set([...enabledIdSet, ...eligibleConfigs.map((c) => c.id)])])
+      return
+    }
     for (const c of eligibleConfigs) {
       if (!enabledIdSet.has(c.id)) onToggle(c.id, true)
     }
   }
   const handleClear = () => {
+    if (onBulkChange) {
+      // 只清掉本目录里的 id，目录外的历史 id 交给提交时统一过滤，与逐条清空的语义一致
+      const catalogIds = new Set(configs.map((c) => c.id))
+      onBulkChange([...enabledIdSet].filter((id) => !catalogIds.has(id)))
+      return
+    }
     for (const c of configs) {
       if (enabledIdSet.has(c.id)) onToggle(c.id, false)
     }

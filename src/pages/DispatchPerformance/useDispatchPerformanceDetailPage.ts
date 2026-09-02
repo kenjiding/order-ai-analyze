@@ -58,16 +58,6 @@ export function useDispatchPerformanceDetailPage(configId: string | undefined) {
 
   useEffect(() => () => abortRef.current?.abort(), [])
 
-  /**
-   * 日历上出仓趟早该跑完、库里却没数据的到件日。
-   * 两种可能：那天真的不分拣（没有到件数据），或结算任务失败没跑到。
-   */
-  const missingDates = useMemo(() => {
-    if (!result) return []
-    const have = new Set(result.arrivalDates)
-    return result.settledDates.filter((d) => !have.has(d))
-  }, [result])
-
   /** 区间内派签尚未结算（最新那天通常如此），用于提示「派签率还在结算中」 */
   const pendingDispatch = useMemo(
     () => result != null && result.overall.total > 0 && !result.overall.dispatchSettled,
@@ -83,7 +73,9 @@ export function useDispatchPerformanceDetailPage(configId: string | undefined) {
     supplierKeys,
     setSupplierKeys,
     result,
-    missingDates,
+    // 服务端按结算台账算好的「真的漏跑」的天，不能在前端拿 arrivalDates 反推：
+    // 周末没批次、不分拣的工作日 0 格子、供应商筛选，都会让有跑过的天看起来是空的
+    missingDates: result?.missingDates ?? [],
     pendingDispatch,
     loading,
     error,

@@ -116,53 +116,57 @@ test('Due 与 Settled 的差别：Settled 会一直带着旧批次，Due 只留�
   const settled = settledAt('2024-06-28')
   assert.ok(settled.includes('2024-06-24') && settled.includes('2024-06-26'))
   assert.ok(settled.length > 3, `Settled 应带着多批历史，实际 ${settled.length} 批`)
-  assert.deepEqual(dispatchDueAt('2024-06-28'), ['2024-06-26'])
+  // 周四那批是前一天刚到期的（留着给重试），周三那批是当天 11:00 到期的
+  assert.deepEqual(dispatchDueAt('2024-06-28'), ['2024-06-25', '2024-06-26'])
   // Due 必须是 Settled 的子集：只是少了不回补的那些，不能凭空多出批次
   for (const date of dispatchDueAt('2024-06-28')) assert.ok(settled.includes(date), date)
 })
 
-test('每个到件日恰好在到期后的第一次运行里进入 Due，之后不再出现', () => {
+test('每个到件日进入 Due 的运行日恰好两次：到期当天 + 次日重试', () => {
+  // 每站点每天只在自己的 settleTime 触发一次，所以「一次重试」= SETTLE_DUE_WINDOW_MS 覆盖两次运行。
+  // 两趟的 Due 因此会重叠（同一到件日既在 exit Due 也在 dispatch Due）——这是安全的：
+  // cron 先跑派签趟并顺手盖 exit_settled_at，且 settleOneArrivalDate 写库前还会复核台账。
   const runDays = [
     '2024-06-25', '2024-06-26', '2024-06-27', '2024-06-28',
     '2024-06-29', '2024-06-30', '2024-07-01', '2024-07-02', '2024-07-03',
   ]
-  for (const [label, dueAt, newlyAt] of [
-    ['dispatch', dispatchDueAt, newlySettledAt],
-    ['exit', exitDueAt, newlyExitSettledAt],
+  for (const [label, dueAt, newlyAt, settledOf] of [
+    ['dispatch', dispatchDueAt, newlySettledAt, settledAt],
+    ['exit', exitDueAt, newlyExitSettledAt, exitSettledAt],
   ] as const) {
     const seen = new Map<string, string[]>()
     for (const runDay of runDays) {
-      // Due 必须等于「这一天新解锁的批次」——不多（不回补）也不少（不漏跑）
-      assert.deepEqual(dueAt(runDay), newlyAt(runDay), `${label} @ ${runDay}`)
+      // 不漏跑：解锁当天必定进 Due
+      for (const date of newlyAt(runDay)) {
+        assert.ok(dueAt(runDay).includes(date), `${label} @ ${runDay} 漏跑 ${date}`)
+      }
+      // 不凭空多出批次：Due 必须是 Settled 的子集
       for (const date of dueAt(runDay)) {
+        assert.ok(settledOf(runDay).includes(date), `${label} @ ${runDay} 多出 ${date}`)
         seen.set(date, [...(seen.get(date) ?? []), runDay])
       }
     }
+    // 只看回看窗口内完整走完两次的批次（首尾运行日会被 runDays 边界截断）
     for (const [date, runs] of seen) {
-      assert.equal(runs.length, 1, `${label} 到件日 ${date} 被 Due 命中 ${runs.length} 次: ${runs}`)
+      if (runs[0] === runDays[0] || runs.at(-1) === runDays.at(-1)) continue
+      assert.equal(runs.length, 2, `${label} 到件日 ${date} 被 Due 命中 ${runs.length} 次: ${runs}`)
     }
   }
 })
 
-test('漏跑一天不会在次日被回补 —— 过期即弃', () => {
-  // 周三到件的派签批次周五 11:00 到期。周五 18:00 是唯一的结算机会
-  assert.ok(dispatchDueAt('2024-06-28').includes('2024-06-26'))
-  // 周六 18:00 已过 26h 窗口，不再纳入；但 Settled 仍认为它「已到期」，供前端标注用
-  assert.ok(!dispatchDueAt('2024-06-29').includes('2024-06-26'))
-  assert.ok(settledAt('2024-06-29').includes('2024-06-26'))
+test('漏跑只给一次次日重试，第三天过期即弃', () => {
+  // 周三到件的派签批次周五 11:00 到期
+  assert.ok(dispatchDueAt('2024-06-28').includes('2024-06-26'), '周五：到期当天')
+  assert.ok(dispatchDueAt('2024-06-29').includes('2024-06-26'), '周六：允许重试一次')
+  // 周日 18:00 已过 50h 窗口，不再纳入；但 Settled 仍认为它「已到期」，供前端标注用
+  assert.ok(!dispatchDueAt('2024-06-30').includes('2024-06-26'), '周日：过期')
+  assert.ok(settledAt('2024-06-30').includes('2024-06-26'))
 })
 
-test('新站点首次启用只拿刚到期的那一批，不回补历史', () => {
-  // 台账为空时 pending = settledAt(全部)，但真正会跑的只有 Due 这一两批
+test('新站点首次启用只拿最近两批，不回补更早的历史', () => {
+  // 台账为空时 pending = settledAt(全部)，但真正会跑的只有 Due 那两批
   const runDay = '2024-06-27' // 周四
-  assert.ok(settledAt(runDay).length > 1, '已到期的批次不止一批')
-  assert.deepEqual(dispatchDueAt(runDay), ['2024-06-25'])
-  assert.deepEqual(exitDueAt(runDay), ['2024-06-26'])
-})
-
-test('同一次运行里，同一个到件日不会同时落进两趟的 Due', () => {
-  for (const runDay of ['2024-06-25', '2024-06-26', '2024-06-27', '2024-06-28', '2024-06-29', '2024-07-01', '2024-07-02']) {
-    const both = dispatchDueAt(runDay).filter((d) => exitDueAt(runDay).includes(d))
-    assert.deepEqual(both, [], `${runDay} 两趟 Due 重叠: ${both}`)
-  }
+  assert.ok(settledAt(runDay).length > 2, '已到期的批次不止两批')
+  assert.deepEqual(dispatchDueAt(runDay), ['2024-06-24', '2024-06-25'])
+  assert.deepEqual(exitDueAt(runDay), ['2024-06-25', '2024-06-26'])
 })

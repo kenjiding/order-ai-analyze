@@ -44,7 +44,8 @@ export type TransferImportParseResult =
   | { ok: false; error: string }
 
 export type TransferImportContext = {
-  ownAccounts: ContainerAccount[]
+  /** 可作为转出方的账户：自己绑定的站点 + 外部方 */
+  senderAccounts: ContainerAccount[]
   counterparties: ContainerAccount[]
 }
 
@@ -240,7 +241,7 @@ function parseWorkbook(
     return { ok: false, error: `表头缺少${names}列，请使用下载的模板填写` }
   }
 
-  const fromMap = buildAccountMap(ctx.ownAccounts)
+  const fromMap = buildAccountMap(ctx.senderAccounts)
   const toMap = buildAccountMap(ctx.counterparties)
 
   const rows: TransferImportRow[] = []

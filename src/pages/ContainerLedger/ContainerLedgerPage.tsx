@@ -43,7 +43,15 @@ export default function ContainerLedgerPage() {
       key: 'quantity',
       width: 110,
       align: 'right',
-      render: (value: number) => <span className="tabular-nums font-medium">{value}</span>,
+      // 负数只可能出现在外部方：他们作为转出方不做可用量校验，扣成负数说明有借出没进系统
+      render: (value: number) =>
+        value < 0 ? (
+          <Tooltip title="该站点还回来的比系统记录的借出还多，说明有借出记录没进系统，请补录或盘点">
+            <span className="tabular-nums font-medium text-rose-600">{value}</span>
+          </Tooltip>
+        ) : (
+          <span className="tabular-nums font-medium">{value}</span>
+        ),
     },
     {
       title: '操作',

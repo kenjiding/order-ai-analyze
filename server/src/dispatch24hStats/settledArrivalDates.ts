@@ -30,13 +30,15 @@ export const DEFAULT_SETTLE_LOOKBACK_DAYS = 10
 /**
  * 结算任务只处理「刚到期」的批次：settle 时刻距今在这个窗口内才结算，过期即弃、不回补。
  *
- * 26h = 一次 cron 间隔 + 2h 余量，保证每个批次恰好被到期后的第一次运行捡到一次。
+ * 50h ≈ 两次每日触发 + 余量：每个站点每天只在自己的 settleTime 跑一次，26h 的旧口径意味着
+ * 那一次失败（iMile 抖动 / token 过期 / 恰好在部署重启窗口）这天就永久没数据，
+ * 连「立刻统计」都救不回来（走同一套 due 判定）。50h 给了整整一次次日重试的机会。
  *
- * **为什么不回补**：按日期拉运单拿到的是该批单号的「当前状态」（courier / deliveryTime /
+ * **为什么不放得更宽**：按日期拉运单拿到的是该批单号的「当前状态」（courier / deliveryTime /
  * signDate）。被退回仓库、隔几天重新派送的单，回补时读到的是第二次派送的司机和时间，
- * 却被记进原到件日名下 —— 回补跑得越远错配越多。宁可缺一天，也不要灌一天噪声。
+ * 却被记进原到件日名下 —— 回补跑得越远错配越多。隔一天重试读到的状态基本一致，再远就不值了。
  */
-export const SETTLE_DUE_WINDOW_MS = 26 * 60 * 60 * 1000
+export const SETTLE_DUE_WINDOW_MS = 50 * 60 * 60 * 1000
 
 /** 出仓指标定终值的时刻：出仓日 O（= D 次日）当天 11:00 */
 export function exitBatchSettleMs(arrivalDateStr: string, tz: AusTz): number {

@@ -8,12 +8,13 @@ export const containerTypeLabel: Record<ContainerType, string> = {
   SILVER_BOX: '银框',
 }
 
-export const ACCOUNT_KINDS = ['BROKER', 'CUSTOMER', 'INTERNAL_WAREHOUSE'] as const
+export const ACCOUNT_KINDS = ['BROKER', 'CUSTOMER', 'CSP', 'INTERNAL_WAREHOUSE'] as const
 export type AccountKind = (typeof ACCOUNT_KINDS)[number]
 
 export const accountKindLabel: Record<AccountKind, string> = {
   BROKER: '清关行',
   CUSTOMER: '客户',
+  CSP: 'CSP',
   INTERNAL_WAREHOUSE: '内部仓库',
 }
 

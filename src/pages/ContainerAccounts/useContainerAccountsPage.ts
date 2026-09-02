@@ -16,6 +16,7 @@ import { showToast } from '../../utils/toast'
 export type AccountDraft = {
   name: string
   kind: AccountKind
+  isExternal: boolean
   userIds: string[]
   pushNotify: AccountPushNotify
 }

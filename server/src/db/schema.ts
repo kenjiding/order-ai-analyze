@@ -641,6 +641,12 @@ export const containerAccounts = pgTable(
     name: varchar('name', { length: 200 }).notNull(),
     /** BROKER 清关行 | CUSTOMER 客户 | INTERNAL_WAREHOUSE 内部仓库 */
     kind: varchar('kind', { length: 32 }).notNull(),
+    /**
+     * 该账户方在本系统没有登录账号（清关行、客户多属此类）。
+     * 与 kind 解耦：清关行将来开了账号只需关掉开关，不改代码。
+     * 置 true 后，它作为接收方的流转由转出方凭线下回单代确认，作为转出方的流转可由内部人员代录。
+     */
+    isExternal: boolean('is_external').notNull().default(false),
     /** 流转变更时的飞书通知配置 { enabled, chatId, mentions }：选群仅用于拉成员名单，实际按 openId 私聊 */
     pushNotify: jsonb('push_notify').notNull().default({ enabled: false, chatId: '', mentions: [] }),
     createdBy: uuid('created_by').references(() => users.id, { onDelete: 'set null' }),
@@ -711,6 +717,10 @@ export const containerTransfers = pgTable(
     receiverReportImageUrl: text('receiver_report_image_url'),
     /** 无争议确认时的补充说明 */
     responseNote: text('response_note'),
+    /** 接收方无系统账号，本单由转出方凭线下回单代为确认；操作人与时间仍记在 respondedBy/respondedAt */
+    proxyConfirmed: boolean('proxy_confirmed').notNull().default(false),
+    /** 代确认依据：回单、签收单或聊天截图。选填，缺失时台账争议只能靠 responseNote 追溯 */
+    proxyEvidenceUrl: text('proxy_evidence_url'),
     senderAcceptedAt: timestamp('sender_accepted_at', { withTimezone: true }),
     senderAcceptedBy: uuid('sender_accepted_by').references(() => users.id, { onDelete: 'set null' }),
     respondedAt: timestamp('responded_at', { withTimezone: true }),

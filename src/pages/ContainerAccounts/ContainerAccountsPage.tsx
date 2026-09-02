@@ -9,6 +9,7 @@ import { useContainerAccountsPage } from './useContainerAccountsPage'
 const KIND_COLOR: Record<string, string> = {
   BROKER: 'blue',
   CUSTOMER: 'gold',
+  CSP: 'purple',
   INTERNAL_WAREHOUSE: 'green',
 }
 
@@ -33,12 +34,14 @@ export default function ContainerAccountsPage() {
     },
     {
       title: '绑定用户',
-      dataIndex: 'boundUserIds',
       key: 'boundUserIds',
-      width: 120,
-      render: (ids: string[]) =>
-        ids.length > 0 ? (
-          <span className="tabular-nums text-slate-700">{ids.length} 人</span>
+      width: 130,
+      // 外部方本来就不该有绑定用户，显示灰色「未绑定」会读成配置漏了，如实区分两种情况
+      render: (_: unknown, row: ContainerAccount) =>
+        row.isExternal ? (
+          <Tag color="orange">外部方</Tag>
+        ) : row.boundUserIds.length > 0 ? (
+          <span className="tabular-nums text-slate-700">{row.boundUserIds.length} 人</span>
         ) : (
           <span className="text-slate-400">未绑定</span>
         ),

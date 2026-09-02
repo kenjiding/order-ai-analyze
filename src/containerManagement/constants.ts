@@ -16,12 +16,21 @@ export const containerTypeLabel: Record<ContainerType, string> = {
   SILVER_BOX: '银框',
 }
 
-export const ACCOUNT_KINDS: AccountKind[] = ['BROKER', 'CUSTOMER', 'INTERNAL_WAREHOUSE']
+export const ACCOUNT_KINDS: AccountKind[] = ['BROKER', 'CUSTOMER', 'CSP', 'INTERNAL_WAREHOUSE']
 
 export const accountKindLabel: Record<AccountKind, string> = {
   BROKER: '清关行',
   CUSTOMER: '客户',
+  CSP: 'CSP',
   INTERNAL_WAREHOUSE: '内部仓库',
+}
+
+/**
+ * 新建站点时「该站点方没有本系统账号」的默认值。
+ * 清关行与客户绝大多数没有账号，默认勾上省一次手；仍可手动改，改过之后换类型不再覆盖。
+ */
+export function defaultIsExternal(kind: AccountKind): boolean {
+  return kind === 'BROKER' || kind === 'CUSTOMER'
 }
 
 /** 新增流转记录时可选的业务类型；其余类型仅用于展示历史数据 */

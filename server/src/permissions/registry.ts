@@ -206,6 +206,14 @@ export const PERMISSION_REGISTRY: PermissionDefinition[] = [
     sortOrder: 630,
   },
   {
+    key: 'btn:container-transfers:proxy-confirm',
+    type: 'button',
+    label: '代确认收货',
+    description: '接收方无系统账号时，凭线下回单单方面确认并入账',
+    menuKey: 'container-transfers',
+    sortOrder: 640,
+  },
+  {
     key: 'btn:package-loss-monitor:analyze',
     type: 'button',
     label: '查询并分析',

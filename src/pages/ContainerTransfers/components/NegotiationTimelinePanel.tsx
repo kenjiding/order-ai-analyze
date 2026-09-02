@@ -175,7 +175,8 @@ export function NegotiationTimelinePanel({
           const tone = TONE_STYLE[timelineTone(ev)]
           const quantityLines =
             'quantityLines' in ev && ev.quantityLines?.length ? ev.quantityLines : undefined
-          const evidenceSrc = ev.kind === 'report' ? ev.receiverReportImageUrl : undefined
+          const evidenceSrc = 'evidenceImageUrl' in ev ? ev.evidenceImageUrl : undefined
+          const evidenceLabel = ('evidenceLabel' in ev ? ev.evidenceLabel : undefined) ?? '证据'
 
           return (
             <li key={ev.key} className="flex gap-3 sm:gap-4">
@@ -250,7 +251,7 @@ export function NegotiationTimelinePanel({
 
                   {evidenceSrc ? (
                     <div className="space-y-1.5 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5">
-                      <p className="text-xs font-medium text-slate-600">申报证据</p>
+                      <p className="text-xs font-medium text-slate-600">{evidenceLabel}</p>
                       <a
                         href={evidenceSrc}
                         target="_blank"

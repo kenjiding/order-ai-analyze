@@ -12,6 +12,8 @@ export type AccountRow = {
   id: string
   name: string
   kind: string
+  /** 该账户方在本系统没有登录账号，需要我方代为确认收货 / 代录归还 */
+  isExternal: boolean
   boundUserIds: string[]
   pushNotify: AccountPushNotify
   createdAt: string
@@ -29,7 +31,14 @@ export class ContainerBusinessError extends Error {
 }
 
 async function attachBoundUsers(
-  rows: { id: string; name: string; kind: string; pushNotify: unknown; createdAt: Date }[],
+  rows: {
+    id: string
+    name: string
+    kind: string
+    isExternal: boolean
+    pushNotify: unknown
+    createdAt: Date
+  }[],
 ): Promise<AccountRow[]> {
   if (rows.length === 0) return []
   const links = await getDb()
@@ -54,6 +63,7 @@ async function attachBoundUsers(
     id: row.id,
     name: row.name,
     kind: row.kind,
+    isExternal: row.isExternal,
     boundUserIds: byAccount.get(row.id) ?? [],
     pushNotify: normalizeAccountPushNotify(row.pushNotify),
     createdAt: row.createdAt.toISOString(),
@@ -74,6 +84,7 @@ export async function listAccounts(
       id: schema.containerAccounts.id,
       name: schema.containerAccounts.name,
       kind: schema.containerAccounts.kind,
+      isExternal: schema.containerAccounts.isExternal,
       pushNotify: schema.containerAccounts.pushNotify,
       createdAt: schema.containerAccounts.createdAt,
     })
@@ -122,6 +133,7 @@ async function assertNameAvailable(name: string, excludeId?: string): Promise<vo
 export async function createAccount(input: {
   name: string
   kind: AccountKind
+  isExternal?: boolean
   userIds?: string[]
   pushNotify?: AccountPushNotify
   createdBy: string | null
@@ -134,7 +146,13 @@ export async function createAccount(input: {
   const row = await getDb().transaction(async (tx) => {
     const [created] = await tx
       .insert(schema.containerAccounts)
-      .values({ name: input.name, kind: input.kind, pushNotify, createdBy: input.createdBy })
+      .values({
+        name: input.name,
+        kind: input.kind,
+        isExternal: input.isExternal === true,
+        pushNotify,
+        createdBy: input.createdBy,
+      })
       .returning()
     if (userIds.length > 0) {
       await tx
@@ -148,6 +166,7 @@ export async function createAccount(input: {
     id: row.id,
     name: row.name,
     kind: row.kind,
+    isExternal: row.isExternal,
     boundUserIds: userIds,
     pushNotify,
     createdAt: row.createdAt.toISOString(),
@@ -156,7 +175,13 @@ export async function createAccount(input: {
 
 export async function updateAccount(
   id: string,
-  input: { name?: string; kind?: AccountKind; userIds?: string[]; pushNotify?: AccountPushNotify },
+  input: {
+    name?: string
+    kind?: AccountKind
+    isExternal?: boolean
+    userIds?: string[]
+    pushNotify?: AccountPushNotify
+  },
 ): Promise<AccountRow> {
   const existing = await getAccountById(id)
   if (!existing) throw new ContainerBusinessError('站点账户不存在', 404)
@@ -171,6 +196,7 @@ export async function updateAccount(
       .set({
         ...(input.name === undefined ? {} : { name: input.name }),
         ...(input.kind === undefined ? {} : { kind: input.kind }),
+        ...(input.isExternal === undefined ? {} : { isExternal: input.isExternal }),
         ...(input.pushNotify === undefined
           ? {}
           : { pushNotify: normalizeAccountPushNotify(input.pushNotify) }),

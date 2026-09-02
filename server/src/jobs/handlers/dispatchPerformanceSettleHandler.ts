@@ -19,6 +19,7 @@ import {
   readDispatchPerformanceImileToken,
   resolveStationTargets,
   settleOneArrivalDate,
+  withSettleLock,
 } from '../../dispatch24hStats/dailyStatsJob'
 import { listSettledArrivalDates } from '../../dispatch24hStats/repository'
 import {
@@ -156,31 +157,39 @@ export const dispatchPerformanceSettleHandler: JobHandler = {
 
     for (const arrivalDate of exitSplit.toRun) {
       if (signal.aborted) throw new Error('任务已取消')
-      const result = await settleOneArrivalDate({ token, target, arrivalDate, stage: 'exit' })
-      artifact.settledExitDates.push({
-        arrivalDate,
-        waybillCount: result.waybillCount,
-        cellCount: result.cellCount,
-      })
+      const result = await withSettleLock(() =>
+        settleOneArrivalDate({ token, target, arrivalDate, stage: 'exit' }),
+      )
+      if (!result.skipped) {
+        artifact.settledExitDates.push({
+          arrivalDate,
+          waybillCount: result.waybillCount,
+          cellCount: result.cellCount,
+        })
+      }
       await bump(`出仓已结算 ${arrivalDate}`)
     }
 
     for (const arrivalDate of dispatchSplit.toRun) {
       if (signal.aborted) throw new Error('任务已取消')
-      const result = await settleOneArrivalDate({
-        token,
-        target,
-        arrivalDate,
-        stage: 'dispatch',
-        // 落库但不给派签盖章，定时结算到点仍会覆盖成权威值
-        provisional: true,
-      })
-      artifact.settledDispatchDates.push({
-        arrivalDate,
-        waybillCount: result.waybillCount,
-        cellCount: result.cellCount,
-        ...summarizeCells(result.cells),
-      })
+      const result = await withSettleLock(() =>
+        settleOneArrivalDate({
+          token,
+          target,
+          arrivalDate,
+          stage: 'dispatch',
+          // 落库但不给派签盖章，定时结算到点仍会覆盖成权威值
+          provisional: true,
+        }),
+      )
+      if (!result.skipped) {
+        artifact.settledDispatchDates.push({
+          arrivalDate,
+          waybillCount: result.waybillCount,
+          cellCount: result.cellCount,
+          ...summarizeCells(result.cells),
+        })
+      }
       await bump(`派签已结算 ${arrivalDate}`)
     }
 

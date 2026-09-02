@@ -72,6 +72,8 @@ export type DispatchAlarmShareView = {
   problemCount: number
   alertThresholdPct: number
   drivers: DispatchAlarmShareDriver[]
+  /** 未分配司机（尚未派件）的那部分单，courierCode/courierName 为空 */
+  unassigned: DispatchAlarmShareDriver | null
   showDriverMap: boolean
   createdAt: string
 }

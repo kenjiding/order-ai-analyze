@@ -618,14 +618,7 @@ export function buildScannerEfficiency(rows: ParsedScanRow[], settings: ScanSett
     scannerDayScanTotals.set(dayScannerKey, (scannerDayScanTotals.get(dayScannerKey) ?? 0) + 1)
   }
 
-  // 有效扫描员-日集合：日扫描量 >= minDayScanCount 才纳入统计
-  const validScannerDayKeys = new Set<string>()
-  scannerDayScanTotals.forEach((total, key) => {
-    if (total >= settings.minDayScanCount) validScannerDayKeys.add(key)
-  })
-
   const scannerHourlyRows = Array.from(hourlyAcc.values())
-    .filter((item) => validScannerDayKeys.has(`${item.date}__${item.scanner}`))
     .map((item) => {
       const dayScannerKey = `${item.date}__${item.scanner}`
       const dayTotal = scannerDayScanTotals.get(dayScannerKey) ?? 0
@@ -687,9 +680,6 @@ export function buildScannerEfficiency(rows: ParsedScanRow[], settings: ScanSett
   >()
 
   dailyScannerMap.forEach((group) => {
-    // 脏数据过滤：该扫描员当日扫描量低于阈值则跳过
-    if (!validScannerDayKeys.has(`${group.date}__${group.scanner}`)) return
-
     const sessions = computeSessions(group.records, settings)
     const scanCount = group.records.length
     const effectiveMinutes = sessions.reduce((sum, session) => sum + session.effectiveMinutes, 0)
@@ -830,7 +820,6 @@ export function buildScannerEfficiency(rows: ParsedScanRow[], settings: ScanSett
       totalEffectiveHours,
       totalEfficiency,
       totalDays: dailySummaryRows.length,
-      // 与「扫描员一级分拣效率汇总」口径一致：仅统计通过最小日扫描量过滤后仍有有效样本的扫描员。
       totalScanners: scannerTotalMap.size,
     },
   }

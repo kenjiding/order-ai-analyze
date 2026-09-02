@@ -181,6 +181,7 @@ export async function executeDispatchAlarmPush(params: {
               problemCount: stat.problemCount,
               alertThresholdPct,
               drivers: stat.drivers,
+              unassigned: stat.unassigned,
               showDriverMap: Boolean(showDriverMap),
             })
           : null
@@ -196,6 +197,7 @@ export async function executeDispatchAlarmPush(params: {
         met: stat.met,
         problemCount: stat.problemCount,
         drivers: stat.drivers,
+        unassigned: stat.unassigned,
         alertThresholdPct,
         pushDescription: config.pushDescription,
         detailUrl: share?.url ?? null,

@@ -5,7 +5,7 @@
  * 不做「跳过错误行只导正确行」：整批一个事务，漏行不易察觉，宁可让用户改完重传。
  */
 import { useState } from 'react'
-import { Button, Modal, Table, Tag, Upload } from 'antd'
+import { Button, Modal, Table, Upload } from 'antd'
 import type { UploadFile } from 'antd/es/upload/interface'
 import { CircleAlert, CircleCheck, Download, FileSpreadsheet, Loader2, Upload as UploadIcon } from 'lucide-react'
 import { transferKindLabel } from '../../../containerManagement/constants'
@@ -20,7 +20,7 @@ import './TransferImportModal.css'
 
 type Props = {
   open: boolean
-  ownAccounts: ContainerAccount[]
+  senderAccounts: ContainerAccount[]
   counterparties: ContainerAccount[]
   submitting: boolean
   templateDownloading: boolean
@@ -29,33 +29,9 @@ type Props = {
   onSubmit: (items: TransferCreateItem[], rowNos: number[]) => Promise<boolean>
 }
 
-function Metric({
-  label,
-  value,
-  tone = 'neutral',
-}: {
-  label: string
-  value: number
-  tone?: 'neutral' | 'ok' | 'bad'
-}) {
-  const valueClass =
-    tone === 'ok'
-      ? 'text-[#1f6f68]'
-      : tone === 'bad'
-        ? 'text-rose-600'
-        : 'text-slate-900'
-
-  return (
-    <div className="px-4 py-3">
-      <div className="text-xs text-slate-500">{label}</div>
-      <div className={`mt-1 text-xl font-semibold tabular-nums leading-none ${valueClass}`}>{value}</div>
-    </div>
-  )
-}
-
 export function TransferImportModal({
   open,
-  ownAccounts,
+  senderAccounts,
   counterparties,
   submitting,
   templateDownloading,
@@ -84,7 +60,7 @@ export function TransferImportModal({
     setParsing(true)
     setRows(null)
     setError(null)
-    const result = await parseTransferImportFile(file, { ownAccounts, counterparties })
+    const result = await parseTransferImportFile(file, { senderAccounts, counterparties })
     setParsing(false)
     if (!result.ok) {
       setError(result.error)
@@ -174,20 +150,20 @@ export function TransferImportModal({
       {hasFile ? (
         <div className="space-y-3">
           <div className="flex flex-wrap items-center gap-3 rounded-xl border border-[var(--admin-line)] bg-white px-4 py-3">
-            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-[var(--admin-accent-soft)] text-[#1f6f68]">
+            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[var(--admin-accent-soft)] text-[#1f6f68]">
               {parsing ? (
-                <Loader2 className="h-5 w-5 animate-spin" aria-hidden />
+                <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
               ) : error ? (
-                <CircleAlert className="h-5 w-5 text-rose-600" aria-hidden />
+                <CircleAlert className="h-4 w-4 text-rose-600" aria-hidden />
               ) : (
-                <FileSpreadsheet className="h-5 w-5" aria-hidden />
+                <FileSpreadsheet className="h-4 w-4" aria-hidden />
               )}
             </div>
             <div className="min-w-0 flex-1">
               <div className="truncate text-sm font-medium text-slate-900">{fileName}</div>
               <div className="mt-0.5 text-xs text-slate-500">
                 {parsing
-                  ? '正在校验每一行…'
+                  ? '正在校验每一行'
                   : error
                     ? '无法解析，请更换文件'
                     : rows
@@ -195,19 +171,13 @@ export function TransferImportModal({
                       : '等待校验'}
               </div>
             </div>
-            <div className="flex shrink-0 flex-wrap gap-2">
-              <Button
-                icon={<Download className="h-4 w-4" aria-hidden />}
-                loading={templateDownloading}
-                disabled={parsing || submitting}
-                onClick={onDownloadTemplate}
-              >
-                下载模板
-              </Button>
+            <div className="flex shrink-0 gap-2">
               <Upload {...uploadProps}>
-                <Button disabled={parsing || submitting}>更换文件</Button>
+                <Button size="small" disabled={parsing || submitting}>
+                  更换文件
+                </Button>
               </Upload>
-              <Button disabled={parsing || submitting} onClick={reset}>
+              <Button size="small" disabled={parsing || submitting} onClick={reset}>
                 移除
               </Button>
             </div>
@@ -220,101 +190,111 @@ export function TransferImportModal({
           ) : null}
 
           {rows ? (
-            <>
-              <div className="grid grid-cols-3 divide-x divide-[var(--admin-line)] overflow-hidden rounded-xl border border-[var(--admin-line)] bg-white">
-                <Metric label="全部行" value={rows.length} />
-                <Metric label="校验通过" value={validCount} tone={errorCount === 0 ? 'ok' : 'neutral'} />
-                <Metric label="需要修正" value={errorCount} tone={errorCount > 0 ? 'bad' : 'ok'} />
-              </div>
-
-              <section className="transfer-import-preview overflow-hidden rounded-xl border border-[var(--admin-line)] bg-white">
-                <header className="flex items-center justify-between gap-3 border-b border-[var(--admin-line)] bg-[var(--admin-surface-soft)] px-4 py-2.5">
+            <section className="transfer-import-preview overflow-hidden rounded-xl border border-[var(--admin-line)] bg-white">
+              <header className="flex flex-wrap items-center justify-between gap-2 border-b border-[var(--admin-line)] bg-[var(--admin-surface-soft)] px-4 py-2.5">
+                <div className="flex items-baseline gap-2">
                   <span className="text-sm font-semibold text-slate-800">校验预览</span>
-                  {errorCount > 0 ? (
-                    <span className="inline-flex items-center gap-1.5 text-xs text-rose-600">
-                      <CircleAlert className="h-3.5 w-3.5" aria-hidden />
-                      问题行已置顶
-                    </span>
-                  ) : (
-                    <span className="inline-flex items-center gap-1.5 text-xs text-[#1f6f68]">
-                      <CircleCheck className="h-3.5 w-3.5" aria-hidden />
-                      全部通过
-                    </span>
-                  )}
-                </header>
-                <Table<TransferImportRow>
-                  rowKey={(row) => row.rowNo}
-                  dataSource={sortedRows}
-                  pagination={{ pageSize: 10, showSizeChanger: false }}
-                  scroll={{ x: 900 }}
-                  rowClassName={(row) => (row.errors.length > 0 ? 'bg-rose-50/60' : '')}
-                  columns={[
-                    { title: '行号', dataIndex: 'rowNo', width: 70 },
-                    {
-                      title: '日期',
-                      width: 110,
-                      render: (_, row) => row.raw.occurredAt || '（当天）',
-                    },
-                    {
-                      title: '业务类型',
-                      width: 90,
-                      render: (_, row) => (row.item ? transferKindLabel[row.item.kind] : row.raw.kind),
-                    },
-                    { title: '转出方', width: 140, render: (_, row) => row.raw.from },
-                    { title: '接收方', width: 140, render: (_, row) => row.raw.to },
-                    { title: '大篮筐', width: 80, render: (_, row) => row.raw.bigBasket || '—' },
-                    { title: '银框', width: 80, render: (_, row) => row.raw.silverBox || '—' },
-                    {
-                      title: '备注',
-                      width: 160,
-                      render: (_, row) => (
-                        <span className="line-clamp-2 text-slate-600">{row.raw.note || '—'}</span>
+                  <span className="text-xs text-slate-500">共 {rows.length} 行</span>
+                </div>
+                {errorCount > 0 ? (
+                  <span className="inline-flex items-center gap-1.5 text-xs font-medium text-rose-600">
+                    <CircleAlert className="h-3.5 w-3.5" aria-hidden />
+                    {errorCount} 行需修正，已置顶
+                  </span>
+                ) : (
+                  <span className="inline-flex items-center gap-1.5 text-xs font-medium text-[#1f6f68]">
+                    <CircleCheck className="h-3.5 w-3.5" aria-hidden />
+                    全部通过
+                  </span>
+                )}
+              </header>
+              <Table<TransferImportRow>
+                rowKey={(row) => row.rowNo}
+                dataSource={sortedRows}
+                size="small"
+                pagination={rows.length > 10 ? { pageSize: 10, showSizeChanger: false } : false}
+                scroll={{ x: 880 }}
+                rowClassName={(row) => (row.errors.length > 0 ? 'bg-rose-50/60' : '')}
+                columns={[
+                  {
+                    title: '表格行',
+                    dataIndex: 'rowNo',
+                    width: 74,
+                    render: (value: number) => (
+                      <span className="tabular-nums text-slate-500">{value}</span>
+                    ),
+                  },
+                  {
+                    title: '日期',
+                    width: 108,
+                    render: (_, row) => row.raw.occurredAt || '(当天)',
+                  },
+                  {
+                    title: '业务类型',
+                    width: 88,
+                    render: (_, row) => (row.item ? transferKindLabel[row.item.kind] : row.raw.kind),
+                  },
+                  { title: '转出方', width: 132, render: (_, row) => row.raw.from },
+                  { title: '接收方', width: 132, render: (_, row) => row.raw.to },
+                  {
+                    title: '大篮筐',
+                    width: 76,
+                    render: (_, row) => (
+                      <span className="tabular-nums">{row.raw.bigBasket || '-'}</span>
+                    ),
+                  },
+                  {
+                    title: '银框',
+                    width: 76,
+                    render: (_, row) => (
+                      <span className="tabular-nums">{row.raw.silverBox || '-'}</span>
+                    ),
+                  },
+                  {
+                    title: '备注',
+                    width: 148,
+                    render: (_, row) => (
+                      <span className="line-clamp-2 text-slate-600">{row.raw.note || '-'}</span>
+                    ),
+                  },
+                  {
+                    title: '校验结果',
+                    width: 248,
+                    render: (_, row) =>
+                      row.errors.length === 0 ? (
+                        <span className="text-[#1f6f68]">通过</span>
+                      ) : (
+                        <div className="space-y-1">
+                          {row.errors.map((message) => (
+                            <div key={message} className="text-rose-600">
+                              {message}
+                            </div>
+                          ))}
+                        </div>
                       ),
-                    },
-                    {
-                      title: '校验结果',
-                      width: 260,
-                      render: (_, row) =>
-                        row.errors.length === 0 ? (
-                          <Tag color="green">通过</Tag>
-                        ) : (
-                          <div className="space-y-1">
-                            {row.errors.map((message) => (
-                              <Tag key={message} color="red" className="whitespace-normal">
-                                {message}
-                              </Tag>
-                            ))}
-                          </div>
-                        ),
-                    },
-                  ]}
-                />
-              </section>
-            </>
+                  },
+                ]}
+              />
+            </section>
           ) : null}
         </div>
       ) : (
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-[minmax(16rem,18rem)_minmax(0,1fr)]">
-          <aside className="flex flex-col justify-between rounded-xl border border-[var(--admin-line)] bg-white p-5">
-            <div>
-              <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-[var(--admin-sky-soft)] text-[#25526e]">
-                <Download className="h-5 w-5" aria-hidden />
-              </div>
-              <h3 className="mt-4 text-sm font-semibold text-slate-900">先下载模板</h3>
-              <p className="mt-1.5 text-sm leading-relaxed text-slate-500">
-                业务类型、转出方、接收方请用表内下拉。手打的站点名对不上系统账户。
+        <div className="space-y-3">
+          <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-[var(--admin-line)] bg-white px-4 py-3">
+            <div className="min-w-0">
+              <div className="text-sm font-medium text-slate-900">先下载模板填写</div>
+              <p className="mt-0.5 text-xs leading-relaxed text-slate-500">
+                业务类型、转出方、接收方请用表内下拉选择，手打的站点名对不上系统账户。
               </p>
             </div>
             <Button
-              className="mt-5"
               icon={<Download className="h-4 w-4" aria-hidden />}
               loading={templateDownloading}
               onClick={onDownloadTemplate}
-              block
             >
               下载模板
             </Button>
-          </aside>
+          </div>
 
           <Upload.Dragger {...uploadProps} className="transfer-import-dropzone">
             <div className="mx-auto flex h-10 w-10 items-center justify-center rounded-lg bg-[var(--admin-accent-soft)] text-[#1f6f68]">

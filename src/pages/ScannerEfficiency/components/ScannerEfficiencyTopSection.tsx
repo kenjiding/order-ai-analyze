@@ -54,13 +54,13 @@ export default function ScannerEfficiencyTopSection({ vm }: Props) {
       <div className="grid grid-cols-1 gap-0 lg:grid-cols-[minmax(0,1fr)_minmax(0,3fr)] lg:divide-x lg:divide-[var(--admin-line)]">
         <div className="se-settings-block border-b border-[var(--admin-line)] px-5 py-5 sm:px-6 lg:border-b-0">
           <div className="min-w-0">
-            <h2 className="text-sm font-semibold text-[var(--admin-text)]">开仓与脏数据过滤</h2>
+            <h2 className="text-sm font-semibold text-[var(--admin-text)]">开仓设置</h2>
             <p className="mt-1 text-xs leading-relaxed text-[var(--admin-muted)]">
               调整阈值后，下方图表与表格将自动重算。
             </p>
           </div>
 
-          <div className="mt-4 grid grid-cols-2 gap-3">
+          <div className="mt-4">
             <div className="flex min-w-0 flex-col gap-1.5">
               <Tooltip title={openDayRuleTooltipText} arrow enterDelay={200}>
                 <label
@@ -78,30 +78,6 @@ export default function ScannerEfficiencyTopSection({ vm }: Props) {
                 value={settings.openDayThreshold}
                 disabled={Boolean(snapshotRestore)}
                 onChange={(value) => handleSettingChange('openDayThreshold', String(value ?? ''))}
-                className="w-full [&_.ant-input-number-input]:text-center [&_.ant-input-number-input]:font-semibold [&_.ant-input-number-input]:tabular-nums"
-              />
-            </div>
-
-            <div className="flex min-w-0 flex-col gap-1.5">
-              <Tooltip
-                title="某扫描员在某日扫描量低于此值，该扫描员当日数据整体剔除（不计入效率、汇总与按小时段）。"
-                arrow
-                enterDelay={200}
-              >
-                <label
-                  htmlFor="minDayScanCountInput"
-                  className="cursor-help text-xs font-medium text-[var(--admin-text)]"
-                >
-                  脏数据阈值
-                </label>
-              </Tooltip>
-              <InputNumber
-                id="minDayScanCountInput"
-                min={1}
-                step={50}
-                value={settings.minDayScanCount}
-                disabled={Boolean(snapshotRestore)}
-                onChange={(value) => handleSettingChange('minDayScanCount', String(value ?? ''))}
                 className="w-full [&_.ant-input-number-input]:text-center [&_.ant-input-number-input]:font-semibold [&_.ant-input-number-input]:tabular-nums"
               />
             </div>

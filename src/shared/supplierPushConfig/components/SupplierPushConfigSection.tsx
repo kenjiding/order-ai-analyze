@@ -16,6 +16,11 @@ type Props = {
   columns?: 4 | 5
   /** 卡片下方补充说明 */
   footnote?: ReactNode
+  /**
+   * 是否要求供应商「可推送」（配了 Webhook 或飞书群 Chat ID）才允许勾选，默认 true。
+   * 纯统计类表单不推送消息，应传 false，见 SupplierPushSelectionGrid.requirePushable。
+   */
+  requirePushable?: boolean
 }
 
 /**
@@ -32,6 +37,7 @@ export function SupplierPushConfigSection({
   catalogLoading = false,
   columns = 4,
   footnote,
+  requirePushable = true,
 }: Props) {
   const enabledIdSet = new Set(value)
   const handleToggle = (id: string, next: boolean) =>
@@ -48,7 +54,10 @@ export function SupplierPushConfigSection({
           enabledIdSet={enabledIdSet}
           disabled={disabled}
           saving={catalogLoading}
+          requirePushable={requirePushable}
           onToggle={handleToggle}
+          // 本组件是受控的（handleToggle 每次都读同一份 props.value），逐条 toggle 只有最后一次生效
+          onBulkChange={onChange}
         />
       }
     >
@@ -58,6 +67,7 @@ export function SupplierPushConfigSection({
         disabled={disabled}
         saving={catalogLoading}
         columns={columns}
+        requirePushable={requirePushable}
         onToggle={handleToggle}
       />
       {footnote ? <p className="mt-3 text-xs text-slate-400">{footnote}</p> : null}

@@ -2,7 +2,7 @@
 import type { AccountPushNotify } from './pushNotify'
 
 export type ContainerType = 'BIG_BASKET' | 'SILVER_BOX'
-export type AccountKind = 'BROKER' | 'CUSTOMER' | 'INTERNAL_WAREHOUSE'
+export type AccountKind = 'BROKER' | 'CUSTOMER' | 'CSP' | 'INTERNAL_WAREHOUSE'
 export type TransferKind =
   | 'LEND'
   | 'RETURN'
@@ -24,6 +24,8 @@ export type ContainerAccount = {
   id: string
   name: string
   kind: AccountKind
+  /** 该账户方在本系统没有登录账号，需要我方代确认收货 / 代录归还单 */
+  isExternal: boolean
   boundUserIds: string[]
   pushNotify: AccountPushNotify
   createdAt: string
@@ -76,8 +78,10 @@ export type Transfer = {
   status: TransferStatus
   fromAccountId: string
   fromAccountName: string
+  fromAccountIsExternal: boolean
   toAccountId: string
   toAccountName: string
+  toAccountIsExternal: boolean
   items: TransferItem[]
   declaredTotal: number
   receivedTotal: number | null
@@ -90,7 +94,11 @@ export type Transfer = {
   responseNote: string | null
   senderAcceptedAt: string | null
   respondedAt: string | null
+  /** 本单是我方凭线下回单代对方确认的，不是对方本人确认 */
+  proxyConfirmed: boolean
+  proxyEvidenceUrl: string | null
   createdByUsername: string | null
+  respondedByUsername: string | null
   createdAt: string
 }
 

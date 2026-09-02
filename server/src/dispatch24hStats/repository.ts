@@ -13,6 +13,15 @@ export const DISPATCH_PERFORMANCE_RETENTION_DAYS = 180
 
 const UPSERT_CHUNK_SIZE = 500
 
+/**
+ * 每个司机每类问题最多回传多少个运单号。
+ *
+ * 这四个数组是按格子存的 JSONB，跨 62 天累加后单个司机可能上万条，而前端只在展开该司机行时
+ * 才用得到。不封顶时整份响应能到几十 MB，浏览器直接卡死。数量由 *Count 字段单独给出，
+ * 截断只影响明细列表的可见条数。
+ */
+const MAX_WAYBILL_NOS_PER_DRIVER = 500
+
 export type DispatchPerformanceQuadrant = {
   exitMetSignMet: number
   exitMetSignUnmet: number
@@ -312,6 +321,15 @@ function asStrings(value: unknown): string[] {
   return Array.isArray(value) ? value.map(String) : []
 }
 
+/** 追加运单号，累计到 MAX_WAYBILL_NOS_PER_DRIVER 就停手（见该常量） */
+function pushCapped(target: string[], value: unknown): void {
+  if (target.length >= MAX_WAYBILL_NOS_PER_DRIVER) return
+  for (const no of asStrings(value)) {
+    target.push(no)
+    if (target.length >= MAX_WAYBILL_NOS_PER_DRIVER) return
+  }
+}
+
 /**
  * 累加所需的最小行形状：来自日度表，但只声明真正用到的列，
  * 好让 buildDispatchPerformanceTree 能脱离数据库单测。
@@ -417,10 +435,10 @@ export function buildDispatchPerformanceTree(rows: DispatchPerformanceStatRow[])
       route.drivers.set(row.courierCode, driver)
     }
     addToAcc(driver.acc, row)
-    driver.neverSignedWaybillNos.push(...asStrings(row.neverSignedWaybillNos))
-    driver.lateSignedWaybillNos.push(...asStrings(row.lateSignedWaybillNos))
-    driver.problemWaybillNos.push(...asStrings(row.problemWaybillNos))
-    driver.before11UnmetWaybillNos.push(...asStrings(row.before11UnmetWaybillNos))
+    pushCapped(driver.neverSignedWaybillNos, row.neverSignedWaybillNos)
+    pushCapped(driver.lateSignedWaybillNos, row.lateSignedWaybillNos)
+    pushCapped(driver.problemWaybillNos, row.problemWaybillNos)
+    pushCapped(driver.before11UnmetWaybillNos, row.before11UnmetWaybillNos)
   }
 
   // 排序统一按「未达标数从多到少」：分析页要先看到最差的那几家/几条路由/几个司机
@@ -536,5 +554,9 @@ export async function purgeOldDispatchPerformanceStats(
     .delete(schema.dispatchPerformanceDailyStats)
     .where(sql`${schema.dispatchPerformanceDailyStats.arrivalDate} < ${cutoff}`)
     .returning({ id: schema.dispatchPerformanceDailyStats.id })
+  // 台账跟着一起清：留着也没用（结算不回补），不清就是一张只增不减的表
+  await db
+    .delete(schema.dispatchPerformanceSettledBatches)
+    .where(sql`${schema.dispatchPerformanceSettledBatches.arrivalDate} < ${cutoff}`)
   return deleted.length
 }

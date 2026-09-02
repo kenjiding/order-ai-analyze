@@ -44,7 +44,13 @@ type ApiError = { ok: false; status: number; message: string; rawText?: string }
  */
 export async function fetchDriverWaybills(
   token: string,
-  params: { stationCode: string; dateStr: string; regionCode?: string | null },
+  params: {
+    stationCode: string
+    dateStr: string
+    regionCode?: string | null
+    /** 见 fetchWaybillDetailsIncremental.forceIndexRefresh：结算类调用必须传 true */
+    forceIndexRefresh?: boolean
+  },
 ): Promise<{ ok: true; data: DriverWaybillRow[] } | ApiError> {
   const tz = resolveRegionTz(params.regionCode)
   const synced = await syncStationDayWaybillsIncremental({
@@ -53,6 +59,7 @@ export async function fetchDriverWaybills(
     dataDate: params.dateStr,
     tz,
     label: '24H派签率运单查询',
+    forceIndexRefresh: params.forceIndexRefresh,
   })
   if (!synced.ok) return { ok: false, status: 502, message: synced.message }
   return { ok: true, data: synced.rows as DriverWaybillRow[] }

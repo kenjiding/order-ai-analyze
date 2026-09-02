@@ -77,7 +77,9 @@ export default function ContainerTransfersPage() {
                 pageSize={page.pageSize}
                 onPageChange={page.setPage}
                 canActAs={page.canActAs}
+                canProxyConfirm={page.canProxyConfirm}
                 onConfirm={page.openConfirm}
+                onProxyConfirm={page.openProxyConfirm}
                 onDispute={page.openDispute}
                 onTimeline={page.openTimeline}
                 onNegotiate={page.openNegotiate}
@@ -104,6 +106,7 @@ export default function ContainerTransfersPage() {
         open={page.formOpen}
         editing={page.editing}
         ownAccounts={page.ownAccounts}
+        senderAccounts={page.senderAccounts}
         counterparties={page.counterparties}
         allAccounts={page.allAccounts}
         submitting={page.submitting}
@@ -112,7 +115,7 @@ export default function ContainerTransfersPage() {
       />
       <TransferImportModal
         open={page.importOpen}
-        ownAccounts={page.ownAccounts}
+        senderAccounts={page.senderAccounts}
         counterparties={page.counterparties}
         submitting={page.submitting}
         templateDownloading={page.templateDownloading}
@@ -126,6 +129,14 @@ export default function ContainerTransfersPage() {
         submitting={page.submitting}
         onCancel={page.closeConfirm}
         onSubmit={page.submitConfirm}
+      />
+      <ConfirmReceiptModal
+        key={`proxy-confirm-${page.proxyConfirmTarget?.id ?? 'none'}`}
+        target={page.proxyConfirmTarget}
+        submitting={page.submitting}
+        proxy
+        onCancel={page.closeProxyConfirm}
+        onSubmit={page.submitProxyConfirm}
       />
       <DisputeReportModal
         key={`dispute-${page.disputeTarget?.id ?? 'none'}`}

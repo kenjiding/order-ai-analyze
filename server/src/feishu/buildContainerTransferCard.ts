@@ -35,7 +35,12 @@ const TILE_BG: Record<MarkColor, string> = {
  * 只推「对方需要知道或需要做点什么」的节点：开始、有争议、以及两条路径各自的结清。
  * 编辑与删除是转出方自己的动作，不推。
  */
-export type TransferCardEvent = 'created' | 'reported' | 'confirmed' | 'accepted'
+export type TransferCardEvent =
+  | 'created'
+  | 'reported'
+  | 'confirmed'
+  | 'accepted'
+  | 'proxyConfirmed'
 
 /** 事件 → 卡片标题与头部配色，与系统内时间线的状态色语言对齐 */
 const EVENT_STYLE: Record<TransferCardEvent, { title: string; template: string }> = {
@@ -44,6 +49,8 @@ const EVENT_STYLE: Record<TransferCardEvent, { title: string; template: string }
   // 无争议直接确认、协商后转出方认可，是两条路径各自的结清，同用绿色
   confirmed: { title: '接收方已确认收货', template: 'green' },
   accepted: { title: '转出方已认可实收数量', template: 'green' },
+  // 同样是结清，但没有对方的确认动作，用青色与前两者区分，别读成对方点了确认
+  proxyConfirmed: { title: '转出方按回单代确认收货', template: 'turquoise' },
 }
 
 /**
@@ -194,6 +201,18 @@ export function buildContainerTransferCard(params: {
       metricTile('已入账', transfer.settledTotal, breakdownOf(transfer.items, 'settledQuantity'), 'green'),
     ],
   })
+
+  if (event === 'proxyConfirmed') {
+    // 收件人只看标题会以为对方点了确认，这一行是唯一能说清「没有对方确认动作」的地方
+    elements.push(
+      md(
+        colored(
+          `${transfer.toAccountName} 无系统账号，本单按线下回单入账${transfer.proxyEvidenceUrl ? '，凭证见系统详情' : '，未附凭证'}`,
+          'grey',
+        ),
+      ),
+    )
+  }
 
   if (extra?.trim()) {
     elements.push(md(extra.trim()))

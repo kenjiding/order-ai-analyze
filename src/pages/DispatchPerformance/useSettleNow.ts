@@ -5,6 +5,8 @@ import { postSettleNow } from './dispatchPerformanceApi'
 import type { SettleNowArtifact } from './dispatchPerformanceTypes'
 
 const JOB_POLL_INTERVAL_MS = 2000
+/** 轮询上限 10 分钟：作业卡死或接口一直失败时按钮不能永远转圈 */
+const JOB_POLL_MAX_TICKS = (10 * 60_000) / JOB_POLL_INTERVAL_MS
 
 /**
  * 「立刻统计」的触发 + 轮询，列表行和详情页共用。
@@ -45,7 +47,14 @@ export function useSettleNow(options?: { onSettled?: () => void | Promise<void> 
         if (reused) showToast('该站点已有统计任务在跑，正在等它完成', 'warning')
 
         stopPolling()
+        let ticks = 0
         pollTimerRef.current = window.setInterval(async () => {
+          if ((ticks += 1) > JOB_POLL_MAX_TICKS) {
+            stopPolling()
+            setSettlingId(null)
+            showToast('统计任务仍在进行，已停止等待，稍后刷新页面查看结果', 'warning')
+            return
+          }
           try {
             const current = await getJobById(job.id)
             if (current.status === 'succeeded') {

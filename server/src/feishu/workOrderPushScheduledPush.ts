@@ -77,7 +77,7 @@ export type WorkOrderPushResult = {
 }
 
 /**
- * 工单推送核心：拉未处理工单 → 按 waybillNo 解析供应商归属 → 聚合 → 按供应商逐个推送（无工单也推送“无遗留工单”卡片）。
+ * 工单推送核心：拉未处理工单 → 按 waybillNo 解析供应商归属 → 聚合 → 按供应商逐个推送（该供应商无未处理工单则不推送）。
  * 供定时任务与「立即推送」复用。
  */
 export async function executeWorkOrderPush(params: {
@@ -132,7 +132,7 @@ export async function executeWorkOrderPush(params: {
   const errors: string[] = []
 
   for (const config of configs) {
-    // 无未处理工单也要推送“无遗留工单”正向卡片，故无命中时补一个空 summary（totalCount=0）
+    // 无命中时补一个空 summary（totalCount=0），下方 claim 后跳过推送
     const summary = byVendor.get(config.vendorCode) ?? {
       vendorCode: config.vendorCode,
       normalCount: 0,
@@ -152,6 +152,12 @@ export async function executeWorkOrderPush(params: {
         console.log(`${label} ${vendorName} 本时间槽已推送成功过，跳过`)
         continue
       }
+    }
+
+    // 无未处理工单不推送；时间槽已 claim，避免 catch-up 窗口内每分钟重复拉数据
+    if (summary.totalCount === 0) {
+      console.log(`${label} ${vendorName} 无未处理工单，跳过推送`)
+      continue
     }
 
     try {

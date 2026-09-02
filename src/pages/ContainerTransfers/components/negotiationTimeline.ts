@@ -23,8 +23,10 @@ export type NegotiationTimelineEvent =
       quantityLines?: string[]
       /** 差异申报原因，与时间线正文分开展示 */
       receiverReportReason?: string
-      /** 差异申报证据图（可选） */
-      receiverReportImageUrl?: string
+      /** 证据图（可选）：申报证据或代确认的线下回单 */
+      evidenceImageUrl?: string
+      /** 证据图的标题，不同节点叫法不同 */
+      evidenceLabel?: string
       pendingLabel?: string
     }
   | {
@@ -122,7 +124,8 @@ export function buildNegotiationTimelineEvents(
           : `实收 ${detail.receivedTotal ?? '—'} 件`,
       quantityLines: reportLines.length > 0 ? reportLines : undefined,
       receiverReportReason: reasonTrimmed || undefined,
-      receiverReportImageUrl: detail.receiverReportImageUrl?.trim() || undefined,
+      evidenceImageUrl: detail.receiverReportImageUrl?.trim() || undefined,
+      evidenceLabel: '申报证据',
     })
   }
 
@@ -153,20 +156,28 @@ export function buildNegotiationTimelineEvents(
     if (detail.status === 'CONFIRMED' && !hasDisputeTrail) {
       const partial =
         detail.settledTotal !== null && detail.settledTotal !== detail.declaredTotal
+      // 代确认没有接收方的任何动作，标题必须说清是谁按什么依据推的，否则会被读成对方确认了
+      const actor = detail.respondedByUsername?.trim()
       entries.push({
         key: 'simple-confirm',
         sort: [ms, 4],
         kind: 'simple_confirm',
         when: detail.respondedAt,
-        title: '接收方确认收货',
+        title: detail.proxyConfirmed ? '转出方按回单代确认' : '接收方确认收货',
         statusLabel: '已确认',
         description: [
-          partial
-            ? '实收与申报合计不一致，已按实收合计记账。'
-            : '与各品类申报一致，已全额记账。',
+          detail.proxyConfirmed
+            ? `${detail.toAccountName} 无系统账号，由${actor ? ` ${actor} ` : '内部人员'}凭线下回单确认，已按各品类申报数量记账。`
+            : partial
+              ? '实收与申报合计不一致，已按实收合计记账。'
+              : '与各品类申报一致，已全额记账。',
           detail.responseNote?.trim() ? ` ${detail.responseNote.trim()}` : '',
         ].join(''),
         quantityLines: declaredQuantityLines(detail),
+        evidenceImageUrl: detail.proxyConfirmed
+          ? detail.proxyEvidenceUrl?.trim() || undefined
+          : undefined,
+        evidenceLabel: '回单凭证',
       })
     } else if (detail.status === 'CONFIRMED' && hasDisputeTrail) {
       const mergedAcceptAndBook = sameMomentIso(detail.senderAcceptedAt, detail.respondedAt)

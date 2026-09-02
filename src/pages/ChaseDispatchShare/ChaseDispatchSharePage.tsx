@@ -6,6 +6,7 @@ import {
   fetchDispatchAlarmShare,
   fetchDispatchAlarmDriverMap,
   type ChaseDispatchShareView,
+  type DispatchAlarmShareDriver,
   type DispatchAlarmShareView,
 } from './chaseDispatchShareApi'
 import { PublicDriverMapSection } from '../../components/DriverMap'
@@ -108,10 +109,17 @@ function toChaseDispatchViewModel(data: ChaseDispatchShareView): ShareViewModel 
   }
 }
 
+/** 未分配司机（尚未派件）的桶 courierCode/courierName 为空，落地页按普通司机行展示，只是换个名字 */
+const UNASSIGNED_DRIVER_LABEL = 'Not dispatched (no driver assigned)'
+const driverRowKey = (d: DispatchAlarmShareDriver): string => d.courierCode || 'unassigned'
+const driverRowName = (d: DispatchAlarmShareDriver): string => d.courierName || UNASSIGNED_DRIVER_LABEL
+
 function toDispatchAlarmViewModel(data: DispatchAlarmShareView): ShareViewModel {
-  const neverSignedDrivers = data.drivers.filter((d) => d.neverSignedWaybills.length > 0)
-  const lateSignedDrivers = data.drivers.filter((d) => d.lateSignedWaybills.length > 0)
-  const problemDrivers = data.drivers.filter((d) => d.problemCount > 0)
+  // 未派件的单没有 courierCode，不在 drivers 里；不并进来落地页就少了这部分未达标运单号
+  const allDrivers = data.unassigned ? [...data.drivers, data.unassigned] : data.drivers
+  const neverSignedDrivers = allDrivers.filter((d) => d.neverSignedWaybills.length > 0)
+  const lateSignedDrivers = allDrivers.filter((d) => d.lateSignedWaybills.length > 0)
+  const problemDrivers = allDrivers.filter((d) => d.problemCount > 0)
   const unmetTotal = data.total - data.met
   const rate = data.total > 0 ? (data.met / data.total) * 100 : 0
   const rateText = data.total > 0 ? `${rate.toFixed(1)}%` : '—'
@@ -123,8 +131,8 @@ function toDispatchAlarmViewModel(data: DispatchAlarmShareView): ShareViewModel 
       title: 'Not signed',
       count: neverSignedDrivers.reduce((sum, d) => sum + d.neverSignedWaybills.length, 0),
       drivers: neverSignedDrivers.map((d) => ({
-        key: d.courierCode,
-        name: d.courierName,
+        key: driverRowKey(d),
+        name: driverRowName(d),
         code: d.courierCode,
         count: d.neverSignedWaybills.length,
         waybillNos: d.neverSignedWaybills.map((w) => w.waybillNo),
@@ -138,8 +146,8 @@ function toDispatchAlarmViewModel(data: DispatchAlarmShareView): ShareViewModel 
       title: 'Signed late (over 24H)',
       count: lateSignedDrivers.reduce((sum, d) => sum + d.lateSignedWaybills.length, 0),
       drivers: lateSignedDrivers.map((d) => ({
-        key: d.courierCode,
-        name: d.courierName,
+        key: driverRowKey(d),
+        name: driverRowName(d),
         code: d.courierCode,
         count: d.lateSignedWaybills.length,
         waybillNos: d.lateSignedWaybills.map((w) => w.waybillNo),
@@ -154,8 +162,8 @@ function toDispatchAlarmViewModel(data: DispatchAlarmShareView): ShareViewModel 
       count: data.problemCount,
       tone: 'alert',
       drivers: problemDrivers.map((d) => ({
-        key: d.courierCode,
-        name: d.courierName,
+        key: driverRowKey(d),
+        name: driverRowName(d),
         code: d.courierCode,
         count: d.problemCount,
         waybillNos: d.problemWaybills.map((w) => w.waybillNo),

@@ -137,8 +137,8 @@ export type DispatchPerformanceResult = {
   endDate: string
   /** 区间内实际有数据的到件日 */
   arrivalDates: string[]
-  /** 区间内日历上「出仓趟已该跑完」的到件日；与 arrivalDates 的差集就是结算任务没跑到的天 */
-  settledDates: string[]
+  /** 日历上出仓趟已该跑完、台账里却没有跑过记录的到件日 = 结算任务真的漏跑的天（服务端已算好） */
+  missingDates: string[]
   overall: DispatchMetrics
   /** 全站白名单路由的单量：同样没算进 overall */
   whitelistTotal: number

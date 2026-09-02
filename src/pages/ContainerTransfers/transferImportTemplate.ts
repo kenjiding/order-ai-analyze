@@ -40,7 +40,7 @@ const HEADER_FILL: ExcelJS.Fill = {
 
 /** exceljs 只在点「下载模板」时才用得上，动态加载避免拖累页面首包 */
 async function buildWorkbook(
-  ownAccounts: ContainerAccount[],
+  senderAccounts: ContainerAccount[],
   counterparties: ContainerAccount[],
 ): Promise<ExcelJS.Workbook> {
   const { default: ExcelJSModule } = await import('exceljs')
@@ -78,7 +78,7 @@ async function buildWorkbook(
     cell.font = { bold: true }
     cell.fill = HEADER_FILL
   }
-  ownAccounts.forEach((account, index) => {
+  senderAccounts.forEach((account, index) => {
     refSheet.getCell(index + 2, 1).value = account.name
   })
   counterparties.forEach((account, index) => {
@@ -144,18 +144,18 @@ async function buildWorkbook(
 
 /** 导出给测试/校验用：拿到 buffer 而不落盘 */
 export async function buildTransferImportTemplateBuffer(
-  ownAccounts: ContainerAccount[],
+  senderAccounts: ContainerAccount[],
   counterparties: ContainerAccount[],
 ): Promise<ArrayBuffer> {
-  const workbook = await buildWorkbook(ownAccounts, counterparties)
+  const workbook = await buildWorkbook(senderAccounts, counterparties)
   return (await workbook.xlsx.writeBuffer()) as ArrayBuffer
 }
 
 export async function downloadTransferImportTemplate(
-  ownAccounts: ContainerAccount[],
+  senderAccounts: ContainerAccount[],
   counterparties: ContainerAccount[],
 ): Promise<void> {
-  const buffer = await buildTransferImportTemplateBuffer(ownAccounts, counterparties)
+  const buffer = await buildTransferImportTemplateBuffer(senderAccounts, counterparties)
   const blob = new Blob([buffer], {
     type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
   })

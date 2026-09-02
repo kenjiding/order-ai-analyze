@@ -72,6 +72,12 @@ export type Dispatch24hVendorStat = {
   unmetNos: string[]
   /** 按司机（courierCode）细分的达标情况，按未达标数从高到低排序 */
   drivers: Dispatch24hDriverStat[]
+  /**
+   * 没有 courierCode（尚未派件/未分配司机）的那部分单，单独成桶，courierCode/courierName 为空。
+   * 不混进 drivers（那是真实司机绩效维度），但推送卡片/落地页必须显示它，
+   * 否则「未达标 N 单」与司机明细对不上，会出现「16 单未签收」却写「全部已签收」的自相矛盾。
+   */
+  unassigned: Dispatch24hDriverStat | null
 }
 
 function norm(code: unknown): string {
@@ -219,7 +225,7 @@ export function selectWaybillNosNeedingRefresh(
  * 尚未派件（无 deliveryTime）的单也计入 total，按未达标处理（归入「从未签收」）——
  * 因为该供应商范围内的单，只要还没派件，24H 派签就必然不达标，不能因为拿不到 deliveryTime 就当它不存在。
  * 同时按司机（courierCode）细分未达标数，供告警卡片展示司机维度明细；
- * 未派件的单没有司机可归（courierCode 同样为空），只计入供应商总数，不出现在任何司机的明细里。
+ * 未派件的单没有司机可归（courierCode 同样为空），归入单独的 unassigned 桶，不混进 drivers。
  * 口径与「供应商数据分析」大盘 / 「24小时派签告警」一致。
  */
 /** 司机维度累加：供 aggregateDispatch24hByVendor / aggregateDispatch24hByScopes 共用，二者除是否额外记 unmetNos 外，司机级累加逻辑完全一致 */
@@ -235,7 +241,7 @@ function accumulateDriverStat(
   lateSigned: boolean,
   wbNo: string,
 ): void {
-  if (!courierCode) return
+  // courierCode 为空（尚未派件/未分配司机）时用空串当桶 key，finalizeDriverStats 再拆到 stat.unassigned
   let driverMap = driverMapByKey.get(key)
   if (!driverMap) {
     driverMap = new Map()
@@ -274,7 +280,7 @@ function accumulateDriverStat(
   if (lateSigned) driverStat.lateSignedCount += 1
 }
 
-/** 把每个 key 下按司机聚出的明细排序、挂回对应 stat.drivers；未达标数从高到低 */
+/** 把每个 key 下按司机聚出的明细排序、挂回对应 stat.drivers；未达标数从高到低。无司机的桶拆到 stat.unassigned */
 function finalizeDriverStats(
   result: Map<string, Dispatch24hVendorStat>,
   driverMapByKey: Map<string, Map<string, Dispatch24hDriverStat>>,
@@ -282,6 +288,11 @@ function finalizeDriverStats(
   for (const [key, driverMap] of driverMapByKey) {
     const stat = result.get(key)
     if (!stat) continue
+    const unassigned = driverMap.get('')
+    if (unassigned) {
+      driverMap.delete('')
+      stat.unassigned = unassigned
+    }
     stat.drivers = [...driverMap.values()].sort(
       (a, b) => (b.total - b.met) - (a.total - a.met) || b.total - a.total,
     )
@@ -331,7 +342,7 @@ export function aggregateDispatch24hByVendor(input: {
 
       let stat = result.get(vendorCode)
       if (!stat) {
-        stat = { total: 0, met: 0, problemCount: 0, neverSignedCount: 0, lateSignedCount: 0, unmetNos: [], drivers: [] }
+        stat = { total: 0, met: 0, problemCount: 0, neverSignedCount: 0, lateSignedCount: 0, unmetNos: [], drivers: [], unassigned: null }
         result.set(vendorCode, stat)
       }
       stat.total += 1
@@ -405,7 +416,7 @@ export function aggregateDispatch24hByScopes(input: {
 
       let stat = result.get(scope.key)
       if (!stat) {
-        stat = { total: 0, met: 0, problemCount: 0, neverSignedCount: 0, lateSignedCount: 0, unmetNos: [], drivers: [] }
+        stat = { total: 0, met: 0, problemCount: 0, neverSignedCount: 0, lateSignedCount: 0, unmetNos: [], drivers: [], unassigned: null }
         result.set(scope.key, stat)
       }
       stat.total += 1

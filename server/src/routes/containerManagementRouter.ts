@@ -5,6 +5,7 @@ import {
   canActAsAccount,
   canViewTransfer,
   hasContainerPermission,
+  listExternalAccountIds,
   resolveVisibleAccountIds,
   type VisibleAccounts,
 } from '../containerManagement/access'
@@ -69,6 +70,9 @@ import {
 export const containerManagementRouter = Router()
 
 const MANAGE_ACCOUNTS = 'btn:container-accounts:manage'
+
+/** 代确认是单方改账动作（对方无从知晓也无从反对），独立授权，不随转出方绑定自动获得 */
+const PROXY_CONFIRM = 'btn:container-transfers:proxy-confirm'
 
 /** 一次提交的流转组数上限：整批一个事务，太多组会长时间占住行锁 */
 const MAX_TRANSFER_BATCH = 20
@@ -184,7 +188,13 @@ containerManagementRouter.get('/accounts/assignable-users', async (req: Authenti
 
 containerManagementRouter.post('/accounts', async (req: AuthenticatedRequest, res) => {
   if (!hasContainerPermission(req, MANAGE_ACCOUNTS)) return fail(res, 403, '无操作权限')
-  const body = req.body as { name?: unknown; kind?: unknown; userIds?: unknown; pushNotify?: unknown }
+  const body = req.body as {
+    name?: unknown
+    kind?: unknown
+    isExternal?: unknown
+    userIds?: unknown
+    pushNotify?: unknown
+  }
   const name = String(body.name ?? '').trim()
   if (!name) return fail(res, 400, '请填写站点名称')
   if (name.length > 200) return fail(res, 400, '站点名称过长')
@@ -196,6 +206,7 @@ containerManagementRouter.post('/accounts', async (req: AuthenticatedRequest, re
     const data = await createAccount({
       name,
       kind: body.kind as AccountKind,
+      isExternal: body.isExternal === true,
       userIds: Array.isArray(body.userIds) ? body.userIds.map((item) => String(item)) : [],
       pushNotify: normalizeAccountPushNotify(body.pushNotify),
       createdBy: req.authUser?.id ?? null,
@@ -208,10 +219,17 @@ containerManagementRouter.post('/accounts', async (req: AuthenticatedRequest, re
 
 containerManagementRouter.patch('/accounts/:id', async (req: AuthenticatedRequest, res) => {
   if (!hasContainerPermission(req, MANAGE_ACCOUNTS)) return fail(res, 403, '无操作权限')
-  const body = req.body as { name?: unknown; kind?: unknown; userIds?: unknown; pushNotify?: unknown }
+  const body = req.body as {
+    name?: unknown
+    kind?: unknown
+    isExternal?: unknown
+    userIds?: unknown
+    pushNotify?: unknown
+  }
   const patch: {
     name?: string
     kind?: AccountKind
+    isExternal?: boolean
     userIds?: string[]
     pushNotify?: AccountPushNotify
   } = {}
@@ -224,6 +242,9 @@ containerManagementRouter.patch('/accounts/:id', async (req: AuthenticatedReques
   if (body.kind !== undefined) {
     if (!isAccountKind(body.kind)) return fail(res, 400, '站点类型不合法')
     patch.kind = body.kind as AccountKind
+  }
+  if (body.isExternal !== undefined) {
+    patch.isExternal = body.isExternal === true
   }
   if (body.userIds !== undefined) {
     if (!Array.isArray(body.userIds)) return fail(res, 400, '绑定用户格式不正确')
@@ -438,9 +459,11 @@ containerManagementRouter.post('/transfers', async (req: AuthenticatedRequest, r
 
   try {
     const visible = await resolveVisibleAccountIds(req)
+    const external = await listExternalAccountIds(parsed.map((item) => item.fromAccountId))
     for (const [index, item] of parsed.entries()) {
-      if (!canActAsAccount(visible, item.fromAccountId)) {
-        return fail(res, 403, `第 ${index + 1} 组：只能以自己绑定的站点账户作为转出方`)
+      // 外部方（清关行/客户）登不进系统，他们发起的归还单只能由内部人员代录
+      if (!canActAsAccount(visible, item.fromAccountId) && !external.has(item.fromAccountId)) {
+        return fail(res, 403, `第 ${index + 1} 组：转出方只能是自己绑定的站点账户或外部方账户`)
       }
     }
     const ids = await createTransfersBatch(parsed, req.authUser?.id ?? null, '组')
@@ -472,9 +495,10 @@ containerManagementRouter.post('/transfers/import', async (req: AuthenticatedReq
 
   try {
     const visible = await resolveVisibleAccountIds(req)
+    const external = await listExternalAccountIds(parsed.map((item) => item.fromAccountId))
     for (const [index, item] of parsed.entries()) {
-      if (!canActAsAccount(visible, item.fromAccountId)) {
-        return fail(res, 403, `第 ${index + 1} 行：只能以自己绑定的站点账户作为转出方`)
+      if (!canActAsAccount(visible, item.fromAccountId) && !external.has(item.fromAccountId)) {
+        return fail(res, 403, `第 ${index + 1} 行：转出方只能是自己绑定的站点账户或外部方账户`)
       }
     }
     const ids = await createTransfersBatch(parsed, req.authUser?.id ?? null, '行')
@@ -642,6 +666,49 @@ containerManagementRouter.patch('/transfers/:id/confirm', async (req: Authentica
     fireTransferNotify(req, confirmed, 'confirmed', note.trim() ? `收货备注：${note.trim()}` : null)
   } catch (error) {
     handleError(res, error, '确认收货失败')
+  }
+})
+
+/**
+ * 转出方凭线下回单代确认收货。
+ *
+ * 仅当接收方在本系统没有账号（isExternal）时开放：他们登不进来，单子否则会永久卡在
+ * PENDING_RECEIVER 并一直软占用转出方可用量。账务口径与接收方本人确认完全一致
+ * （按申报数量全额入账），差别只在 proxyConfirmed 标记与选填的回单凭证。
+ *
+ * 少收场景不在这里处理：先按申报数入账，再走台账调整，那条路已经存在。
+ */
+containerManagementRouter.patch('/transfers/:id/proxy-confirm', async (req: AuthenticatedRequest, res) => {
+  if (!hasContainerPermission(req, PROXY_CONFIRM)) return fail(res, 403, '无代确认权限')
+  const body = req.body as { note?: unknown; evidenceUrl?: unknown }
+  const note = String(body.note ?? '')
+  if (note.length > 2000) return fail(res, 400, '备注过长')
+  const evidenceUrl = body.evidenceUrl === undefined || body.evidenceUrl === null
+    ? null
+    : String(body.evidenceUrl).trim() || null
+  try {
+    const loaded = await loadTransferWithRole(req, res, 'from')
+    if (!loaded) return
+    if (!loaded.transfer.toAccountIsExternal) {
+      return fail(res, 400, '接收方在本系统有账号，请等待对方确认收货')
+    }
+    await confirmTransfer({
+      transferId: loaded.transfer.id,
+      actorUserId: req.authUser?.id ?? null,
+      responseNote: note,
+      proxy: true,
+      proxyEvidenceUrl: evidenceUrl,
+    })
+    const confirmed = await getTransfer(loaded.transfer.id)
+    res.json({ ok: true, data: confirmed })
+    fireTransferNotify(
+      req,
+      confirmed,
+      'proxyConfirmed',
+      note.trim() ? `代确认说明：${note.trim()}` : null,
+    )
+  } catch (error) {
+    handleError(res, error, '代确认收货失败')
   }
 })
 

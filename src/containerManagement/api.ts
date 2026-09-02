@@ -64,6 +64,7 @@ export function fetchAssignableUsers(): Promise<ApiResult<AssignableUser[]>> {
 export function createAccount(body: {
   name: string
   kind: string
+  isExternal: boolean
   userIds: string[]
   pushNotify: AccountPushNotify
 }): Promise<ApiResult<ContainerAccount>> {
@@ -72,7 +73,13 @@ export function createAccount(body: {
 
 export function updateAccount(
   id: string,
-  body: { name?: string; kind?: string; userIds?: string[]; pushNotify?: AccountPushNotify },
+  body: {
+    name?: string
+    kind?: string
+    isExternal?: boolean
+    userIds?: string[]
+    pushNotify?: AccountPushNotify
+  },
 ): Promise<ApiResult<ContainerAccount>> {
   return apiFetch<ContainerAccount>(`/accounts/${id}`, {
     method: 'PATCH',
@@ -204,6 +211,17 @@ export function confirmTransfer(id: number, note: string): Promise<ApiResult<Tra
   return apiFetch<Transfer>(`/transfers/${id}/confirm`, {
     method: 'PATCH',
     body: JSON.stringify({ note }),
+  })
+}
+
+/** 接收方无系统账号时，转出方凭线下回单单方面确认并入账 */
+export function proxyConfirmTransfer(
+  id: number,
+  body: { note: string; evidenceUrl: string | null },
+): Promise<ApiResult<Transfer>> {
+  return apiFetch<Transfer>(`/transfers/${id}/proxy-confirm`, {
+    method: 'PATCH',
+    body: JSON.stringify(body),
   })
 }
 

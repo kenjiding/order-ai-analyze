@@ -443,8 +443,6 @@ export default function ScannerEfficiencyBody({ vm, level1Push }: Props) {
                 开仓日：分拣人数 &gt; {settings.openDayThreshold}。
                 <br />
                 不开仓日：分拣人数 ≤ {settings.openDayThreshold}。
-                <br />
-                脏数据过滤：扫描员单日扫描量 &lt; {settings.minDayScanCount} 票时，该扫描员当日数据不计入效率、汇总与按小时段。
               </div>
               <div className="se-rules-card">
                 开仓效率 = 上传总货量 / 统计窗口内「开仓日」考勤总工时。

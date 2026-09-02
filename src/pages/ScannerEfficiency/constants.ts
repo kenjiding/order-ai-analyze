@@ -98,8 +98,6 @@ export const DEFAULT_SETTINGS = {
   splitThresholdMinutes: 30,
   /** 每个分拣会话折算有效工时的下限（分钟），含仅 1 次扫描或与真实作业不符的极小间隔累计（如文件中大量同一时间戳）。 */
   minSingleScanSessionMinutes: 2,
-  /** 脏数据阈值：某扫描员在某日的扫描量低于此值时，该日数据整体剔除（不计入效率、汇总与按小时段）。 */
-  minDayScanCount: 300,
 } as const
 
 export type ScanSettings = {
@@ -108,8 +106,6 @@ export type ScanSettings = {
   splitThresholdMinutes: number
   /** 同上；字段名沿用历史快照，语义为「分拣会话最短有效工时」而非仅单笔。 */
   minSingleScanSessionMinutes: number
-  /** 脏数据阈值：某扫描员在某日的扫描量低于此值时，该日数据整体剔除。 */
-  minDayScanCount: number
 }
 
 export const TAB_KEYS = {

@@ -1,7 +1,7 @@
 import { useRef, type ChangeEvent } from 'react'
 import { Button, DatePicker, InputNumber, Tooltip } from 'antd'
 import type { Dayjs } from 'dayjs'
-import { FileSpreadsheet, Search, Upload, Warehouse } from 'lucide-react'
+import { FileSpreadsheet, Pause, Play, Search, Upload, Warehouse } from 'lucide-react'
 import { PERMISSION_KEYS, usePermission } from '../../../hooks/usePermission'
 import { OrderExceptionAnalysisResults } from '../../OrderExceptionManagement/components/OrderExceptionAnalysisResults'
 import type { AnalysisRow, AnalyzeProgress } from '../../OrderExceptionManagement/analysisTypes'
@@ -23,6 +23,9 @@ type Props = {
   onLossTimeoutDaysChange: (value: number) => void
   isQuerying: boolean
   isAnalyzing: boolean
+  isPaused: boolean
+  onPauseAnalyze: () => void
+  onResumeAnalyze: () => void
   queryMeta: InHubPackageLossWaybills | null
   importMeta: PackageLossImportMeta | null
   rows: AnalysisRow[]
@@ -47,6 +50,9 @@ export function InHubPackageLossTab({
   onLossTimeoutDaysChange,
   isQuerying,
   isAnalyzing,
+  isPaused,
+  onPauseAnalyze,
+  onResumeAnalyze,
   queryMeta,
   importMeta,
   rows,
@@ -69,7 +75,10 @@ export function InHubPackageLossTab({
     !dateRange[0]?.isValid() || !dateRange[1]?.isValid() || dateRange[1].isBefore(dateRange[0])
   const exceedsRangeLimit =
     !dateRangeInvalid && dateRange[1].diff(dateRange[0], 'day', true) > MAX_QUERY_RANGE_DAYS
-  const analyzeDisabled = busy || !canAnalyze || !stationCode || timeoutInvalid || dateRangeInvalid || exceedsRangeLimit
+  // 分析进行中时主按钮改为暂停/继续开关，只有取号阶段才真正禁用
+  const analyzeDisabled = isAnalyzing
+    ? !canAnalyze
+    : busy || !canAnalyze || !stationCode || timeoutInvalid || dateRangeInvalid || exceedsRangeLimit
   const importDisabled = busy || !canAnalyze
   const analyzeTooltip = !canAnalyze
     ? '无操作权限'
@@ -181,12 +190,27 @@ export function InHubPackageLossTab({
                 <span className={analyzeDisabled ? 'inline-flex cursor-not-allowed' : 'inline-flex'}>
                   <Button
                     type="primary"
+                    danger={isAnalyzing && !isPaused}
                     disabled={analyzeDisabled}
-                    loading={busy}
-                    icon={busy ? undefined : <Search className="h-4 w-4" aria-hidden />}
-                    onClick={() => void onAnalyze()}
+                    loading={isQuerying}
+                    icon={
+                      isQuerying ? undefined : isAnalyzing ? (
+                        isPaused ? (
+                          <Play className="h-4 w-4" aria-hidden />
+                        ) : (
+                          <Pause className="h-4 w-4" aria-hidden />
+                        )
+                      ) : (
+                        <Search className="h-4 w-4" aria-hidden />
+                      )
+                    }
+                    onClick={() => {
+                      if (!isAnalyzing) void onAnalyze()
+                      else if (isPaused) onResumeAnalyze()
+                      else onPauseAnalyze()
+                    }}
                   >
-                    {isQuerying ? '取号中' : isAnalyzing ? '分析中' : '查询并分析'}
+                    {isQuerying ? '取号中' : isAnalyzing ? (isPaused ? '继续分析' : '暂停分析') : '查询并分析'}
                   </Button>
                 </span>
               </Tooltip>
@@ -198,6 +222,7 @@ export function InHubPackageLossTab({
           <InHubRunStatus
             isQuerying={isQuerying}
             isAnalyzing={isAnalyzing}
+            isPaused={isPaused}
             queryMeta={queryMeta}
             importMeta={importMeta}
             analyzeProgress={analyzeProgress}
@@ -236,12 +261,14 @@ export function InHubPackageLossTab({
 function InHubRunStatus({
   isQuerying,
   isAnalyzing,
+  isPaused,
   queryMeta,
   importMeta,
   analyzeProgress,
 }: {
   isQuerying: boolean
   isAnalyzing: boolean
+  isPaused: boolean
   queryMeta: InHubPackageLossWaybills | null
   importMeta: PackageLossImportMeta | null
   analyzeProgress: AnalyzeProgress | null
@@ -300,7 +327,9 @@ function InHubRunStatus({
             />
           </div>
           <span className="package-loss-progress-label">
-            {isQuerying ? '正在取号' : `${analyzeProgress?.completed ?? 0} / ${analyzeProgress?.total ?? 0}`}
+            {isQuerying
+              ? '正在取号'
+              : `${analyzeProgress?.completed ?? 0} / ${analyzeProgress?.total ?? 0}${isPaused ? '（已暂停）' : ''}`}
           </span>
         </div>
       ) : null}

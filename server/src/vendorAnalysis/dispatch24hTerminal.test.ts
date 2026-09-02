@@ -321,6 +321,17 @@ test('aggregateDispatch24hByVendor：尚未派件（无 deliveryTime）的单也
     stat?.drivers.map((d) => d.courierCode),
     ['C1'],
   )
+  // 但要单独成桶，否则推送卡片/落地页会漏掉这部分未达标单（显示「16 单未签收」却写「全部已签收」）
+  assert.equal(stat?.unassigned?.total, 1)
+  assert.equal(stat?.unassigned?.met, 0)
+  assert.equal(stat?.unassigned?.neverSignedCount, 1)
+  assert.deepEqual(
+    stat?.unassigned?.neverSignedWaybills.map((w) => w.waybillNo),
+    ['D2'],
+  )
+  // 未达标数可被完整拆解：司机维度 + 未分配 = 供应商维度
+  const driverUnmet = (stat?.drivers ?? []).reduce((sum, d) => sum + (d.total - d.met), 0)
+  assert.equal(driverUnmet + (stat?.unassigned ? stat.unassigned.total - stat.unassigned.met : 0), 1)
 })
 
 test('aggregateDispatch24hByVendor：courierVendorCode 为空时按 consigneeRouteCode 反查兜底归属；两家供应商共担同一路由码时各自独立计入，不是互斥归属', () => {

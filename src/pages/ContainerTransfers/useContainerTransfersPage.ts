@@ -4,6 +4,7 @@ import { useSearchParams } from 'react-router-dom'
 import {
   acceptSettlement,
   confirmTransfer,
+  proxyConfirmTransfer,
   createTransfers,
   deleteTransfer,
   fetchAccounts,
@@ -28,6 +29,7 @@ import type {
 } from '../../containerManagement/types'
 import { mapImportErrorRowNo } from './transferImportParse'
 import { downloadTransferImportTemplate } from './transferImportTemplate'
+import { usePermission } from '../../hooks/usePermission'
 import { useAuthStore } from '../../stores/authStore'
 import { showToast } from '../../utils/toast'
 
@@ -85,6 +87,7 @@ export function toLineItems(lines: TransferLineDraft[]) {
 export function useContainerTransfersPage() {
   const [searchParams, setSearchParams] = useSearchParams()
   const isSuperAdmin = useAuthStore((s) => s.isSuperAdmin)
+  const canProxyConfirm = usePermission('btn:container-transfers:proxy-confirm')
 
   const [tab, setTab] = useState<'transfers' | 'changes'>('transfers')
   const [ownAccounts, setOwnAccounts] = useState<ContainerAccount[]>([])
@@ -117,6 +120,8 @@ export function useContainerTransfersPage() {
   const [templateDownloading, setTemplateDownloading] = useState(false)
   const [editing, setEditing] = useState<Transfer | null>(null)
   const [confirmTarget, setConfirmTarget] = useState<Transfer | null>(null)
+  /** 代确认与普通确认共用弹窗组件，但走不同接口，所以分开存目标 */
+  const [proxyConfirmTarget, setProxyConfirmTarget] = useState<Transfer | null>(null)
   const [disputeTarget, setDisputeTarget] = useState<Transfer | null>(null)
   const [deleteTarget, setDeleteTarget] = useState<Transfer | null>(null)
   const [detail, setDetail] = useState<TransferDetail | null>(null)
@@ -132,6 +137,16 @@ export function useContainerTransfersPage() {
   }, [ownAccounts, counterparties])
 
   const ownAccountIds = useMemo(() => new Set(ownAccounts.map((a) => a.id)), [ownAccounts])
+
+  /**
+   * 可作为转出方的账户：自己绑定的站点，加上外部方。
+   * 外部方（清关行、客户）登不进系统，他们归还容器的单子只能由内部人员以他们的身份代录，
+   * 所以他们虽然落在 counterparties 里，也要出现在转出方下拉。
+   */
+  const senderAccounts = useMemo(
+    () => [...ownAccounts, ...counterparties.filter((account) => account.isExternal)],
+    [ownAccounts, counterparties],
+  )
 
   const canActAs = useCallback(
     (accountId: string) => isSuperAdmin || ownAccountIds.has(accountId),
@@ -344,14 +359,14 @@ export function useContainerTransfersPage() {
   const downloadImportTemplate = useCallback(async () => {
     setTemplateDownloading(true)
     try {
-      await downloadTransferImportTemplate(ownAccounts, counterparties)
+      await downloadTransferImportTemplate(senderAccounts, counterparties)
     } catch (error) {
       console.error('[container-transfer-import] 模板生成失败', error)
       showToast('模板生成失败，请重试', 'error')
     } finally {
       setTemplateDownloading(false)
     }
-  }, [ownAccounts, counterparties])
+  }, [senderAccounts, counterparties])
 
   /** Excel 批量导入：整批一个事务，行已在前端逐条校验过，这里只处理后端返回 */
   const submitImport = useCallback(
@@ -388,6 +403,24 @@ export function useContainerTransfersPage() {
       return true
     },
     [confirmTarget, refresh],
+  )
+
+  const submitProxyConfirm = useCallback(
+    async (note: string, evidenceUrl: string | null): Promise<boolean> => {
+      if (!proxyConfirmTarget) return false
+      setSubmitting(true)
+      const res = await proxyConfirmTransfer(proxyConfirmTarget.id, { note, evidenceUrl })
+      setSubmitting(false)
+      if (!res.ok) {
+        showToast(res.error, 'error')
+        return false
+      }
+      showToast('已按回单确认，库存已记账', 'success')
+      setProxyConfirmTarget(null)
+      await refresh()
+      return true
+    },
+    [proxyConfirmTarget, refresh],
   )
 
   const submitDispute = useCallback(
@@ -464,6 +497,7 @@ export function useContainerTransfersPage() {
       isSuperAdmin,
       allAccounts,
       ownAccounts,
+      senderAccounts,
       counterparties,
       canActAs,
       transfers,
@@ -508,6 +542,11 @@ export function useContainerTransfersPage() {
       openConfirm: setConfirmTarget,
       closeConfirm: () => setConfirmTarget(null),
       submitConfirm,
+      canProxyConfirm,
+      proxyConfirmTarget,
+      openProxyConfirm: setProxyConfirmTarget,
+      closeProxyConfirm: () => setProxyConfirmTarget(null),
+      submitProxyConfirm,
       disputeTarget,
       openDispute: setDisputeTarget,
       closeDispute: () => setDisputeTarget(null),
@@ -532,6 +571,7 @@ export function useContainerTransfersPage() {
       isSuperAdmin,
       allAccounts,
       ownAccounts,
+      senderAccounts,
       counterparties,
       canActAs,
       transfers,
@@ -556,6 +596,9 @@ export function useContainerTransfersPage() {
       submitImport,
       confirmTarget,
       submitConfirm,
+      canProxyConfirm,
+      proxyConfirmTarget,
+      submitProxyConfirm,
       disputeTarget,
       submitDispute,
       deleteTarget,
