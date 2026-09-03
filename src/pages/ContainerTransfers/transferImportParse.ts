@@ -55,8 +55,8 @@ const COLUMN_ALIASES: Record<keyof TransferImportRawRow, string[]> = {
   kind: ['业务类型', '类型', 'kind'],
   from: ['转出方', '转出站点', 'fromAccount', 'from'],
   to: ['接收方', '接收站点', 'toAccount', 'to'],
-  bigBasket: ['大篮筐数量', '大篮筐', 'bigBasket', 'BIG_BASKET'],
-  silverBox: ['银框数量', '银框', 'silverBox', 'SILVER_BOX'],
+  bigBasket: ['大蓝筐数量', '大蓝筐', '大篮筐数量', '大篮筐', 'bigBasket', 'BIG_BASKET'],
+  silverBox: ['银筐数量', '银筐', '银框数量', '银框', 'silverBox', 'SILVER_BOX'],
   note: ['备注', '说明', 'note', 'remark'],
 }
 

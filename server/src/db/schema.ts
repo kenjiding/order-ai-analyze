@@ -682,7 +682,7 @@ export const containerBalances = pgTable(
     accountId: uuid('account_id')
       .notNull()
       .references(() => containerAccounts.id, { onDelete: 'restrict' }),
-    /** BIG_BASKET 大篮筐 | SILVER_BOX 银框 */
+    /** BIG_BASKET 大蓝筐 | SILVER_BOX 银筐 */
     containerType: varchar('container_type', { length: 32 }).notNull(),
     quantity: integer('quantity').notNull().default(0),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),

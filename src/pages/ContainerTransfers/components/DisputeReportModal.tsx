@@ -92,9 +92,7 @@ export function DisputeReportModal({ target, isUpdate = false, submitting, onCan
         </p>
         <TransferLineItemsInput
           lines={lines}
-          onChange={setLines}
-          lockedTypes
-          maxByType={maxByType}
+          onChange={setLines}          maxByType={maxByType}
           minQuantity={0}
         />
       </div>
@@ -107,7 +105,7 @@ export function DisputeReportModal({ target, isUpdate = false, submitting, onCan
           rows={3}
           value={reason}
           maxLength={2000}
-          placeholder="例如：清点后少 3 个大篮筐"
+          placeholder="例如：清点后少 3 个大蓝筐"
           onChange={(e) => setReason(e.target.value)}
           allowClear
         />

@@ -50,7 +50,7 @@ const emptyAuditFilters: AuditFilters = {
 export function useContainerLedgerPage() {
   const canDelete = usePermission('btn:container-ledger:delete')
 
-  const [tab, setTab] = useState<'balances' | 'audits'>('balances')
+  const [tab, setTab] = useState<'balances' | 'audits' | 'reconciliation'>('balances')
   const [accounts, setAccounts] = useState<ContainerAccount[]>([])
   const [balances, setBalances] = useState<ContainerBalance[]>([])
   const [loading, setLoading] = useState(false)

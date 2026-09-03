@@ -342,9 +342,7 @@ export function TransferNegotiateDrawer({
                         onChange={(next) => {
                           setPatchLines(next)
                           if (patchError) setPatchError(null)
-                        }}
-                        lockedTypes
-                        maxByType={maxByType}
+                        }}                        maxByType={maxByType}
                         minQuantity={0}
                         error={patchError}
                       />

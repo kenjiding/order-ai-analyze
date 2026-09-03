@@ -4,8 +4,8 @@ export const CONTAINER_TYPES = ['BIG_BASKET', 'SILVER_BOX'] as const
 export type ContainerType = (typeof CONTAINER_TYPES)[number]
 
 export const containerTypeLabel: Record<ContainerType, string> = {
-  BIG_BASKET: '大篮筐',
-  SILVER_BOX: '银框',
+  BIG_BASKET: '大蓝筐',
+  SILVER_BOX: '银筐',
 }
 
 export const ACCOUNT_KINDS = ['BROKER', 'CUSTOMER', 'CSP', 'INTERNAL_WAREHOUSE'] as const

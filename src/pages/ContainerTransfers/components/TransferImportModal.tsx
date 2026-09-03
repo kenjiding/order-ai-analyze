@@ -237,14 +237,14 @@ export function TransferImportModal({
                   { title: '转出方', width: 132, render: (_, row) => row.raw.from },
                   { title: '接收方', width: 132, render: (_, row) => row.raw.to },
                   {
-                    title: '大篮筐',
+                    title: '大蓝筐',
                     width: 76,
                     render: (_, row) => (
                       <span className="tabular-nums">{row.raw.bigBasket || '-'}</span>
                     ),
                   },
                   {
-                    title: '银框',
+                    title: '银筐',
                     width: 76,
                     render: (_, row) => (
                       <span className="tabular-nums">{row.raw.silverBox || '-'}</span>

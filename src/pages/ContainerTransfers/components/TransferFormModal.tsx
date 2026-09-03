@@ -9,6 +9,7 @@ import { Alert, Button, DatePicker, Input, Modal, Select, Tooltip } from 'antd'
 import dayjs, { type Dayjs } from 'dayjs'
 import { Copy, Plus, Trash2 } from 'lucide-react'
 import {
+  CONTAINER_TYPES,
   SELECTABLE_TRANSFER_KINDS,
   transferKindLabel,
 } from '../../../containerManagement/constants'
@@ -39,15 +40,25 @@ function todayIso(): string {
   return dayjs().format('YYYY-MM-DD')
 }
 
+/** 品类固定两种，两行都摆出来，填哪个算哪个 */
+function emptyLines(): TransferDraft['lines'] {
+  return CONTAINER_TYPES.map((containerType) => ({ containerType, quantity: '' }))
+}
+
 function emptyDraft(fromAccountId: string): TransferDraft {
   return {
     kind: 'LEND',
     fromAccountId,
     toAccountId: '',
-    lines: [{ containerType: 'BIG_BASKET', quantity: '' }],
+    lines: emptyLines(),
     occurredAt: todayIso(),
     note: '',
   }
+}
+
+/** 只提交填了数量的品类，空着的那一栏视为本单不涉及 */
+function filledLines(draft: TransferDraft): TransferDraft['lines'] {
+  return draft.lines.filter((line) => line.quantity.trim() !== '')
 }
 
 /** 单组校验，返回第一条错误；组序号由调用方补 */
@@ -56,12 +67,9 @@ function validateDraft(draft: TransferDraft): string | null {
   if (!draft.fromAccountId) return '请选择转出方'
   if (!draft.toAccountId) return '请选择接收方'
   if (draft.fromAccountId === draft.toAccountId) return '转出方与接收方不能相同'
-  if (draft.lines.length === 0) return '至少需要一条流转明细'
-  const seen = new Set<string>()
-  for (const line of draft.lines) {
-    if (seen.has(line.containerType)) return '请勿重复选择品类'
-    seen.add(line.containerType)
-    if (!line.quantity.trim()) return '请填写数量'
+  const lines = filledLines(draft)
+  if (lines.length === 0) return '至少填写一个品类的数量'
+  for (const line of lines) {
     const quantity = Number(line.quantity)
     if (!Number.isInteger(quantity) || quantity < 1) return '数量必须为大于 0 的整数'
   }
@@ -94,10 +102,10 @@ export function TransferFormModal({
           kind: editing.kind,
           fromAccountId: editing.fromAccountId,
           toAccountId: editing.toAccountId,
-          lines: editing.items.map((item) => ({
-            containerType: item.containerType,
-            quantity: String(item.declaredQuantity),
-          })),
+          lines: CONTAINER_TYPES.map((containerType) => {
+            const item = editing.items.find((entry) => entry.containerType === containerType)
+            return { containerType, quantity: item ? String(item.declaredQuantity) : '' }
+          }),
           occurredAt: editing.occurredAt,
           note: editing.note ?? '',
         },
@@ -141,7 +149,7 @@ export function TransferFormModal({
       }
     }
     setError(null)
-    await onSubmit(drafts)
+    await onSubmit(drafts.map((draft) => ({ ...draft, lines: filledLines(draft) })))
   }
 
   const fromOptions = (isEditing ? allAccounts : senderAccounts).map((account) => ({

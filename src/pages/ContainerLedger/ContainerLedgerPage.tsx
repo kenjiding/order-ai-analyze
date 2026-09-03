@@ -1,4 +1,4 @@
-import { History, PackageSearch, Pencil, Plus, Trash2, Warehouse } from 'lucide-react'
+import { History, PackageSearch, Pencil, Plus, Scale, Trash2, Warehouse } from 'lucide-react'
 import { Button, Table, Tag, Tooltip } from 'antd'
 import type { ColumnsType } from 'antd/es/table'
 import { PageSectionTabs } from '../../components/PageSectionTabs'
@@ -7,6 +7,7 @@ import type { ContainerBalance } from '../../containerManagement/types'
 import { BalanceAuditPanel } from './components/BalanceAuditPanel'
 import { BalanceDeleteModal } from './components/BalanceDeleteModal'
 import { BalanceFormModal } from './components/BalanceFormModal'
+import { ReconciliationPanel } from './components/ReconciliationPanel'
 import { useContainerLedgerPage } from './useContainerLedgerPage'
 
 export default function ContainerLedgerPage() {
@@ -123,10 +124,11 @@ export default function ContainerLedgerPage() {
       <section className="admin-panel overflow-hidden">
         <PageSectionTabs
           activeId={page.tab}
-          onChange={(id) => page.setTab(id as 'balances' | 'audits')}
+          onChange={(id) => page.setTab(id as 'balances' | 'audits' | 'reconciliation')}
           items={[
             { id: 'balances', label: '容器台账', icon: PackageSearch },
             { id: 'audits', label: '变更记录', icon: History },
+            { id: 'reconciliation', label: '对账', icon: Scale },
           ]}
         />
         <div className="p-4 sm:p-5">
@@ -144,7 +146,7 @@ export default function ContainerLedgerPage() {
               scroll={{ x: 780 }}
               locale={{ emptyText: '暂无台账记录，请先在「站点账户」建立站点后新增。' }}
             />
-          ) : (
+          ) : page.tab === 'audits' ? (
             <BalanceAuditPanel
               accounts={page.accounts}
               audits={page.audits}
@@ -156,6 +158,8 @@ export default function ContainerLedgerPage() {
               onPageChange={page.setAuditPage}
               onApply={page.applyAuditFilters}
             />
+          ) : (
+            <ReconciliationPanel accounts={page.accounts} />
           )}
         </div>
       </section>

@@ -15,6 +15,7 @@
     "typecheck": "tsc -p tsconfig.json",
     "test:order-analyze": "tsx --test src/orderAnalyze/orderAnalyze.test.ts src/orderAnalyze/driverVendorEnrich.test.ts",
     "test:feishu-card": "tsx --test src/feishu/buildFleetRichMessageCard.test.ts",
+    "test:container-reconcile": "tsx --test src/containerManagement/reconcileNet.test.ts",
     "test:container-card": "tsx --test src/feishu/buildContainerTransferCard.test.ts",
     "test:dispatch-alarm-card": "tsx --test src/feishu/buildDispatchAlarmCard.test.ts",
     "test:vendor-metrics": "tsx --test src/vendorAnalysis/metricsCatalog.test.ts",

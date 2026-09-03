@@ -28,6 +28,10 @@ import {
   updateBalance,
 } from '../containerManagement/balanceService'
 import {
+  listReconciliation,
+  summarizeReconciliation,
+} from '../containerManagement/reconciliationService'
+import {
   isAccountKind,
   isContainerType,
   isManualBalanceReasonType,
@@ -303,6 +307,21 @@ containerManagementRouter.get('/balances', async (req: AuthenticatedRequest, res
     res.json({ ok: true, data: await listBalances(visible) })
   } catch (error) {
     handleError(res, error, '获取容器台账失败')
+  }
+})
+
+// ---------------------------------------------------------------- 站点对账
+
+/** 站点之间的容器净往来：正数=对方欠我，负数=我欠对方。只读，数据全部来自流转记录 */
+containerManagementRouter.get('/reconciliation', async (req: AuthenticatedRequest, res) => {
+  const accountId = String(req.query.accountId ?? '').trim()
+  if (!accountId) return fail(res, 400, '请选择对账站点')
+  try {
+    const visible = await resolveVisibleAccountIds(req)
+    if (!canActAsAccount(visible, accountId)) return fail(res, 403, '无权查看该站点的对账数据')
+    res.json({ ok: true, data: summarizeReconciliation(await listReconciliation(accountId)) })
+  } catch (error) {
+    handleError(res, error, '获取对账数据失败')
   }
 })
 

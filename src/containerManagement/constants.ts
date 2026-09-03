@@ -12,8 +12,8 @@ import type {
 export const CONTAINER_TYPES: ContainerType[] = ['BIG_BASKET', 'SILVER_BOX']
 
 export const containerTypeLabel: Record<ContainerType, string> = {
-  BIG_BASKET: '大篮筐',
-  SILVER_BOX: '银框',
+  BIG_BASKET: '大蓝筐',
+  SILVER_BOX: '银筐',
 }
 
 export const ACCOUNT_KINDS: AccountKind[] = ['BROKER', 'CUSTOMER', 'CSP', 'INTERNAL_WAREHOUSE']

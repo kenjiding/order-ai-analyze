@@ -1,6 +1,11 @@
 import { useState } from 'react'
-import { Alert, Button, Input, Modal } from 'antd'
-import { containerTypeLabel } from '../../../containerManagement/constants'
+import { Button, Input, Modal } from 'antd'
+import { ArrowRight } from 'lucide-react'
+import {
+  containerTypeLabel,
+  formatTransferNo,
+  transferKindLabel,
+} from '../../../containerManagement/constants'
 import type { Transfer } from '../../../containerManagement/types'
 import { TransferImageUpload } from './TransferImageUpload'
 
@@ -16,6 +21,30 @@ type Props = {
   onSubmit: (note: string, evidenceUrl: string | null) => Promise<boolean>
 }
 
+/** 数量磁贴：确认收货时最该被一眼看清的就是数字，所以放大加粗 */
+function QuantityTile({ label, value, accent }: { label: string; value: number; accent?: boolean }) {
+  return (
+    <div
+      className={`min-w-[92px] flex-1 rounded-lg border px-3 py-2 ${
+        accent
+          ? 'border-[var(--admin-accent)] bg-[var(--admin-accent-soft)]'
+          : 'border-[var(--admin-line)] bg-white'
+      }`}
+    >
+      <div className={`text-xs ${accent ? 'text-[var(--admin-accent)]' : 'text-slate-500'}`}>
+        {label}
+      </div>
+      <div
+        className={`tabular-nums text-2xl font-semibold leading-tight ${
+          accent ? 'text-[var(--admin-accent)]' : 'text-slate-900'
+        }`}
+      >
+        {value}
+      </div>
+    </div>
+  )
+}
+
 export function ConfirmReceiptModal({ target, submitting, proxy = false, onCancel, onSubmit }: Props) {
   // 由父级用 key 按流转重挂载，无需 effect 重置
   const [note, setNote] = useState('')
@@ -29,68 +58,63 @@ export function ConfirmReceiptModal({ target, submitting, proxy = false, onCance
       destroyOnHidden
       width={520}
       footer={
-        <div className="flex justify-end gap-2">
-          <Button onClick={onCancel} disabled={submitting}>
-            取消
-          </Button>
-          <Button
-            type="primary"
-            loading={submitting}
-            onClick={() => void onSubmit(note, evidenceUrl)}
-          >
-            {proxy ? '确认并入账' : '确认收货'}
-          </Button>
+        <div className="flex items-center justify-between gap-3">
+          <span className="text-left text-xs text-slate-500">
+            {proxy ? '按申报数量整单入账，不可撤销。' : '数量不一致请改用「差异申报」。'}
+          </span>
+          <div className="flex shrink-0 gap-2">
+            <Button onClick={onCancel} disabled={submitting}>
+              取消
+            </Button>
+            <Button type="primary" loading={submitting} onClick={() => void onSubmit(note, evidenceUrl)}>
+              {proxy ? '确认并入账' : '确认收货'}
+            </Button>
+          </div>
         </div>
       }
     >
       {target ? (
-        <>
-          <p className="mt-4 text-sm text-slate-600">
-            {proxy
-              ? `${target.toAccountName} 没有本系统账号，确认后按下列明细直接入账：`
-              : '与转出方申报一致，确认后立即按下列明细记账：'}
-          </p>
-          <ul className="mt-2 space-y-1 rounded-md bg-slate-50 p-3 text-sm">
-            {target.items.map((item) => (
-              <li key={item.containerType} className="flex justify-between">
-                <span className="text-slate-600">
-                  {containerTypeLabel[item.containerType] ?? item.containerType}
+        <div className="mt-4 flex flex-col gap-3">
+          <div className="rounded-lg bg-[var(--admin-sky-soft)] px-4 py-3">
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-500">
+              <span className="tabular-nums">{formatTransferNo(target.id)}</span>
+              <span>{transferKindLabel[target.kind]}</span>
+              <span className="tabular-nums">{target.occurredAt}</span>
+              {proxy ? (
+                <span className="rounded bg-amber-100 px-1.5 py-0.5 font-medium text-amber-800">
+                  代确认
                 </span>
-                <span className="tabular-nums font-medium">{item.declaredQuantity}</span>
-              </li>
-            ))}
-          </ul>
-          {proxy ? (
-            <Alert
-              className="mt-3"
-              type="warning"
-              showIcon
-              message="这一单没有对方的确认动作，入账后不可撤销。"
-              description="只能按申报数量整单确认。若对方实收少于申报，请确认后再到容器台账做调整。"
-            />
-          ) : (
-            <Alert
-              className="mt-3"
-              type="info"
-              showIcon
-              message="若实收与转出方发出数不一致，请改用「差异申报」进入协商流程。"
-            />
-          )}
-          {proxy ? (
-            <div className="mt-4 flex flex-col gap-1.5">
-              <span className="text-sm text-slate-700">回单凭证（选填）</span>
-              <p className="text-xs leading-relaxed text-slate-500">
-                回单、签收单或聊天截图。不传也能提交，但日后对账起争议时只能靠备注追溯。
-              </p>
-              <TransferImageUpload value={evidenceUrl} onChange={setEvidenceUrl} disabled={submitting} />
+              ) : null}
             </div>
+            <div className="mt-1 flex flex-wrap items-center gap-2 text-base font-semibold text-slate-900">
+              <span>{target.fromAccountName}</span>
+              <ArrowRight className="h-4 w-4 text-[var(--admin-accent)]" aria-hidden />
+              <span>{target.toAccountName}</span>
+            </div>
+          </div>
+
+          <div className="flex flex-wrap gap-2">
+            {target.items.map((item) => (
+              <QuantityTile
+                key={item.containerType}
+                label={containerTypeLabel[item.containerType] ?? item.containerType}
+                value={item.declaredQuantity}
+              />
+            ))}
+            <QuantityTile label="合计入账" value={target.declaredTotal} accent />
+          </div>
+
+          {proxy ? (
+            <label className="flex flex-col gap-1.5">
+              <span className="text-sm text-slate-700">回单凭证（选填）</span>
+              <TransferImageUpload value={evidenceUrl} onChange={setEvidenceUrl} disabled={submitting} />
+            </label>
           ) : null}
-          <label className="mt-4 flex flex-col gap-1.5">
-            <span className="text-sm text-slate-700">
-              {proxy ? '说明（选填）' : '备注（选填）'}
-            </span>
+
+          <label className="flex flex-col gap-1.5">
+            <span className="text-sm text-slate-700">{proxy ? '说明（选填）' : '备注（选填）'}</span>
             <Input.TextArea
-              rows={3}
+              rows={2}
               value={note}
               maxLength={2000}
               placeholder={proxy ? '例如：清关行微信回单，已核对数量' : undefined}
@@ -98,7 +122,7 @@ export function ConfirmReceiptModal({ target, submitting, proxy = false, onCance
               allowClear
             />
           </label>
-        </>
+        </div>
       ) : null}
     </Modal>
   )

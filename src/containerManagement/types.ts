@@ -65,6 +65,27 @@ export type BalanceAudit = {
   createdAt: string
 }
 
+/** 对账：与某个对手方在某品类上的往来。net > 0 对方欠我，net < 0 我欠对方 */
+export type ReconciliationRow = {
+  counterpartyId: string
+  counterpartyName: string
+  counterpartyKind: AccountKind
+  containerType: ContainerType
+  outQty: number
+  inQty: number
+  pendingOut: number
+  pendingIn: number
+  net: number
+}
+
+export type ReconciliationSummary = {
+  rows: ReconciliationRow[]
+  /** 按品类合计对方欠我的量 */
+  owedToMe: Record<ContainerType, number>
+  /** 按品类合计我欠对方的量（正数） */
+  owedByMe: Record<ContainerType, number>
+}
+
 export type TransferItem = {
   containerType: ContainerType
   declaredQuantity: number

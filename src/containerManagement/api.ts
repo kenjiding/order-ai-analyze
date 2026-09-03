@@ -9,6 +9,7 @@ import type {
   ContainerBalance,
   ContainerType,
   Paged,
+  ReconciliationSummary,
   Transfer,
   TransferChange,
   TransferDetail,
@@ -106,6 +107,11 @@ export function saveAccountUsers(id: string, userIds: string[]): Promise<ApiResu
 
 export function fetchBalances(): Promise<ApiResult<ContainerBalance[]>> {
   return apiFetch<ContainerBalance[]>('/balances')
+}
+
+/** 站点对账：以 accountId 为「我」，返回与各对手方的净往来 */
+export function fetchReconciliation(accountId: string): Promise<ApiResult<ReconciliationSummary>> {
+  return apiFetch<ReconciliationSummary>(`/reconciliation${toQuery({ accountId })}`)
 }
 
 export function createBalance(body: {
