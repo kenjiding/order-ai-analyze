@@ -43,6 +43,7 @@ function waybillKey(row: StagnantWaybillRow, index: number): string {
 /**
  * 按供应商代码（driverVendorCode 匹配）聚合多个滞留区间的结果。
  * 跨区间以 waybillNo 去重（相邻区间边界日期存在重叠），保证总数/司机数不重复计。
+ * vendorCode 传空 = 调用方给的是「只按路由码匹配」的配置、行已按范围过滤过，这里不再按承运商收窄。
  */
 export function aggregateVendorStagnation(
   bucketResults: BucketResult[],
@@ -61,7 +62,7 @@ export function aggregateVendorStagnation(
     const driverWaybills = new Map<string, VendorStagnationWaybill[]>()
 
     rows.forEach((row, index) => {
-      if ((row.driverVendorCode ?? '').trim() !== target) return
+      if (target && (row.driverVendorCode ?? '').trim() !== target) return
       const key = waybillKey(row, index)
       const waybillNo = (row.waybillNo ?? '').trim()
       bucketSeen.add(key)

@@ -15,7 +15,7 @@ import {
   tagBefore11Rows,
   type Before11Scope,
 } from '../vendorAnalysis/before11Aggregate'
-import { buildScopeMapsFromConfig } from '../vendorAnalysis/supplierScope'
+import { buildConfigScope } from '../vendorAnalysis/supplierScope'
 import { lastSortingWorkdayOnOrBefore } from '../imile/sortingWorkday'
 import {
   listPushableSupplierPushConfigsForSchedule,
@@ -126,6 +126,8 @@ export async function executeExitAlarmPush(params: {
   mentionEnabled?: boolean
   /** 是否在主卡片推送成功后额外推送第二条「路由码白名单出仓数据」卡片；默认 false */
   routeCodeWhitelistPushEnabled?: boolean
+  /** 滞留清货价：每件清货补贴（美元）；传入时卡片展示「未出仓件数 × 单价」的清货费用 */
+  clearancePrice?: number | null
   /**
    * 仅供定时任务传入：按 (jobKeyPrefix:configId, slotKey) 对每个供应商配置单独做幂等去重。
    * 某个配置本次已经成功推送过则跳过，推送失败/暂无数据则释放，交给下次 catch-up 重试；
@@ -144,6 +146,7 @@ export async function executeExitAlarmPush(params: {
     label,
     mentionEnabled,
     routeCodeWhitelistPushEnabled,
+    clearancePrice,
     perConfigDedupe,
   } = params
 
@@ -176,22 +179,31 @@ export async function executeExitAlarmPush(params: {
 
   // 与「供应商数据分析」同一套归属口径：courierVendorCode 归属 → routeCode 纳入 → 白名单剔除。
   // 用 config.id 当 key 一次遍历 taggedRows 拿到全部配置的统计，不再对每条配置各自重新扫一遍全量到件运单。
-  const scopes: Before11Scope[] = []
-  for (const config of configs) {
-    const vendorCode = config.vendorCode.trim()
-    if (!vendorCode) continue
-    const scope = buildScopeMapsFromConfig(config)
-    scopes.push({
-      key: config.id,
-      vendorCode,
-      routeCodes: scope.routeCodesByVendor.get(vendorCode),
-      routeCodeWhitelist: scope.routeCodeWhitelistByVendor.get(vendorCode),
-    })
-  }
+  // 未选供应商的配置（vendorCode 为空）走纯路由码口径，由 buildConfigScope 统一判定
+  const scopes: Before11Scope[] = configs.map((config) => buildConfigScope(config.id, config))
   const statsByConfigId = aggregateBefore11ByScopes({ rows: taggedRows, scopes })
 
   for (const config of configs) {
     const vendorName = supplierDisplayName(config)
+    const stat = statsByConfigId.get(config.id) ?? {
+      totalWaybills: 0,
+      zoneBreakdown: {},
+      unqualifiedWaybillNos: [],
+    }
+    const totalPending = Object.values(stat.zoneBreakdown).reduce((s, v) => s + v.pending, 0)
+
+    // 导出用明细与是否推送无关：无滞留时也记一条空明细，前端「立刻推送」导出的供应商列表保持完整
+    unqualifiedByVendor.push({
+      vendorName,
+      waybillNos: stat.unqualifiedWaybillNos,
+      whitelistWaybillNos: stat.whitelistStat?.unqualifiedWaybillNos ?? [],
+    })
+
+    // 无滞留数据不推送；不 claim，留给下次重新判断
+    if (totalPending === 0) {
+      console.log(`${label} ${vendorName} 无滞留数据，跳过推送`)
+      continue
+    }
 
     let dedupeJobKey: string | null = null
     if (perConfigDedupe) {
@@ -204,12 +216,6 @@ export async function executeExitAlarmPush(params: {
     }
 
     try {
-      const stat = statsByConfigId.get(config.id) ?? {
-        totalWaybills: 0,
-        zoneBreakdown: {},
-        unqualifiedWaybillNos: [],
-      }
-      const totalPending = Object.values(stat.zoneBreakdown).reduce((s, v) => s + v.pending, 0)
       const mentions = pickMentions(parseSupplierMentionContacts(config.mentionOpenIds), Boolean(mentionEnabled))
       // 路由码白名单数据不再作为独立第二条消息推送，而是作为折叠面板追加在主卡片末尾，默认折叠。
       const whitelistStat =
@@ -228,12 +234,7 @@ export async function executeExitAlarmPush(params: {
         pushDescription: config.pushDescription,
         mentions,
         whitelistStat,
-      })
-
-      unqualifiedByVendor.push({
-        vendorName,
-        waybillNos: stat.unqualifiedWaybillNos,
-        whitelistWaybillNos: stat.whitelistStat?.unqualifiedWaybillNos ?? [],
+        clearancePrice,
       })
 
       const { ok, reason, messageId, chatId } = await sendSupplierPushCard(config, card)
@@ -325,6 +326,7 @@ async function runOneScheduledPush(schedule: ExitAlarmSchedule, regionCode: stri
       label,
       mentionEnabled: schedule.mentionEnabled,
       routeCodeWhitelistPushEnabled: schedule.routeCodeWhitelistPushEnabled,
+      clearancePrice: schedule.clearancePrice,
       perConfigDedupe: { jobKeyPrefix, slotKey },
     })
     if ('error' in result) {

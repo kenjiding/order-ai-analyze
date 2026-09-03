@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import {
+  buildConfigScope,
   buildRouteCodeVendorsMap,
   buildScopeMapsFromConfig,
   buildScopeRecordsFromConfigs,
@@ -215,4 +216,31 @@ test('supplierUnitsToScopes: 每个单位一个独立范围，key 为 supplierKe
   // 未配路由码 → 不收窄（routeCodes 为 undefined），与 buildScopeMapsFromConfig 语义一致
   const lu = scopes.find((s) => s.key === buildSupplierUnitKey('SRM01', 'ADL-Lu'))
   assert.equal(lu?.routeCodes, undefined)
+})
+
+test('未选供应商的配置：只按路由码匹配，无视运单上的承运商', () => {
+  const scope = buildConfigScope('cfg-1', { vendorCode: '', routeCode: 'R1, R2', routeCodeWhitelist: 'R2' })
+  assert.equal(scope.vendorCode, '')
+  // 承运商是谁都不看，只认路由码
+  assert.equal(isRowInConfigScope(scope, 'SRM01', 'R1'), true)
+  assert.equal(isRowInConfigScope(scope, 'SRM99', 'R1'), true)
+  assert.equal(isRowInConfigScope(scope, '', 'R1'), true)
+  // 路由码不在纳入名单 → 不匹配
+  assert.equal(isRowInConfigScope(scope, 'SRM01', 'R7'), false)
+  // 白名单仍然生效
+  assert.equal(isRowInConfigScope(scope, 'SRM01', 'R2'), false)
+})
+
+test('未选供应商且未填路由码：谁都不匹配，不会吃下整个站点', () => {
+  const scope = buildConfigScope('cfg-2', { vendorCode: '', routeCode: '', routeCodeWhitelist: '' })
+  assert.equal(isRowInConfigScope(scope, 'SRM01', 'R1'), false)
+  assert.equal(isRowInConfigScope(scope, '', ''), false)
+})
+
+test('选了供应商的配置：口径不变，仍按承运商归属', () => {
+  const scope = buildConfigScope('cfg-3', { vendorCode: 'SRM01', routeCode: 'R1', routeCodeWhitelist: '' })
+  assert.equal(isRowInConfigScope(scope, 'SRM01', 'R1'), true)
+  assert.equal(isRowInConfigScope(scope, 'SRM99', 'R1'), false)
+  // 承运商为空 → 按路由码兜底
+  assert.equal(isRowInConfigScope(scope, '', 'R1'), true)
 })

@@ -337,6 +337,8 @@ export const exitAlarmSchedules = pgTable('exit_alarm_schedules', {
   routeCodeWhitelistPushEnabled: boolean('route_code_whitelist_push_enabled').notNull().default(false),
   /** 「立刻推送」使用的到件扫描日期 YYYY-MM-DD；为空时按自动计算的最近工作日兜底，不影响自动定时推送 */
   arrivalScanDate: varchar('arrival_scan_date', { length: 10 }),
+  /** 滞留清货价：找灵活供应商清货时每件的额外补贴（美元）；为空则卡片不展示清货费用 */
+  clearancePrice: doublePrecision('clearance_price'),
   /** 定时拉数使用的 iMile token（保存配置时从全局设置同步，不对外返回） */
   imileToken: varchar('imile_token', { length: 2048 }),
   updatedBy: uuid('updated_by').references(() => users.id, { onDelete: 'set null' }),

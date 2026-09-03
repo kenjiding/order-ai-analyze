@@ -26,6 +26,10 @@ function footerCaption(content: string): CardEl {
   return md(colored(content, 'grey'), { text_size: 'notation' })
 }
 
+function money(value: number): string {
+  return `$${value.toFixed(2)}`
+}
+
 function colored(value: string, color: MarkColor): string {
   return `<font color='${color}'>${value}</font>`
 }
@@ -49,7 +53,9 @@ function summaryTile(label: string, value: string, sub: string, valueColor: Mark
     background_style: TILE_BG[valueColor],
     padding: '8px 10px 8px 10px',
     elements: [
-      md([`**${label}**`, colored(`**${value}**`, valueColor), colored(sub, 'grey')].join('\n')),
+      md([`**${label}**`, colored(`**${value}**`, valueColor), sub ? colored(sub, 'grey') : '']
+        .filter(Boolean)
+        .join('\n')),
     ],
   }
 }
@@ -170,6 +176,8 @@ export function buildExitAlarmCard(params: {
   mentions?: SupplierMentionContact[] | null
   /** 命中「路由码白名单数据推送」且有命中数据时传入，作为折叠面板追加在主卡片末尾，默认折叠 */
   whitelistStat?: WhitelistStat | null
+  /** 滞留清货价：每件清货补贴（美元）；配置了且有未出仓件时展示清货费用 */
+  clearancePrice?: number | null
 }): Record<string, unknown> {
   const {
     vendorName,
@@ -183,6 +191,7 @@ export function buildExitAlarmCard(params: {
     pushDescription,
     mentions,
     whitelistStat,
+    clearancePrice,
   } = params
   const elements: CardEl[] = []
 
@@ -205,19 +214,16 @@ export function buildExitAlarmCard(params: {
 
   elements.push(hr())
 
-  // 汇总 KPI
+  // 汇总 KPI；配置了滞留清货价且有滞留件时，清货费用作为第 3 个磁贴并入同一行
   const rateColor: MarkColor = exitRateNum >= 80 ? 'green' : exitRateNum >= 60 ? 'orange' : 'red'
-  elements.push(
-    columnSet([
-      summaryTile(
-        `Not exited by ${pushTime}`,
-        `${totalPending}`,
-        `${totalWaybills} waybills total`,
-        totalPending > 0 ? 'red' : 'green',
-      ),
-      summaryTile(`Exit rate by ${pushTime}`, `${exitRate}%`, `${exited} exited on time`, rateColor),
-    ]),
-  )
+  const kpiTiles = [
+    summaryTile('Not exited', `${totalPending}`, `${totalWaybills} total`, totalPending > 0 ? 'red' : 'green'),
+    summaryTile('Exit rate', `${exitRate}%`, `${exited} exited on time`, rateColor),
+  ]
+  if (clearancePrice && clearancePrice > 0 && totalPending > 0) {
+    kpiTiles.push(summaryTile('Clearance cost', money(totalPending * clearancePrice), '', 'orange'))
+  }
+  elements.push(columnSet(kpiTiles, kpiTiles.length === 3 ? 'trisect' : 'bisect'))
 
   elements.push(hr())
 

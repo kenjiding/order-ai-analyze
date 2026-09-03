@@ -18,6 +18,7 @@
     "test:container-reconcile": "tsx --test src/containerManagement/reconcileNet.test.ts",
     "test:container-card": "tsx --test src/feishu/buildContainerTransferCard.test.ts",
     "test:dispatch-alarm-card": "tsx --test src/feishu/buildDispatchAlarmCard.test.ts",
+    "test:exit-alarm-card": "tsx --test src/feishu/buildExitAlarmCard.test.ts",
     "test:vendor-metrics": "tsx --test src/vendorAnalysis/metricsCatalog.test.ts",
     "test:vendor-ranking": "tsx --test src/vendorAnalysis/rankingScore.test.ts",
     "test:vendor-region-map": "tsx --test src/vendorRegionMap/trendAggregate.test.ts",

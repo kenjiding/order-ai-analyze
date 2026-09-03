@@ -132,6 +132,14 @@ export async function executeWorkOrderPush(params: {
   const errors: string[] = []
 
   for (const config of configs) {
+    // 工单按运单反查承运商归属，路由码不参与——「未选供应商」的配置在这里无从归属，
+    // 明确告警并跳过，不要让它静默地永远推 0 条
+    if (!config.vendorCode.trim()) {
+      const detail = `${supplierDisplayName(config)}: 该供应商配置未选择供应商，工单推送按承运商归属，无法匹配工单`
+      console.warn(`${label} ${detail}`)
+      errors.push(detail)
+      continue
+    }
     // 无命中时补一个空 summary（totalCount=0），下方 claim 后跳过推送
     const summary = byVendor.get(config.vendorCode) ?? {
       vendorCode: config.vendorCode,

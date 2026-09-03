@@ -129,13 +129,16 @@ export async function executeChaseDispatchPush(params: {
     }
   }
 
-  // 先按启用供应商的 vendorCode 收窄，再收集运单号查 searchWaybill 路由码
+  // 先按启用供应商的 vendorCode 收窄，再收集运单号查 searchWaybill 路由码。
+  // 存在「未选供应商」的配置时不能按 vendorCode 预筛——那类配置的归属只看路由码，
+  // 而路由码正是这次查询的结果，预筛掉就永远查不到，只能整批送去查。
   const enabledVendorCodes = new Set(
     configs.map((c) => c.vendorCode.trim()).filter((code) => code.length > 0),
   )
+  const hasRouteOnlyConfig = configs.some((c) => !c.vendorCode.trim())
   const vendorScopedWaybillNos = bucketResults.flatMap((b) =>
     b.rows
-      .filter((row) => enabledVendorCodes.has((row.driverVendorCode ?? '').trim()))
+      .filter((row) => hasRouteOnlyConfig || enabledVendorCodes.has((row.driverVendorCode ?? '').trim()))
       .map((row) => row.waybillNo ?? ''),
   )
   const routeCodeResult = await fetchStagnantWaybillRouteCodes(token, vendorScopedWaybillNos, stationCode)
@@ -160,6 +163,23 @@ export async function executeChaseDispatchPush(params: {
     const vendorCode = config.vendorCode.trim()
     const vendorName = supplierDisplayName(config)
 
+    const allowedRouteCodes = new Set(parseRouteCodes(config.routeCode))
+    // 该供应商明细：vendorCode 归属 → routeCode 纳入（不用路由码白名单）；
+    // 未选供应商的配置跳过承运商归属，只按路由码纳入
+    const configBucketResults = bucketResults.map((b) => {
+      const byVendor = vendorCode
+        ? b.rows.filter((row) => (row.driverVendorCode ?? '').trim() === vendorCode)
+        : b.rows
+      return { bucket: b.bucket, rows: filterRowsByRouteCode(byVendor, allowedRouteCodes) }
+    })
+    const summary = aggregateVendorStagnation(configBucketResults, config.vendorCode, routeCodeByWaybillNo)
+
+    // 无滞留数据不推送；不 claim，留给下次重新判断
+    if (summary.totalStagnant === 0) {
+      console.log(`${label} ${vendorName} 无滞留运单，跳过推送`)
+      continue
+    }
+
     let dedupeJobKey: string | null = null
     if (perConfigDedupe) {
       dedupeJobKey = `${perConfigDedupe.jobKeyPrefix}:${config.id}`
@@ -171,23 +191,13 @@ export async function executeChaseDispatchPush(params: {
     }
 
     try {
-      const allowedRouteCodes = new Set(parseRouteCodes(config.routeCode))
-      // 该供应商明细：vendorCode 归属 → routeCode 纳入（不用路由码白名单）
-      const configBucketResults = bucketResults.map((b) => {
-        const byVendor = b.rows.filter((row) => (row.driverVendorCode ?? '').trim() === vendorCode)
-        return { bucket: b.bucket, rows: filterRowsByRouteCode(byVendor, allowedRouteCodes) }
+      const share = await createChaseDispatchShareSnapshot({
+        vendorCode: config.vendorCode,
+        vendorName,
+        baseDate,
+        pushTime,
+        summary,
       })
-      const summary = aggregateVendorStagnation(configBucketResults, config.vendorCode, routeCodeByWaybillNo)
-      const share =
-        summary.totalStagnant > 0
-          ? await createChaseDispatchShareSnapshot({
-              vendorCode: config.vendorCode,
-              vendorName,
-              baseDate,
-              pushTime,
-              summary,
-            })
-          : null
       const mentions = pickMentions(parseSupplierMentionContacts(config.mentionOpenIds), Boolean(mentionEnabled))
       const card = buildChaseDispatchCard({
         vendorName,

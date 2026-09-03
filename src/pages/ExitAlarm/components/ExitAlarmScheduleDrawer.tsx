@@ -1,4 +1,4 @@
-import { Button, Checkbox, DatePicker, Drawer, TimePicker } from 'antd'
+import { Button, Checkbox, DatePicker, Drawer, InputNumber, TimePicker } from 'antd'
 import dayjs from 'dayjs'
 import { AlarmClock, Clock, Plus, Save, Settings, Truck, X } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
@@ -94,6 +94,7 @@ export function ExitAlarmScheduleDrawer({
   const [mentionEnabled, setMentionEnabled] = useState(false)
   const [routeCodeWhitelistPushEnabled, setRouteCodeWhitelistPushEnabled] = useState(false)
   const [arrivalScanDate, setArrivalScanDate] = useState<string>(yesterday())
+  const [clearancePrice, setClearancePrice] = useState<number | null>(null)
 
   useEffect(() => {
     if (!open) return
@@ -104,6 +105,7 @@ export function ExitAlarmScheduleDrawer({
     setMentionEnabled(editingSchedule?.mentionEnabled ?? false)
     setRouteCodeWhitelistPushEnabled(editingSchedule?.routeCodeWhitelistPushEnabled ?? false)
     setArrivalScanDate(editingSchedule?.arrivalScanDate ?? yesterday())
+    setClearancePrice(editingSchedule?.clearancePrice ?? null)
   }, [open, editingSchedule])
 
   const handleAddTime = () => setPushTimes((prev) => [...prev, { id: generateId(), time: '11:00' }])
@@ -141,6 +143,7 @@ export function ExitAlarmScheduleDrawer({
       mentionEnabled,
       routeCodeWhitelistPushEnabled,
       arrivalScanDate,
+      clearancePrice,
     }
     const ok = await onSubmit(draft)
     if (ok) onClose()
@@ -269,6 +272,20 @@ export function ExitAlarmScheduleDrawer({
             >
               <span className="text-sm">路由码白名单数据推送</span>
             </Checkbox>
+            <div className="flex items-center gap-2">
+              <span className="shrink-0 text-sm text-slate-600">滞留清货价</span>
+              <InputNumber
+                value={clearancePrice}
+                min={0}
+                step={0.05}
+                precision={2}
+                prefix="$"
+                placeholder="不填则不推送清货费用"
+                disabled={saving}
+                className="!w-44"
+                onChange={(val) => setClearancePrice(typeof val === 'number' ? val : null)}
+              />
+            </div>
           </div>
         </FormSection>
 

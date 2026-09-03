@@ -68,6 +68,7 @@ export function ExitAlarmScheduleList({
               <p className="truncate text-xs text-slate-500">
                 每{weekdaysText}，在 <span className="font-mono">{timesText}</span> 自动获取前一日数据并推送告警 · 已选{' '}
                 {schedule.pushConfigIds.length} 家供应商
+                {schedule.clearancePrice ? ` · 清货价 $${schedule.clearancePrice.toFixed(2)}/件` : ''}
               </p>
             </div>
             <div className="flex shrink-0 items-center gap-2">

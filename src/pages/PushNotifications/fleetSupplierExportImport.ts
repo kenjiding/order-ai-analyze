@@ -85,7 +85,11 @@ function lookupVendorByHint(
   )
 }
 
-/** 导入前补齐能确定的字段；缺 vendorCode 且无法匹配主数据时返回 null（跳过该行） */
+/**
+ * 导入前补齐能确定的字段；跳过（返回 null）的只有两种行：缺昵称，或 vendorCode 与 routeCode 都为空。
+ * vendorCode 为空但填了路由码 = 有意的「只按路由码匹配」配置，此时不拿昵称去猜编码——
+ * 猜中会把这条配置悄悄变回按承运商归属，口径就变了。
+ */
 export function resolveFleetSupplierForImport(
   row: FleetSupplierImportRow,
   vendors?: FleetSupplierVendorLookup[],
@@ -93,13 +97,14 @@ export function resolveFleetSupplierForImport(
   let vendorCode = row.vendorCode.trim()
   let vendorName = row.vendorName.trim()
   const supplierNickname = row.supplierNickname.trim()
+  const routeCode = row.routeCode?.trim() ?? ''
 
   if (vendorCode && !vendorName && vendors?.length) {
     const hit = vendors.find((v) => normVendorKey(v.vendorCode) === normVendorKey(vendorCode))
     if (hit) vendorName = hit.vendorNameEn
   }
 
-  if (!vendorCode && supplierNickname && vendors?.length) {
+  if (!vendorCode && !routeCode && supplierNickname && vendors?.length) {
     const hit = lookupVendorByHint(supplierNickname, vendors)
     if (hit) {
       vendorCode = hit.vendorCode
@@ -107,12 +112,12 @@ export function resolveFleetSupplierForImport(
     }
   }
 
-  if (!vendorCode || !supplierNickname) return null
+  if (!supplierNickname || (!vendorCode && !routeCode)) return null
 
   return {
     ...row,
     vendorCode,
-    vendorName: vendorName || vendorCode,
+    vendorName: vendorCode ? vendorName || vendorCode : '',
     supplierNickname,
   }
 }
@@ -185,7 +190,7 @@ function finalizeFleetSupplierImportParse(
       ok: false,
       error:
         skipped > 0
-          ? `共解析 ${parsed.length} 条，均缺少 vendorCode（供应商编码）且无法从主数据匹配，请补列后重试`
+          ? `共解析 ${parsed.length} 条，均缺少供应商昵称，或 vendorCode（供应商编码）与路由编码都为空，请补列后重试`
           : '未解析到有效供应商记录',
     }
   }

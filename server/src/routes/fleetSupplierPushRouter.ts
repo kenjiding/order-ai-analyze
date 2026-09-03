@@ -126,14 +126,15 @@ fleetSupplierPushRouter.post('/configs/import', async (req: AuthenticatedRequest
   }
 
   const total = (body.suppliers as RawSupplier[]).length
+  // 与保存校验同一口径：未选供应商的配置靠路由码匹配，vendorCode 允许为空，但两者不能都空
   const incoming = (body.suppliers as RawSupplier[])
     .map((o) => extractSupplierPushConfigFields(o))
-    .filter((s) => s.vendorCode && s.supplierNickname)
+    .filter((s) => s.supplierNickname && (s.vendorCode || s.routeCode.trim()))
 
   if (!incoming.length) {
     res.status(400).json({
       ok: false,
-      error: `无有效供应商数据（共 ${total} 条，均缺少 vendorCode 或 supplierNickname）`,
+      error: `无有效供应商数据（共 ${total} 条，均缺少 supplierNickname，或 vendorCode 与 routeCode 都为空）`,
     })
     return
   }
@@ -163,7 +164,7 @@ fleetSupplierPushRouter.post('/configs/import', async (req: AuthenticatedRequest
         for (const s of body.suppliers as RawSupplier[]) {
           const id = typeof s.id === 'string' ? s.id.trim() : ''
           const fields = extractSupplierPushConfigFields(s)
-          if (!fields.vendorCode || !fields.supplierNickname) continue
+          if (!fields.supplierNickname || (!fields.vendorCode && !fields.routeCode.trim())) continue
           if (id && existingIds.has(id)) {
             await tx
               .update(schema.fleetSupplierPushConfigs)

@@ -104,7 +104,8 @@ export function FleetSupplierEditModal({
     if (!open) return
     if (editing) {
       const base = {
-        vendorCode: editing.vendorCode,
+        // 空串会被 Select 当成一个已选中的空选项，占掉 placeholder；未选供应商要回填 undefined
+        vendorCode: editing.vendorCode || undefined,
         supplierNickname: editing.supplierNickname,
         routeCode: editing.routeCode,
         routeCodeWhitelist: editing.routeCodeWhitelist ?? '',
@@ -169,10 +170,12 @@ export function FleetSupplierEditModal({
         return
       }
 
-      const selectedVendor = vendors.find((v) => v.vendorCode === values.vendorCode)
+      // 供应商可不选（纯路由码口径）；此时 vendorCode / vendorName 一并留空
+      const vendorCodeValue = typeof values.vendorCode === 'string' ? values.vendorCode.trim() : ''
+      const selectedVendor = vendors.find((v) => v.vendorCode === vendorCodeValue)
       const base: FleetSupplierConfigDraft = {
-        vendorCode: values.vendorCode,
-        vendorName: selectedVendor?.vendorNameEn ?? values.vendorCode,
+        vendorCode: vendorCodeValue,
+        vendorName: vendorCodeValue ? (selectedVendor?.vendorNameEn ?? vendorCodeValue) : '',
         supplierNickname: values.supplierNickname.trim(),
         routeCode: typeof values.routeCode === 'string' ? values.routeCode.trim() : '',
         routeCodeWhitelist:
@@ -266,12 +269,13 @@ export function FleetSupplierEditModal({
             <Form.Item
               label="供应商"
               name="vendorCode"
-              rules={[{ required: true, message: '请选择供应商' }]}
+              tooltip="可不选：不选时该配置只按路由编码匹配运单，不看运单上的承运商"
             >
               <Select
                 showSearch
+                allowClear
                 loading={vendorsLoading}
-                placeholder="搜索并选择供应商"
+                placeholder="不选则只按路由编码匹配"
                 filterOption={(input, opt) =>
                   (opt?.label ?? '').toLowerCase().includes(input.toLowerCase())
                 }

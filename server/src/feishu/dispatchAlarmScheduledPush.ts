@@ -15,7 +15,7 @@ import {
   parsePushConfigIds,
   supplierDisplayName,
 } from '../supplierPushConfigs'
-import { buildScopeMapsFromConfig } from '../vendorAnalysis/supplierScope'
+import { buildConfigScope } from '../vendorAnalysis/supplierScope'
 import {
   aggregateDispatch24hByScopes,
   resolveDispatch24hWindowRule,
@@ -126,29 +126,14 @@ export async function executeDispatchAlarmPush(params: {
   // 按配置独立过滤：避免同供应商多区域（不同 routeCode）共用一份聚合结果。
   // 用 config.id 当 key（而非 vendorCode）一次遍历 rows 拿到全部配置的统计，
   // 不再对每条配置各自重新扫一遍全量运单——大站点几万条时这是聚合阶段的主要开销。
-  const scopes: Dispatch24hScope[] = []
-  const scopeByConfigId = new Map<string, Dispatch24hScope>()
-  for (const config of configs) {
-    const vendorCode = config.vendorCode.trim()
-    if (!vendorCode) continue
-    const scope = buildScopeMapsFromConfig(config)
-    const configScope: Dispatch24hScope = {
-      key: config.id,
-      vendorCode,
-      routeCodes: scope.routeCodesByVendor.get(vendorCode),
-      routeCodeWhitelist: scope.routeCodeWhitelistByVendor.get(vendorCode),
-    }
-    scopes.push(configScope)
-    scopeByConfigId.set(config.id, configScope)
-  }
+  // 未选供应商的配置（vendorCode 为空）走纯路由码口径，由 buildConfigScope 统一判定
+  const scopes: Dispatch24hScope[] = configs.map((config) => buildConfigScope(config.id, config))
+  const scopeByConfigId = new Map(scopes.map((scope) => [scope.key, scope]))
   // 窗口规则按到件日定；date 即本次拉数的到件扫描日
   const rule = resolveDispatch24hWindowRule(date, tz)
   const statsByConfigId = aggregateDispatch24hByScopes({ rows, stationCodes: [stationCode], rule, scopes })
 
   for (const config of configs) {
-    const vendorCode = config.vendorCode.trim()
-    if (!vendorCode) continue
-
     const stat = statsByConfigId.get(config.id)
     if (!stat || stat.total === 0) continue // 无数据不推送；不 claim，留给下次重新判断
 

@@ -28,6 +28,7 @@ type ScheduleBody = {
   mentionEnabled?: unknown
   routeCodeWhitelistPushEnabled?: unknown
   arrivalScanDate?: unknown
+  clearancePrice?: unknown
   imileToken?: unknown
 }
 
@@ -42,6 +43,8 @@ type PublicExitAlarmSchedule = {
   routeCodeWhitelistPushEnabled: boolean
   /** 「立刻推送」使用的到件扫描日期 YYYY-MM-DD；为空时按自动计算的最近工作日兜底 */
   arrivalScanDate: string | null
+  /** 滞留清货价：每件清货补贴（美元），为空表示不推送清货费用 */
+  clearancePrice: number | null
   /** 拥有该配置的账号所属州/区域，决定 pushTimes/weekdays 按哪个时区判断；只读，随账号信息变化 */
   regionCode: string | null
   updatedAt: Date
@@ -49,6 +52,12 @@ type PublicExitAlarmSchedule = {
 }
 
 const DATE_STR_RE = /^\d{4}-\d{2}-\d{2}$/
+
+/** 滞留清货价：非法/空值一律当作未配置（null），不做静默兜底为 0 */
+function normalizeClearancePrice(raw: unknown): number | null {
+  const n = typeof raw === 'number' ? raw : typeof raw === 'string' && raw.trim() ? Number(raw) : NaN
+  return Number.isFinite(n) && n > 0 ? n : null
+}
 
 function normalizeArrivalScanDate(raw: unknown): string | null {
   const s = typeof raw === 'string' ? raw.trim() : ''
@@ -74,6 +83,7 @@ async function toPublicSchedule(
     mentionEnabled: row.mentionEnabled,
     routeCodeWhitelistPushEnabled: row.routeCodeWhitelistPushEnabled,
     arrivalScanDate: row.arrivalScanDate ?? null,
+    clearancePrice: row.clearancePrice ?? null,
     regionCode,
     updatedAt: row.updatedAt,
     hasImileToken: await hasExitAlarmImileToken(row),
@@ -103,6 +113,7 @@ function extractScheduleFields(body: ScheduleBody) {
     mentionEnabled: body.mentionEnabled === true,
     routeCodeWhitelistPushEnabled: body.routeCodeWhitelistPushEnabled === true,
     arrivalScanDate: normalizeArrivalScanDate(body.arrivalScanDate),
+    clearancePrice: normalizeClearancePrice(body.clearancePrice),
   }
 }
 
@@ -182,6 +193,7 @@ exitAlarmRouter.post('/schedules', async (req: AuthenticatedRequest, res: Respon
         mentionEnabled: fields.mentionEnabled,
         routeCodeWhitelistPushEnabled: fields.routeCodeWhitelistPushEnabled,
         arrivalScanDate: fields.arrivalScanDate,
+        clearancePrice: fields.clearancePrice,
         imileToken: nextImileToken ? normalizeImileToken(nextImileToken) : null,
         updatedBy: userId,
       })
@@ -254,6 +266,7 @@ exitAlarmRouter.put('/schedules/:id', async (req: AuthenticatedRequest, res: Res
         mentionEnabled: fields.mentionEnabled,
         routeCodeWhitelistPushEnabled: fields.routeCodeWhitelistPushEnabled,
         arrivalScanDate: fields.arrivalScanDate,
+        clearancePrice: fields.clearancePrice,
         ...(nextImileToken ? { imileToken: normalizeImileToken(nextImileToken) } : {}),
         updatedBy: userId,
         updatedAt: new Date(),
@@ -346,6 +359,7 @@ exitAlarmRouter.post('/schedules/:id/push-now', async (req: AuthenticatedRequest
       label: `[exit-alarm/push-now schedule=${schedule.id}]`,
       mentionEnabled: schedule.mentionEnabled,
       routeCodeWhitelistPushEnabled: schedule.routeCodeWhitelistPushEnabled,
+      clearancePrice: schedule.clearancePrice,
     })
     if ('error' in result) {
       res.status(502).json({ ok: false, error: result.error })

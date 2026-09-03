@@ -10,7 +10,7 @@ import {
   tagBefore11Rows,
   type Before11Scope,
 } from './before11Aggregate'
-import { buildScopeMapsFromConfig } from './supplierScope'
+import { buildConfigScope, buildScopeMapsFromConfig } from './supplierScope'
 
 const thresholdMs = computeBefore11ThresholdMs('2026-07-08', AUS_TZ.Adelaide)
 
@@ -148,4 +148,22 @@ test('aggregateBefore11ByScopes: 两个不同 vendorCode 共担同一路由码�
   const result = aggregateBefore11ByScopes({ rows: tagged, scopes })
   assert.equal(result.get('cfg-v1')?.totalWaybills, 1)
   assert.equal(result.get('cfg-v2')?.totalWaybills, 1)
+})
+
+test('未选供应商的配置：整站按路由码归集，串线单也算进来，白名单仍单列', () => {
+  // W1/W2 在 R1（V1 承运），W4 也在 R1 但承运方是 V9 —— 纯路由码口径下都算这条配置的
+  const scope = buildConfigScope('cfg-route-only', {
+    vendorCode: '',
+    routeCode: 'R1, RW',
+    routeCodeWhitelist: 'RW',
+  })
+  const stat = aggregateBefore11ByScopes({ rows: taggedAll, scopes: [scope] }).get('cfg-route-only')
+  assert.ok(stat)
+  assert.equal(stat.totalWaybills, 3) // W1 已出仓 + W2 未出仓 + W4（V9 串线）未出仓
+  assert.deepEqual(stat.zoneBreakdown, { R1: { pending: 2, total: 3 } })
+  assert.deepEqual(stat.unqualifiedWaybillNos.sort(), ['W2', 'W4'])
+  // 白名单路由 RW 不进主统计，单独计入 whitelistStat
+  assert.equal(stat.whitelistStat?.totalWaybills, 1)
+  // R2 不在纳入名单 → 一件都不算
+  assert.deepEqual(Object.keys(stat.zoneBreakdown), ['R1'])
 })

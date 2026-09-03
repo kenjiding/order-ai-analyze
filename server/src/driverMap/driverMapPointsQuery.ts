@@ -73,9 +73,13 @@ type ScopeFilter = {
 function buildScopeFilter(scope?: DriverMapVendorScope): ScopeFilter {
   const p = schema.driverMapWaybillPoints
   const vendorCode = scope?.vendorCode?.trim() ?? ''
-  if (!vendorCode) return { sqlWhere: undefined, accept: () => true, label: '*' }
-
   const routeCodes = scope?.routeCodes?.map((c) => c.trim()).filter(Boolean) ?? []
+  // 供应商与路由码都没有才是「未限定范围」；只有路由码（未选供应商的配置）必须按路由码收窄，
+  // 否则落地页地图会把整个站点、别家供应商的点位一起显示出来
+  if (!vendorCode && routeCodes.length === 0) {
+    return { sqlWhere: undefined, accept: () => true, label: '*' }
+  }
+
   const whitelist = scope?.routeCodeWhitelist?.map((c) => c.trim()).filter(Boolean) ?? []
   const configScope = {
     vendorCode,
@@ -83,10 +87,11 @@ function buildScopeFilter(scope?: DriverMapVendorScope): ScopeFilter {
     routeCodeWhitelist: whitelist.length > 0 ? new Set(whitelist) : undefined,
   }
   return {
-    // vendorCode 为空的行是「尚未派件、iMile 未回填承运商」，要留给 routeCode 兜底归属，不能在 SQL 阶段剔除
-    sqlWhere: or(eq(p.vendorCode, vendorCode), eq(p.vendorCode, '')),
+    // vendorCode 为空的行是「尚未派件、iMile 未回填承运商」，要留给 routeCode 兜底归属，不能在 SQL 阶段剔除；
+    // 未选供应商的配置本身就没有 vendorCode 可粗筛，整站拉进来后靠 accept 精筛
+    sqlWhere: vendorCode ? or(eq(p.vendorCode, vendorCode), eq(p.vendorCode, '')) : undefined,
     accept: (row) => isRowInConfigScope(configScope, row.vendorCode, row.consigneeRouteCode),
-    label: routeCodes.length > 0 ? `${vendorCode}/[${routeCodes.join(',')}]` : vendorCode,
+    label: `${vendorCode || '*'}${routeCodes.length > 0 ? `/[${routeCodes.join(',')}]` : ''}`,
   }
 }
 

@@ -65,10 +65,12 @@ export function extractSupplierPushConfigFields(body: SupplierPushConfigBody) {
   }
 }
 
+/**
+ * 供应商（vendorCode）可不选：那是「只按路由码匹配」的配置，归属完全交给路由码，
+ * 因此路由码必填——不填的话这条配置匹配不到任何运单，会静默失效。
+ */
 export function validateSupplierPushConfigCreate(body: SupplierPushConfigBody): string | null {
   const fields = extractSupplierPushConfigFields(body)
-  if (!fields.vendorCode) return '缺少必填字段: vendorCode'
-  if (!fields.vendorName) return '缺少必填字段: vendorName'
   if (!fields.supplierNickname) return '缺少必填字段: supplierNickname'
   if (!fields.routeCode.trim()) return '缺少必填字段: routeCode'
   if (!fields.chatId && !fields.webhookUrl) return '缺少必填字段: chatId 或 webhookUrl（至少填一项）'
@@ -77,10 +79,9 @@ export function validateSupplierPushConfigCreate(body: SupplierPushConfigBody): 
 
 export function validateSupplierPushConfigUpdate(body: SupplierPushConfigBody): string | null {
   const fields = extractSupplierPushConfigFields(body)
-  if (!fields.vendorCode) return '缺少必填字段: vendorCode'
-  if (!fields.vendorName) return '缺少必填字段: vendorName'
   if (!fields.supplierNickname) return '缺少必填字段: supplierNickname'
   if (typeof body.routeCode !== 'string') return '缺少必填字段: routeCode'
+  if (!fields.vendorCode && !fields.routeCode.trim()) return '未选择供应商时必须填写路由编码'
   if (!fields.chatId && !fields.webhookUrl) return '缺少必填字段: chatId 或 webhookUrl（至少填一项）'
   return null
 }

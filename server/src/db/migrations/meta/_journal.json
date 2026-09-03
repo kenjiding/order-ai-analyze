@@ -498,6 +498,13 @@
       "when": 1785700000042,
       "tag": "0070_container_external_negative_balance",
       "breakpoints": true
+    },
+    {
+      "idx": 71,
+      "version": "7",
+      "when": 1785700000043,
+      "tag": "0071_exit_alarm_clearance_price",
+      "breakpoints": true
     }
   ]
 }

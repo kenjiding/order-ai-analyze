@@ -59,6 +59,7 @@ export function useExitAlarmPage() {
         mentionEnabled: schedule.mentionEnabled,
         routeCodeWhitelistPushEnabled: schedule.routeCodeWhitelistPushEnabled,
         arrivalScanDate: schedule.arrivalScanDate,
+        clearancePrice: schedule.clearancePrice,
       }
       return crud.toggleEnabled(schedule, draft, imileToken)
     },

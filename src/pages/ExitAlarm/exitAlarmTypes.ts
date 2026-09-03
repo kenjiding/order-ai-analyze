@@ -33,6 +33,8 @@ export type ExitAlarmScheduleDraft = {
   routeCodeWhitelistPushEnabled: boolean
   /** 「立刻推送」使用的到件扫描日期 YYYY-MM-DD；为空时按自动计算的最近工作日兜底，不影响自动定时推送 */
   arrivalScanDate: string | null
+  /** 滞留清货价：每件清货补贴（美元）；填写后飞书卡片展示「未出仓件数 × 单价」的清货费用，为空则不展示 */
+  clearancePrice: number | null
 }
 
 export type ExitAlarmSchedule = ExitAlarmScheduleDraft & {

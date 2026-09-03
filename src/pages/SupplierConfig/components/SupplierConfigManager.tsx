@@ -183,7 +183,7 @@ export function SupplierConfigManager({ secretsVisibility = 'full' }: Props) {
         const confirmed = await confirmDialog({
           title: '确认替换全部供应商配置？',
           content: `将删除当前 ${suppliers.length} 条配置，仅保留文件中的 ${r.suppliers.length} 条${
-            r.skipped > 0 ? `（另有 ${r.skipped} 条因缺少 vendorCode 将跳过）` : ''
+            r.skipped > 0 ? `（另有 ${r.skipped} 条因缺少昵称、或供应商编码与路由编码都为空将跳过）` : ''
           }。`,
           okText: '替换',
           danger: true,
@@ -194,7 +194,7 @@ export function SupplierConfigManager({ secretsVisibility = 'full' }: Props) {
       if (!res.ok) { showToast(`导入失败：${res.error}`, 'error'); return }
       setSuppliers(res.data)
       closeImportModal()
-      const skipNote = r.skipped > 0 ? `，跳过 ${r.skipped} 条（缺少 vendorCode 且无法匹配主数据）` : ''
+      const skipNote = r.skipped > 0 ? `，跳过 ${r.skipped} 条（缺少昵称，或供应商编码与路由编码都为空）` : ''
       showToast(
         importMerge
           ? `已合并导入 ${res.imported} 条（相同 id 以文件为准）${skipNote}`
@@ -221,7 +221,13 @@ export function SupplierConfigManager({ secretsVisibility = 'full' }: Props) {
               </Tooltip>
             ) : null}
           </div>
-          <div className="text-xs text-slate-400">{row.vendorCode || '—'}</div>
+          <div className="text-xs text-slate-400">
+            {row.vendorCode || (
+              <Tooltip title="未选供应商：该配置只按路由编码匹配运单，不看运单上的承运商">
+                <span className="rounded bg-amber-50 px-1.5 py-0.5 text-[10px] text-amber-600">仅按路由码匹配</span>
+              </Tooltip>
+            )}
+          </div>
         </div>
       ),
     },
@@ -373,7 +379,7 @@ export function SupplierConfigManager({ secretsVisibility = 'full' }: Props) {
           </Upload>
           <p className="text-xs text-slate-500">
             支持 xlsx、xls、csv、json。列名可与导出文件一致（vendorCode、vendorName、supplierNickname 等），也可使用中文表头。
-            旧版 supplierName 列会回填为 supplierNickname；vendorCode 须来自文件列或能匹配供应商主数据，无法确定的行将跳过。
+            旧版 supplierName 列会回填为 supplierNickname；vendorCode 可留空（该行只按路由编码匹配），但 vendorCode 与路由编码不能同时为空，否则该行跳过。
             {secretsHidden
               ? ' 完整 webhook / 密钥请在「系统管理 → 供应商配置」导出或向东道主索取含密文的表格后再于此处导入。'
               : null}

@@ -95,6 +95,11 @@ export function isRowInConfigScopeIgnoringWhitelist(
 ): boolean {
   const vendorCode = normCode(rowVendorCode)
   const routeCode = normCode(rowRouteCode)
+  // 配置未选供应商（纯路由码口径）：完全不看行上的承运商，只认路由码命中；
+  // 没配路由码就谁都不匹配——否则一条空配置会吃下整个站点的运单。
+  if (!scope.vendorCode) {
+    return scope.routeCodes ? scope.routeCodes.has(routeCode) : false
+  }
   if (vendorCode) {
     if (vendorCode !== scope.vendorCode) return false
   } else if (!scope.routeCodes?.has(routeCode)) {
@@ -323,6 +328,21 @@ export function buildScopeMapsFromConfig(config: ScopeConfigRow): VendorScopeMap
   if (routeCodes.size > 0) scope.routeCodesByVendor.set(vendorCode, routeCodes)
   if (whitelist.size > 0) scope.routeCodeWhitelistByVendor.set(vendorCode, whitelist)
   return scope
+}
+
+/**
+ * 单条推送配置 → ConfigScope（逐配置推送的告警都用它构造，业务侧不许再手搓）。
+ * vendorCode 允许为空：那是「只按路由码匹配」的配置，归属判定里走纯路由码分支。
+ */
+export function buildConfigScope(key: string, config: ScopeConfigRow): ConfigScope {
+  const routeCodes = new Set(parseRouteCodes(config.routeCode ?? ''))
+  const whitelist = new Set(parseRouteCodes(config.routeCodeWhitelist ?? ''))
+  return {
+    key,
+    vendorCode: normCode(config.vendorCode),
+    routeCodes: routeCodes.size > 0 ? routeCodes : undefined,
+    routeCodeWhitelist: whitelist.size > 0 ? whitelist : undefined,
+  }
 }
 
 /**
