@@ -4,6 +4,7 @@ import {
   listDispatchPerformanceSuppliers,
   listSettledArrivalDates,
   queryDispatchPerformance,
+  queryDispatchPerformanceTrend,
 } from '../dispatch24hStats/repository'
 import {
   createDispatchPerformanceConfig,
@@ -231,6 +232,27 @@ dispatchPerformanceRouter.get('/configs/:id/data', async (req: Request, res: Res
     })
   } catch (err) {
     console.error('[dispatch-performance] 数据查询失败:', err)
+    return res.status(500).json({ error: '查询失败' })
+  }
+})
+
+/** 详情趋势：按到件日返回供应商/路由码两个维度的率变化。 */
+dispatchPerformanceRouter.get('/configs/:id/trend', async (req: Request, res: Response) => {
+  const range = parseRange(req.query as Record<string, unknown>)
+  if ('error' in range) return res.status(400).json({ error: range.error })
+
+  try {
+    const config = await findDispatchPerformanceConfig(String(req.params.id ?? '').trim())
+    if (!config) return res.status(404).json({ error: '配置不存在' })
+
+    const result = await queryDispatchPerformanceTrend({
+      stationCode: config.stationCode,
+      ...range,
+      supplierKeys: parseSupplierKeys(req.query.supplierKey ?? req.query.supplierKeys),
+    })
+    return res.json(result)
+  } catch (err) {
+    console.error('[dispatch-performance] 趋势查询失败:', err)
     return res.status(500).json({ error: '查询失败' })
   }
 })

@@ -96,6 +96,44 @@ export type DispatchPerformanceQueryResult = {
   suppliers: DispatchPerformanceSupplierNode[]
 }
 
+export type DispatchPerformanceTrendSupplier = {
+  supplierKey: string
+  supplierName: string
+  vendorCode: string
+}
+
+export type DispatchPerformanceSupplierTrendPoint = {
+  date: string
+  supplierKey: string
+  supplierName: string
+  vendorCode: string
+  total: number
+  dispatchSettled: boolean
+  before11Rate: number | null
+  signRate: number | null
+}
+
+export type DispatchPerformanceRouteTrendPoint = {
+  date: string
+  supplierKey: string
+  routeCode: string
+  total: number
+  isWhitelist: boolean
+  dispatchSettled: boolean
+  before11Rate: number | null
+  signRate: number | null
+}
+
+export type DispatchPerformanceTrendResult = {
+  stationCode: string
+  startDate: string
+  endDate: string
+  dates: string[]
+  suppliers: DispatchPerformanceTrendSupplier[]
+  supplierDaily: DispatchPerformanceSupplierTrendPoint[]
+  routeDaily: DispatchPerformanceRouteTrendPoint[]
+}
+
 function rate(numerator: number, total: number): number | null {
   if (total <= 0) return null
   return Math.round((numerator / total) * 10000) / 100
@@ -487,6 +525,119 @@ export function buildDispatchPerformanceTree(rows: DispatchPerformanceStatRow[])
 }
 
 /**
+ * 按到件日输出趋势点：供应商层沿用白名单口径（不计入），路由码层保留白名单单量。
+ * 纯函数，不碰数据库，供详情趋势图与单测复用。
+ */
+export function buildDispatchPerformanceTrend(rows: DispatchPerformanceStatRow[]): {
+  dates: string[]
+  suppliers: DispatchPerformanceTrendSupplier[]
+  supplierDaily: DispatchPerformanceSupplierTrendPoint[]
+  routeDaily: DispatchPerformanceRouteTrendPoint[]
+} {
+  type SupplierBucket = {
+    date: string
+    supplierKey: string
+    supplierName: string
+    vendorCode: string
+    acc: Acc
+  }
+  type RouteBucket = {
+    date: string
+    supplierKey: string
+    routeCode: string
+    acc: Acc
+    total: number
+    whitelistTotal: number
+  }
+
+  const dates = new Set<string>()
+  const suppliers = new Map<string, DispatchPerformanceTrendSupplier>()
+  const supplierBuckets = new Map<string, SupplierBucket>()
+  const routeBuckets = new Map<string, RouteBucket>()
+
+  for (const row of rows) {
+    dates.add(row.arrivalDate)
+    if (!suppliers.has(row.supplierKey)) {
+      suppliers.set(row.supplierKey, {
+        supplierKey: row.supplierKey,
+        supplierName: row.supplierName || row.supplierKey,
+        vendorCode: row.vendorCode,
+      })
+    }
+
+    const supplierBucketKey = `${row.arrivalDate}\t${row.supplierKey}`
+    let supplierBucket = supplierBuckets.get(supplierBucketKey)
+    if (!supplierBucket) {
+      supplierBucket = {
+        date: row.arrivalDate,
+        supplierKey: row.supplierKey,
+        supplierName: row.supplierName || row.supplierKey,
+        vendorCode: row.vendorCode,
+        acc: newAcc(),
+      }
+      supplierBuckets.set(supplierBucketKey, supplierBucket)
+    }
+    if (!row.isWhitelist) addToAcc(supplierBucket.acc, row)
+
+    const routeBucketKey = `${row.arrivalDate}\t${row.supplierKey}\t${row.routeCode}`
+    let routeBucket = routeBuckets.get(routeBucketKey)
+    if (!routeBucket) {
+      routeBucket = {
+        date: row.arrivalDate,
+        supplierKey: row.supplierKey,
+        routeCode: row.routeCode,
+        acc: newAcc(),
+        total: 0,
+        whitelistTotal: 0,
+      }
+      routeBuckets.set(routeBucketKey, routeBucket)
+    }
+    addToAcc(routeBucket.acc, row)
+    routeBucket.total += row.total
+    if (row.isWhitelist) routeBucket.whitelistTotal += row.total
+  }
+
+  const supplierDaily: DispatchPerformanceSupplierTrendPoint[] = [...supplierBuckets.values()]
+    .map((bucket) => {
+      const metrics = toMetrics(bucket.acc)
+      return {
+        date: bucket.date,
+        supplierKey: bucket.supplierKey,
+        supplierName: bucket.supplierName,
+        vendorCode: bucket.vendorCode,
+        total: metrics.total,
+        dispatchSettled: metrics.dispatchSettled,
+        before11Rate: metrics.before11Rate,
+        signRate: metrics.signRate,
+      }
+    })
+    .sort((a, b) => a.date.localeCompare(b.date) || a.supplierName.localeCompare(b.supplierName))
+
+  const routeDaily: DispatchPerformanceRouteTrendPoint[] = [...routeBuckets.values()]
+    .map((bucket) => {
+      const metrics = toMetrics(bucket.acc)
+      return {
+        date: bucket.date,
+        supplierKey: bucket.supplierKey,
+        routeCode: bucket.routeCode,
+        total: metrics.total,
+        isWhitelist: bucket.whitelistTotal > 0,
+        dispatchSettled: metrics.dispatchSettled,
+        before11Rate: metrics.before11Rate,
+        signRate: metrics.signRate,
+      }
+    })
+    .sort((a, b) => a.date.localeCompare(b.date) || a.routeCode.localeCompare(b.routeCode))
+
+  return {
+    dates: [...dates].sort(),
+    suppliers: [...suppliers.values()].sort((a, b) => a.supplierName.localeCompare(b.supplierName)),
+    supplierDaily,
+    routeDaily,
+  }
+}
+
+/**
  * 查询区间内的三层结果。区间跨多天时同一 (supplier, route, courier) 会有多行，按维度累加。
  */
 export async function queryDispatchPerformance(params: {
@@ -514,6 +665,33 @@ export async function queryDispatchPerformance(params: {
     endDate,
     arrivalDates: [...new Set(rows.map((r) => r.arrivalDate))].sort(),
     ...buildDispatchPerformanceTree(rows),
+  }
+}
+
+/** 查询区间内的趋势点：按到件日返回供应商与路由码两个维度。 */
+export async function queryDispatchPerformanceTrend(params: {
+  stationCode: string
+  startDate: string
+  endDate: string
+  supplierKeys?: string[]
+}): Promise<DispatchPerformanceTrendResult> {
+  const { stationCode, startDate, endDate, supplierKeys } = params
+  const db = getDb()
+  const t = schema.dispatchPerformanceDailyStats
+
+  const conditions = [
+    eq(t.stationCode, stationCode),
+    gte(t.arrivalDate, startDate),
+    lte(t.arrivalDate, endDate),
+  ]
+  if (supplierKeys?.length) conditions.push(inArray(t.supplierKey, supplierKeys))
+
+  const rows = await db.select().from(t).where(and(...conditions))
+  return {
+    stationCode,
+    startDate,
+    endDate,
+    ...buildDispatchPerformanceTrend(rows),
   }
 }
 

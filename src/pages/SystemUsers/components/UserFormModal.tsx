@@ -159,7 +159,7 @@ export default function UserFormModal({
                   { pattern: /^[\w.-]+$/, message: '仅支持字母、数字、下划线、点、连字符' },
                 ]}
               >
-                <Input disabled={isEdit} placeholder="登录用户名" />
+                <Input placeholder="登录用户名" />
               </Form.Item>
             </Col>
             <Col xs={24} md={12}>

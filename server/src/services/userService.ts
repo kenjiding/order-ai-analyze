@@ -28,6 +28,7 @@ type CreateUserBody = {
 }
 
 type UpdateUserBody = {
+  username?: string
   displayName?: string
   isActive?: boolean
   password?: string
@@ -192,6 +193,25 @@ export async function updateUser(req: AuthenticatedRequest, res: Response): Prom
 
   const patch: Partial<typeof users.$inferInsert> = {
     updatedAt: new Date(),
+  }
+  if (body.username !== undefined) {
+    const username = normalizeUsername(String(body.username))
+    if (!isValidUsername(username)) {
+      res.status(400).json({ error: '用户名须为 2–64 位字母、数字、下划线、点或连字符' })
+      return
+    }
+    if (username !== existing.username) {
+      const duplicate = await db
+        .select({ id: users.id })
+        .from(users)
+        .where(eq(users.username, username))
+        .limit(1)
+      if (duplicate.length > 0) {
+        res.status(409).json({ error: '用户名已存在' })
+        return
+      }
+      patch.username = username
+    }
   }
   if (body.displayName !== undefined) {
     patch.displayName = String(body.displayName).trim() || null

@@ -69,6 +69,7 @@ export function useSystemUsersPage() {
 
         if (editingUser) {
           await updateAdminUser(editingUser.id, {
+            username: values.username,
             displayName: values.displayName,
             isActive: values.isActive,
             password: values.password || undefined,

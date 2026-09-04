@@ -4,6 +4,7 @@ import type {
   DispatchPerformanceConfig,
   DispatchPerformanceConfigDraft,
   DispatchPerformanceResult,
+  DispatchTrendResult,
 } from './dispatchPerformanceTypes'
 
 const JSON_HEADERS = { 'Content-Type': 'application/json' } as const
@@ -77,6 +78,18 @@ export async function fetchDispatchPerformanceData(
   const params = new URLSearchParams({ startDate: query.startDate, endDate: query.endDate })
   if (query.supplierKeys?.length) params.set('supplierKey', query.supplierKeys.join(','))
   return request<DispatchPerformanceResult>(`/configs/${query.configId}/data?${params}`, {
+    method: 'GET',
+    signal,
+  })
+}
+
+export async function fetchDispatchPerformanceTrend(
+  query: DispatchPerformanceDataQuery,
+  signal?: AbortSignal,
+): Promise<DispatchTrendResult> {
+  const params = new URLSearchParams({ startDate: query.startDate, endDate: query.endDate })
+  if (query.supplierKeys?.length) params.set('supplierKey', query.supplierKeys.join(','))
+  return request<DispatchTrendResult>(`/configs/${query.configId}/trend?${params}`, {
     method: 'GET',
     signal,
   })

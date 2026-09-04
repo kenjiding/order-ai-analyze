@@ -68,7 +68,7 @@ export async function createAdminUser(payload: {
 
 export async function updateAdminUser(
   id: string,
-  payload: { displayName?: string; isActive?: boolean; password?: string },
+  payload: { username?: string; displayName?: string; isActive?: boolean; password?: string },
 ): Promise<AdminUser> {
   const body = await adminFetch<{ user: AdminUser }>(`/${id}`, {
     method: 'PUT',

@@ -22,6 +22,17 @@ function menuIdFromKey(menuPermissionKey: string): string {
   return menuPermissionKey.replace(/^menu:/, '')
 }
 
+/** 容器台账/站点账户/流转记录的按钮权限合并到「容器管理」一组展示 */
+const BUTTON_GROUP_BY_MENU: Record<string, string> = {
+  'container-ledger': 'container',
+  'container-accounts': 'container',
+  'container-transfers': 'container',
+}
+
+const BUTTON_GROUP_META: Record<string, { title: string; sortOrder: number }> = {
+  container: { title: '容器管理', sortOrder: 62 },
+}
+
 function groupButtonPermissionsByMenu(
   menuPermissions: PermissionDefinition[],
   buttonPermissions: PermissionDefinition[],
@@ -34,9 +45,10 @@ function groupButtonPermissionsByMenu(
 
   for (const item of buttonPermissions) {
     if (item.menuKey) {
-      const bucket = grouped.get(item.menuKey) ?? []
+      const groupKey = BUTTON_GROUP_BY_MENU[item.menuKey] ?? item.menuKey
+      const bucket = grouped.get(groupKey) ?? []
       bucket.push(item)
-      grouped.set(item.menuKey, bucket)
+      grouped.set(groupKey, bucket)
     } else {
       ungrouped.push(item)
     }
@@ -45,8 +57,8 @@ function groupButtonPermissionsByMenu(
   const groups = Array.from(grouped.entries())
     .map(([menuKey, items]) => ({
       menuKey,
-      title: menuLabelById.get(menuKey) ?? menuKey,
-      sortOrder: menuSortOrderById.get(menuKey) ?? 9999,
+      title: BUTTON_GROUP_META[menuKey]?.title ?? menuLabelById.get(menuKey) ?? menuKey,
+      sortOrder: BUTTON_GROUP_META[menuKey]?.sortOrder ?? menuSortOrderById.get(menuKey) ?? 9999,
       items: [...items].sort((a, b) => a.sortOrder - b.sortOrder),
     }))
     .sort((a, b) => a.sortOrder - b.sortOrder)

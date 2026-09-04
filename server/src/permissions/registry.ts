@@ -206,6 +206,14 @@ export const PERMISSION_REGISTRY: PermissionDefinition[] = [
     sortOrder: 630,
   },
   {
+    key: 'btn:container:view-all',
+    type: 'button',
+    label: '查看全部站点数据',
+    description: '容器台账/流转记录与转出方、接收方下拉不再受站点绑定限制，范围等同管理员',
+    menuKey: 'container-transfers',
+    sortOrder: 610,
+  },
+  {
     key: 'btn:container-transfers:proxy-confirm',
     type: 'button',
     label: '代确认收货',

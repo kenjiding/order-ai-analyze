@@ -16,6 +16,9 @@ export function isSuperAdmin(req: AuthenticatedRequest): boolean {
   return req.authUser?.role === SUPER_ADMIN_ROLE
 }
 
+/** 勾上即拥有与超管一致的容器数据可见范围（不含用户管理等超管专属能力） */
+export const VIEW_ALL_PERMISSION = 'btn:container:view-all'
+
 export function hasContainerPermission(req: AuthenticatedRequest, permissionKey: string): boolean {
   if (isSuperAdmin(req)) return true
   return req.permissions?.includes(permissionKey) === true
@@ -23,6 +26,8 @@ export function hasContainerPermission(req: AuthenticatedRequest, permissionKey:
 
 export async function resolveVisibleAccountIds(req: AuthenticatedRequest): Promise<VisibleAccounts> {
   if (isSuperAdmin(req)) return null
+  // 授权后等同超管的可见范围：台账、流转、下拉一次放开，不必把人绑到每个站点账户上
+  if (hasContainerPermission(req, VIEW_ALL_PERMISSION)) return null
   const userId = req.authUser?.id
   if (!userId) return []
   const rows = await getDb()
