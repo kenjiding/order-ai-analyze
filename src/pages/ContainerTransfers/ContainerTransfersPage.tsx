@@ -75,7 +75,11 @@ export default function ContainerTransfersPage() {
                 total={page.total}
                 page={page.page}
                 pageSize={page.pageSize}
-                onPageChange={page.setPage}
+                onPageChange={(next, size) => {
+                  // 改每页条数时回到第一页，否则停留在越界页会拿到空列表
+                  if (size !== page.pageSize) page.setPageSize(size)
+                  page.setPage(size !== page.pageSize ? 1 : next)
+                }}
                 canActAs={page.canActAs}
                 canProxyConfirm={page.canProxyConfirm}
                 onConfirm={page.openConfirm}

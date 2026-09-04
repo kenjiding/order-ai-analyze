@@ -979,3 +979,19 @@ export const dispatchPerformanceSettledBatches = pgTable(
 export type DispatchPerformanceDailyStat = typeof dispatchPerformanceDailyStats.$inferSelect
 export type NewDispatchPerformanceDailyStat = typeof dispatchPerformanceDailyStats.$inferInsert
 export type DispatchPerformanceSettledBatch = typeof dispatchPerformanceSettledBatches.$inferSelect
+
+/** 优先客户配置：系统管理下人工维护的优先客户名单 */
+export const priorityClients = pgTable(
+  'priority_clients',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    clientCode: varchar('client_code', { length: 64 }).notNull(),
+    clientName: varchar('client_name', { length: 255 }).notNull(),
+    isVip: boolean('is_vip').notNull().default(false),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [uniqueIndex('priority_clients_client_code_unique').on(table.clientCode)],
+)
+
+export type PriorityClient = typeof priorityClients.$inferSelect

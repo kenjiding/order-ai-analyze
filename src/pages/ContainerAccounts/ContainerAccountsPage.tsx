@@ -1,8 +1,8 @@
 import { BellRing, BellOff, Building2, Pencil, Plus, Trash2 } from 'lucide-react'
-import { Button, Table, Tag, Tooltip } from 'antd'
+import { Button, Input, Select, Table, Tag, Tooltip } from 'antd'
 import type { ColumnsType } from 'antd/es/table'
-import { accountKindLabel } from '../../containerManagement/constants'
-import type { ContainerAccount } from '../../containerManagement/types'
+import { ACCOUNT_KINDS, accountKindLabel } from '../../containerManagement/constants'
+import type { AccountKind, ContainerAccount } from '../../containerManagement/types'
 import { AccountFormModal } from './components/AccountFormModal'
 import { useContainerAccountsPage } from './useContainerAccountsPage'
 
@@ -128,13 +128,46 @@ export default function ContainerAccountsPage() {
         </div>
       </header>
 
-      <section className="admin-panel p-4 sm:p-5">
+      <section className="admin-panel space-y-4 p-4 sm:p-5">
+        <div className="flex flex-wrap items-end gap-3">
+          <label className="flex flex-col gap-1.5">
+            <span className="text-xs text-slate-500">站点名称</span>
+            <Input
+              className="w-52"
+              placeholder="按名称搜索"
+              allowClear
+              autoComplete="off"
+              spellCheck={false}
+              value={page.keyword}
+              onChange={(e) => page.setKeyword(e.target.value)}
+            />
+          </label>
+          <label className="flex flex-col gap-1.5">
+            <span className="text-xs text-slate-500">类型</span>
+            <Select
+              className="w-44"
+              placeholder="全部"
+              allowClear
+              value={page.kindFilter || undefined}
+              onChange={(value) => page.setKindFilter((value ?? '') as AccountKind | '')}
+              options={ACCOUNT_KINDS.map((kind) => ({
+                value: kind,
+                label: accountKindLabel[kind],
+              }))}
+            />
+          </label>
+        </div>
         <Table<ContainerAccount>
           rowKey="id"
           columns={columns}
-          dataSource={page.accounts}
+          dataSource={page.filteredAccounts}
           loading={page.loading}
-          pagination={{ pageSize: 10, showSizeChanger: false, showTotal: (t) => `共 ${t} 条` }}
+          pagination={{
+            defaultPageSize: 10,
+            showSizeChanger: true,
+            pageSizeOptions: [10, 20, 50, 100],
+            showTotal: (t) => `共 ${t} 条`,
+          }}
           scroll={{ x: 820 }}
           locale={{ emptyText: '暂无站点账户' }}
         />

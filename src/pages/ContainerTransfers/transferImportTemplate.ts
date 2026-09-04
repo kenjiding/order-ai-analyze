@@ -78,14 +78,27 @@ async function buildWorkbook(
     cell.font = { bold: true }
     cell.fill = HEADER_FILL
   }
-  senderAccounts.forEach((account, index) => {
+  // 转出方是「自己的站点 + 外部方」两段拼出来的，不排序的话下拉滚到一半又从头排一遍，很难找
+  const byName = (list: ContainerAccount[]) =>
+    [...list].sort((a, b) => a.name.localeCompare(b.name, 'zh-CN'))
+  byName(senderAccounts).forEach((account, index) => {
     refSheet.getCell(index + 2, 1).value = account.name
   })
-  counterparties.forEach((account, index) => {
+  byName(counterparties).forEach((account, index) => {
     refSheet.getCell(index + 2, 3).value = account.name
   })
 
   const kindList = SELECTABLE_TRANSFER_KINDS.map((kind) => transferKindLabel[kind]).join(',')
+  /**
+   * 引用区域必须刚好覆盖有名字的行。之前固定引到第 501 行，站点只有十几个时下拉里就跟着
+   * 出现几百个空白项：列表拖不动、Excel 的输入自动补全也会被空白项打断。
+   * 名单为空时不设验证，A2:A1 是非法区域，Excel 会判文件损坏。
+   */
+  const accountRange = (refColumn: 'A' | 'C', count: number) =>
+    count > 0 ? `=${TRANSFER_IMPORT_REF_SHEET}!$${refColumn}$2:$${refColumn}$${count + 1}` : ''
+  const senderRange = accountRange('A', senderAccounts.length)
+  const receiverRange = accountRange('C', counterparties.length)
+
   for (let row = 2; row <= VALIDATION_ROWS + 1; row += 1) {
     sheet.getCell(row, 1).numFmt = 'yyyy-mm-dd'
     sheet.getCell(row, 5).numFmt = '0'
@@ -98,21 +111,25 @@ async function buildWorkbook(
       errorTitle: '取值不合法',
       error: '请从下拉列表中选择',
     }
-    sheet.getCell(row, 3).dataValidation = {
-      type: 'list',
-      allowBlank: true,
-      formulae: [`=${TRANSFER_IMPORT_REF_SHEET}!$A$2:$A$${VALIDATION_ROWS + 1}`],
-      showErrorMessage: true,
-      errorTitle: '取值不合法',
-      error: '转出方必须从下拉列表中选择',
+    /**
+     * 站点列不拦手打。Excel 原生下拉固定只显示 8 行、没有搜索，站点几十个时滚起来很痛苦，
+     * 强制走下拉等于把人锁死在这个交互里；名字打错有上传预览逐行报错兜底。
+     */
+    if (senderRange) {
+      sheet.getCell(row, 3).dataValidation = {
+        type: 'list',
+        allowBlank: true,
+        formulae: [senderRange],
+        showErrorMessage: false,
+      }
     }
-    sheet.getCell(row, 4).dataValidation = {
-      type: 'list',
-      allowBlank: true,
-      formulae: [`=${TRANSFER_IMPORT_REF_SHEET}!$C$2:$C$${VALIDATION_ROWS + 1}`],
-      showErrorMessage: true,
-      errorTitle: '取值不合法',
-      error: '接收方必须从下拉列表中选择',
+    if (receiverRange) {
+      sheet.getCell(row, 4).dataValidation = {
+        type: 'list',
+        allowBlank: true,
+        formulae: [receiverRange],
+        showErrorMessage: false,
+      }
     }
   }
 
@@ -123,7 +140,9 @@ async function buildWorkbook(
     `请只在「${TRANSFER_IMPORT_SHEET}」表里填写数据，本表与「${TRANSFER_IMPORT_REF_SHEET}」表不要改动。`,
     '一行 = 一条流转记录。同一条记录同时含大蓝筐和银筐时，把两个数量填在同一行的两列里。',
     '「大蓝筐数量」「银筐数量」至少填一个；留空表示这条记录不含该品类；填了必须是大于 0 的整数。',
-    '「业务类型」「转出方」「接收方」必须点单元格右侧的下拉箭头选择，手打的站点名对不上系统账户会导入失败。',
+    '「业务类型」点单元格右侧的下拉箭头选择。',
+    `「转出方」「接收方」可以用下拉选，站点多时更快的做法是从「${TRANSFER_IMPORT_REF_SHEET}」表复制名字粘过来，或直接手打（忽略空格与大小写，其余要和名单完全一致）。`,
+    '站点名对不上系统账户不会丢数据，上传后的预览会逐行指出来，改完再传即可。',
     '「日期」格式 YYYY-MM-DD，例如 2026-08-27；留空则按当天算。',
     '「备注」可填车牌、运单号等，最长 2000 字。',
     `单次最多导入 ${TRANSFER_IMPORT_MAX_ROWS} 行；整批一个事务，任何一行不合法都不会写入。`,

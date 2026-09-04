@@ -29,6 +29,9 @@ export function useContainerAccountsPage() {
   const [loading, setLoading] = useState(false)
   const [submitting, setSubmitting] = useState(false)
 
+  const [keyword, setKeyword] = useState('')
+  const [kindFilter, setKindFilter] = useState<AccountKind | ''>('')
+
   const [formOpen, setFormOpen] = useState(false)
   const [editing, setEditing] = useState<ContainerAccount | null>(null)
 
@@ -54,6 +57,16 @@ export function useContainerAccountsPage() {
     void loadAccounts()
     void loadUsers()
   }, [loadAccounts, loadUsers])
+
+  /** 站点账户一次性全量拉取，筛选直接在前端做，不再往返后端 */
+  const filteredAccounts = useMemo(() => {
+    const kw = keyword.trim().toLowerCase()
+    return accounts.filter(
+      (item) =>
+        (!kw || item.name.toLowerCase().includes(kw)) &&
+        (!kindFilter || item.kind === kindFilter),
+    )
+  }, [accounts, keyword, kindFilter])
 
   const openCreate = useCallback(() => {
     setEditing(null)
@@ -113,6 +126,11 @@ export function useContainerAccountsPage() {
     () => ({
       canManage,
       accounts,
+      filteredAccounts,
+      keyword,
+      setKeyword,
+      kindFilter,
+      setKindFilter,
       users,
       loading,
       submitting,
@@ -127,6 +145,9 @@ export function useContainerAccountsPage() {
     [
       canManage,
       accounts,
+      filteredAccounts,
+      keyword,
+      kindFilter,
       users,
       loading,
       submitting,

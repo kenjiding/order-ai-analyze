@@ -33,7 +33,7 @@ import { usePermission } from '../../hooks/usePermission'
 import { useAuthStore } from '../../stores/authStore'
 import { showToast } from '../../utils/toast'
 
-const PAGE_SIZE = 12
+const PAGE_SIZE = 10
 const CHANGE_PAGE_SIZE = 10
 
 export type TransferFilters = {
@@ -96,6 +96,7 @@ export function useContainerTransfersPage() {
   const [transfers, setTransfers] = useState<Transfer[]>([])
   const [total, setTotal] = useState(0)
   const [page, setPage] = useState(1)
+  const [pageSize, setPageSize] = useState(PAGE_SIZE)
   const [loading, setLoading] = useState(false)
   const [submitting, setSubmitting] = useState(false)
   const [filters, setFilters] = useState<TransferFilters>(() => {
@@ -160,7 +161,7 @@ export function useContainerTransfersPage() {
   }, [])
 
   const loadTransfers = useCallback(
-    async (nextPage = page, nextFilters = filters) => {
+    async (nextPage = page, nextFilters = filters, nextPageSize = pageSize) => {
       setLoading(true)
       const res = await fetchTransfers({
         transferId: parseTransferNo(nextFilters.transferId) ?? undefined,
@@ -170,7 +171,7 @@ export function useContainerTransfersPage() {
         start: nextFilters.range?.[0].startOf('day').toISOString(),
         end: nextFilters.range?.[1].endOf('day').toISOString(),
         page: nextPage,
-        pageSize: PAGE_SIZE,
+        pageSize: nextPageSize,
       })
       setLoading(false)
       if (!res.ok) {
@@ -180,7 +181,7 @@ export function useContainerTransfersPage() {
       setTransfers(res.data.items)
       setTotal(res.data.total)
     },
-    [page, filters],
+    [page, filters, pageSize],
   )
 
   const loadChanges = useCallback(
@@ -210,10 +211,10 @@ export function useContainerTransfersPage() {
   }, [loadAccounts])
 
   useEffect(() => {
-    void loadTransfers(page, filters)
-    // 翻页与首次进入拉取；筛选条件变更由「搜索」按钮触发
+    void loadTransfers(page, filters, pageSize)
+    // 翻页 / 改每页条数与首次进入拉取；筛选条件变更由「搜索」按钮触发
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [page])
+  }, [page, pageSize])
 
   useEffect(() => {
     if (tab === 'changes') void loadChanges(changePage, changeFilters)
@@ -228,9 +229,9 @@ export function useContainerTransfersPage() {
       if (URL_SEED_FILTER_KEYS.some((key) => searchParams.has(key))) {
         setSearchParams({}, { replace: true })
       }
-      void loadTransfers(1, next)
+      void loadTransfers(1, next, pageSize)
     },
-    [loadTransfers, searchParams, setSearchParams],
+    [loadTransfers, pageSize, searchParams, setSearchParams],
   )
 
   const applyChangeFilters = useCallback(
@@ -503,8 +504,9 @@ export function useContainerTransfersPage() {
       transfers,
       total,
       page,
-      pageSize: PAGE_SIZE,
+      pageSize,
       setPage,
+      setPageSize,
       loading,
       submitting,
       filters,
@@ -577,6 +579,7 @@ export function useContainerTransfersPage() {
       transfers,
       total,
       page,
+      pageSize,
       loading,
       submitting,
       filters,

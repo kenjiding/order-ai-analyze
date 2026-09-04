@@ -31,6 +31,7 @@ const WarehouseSafetyInspectionPage = lazy(
 )
 const SystemUsersPage = lazy(() => import('./pages/SystemUsers/SystemUsersPage'))
 const SupplierConfigPage = lazy(() => import('./pages/SupplierConfig/SupplierConfigPage'))
+const PriorityClientsPage = lazy(() => import('./pages/PriorityClients/PriorityClientsPage'))
 const LoginPage = lazy(() => import('./pages/Login/LoginPage'))
 const VendorSnapshotPage = lazy(() => import('./pages/VendorAnalysis/VendorSnapshotPage'))
 const VendorPortalPage = lazy(() => import('./pages/VendorPortal/VendorPortalPage'))
@@ -339,6 +340,14 @@ function AppRoutes() {
             element={
               <KeptPage cacheKey="page-supplier-configs" name="supplier-configs">
                 <SupplierConfigPage />
+              </KeptPage>
+            }
+          />
+          <Route
+            path="/system/priority-clients"
+            element={
+              <KeptPage cacheKey="page-priority-clients" name="priority-clients">
+                <PriorityClientsPage />
               </KeptPage>
             }
           />

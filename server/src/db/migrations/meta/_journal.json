@@ -505,6 +505,27 @@
       "when": 1785700000043,
       "tag": "0071_exit_alarm_clearance_price",
       "breakpoints": true
+    },
+    {
+      "idx": 72,
+      "version": "7",
+      "when": 1785700000044,
+      "tag": "0072_priority_clients",
+      "breakpoints": true
+    },
+    {
+      "idx": 73,
+      "version": "7",
+      "when": 1785700000045,
+      "tag": "0073_priority_clients_vip",
+      "breakpoints": true
+    },
+    {
+      "idx": 74,
+      "version": "7",
+      "when": 1785700000046,
+      "tag": "0074_priority_clients_drop_columns",
+      "breakpoints": true
     }
   ]
 }

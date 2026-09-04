@@ -20,6 +20,7 @@ import {
   PackageSearch,
   ScanSearch,
   Settings,
+  Star,
   Store,
   Ticket,
   Timer,
@@ -278,6 +279,14 @@ const systemGroup: SidebarMenuGroup = {
       label: '供应商配置',
       icon: Truck,
       description: '供应商路由、站点、飞书群与推送文案的统一维护',
+    },
+    {
+      id: 'priority-clients',
+      path: '/system/priority-clients',
+      permissionKey: 'menu:priority-clients',
+      label: '优先客户配置',
+      icon: Star,
+      description: '维护优先客户名单：负责人、商家编码/名称、开户时间与销售团队',
     },
   ],
 }

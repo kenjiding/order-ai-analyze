@@ -85,6 +85,13 @@ export const PERMISSION_REGISTRY: PermissionDefinition[] = [
     sortOrder: 61,
   },
   {
+    key: 'menu:priority-clients',
+    type: 'menu',
+    label: '优先客户配置',
+    description: '维护优先客户名单（负责人、商家编码/名称、开户时间、销售团队）',
+    sortOrder: 65,
+  },
+  {
     key: 'btn:wage-salary:export',
     type: 'button',
     label: '导出工资',

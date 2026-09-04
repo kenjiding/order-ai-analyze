@@ -17,7 +17,7 @@ type Props = {
   total: number
   page: number
   pageSize: number
-  onPageChange: (page: number) => void
+  onPageChange: (page: number, pageSize: number) => void
   canActAs: (accountId: string) => boolean
   /** 有代确认权限时，接收方无系统账号的单子才给「按回单确认」入口 */
   canProxyConfirm: boolean
@@ -173,7 +173,8 @@ export function TransferTable({
         current: page,
         pageSize,
         total,
-        showSizeChanger: false,
+        showSizeChanger: true,
+        pageSizeOptions: [10, 20, 50, 100],
         showTotal: (t) => `共 ${t} 条`,
         onChange: onPageChange,
       }}

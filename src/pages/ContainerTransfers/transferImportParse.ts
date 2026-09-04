@@ -164,7 +164,7 @@ function validateRow(
   if (!fromAccount) {
     errors.push(
       raw.from.trim()
-        ? `转出方「${raw.from}」不在可选站点账户中，请用模板下拉选择`
+        ? `转出方「${raw.from}」不在可选站点账户中，请对照模板「${TRANSFER_IMPORT_REF_SHEET}」表核对名字`
         : '请填写转出方',
     )
   }
@@ -172,7 +172,9 @@ function validateRow(
   const toAccount = ctx.toMap.get(normalizeName(raw.to))
   if (!toAccount) {
     errors.push(
-      raw.to.trim() ? `接收方「${raw.to}」不在可选站点账户中，请用模板下拉选择` : '请填写接收方',
+      raw.to.trim()
+        ? `接收方「${raw.to}」不在可选站点账户中，请对照模板「${TRANSFER_IMPORT_REF_SHEET}」表核对名字`
+        : '请填写接收方',
     )
   }
 
