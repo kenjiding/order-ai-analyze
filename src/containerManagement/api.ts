@@ -213,6 +213,14 @@ export function deleteTransfer(id: number, reason: string): Promise<ApiResult<nu
   })
 }
 
+/** 作废已确认的流转：不删记录，反向冲回双方已入账的余额 */
+export function voidTransfer(id: number, reason: string): Promise<ApiResult<Transfer>> {
+  return apiFetch<Transfer>(`/transfers/${id}/void`, {
+    method: 'PATCH',
+    body: JSON.stringify({ reason }),
+  })
+}
+
 export function confirmTransfer(id: number, note: string): Promise<ApiResult<Transfer>> {
   return apiFetch<Transfer>(`/transfers/${id}/confirm`, {
     method: 'PATCH',

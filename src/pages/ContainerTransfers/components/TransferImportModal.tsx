@@ -20,8 +20,7 @@ import './TransferImportModal.css'
 
 type Props = {
   open: boolean
-  senderAccounts: ContainerAccount[]
-  counterparties: ContainerAccount[]
+  accounts: ContainerAccount[]
   submitting: boolean
   templateDownloading: boolean
   onDownloadTemplate: () => void
@@ -31,8 +30,7 @@ type Props = {
 
 export function TransferImportModal({
   open,
-  senderAccounts,
-  counterparties,
+  accounts,
   submitting,
   templateDownloading,
   onDownloadTemplate,
@@ -60,7 +58,7 @@ export function TransferImportModal({
     setParsing(true)
     setRows(null)
     setError(null)
-    const result = await parseTransferImportFile(file, { senderAccounts, counterparties })
+    const result = await parseTransferImportFile(file, { accounts })
     setParsing(false)
     if (!result.ok) {
       setError(result.error)

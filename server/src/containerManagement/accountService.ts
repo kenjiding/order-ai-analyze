@@ -1,5 +1,5 @@
 /** 容器管理：站点账户 CRUD 与用户绑定 */
-import { and, asc, count, eq, inArray, notInArray, sql } from 'drizzle-orm'
+import { and, asc, count, eq, inArray, sql } from 'drizzle-orm'
 import { getDb, schema } from '../db'
 import type { AccountKind } from './constants'
 import {
@@ -72,7 +72,9 @@ async function attachBoundUsers(
 
 /**
  * @param visibleAccountIds null 表示不限（超管）
- * @param counterparty true 时返回可见范围之外的账户，供流转「接收方」下拉使用
+ * @param counterparty true 时返回全部账户，供新增流转的「转出方 / 接收方」下拉使用 ——
+ *   录单方常常要替别的站点补录，下拉按绑定关系裁剪只会逼人来回找管理员加绑定。
+ *   真正的把关放在记录本身：谁能看、谁能确认收货仍按可见范围判。
  */
 export async function listAccounts(
   visibleAccountIds: string[] | null,
@@ -94,12 +96,7 @@ export async function listAccounts(
     return attachBoundUsers(await base.orderBy(asc(schema.containerAccounts.name)))
   }
   if (counterparty) {
-    const rows = visibleAccountIds.length
-      ? await base
-          .where(notInArray(schema.containerAccounts.id, visibleAccountIds))
-          .orderBy(asc(schema.containerAccounts.name))
-      : await base.orderBy(asc(schema.containerAccounts.name))
-    return attachBoundUsers(rows)
+    return attachBoundUsers(await base.orderBy(asc(schema.containerAccounts.name)))
   }
   if (visibleAccountIds.length === 0) return []
   return attachBoundUsers(

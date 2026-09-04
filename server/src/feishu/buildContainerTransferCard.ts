@@ -32,8 +32,8 @@ const TILE_BG: Record<MarkColor, string> = {
 }
 
 /**
- * 只推「对方需要知道或需要做点什么」的节点：开始、有争议、以及两条路径各自的结清。
- * 编辑与删除是转出方自己的动作，不推。
+ * 只推「对方需要知道或需要做点什么」的节点：开始、有争议、两条路径各自的结清，以及作废。
+ * 作废撤销的是对方已经认过的账，必须推；编辑与删除只动没入账的单，是转出方自己的事，不推。
  */
 export type TransferCardEvent =
   | 'created'
@@ -41,6 +41,7 @@ export type TransferCardEvent =
   | 'confirmed'
   | 'accepted'
   | 'proxyConfirmed'
+  | 'voided'
 
 /** 事件 → 卡片标题与头部配色，与系统内时间线的状态色语言对齐 */
 const EVENT_STYLE: Record<TransferCardEvent, { title: string; template: string }> = {
@@ -51,6 +52,8 @@ const EVENT_STYLE: Record<TransferCardEvent, { title: string; template: string }
   accepted: { title: '转出方已认可实收数量', template: 'green' },
   // 同样是结清，但没有对方的确认动作，用青色与前两者区分，别读成对方点了确认
   proxyConfirmed: { title: '转出方按回单代确认收货', template: 'turquoise' },
+  // 这笔账已经反向冲回去了，红色是要收件人立刻发现「之前那条不算数了」
+  voided: { title: '本单已作废，入账已冲回', template: 'red' },
 }
 
 /**

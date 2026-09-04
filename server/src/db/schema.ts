@@ -703,7 +703,11 @@ export const containerTransfers = pgTable(
     id: bigserial('id', { mode: 'number' }).primaryKey(),
     /** LEND 借出 | RETURN 归还 | INTERNAL_TRANSFER 仓间调拨 | IN_TRANSIT_OUT 在途发出 | IN_TRANSIT_IN 在途签收 */
     kind: varchar('kind', { length: 32 }).notNull(),
-    /** PENDING_RECEIVER 待接收方确认 | DISPUTED 协商中 | CONFIRMED 已确认 | CANCELLED 已取消 */
+    /**
+     * PENDING_RECEIVER 待接收方确认 | DISPUTED 协商中 | CONFIRMED 已确认
+     * | CANCELLED 已取消（协商认可实收为 0，从未入账）
+     * | VOIDED 已作废（入账后人工撤销，余额由反向流水冲平）
+     */
     status: varchar('status', { length: 32 }).notNull(),
     fromAccountId: uuid('from_account_id')
       .notNull()
@@ -775,7 +779,7 @@ export const containerBalanceAudits = pgTable(
     prevQuantity: integer('prev_quantity'),
     newQuantity: integer('new_quantity'),
     delta: integer('delta'),
-    /** INITIAL_STOCKTAKE | STOCKTAKE_CORRECTION | DAMAGE_SCRAP | LOSS_REPORT | HISTORICAL_BACKFILL | TRANSFER_SETTLEMENT */
+    /** INITIAL_STOCKTAKE | STOCKTAKE_CORRECTION | DAMAGE_SCRAP | LOSS_REPORT | HISTORICAL_BACKFILL | TRANSFER_SETTLEMENT | TRANSFER_VOID */
     reasonType: varchar('reason_type', { length: 32 }).notNull(),
     reason: text('reason').notNull().default(''),
     transferId: bigint('transfer_id', { mode: 'number' }).references(() => containerTransfers.id, {
@@ -800,7 +804,7 @@ export const containerTransferChanges = pgTable(
     transferId: bigint('transfer_id', { mode: 'number' }).references(() => containerTransfers.id, {
       onDelete: 'set null',
     }),
-    /** UPDATE | DELETE */
+    /** UPDATE | DELETE | VOID */
     action: varchar('action', { length: 16 }).notNull(),
     reason: text('reason').notNull().default(''),
     beforeData: jsonb('before_data').notNull(),

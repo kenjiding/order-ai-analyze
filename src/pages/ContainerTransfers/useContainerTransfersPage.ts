@@ -14,6 +14,7 @@ import {
   importTransfers,
   reportReceipt,
   updateTransfer,
+  voidTransfer,
 } from '../../containerManagement/api'
 import type { TransferCreateItem } from '../../containerManagement/api'
 import { TRANSFER_STATUSES, parseTransferNo } from '../../containerManagement/constants'
@@ -88,6 +89,7 @@ export function useContainerTransfersPage() {
   const [searchParams, setSearchParams] = useSearchParams()
   const isSuperAdmin = useAuthStore((s) => s.isSuperAdmin)
   const canProxyConfirm = usePermission('btn:container-transfers:proxy-confirm')
+  const canVoid = usePermission('btn:container-transfers:void')
 
   const [tab, setTab] = useState<'transfers' | 'changes'>('transfers')
   const [ownAccounts, setOwnAccounts] = useState<ContainerAccount[]>([])
@@ -125,6 +127,8 @@ export function useContainerTransfersPage() {
   const [proxyConfirmTarget, setProxyConfirmTarget] = useState<Transfer | null>(null)
   const [disputeTarget, setDisputeTarget] = useState<Transfer | null>(null)
   const [deleteTarget, setDeleteTarget] = useState<Transfer | null>(null)
+  /** 作废与删除共用弹窗组件但走不同接口、不同状态前提，分开存目标 */
+  const [voidTarget, setVoidTarget] = useState<Transfer | null>(null)
   const [detail, setDetail] = useState<TransferDetail | null>(null)
   const [detailLoading, setDetailLoading] = useState(false)
   /** 与原系统一致：「查看记录」只看时间线，「协商」才有操作表单，两个抽屉分开 */
@@ -138,16 +142,6 @@ export function useContainerTransfersPage() {
   }, [ownAccounts, counterparties])
 
   const ownAccountIds = useMemo(() => new Set(ownAccounts.map((a) => a.id)), [ownAccounts])
-
-  /**
-   * 可作为转出方的账户：自己绑定的站点，加上外部方。
-   * 外部方（清关行、客户）登不进系统，他们归还容器的单子只能由内部人员以他们的身份代录，
-   * 所以他们虽然落在 counterparties 里，也要出现在转出方下拉。
-   */
-  const senderAccounts = useMemo(
-    () => [...ownAccounts, ...counterparties.filter((account) => account.isExternal)],
-    [ownAccounts, counterparties],
-  )
 
   const canActAs = useCallback(
     (accountId: string) => isSuperAdmin || ownAccountIds.has(accountId),
@@ -360,14 +354,14 @@ export function useContainerTransfersPage() {
   const downloadImportTemplate = useCallback(async () => {
     setTemplateDownloading(true)
     try {
-      await downloadTransferImportTemplate(senderAccounts, counterparties)
+      await downloadTransferImportTemplate(allAccounts)
     } catch (error) {
       console.error('[container-transfer-import] 模板生成失败', error)
       showToast('模板生成失败，请重试', 'error')
     } finally {
       setTemplateDownloading(false)
     }
-  }, [senderAccounts, counterparties])
+  }, [allAccounts])
 
   /** Excel 批量导入：整批一个事务，行已在前端逐条校验过，这里只处理后端返回 */
   const submitImport = useCallback(
@@ -491,6 +485,28 @@ export function useContainerTransfersPage() {
     [deleteTarget, refresh],
   )
 
+  /**
+   * 作废已确认的流转：后端会反向冲回余额，作废单默认从列表消失（只有筛「已作废」或按单号才查得到）。
+   * 所以这里不去局部更新那一行，直接整表重拉。
+   */
+  const submitVoid = useCallback(
+    async (reason: string): Promise<boolean> => {
+      if (!voidTarget) return false
+      setSubmitting(true)
+      const res = await voidTransfer(voidTarget.id, reason)
+      setSubmitting(false)
+      if (!res.ok) {
+        showToast(res.error, 'error')
+        return false
+      }
+      showToast('已作废，入账数量已反向冲回双方台账', 'success')
+      setVoidTarget(null)
+      await refresh()
+      return true
+    },
+    [voidTarget, refresh],
+  )
+
   return useMemo(
     () => ({
       tab,
@@ -498,7 +514,6 @@ export function useContainerTransfersPage() {
       isSuperAdmin,
       allAccounts,
       ownAccounts,
-      senderAccounts,
       counterparties,
       canActAs,
       transfers,
@@ -557,6 +572,11 @@ export function useContainerTransfersPage() {
       openDelete: setDeleteTarget,
       closeDelete: () => setDeleteTarget(null),
       submitDelete,
+      canVoid,
+      voidTarget,
+      openVoid: setVoidTarget,
+      closeVoid: () => setVoidTarget(null),
+      submitVoid,
       detail,
       detailLoading,
       drawer,
@@ -573,7 +593,6 @@ export function useContainerTransfersPage() {
       isSuperAdmin,
       allAccounts,
       ownAccounts,
-      senderAccounts,
       counterparties,
       canActAs,
       transfers,
@@ -606,6 +625,9 @@ export function useContainerTransfersPage() {
       submitDispute,
       deleteTarget,
       submitDelete,
+      canVoid,
+      voidTarget,
+      submitVoid,
       detail,
       detailLoading,
       drawer,

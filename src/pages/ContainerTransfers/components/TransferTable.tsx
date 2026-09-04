@@ -21,6 +21,8 @@ type Props = {
   canActAs: (accountId: string) => boolean
   /** 有代确认权限时，接收方无系统账号的单子才给「按回单确认」入口 */
   canProxyConfirm: boolean
+  /** 作废是撤销已入账的流转，独立授权，转出方与接收方都可能是发现记错的那一方 */
+  canVoid: boolean
   onConfirm: (transfer: Transfer) => void
   onProxyConfirm: (transfer: Transfer) => void
   onDispute: (transfer: Transfer) => void
@@ -28,6 +30,7 @@ type Props = {
   onNegotiate: (transfer: Transfer) => void
   onEdit: (transfer: Transfer) => void
   onDelete: (transfer: Transfer) => void
+  onVoid: (transfer: Transfer) => void
 }
 
 export function TransferTable({
@@ -39,6 +42,7 @@ export function TransferTable({
   onPageChange,
   canActAs,
   canProxyConfirm,
+  canVoid,
   onConfirm,
   onProxyConfirm,
   onDispute,
@@ -46,6 +50,7 @@ export function TransferTable({
   onNegotiate,
   onEdit,
   onDelete,
+  onVoid,
 }: Props) {
   const buildMenu = (record: Transfer): MenuProps['items'] => {
     const isReceiver = canActAs(record.toAccountId)
@@ -77,8 +82,12 @@ export function TransferTable({
     if (record.status === 'PENDING_RECEIVER' && isSender) {
       items.push({ key: 'edit', label: '编辑', onClick: () => onEdit(record) })
     }
-    if (record.status !== 'CONFIRMED' && isSender) {
+    // 作废单是纠错留下的痕迹，冲账流水靠它关联，不能再删也不能再改
+    if (record.status !== 'CONFIRMED' && record.status !== 'VOIDED' && isSender) {
       items.push({ key: 'delete', label: '删除', danger: true, onClick: () => onDelete(record) })
+    }
+    if (record.status === 'CONFIRMED' && canVoid && (isSender || isReceiver)) {
+      items.push({ key: 'void', label: '作废', danger: true, onClick: () => onVoid(record) })
     }
     return items
   }

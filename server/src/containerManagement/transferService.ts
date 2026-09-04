@@ -7,7 +7,7 @@
  * 记账时对余额行加 FOR UPDATE 行锁再校验再扣减，并同步写台账审计，
  * 保证「谁拿了多少」与「怎么流的」在数据层是连通的。
  */
-import { and, asc, count, desc, eq, gte, inArray, lte, or, sql } from 'drizzle-orm'
+import { and, asc, count, desc, eq, gte, inArray, lte, ne, or, sql } from 'drizzle-orm'
 import { alias } from 'drizzle-orm/pg-core'
 import { getDb, schema } from '../db'
 import { ContainerBusinessError } from './accountService'
@@ -16,6 +16,7 @@ import {
   containerTypeLabel,
   formatTransferNo,
   transferKindNeedsReceiverConfirmation,
+  type BalanceReasonType,
   type ContainerType,
   type TransferKind,
   type TransferStatus,
@@ -62,6 +63,13 @@ export type TransferView = {
   createdByUsername: string | null
   /** 确认/认可的操作人，时间线要区分「谁代了谁」 */
   respondedByUsername: string | null
+  /**
+   * 作废信息取自变更审计里那条 VOID，不在流转主表存冗余字段。
+   * 三个都为 null 即未作废；status 为 VOIDED 时必然有值。
+   */
+  voidedAt: string | null
+  voidedReason: string | null
+  voidedByUsername: string | null
   createdAt: string
 }
 
@@ -163,10 +171,15 @@ async function applyBalances(
     actorUserId: string | null
     /** 转出方是外部方：余额是推算量，扣成负数也要放行，见 isExternalAccount */
     allowNegativeFrom?: boolean
+    /** 作废冲回：方向已由调用方对调，这里只改台账审计的原因口径，别读成又流转了一次 */
+    voiding?: boolean
   },
 ): Promise<void> {
   const { fromAccountId, toAccountId, containerType, quantity, transferId, actorUserId } = params
   if (quantity <= 0) return
+
+  const reasonType: BalanceReasonType = params.voiding ? 'TRANSFER_VOID' : 'TRANSFER_SETTLEMENT'
+  const reasonPrefix = `流转 ${formatTransferNo(transferId)}${params.voiding ? ' 作废冲回' : ''}`
 
   // 固定按账户 id 排序加锁，避免两个反向流转互相等待造成死锁
   const [firstId, secondId] =
@@ -201,8 +214,8 @@ async function applyBalances(
     prevQuantity: fromRow.quantity,
     newQuantity: fromNext,
     delta: -quantity,
-    reasonType: 'TRANSFER_SETTLEMENT',
-    reason: `流转 ${formatTransferNo(transferId)} 转出`,
+    reasonType,
+    reason: `${reasonPrefix} 转出`,
     transferId,
     actorUserId,
   })
@@ -213,8 +226,8 @@ async function applyBalances(
     prevQuantity: toRow.quantity,
     newQuantity: toNext,
     delta: quantity,
-    reasonType: 'TRANSFER_SETTLEMENT',
-    reason: `流转 ${formatTransferNo(transferId)} 转入`,
+    reasonType,
+    reason: `${reasonPrefix} 转入`,
     transferId,
     actorUserId,
   })
@@ -591,7 +604,11 @@ export async function updateTransfer(input: {
 }): Promise<void> {
   await getDb().transaction(async (tx) => {
     const { transfer, items } = await loadTransferForUpdate(tx, input.transferId)
-    if (transfer.status === 'CONFIRMED' || transfer.status === 'CANCELLED') {
+    if (
+      transfer.status === 'CONFIRMED' ||
+      transfer.status === 'CANCELLED' ||
+      transfer.status === 'VOIDED'
+    ) {
       throw new ContainerBusinessError('该状态不允许修改')
     }
     const before = snapshotForChangeLog(transfer, items)
@@ -647,7 +664,11 @@ export async function deleteTransfer(input: {
   await getDb().transaction(async (tx) => {
     const { transfer, items } = await loadTransferForUpdate(tx, input.transferId)
     if (transfer.status === 'CONFIRMED') {
-      throw new ContainerBusinessError('已确认的记录不可删除')
+      throw new ContainerBusinessError('已确认的记录不可删除，请改用作废')
+    }
+    // 作废单的两笔冲账流水靠 transferId 关联，物理删掉它们就成了对不上账的孤儿
+    if (transfer.status === 'VOIDED') {
+      throw new ContainerBusinessError('已作废的记录不可删除，冲账流水需要保留可追溯')
     }
     await tx.insert(schema.containerTransferChanges).values({
       transferId: transfer.id,
@@ -661,7 +682,70 @@ export async function deleteTransfer(input: {
   })
 }
 
-function toTransferView(row: TransferRow, items: TransferItemView[]): TransferView {
+/**
+ * 作废已确认的流转：不删记录，按已入账数量反向冲一笔，余额回到确认前。
+ *
+ * 已过账的东西不改不删，错了就补一笔反向的 —— 直接删单会让确认时写下的两条台账流水
+ * transferId 变成 NULL（ON DELETE SET NULL），对账时那批容器的来龙去脉再也追不回来。
+ *
+ * 冲回放行负数：接收方可能已经把这批容器转给下家了，拦住等于最该纠错的场景恰好用不了。
+ * 冲出来的负数本身就是「账实差异」的信号，交给线下盘点去平，不在这里假装它不存在。
+ *
+ * settledQuantity 不清空：作废前入了多少是审计事实，时间线与变更快照都要看得到。
+ */
+export async function voidTransfer(input: {
+  transferId: number
+  reason: string
+  actorUserId: string | null
+}): Promise<void> {
+  const reason = input.reason.trim()
+  if (!reason) throw new ContainerBusinessError('请填写作废原因')
+
+  await getDb().transaction(async (tx) => {
+    const { transfer, items } = await loadTransferForUpdate(tx, input.transferId)
+    if (transfer.status !== 'CONFIRMED') {
+      throw new ContainerBusinessError('仅已确认的记录可作废，未确认的记录请直接删除')
+    }
+    const before = snapshotForChangeLog(transfer, items)
+
+    for (const item of items) {
+      await applyBalances(tx, {
+        // 方向对调：从原接收方划回原转出方
+        fromAccountId: transfer.toAccountId,
+        toAccountId: transfer.fromAccountId,
+        containerType: item.containerType,
+        quantity: item.settledQuantity ?? 0,
+        transferId: transfer.id,
+        actorUserId: input.actorUserId,
+        allowNegativeFrom: true,
+        voiding: true,
+      })
+    }
+
+    await tx
+      .update(schema.containerTransfers)
+      .set({ status: 'VOIDED' })
+      .where(eq(schema.containerTransfers.id, transfer.id))
+
+    await tx.insert(schema.containerTransferChanges).values({
+      transferId: transfer.id,
+      action: 'VOID',
+      reason,
+      beforeData: before,
+      afterData: snapshotForChangeLog({ ...transfer, status: 'VOIDED' }, items),
+      actorUserId: input.actorUserId,
+    })
+  })
+}
+
+/** 作废时的操作人、时间与原因，来自变更审计里的那条 VOID */
+type VoidInfo = { at: Date; reason: string; actorUsername: string | null }
+
+function toTransferView(
+  row: TransferRow,
+  items: TransferItemView[],
+  voidInfo?: VoidInfo,
+): TransferView {
   const declaredTotal = items.reduce((sum, item) => sum + item.declaredQuantity, 0)
   const hasReceived = items.some((item) => item.receivedQuantity !== null)
   const hasSettled = items.some((item) => item.settledQuantity !== null)
@@ -694,6 +778,9 @@ function toTransferView(row: TransferRow, items: TransferItemView[]): TransferVi
     proxyEvidenceUrl: row.proxyEvidenceUrl,
     createdByUsername: row.createdByUsername,
     respondedByUsername: row.respondedByUsername,
+    voidedAt: voidInfo?.at.toISOString() ?? null,
+    voidedReason: voidInfo?.reason ?? null,
+    voidedByUsername: voidInfo?.actorUsername ?? null,
     createdAt: row.createdAt.toISOString(),
   }
 }
@@ -702,6 +789,7 @@ const fromAccountTable = alias(schema.containerAccounts, 'from_account')
 const toAccountTable = alias(schema.containerAccounts, 'to_account')
 const creatorTable = alias(schema.users, 'transfer_creator')
 const responderTable = alias(schema.users, 'transfer_responder')
+const voidActorTable = alias(schema.users, 'transfer_void_actor')
 
 type TransferRow = {
   id: number
@@ -782,7 +870,42 @@ async function attachItems(rows: TransferRow[]): Promise<TransferView[]> {
     })
     byTransfer.set(item.transferId, list)
   }
-  return rows.map((row) => toTransferView(row, byTransfer.get(row.id) ?? []))
+  const voidInfo = await loadVoidInfo(rows.filter((row) => row.status === 'VOIDED').map((row) => row.id))
+  return rows.map((row) => toTransferView(row, byTransfer.get(row.id) ?? [], voidInfo.get(row.id)))
+}
+
+/**
+ * 批量取作废信息。只查作废单，列表里通常一条都没有（默认过滤掉了），这次查询就不会发生。
+ * 一笔单只作废一次，真出现重复取最新那条。
+ */
+async function loadVoidInfo(transferIds: number[]): Promise<Map<number, VoidInfo>> {
+  const result = new Map<number, VoidInfo>()
+  if (transferIds.length === 0) return result
+  const rows = await getDb()
+    .select({
+      transferId: schema.containerTransferChanges.transferId,
+      reason: schema.containerTransferChanges.reason,
+      createdAt: schema.containerTransferChanges.createdAt,
+      actorUsername: voidActorTable.username,
+    })
+    .from(schema.containerTransferChanges)
+    .leftJoin(voidActorTable, eq(voidActorTable.id, schema.containerTransferChanges.actorUserId))
+    .where(
+      and(
+        inArray(schema.containerTransferChanges.transferId, transferIds),
+        eq(schema.containerTransferChanges.action, 'VOID'),
+      ),
+    )
+    .orderBy(desc(schema.containerTransferChanges.createdAt))
+  for (const row of rows) {
+    if (row.transferId === null || result.has(row.transferId)) continue
+    result.set(row.transferId, {
+      at: row.createdAt,
+      reason: row.reason,
+      actorUsername: row.actorUsername,
+    })
+  }
+  return result
 }
 
 export type TransferQuery = {
@@ -816,6 +939,11 @@ export async function listTransfers(query: TransferQuery) {
   }
   if (query.toAccountId) conditions.push(eq(schema.containerTransfers.toAccountId, query.toAccountId))
   if (query.status) conditions.push(eq(schema.containerTransfers.status, query.status))
+  // 作废单对用户就是「删掉的那条」，默认不出现在列表里；
+  // 显式筛「已作废」或按单号精确查才捞得出来，否则纠错完还挂在列表上等于没删
+  if (!query.status && query.transferId === undefined) {
+    conditions.push(ne(schema.containerTransfers.status, 'VOIDED'))
+  }
   if (query.start) conditions.push(gte(schema.containerTransfers.createdAt, query.start))
   if (query.end) conditions.push(lte(schema.containerTransfers.createdAt, query.end))
   if (query.transferId !== undefined) {

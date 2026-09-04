@@ -35,7 +35,13 @@ export const transferKindLabel: Record<TransferKind, string> = {
   IN_TRANSIT_IN: '在途签收',
 }
 
-export const TRANSFER_STATUSES = ['PENDING_RECEIVER', 'DISPUTED', 'CONFIRMED', 'CANCELLED'] as const
+export const TRANSFER_STATUSES = [
+  'PENDING_RECEIVER',
+  'DISPUTED',
+  'CONFIRMED',
+  'CANCELLED',
+  'VOIDED',
+] as const
 export type TransferStatus = (typeof TRANSFER_STATUSES)[number]
 
 export const transferStatusLabel: Record<TransferStatus, string> = {
@@ -43,6 +49,7 @@ export const transferStatusLabel: Record<TransferStatus, string> = {
   DISPUTED: '协商中',
   CONFIRMED: '已确认',
   CANCELLED: '已取消',
+  VOIDED: '已作废',
 }
 
 /** 借出与归还需接收方确认后双方库存才变动；其余类型创建时即记账 */
@@ -60,18 +67,21 @@ export const BALANCE_REASON_TYPES = [
   'LOSS_REPORT',
   'HISTORICAL_BACKFILL',
   'TRANSFER_SETTLEMENT',
+  'TRANSFER_VOID',
 ] as const
 export type BalanceReasonType = (typeof BALANCE_REASON_TYPES)[number]
 
-/** 手工调账可选的原因类型；TRANSFER_SETTLEMENT 只由流转记账写入，不开放给用户选 */
+/** 手工调账可选的原因类型；两个 TRANSFER_* 只由流转记账与作废冲账写入，不开放给用户选 */
+const AUTO_BALANCE_REASON_TYPES: readonly BalanceReasonType[] = ['TRANSFER_SETTLEMENT', 'TRANSFER_VOID']
+
 export const MANUAL_BALANCE_REASON_TYPES = BALANCE_REASON_TYPES.filter(
-  (item) => item !== 'TRANSFER_SETTLEMENT',
+  (item) => !AUTO_BALANCE_REASON_TYPES.includes(item),
 ) as readonly BalanceReasonType[]
 
 export const BALANCE_AUDIT_ACTIONS = ['CREATE', 'UPDATE', 'DELETE', 'TRANSFER'] as const
 export type BalanceAuditAction = (typeof BALANCE_AUDIT_ACTIONS)[number]
 
-export const TRANSFER_CHANGE_ACTIONS = ['UPDATE', 'DELETE'] as const
+export const TRANSFER_CHANGE_ACTIONS = ['UPDATE', 'DELETE', 'VOID'] as const
 export type TransferChangeAction = (typeof TRANSFER_CHANGE_ACTIONS)[number]
 
 export function isContainerType(value: unknown): value is ContainerType {

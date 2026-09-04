@@ -44,9 +44,8 @@ export type TransferImportParseResult =
   | { ok: false; error: string }
 
 export type TransferImportContext = {
-  /** 可作为转出方的账户：自己绑定的站点 + 外部方 */
-  senderAccounts: ContainerAccount[]
-  counterparties: ContainerAccount[]
+  /** 全部站点账户：转出方与接收方的可选范围一致 */
+  accounts: ContainerAccount[]
 }
 
 /** 表头别名：中文列名为主，兼容英文字段名，便于用户自己拼表 */
@@ -144,7 +143,7 @@ function validateRow(
   rowNo: number,
   raw: TransferImportRawRow,
   rawOccurredAt: unknown,
-  ctx: { fromMap: Map<string, ContainerAccount>; toMap: Map<string, ContainerAccount> },
+  accountMap: Map<string, ContainerAccount>,
 ): TransferImportRow {
   const errors: string[] = []
 
@@ -160,7 +159,7 @@ function validateRow(
     )
   }
 
-  const fromAccount = ctx.fromMap.get(normalizeName(raw.from))
+  const fromAccount = accountMap.get(normalizeName(raw.from))
   if (!fromAccount) {
     errors.push(
       raw.from.trim()
@@ -169,7 +168,7 @@ function validateRow(
     )
   }
 
-  const toAccount = ctx.toMap.get(normalizeName(raw.to))
+  const toAccount = accountMap.get(normalizeName(raw.to))
   if (!toAccount) {
     errors.push(
       raw.to.trim()
@@ -243,8 +242,7 @@ function parseWorkbook(
     return { ok: false, error: `表头缺少${names}列，请使用下载的模板填写` }
   }
 
-  const fromMap = buildAccountMap(ctx.senderAccounts)
-  const toMap = buildAccountMap(ctx.counterparties)
+  const accountMap = buildAccountMap(ctx.accounts)
 
   const rows: TransferImportRow[] = []
   for (let index = 1; index < matrix.length; index += 1) {
@@ -264,7 +262,7 @@ function parseWorkbook(
     }
     // 整行留空：用户在模板尾部留下的空行，跳过而不是报一堆错
     if (Object.values(raw).every((value) => value.trim() === '')) continue
-    rows.push(validateRow(index + 1, raw, cell('occurredAt'), { fromMap, toMap }))
+    rows.push(validateRow(index + 1, raw, cell('occurredAt'), accountMap))
   }
 
   if (rows.length === 0) return { ok: false, error: '表格里没有数据行' }

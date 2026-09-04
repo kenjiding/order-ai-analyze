@@ -49,6 +49,7 @@ export const TRANSFER_STATUSES: TransferStatus[] = [
   'DISPUTED',
   'CONFIRMED',
   'CANCELLED',
+  'VOIDED',
 ]
 
 export const transferStatusLabel: Record<TransferStatus, string> = {
@@ -56,14 +57,16 @@ export const transferStatusLabel: Record<TransferStatus, string> = {
   DISPUTED: '协商中',
   CONFIRMED: '已确认',
   CANCELLED: '已取消',
+  VOIDED: '已作废',
 }
 
-/** antd Tag 的 color，语义与原系统一致：待确认橙、协商中紫、已确认绿、已取消灰 */
+/** antd Tag 的 color：待确认橙、协商中紫、已确认绿、已取消灰、已作废红（这条账被冲回了） */
 export const transferStatusColor: Record<TransferStatus, string> = {
   PENDING_RECEIVER: 'orange',
   DISPUTED: 'purple',
   CONFIRMED: 'green',
   CANCELLED: 'default',
+  VOIDED: 'red',
 }
 
 /** 手工调账可选的原因类型；TRANSFER_SETTLEMENT 由流转记账自动写入 */
@@ -82,6 +85,7 @@ export const balanceReasonTypeLabel: Record<BalanceReasonType, string> = {
   LOSS_REPORT: '丢失申报',
   HISTORICAL_BACKFILL: '历史补录',
   TRANSFER_SETTLEMENT: '流转记账',
+  TRANSFER_VOID: '流转作废冲回',
 }
 
 export const balanceReasonTypeHint: Record<BalanceReasonType, string> = {
@@ -91,6 +95,7 @@ export const balanceReasonTypeHint: Record<BalanceReasonType, string> = {
   LOSS_REPORT: '容器丢失或无法追回时的损失登记。',
   HISTORICAL_BACKFILL: '补录历史期间遗漏的台账变更。',
   TRANSFER_SETTLEMENT: '由流转记录确认入账自动产生，不可手工选择。',
+  TRANSFER_VOID: '已确认的流转被作废时反向冲回入账自动产生，不可手工选择。',
 }
 
 export const balanceAuditActionLabel: Record<BalanceAuditAction, string> = {
@@ -103,6 +108,7 @@ export const balanceAuditActionLabel: Record<BalanceAuditAction, string> = {
 export const transferChangeActionLabel: Record<TransferChangeAction, string> = {
   UPDATE: '编辑',
   DELETE: '删除',
+  VOID: '作废',
 }
 
 export function containerTypeName(code: string): string {

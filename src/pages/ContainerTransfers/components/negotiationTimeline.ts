@@ -130,10 +130,12 @@ export function buildNegotiationTimelineEvents(
   }
 
   const hasDisputeTrail = hasReport || !!detail.senderAcceptedAt
+  // 作废不抹掉入账这段历史：VOIDED 沿用 CONFIRMED 的节点，作废本身在末尾单独成一节
+  const bookedOnce = detail.status === 'CONFIRMED' || detail.status === 'VOIDED'
 
   if (detail.senderAcceptedAt) {
     const mergedAcceptAndBook =
-      detail.status === 'CONFIRMED' &&
+      bookedOnce &&
       hasDisputeTrail &&
       !!detail.respondedAt &&
       sameMomentIso(detail.senderAcceptedAt, detail.respondedAt)
@@ -153,7 +155,7 @@ export function buildNegotiationTimelineEvents(
 
   if (detail.respondedAt) {
     const ms = Date.parse(detail.respondedAt)
-    if (detail.status === 'CONFIRMED' && !hasDisputeTrail) {
+    if (bookedOnce && !hasDisputeTrail) {
       const partial =
         detail.settledTotal !== null && detail.settledTotal !== detail.declaredTotal
       // 代确认没有接收方的任何动作，标题必须说清是谁按什么依据推的，否则会被读成对方确认了
@@ -179,7 +181,7 @@ export function buildNegotiationTimelineEvents(
           : undefined,
         evidenceLabel: '回单凭证',
       })
-    } else if (detail.status === 'CONFIRMED' && hasDisputeTrail) {
+    } else if (bookedOnce && hasDisputeTrail) {
       const mergedAcceptAndBook = sameMomentIso(detail.senderAcceptedAt, detail.respondedAt)
       entries.push({
         key: 'booked',
@@ -215,6 +217,24 @@ export function buildNegotiationTimelineEvents(
         tone: 'muted',
       })
     }
+  }
+
+  if (detail.status === 'VOIDED' && detail.voidedAt) {
+    const actor = detail.voidedByUsername?.trim()
+    entries.push({
+      key: 'voided',
+      sort: [Date.parse(detail.voidedAt), 6],
+      kind: 'finalize',
+      when: detail.voidedAt,
+      title: '本单已作废',
+      statusLabel: '已作废',
+      description: [
+        `由${actor ? ` ${actor} ` : '管理员'}作废，上面这笔入账已按下列数量反向冲回双方台账。`,
+        detail.voidedReason?.trim() ? ` 原因：${detail.voidedReason.trim()}` : '',
+      ].join(''),
+      quantityLines: bookedQuantityLines(detail),
+      tone: 'destructive',
+    })
   }
 
   const tailSort: [number, number] = [Number.MAX_SAFE_INTEGER, 0]

@@ -27,7 +27,19 @@ function itemMap(items: TransferItem[]): Map<string, number> {
 }
 
 /** 逐字段对比快照，多品类按品类拆开显示数量差异 */
-function buildChangeItems(before: TransferSnapshot, after: TransferSnapshot | null): string[] {
+function buildChangeItems(
+  before: TransferSnapshot,
+  after: TransferSnapshot | null,
+  action: TransferChangeAction,
+): string[] {
+  // 作废前后只有 status 变了，逐字段比会得出「无字段变化」，
+  // 真正要交代的是冲回了多少，直接列已入账明细
+  if (action === 'VOID') {
+    const detail = before.items
+      .map((item) => `${containerTypeLabel[item.containerType]} ${item.settledQuantity ?? 0}`)
+      .join('、')
+    return [`冲回已入账明细：${detail || '无'}`]
+  }
   if (!after) {
     const detail = before.items
       .map((item) => `${containerTypeLabel[item.containerType]} ${item.declaredQuantity}`)
@@ -105,7 +117,7 @@ export function TransferChangePanel({
       key: 'action',
       width: 90,
       render: (value: TransferChangeAction) => (
-        <Tag color={value === 'DELETE' ? 'red' : 'gold'}>
+        <Tag color={value === 'UPDATE' ? 'gold' : 'red'}>
           {transferChangeActionLabel[value] ?? value}
         </Tag>
       ),
@@ -115,7 +127,7 @@ export function TransferChangePanel({
       key: 'diff',
       render: (_, record) => (
         <div className="space-y-0.5 text-sm text-slate-700">
-          {buildChangeItems(record.beforeData, record.afterData).map((line) => (
+          {buildChangeItems(record.beforeData, record.afterData, record.action).map((line) => (
             <div key={line}>{line}</div>
           ))}
         </div>
@@ -148,7 +160,7 @@ export function TransferChangePanel({
   return (
     <div className="space-y-4">
       <p className="text-sm text-slate-600">
-        记录流转的编辑与删除。已删除的记录仍保留删除前的完整快照与原因。
+        记录流转的编辑、删除与作废。已删除的记录仍保留删除前的完整快照与原因；已作废的记录本身不删，余额由反向冲账流水平回。
       </p>
       <div className="flex flex-wrap items-end gap-3">
         <label className="flex flex-col gap-1.5">
@@ -173,6 +185,7 @@ export function TransferChangePanel({
             options={[
               { value: 'UPDATE', label: '编辑' },
               { value: 'DELETE', label: '删除' },
+              { value: 'VOID', label: '作废' },
             ]}
           />
         </label>

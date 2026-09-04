@@ -4,6 +4,7 @@
  * 站点名手打极易对不上后端的账户 id，所以「业务类型 / 转出方 / 接收方」三列用 Excel 原生
  * 数据验证做成下拉，取值写在单独的「站点账户」表里再跨表引用 —— 站点名可能含逗号，
  * 内联列表（"A,B,C"）会被 Excel 拆错，只有引用区域是安全的。
+ * 转出方与接收方可选范围一致（都是全部站点），所以名单只出一列。
  */
 import type ExcelJS from 'exceljs'
 import dayjs from 'dayjs'
@@ -39,10 +40,7 @@ const HEADER_FILL: ExcelJS.Fill = {
 }
 
 /** exceljs 只在点「下载模板」时才用得上，动态加载避免拖累页面首包 */
-async function buildWorkbook(
-  senderAccounts: ContainerAccount[],
-  counterparties: ContainerAccount[],
-): Promise<ExcelJS.Workbook> {
+async function buildWorkbook(accounts: ContainerAccount[]): Promise<ExcelJS.Workbook> {
   const { default: ExcelJSModule } = await import('exceljs')
   const workbook = new ExcelJSModule.Workbook()
   workbook.creator = '容器管理'
@@ -69,23 +67,16 @@ async function buildWorkbook(
   })
   headerRow.commit()
 
-  // 取值表：A 列转出方、C 列接收方（隔开一列，避免用户误以为是一一对应的两列）
+  // 取值表：A 列一份站点名单，转出方与接收方共用
   const refSheet = workbook.addWorksheet(TRANSFER_IMPORT_REF_SHEET)
-  refSheet.columns = [{ width: 24 }, { width: 4 }, { width: 24 }]
-  refSheet.getCell('A1').value = '可选转出方'
-  refSheet.getCell('C1').value = '可选接收方'
-  for (const cell of [refSheet.getCell('A1'), refSheet.getCell('C1')]) {
-    cell.font = { bold: true }
-    cell.fill = HEADER_FILL
-  }
-  // 转出方是「自己的站点 + 外部方」两段拼出来的，不排序的话下拉滚到一半又从头排一遍，很难找
-  const byName = (list: ContainerAccount[]) =>
-    [...list].sort((a, b) => a.name.localeCompare(b.name, 'zh-CN'))
-  byName(senderAccounts).forEach((account, index) => {
+  refSheet.columns = [{ width: 24 }]
+  const titleCell = refSheet.getCell('A1')
+  titleCell.value = '可选站点'
+  titleCell.font = { bold: true }
+  titleCell.fill = HEADER_FILL
+  const sorted = [...accounts].sort((a, b) => a.name.localeCompare(b.name, 'zh-CN'))
+  sorted.forEach((account, index) => {
     refSheet.getCell(index + 2, 1).value = account.name
-  })
-  byName(counterparties).forEach((account, index) => {
-    refSheet.getCell(index + 2, 3).value = account.name
   })
 
   const kindList = SELECTABLE_TRANSFER_KINDS.map((kind) => transferKindLabel[kind]).join(',')
@@ -94,10 +85,8 @@ async function buildWorkbook(
    * 出现几百个空白项：列表拖不动、Excel 的输入自动补全也会被空白项打断。
    * 名单为空时不设验证，A2:A1 是非法区域，Excel 会判文件损坏。
    */
-  const accountRange = (refColumn: 'A' | 'C', count: number) =>
-    count > 0 ? `=${TRANSFER_IMPORT_REF_SHEET}!$${refColumn}$2:$${refColumn}$${count + 1}` : ''
-  const senderRange = accountRange('A', senderAccounts.length)
-  const receiverRange = accountRange('C', counterparties.length)
+  const accountRange =
+    sorted.length > 0 ? `=${TRANSFER_IMPORT_REF_SHEET}!$A$2:$A$${sorted.length + 1}` : ''
 
   for (let row = 2; row <= VALIDATION_ROWS + 1; row += 1) {
     sheet.getCell(row, 1).numFmt = 'yyyy-mm-dd'
@@ -115,20 +104,14 @@ async function buildWorkbook(
      * 站点列不拦手打。Excel 原生下拉固定只显示 8 行、没有搜索，站点几十个时滚起来很痛苦，
      * 强制走下拉等于把人锁死在这个交互里；名字打错有上传预览逐行报错兜底。
      */
-    if (senderRange) {
-      sheet.getCell(row, 3).dataValidation = {
-        type: 'list',
-        allowBlank: true,
-        formulae: [senderRange],
-        showErrorMessage: false,
-      }
-    }
-    if (receiverRange) {
-      sheet.getCell(row, 4).dataValidation = {
-        type: 'list',
-        allowBlank: true,
-        formulae: [receiverRange],
-        showErrorMessage: false,
+    if (accountRange) {
+      for (const column of [3, 4]) {
+        sheet.getCell(row, column).dataValidation = {
+          type: 'list',
+          allowBlank: true,
+          formulae: [accountRange],
+          showErrorMessage: false,
+        }
       }
     }
   }
@@ -163,18 +146,16 @@ async function buildWorkbook(
 
 /** 导出给测试/校验用：拿到 buffer 而不落盘 */
 export async function buildTransferImportTemplateBuffer(
-  senderAccounts: ContainerAccount[],
-  counterparties: ContainerAccount[],
+  accounts: ContainerAccount[],
 ): Promise<ArrayBuffer> {
-  const workbook = await buildWorkbook(senderAccounts, counterparties)
+  const workbook = await buildWorkbook(accounts)
   return (await workbook.xlsx.writeBuffer()) as ArrayBuffer
 }
 
 export async function downloadTransferImportTemplate(
-  senderAccounts: ContainerAccount[],
-  counterparties: ContainerAccount[],
+  accounts: ContainerAccount[],
 ): Promise<void> {
-  const buffer = await buildTransferImportTemplateBuffer(senderAccounts, counterparties)
+  const buffer = await buildTransferImportTemplateBuffer(accounts)
   const blob = new Blob([buffer], {
     type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
   })

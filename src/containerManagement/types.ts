@@ -9,7 +9,14 @@ export type TransferKind =
   | 'INTERNAL_TRANSFER'
   | 'IN_TRANSIT_OUT'
   | 'IN_TRANSIT_IN'
-export type TransferStatus = 'PENDING_RECEIVER' | 'DISPUTED' | 'CONFIRMED' | 'CANCELLED'
+export type TransferStatus =
+  | 'PENDING_RECEIVER'
+  | 'DISPUTED'
+  | 'CONFIRMED'
+  /** 协商认可实收为 0，从未入账 */
+  | 'CANCELLED'
+  /** 入账后人工撤销，余额已由反向流水冲平 */
+  | 'VOIDED'
 export type BalanceReasonType =
   | 'INITIAL_STOCKTAKE'
   | 'STOCKTAKE_CORRECTION'
@@ -17,8 +24,9 @@ export type BalanceReasonType =
   | 'LOSS_REPORT'
   | 'HISTORICAL_BACKFILL'
   | 'TRANSFER_SETTLEMENT'
+  | 'TRANSFER_VOID'
 export type BalanceAuditAction = 'CREATE' | 'UPDATE' | 'DELETE' | 'TRANSFER'
-export type TransferChangeAction = 'UPDATE' | 'DELETE'
+export type TransferChangeAction = 'UPDATE' | 'DELETE' | 'VOID'
 
 export type ContainerAccount = {
   id: string
@@ -120,6 +128,10 @@ export type Transfer = {
   proxyEvidenceUrl: string | null
   createdByUsername: string | null
   respondedByUsername: string | null
+  /** 作废信息取自变更审计里的那条 VOID；三个都为 null 即未作废 */
+  voidedAt: string | null
+  voidedReason: string | null
+  voidedByUsername: string | null
   createdAt: string
 }
 

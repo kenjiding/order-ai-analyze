@@ -28,7 +28,6 @@ type Props = {
   editing: Transfer | null
   ownAccounts: ContainerAccount[]
   /** 转出方下拉的取值：自己绑定的站点 + 外部方（外部方归还的单子由内部人员代录） */
-  senderAccounts: ContainerAccount[]
   counterparties: ContainerAccount[]
   allAccounts: ContainerAccount[]
   submitting: boolean
@@ -80,7 +79,6 @@ export function TransferFormModal({
   open,
   editing,
   ownAccounts,
-  senderAccounts,
   counterparties,
   allAccounts,
   submitting,
@@ -152,7 +150,7 @@ export function TransferFormModal({
     await onSubmit(drafts.map((draft) => ({ ...draft, lines: filledLines(draft) })))
   }
 
-  const fromOptions = (isEditing ? allAccounts : senderAccounts).map((account) => ({
+  const fromOptions = allAccounts.map((account) => ({
     value: account.id,
     label: account.name,
   }))
@@ -258,7 +256,7 @@ export function TransferFormModal({
                   showSearch
                   optionFilterProp="label"
                   value={draft.fromAccountId || undefined}
-                  disabled={isEditing || senderAccounts.length <= 1}
+                  disabled={isEditing || allAccounts.length <= 1}
                   onChange={(value) => update(index, { fromAccountId: value })}
                   options={fromOptions}
                 />

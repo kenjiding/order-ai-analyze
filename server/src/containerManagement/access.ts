@@ -71,28 +71,6 @@ export async function listAccountUserIds(accountIds: string[]): Promise<Map<stri
   return result
 }
 
-/**
- * 批量查出「在本系统没有账号」的账户 id。
- *
- * 这些账户方登不进来，所以放宽两处校验：可以作为转出方被内部人员代录（归还单），
- * 作为接收方时由转出方凭线下回单代确认。用显式开关而不是「有没有绑定用户」来判断 ——
- * 绑定关系是会变动的运维数据，临时解绑不该静默打开代操作的口子。
- */
-export async function listExternalAccountIds(accountIds: string[]): Promise<Set<string>> {
-  const ids = [...new Set(accountIds)].filter((id) => id)
-  if (ids.length === 0) return new Set()
-  const rows = await getDb()
-    .select({ id: schema.containerAccounts.id })
-    .from(schema.containerAccounts)
-    .where(
-      and(
-        inArray(schema.containerAccounts.id, ids),
-        eq(schema.containerAccounts.isExternal, true),
-      ),
-    )
-  return new Set(rows.map((row) => row.id))
-}
-
 export async function isUserBoundToAccount(userId: string, accountId: string): Promise<boolean> {
   const rows = await getDb()
     .select({ userId: schema.containerAccountUsers.userId })

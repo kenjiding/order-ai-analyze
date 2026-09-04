@@ -5,7 +5,6 @@ import {
   canActAsAccount,
   canViewTransfer,
   hasContainerPermission,
-  listExternalAccountIds,
   resolveVisibleAccountIds,
   type VisibleAccounts,
 } from '../containerManagement/access'
@@ -61,6 +60,7 @@ import {
   listTransfers,
   reportReceipt,
   updateTransfer,
+  voidTransfer,
   type TransferCreateInput,
   type TransferLineInput,
   type TransferView,
@@ -77,6 +77,12 @@ const MANAGE_ACCOUNTS = 'btn:container-accounts:manage'
 
 /** 代确认是单方改账动作（对方无从知晓也无从反对），独立授权，不随转出方绑定自动获得 */
 const PROXY_CONFIRM = 'btn:container-transfers:proxy-confirm'
+
+/**
+ * 作废已确认的流转会反向冲掉双方已入账的余额，只发给管理岗。
+ * 给到站点操作员，等于「确认收货」这个动作对他自己不再有任何约束力。
+ */
+const VOID_TRANSFER = 'btn:container-transfers:void'
 
 /** 一次提交的流转组数上限：整批一个事务，太多组会长时间占住行锁 */
 const MAX_TRANSFER_BATCH = 20
@@ -477,14 +483,8 @@ containerManagementRouter.post('/transfers', async (req: AuthenticatedRequest, r
   if (typeof parsed === 'string') return fail(res, 400, parsed)
 
   try {
-    const visible = await resolveVisibleAccountIds(req)
-    const external = await listExternalAccountIds(parsed.map((item) => item.fromAccountId))
-    for (const [index, item] of parsed.entries()) {
-      // 外部方（清关行/客户）登不进系统，他们发起的归还单只能由内部人员代录
-      if (!canActAsAccount(visible, item.fromAccountId) && !external.has(item.fromAccountId)) {
-        return fail(res, 403, `第 ${index + 1} 组：转出方只能是自己绑定的站点账户或外部方账户`)
-      }
-    }
+    // 转出方不限于自己绑定的站点：谁都可能替别的站点补录。记录建好后能不能看、
+    // 能不能确认收货，仍按各自的可见范围判。
     const ids = await createTransfersBatch(parsed, req.authUser?.id ?? null, '组')
     const created = (await Promise.all(ids.map((id) => getTransfer(id)))).filter(
       (item): item is NonNullable<typeof item> => item !== null,
@@ -513,13 +513,6 @@ containerManagementRouter.post('/transfers/import', async (req: AuthenticatedReq
   if (typeof parsed === 'string') return fail(res, 400, parsed)
 
   try {
-    const visible = await resolveVisibleAccountIds(req)
-    const external = await listExternalAccountIds(parsed.map((item) => item.fromAccountId))
-    for (const [index, item] of parsed.entries()) {
-      if (!canActAsAccount(visible, item.fromAccountId) && !external.has(item.fromAccountId)) {
-        return fail(res, 403, `第 ${index + 1} 行：转出方只能是自己绑定的站点账户或外部方账户`)
-      }
-    }
     const ids = await createTransfersBatch(parsed, req.authUser?.id ?? null, '行')
     res.status(201).json({ ok: true, data: { created: ids.length } })
     fireTransferBatchNotifyByIds(req, ids)
@@ -666,6 +659,28 @@ containerManagementRouter.delete('/transfers/:id', async (req: AuthenticatedRequ
     res.json({ ok: true, data: null })
   } catch (error) {
     handleError(res, error, '删除流转记录失败')
+  }
+})
+
+containerManagementRouter.patch('/transfers/:id/void', async (req: AuthenticatedRequest, res) => {
+  if (!hasContainerPermission(req, VOID_TRANSFER)) return fail(res, 403, '无作废权限')
+  const reason = String((req.body as { reason?: unknown }).reason ?? '').trim()
+  if (!reason) return fail(res, 400, '请填写作废原因')
+  if (reason.length > 2000) return fail(res, 400, '作废原因过长')
+  try {
+    // 作废是纠错动作，双方都可能是发现错的那一方，可见即可操作，具体授权由 VOID_TRANSFER 把关
+    const loaded = await loadTransferWithRole(req, res, 'any')
+    if (!loaded) return
+    await voidTransfer({
+      transferId: loaded.transfer.id,
+      reason,
+      actorUserId: req.authUser?.id ?? null,
+    })
+    const voided = await getTransfer(loaded.transfer.id)
+    res.json({ ok: true, data: voided })
+    fireTransferNotify(req, voided, 'voided', `作废原因：${reason}`)
+  } catch (error) {
+    handleError(res, error, '作废流转记录失败')
   }
 })
 

@@ -229,6 +229,14 @@ export const PERMISSION_REGISTRY: PermissionDefinition[] = [
     sortOrder: 640,
   },
   {
+    key: 'btn:container-transfers:void',
+    type: 'button',
+    label: '作废已确认的流转',
+    description: '已入账的流转记错时反向冲回余额并留档；不删记录，冲账流水可追溯',
+    menuKey: 'container-transfers',
+    sortOrder: 650,
+  },
+  {
     key: 'btn:package-loss-monitor:analyze',
     type: 'button',
     label: '查询并分析',

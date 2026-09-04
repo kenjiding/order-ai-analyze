@@ -82,6 +82,7 @@ export default function ContainerTransfersPage() {
                 }}
                 canActAs={page.canActAs}
                 canProxyConfirm={page.canProxyConfirm}
+                canVoid={page.canVoid}
                 onConfirm={page.openConfirm}
                 onProxyConfirm={page.openProxyConfirm}
                 onDispute={page.openDispute}
@@ -89,6 +90,7 @@ export default function ContainerTransfersPage() {
                 onNegotiate={page.openNegotiate}
                 onEdit={page.openEdit}
                 onDelete={page.openDelete}
+                onVoid={page.openVoid}
               />
             </>
           ) : (
@@ -110,7 +112,6 @@ export default function ContainerTransfersPage() {
         open={page.formOpen}
         editing={page.editing}
         ownAccounts={page.ownAccounts}
-        senderAccounts={page.senderAccounts}
         counterparties={page.counterparties}
         allAccounts={page.allAccounts}
         submitting={page.submitting}
@@ -119,8 +120,7 @@ export default function ContainerTransfersPage() {
       />
       <TransferImportModal
         open={page.importOpen}
-        senderAccounts={page.senderAccounts}
-        counterparties={page.counterparties}
+        accounts={page.allAccounts}
         submitting={page.submitting}
         templateDownloading={page.templateDownloading}
         onDownloadTemplate={page.downloadImportTemplate}
@@ -152,9 +152,18 @@ export default function ContainerTransfersPage() {
       <TransferDeleteModal
         key={`delete-${page.deleteTarget?.id ?? 'none'}`}
         target={page.deleteTarget}
+        mode="delete"
         submitting={page.submitting}
         onCancel={page.closeDelete}
         onSubmit={page.submitDelete}
+      />
+      <TransferDeleteModal
+        key={`void-${page.voidTarget?.id ?? 'none'}`}
+        target={page.voidTarget}
+        mode="void"
+        submitting={page.submitting}
+        onCancel={page.closeVoid}
+        onSubmit={page.submitVoid}
       />
       <TransferTimelineDrawer
         open={page.drawer === 'timeline'}

@@ -40,8 +40,9 @@ export function ReasonTypeSelect({ value, onChange, includeAll, placeholder, cla
         includeAll
           ? [
               { value: '', label: '全部' },
-              // 流转记账不是手工原因，但筛选时需要能选中
+              // 流转记账与作废冲回不是手工原因，但筛选时需要能选中
               { value: 'TRANSFER_SETTLEMENT', label: balanceReasonTypeLabel.TRANSFER_SETTLEMENT },
+              { value: 'TRANSFER_VOID', label: balanceReasonTypeLabel.TRANSFER_VOID },
               ...options,
             ]
           : options
