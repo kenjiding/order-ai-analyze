@@ -20,9 +20,15 @@ import './chaseDispatchSharePage.css'
 
 type ShareKind = 'chase-dispatch' | 'dispatch-alarm'
 
+type ShareWaybill = {
+  no: string
+  /** 未完成派送的「本地件优先客户」包裹，橙色标出 */
+  priority: boolean
+}
+
 type ShareRouteGroup = {
   routeCode: string
-  waybillNos: string[]
+  waybills: ShareWaybill[]
 }
 
 type ShareDriverRow = {
@@ -64,21 +70,28 @@ function resolveKind(pathname: string): ShareKind {
   return pathname.startsWith('/dispatch-alarm-share') ? 'dispatch-alarm' : 'chase-dispatch'
 }
 
-/** 按路由码分组运单号，组内保持出现顺序，组间按单量从多到少排序 */
-function groupByRoute(waybills: { waybillNo: string; routeCode: string }[]): ShareRouteGroup[] {
+/**
+ * 按路由码分组运单号，组内保持出现顺序，组间按单量从多到少排序。
+ * markPriority 只对「未签收」分组开启——橙色标记的语义是「优先客户的件还没派完」，
+ * 已签收/问题件分组即使命中优先客户也不标，避免误读成待处理。
+ */
+function groupByRoute(
+  waybills: { waybillNo: string; routeCode: string; isPriority?: boolean }[],
+  markPriority = false,
+): ShareRouteGroup[] {
   const order: string[] = []
-  const nosByRoute = new Map<string, string[]>()
-  for (const { waybillNo, routeCode } of waybills) {
+  const nosByRoute = new Map<string, ShareWaybill[]>()
+  for (const { waybillNo, routeCode, isPriority } of waybills) {
     const code = routeCode.trim() || 'Unknown route'
     if (!nosByRoute.has(code)) {
       nosByRoute.set(code, [])
       order.push(code)
     }
-    nosByRoute.get(code)!.push(waybillNo)
+    nosByRoute.get(code)!.push({ no: waybillNo, priority: markPriority && isPriority === true })
   }
   return order
-    .map((routeCode) => ({ routeCode, waybillNos: nosByRoute.get(routeCode)! }))
-    .sort((a, b) => b.waybillNos.length - a.waybillNos.length)
+    .map((routeCode) => ({ routeCode, waybills: nosByRoute.get(routeCode)! }))
+    .sort((a, b) => b.waybills.length - a.waybills.length)
 }
 
 function toChaseDispatchViewModel(data: ChaseDispatchShareView): ShareViewModel {
@@ -136,7 +149,7 @@ function toDispatchAlarmViewModel(data: DispatchAlarmShareView): ShareViewModel 
         code: d.courierCode,
         count: d.neverSignedWaybills.length,
         waybillNos: d.neverSignedWaybills.map((w) => w.waybillNo),
-        routes: groupByRoute(d.neverSignedWaybills),
+        routes: groupByRoute(d.neverSignedWaybills, true),
       })),
     })
   }
@@ -407,11 +420,15 @@ export default function ChaseDispatchSharePage() {
                                 <div key={route.routeCode} className="wbs-share__route-group">
                                   <p className="wbs-share__route-label">
                                     {route.routeCode}
-                                    <span className="wbs-share__route-count">{route.waybillNos.length}</span>
+                                    <span className="wbs-share__route-count">{route.waybills.length}</span>
                                   </p>
                                   <ul className="wbs-share__nos">
-                                    {route.waybillNos.map((no) => (
-                                      <li key={no} className="wbs-share__no">
+                                    {route.waybills.map(({ no, priority }) => (
+                                      <li
+                                        key={no}
+                                        className={`wbs-share__no${priority ? ' wbs-share__no--priority' : ''}`}
+                                        title={priority ? 'Priority customer parcel - not delivered yet' : undefined}
+                                      >
                                         {no}
                                       </li>
                                     ))}

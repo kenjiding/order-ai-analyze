@@ -58,8 +58,8 @@ test('率投影与分区投影基于同一集合：total/unmet 恒等', () => {
   assert.equal(rates.V1!.totalReceived - rates.V1!.before11ExitVolume, zonePending)
   assert.equal(rates.V1!.before11ExitRate, 1 / 3)
   assert.deepEqual(zones, {
-    R1: { pending: 1, total: 2 },
-    R2: { pending: 1, total: 1 },
+    R1: { pending: 1, total: 2, priority: 0, priorityExited: 0 },
+    R2: { pending: 1, total: 1, priority: 0, priorityExited: 0 },
   })
 })
 
@@ -160,10 +160,27 @@ test('未选供应商的配置：整站按路由码归集，串线单也算进�
   const stat = aggregateBefore11ByScopes({ rows: taggedAll, scopes: [scope] }).get('cfg-route-only')
   assert.ok(stat)
   assert.equal(stat.totalWaybills, 3) // W1 已出仓 + W2 未出仓 + W4（V9 串线）未出仓
-  assert.deepEqual(stat.zoneBreakdown, { R1: { pending: 2, total: 3 } })
+  assert.deepEqual(stat.zoneBreakdown, { R1: { pending: 2, total: 3, priority: 0, priorityExited: 0 } })
   assert.deepEqual(stat.unqualifiedWaybillNos.sort(), ['W2', 'W4'])
   // 白名单路由 RW 不进主统计，单独计入 whitelistStat
   assert.equal(stat.whitelistStat?.totalWaybills, 1)
   // R2 不在纳入名单 → 一件都不算
   assert.deepEqual(Object.keys(stat.zoneBreakdown), ['R1'])
+})
+
+test('aggregateBefore11ByScopes: clientCode 命中「优先客户配置」时按分区统计优先件数（大小写不敏感）', () => {
+  const priorityRows: Array<Record<string, unknown>> = [
+    { waybillNo: 'W1', courierVendorCode: 'V1', consigneeRouteCode: 'R1', clientCode: 'vip001', deliveryTime: '2026-07-09 14:00:00' },
+    { waybillNo: 'W2', courierVendorCode: 'V1', consigneeRouteCode: 'R1', clientCode: 'VIP001', deliveryTime: '2026-07-09 10:00:00' },
+    { waybillNo: 'W3', courierVendorCode: 'V1', consigneeRouteCode: 'R1', clientCode: 'OTHER', deliveryTime: '2026-07-09 14:00:00' },
+  ]
+  const tagged = tagBefore11Rows({ rows: priorityRows, before11ThresholdMs: thresholdMs })
+  const scopes: Before11Scope[] = [{ key: 'cfg', vendorCode: 'V1', routeCodes: new Set(['R1']) }]
+  const stat = aggregateBefore11ByScopes({ rows: tagged, scopes, priorityClientCodes: new Set(['VIP001']) }).get('cfg')
+
+  // 优先件按分区总量统计（不限于未出仓那部分）：W1 + W2 = 2
+  // W2 已出仓（10:00）、W1 未出仓（14:00）：优先件 2 件，其中已出仓 1 件
+  assert.deepEqual(stat?.zoneBreakdown, { R1: { pending: 2, total: 3, priority: 2, priorityExited: 1 } })
+  // 不传名单时不统计优先件
+  assert.equal(aggregateBefore11ByScopes({ rows: tagged, scopes }).get('cfg')?.zoneBreakdown.R1?.priority, 0)
 })

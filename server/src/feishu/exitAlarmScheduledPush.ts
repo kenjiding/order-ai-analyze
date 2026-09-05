@@ -16,6 +16,7 @@ import {
   type Before11Scope,
 } from '../vendorAnalysis/before11Aggregate'
 import { buildConfigScope } from '../vendorAnalysis/supplierScope'
+import { loadPriorityClientCodes } from '../priorityClients'
 import { lastSortingWorkdayOnOrBefore } from '../imile/sortingWorkday'
 import {
   listPushableSupplierPushConfigsForSchedule,
@@ -97,7 +98,8 @@ export type ExitAlarmPushResult = {
   totalConfigs: number
   errors: string[]
   stationCode: string
-  date: string
+  /** 本次统计的到件日列表（可多日合并） */
+  dates: string[]
   /** 各供应商本次推送中未在阈值前出仓（未达标）的运单号，供前端导出 Excel */
   unqualifiedByVendor: {
     vendorName: string
@@ -114,8 +116,8 @@ export type ExitAlarmPushResult = {
 export async function executeExitAlarmPush(params: {
   token: string
   stationCode: string
-  /** 到件日（查询目标）YYYY-MM-DD；跨周末/节假日时会回退到最近工作日，可能早于「今天」多天 */
-  date: string
+  /** 到件日（查询目标）YYYY-MM-DD，可多日；跨周末/节假日时会回退到最近工作日，可能早于「今天」多天。多日按运单号去重后合并统计 */
+  dates: string[]
   /** 推送实际触发那天 YYYY-MM-DD（账号州时区）——阈值锚点，与 date 是两回事，不能互相替代 */
   todayDateStr: string
   pushTime: string
@@ -138,7 +140,7 @@ export async function executeExitAlarmPush(params: {
   const {
     token,
     stationCode,
-    date,
+    dates,
     todayDateStr,
     pushTime,
     configs,
@@ -150,19 +152,23 @@ export async function executeExitAlarmPush(params: {
     perConfigDedupe,
   } = params
 
-  const result = await fetchWaybillDetailsByInboundIndex({
-    token,
-    stationCode,
-    dateStr: date,
-    tz,
-    label,
-  })
-  if (!result.ok) {
-    console.error(`${label} 运单查询失败: ${result.message}`)
-    return { error: `运单查询失败: ${result.message}` }
+  if (dates.length === 0) return { error: '未指定到件扫描日期' }
+
+  // 多到件日：逐日拉数后按运单号去重合并（同一单可能在多天的到件索引里出现），后续统计口径不变
+  const byWaybillNo = new Map<string, Record<string, unknown>>()
+  for (const dateStr of dates) {
+    const result = await fetchWaybillDetailsByInboundIndex({ token, stationCode, dateStr, tz, label })
+    if (!result.ok) {
+      console.error(`${label} 到件日 ${dateStr} 运单查询失败: ${result.message}`)
+      return { error: `到件日 ${dateStr} 运单查询失败: ${result.message}` }
+    }
+    for (const record of result.records as Array<Record<string, unknown>>) {
+      const no = typeof record.waybillNo === 'string' ? record.waybillNo.trim() : ''
+      byWaybillNo.set(no || `__idx_${byWaybillNo.size}`, record)
+    }
   }
 
-  const waybills = result.records
+  const waybills = [...byWaybillNo.values()]
   // 阈值锚在「推送实际触发那天」的「推送触发时刻」——不能用 date（到件日）反推次日，
   // 到件日跨周末/节假日回退后可能是好几天前，「到件日+1天」不等于「今天」（例：周一到件日
   // 回退到上周五，+1 天=周六，早已过去，会把当天所有正常出仓都误判成「未出仓」）。
@@ -181,7 +187,9 @@ export async function executeExitAlarmPush(params: {
   // 用 config.id 当 key 一次遍历 taggedRows 拿到全部配置的统计，不再对每条配置各自重新扫一遍全量到件运单。
   // 未选供应商的配置（vendorCode 为空）走纯路由码口径，由 buildConfigScope 统一判定
   const scopes: Before11Scope[] = configs.map((config) => buildConfigScope(config.id, config))
-  const statsByConfigId = aggregateBefore11ByScopes({ rows: taggedRows, scopes })
+  // 「本地件优先客户」名单来自「优先客户配置」页面，每次推送读一次即可（配置量小）
+  const priorityClientCodes = await loadPriorityClientCodes()
+  const statsByConfigId = aggregateBefore11ByScopes({ rows: taggedRows, scopes, priorityClientCodes })
 
   for (const config of configs) {
     const vendorName = supplierDisplayName(config)
@@ -257,7 +265,7 @@ export async function executeExitAlarmPush(params: {
     }
   }
 
-  return { pushedCount, totalConfigs: configs.length, errors, stationCode, date, unqualifiedByVendor }
+  return { pushedCount, totalConfigs: configs.length, errors, stationCode, dates, unqualifiedByVendor }
 }
 
 /** 处理单个账号的定时配置：命中推送时间则读取到件索引并执行告警推送 */
@@ -318,7 +326,7 @@ async function runOneScheduledPush(schedule: ExitAlarmSchedule, regionCode: stri
     const result = await executeExitAlarmPush({
       token: rawToken,
       stationCode,
-      date: targetDate,
+      dates: [targetDate],
       todayDateStr,
       pushTime: timeHHmm,
       configs,

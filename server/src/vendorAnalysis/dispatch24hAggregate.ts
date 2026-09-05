@@ -26,17 +26,23 @@ export type Dispatch24hWaybillRow = {
   courierCode?: string
   courierVendorCode?: string
   consigneeRouteCode?: string
+  /** 商家编码；与「优先客户配置」比对得出是否「本地件优先客户」包裹 */
+  clientCode?: string
   signDate?: string
   deliveryTime?: string
   lastScanSiteCode?: string
   lastProblemDate?: string
   /** 该行数据最后一次真正从 searchWaybill 同步的时间；仅缓存行携带，用于终态判定 */
   syncedAtMs?: number
+  /** 多到件日合并统计时，该行所属到件日的窗口规则；不设则用聚合传入的 rule（单到件日的常规情况） */
+  windowRule?: Dispatch24hWindowRule
 }
 
 export type Dispatch24hUnmetWaybill = {
   waybillNo: string
   routeCode: string
+  /** 是否「本地件优先客户」包裹，供告警落地页高亮标出 */
+  isPriority?: boolean
 }
 
 export type Dispatch24hDriverStat = {
@@ -52,6 +58,10 @@ export type Dispatch24hDriverStat = {
   neverSignedCount: number
   /** 未达标中：有签收记录但超过 24H 窗口才签收的件数 */
   lateSignedCount: number
+  /** 「本地件优先客户」包裹数（clientCode 命中优先客户配置） */
+  priorityTotal: number
+  /** 「本地件优先客户」包裹中尚未签收（未派完）的件数 */
+  priorityUnsigned: number
   /** 从未签收的运单明细，供告警落地页按运单号展示 */
   neverSignedWaybills: Dispatch24hUnmetWaybill[]
   /** 签收但超过 24H 窗口才签收的运单明细，供告警落地页按运单号展示 */
@@ -69,6 +79,10 @@ export type Dispatch24hVendorStat = {
   neverSignedCount: number
   /** 未达标中：有签收记录但超过 24H 窗口才签收的件数 */
   lateSignedCount: number
+  /** 「本地件优先客户」包裹数（clientCode 命中优先客户配置） */
+  priorityTotal: number
+  /** 「本地件优先客户」包裹中尚未签收（未派完）的件数 */
+  priorityUnsigned: number
   unmetNos: string[]
   /** 按司机（courierCode）细分的达标情况，按未达标数从高到低排序 */
   drivers: Dispatch24hDriverStat[]
@@ -82,6 +96,12 @@ export type Dispatch24hVendorStat = {
 
 function norm(code: unknown): string {
   return typeof code === 'string' ? code.trim() : ''
+}
+
+/** 该单是否属于「本地件优先客户」：clientCode 命中「优先客户配置」的商家编码（大写比较） */
+function isPriorityRow(row: Dispatch24hWaybillRow, priorityClientCodes?: Set<string>): boolean {
+  if (!priorityClientCodes || priorityClientCodes.size === 0) return false
+  return priorityClientCodes.has(norm(row.clientCode).toUpperCase())
 }
 
 /**
@@ -148,7 +168,9 @@ export function getDispatch24hDeadlineMs(
   row: Dispatch24hWaybillRow,
   rule: Dispatch24hWindowRule,
 ): number | null {
-  if (rule.kind === 'fixedDeadline') return rule.deadlineMs
+  // 行自带规则优先：多到件日合并统计时每行的窗口口径由它自己那天的到件日决定
+  const effectiveRule = row.windowRule ?? rule
+  if (effectiveRule.kind === 'fixedDeadline') return effectiveRule.deadlineMs
   if (!row.deliveryTime) return null
   return iMileStrToMs(row.deliveryTime) + DAY_MS
 }
@@ -239,6 +261,7 @@ function accumulateDriverStat(
   hasProblem: boolean,
   neverSigned: boolean,
   lateSigned: boolean,
+  isPriority: boolean,
   wbNo: string,
 ): void {
   // courierCode 为空（尚未派件/未分配司机）时用空串当桶 key，finalizeDriverStats 再拆到 stat.unassigned
@@ -258,6 +281,8 @@ function accumulateDriverStat(
       problemCount: 0,
       neverSignedCount: 0,
       lateSignedCount: 0,
+      priorityTotal: 0,
+      priorityUnsigned: 0,
       neverSignedWaybills: [],
       lateSignedWaybills: [],
       problemWaybills: [],
@@ -268,16 +293,20 @@ function accumulateDriverStat(
   if (met) {
     driverStat.met += 1
   } else if (wbNo) {
-    const waybill = { waybillNo: wbNo, routeCode: consigneeRouteCode || '未知路由' }
+    const waybill = { waybillNo: wbNo, routeCode: consigneeRouteCode || '未知路由', isPriority }
     if (neverSigned) driverStat.neverSignedWaybills.push(waybill)
     if (lateSigned) driverStat.lateSignedWaybills.push(waybill)
   }
   if (hasProblem) {
     driverStat.problemCount += 1
-    if (wbNo) driverStat.problemWaybills.push({ waybillNo: wbNo, routeCode: consigneeRouteCode || '未知路由' })
+    if (wbNo) driverStat.problemWaybills.push({ waybillNo: wbNo, routeCode: consigneeRouteCode || '未知路由', isPriority })
   }
   if (neverSigned) driverStat.neverSignedCount += 1
   if (lateSigned) driverStat.lateSignedCount += 1
+  if (isPriority) {
+    driverStat.priorityTotal += 1
+    if (!row.signDate) driverStat.priorityUnsigned += 1
+  }
 }
 
 /** 把每个 key 下按司机聚出的明细排序、挂回对应 stat.drivers；未达标数从高到低。无司机的桶拆到 stat.unassigned */
@@ -306,6 +335,8 @@ export function aggregateDispatch24hByVendor(input: {
   /** 路由码纳入名单；缺省空 map = 不按路由码收窄 */
   routeCodesByVendor?: Map<string, Set<string>>
   routeCodeWhitelistByVendor: Map<string, Set<string>>
+  /** 「优先客户配置」商家编码（大写）；缺省 = 不统计优先件 */
+  priorityClientCodes?: Set<string>
 }): Map<string, Dispatch24hVendorStat> {
   const {
     rows,
@@ -313,6 +344,7 @@ export function aggregateDispatch24hByVendor(input: {
     rule,
     routeCodesByVendor = new Map(),
     routeCodeWhitelistByVendor,
+    priorityClientCodes,
   } = input
   const stationSet = new Set(stationCodes.map((s) => s.trim()).filter(Boolean))
   const inStation = (code: string | undefined) => stationSet.size === 0 || stationSet.has(norm(code))
@@ -336,13 +368,14 @@ export function aggregateDispatch24hByVendor(input: {
     const lateSigned = !met && Boolean(row.signDate)
     const wbNo = row.waybillNo ?? ''
     const courierCode = norm(row.courierCode)
+    const isPriority = isPriorityRow(row, priorityClientCodes)
 
     for (const vendorCode of candidateVendorCodes) {
       if (!isRowInVendorScope(vendorCode, consigneeRouteCode, { routeCodesByVendor, routeCodeWhitelistByVendor })) continue
 
       let stat = result.get(vendorCode)
       if (!stat) {
-        stat = { total: 0, met: 0, problemCount: 0, neverSignedCount: 0, lateSignedCount: 0, unmetNos: [], drivers: [], unassigned: null }
+        stat = { total: 0, met: 0, problemCount: 0, neverSignedCount: 0, lateSignedCount: 0, priorityTotal: 0, priorityUnsigned: 0, unmetNos: [], drivers: [], unassigned: null }
         result.set(vendorCode, stat)
       }
       stat.total += 1
@@ -354,6 +387,10 @@ export function aggregateDispatch24hByVendor(input: {
       if (hasProblem) stat.problemCount += 1
       if (neverSigned) stat.neverSignedCount += 1
       if (lateSigned) stat.lateSignedCount += 1
+      if (isPriority) {
+        stat.priorityTotal += 1
+        if (!row.signDate) stat.priorityUnsigned += 1
+      }
 
       accumulateDriverStat(
         driverMapByVendor,
@@ -365,6 +402,7 @@ export function aggregateDispatch24hByVendor(input: {
         hasProblem,
         neverSigned,
         lateSigned,
+        isPriority,
         wbNo,
       )
     }
@@ -392,8 +430,10 @@ export function aggregateDispatch24hByScopes(input: {
   stationCodes: string[]
   rule: Dispatch24hWindowRule
   scopes: Dispatch24hScope[]
+  /** 「优先客户配置」商家编码（大写）；缺省 = 不统计优先件 */
+  priorityClientCodes?: Set<string>
 }): Map<string, Dispatch24hVendorStat> {
-  const { rows, stationCodes, rule, scopes } = input
+  const { rows, stationCodes, rule, scopes, priorityClientCodes } = input
   const stationSet = new Set(stationCodes.map((s) => s.trim()).filter(Boolean))
   const inStation = (code: string | undefined) => stationSet.size === 0 || stationSet.has(norm(code))
 
@@ -410,13 +450,14 @@ export function aggregateDispatch24hByScopes(input: {
     const lateSigned = !met && Boolean(row.signDate)
     const wbNo = row.waybillNo ?? ''
     const courierCode = norm(row.courierCode)
+    const isPriority = isPriorityRow(row, priorityClientCodes)
 
     for (const scope of scopes) {
       if (!isRowInConfigScope(scope, explicitVendorCode, consigneeRouteCode)) continue
 
       let stat = result.get(scope.key)
       if (!stat) {
-        stat = { total: 0, met: 0, problemCount: 0, neverSignedCount: 0, lateSignedCount: 0, unmetNos: [], drivers: [], unassigned: null }
+        stat = { total: 0, met: 0, problemCount: 0, neverSignedCount: 0, lateSignedCount: 0, priorityTotal: 0, priorityUnsigned: 0, unmetNos: [], drivers: [], unassigned: null }
         result.set(scope.key, stat)
       }
       stat.total += 1
@@ -428,6 +469,10 @@ export function aggregateDispatch24hByScopes(input: {
       if (hasProblem) stat.problemCount += 1
       if (neverSigned) stat.neverSignedCount += 1
       if (lateSigned) stat.lateSignedCount += 1
+      if (isPriority) {
+        stat.priorityTotal += 1
+        if (!row.signDate) stat.priorityUnsigned += 1
+      }
 
       accumulateDriverStat(
         driverMapByKey,
@@ -439,6 +484,7 @@ export function aggregateDispatch24hByScopes(input: {
         hasProblem,
         neverSigned,
         lateSigned,
+        isPriority,
         wbNo,
       )
     }

@@ -7,6 +7,8 @@ type Props = {
   onChange: (value: string) => void
   disabled?: boolean
   placeholder?: string
+  /** 覆盖下拉框宽度；缺省 min-w-[200px] */
+  className?: string
 }
 
 /**
@@ -14,7 +16,7 @@ type Props = {
  * （由 useGlobalStationBootstrap 在 Header 挂载时加载），但 value/onChange 走调用方
  * 自己的状态，不读写全局的 selectedStations —— 供表单内需要"选自己的站点"的场景使用。
  */
-export function StationSelect({ value, onChange, disabled, placeholder = '选择站点' }: Props) {
+export function StationSelect({ value, onChange, disabled, placeholder = '选择站点', className = 'min-w-[200px]' }: Props) {
   const { stations, stationsLoading } = useGlobalFilterStore()
 
   return (
@@ -27,7 +29,7 @@ export function StationSelect({ value, onChange, disabled, placeholder = '选择
         loading={stationsLoading}
         disabled={disabled}
         placeholder={placeholder}
-        className="min-w-[200px]"
+        className={className}
         showSearch
         optionFilterProp="label"
       />

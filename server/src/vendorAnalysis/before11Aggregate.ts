@@ -24,7 +24,26 @@ export type Before11TaggedRow = {
   courierVendorCode: string
   courier: string
   consigneeRouteCode: string
+  /** 商家编码；与「优先客户配置」比对得出是否「本地件优先客户」包裹 */
+  clientCode: string
   before11Exit: boolean
+}
+
+/**
+ * 分区统计：pending 未出仓件数，total 总件数，
+ * priority「本地件优先客户」件数，priorityExited 其中已在阈值前出仓的件数。
+ */
+export type Before11ZoneStats = {
+  pending: number
+  total: number
+  priority: number
+  priorityExited: number
+}
+
+/** 该单是否属于「本地件优先客户」：clientCode 命中「优先客户配置」的商家编码（大写比较） */
+function isPriorityRow(row: Before11TaggedRow, priorityClientCodes?: Set<string>): boolean {
+  if (!priorityClientCodes || priorityClientCodes.size === 0) return false
+  return priorityClientCodes.has(row.clientCode.toUpperCase())
 }
 
 export type Before11RateResult = {
@@ -48,6 +67,7 @@ export function tagBefore11Rows(input: {
       courierVendorCode: normCode(row.courierVendorCode),
       courier: typeof row.courier === 'string' ? row.courier : '',
       consigneeRouteCode: typeof row.consigneeRouteCode === 'string' ? row.consigneeRouteCode : '',
+      clientCode: typeof row.clientCode === 'string' ? row.clientCode.trim() : '',
       before11Exit: isBefore11Exit(deliveryTime, input.before11ThresholdMs),
     })
   }
@@ -117,13 +137,18 @@ export function projectBefore11RatesByVendor(
 /** 告警卡片投影：按 routeCode 分区统计未出仓件数（pending = 未在 11 点前出仓） */
 export function projectBefore11ZoneBreakdown(
   rows: Before11TaggedRow[],
-): Record<string, { pending: number; total: number }> {
-  const zoneBreakdown: Record<string, { pending: number; total: number }> = {}
+  priorityClientCodes?: Set<string>,
+): Record<string, Before11ZoneStats> {
+  const zoneBreakdown: Record<string, Before11ZoneStats> = {}
   for (const row of rows) {
     const zone = row.consigneeRouteCode.trim() || 'Unknown route'
-    if (!zoneBreakdown[zone]) zoneBreakdown[zone] = { pending: 0, total: 0 }
+    if (!zoneBreakdown[zone]) zoneBreakdown[zone] = { pending: 0, total: 0, priority: 0, priorityExited: 0 }
     zoneBreakdown[zone].total++
     if (!row.before11Exit) zoneBreakdown[zone].pending++
+    if (isPriorityRow(row, priorityClientCodes)) {
+      zoneBreakdown[zone].priority++
+      if (row.before11Exit) zoneBreakdown[zone].priorityExited++
+    }
   }
   return zoneBreakdown
 }
@@ -136,13 +161,13 @@ export type Before11Scope = ConfigScope
 
 export type Before11ScopedStat = {
   totalWaybills: number
-  zoneBreakdown: Record<string, { pending: number; total: number }>
+  zoneBreakdown: Record<string, Before11ZoneStats>
   /** 未在 11 点前出仓的运单号，供前端导出 Excel */
   unqualifiedWaybillNos: string[]
   /** 路由码白名单命中的行的统计（与主统计对称），供「路由码白名单数据推送」开关消费；始终计算，不受开关影响 */
   whitelistStat?: {
     totalWaybills: number
-    zoneBreakdown: Record<string, { pending: number; total: number }>
+    zoneBreakdown: Record<string, Before11ZoneStats>
     /** 白名单范围内未在阈值前出仓的运单号，供前端导出 Excel（与主统计 unqualifiedWaybillNos 对称） */
     unqualifiedWaybillNos: string[]
   }
@@ -160,13 +185,16 @@ export type Before11ScopedStat = {
 export function aggregateBefore11ByScopes(input: {
   rows: Before11TaggedRow[]
   scopes: Before11Scope[]
+  /** 「优先客户配置」商家编码（大写）；缺省 = 不统计优先件 */
+  priorityClientCodes?: Set<string>
 }): Map<string, Before11ScopedStat> {
-  const { rows, scopes } = input
+  const { rows, scopes, priorityClientCodes } = input
   const result = new Map<string, Before11ScopedStat>()
 
   for (const row of rows) {
     const explicitVendorCode = row.courierVendorCode
     const routeCode = row.consigneeRouteCode
+    const isPriority = isPriorityRow(row, priorityClientCodes)
 
     for (const scope of scopes) {
       // 白名单命中的行下面要单独计入 whitelistStat，故这里用不含白名单剔除的判定
@@ -185,8 +213,12 @@ export function aggregateBefore11ByScopes(input: {
         const whitelistStat = stat.whitelistStat
         whitelistStat.totalWaybills += 1
         const whitelistZone = routeCode.trim() || 'Unknown route'
-        if (!whitelistStat.zoneBreakdown[whitelistZone]) whitelistStat.zoneBreakdown[whitelistZone] = { pending: 0, total: 0 }
+        if (!whitelistStat.zoneBreakdown[whitelistZone]) whitelistStat.zoneBreakdown[whitelistZone] = { pending: 0, total: 0, priority: 0, priorityExited: 0 }
         whitelistStat.zoneBreakdown[whitelistZone].total += 1
+        if (isPriority) {
+          whitelistStat.zoneBreakdown[whitelistZone].priority += 1
+          if (row.before11Exit) whitelistStat.zoneBreakdown[whitelistZone].priorityExited += 1
+        }
         if (!row.before11Exit) {
           whitelistStat.zoneBreakdown[whitelistZone].pending += 1
           if (row.waybillNo) whitelistStat.unqualifiedWaybillNos.push(row.waybillNo)
@@ -196,8 +228,12 @@ export function aggregateBefore11ByScopes(input: {
 
       stat.totalWaybills += 1
       const zone = routeCode.trim() || 'Unknown route'
-      if (!stat.zoneBreakdown[zone]) stat.zoneBreakdown[zone] = { pending: 0, total: 0 }
+      if (!stat.zoneBreakdown[zone]) stat.zoneBreakdown[zone] = { pending: 0, total: 0, priority: 0, priorityExited: 0 }
       stat.zoneBreakdown[zone].total += 1
+      if (isPriority) {
+        stat.zoneBreakdown[zone].priority += 1
+        if (row.before11Exit) stat.zoneBreakdown[zone].priorityExited += 1
+      }
       if (!row.before11Exit) {
         stat.zoneBreakdown[zone].pending += 1
         if (row.waybillNo) stat.unqualifiedWaybillNos.push(row.waybillNo)

@@ -48,10 +48,13 @@ function toQuery(params: Record<string, string | number | undefined | null>): st
 
 // ------------------------------------------------------------ 站点账户
 
-/** scope='manage' 用于站点账户维护页：有维护权限时返回全部站点，与改名/删除的作用域一致 */
+/**
+ * scope='manage' 用于站点账户维护页：有维护权限时返回全部站点，与改名/删除的作用域一致
+ * scope='actable' 用于新增流转的「转出方」下拉：只返回本人绑定的站点，不受 view-all 影响
+ */
 export function fetchAccounts(
   counterparty = false,
-  scope?: 'manage',
+  scope?: 'manage' | 'actable',
 ): Promise<ApiResult<ContainerAccount[]>> {
   return apiFetch<ContainerAccount[]>(
     `/accounts${toQuery({ counterparty: counterparty ? '1' : '', scope })}`,

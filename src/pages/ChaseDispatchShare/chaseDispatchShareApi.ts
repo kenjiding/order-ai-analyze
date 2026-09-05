@@ -48,6 +48,8 @@ export async function fetchChaseDispatchShare(
 export type DispatchAlarmShareWaybill = {
   waybillNo: string
   routeCode: string
+  /** 「本地件优先客户」包裹，未派完时落地页橙色标出 */
+  isPriority?: boolean
 }
 
 export type DispatchAlarmShareDriver = {

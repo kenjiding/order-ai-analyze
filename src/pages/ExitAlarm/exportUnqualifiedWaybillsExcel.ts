@@ -61,5 +61,5 @@ export async function exportUnqualifiedWaybillsExcel(result: ExitAlarmPushNowRes
   const blob = new Blob([buffer], {
     type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
   })
-  saveAs(blob, `滞留数据告警_未达标运单_${result.stationCode}_${result.date}.xlsx`)
+  saveAs(blob, `滞留数据告警_未达标运单_${result.stationCode}_${result.dates.join('_')}.xlsx`)
 }

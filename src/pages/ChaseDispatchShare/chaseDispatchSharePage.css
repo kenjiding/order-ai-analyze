@@ -388,6 +388,14 @@ html[data-share-shell] body::before {
   border-radius: 7px;
 }
 
+/* 未派完的「本地件优先客户」包裹：橙色描边 + 底色，在一片灰白单号里第一眼能挑出来 */
+.wbs-share__no--priority {
+  color: #b45309;
+  font-weight: 700;
+  background: #fff2dc;
+  border-color: #f59e0b;
+}
+
 .wbs-share__empty-nos {
   margin: 0;
   font-size: 0.8rem;

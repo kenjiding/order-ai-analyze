@@ -585,3 +585,67 @@ test('dispatchExitThresholdMs：出仓阈值恒锚在到件日次日的11:00，�
     deadlineMs: localDateTimeToMs('2024-07-01 23:59:59', tz),
   })
 })
+
+test('aggregateDispatch24hByScopes：clientCode 命中「优先客户配置」时按供应商/司机两级统计优先件与未签收优先件', () => {
+  const rows: Dispatch24hWaybillRow[] = [
+    // 优先客户 + 已签收
+    { waybillNo: 'P1', courierCode: 'C1', courier: '张三', courierVendorCode: 'V1', lastScanSiteCode: 'S1', consigneeRouteCode: 'R-A', clientCode: 'vip001', deliveryTime: '2024-06-24 10:00:00', signDate: '2024-06-24 12:00:00' },
+    // 优先客户 + 未签收
+    { waybillNo: 'P2', courierCode: 'C1', courier: '张三', courierVendorCode: 'V1', lastScanSiteCode: 'S1', consigneeRouteCode: 'R-A', clientCode: 'VIP001', deliveryTime: '2024-06-24 10:00:00' },
+    // 非优先客户
+    { waybillNo: 'N1', courierCode: 'C1', courier: '张三', courierVendorCode: 'V1', lastScanSiteCode: 'S1', consigneeRouteCode: 'R-A', clientCode: 'OTHER', deliveryTime: '2024-06-24 10:00:00' },
+  ]
+  const scopes: Dispatch24hScope[] = [{ key: 'cfg', vendorCode: 'V1', routeCodes: new Set(['R-A']) }]
+
+  const stat = aggregateDispatch24hByScopes({
+    rows,
+    stationCodes: ['S1'],
+    rule,
+    scopes,
+    priorityClientCodes: new Set(['VIP001']),
+  }).get('cfg')
+  // 大小写不一致也要匹配上：P1/P2 都算优先件，其中 P2 未签收
+  assert.equal(stat?.priorityTotal, 2)
+  assert.equal(stat?.priorityUnsigned, 1)
+  assert.equal(stat?.drivers[0]?.priorityTotal, 2)
+  assert.equal(stat?.drivers[0]?.priorityUnsigned, 1)
+
+  // 不传名单时不统计优先件
+  const noList = aggregateDispatch24hByScopes({ rows, stationCodes: ['S1'], rule, scopes }).get('cfg')
+  assert.equal(noList?.priorityTotal, 0)
+})
+
+test('多到件日合并统计：行自带 windowRule 优先于聚合传入的 rule', () => {
+  // 周五（2024-06-21）到件那批：整批固定截止到下周一 23:59:59；本行周一 09:00 才签收
+  const fridayRule = resolveDispatch24hWindowRule('2024-06-21', tz)
+  const row: Dispatch24hWaybillRow = {
+    waybillNo: 'W-FRI',
+    deliveryTime: '2024-06-22 08:00:00',
+    signDate: '2024-06-24 09:00:00',
+  }
+  // 按周一到件的滚动 24h 口径（周六 08:00 + 24h）算，这单超窗口 → 不达标
+  assert.equal(isDispatch24hMet(row, rule), false)
+  // 行自带周五批次规则时按固定截止判定 → 达标
+  assert.equal(isDispatch24hMet({ ...row, windowRule: fridayRule }, rule), true)
+  assert.equal(getDispatch24hDeadlineMs({ ...row, windowRule: fridayRule }, rule), fridayRule.kind === 'fixedDeadline' ? fridayRule.deadlineMs : null)
+})
+
+test('aggregateDispatch24hByScopes：未签收运单明细带 isPriority 标记，供落地页高亮优先客户包裹', () => {
+  const rows: Dispatch24hWaybillRow[] = [
+    { waybillNo: 'P1', courierCode: 'C1', courier: '张三', courierVendorCode: 'V1', lastScanSiteCode: 'S1', consigneeRouteCode: 'R-A', clientCode: 'VIP001', deliveryTime: '2024-06-24 10:00:00' },
+    { waybillNo: 'N1', courierCode: 'C1', courier: '张三', courierVendorCode: 'V1', lastScanSiteCode: 'S1', consigneeRouteCode: 'R-A', clientCode: 'OTHER', deliveryTime: '2024-06-24 10:00:00' },
+  ]
+  const scopes: Dispatch24hScope[] = [{ key: 'cfg', vendorCode: 'V1', routeCodes: new Set(['R-A']) }]
+  const driver = aggregateDispatch24hByScopes({
+    rows,
+    stationCodes: ['S1'],
+    rule,
+    scopes,
+    priorityClientCodes: new Set(['VIP001']),
+  }).get('cfg')?.drivers[0]
+
+  assert.deepEqual(
+    driver?.neverSignedWaybills.map((w) => [w.waybillNo, w.isPriority]),
+    [['P1', true], ['N1', false]],
+  )
+})

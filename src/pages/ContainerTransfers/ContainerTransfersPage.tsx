@@ -1,5 +1,5 @@
 import { ArrowLeftRight, History, Plus, Repeat, Upload } from 'lucide-react'
-import { Button, Space } from 'antd'
+import { Button, Space, Tooltip } from 'antd'
 import { PageSectionTabs } from '../../components/PageSectionTabs'
 import { ConfirmReceiptModal } from './components/ConfirmReceiptModal'
 import { DisputeReportModal } from './components/DisputeReportModal'
@@ -13,8 +13,12 @@ import { TransferImportModal } from './components/TransferImportModal'
 import { TransferTable } from './components/TransferTable'
 import { useContainerTransfersPage } from './useContainerTransfersPage'
 
+const NO_ACCOUNT_HINT = '你尚未绑定任何站点，无法录入流转记录，请联系管理员在「站点账户」中绑定'
+
 export default function ContainerTransfersPage() {
   const page = useContainerTransfersPage()
+  // 转出方只能是自己绑定的站点，一个都没有时录不了单，禁用入口比让人填完再报错好
+  const noActableAccount = page.ownAccounts.length === 0
 
   return (
     <div className="admin-page space-y-5">
@@ -33,19 +37,25 @@ export default function ContainerTransfersPage() {
           </div>
           {page.tab === 'transfers' ? (
             <Space>
-              <Button
-                icon={<Upload className="h-4 w-4" aria-hidden />}
-                onClick={page.openImport}
-              >
-                批量上传
-              </Button>
-              <Button
-                type="primary"
-                icon={<Plus className="h-4 w-4" aria-hidden />}
-                onClick={page.openCreate}
-              >
-                新增流转记录
-              </Button>
+              <Tooltip title={noActableAccount ? NO_ACCOUNT_HINT : ''}>
+                <Button
+                  icon={<Upload className="h-4 w-4" aria-hidden />}
+                  onClick={page.openImport}
+                  disabled={noActableAccount}
+                >
+                  批量上传
+                </Button>
+              </Tooltip>
+              <Tooltip title={noActableAccount ? NO_ACCOUNT_HINT : ''}>
+                <Button
+                  type="primary"
+                  icon={<Plus className="h-4 w-4" aria-hidden />}
+                  onClick={page.openCreate}
+                  disabled={noActableAccount}
+                >
+                  新增流转记录
+                </Button>
+              </Tooltip>
             </Space>
           ) : null}
         </div>
@@ -121,6 +131,7 @@ export default function ContainerTransfersPage() {
       <TransferImportModal
         open={page.importOpen}
         accounts={page.allAccounts}
+        fromAccounts={page.ownAccounts}
         submitting={page.submitting}
         templateDownloading={page.templateDownloading}
         onDownloadTemplate={page.downloadImportTemplate}

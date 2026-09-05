@@ -21,6 +21,8 @@ import './TransferImportModal.css'
 type Props = {
   open: boolean
   accounts: ContainerAccount[]
+  /** 转出方的可选范围：本人绑定的站点 */
+  fromAccounts: ContainerAccount[]
   submitting: boolean
   templateDownloading: boolean
   onDownloadTemplate: () => void
@@ -31,6 +33,7 @@ type Props = {
 export function TransferImportModal({
   open,
   accounts,
+  fromAccounts,
   submitting,
   templateDownloading,
   onDownloadTemplate,
@@ -58,7 +61,7 @@ export function TransferImportModal({
     setParsing(true)
     setRows(null)
     setError(null)
-    const result = await parseTransferImportFile(file, { accounts })
+    const result = await parseTransferImportFile(file, { accounts, fromAccounts })
     setParsing(false)
     if (!result.ok) {
       setError(result.error)

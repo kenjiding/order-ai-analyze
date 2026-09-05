@@ -36,6 +36,18 @@ function yesterday(): string {
   return dayjs().subtract(1, 'day').format('YYYY-MM-DD')
 }
 
+/** 到件扫描时间区间的最大跨度（天）；与后端 MAX_ARRIVAL_SCAN_DATES 对齐——每多一天就多一轮 iMile 拉数 */
+const MAX_ARRIVAL_SCAN_DAYS = 7
+
+/** 区间展开成逐日日期（含首尾），后端按这些到件日逐日拉数后合并统计 */
+function expandDateRange([start, end]: [string, string]): string[] {
+  const dates: string[] = []
+  for (let d = dayjs(start, 'YYYY-MM-DD'); !d.isAfter(dayjs(end, 'YYYY-MM-DD'), 'day'); d = d.add(1, 'day')) {
+    dates.push(d.format('YYYY-MM-DD'))
+  }
+  return dates
+}
+
 type Props = {
   open: boolean
   onClose: () => void
@@ -60,7 +72,7 @@ export function DispatchAlarmScheduleDrawer({
   const [pushTimes, setPushTimes] = useState<PushTimeSlot[]>([])
   const [alertThresholdPct, setAlertThresholdPct] = useState<number | null>(DEFAULT_ALERT_THRESHOLD_PCT)
   const [pushConfigIds, setPushConfigIds] = useState<string[]>([])
-  const [arrivalScanDate, setArrivalScanDate] = useState<string>(yesterday())
+  const [arrivalScanRange, setArrivalScanRange] = useState<[string, string]>([yesterday(), yesterday()])
   const [mentionEnabled, setMentionEnabled] = useState(false)
   const [showDriverMap, setShowDriverMap] = useState(false)
 
@@ -71,7 +83,12 @@ export function DispatchAlarmScheduleDrawer({
     setPushTimes(editingSchedule?.pushTimes ?? [])
     setAlertThresholdPct(editingSchedule?.alertThresholdPct ?? DEFAULT_ALERT_THRESHOLD_PCT)
     setPushConfigIds(editingSchedule?.pushConfigIds ?? [])
-    setArrivalScanDate(editingSchedule?.arrivalScanDate ?? yesterday())
+    const savedDates = editingSchedule?.arrivalScanDates ?? []
+    setArrivalScanRange(
+      savedDates.length > 0
+        ? [savedDates[0], savedDates[savedDates.length - 1]]
+        : [yesterday(), yesterday()],
+    )
     setMentionEnabled(editingSchedule?.mentionEnabled ?? false)
     setShowDriverMap(editingSchedule?.showDriverMap ?? false)
   }, [open, editingSchedule])
@@ -108,7 +125,7 @@ export function DispatchAlarmScheduleDrawer({
       stationCode,
       alertThresholdPct: alertThresholdPct ?? DEFAULT_ALERT_THRESHOLD_PCT,
       pushConfigIds: scopedPushConfigIds,
-      arrivalScanDate,
+      arrivalScanDates: expandDateRange(arrivalScanRange),
       mentionEnabled,
       showDriverMap,
     }
@@ -143,21 +160,30 @@ export function DispatchAlarmScheduleDrawer({
       <div className="space-y-5">
         <FormSection icon={Gauge} title="基础配置">
           <div className="space-y-1">
-            <div className="flex items-center justify-between gap-4">
+            <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
               <div className="flex shrink-0 items-center gap-2">
                 <span className="text-xs font-medium text-slate-500">站点</span>
-                <StationSelect value={stationCode} onChange={setStationCode} disabled={saving} />
+                <StationSelect value={stationCode} onChange={setStationCode} disabled={saving} className="w-[150px]" />
               </div>
-              <div className="flex shrink-0 items-center gap-2">
-                <span className="text-xs font-medium text-slate-500">到件扫描时间</span>
-                <DatePicker
-                  value={dayjs(arrivalScanDate, 'YYYY-MM-DD')}
+              <div className="flex min-w-0 flex-1 items-center justify-end gap-2">
+                <span className="shrink-0 text-xs font-medium text-slate-500">到件扫描时间</span>
+                <DatePicker.RangePicker
+                  className="w-full min-w-0"
+                  value={[dayjs(arrivalScanRange[0], 'YYYY-MM-DD'), dayjs(arrivalScanRange[1], 'YYYY-MM-DD')]}
                   format="YYYY-MM-DD"
+                  inputReadOnly
                   allowClear={false}
                   disabled={saving}
-                  disabledDate={(current) => Boolean(current) && current.format('YYYY-MM-DD') > dayjs().format('YYYY-MM-DD')}
-                  onChange={(val) => {
-                    if (val) setArrivalScanDate(val.format('YYYY-MM-DD'))
+                  disabledDate={(current, info) => {
+                    if (current.isAfter(dayjs().endOf('day'))) return true
+                    // 与后端上限对齐，别等请求打出去才报错
+                    if (info?.from) return Math.abs(current.diff(info.from, 'day')) >= MAX_ARRIVAL_SCAN_DAYS
+                    return false
+                  }}
+                  onChange={(vals) => {
+                    if (vals?.[0] && vals[1]) {
+                      setArrivalScanRange([vals[0].format('YYYY-MM-DD'), vals[1].format('YYYY-MM-DD')])
+                    }
                   }}
                 />
               </div>

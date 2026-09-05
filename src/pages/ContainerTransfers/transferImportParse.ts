@@ -44,8 +44,10 @@ export type TransferImportParseResult =
   | { ok: false; error: string }
 
 export type TransferImportContext = {
-  /** 全部站点账户：转出方与接收方的可选范围一致 */
+  /** 全部站点账户，接收方的可选范围 */
   accounts: ContainerAccount[]
+  /** 本人绑定的站点账户，转出方的可选范围；后端会再校验一次，这里只为在预览阶段就报出来 */
+  fromAccounts: ContainerAccount[]
 }
 
 /** 表头别名：中文列名为主，兼容英文字段名，便于用户自己拼表 */
@@ -144,6 +146,7 @@ function validateRow(
   raw: TransferImportRawRow,
   rawOccurredAt: unknown,
   accountMap: Map<string, ContainerAccount>,
+  fromAccountMap: Map<string, ContainerAccount>,
 ): TransferImportRow {
   const errors: string[] = []
 
@@ -159,12 +162,16 @@ function validateRow(
     )
   }
 
-  const fromAccount = accountMap.get(normalizeName(raw.from))
+  const fromAccount = fromAccountMap.get(normalizeName(raw.from))
   if (!fromAccount) {
+    // 名字本身对得上、只是不归自己管，报「名字核对不上」会让人一直去查错别字
+    const knownButNotMine = accountMap.get(normalizeName(raw.from))
     errors.push(
-      raw.from.trim()
-        ? `转出方「${raw.from}」不在可选站点账户中，请对照模板「${TRANSFER_IMPORT_REF_SHEET}」表核对名字`
-        : '请填写转出方',
+      !raw.from.trim()
+        ? '请填写转出方'
+        : knownButNotMine
+          ? `转出方「${raw.from}」不是你绑定的站点，只能填模板「${TRANSFER_IMPORT_REF_SHEET}」表 A 列里的站点`
+          : `转出方「${raw.from}」不在可选站点账户中，请对照模板「${TRANSFER_IMPORT_REF_SHEET}」表核对名字`,
     )
   }
 
@@ -243,6 +250,7 @@ function parseWorkbook(
   }
 
   const accountMap = buildAccountMap(ctx.accounts)
+  const fromAccountMap = buildAccountMap(ctx.fromAccounts)
 
   const rows: TransferImportRow[] = []
   for (let index = 1; index < matrix.length; index += 1) {
@@ -262,7 +270,7 @@ function parseWorkbook(
     }
     // 整行留空：用户在模板尾部留下的空行，跳过而不是报一堆错
     if (Object.values(raw).every((value) => value.trim() === '')) continue
-    rows.push(validateRow(index + 1, raw, cell('occurredAt'), accountMap))
+    rows.push(validateRow(index + 1, raw, cell('occurredAt'), accountMap, fromAccountMap))
   }
 
   if (rows.length === 0) return { ok: false, error: '表格里没有数据行' }

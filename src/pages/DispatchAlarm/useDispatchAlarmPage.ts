@@ -54,7 +54,7 @@ export function useDispatchAlarmPage() {
         stationCode: schedule.stationCode,
         alertThresholdPct: schedule.alertThresholdPct,
         pushConfigIds: schedule.pushConfigIds,
-        arrivalScanDate: schedule.arrivalScanDate,
+        arrivalScanDates: schedule.arrivalScanDates,
         mentionEnabled: schedule.mentionEnabled,
         showDriverMap: schedule.showDriverMap,
       }

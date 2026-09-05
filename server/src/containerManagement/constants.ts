@@ -52,6 +52,16 @@ export const transferStatusLabel: Record<TransferStatus, string> = {
   VOIDED: '已作废',
 }
 
+/**
+ * 新增流转（表单与 Excel 导入）允许的业务类型，与前端 SELECTABLE_TRANSFER_KINDS 一致。
+ * 其余三种创建时即记账、没有确认环节，只用于展示历史数据，不接受新建。
+ */
+export const SELECTABLE_TRANSFER_KINDS: readonly TransferKind[] = ['LEND', 'RETURN']
+
+export function isSelectableTransferKind(value: unknown): value is TransferKind {
+  return SELECTABLE_TRANSFER_KINDS.includes(value as TransferKind)
+}
+
 /** 借出与归还需接收方确认后双方库存才变动；其余类型创建时即记账 */
 export function transferKindNeedsReceiverConfirmation(kind: TransferKind): boolean {
   return kind === 'LEND' || kind === 'RETURN'

@@ -34,7 +34,7 @@ function colored(value: string, color: MarkColor): string {
   return `<font color='${color}'>${value}</font>`
 }
 
-function columnSet(columns: CardEl[], flexMode: 'bisect' | 'trisect' = 'bisect'): CardEl {
+function columnSet(columns: CardEl[], flexMode: 'none' | 'bisect' | 'trisect' = 'bisect'): CardEl {
   return {
     tag: 'column_set',
     flex_mode: flexMode,
@@ -60,14 +60,12 @@ function summaryTile(label: string, value: string, sub: string, valueColor: Mark
   }
 }
 
-function zoneTile(routeCode: string, pending: number, total: number): CardEl {
+function zoneTile(routeCode: string, pending: number, total: number, priority: number): CardEl {
   const exited = total - pending
   const rate = total > 0 ? ((exited / total) * 100).toFixed(0) : '0'
-  const pendingColor: MarkColor =
-    pending === 0 ? 'green' : pending >= 10 ? 'red' : pending >= 5 ? 'orange' : 'grey'
-  const firstLine = `**${routeCode}** - ${
-    pending === 0 ? colored('✅ All exited', 'green') : colored(`${pending} not exited`, pendingColor)
-  }`
+  // 首行不再报未出仓件数，改报该路由的「本地件优先客户」包裹数——供应商据此优先清这批件
+  const priorityColor: MarkColor = priority === 0 ? 'grey' : priority >= 10 ? 'red' : 'orange'
+  const firstLine = `**${routeCode}** - ${colored(`${priority} Priorities`, priorityColor)}`
   const secondLine = colored(`${exited} / ${total} total · ${rate}%`, 'grey')
   return {
     tag: 'column',
@@ -87,6 +85,10 @@ function emptyCol(): CardEl {
 export type ZoneStats = {
   pending: number
   total: number
+  /** 「本地件优先客户」包裹数（clientCode 命中「优先客户配置」） */
+  priority: number
+  /** 其中已在阈值前出仓的件数 */
+  priorityExited: number
 }
 
 export type WhitelistStat = {
@@ -131,7 +133,7 @@ function buildWhitelistPanel(whitelistStat: WhitelistStat, pushTime: string): Ca
   } else {
     for (let i = 0; i < pendingZones.length; i += 2) {
       const pair = pendingZones.slice(i, i + 2)
-      const cols = pair.map(([code, { pending, total }]) => zoneTile(code, pending, total))
+      const cols = pair.map(([code, { pending, total, priority }]) => zoneTile(code, pending, total, priority))
       if (cols.length === 1) cols.push(emptyCol())
       panelElements.push(columnSet(cols, 'bisect'))
     }
@@ -197,7 +199,6 @@ export function buildExitAlarmCard(params: {
 
   const exited = totalWaybills - totalPending
   const exitRate = totalWaybills > 0 ? ((exited / totalWaybills) * 100).toFixed(1) : '0.0'
-  const exitRateNum = totalWaybills > 0 ? (exited / totalWaybills) * 100 : 0
 
   // 标题行
   elements.push(
@@ -214,16 +215,27 @@ export function buildExitAlarmCard(params: {
 
   elements.push(hr())
 
-  // 汇总 KPI；配置了滞留清货价且有滞留件时，清货费用作为第 3 个磁贴并入同一行
-  const rateColor: MarkColor = exitRateNum >= 80 ? 'green' : exitRateNum >= 60 ? 'orange' : 'red'
+  // 汇总 KPI；配置了滞留清货价且有滞留件时，清货费用并入同一行。
+  // 每块磁贴各占一种色相，避免整行同色分不出块：滞留量=红、出仓率=蓝（中性指标）、
+  // 优先客户=橙、清货费用=灰；数量清零时相应磁贴转绿。与 24H 派签告警卡片同一套配色。
+  // 「本地件优先客户」包裹数按分区明细汇总，口径与 totalWaybills 一致（白名单路由已单列，不在其中）
+  const totalPriority = Object.values(zoneBreakdown).reduce((sum, zone) => sum + zone.priority, 0)
+  const exitedPriority = Object.values(zoneBreakdown).reduce((sum, zone) => sum + zone.priorityExited, 0)
+  const pendingPriority = totalPriority - exitedPriority
   const kpiTiles = [
     summaryTile('Not exited', `${totalPending}`, `${totalWaybills} total`, totalPending > 0 ? 'red' : 'green'),
-    summaryTile('Exit rate', `${exitRate}%`, `${exited} exited on time`, rateColor),
+    summaryTile('Exit rate', `${exitRate}%`, `${exited} exited on time`, 'blue'),
+    summaryTile(
+      'Priority Packages',
+      `${pendingPriority} Not exited`,
+      `${totalPriority} total`,
+      pendingPriority > 0 ? 'orange' : 'green',
+    ),
   ]
   if (clearancePrice && clearancePrice > 0 && totalPending > 0) {
-    kpiTiles.push(summaryTile('Clearance cost', money(totalPending * clearancePrice), '', 'orange'))
+    kpiTiles.push(summaryTile('Clearance cost', money(totalPending * clearancePrice), '', 'grey'))
   }
-  elements.push(columnSet(kpiTiles, kpiTiles.length === 3 ? 'trisect' : 'bisect'))
+  elements.push(columnSet(kpiTiles, kpiTiles.length === 3 ? 'trisect' : 'none'))
 
   elements.push(hr())
 
@@ -236,7 +248,7 @@ export function buildExitAlarmCard(params: {
     elements.push(md(`🚨 **Routes not exited by ${pushTime} (${pendingZones.length})** — Notify drivers now!`))
     for (let i = 0; i < pendingZones.length; i += 2) {
       const pair = pendingZones.slice(i, i + 2)
-      const cols = pair.map(([code, { pending, total }]) => zoneTile(code, pending, total))
+      const cols = pair.map(([code, { pending, total, priority }]) => zoneTile(code, pending, total, priority))
       if (cols.length === 1) cols.push(emptyCol())
       elements.push(columnSet(cols, 'bisect'))
     }

@@ -526,6 +526,20 @@
       "when": 1785700000046,
       "tag": "0074_priority_clients_drop_columns",
       "breakpoints": true
+    },
+    {
+      "idx": 75,
+      "version": "7",
+      "when": 1785700000047,
+      "tag": "0075_waybill_client_code",
+      "breakpoints": true
+    },
+    {
+      "idx": 76,
+      "version": "7",
+      "when": 1785700000048,
+      "tag": "0076_alarm_arrival_scan_dates",
+      "breakpoints": true
     }
   ]
 }

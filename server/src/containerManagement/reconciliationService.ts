@@ -4,7 +4,8 @@
  * 与容器台账是两本账：台账回答「我手上有多少框」，对账回答「谁欠我多少、我欠谁多少」。
  * 数据全部来自流转记录，不需要新表：
  *   - settled_quantity 是实际过账数量的唯一真相源（确认收货写申报量，认可结算写实收量）；
- *   - 已确认的流转不可改也不可删，所以聚合结果稳定，且与台账余额的变动一一对应；
+ *   - 已确认的流转不可改也不可删，只能整单作废：作废后状态转 VOIDED 退出下面的白名单，
+ *     台账那边同时落两条反向冲账流水，两本账仍然一一对应；
  *   - 方向本身就是抵消关系（借出是我→他，归还是他→我），所以不看 kind，加新 kind 也不用改这里。
  *
  * 台账的手工调整（盘点、报废、损耗）不进双边往来 —— 对方把借去的框报废了，他仍然欠我。
@@ -93,7 +94,7 @@ export async function listReconciliation(accountId: string): Promise<Reconciliat
     .where(
       and(
         or(eq(t.fromAccountId, accountId), eq(t.toAccountId, accountId)),
-        // 已取消的不算账
+        // 白名单：已取消（从未入账）与已作废（入账已冲回）都不算账
         inArray(t.status, ['CONFIRMED', 'PENDING_RECEIVER', 'DISPUTED']),
       ),
     )

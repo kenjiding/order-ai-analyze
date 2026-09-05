@@ -18,6 +18,8 @@ const unassignedBucket = (total: number): Dispatch24hDriverStat => ({
   problemCount: 0,
   neverSignedCount: total,
   lateSignedCount: 0,
+  priorityTotal: 0,
+  priorityUnsigned: 0,
   neverSignedWaybills: [],
   lateSignedWaybills: [],
   problemWaybills: [],
@@ -30,6 +32,8 @@ const baseParams = {
   pushTime: '14:45',
   tz: AUS_TZ.Sydney,
   problemCount: 0,
+  priorityTotal: 0,
+  priorityUnsigned: 0,
   alertThresholdPct: 92,
 }
 
@@ -56,4 +60,49 @@ test('真正全部达标时仍显示「全部已签收」', () => {
   )
 
   assert.match(text, /All waybills signed within 24H/)
+})
+
+test('司机行展示「本地件优先客户」包裹数，不再展示问题件数', () => {
+  const driver: Dispatch24hDriverStat = {
+    courierCode: 'D21021044801',
+    courierName: 'TIRTH THAKAR',
+    routeCode: 'R-A',
+    total: 132,
+    met: 131,
+    problemCount: 4,
+    neverSignedCount: 1,
+    lateSignedCount: 0,
+    priorityTotal: 34,
+    priorityUnsigned: 1,
+    neverSignedWaybills: [],
+    lateSignedWaybills: [],
+    problemWaybills: [],
+  }
+  const text = bodyText(
+    buildDispatchAlarmCard({ ...baseParams, total: 132, met: 131, problemCount: 4, drivers: [driver], unassigned: null }),
+  )
+
+  assert.match(text, /TIRTH THAKAR\*\* \(D21021044801\).*1 not signed.*\/ 132 total\. .*34 Priorities/)
+  assert.doesNotMatch(text, /4 problem/)
+})
+
+test('KPI 行用「Priority Packages」磁贴取代问题件磁贴，展示未签收优先件 / 优先件总数', () => {
+  // 磁贴文案嵌在 column_set 里，bodyText 只取顶层 content，这里整卡序列化后断言
+  const text = JSON.stringify(
+    buildDispatchAlarmCard({
+      ...baseParams,
+      total: 900,
+      met: 890,
+      problemCount: 7,
+      priorityTotal: 590,
+      priorityUnsigned: 439,
+      drivers: [],
+      unassigned: null,
+    }),
+  )
+
+  assert.doesNotMatch(text, /Problem parcels/)
+  assert.match(text, /\*\*Priority Packages\*\*/)
+  assert.match(text, /\*\*439 not signed\*\*/)
+  assert.match(text, /590 total/)
 })

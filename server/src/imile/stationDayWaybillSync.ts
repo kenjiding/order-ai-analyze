@@ -71,6 +71,7 @@ type CacheableWaybillPoint = Pick<
   | 'courierName'
   | 'courierCode'
   | 'vendorCode'
+  | 'clientCode'
   | 'consigneeRouteCode'
   | 'lastScanSiteCode'
   | 'stationCode'
@@ -86,6 +87,7 @@ function toCacheRow(row: CacheableWaybillPoint): Dispatch24hWaybillRow {
     courier: row.courierName || undefined,
     courierCode: row.courierCode || undefined,
     courierVendorCode: row.vendorCode || undefined,
+    clientCode: row.clientCode || undefined,
     consigneeRouteCode: row.consigneeRouteCode || undefined,
     lastScanSiteCode: row.lastScanSiteCode || row.stationCode || undefined,
     deliveryTime: row.deliveryTime ?? undefined,
@@ -171,6 +173,7 @@ export async function syncStationDayWaybillsIncremental(input: {
       vendorCode: readText(row, 'courierVendorCode'),
       courierCode: readText(row, 'courierCode'),
       courierName: readText(row, 'courier'),
+      clientCode: readText(row, 'clientCode'),
       dataDate,
       deliveryTime: readText(row, 'deliveryTime') || null,
       signDate,
@@ -207,6 +210,7 @@ export async function syncStationDayWaybillsIncremental(input: {
           vendorCode: sql`excluded.vendor_code`,
           courierCode: sql`excluded.courier_code`,
           courierName: sql`excluded.courier_name`,
+          clientCode: sql`excluded.client_code`,
           deliveryTime: sql`excluded.delivery_time`,
           signDate: sql`excluded.sign_date`,
           lastProblemDate: sql`excluded.last_problem_date`,

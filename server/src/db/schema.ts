@@ -335,8 +335,8 @@ export const exitAlarmSchedules = pgTable('exit_alarm_schedules', {
   mentionEnabled: boolean('mention_enabled').notNull().default(false),
   /** 是否推送白名单路由码的 11 点前出仓数据（附加在同一张卡片里） */
   routeCodeWhitelistPushEnabled: boolean('route_code_whitelist_push_enabled').notNull().default(false),
-  /** 「立刻推送」使用的到件扫描日期 YYYY-MM-DD；为空时按自动计算的最近工作日兜底，不影响自动定时推送 */
-  arrivalScanDate: varchar('arrival_scan_date', { length: 10 }),
+  /** 「立刻推送」使用的到件扫描日期数组 YYYY-MM-DD（可多选，多日数据合并统计）；为空时按自动计算的最近工作日兜底，不影响自动定时推送 */
+  arrivalScanDates: jsonb('arrival_scan_dates').notNull().default([]),
   /** 滞留清货价：找灵活供应商清货时每件的额外补贴（美元）；为空则卡片不展示清货费用 */
   clearancePrice: doublePrecision('clearance_price'),
   /** 定时拉数使用的 iMile token（保存配置时从全局设置同步，不对外返回） */
@@ -434,8 +434,8 @@ export const dispatchAlarmSchedules = pgTable('dispatch_alarm_schedules', {
   mentionEnabled: boolean('mention_enabled').notNull().default(false),
   /** 是否在 24H 派签落地页展示「司机地图」组件 */
   showDriverMap: boolean('show_driver_map').notNull().default(false),
-  /** 「立刻推送」使用的到件扫描日期 YYYY-MM-DD；为空时按自动计算的最近工作日兜底，不影响自动定时推送 */
-  arrivalScanDate: varchar('arrival_scan_date', { length: 10 }),
+  /** 「立刻推送」使用的到件扫描日期数组 YYYY-MM-DD（可多选，多日数据合并统计）；为空时按自动计算的最近工作日兜底，不影响自动定时推送 */
+  arrivalScanDates: jsonb('arrival_scan_dates').notNull().default([]),
   /** 定时拉数使用的 iMile token（保存配置时从全局设置同步，不对外返回） */
   imileToken: varchar('imile_token', { length: 2048 }),
   updatedBy: uuid('updated_by').references(() => users.id, { onDelete: 'set null' }),
@@ -519,6 +519,8 @@ export const driverMapWaybillPoints = pgTable(
     vendorCode: varchar('vendor_code', { length: 64 }).notNull().default(''),
     courierCode: varchar('courier_code', { length: 64 }).notNull().default(''),
     courierName: varchar('courier_name', { length: 255 }).notNull().default(''),
+    /** searchWaybill.clientCode：商家编码，用于匹配「优先客户配置」统计本地件优先客户包裹 */
+    clientCode: varchar('client_code', { length: 64 }).notNull().default(''),
     dataDate: varchar('data_date', { length: 10 }).notNull(),
     deliveryTime: varchar('delivery_time', { length: 32 }),
     signDate: varchar('sign_date', { length: 32 }),
@@ -579,7 +581,8 @@ export const dispatchAlarmShareSnapshots = pgTable(
     vendorCode: varchar('vendor_code', { length: 64 }).notNull(),
     vendorName: varchar('vendor_name', { length: 255 }).notNull(),
     stationCode: varchar('station_code', { length: 64 }).notNull(),
-    date: varchar('date', { length: 10 }).notNull(),
+    /** 到件日；多到件日合并推送时是拼接串（如 2026-08-23 / 2026-08-24） */
+    date: varchar('date', { length: 64 }).notNull(),
     pushTime: varchar('push_time', { length: 8 }).notNull(),
     /** 派签告警门户页展示用完整明细（司机 / 未达标运单号） */
     payload: jsonb('payload').notNull(),

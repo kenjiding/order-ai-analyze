@@ -16,12 +16,25 @@ export function isSuperAdmin(req: AuthenticatedRequest): boolean {
   return req.authUser?.role === SUPER_ADMIN_ROLE
 }
 
-/** 勾上即拥有与超管一致的容器数据可见范围（不含用户管理等超管专属能力） */
+/**
+ * 勾上即拥有与超管一致的容器数据「可见范围」（不含用户管理等超管专属能力）。
+ *
+ * 仅放开读：能看到全部站点的台账与流转，但不能以未绑定的站点名义操作（建流转、确认收货、改台账）。
+ * 判断能不能操作走 resolveActableAccountIds，别复用本权限。
+ */
 export const VIEW_ALL_PERMISSION = 'btn:container:view-all'
 
 export function hasContainerPermission(req: AuthenticatedRequest, permissionKey: string): boolean {
   if (isSuperAdmin(req)) return true
   return req.permissions?.includes(permissionKey) === true
+}
+
+async function listBoundAccountIds(userId: string): Promise<string[]> {
+  const rows = await getDb()
+    .select({ accountId: schema.containerAccountUsers.accountId })
+    .from(schema.containerAccountUsers)
+    .where(eq(schema.containerAccountUsers.userId, userId))
+  return rows.map((row) => row.accountId)
 }
 
 export async function resolveVisibleAccountIds(req: AuthenticatedRequest): Promise<VisibleAccounts> {
@@ -30,17 +43,45 @@ export async function resolveVisibleAccountIds(req: AuthenticatedRequest): Promi
   if (hasContainerPermission(req, VIEW_ALL_PERMISSION)) return null
   const userId = req.authUser?.id
   if (!userId) return []
-  const rows = await getDb()
-    .select({ accountId: schema.containerAccountUsers.accountId })
-    .from(schema.containerAccountUsers)
-    .where(eq(schema.containerAccountUsers.userId, userId))
-  return rows.map((row) => row.accountId)
+  return listBoundAccountIds(userId)
+}
+
+/**
+ * 可以以之操作的账户 id：建流转时的转出方、确认收货、改台账都按这个判。
+ *
+ * 与 resolveVisibleAccountIds 的唯一区别是不认 VIEW_ALL_PERMISSION —— 那是读权限。
+ * 看得到全部站点 ≠ 可以用别人的站点名义记账，两者混用会让读权限悄悄变成写权限。
+ * 外部方（清关行、客户）同样按绑定判：谁负责这个外部方，就把它绑给谁。
+ */
+export async function resolveActableAccountIds(req: AuthenticatedRequest): Promise<VisibleAccounts> {
+  if (isSuperAdmin(req)) return null
+  const userId = req.authUser?.id
+  if (!userId) return []
+  return listBoundAccountIds(userId)
 }
 
 /** 该用户是否可以以此账户的身份操作（创建流转、改台账、确认收货等） */
 export function canActAsAccount(visible: VisibleAccounts, accountId: string): boolean {
   if (visible === null) return true
   return visible.includes(accountId)
+}
+
+/**
+ * 批量校验「转出方是不是自己能操作的站点」，返回第一条错误信息，null = 全部通过。
+ * unitLabel 决定错误前缀：手工表单是「第 N 组」，Excel 导入是「第 N 行」。
+ */
+export function findUnactableFromAccount(
+  actable: VisibleAccounts,
+  items: readonly { fromAccountId: string }[],
+  unitLabel: string,
+): string | null {
+  if (actable === null) return null
+  for (const [index, item] of items.entries()) {
+    if (!canActAsAccount(actable, item.fromAccountId)) {
+      return `第 ${index + 1} ${unitLabel}：无权以该站点作为转出方，请选择自己绑定的站点`
+    }
+  }
+  return null
 }
 
 /** 流转记录的可见性：转出方或接收方任一在可见范围内即可查看 */
@@ -52,7 +93,7 @@ export function canViewTransfer(
   return visible.includes(transfer.fromAccountId) || visible.includes(transfer.toAccountId)
 }
 
-/** 查询已绑定用户的账户 id 集合，用于「接收方」下拉排除自己 */
+/** 查询各账户已绑定的用户 id，用于飞书通知收件人与账户管理页展示 */
 export async function listAccountUserIds(accountIds: string[]): Promise<Map<string, string[]>> {
   const result = new Map<string, string[]>()
   if (accountIds.length === 0) return result

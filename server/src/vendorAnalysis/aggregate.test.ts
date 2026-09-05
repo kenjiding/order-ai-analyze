@@ -98,8 +98,8 @@ test('供应商级：客诉率按站点过滤、11点前/未处理/长尾/归班
     longTailOrders: [{ driverCode: 'C1', driverVendorCode: 'V1', waybillNo: 'L1', driverName: 'Cai' }],
     // 出仓率由业务层从 driverYesterdayWaybills 投影：P1 出仓、P2 未出仓 → 1/2 = 0.5
     driverYesterdayWaybills: [
-      { waybillNo: 'P1', courierCode: 'C1', courierVendorCode: 'V1', courier: 'Cai', consigneeRouteCode: 'R1', before11Exit: true },
-      { waybillNo: 'P2', courierCode: 'C1', courierVendorCode: 'V1', courier: 'Cai', consigneeRouteCode: 'R1', before11Exit: false },
+      { waybillNo: 'P1', courierCode: 'C1', courierVendorCode: 'V1', courier: 'Cai', consigneeRouteCode: 'R1', clientCode: '', before11Exit: true },
+      { waybillNo: 'P2', courierCode: 'C1', courierVendorCode: 'V1', courier: 'Cai', consigneeRouteCode: 'R1', clientCode: '', before11Exit: false },
     ],
     driverReturnRows: [
       { driverCode: 'C1', driverVendorCode: 'V1', ofdDate: '2024-06-01 00:00:00', waybillNo: 'RW1', driverName: 'Cai' },
@@ -134,8 +134,8 @@ test('路由码白名单：11点前出仓/24H派签口径剔除（含未出仓�
       { courierVendorCode: 'V1', consigneeRouteCode: 'R2' },
     ],
     driverYesterdayWaybills: [
-      { waybillNo: 'P1', courierCode: 'C1', courierVendorCode: 'V1', courier: 'Cai', consigneeRouteCode: 'R1', before11Exit: false }, // 命中白名单，但取件量/未出仓不剔除
-      { waybillNo: 'P2', courierCode: 'C1', courierVendorCode: 'V1', courier: 'Cai', consigneeRouteCode: 'R2', before11Exit: false },
+      { waybillNo: 'P1', courierCode: 'C1', courierVendorCode: 'V1', courier: 'Cai', consigneeRouteCode: 'R1', clientCode: '', before11Exit: false }, // 命中白名单，但取件量/未出仓不剔除
+      { waybillNo: 'P2', courierCode: 'C1', courierVendorCode: 'V1', courier: 'Cai', consigneeRouteCode: 'R2', clientCode: '', before11Exit: false },
     ],
     driverDayBeforeWaybills: [
       { waybillNo: 'D1', courierCode: 'C1', courierVendorCode: 'V1', lastScanSiteCode: 'S1', consigneeRouteCode: 'R1', deliveryTime: '2024-06-24 10:00:00', signDate: '2024-06-24 12:00:00' }, // 命中白名单，剔除
@@ -272,8 +272,8 @@ test('同 vendorCode 多家时：客诉/工单无路由码拆不开，各家取�
 test('长尾单/归班预警无路由码，按司机归属落到正确的那一家', () => {
   const input = baseInput({
     driverYesterdayWaybills: [
-      { waybillNo: 'P1', courierCode: 'DC', courierVendorCode: 'SRM01', courier: 'City司机', consigneeRouteCode: 'ADL-C1', before11Exit: true },
-      { waybillNo: 'P2', courierCode: 'DL', courierVendorCode: 'SRM01', courier: 'Lu司机', consigneeRouteCode: 'ADL-L1', before11Exit: true },
+      { waybillNo: 'P1', courierCode: 'DC', courierVendorCode: 'SRM01', courier: 'City司机', consigneeRouteCode: 'ADL-C1', clientCode: '', before11Exit: true },
+      { waybillNo: 'P2', courierCode: 'DL', courierVendorCode: 'SRM01', courier: 'Lu司机', consigneeRouteCode: 'ADL-L1', clientCode: '', before11Exit: true },
     ],
     longTailOrders: [
       { driverCode: 'DC', driverVendorCode: 'SRM01', waybillNo: 'L1', driverName: 'City司机' },

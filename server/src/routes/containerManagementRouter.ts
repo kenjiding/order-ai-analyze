@@ -4,7 +4,9 @@ import type { AuthenticatedRequest } from '../auth/middleware'
 import {
   canActAsAccount,
   canViewTransfer,
+  findUnactableFromAccount,
   hasContainerPermission,
+  resolveActableAccountIds,
   resolveVisibleAccountIds,
   type VisibleAccounts,
 } from '../containerManagement/access'
@@ -34,7 +36,7 @@ import {
   isAccountKind,
   isContainerType,
   isManualBalanceReasonType,
-  isTransferKind,
+  isSelectableTransferKind,
   isTransferStatus,
   type AccountKind,
   type BalanceReasonType,
@@ -151,7 +153,7 @@ function parseTransferCreateItems(rawItems: unknown[], unitLabel: string): Trans
       occurredAt?: unknown
       note?: unknown
     }
-    if (!isTransferKind(item.kind)) return `${at}业务类型不合法`
+    if (!isSelectableTransferKind(item.kind)) return `${at}业务类型不合法`
     const fromAccountId = String(item.fromAccountId ?? '').trim()
     const toAccountId = String(item.toAccountId ?? '').trim()
     if (!fromAccountId) return `${at}请选择转出方`
@@ -171,15 +173,35 @@ function parseTransferCreateItems(rawItems: unknown[], unitLabel: string): Trans
   return parsed
 }
 
+/**
+ * 转出方只能是本人绑定的站点账户（超管不限），返回错误信息即拒绝。
+ *
+ * 外部方（清关行、客户）同样按绑定判：它们的归还单由负责该外部方的人代录，
+ * 而不是「任何内部人员都能代录」——外部方转出不校验余额，放开等于开了一个无上限的入账口。
+ */
+async function assertCanActAsFrom(
+  req: AuthenticatedRequest,
+  items: TransferCreateInput[],
+  unitLabel: string,
+): Promise<string | null> {
+  return findUnactableFromAccount(await resolveActableAccountIds(req), items, unitLabel)
+}
+
 // ---------------------------------------------------------------- 站点账户
 
 containerManagementRouter.get('/accounts', async (req: AuthenticatedRequest, res) => {
   try {
     // scope=manage：站点账户维护页。改名/删除本就是全局的（只认 MANAGE_ACCOUNTS），
     // 列表若仍按绑定过滤，会出现「列表空却提示已存在同名」的矛盾，故此处读写范围保持一致。
-    const manageScope =
-      String(req.query.scope ?? '') === 'manage' && hasContainerPermission(req, MANAGE_ACCOUNTS)
-    const visible = manageScope ? null : await resolveVisibleAccountIds(req)
+    const scope = String(req.query.scope ?? '')
+    const manageScope = scope === 'manage' && hasContainerPermission(req, MANAGE_ACCOUNTS)
+    // scope=actable：新增流转的「转出方」下拉。可见范围会被 view-all 放大到全部站点，
+    // 但那是读权限，拿它当转出方候选等于谁都能以任意站点名义记账，所以这里只认真实绑定。
+    const visible = manageScope
+      ? null
+      : scope === 'actable'
+        ? await resolveActableAccountIds(req)
+        : await resolveVisibleAccountIds(req)
     const counterparty = String(req.query.counterparty ?? '') === '1'
     res.json({ ok: true, data: await listAccounts(visible, counterparty) })
   } catch (error) {
@@ -483,8 +505,8 @@ containerManagementRouter.post('/transfers', async (req: AuthenticatedRequest, r
   if (typeof parsed === 'string') return fail(res, 400, parsed)
 
   try {
-    // 转出方不限于自己绑定的站点：谁都可能替别的站点补录。记录建好后能不能看、
-    // 能不能确认收货，仍按各自的可见范围判。
+    const denied = await assertCanActAsFrom(req, parsed, '组')
+    if (denied) return fail(res, 403, denied)
     const ids = await createTransfersBatch(parsed, req.authUser?.id ?? null, '组')
     const created = (await Promise.all(ids.map((id) => getTransfer(id)))).filter(
       (item): item is NonNullable<typeof item> => item !== null,
@@ -513,6 +535,8 @@ containerManagementRouter.post('/transfers/import', async (req: AuthenticatedReq
   if (typeof parsed === 'string') return fail(res, 400, parsed)
 
   try {
+    const denied = await assertCanActAsFrom(req, parsed, '行')
+    if (denied) return fail(res, 403, denied)
     const ids = await createTransfersBatch(parsed, req.authUser?.id ?? null, '行')
     res.status(201).json({ ok: true, data: { created: ids.length } })
     fireTransferBatchNotifyByIds(req, ids)
@@ -538,11 +562,14 @@ async function loadTransferWithRole(
     return null
   }
   const visible = await resolveVisibleAccountIds(req)
+  // 'any' 是只读时间线，按可见范围；'from'/'to' 会改账，必须按真实绑定，
+  // 否则 btn:container:view-all 这个读权限就能替任意站点确认收货。
+  const actable = role === 'any' ? visible : await resolveActableAccountIds(req)
   const allowed =
     role === 'from'
-      ? canActAsAccount(visible, transfer.fromAccountId)
+      ? canActAsAccount(actable, transfer.fromAccountId)
       : role === 'to'
-        ? canActAsAccount(visible, transfer.toAccountId)
+        ? canActAsAccount(actable, transfer.toAccountId)
         : canViewTransfer(visible, transfer)
   if (!allowed) {
     fail(

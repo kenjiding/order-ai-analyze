@@ -134,7 +134,7 @@ export function useContainerTransfersPage() {
   /** 与原系统一致：「查看记录」只看时间线，「协商」才有操作表单，两个抽屉分开 */
   const [drawer, setDrawer] = useState<'timeline' | 'negotiate' | null>(null)
 
-  /** 所有可选站点（转出方 + 接收方去重），用于筛选与展示 */
+  /** 全部站点（含未绑定的），用于筛选栏、表格展示与接收方下拉；转出方另按 ownAccounts */
   const allAccounts = useMemo(() => {
     const map = new Map<string, ContainerAccount>()
     for (const account of [...ownAccounts, ...counterparties]) map.set(account.id, account)
@@ -148,8 +148,13 @@ export function useContainerTransfersPage() {
     [isSuperAdmin, ownAccountIds],
   )
 
+  // ownAccounts 走 scope=actable：转出方与「能不能确认收货」都按真实绑定判，
+  // 不能用可见范围——btn:container:view-all 会把它放大到全部站点，那只是读权限。
   const loadAccounts = useCallback(async () => {
-    const [own, others] = await Promise.all([fetchAccounts(false), fetchAccounts(true)])
+    const [own, others] = await Promise.all([
+      fetchAccounts(false, 'actable'),
+      fetchAccounts(true),
+    ])
     if (own.ok) setOwnAccounts(own.data)
     if (others.ok) setCounterparties(others.data)
   }, [])
@@ -354,14 +359,14 @@ export function useContainerTransfersPage() {
   const downloadImportTemplate = useCallback(async () => {
     setTemplateDownloading(true)
     try {
-      await downloadTransferImportTemplate(allAccounts)
+      await downloadTransferImportTemplate(ownAccounts, allAccounts)
     } catch (error) {
       console.error('[container-transfer-import] 模板生成失败', error)
       showToast('模板生成失败，请重试', 'error')
     } finally {
       setTemplateDownloading(false)
     }
-  }, [allAccounts])
+  }, [ownAccounts, allAccounts])
 
   /** Excel 批量导入：整批一个事务，行已在前端逐条校验过，这里只处理后端返回 */
   const submitImport = useCallback(

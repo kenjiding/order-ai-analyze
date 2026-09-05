@@ -31,8 +31,8 @@ export type ExitAlarmScheduleDraft = {
   mentionEnabled: boolean
   /** 是否推送白名单路由码的 11 点前出仓数据 */
   routeCodeWhitelistPushEnabled: boolean
-  /** 「立刻推送」使用的到件扫描日期 YYYY-MM-DD；为空时按自动计算的最近工作日兜底，不影响自动定时推送 */
-  arrivalScanDate: string | null
+  /** 「立刻推送」使用的到件扫描日期 YYYY-MM-DD，可多选（多日数据合并统计）；为空时按自动计算的最近工作日兜底，不影响自动定时推送 */
+  arrivalScanDates: string[]
   /** 滞留清货价：每件清货补贴（美元）；填写后飞书卡片展示「未出仓件数 × 单价」的清货费用，为空则不展示 */
   clearancePrice: number | null
 }

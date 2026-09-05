@@ -4,7 +4,7 @@
  * 站点名手打极易对不上后端的账户 id，所以「业务类型 / 转出方 / 接收方」三列用 Excel 原生
  * 数据验证做成下拉，取值写在单独的「站点账户」表里再跨表引用 —— 站点名可能含逗号，
  * 内联列表（"A,B,C"）会被 Excel 拆错，只有引用区域是安全的。
- * 转出方与接收方可选范围一致（都是全部站点），所以名单只出一列。
+ * 转出方只能是本人绑定的站点，接收方是全部站点，两者范围不同，所以名单出两列。
  */
 import type ExcelJS from 'exceljs'
 import dayjs from 'dayjs'
@@ -40,7 +40,10 @@ const HEADER_FILL: ExcelJS.Fill = {
 }
 
 /** exceljs 只在点「下载模板」时才用得上，动态加载避免拖累页面首包 */
-async function buildWorkbook(accounts: ContainerAccount[]): Promise<ExcelJS.Workbook> {
+async function buildWorkbook(
+  fromAccounts: ContainerAccount[],
+  toAccounts: ContainerAccount[],
+): Promise<ExcelJS.Workbook> {
   const { default: ExcelJSModule } = await import('exceljs')
   const workbook = new ExcelJSModule.Workbook()
   workbook.creator = '容器管理'
@@ -67,16 +70,26 @@ async function buildWorkbook(accounts: ContainerAccount[]): Promise<ExcelJS.Work
   })
   headerRow.commit()
 
-  // 取值表：A 列一份站点名单，转出方与接收方共用
+  // 取值表：A 列转出方（本人绑定的站点），B 列接收方（全部站点）
   const refSheet = workbook.addWorksheet(TRANSFER_IMPORT_REF_SHEET)
-  refSheet.columns = [{ width: 24 }]
-  const titleCell = refSheet.getCell('A1')
-  titleCell.value = '可选站点'
-  titleCell.font = { bold: true }
-  titleCell.fill = HEADER_FILL
-  const sorted = [...accounts].sort((a, b) => a.name.localeCompare(b.name, 'zh-CN'))
-  sorted.forEach((account, index) => {
-    refSheet.getCell(index + 2, 1).value = account.name
+  refSheet.columns = [{ width: 24 }, { width: 24 }]
+  const byName = (list: ContainerAccount[]) =>
+    [...list].sort((a, b) => a.name.localeCompare(b.name, 'zh-CN'))
+  const sortedFrom = byName(fromAccounts)
+  const sortedTo = byName(toAccounts)
+  ;(
+    [
+      [1, '可选转出方', sortedFrom],
+      [2, '可选接收方', sortedTo],
+    ] as const
+  ).forEach(([column, title, list]) => {
+    const titleCell = refSheet.getCell(1, column)
+    titleCell.value = title
+    titleCell.font = { bold: true }
+    titleCell.fill = HEADER_FILL
+    list.forEach((account, index) => {
+      refSheet.getCell(index + 2, column).value = account.name
+    })
   })
 
   const kindList = SELECTABLE_TRANSFER_KINDS.map((kind) => transferKindLabel[kind]).join(',')
@@ -85,8 +98,10 @@ async function buildWorkbook(accounts: ContainerAccount[]): Promise<ExcelJS.Work
    * 出现几百个空白项：列表拖不动、Excel 的输入自动补全也会被空白项打断。
    * 名单为空时不设验证，A2:A1 是非法区域，Excel 会判文件损坏。
    */
-  const accountRange =
-    sorted.length > 0 ? `=${TRANSFER_IMPORT_REF_SHEET}!$A$2:$A$${sorted.length + 1}` : ''
+  const rangeOf = (columnLetter: string, size: number) =>
+    size > 0 ? `=${TRANSFER_IMPORT_REF_SHEET}!$${columnLetter}$2:$${columnLetter}$${size + 1}` : ''
+  const fromRange = rangeOf('A', sortedFrom.length)
+  const toRange = rangeOf('B', sortedTo.length)
 
   for (let row = 2; row <= VALIDATION_ROWS + 1; row += 1) {
     sheet.getCell(row, 1).numFmt = 'yyyy-mm-dd'
@@ -104,14 +119,16 @@ async function buildWorkbook(accounts: ContainerAccount[]): Promise<ExcelJS.Work
      * 站点列不拦手打。Excel 原生下拉固定只显示 8 行、没有搜索，站点几十个时滚起来很痛苦，
      * 强制走下拉等于把人锁死在这个交互里；名字打错有上传预览逐行报错兜底。
      */
-    if (accountRange) {
-      for (const column of [3, 4]) {
-        sheet.getCell(row, column).dataValidation = {
-          type: 'list',
-          allowBlank: true,
-          formulae: [accountRange],
-          showErrorMessage: false,
-        }
+    for (const [column, range] of [
+      [3, fromRange],
+      [4, toRange],
+    ] as const) {
+      if (!range) continue
+      sheet.getCell(row, column).dataValidation = {
+        type: 'list',
+        allowBlank: true,
+        formulae: [range],
+        showErrorMessage: false,
       }
     }
   }
@@ -125,6 +142,7 @@ async function buildWorkbook(accounts: ContainerAccount[]): Promise<ExcelJS.Work
     '「大蓝筐数量」「银筐数量」至少填一个；留空表示这条记录不含该品类；填了必须是大于 0 的整数。',
     '「业务类型」点单元格右侧的下拉箭头选择。',
     `「转出方」「接收方」可以用下拉选，站点多时更快的做法是从「${TRANSFER_IMPORT_REF_SHEET}」表复制名字粘过来，或直接手打（忽略空格与大小写，其余要和名单完全一致）。`,
+    '「转出方」只能填你自己绑定的站点（见取值表 A 列），填了别的站点整批会被拒；「接收方」不限（B 列）。',
     '站点名对不上系统账户不会丢数据，上传后的预览会逐行指出来，改完再传即可。',
     '「日期」格式 YYYY-MM-DD，例如 2026-08-27；留空则按当天算。',
     '「备注」可填车牌、运单号等，最长 2000 字。',
@@ -146,16 +164,18 @@ async function buildWorkbook(accounts: ContainerAccount[]): Promise<ExcelJS.Work
 
 /** 导出给测试/校验用：拿到 buffer 而不落盘 */
 export async function buildTransferImportTemplateBuffer(
-  accounts: ContainerAccount[],
+  fromAccounts: ContainerAccount[],
+  toAccounts: ContainerAccount[],
 ): Promise<ArrayBuffer> {
-  const workbook = await buildWorkbook(accounts)
+  const workbook = await buildWorkbook(fromAccounts, toAccounts)
   return (await workbook.xlsx.writeBuffer()) as ArrayBuffer
 }
 
 export async function downloadTransferImportTemplate(
-  accounts: ContainerAccount[],
+  fromAccounts: ContainerAccount[],
+  toAccounts: ContainerAccount[],
 ): Promise<void> {
-  const buffer = await buildTransferImportTemplateBuffer(accounts)
+  const buffer = await buildTransferImportTemplateBuffer(fromAccounts, toAccounts)
   const blob = new Blob([buffer], {
     type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
   })

@@ -30,7 +30,7 @@ type ScheduleBody = {
   stationCode?: unknown
   alertThresholdPct?: unknown
   pushConfigIds?: unknown
-  arrivalScanDate?: unknown
+  arrivalScanDates?: unknown
   mentionEnabled?: unknown
   showDriverMap?: unknown
   imileToken?: unknown
@@ -46,8 +46,8 @@ type PublicDispatchAlarmSchedule = {
   pushConfigIds: string[]
   mentionEnabled: boolean
   showDriverMap: boolean
-  /** 「立刻推送」使用的到件扫描日期 YYYY-MM-DD；为空时按自动计算的最近工作日兜底 */
-  arrivalScanDate: string | null
+  /** 「立刻推送」使用的到件扫描日期 YYYY-MM-DD，可多选；为空时按自动计算的最近工作日兜底 */
+  arrivalScanDates: string[]
   /** 拥有该配置的账号所属州/区域，决定 pushTimes/weekdays 按哪个时区判断；只读，随账号信息变化 */
   regionCode: string | null
   updatedAt: Date
@@ -61,15 +61,21 @@ function normalizeAlertThresholdPct(raw: unknown): number {
 }
 
 const DATE_STR_RE = /^\d{4}-\d{2}-\d{2}$/
+/** 「立刻推送」到件扫描日期的多选上限：每多一天就多一轮 iMile 拉数，避免一次点击拖垮接口 */
+const MAX_ARRIVAL_SCAN_DATES = 7
 
-function normalizeArrivalScanDate(raw: unknown): string | null {
-  const s = typeof raw === 'string' ? raw.trim() : ''
-  return DATE_STR_RE.test(s) ? s : null
+/** 到件扫描日期：去重排序后返回，非法值直接丢弃 */
+function normalizeArrivalScanDates(raw: unknown): string[] {
+  const list = Array.isArray(raw) ? raw : []
+  const valid = list.map((v) => (typeof v === 'string' ? v.trim() : '')).filter((v) => DATE_STR_RE.test(v))
+  return [...new Set(valid)].sort()
 }
 
-/** 当天到件也可能已开始派签，允许选今天，只挡未来日期 */
-function isArrivalScanDateNotFuture(dateStr: string, regionCode: string | null | undefined): boolean {
-  return dateStr <= getRegionNow(resolveRegionTz(regionCode)).dateStr
+/** 当天到件也可能已开始派签，允许选今天，只挡未来日期；同时限制天数上限 */
+function validateArrivalScanDates(dates: string[], regionCode: string | null | undefined): string | null {
+  if (dates.length > MAX_ARRIVAL_SCAN_DATES) return `到件扫描时间最多选择 ${MAX_ARRIVAL_SCAN_DATES} 天`
+  const today = getRegionNow(resolveRegionTz(regionCode)).dateStr
+  return dates.some((d) => d > today) ? '到件扫描时间不能选今天之后的日期' : null
 }
 
 async function toPublicSchedule(
@@ -86,7 +92,7 @@ async function toPublicSchedule(
     pushConfigIds: parsePushConfigIds(row.pushConfigIds),
     mentionEnabled: row.mentionEnabled,
     showDriverMap: row.showDriverMap,
-    arrivalScanDate: row.arrivalScanDate ?? null,
+    arrivalScanDates: (row.arrivalScanDates as string[] | null) ?? [],
     regionCode,
     updatedAt: row.updatedAt,
     hasImileToken: await hasDispatchAlarmImileToken(row),
@@ -114,7 +120,7 @@ function extractScheduleFields(body: ScheduleBody) {
     stationCode: typeof body.stationCode === 'string' ? body.stationCode.trim() : '',
     alertThresholdPct: normalizeAlertThresholdPct(body.alertThresholdPct),
     pushConfigIds: parsePushConfigIds(body.pushConfigIds),
-    arrivalScanDate: normalizeArrivalScanDate(body.arrivalScanDate),
+    arrivalScanDates: normalizeArrivalScanDates(body.arrivalScanDates),
     mentionEnabled: body.mentionEnabled === true,
     showDriverMap: body.showDriverMap === true,
   }
@@ -156,8 +162,9 @@ dispatchAlarmRouter.post('/schedules', async (req: AuthenticatedRequest, res: Re
     res.status(400).json({ ok: false, error: '缺少必填字段: stationCode' })
     return
   }
-  if (fields.arrivalScanDate && !isArrivalScanDateNotFuture(fields.arrivalScanDate, req.authUser?.regionCode)) {
-    res.status(400).json({ ok: false, error: '到件扫描时间不能选今天之后的日期' })
+  const arrivalScanDateError = validateArrivalScanDates(fields.arrivalScanDates, req.authUser?.regionCode)
+  if (arrivalScanDateError) {
+    res.status(400).json({ ok: false, error: arrivalScanDateError })
     return
   }
 
@@ -194,7 +201,7 @@ dispatchAlarmRouter.post('/schedules', async (req: AuthenticatedRequest, res: Re
         stationCode: fields.stationCode,
         alertThresholdPct: fields.alertThresholdPct,
         pushConfigIds: fields.pushConfigIds,
-        arrivalScanDate: fields.arrivalScanDate,
+        arrivalScanDates: fields.arrivalScanDates,
         mentionEnabled: fields.mentionEnabled,
         showDriverMap: fields.showDriverMap,
         imileToken: nextImileToken ? normalizeImileToken(nextImileToken) : null,
@@ -223,8 +230,9 @@ dispatchAlarmRouter.put('/schedules/:id', async (req: AuthenticatedRequest, res:
     res.status(400).json({ ok: false, error: '缺少必填字段: stationCode' })
     return
   }
-  if (fields.arrivalScanDate && !isArrivalScanDateNotFuture(fields.arrivalScanDate, req.authUser?.regionCode)) {
-    res.status(400).json({ ok: false, error: '到件扫描时间不能选今天之后的日期' })
+  const arrivalScanDateError = validateArrivalScanDates(fields.arrivalScanDates, req.authUser?.regionCode)
+  if (arrivalScanDateError) {
+    res.status(400).json({ ok: false, error: arrivalScanDateError })
     return
   }
 
@@ -267,7 +275,7 @@ dispatchAlarmRouter.put('/schedules/:id', async (req: AuthenticatedRequest, res:
         stationCode: fields.stationCode,
         alertThresholdPct: fields.alertThresholdPct,
         pushConfigIds: fields.pushConfigIds,
-        arrivalScanDate: fields.arrivalScanDate,
+        arrivalScanDates: fields.arrivalScanDates,
         mentionEnabled: fields.mentionEnabled,
         showDriverMap: fields.showDriverMap,
         ...(nextImileToken ? { imileToken: normalizeImileToken(nextImileToken) } : {}),
@@ -347,13 +355,14 @@ dispatchAlarmRouter.post('/schedules/:id/push-now', async (req: AuthenticatedReq
 
     const tz = resolveRegionTz(req.authUser?.regionCode)
     const { prevDateStr, timeHHmm: pushTime } = getRegionNow(tz)
-    // 已保存到件扫描日期则按该日期拉数（用户手动指定，不做工作日兜底）；否则沿用自动计算的最近工作日
-    const date = schedule.arrivalScanDate?.trim() || lastSortingWorkdayOnOrBefore(prevDateStr)
+    // 已保存到件扫描日期则按这些日期逐日拉数合并（用户手动指定，不做工作日兜底）；否则沿用自动计算的最近工作日
+    const savedDates = (schedule.arrivalScanDates as string[] | null) ?? []
+    const dates = savedDates.length > 0 ? savedDates : [lastSortingWorkdayOnOrBefore(prevDateStr)]
 
     const result = await executeDispatchAlarmPush({
       token,
       stationCode,
-      date,
+      dates,
       pushTime,
       alertThresholdPct: schedule.alertThresholdPct,
       configs,

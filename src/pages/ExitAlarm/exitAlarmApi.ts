@@ -71,7 +71,8 @@ export type ExitAlarmPushNowResult = {
   totalConfigs: number
   errors: string[]
   stationCode: string
-  date: string
+  /** 本次统计的到件日列表（可多日合并） */
+  dates: string[]
   /** 各供应商本次推送中未在阈值前出仓（未达标）的运单号，供导出 Excel */
   unqualifiedByVendor: {
     vendorName: string

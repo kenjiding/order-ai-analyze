@@ -16,6 +16,7 @@ import {
   supplierDisplayName,
 } from '../supplierPushConfigs'
 import { buildConfigScope } from '../vendorAnalysis/supplierScope'
+import { loadPriorityClientCodes } from '../priorityClients'
 import {
   aggregateDispatch24hByScopes,
   resolveDispatch24hWindowRule,
@@ -66,7 +67,8 @@ export type DispatchAlarmPushResult = {
   totalConfigs: number
   errors: string[]
   stationCode: string
-  date: string
+  /** 本次统计的到件日列表（可多日合并） */
+  dates: string[]
 }
 
 /**
@@ -77,8 +79,8 @@ export type DispatchAlarmPushResult = {
 export async function executeDispatchAlarmPush(params: {
   token: string
   stationCode: string
-  /** 前一日日期 YYYY-MM-DD */
-  date: string
+  /** 到件日 YYYY-MM-DD，可多日；多日按运单号去重合并，每行沿用自己那天的 24H 窗口口径 */
+  dates: string[]
   pushTime: string
   alertThresholdPct: number
   configs: FleetSupplierPushConfig[]
@@ -101,7 +103,7 @@ export async function executeDispatchAlarmPush(params: {
   const {
     token,
     stationCode,
-    date,
+    dates,
     pushTime,
     alertThresholdPct,
     configs,
@@ -113,13 +115,26 @@ export async function executeDispatchAlarmPush(params: {
     perConfigDedupe,
   } = params
 
-  const result = await fetchDriverWaybills(token, { stationCode, dateStr: date, regionCode })
-  if (!result.ok) {
-    console.error(`${label} 运单查询失败: ${result.message}`)
-    return { error: `运单查询失败: ${result.message}` }
+  if (dates.length === 0) return { error: '未指定到件扫描日期' }
+
+  // 多到件日：逐日拉数，每行带上自己那天的窗口规则（周五/周末批次是固定截止，不能整批共用一个规则），
+  // 再按运单号去重合并（同一单出现在多天索引时以较早到件日的批次为准）
+  const rowByWaybillNo = new Map<string, Dispatch24hWaybillRow>()
+  for (const dateStr of dates) {
+    const result = await fetchDriverWaybills(token, { stationCode, dateStr, regionCode })
+    if (!result.ok) {
+      console.error(`${label} 到件日 ${dateStr} 运单查询失败: ${result.message}`)
+      return { error: `到件日 ${dateStr} 运单查询失败: ${result.message}` }
+    }
+    const windowRule = resolveDispatch24hWindowRule(dateStr, tz)
+    for (const row of result.data as Dispatch24hWaybillRow[]) {
+      const key = row.waybillNo?.trim() || `__idx_${rowByWaybillNo.size}`
+      if (!rowByWaybillNo.has(key)) rowByWaybillNo.set(key, { ...row, windowRule })
+    }
   }
 
-  const rows = result.data as Dispatch24hWaybillRow[]
+  const rows = [...rowByWaybillNo.values()]
+  const dateLabel = dates.join(' / ')
   let pushedCount = 0
   const errors: string[] = []
 
@@ -129,9 +144,17 @@ export async function executeDispatchAlarmPush(params: {
   // 未选供应商的配置（vendorCode 为空）走纯路由码口径，由 buildConfigScope 统一判定
   const scopes: Dispatch24hScope[] = configs.map((config) => buildConfigScope(config.id, config))
   const scopeByConfigId = new Map(scopes.map((scope) => [scope.key, scope]))
-  // 窗口规则按到件日定；date 即本次拉数的到件扫描日
-  const rule = resolveDispatch24hWindowRule(date, tz)
-  const statsByConfigId = aggregateDispatch24hByScopes({ rows, stationCodes: [stationCode], rule, scopes })
+  // 兜底规则（每行已带 windowRule，实际不会用到）：取第一个到件日
+  const rule = resolveDispatch24hWindowRule(dates[0], tz)
+  // 「本地件优先客户」名单来自「优先客户配置」页面，每次推送读一次即可（配置量小）
+  const priorityClientCodes = await loadPriorityClientCodes()
+  const statsByConfigId = aggregateDispatch24hByScopes({
+    rows,
+    stationCodes: [stationCode],
+    rule,
+    scopes,
+    priorityClientCodes,
+  })
 
   for (const config of configs) {
     const stat = statsByConfigId.get(config.id)
@@ -159,7 +182,7 @@ export async function executeDispatchAlarmPush(params: {
               routeCodeWhitelist: [...(scopeByConfigId.get(config.id)?.routeCodeWhitelist ?? [])],
               vendorName,
               stationCode,
-              date,
+              date: dateLabel,
               pushTime,
               total: stat.total,
               met: stat.met,
@@ -175,12 +198,14 @@ export async function executeDispatchAlarmPush(params: {
       const card = buildDispatchAlarmCard({
         vendorName,
         stationCode,
-        date,
+        date: dateLabel,
         pushTime,
         tz,
         total: stat.total,
         met: stat.met,
         problemCount: stat.problemCount,
+        priorityTotal: stat.priorityTotal,
+        priorityUnsigned: stat.priorityUnsigned,
         drivers: stat.drivers,
         unassigned: stat.unassigned,
         alertThresholdPct,
@@ -205,7 +230,7 @@ export async function executeDispatchAlarmPush(params: {
     }
   }
 
-  return { pushedCount, totalConfigs: configs.length, errors, stationCode, date }
+  return { pushedCount, totalConfigs: configs.length, errors, stationCode, dates }
 }
 
 /** worker 启动时检查定时推送前置条件，便于排查「配置了但不执行」 */
@@ -292,7 +317,7 @@ async function runOneScheduledPush(schedule: DispatchAlarmSchedule, regionCode: 
     const result = await executeDispatchAlarmPush({
       token,
       stationCode,
-      date: targetDate,
+      dates: [targetDate],
       pushTime: timeHHmm,
       alertThresholdPct: schedule.alertThresholdPct,
       configs,

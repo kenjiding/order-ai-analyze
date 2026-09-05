@@ -26,8 +26,9 @@ const MAX_GROUPS = 20
 type Props = {
   open: boolean
   editing: Transfer | null
+  /** 转出方下拉的取值：本人绑定的站点，内部仓库与外部方一视同仁（外部方归还由负责它的人代录） */
   ownAccounts: ContainerAccount[]
-  /** 转出方下拉的取值：自己绑定的站点 + 外部方（外部方归还的单子由内部人员代录） */
+  /** 接收方下拉的取值：全部站点 */
   counterparties: ContainerAccount[]
   allAccounts: ContainerAccount[]
   submitting: boolean
@@ -150,14 +151,12 @@ export function TransferFormModal({
     await onSubmit(drafts.map((draft) => ({ ...draft, lines: filledLines(draft) })))
   }
 
-  const fromOptions = allAccounts.map((account) => ({
+  // 编辑时双方站点不可改，直接用全量保证能显示出原值；新增时转出方只给自己绑定的站点
+  const fromOptions = (isEditing ? allAccounts : ownAccounts).map((account) => ({
     value: account.id,
     label: account.name,
   }))
-  const toOptions = (isEditing ? allAccounts : counterparties).map((account) => ({
-    value: account.id,
-    label: account.name,
-  }))
+  const toAccountPool = isEditing ? allAccounts : counterparties
 
   return (
     <Modal
@@ -256,8 +255,14 @@ export function TransferFormModal({
                   showSearch
                   optionFilterProp="label"
                   value={draft.fromAccountId || undefined}
-                  disabled={isEditing || allAccounts.length <= 1}
-                  onChange={(value) => update(index, { fromAccountId: value })}
+                  disabled={isEditing || fromOptions.length <= 1}
+                  onChange={(value) =>
+                    // 接收方若正好是新选的转出方，留着会是个不在选项里的悬空值，直接清掉
+                    update(index, {
+                      fromAccountId: value,
+                      ...(draft.toAccountId === value ? { toAccountId: '' } : {}),
+                    })
+                  }
                   options={fromOptions}
                 />
               </label>
@@ -272,7 +277,9 @@ export function TransferFormModal({
                   value={draft.toAccountId || undefined}
                   disabled={isEditing}
                   onChange={(value) => update(index, { toAccountId: value })}
-                  options={toOptions}
+                  options={toAccountPool
+                    .filter((account) => account.id !== draft.fromAccountId)
+                    .map((account) => ({ value: account.id, label: account.name }))}
                 />
               </label>
               <div className="flex flex-col gap-1.5 sm:col-span-2">

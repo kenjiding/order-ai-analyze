@@ -58,7 +58,7 @@ export function useExitAlarmPage() {
         pushConfigIds: schedule.pushConfigIds,
         mentionEnabled: schedule.mentionEnabled,
         routeCodeWhitelistPushEnabled: schedule.routeCodeWhitelistPushEnabled,
-        arrivalScanDate: schedule.arrivalScanDate,
+        arrivalScanDates: schedule.arrivalScanDates,
         clearancePrice: schedule.clearancePrice,
       }
       return crud.toggleEnabled(schedule, draft, imileToken)
@@ -82,7 +82,8 @@ export function useExitAlarmPage() {
         showToast(`推送失败: ${res.error}`, 'error')
         return
       }
-      const { pushedCount, totalConfigs, errors, date } = res.data
+      const { pushedCount, totalConfigs, errors, dates } = res.data
+      const date = dates.join(' / ')
       setPushResults((prev) => ({ ...prev, [schedule.id]: res.data }))
       if (errors.length > 0) {
         showToast(

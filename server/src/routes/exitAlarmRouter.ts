@@ -27,7 +27,7 @@ type ScheduleBody = {
   pushConfigIds?: unknown
   mentionEnabled?: unknown
   routeCodeWhitelistPushEnabled?: unknown
-  arrivalScanDate?: unknown
+  arrivalScanDates?: unknown
   clearancePrice?: unknown
   imileToken?: unknown
 }
@@ -41,8 +41,8 @@ type PublicExitAlarmSchedule = {
   pushConfigIds: string[]
   mentionEnabled: boolean
   routeCodeWhitelistPushEnabled: boolean
-  /** 「立刻推送」使用的到件扫描日期 YYYY-MM-DD；为空时按自动计算的最近工作日兜底 */
-  arrivalScanDate: string | null
+  /** 「立刻推送」使用的到件扫描日期 YYYY-MM-DD，可多选；为空时按自动计算的最近工作日兜底 */
+  arrivalScanDates: string[]
   /** 滞留清货价：每件清货补贴（美元），为空表示不推送清货费用 */
   clearancePrice: number | null
   /** 拥有该配置的账号所属州/区域，决定 pushTimes/weekdays 按哪个时区判断；只读，随账号信息变化 */
@@ -52,6 +52,8 @@ type PublicExitAlarmSchedule = {
 }
 
 const DATE_STR_RE = /^\d{4}-\d{2}-\d{2}$/
+/** 「立刻推送」到件扫描日期的多选上限：每多一天就多一轮 iMile 拉数，避免一次点击拖垮接口 */
+const MAX_ARRIVAL_SCAN_DATES = 7
 
 /** 滞留清货价：非法/空值一律当作未配置（null），不做静默兜底为 0 */
 function normalizeClearancePrice(raw: unknown): number | null {
@@ -59,14 +61,18 @@ function normalizeClearancePrice(raw: unknown): number | null {
   return Number.isFinite(n) && n > 0 ? n : null
 }
 
-function normalizeArrivalScanDate(raw: unknown): string | null {
-  const s = typeof raw === 'string' ? raw.trim() : ''
-  return DATE_STR_RE.test(s) ? s : null
+/** 到件扫描日期：去重排序后返回，非法值直接丢弃；最多 MAX_ARRIVAL_SCAN_DATES 天（每天一次 iMile 拉数） */
+function normalizeArrivalScanDates(raw: unknown): string[] {
+  const list = Array.isArray(raw) ? raw : []
+  const valid = list.map((v) => (typeof v === 'string' ? v.trim() : '')).filter((v) => DATE_STR_RE.test(v))
+  return [...new Set(valid)].sort()
 }
 
-/** 滞留数据看的是「到现在还有多少没出仓」，当天到件也有意义，因此只挡未来日期 */
-function isArrivalScanDateNotFuture(dateStr: string, regionCode: string | null | undefined): boolean {
-  return dateStr <= getRegionNow(resolveRegionTz(regionCode)).dateStr
+/** 滞留数据看的是「到现在还有多少没出仓」，当天到件也有意义，因此只挡未来日期；同时限制天数上限 */
+function validateArrivalScanDates(dates: string[], regionCode: string | null | undefined): string | null {
+  if (dates.length > MAX_ARRIVAL_SCAN_DATES) return `到件扫描时间最多选择 ${MAX_ARRIVAL_SCAN_DATES} 天`
+  const today = getRegionNow(resolveRegionTz(regionCode)).dateStr
+  return dates.some((d) => d > today) ? '到件扫描时间不能选今天之后的日期' : null
 }
 
 async function toPublicSchedule(
@@ -82,7 +88,7 @@ async function toPublicSchedule(
     pushConfigIds: parsePushConfigIds(row.pushConfigIds),
     mentionEnabled: row.mentionEnabled,
     routeCodeWhitelistPushEnabled: row.routeCodeWhitelistPushEnabled,
-    arrivalScanDate: row.arrivalScanDate ?? null,
+    arrivalScanDates: (row.arrivalScanDates as string[] | null) ?? [],
     clearancePrice: row.clearancePrice ?? null,
     regionCode,
     updatedAt: row.updatedAt,
@@ -112,7 +118,7 @@ function extractScheduleFields(body: ScheduleBody) {
     pushConfigIds: parsePushConfigIds(body.pushConfigIds),
     mentionEnabled: body.mentionEnabled === true,
     routeCodeWhitelistPushEnabled: body.routeCodeWhitelistPushEnabled === true,
-    arrivalScanDate: normalizeArrivalScanDate(body.arrivalScanDate),
+    arrivalScanDates: normalizeArrivalScanDates(body.arrivalScanDates),
     clearancePrice: normalizeClearancePrice(body.clearancePrice),
   }
 }
@@ -153,8 +159,9 @@ exitAlarmRouter.post('/schedules', async (req: AuthenticatedRequest, res: Respon
     res.status(400).json({ ok: false, error: '缺少必填字段: stationCode' })
     return
   }
-  if (fields.arrivalScanDate && !isArrivalScanDateNotFuture(fields.arrivalScanDate, req.authUser?.regionCode)) {
-    res.status(400).json({ ok: false, error: '到件扫描时间不能选今天之后的日期' })
+  const arrivalScanDateError = validateArrivalScanDates(fields.arrivalScanDates, req.authUser?.regionCode)
+  if (arrivalScanDateError) {
+    res.status(400).json({ ok: false, error: arrivalScanDateError })
     return
   }
 
@@ -192,7 +199,7 @@ exitAlarmRouter.post('/schedules', async (req: AuthenticatedRequest, res: Respon
         pushConfigIds: fields.pushConfigIds,
         mentionEnabled: fields.mentionEnabled,
         routeCodeWhitelistPushEnabled: fields.routeCodeWhitelistPushEnabled,
-        arrivalScanDate: fields.arrivalScanDate,
+        arrivalScanDates: fields.arrivalScanDates,
         clearancePrice: fields.clearancePrice,
         imileToken: nextImileToken ? normalizeImileToken(nextImileToken) : null,
         updatedBy: userId,
@@ -220,8 +227,9 @@ exitAlarmRouter.put('/schedules/:id', async (req: AuthenticatedRequest, res: Res
     res.status(400).json({ ok: false, error: '缺少必填字段: stationCode' })
     return
   }
-  if (fields.arrivalScanDate && !isArrivalScanDateNotFuture(fields.arrivalScanDate, req.authUser?.regionCode)) {
-    res.status(400).json({ ok: false, error: '到件扫描时间不能选今天之后的日期' })
+  const arrivalScanDateError = validateArrivalScanDates(fields.arrivalScanDates, req.authUser?.regionCode)
+  if (arrivalScanDateError) {
+    res.status(400).json({ ok: false, error: arrivalScanDateError })
     return
   }
 
@@ -265,7 +273,7 @@ exitAlarmRouter.put('/schedules/:id', async (req: AuthenticatedRequest, res: Res
         pushConfigIds: fields.pushConfigIds,
         mentionEnabled: fields.mentionEnabled,
         routeCodeWhitelistPushEnabled: fields.routeCodeWhitelistPushEnabled,
-        arrivalScanDate: fields.arrivalScanDate,
+        arrivalScanDates: fields.arrivalScanDates,
         clearancePrice: fields.clearancePrice,
         ...(nextImileToken ? { imileToken: normalizeImileToken(nextImileToken) } : {}),
         updatedBy: userId,
@@ -344,14 +352,15 @@ exitAlarmRouter.post('/schedules/:id/push-now', async (req: AuthenticatedRequest
 
     const tz = resolveRegionTz(req.authUser?.regionCode)
     const { dateStr: todayDateStr, prevDateStr, timeHHmm: pushTime } = getRegionNow(tz)
-    // 已保存到件扫描日期则按该日期拉数（用户手动指定，不做工作日兜底）；否则沿用自动计算的最近工作日。
+    // 已保存到件扫描日期则按这些日期逐日拉数合并（用户手动指定，不做工作日兜底）；否则沿用自动计算的最近工作日。
     // todayDateStr 仍是今天：阈值锚点=此刻，选历史到件日就是看那批件到现在还滞留多少未出仓。
-    const date = schedule.arrivalScanDate?.trim() || lastSortingWorkdayOnOrBefore(prevDateStr)
+    const savedDates = (schedule.arrivalScanDates as string[] | null) ?? []
+    const dates = savedDates.length > 0 ? savedDates : [lastSortingWorkdayOnOrBefore(prevDateStr)]
 
     const result = await executeExitAlarmPush({
       token,
       stationCode,
-      date,
+      dates,
       todayDateStr,
       pushTime,
       configs,

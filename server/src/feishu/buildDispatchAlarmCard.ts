@@ -100,8 +100,12 @@ export function buildDispatchAlarmCard(params: {
   tz: AusTz
   total: number
   met: number
-  /** 问题件数：见 aggregateDispatch24hByVendor 的 isDispatch24hProblem 口径 */
+  /** 问题件数：见 aggregateDispatch24hByVendor 的 isDispatch24hProblem 口径；仅用于判断是否给出落地页链接，卡片不再展示 */
   problemCount: number
+  /** 「本地件优先客户」包裹数 */
+  priorityTotal: number
+  /** 「本地件优先客户」包裹中尚未签收的件数 */
+  priorityUnsigned: number
   drivers: Dispatch24hDriverStat[]
   /** 未分配司机（尚未派件）的那部分单，见 Dispatch24hVendorStat.unassigned */
   unassigned?: Dispatch24hDriverStat | null
@@ -123,6 +127,8 @@ export function buildDispatchAlarmCard(params: {
     total,
     met,
     problemCount,
+    priorityTotal,
+    priorityUnsigned,
     drivers,
     unassigned,
     alertThresholdPct,
@@ -152,11 +158,19 @@ export function buildDispatchAlarmCard(params: {
 
   elements.push(hr())
 
+  // 三块磁贴各占一种色相，避免整行同色分不出块：率=蓝（中性指标，达标与否看标题/阈值副行）、
+  // 未完成量=红、优先客户=橙；无未完成量时相应磁贴转绿表示已清完。
   elements.push(
     columnSet([
-      summaryTile('24H delivery rate', rateText, `Threshold ${alertThresholdPct}%`, isAlert ? 'red' : 'green'),
-      summaryTile('Not signed within 24H', `${unmet}`, `${total} waybills total`, unmet > 0 ? 'red' : 'green'),
-      summaryTile('Problem parcels', `${problemCount}`, `${total} waybills total`, problemCount > 0 ? 'orange' : 'green'),
+      summaryTile('24H delivery rate', rateText, `Threshold ${alertThresholdPct}%`, 'blue'),
+      summaryTile('Not signed', `${unmet}`, `${total} waybills total`, unmet > 0 ? 'red' : 'green'),
+      // 问题件磁贴换成「本地件优先客户」派送进度：未签收优先件 / 优先件总数
+      summaryTile(
+        'Priority Packages',
+        `${priorityUnsigned} not signed`,
+        `${priorityTotal} total`,
+        priorityUnsigned > 0 ? 'orange' : 'green',
+      ),
     ]),
   )
 
@@ -174,8 +188,9 @@ export function buildDispatchAlarmCard(params: {
       const unmetParts: string[] = []
       if (d.neverSignedCount > 0) unmetParts.push(colored(`${d.neverSignedCount} not signed`, 'red'))
       if (d.lateSignedCount > 0) unmetParts.push(colored(`${d.lateSignedCount} signed late`, 'orange'))
-      const problemSuffix = d.problemCount > 0 ? `. ${colored(`${d.problemCount} problem`, 'orange')}` : ''
-      return `· **${shortDriverName(d.courierName)}** (${d.courierCode}) ${unmetParts.join(', ')} / ${d.total} total${problemSuffix}`
+      // 问题件数不再展示，改为「本地件优先客户」包裹数——供应商据此催司机优先派完优先客户的件
+      const prioritySuffix = d.priorityTotal > 0 ? `. ${colored(`${d.priorityTotal} Priorities`, 'orange')}` : ''
+      return `· **${shortDriverName(d.courierName)}** (${d.courierCode}) ${unmetParts.join(', ')} / ${d.total} total${prioritySuffix}`
     })
     if (unmetDrivers.length > MAX_DRIVER_LINES) {
       lines.push(`及其他 ${unmetDrivers.length - MAX_DRIVER_LINES} 位司机`)
