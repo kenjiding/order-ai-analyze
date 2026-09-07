@@ -206,6 +206,14 @@ export const PERMISSION_REGISTRY: PermissionDefinition[] = [
     sortOrder: 620,
   },
   {
+    key: 'btn:container-ledger:edit',
+    type: 'button',
+    label: '修改台账数量',
+    description: '手工调整站点×品类的在库数量，需填写原因类型与说明，留档到变更记录',
+    menuKey: 'container-ledger',
+    sortOrder: 625,
+  },
+  {
     key: 'btn:container-ledger:delete',
     type: 'button',
     label: '删除台账记录',

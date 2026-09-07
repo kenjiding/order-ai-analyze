@@ -81,6 +81,7 @@
     "colQuantity": "Quantity",
     "negativeTooltip": "This station returned more than recorded loans — missing loan records; backfill or stocktake.",
     "editQuantity": "Edit quantity",
+    "noEditPermission": "No permission to edit ledger quantity",
     "noDeletePermission": "No permission to delete ledger rows",
     "emptyBalances": "No ledger rows yet. Create stations under Station accounts first.",
     "modalCreateTitle": "Add ledger record",

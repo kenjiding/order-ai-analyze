@@ -50,6 +50,7 @@ const emptyAuditFilters: AuditFilters = {
 
 export function useContainerLedgerPage() {
   const { t } = useTranslation('container')
+  const canEdit = usePermission('btn:container-ledger:edit')
   const canDelete = usePermission('btn:container-ledger:delete')
 
   const [tab, setTab] = useState<'balances' | 'audits' | 'reconciliation' | 'types'>('balances')
@@ -189,6 +190,7 @@ export function useContainerLedgerPage() {
 
   return useMemo(
     () => ({
+      canEdit,
       canDelete,
       tab,
       setTab,
@@ -218,6 +220,7 @@ export function useContainerLedgerPage() {
       auditPageSize: AUDIT_PAGE_SIZE,
     }),
     [
+      canEdit,
       canDelete,
       tab,
       accounts,

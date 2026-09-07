@@ -107,6 +107,9 @@ const MAX_TRANSFER_BATCH = 20
 const MAX_TRANSFER_IMPORT = 200
 const DELETE_LEDGER = 'btn:container-ledger:delete'
 
+/** 手工调账直接改在库基线，是绕过流转记录的唯一入口，只发给管理岗 */
+const EDIT_LEDGER = 'btn:container-ledger:edit'
+
 function fail(res: Response, status: number, error: string): void {
   res.status(status).json({ ok: false, error })
 }
@@ -448,6 +451,7 @@ containerManagementRouter.post('/balances', async (req: AuthenticatedRequest, re
 })
 
 containerManagementRouter.patch('/balances/:id', async (req: AuthenticatedRequest, res) => {
+  if (!hasContainerPermission(req, EDIT_LEDGER)) return fail(res, 403, '无修改台账数量的权限')
   const body = req.body as { quantity?: unknown; reasonType?: unknown; reason?: unknown }
   const quantity = Number(body.quantity)
   if (!Number.isInteger(quantity) || quantity < 0) return fail(res, 400, '数量必须为 0 或正整数')

@@ -65,9 +65,10 @@ export default function ContainerLedgerPage() {
         fixed: 'right',
         render: (_, record) => (
           <div className="flex items-center gap-1">
-            <Tooltip title={t('ledger.editQuantity')}>
+            <Tooltip title={page.canEdit ? t('ledger.editQuantity') : t('ledger.noEditPermission')}>
               <Button
                 type="text"
+                disabled={!page.canEdit}
                 icon={<Pencil className="h-4 w-4" aria-hidden />}
                 onClick={() => page.openEdit(record)}
                 aria-label={tc('edit')}

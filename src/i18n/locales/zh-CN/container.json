@@ -81,6 +81,7 @@
     "colQuantity": "数量",
     "negativeTooltip": "该站点还回来的比系统记录的借出还多，说明有借出记录没进系统，请补录或盘点",
     "editQuantity": "编辑数量",
+    "noEditPermission": "无修改台账数量的权限",
     "noDeletePermission": "无删除台账的权限",
     "emptyBalances": "暂无台账记录，请先在「站点账户」建立站点后新增。",
     "modalCreateTitle": "新增台账记录",
