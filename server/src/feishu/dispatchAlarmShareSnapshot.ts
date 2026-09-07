@@ -32,6 +32,12 @@ export type DispatchAlarmSharePayload = {
   unassigned: Dispatch24hDriverStat | null
   /** 是否在落地页展示「司机地图」组件 */
   showDriverMap: boolean
+  /**
+   * 本次推送真正统计的到件日 YYYY-MM-DD 列表。
+   * 不能拿 date 顶替：date 是展示用标签，多到件日时是拼接串（如 2026-09-04 ～ 2026-09-05），
+   * 司机地图按它查库会一条都查不到。
+   */
+  dataDates: string[]
 }
 
 function newShareToken(): string {
@@ -67,6 +73,7 @@ export async function createDispatchAlarmShareSnapshot(params: {
   drivers: Dispatch24hDriverStat[]
   unassigned: Dispatch24hDriverStat | null
   showDriverMap: boolean
+  dataDates: string[]
 }): Promise<{ token: string; url: string } | null> {
   const {
     vendorCode,
@@ -83,6 +90,7 @@ export async function createDispatchAlarmShareSnapshot(params: {
     drivers,
     unassigned,
     showDriverMap,
+    dataDates,
   } = params
   const urlProbe = buildDispatchAlarmShareUrl('probe')
   if (!urlProbe) {
@@ -106,6 +114,7 @@ export async function createDispatchAlarmShareSnapshot(params: {
     drivers,
     unassigned,
     showDriverMap,
+    dataDates,
   }
 
   try {
@@ -181,6 +190,7 @@ export async function loadDispatchAlarmShareSnapshot(
     drivers: Array.isArray(payload.drivers) ? payload.drivers : [],
     unassigned: payload.unassigned ?? null,
     showDriverMap: payload.showDriverMap === true,
+    dataDates: Array.isArray(payload.dataDates) ? payload.dataDates.map(String) : [],
     createdAt: new Date(row.createdAt).toISOString(),
   }
 }

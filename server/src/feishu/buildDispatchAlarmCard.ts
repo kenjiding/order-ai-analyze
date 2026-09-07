@@ -93,7 +93,6 @@ function summaryTile(label: string, value: string, sub: string, valueColor: Mark
  */
 export function buildDispatchAlarmCard(params: {
   vendorName: string
-  stationCode: string
   date: string
   pushTime: string
   /** 计算 date/pushTime 所用的账号时区，用于卡片上的时区标签 */
@@ -120,7 +119,6 @@ export function buildDispatchAlarmCard(params: {
 }): Record<string, unknown> {
   const {
     vendorName,
-    stationCode,
     date,
     pushTime,
     tz,
@@ -148,7 +146,7 @@ export function buildDispatchAlarmCard(params: {
     md(
       [
         `📮 **Responsible vendor: ${vendorName}**`,
-        colored(`Station: ${stationCode} · ${date} ${pushTime} (${tzDisplayName(tz)})`, 'grey'),
+        colored(`${date} ${pushTime} (${tzDisplayName(tz)})`, 'grey'),
         pushDescription ? colored(pushDescription, 'grey') : '',
       ]
         .filter(Boolean)
@@ -220,7 +218,7 @@ export function buildDispatchAlarmCard(params: {
   }
 
   elements.push(hr())
-  elements.push(footerCaption(`${date} ${pushTime} · 24H delivery rate monitoring · iMile Warehouse Management System`))
+  elements.push(footerCaption(`${date} ${pushTime} · iMile Warehouse Management System`))
 
   const mentionLarkMd = buildMentionLarkMd(mentions)
   if (mentionLarkMd) {

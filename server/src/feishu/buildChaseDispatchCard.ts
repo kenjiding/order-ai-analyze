@@ -125,7 +125,7 @@ export function buildChaseDispatchCard(params: {
   }
 
   elements.push(hr())
-  elements.push(footerCaption(`${baseDate} ${pushTime} (${tzDisplayName(tz)}) · Long time - No return warehouse or Overdue Deliveries · iMile Warehouse Management System`))
+  elements.push(footerCaption(`${baseDate} ${pushTime} (${tzDisplayName(tz)}) · iMile Warehouse Management System`))
 
   const mentionLarkMd = buildMentionLarkMd(mentions)
   if (mentionLarkMd) {

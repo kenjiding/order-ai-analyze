@@ -8,7 +8,6 @@ const bodyText = (card: unknown): string => JSON.stringify(card)
 
 const baseParams = {
   vendorName: 'iMile',
-  stationCode: 'S210312',
   date: '2026-09-03',
   pushTime: '11:00',
   tz: AUS_TZ.Adelaide,

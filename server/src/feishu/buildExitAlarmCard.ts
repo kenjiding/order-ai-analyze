@@ -165,7 +165,6 @@ function buildWhitelistPanel(whitelistStat: WhitelistStat, pushTime: string): Ca
 /** 构建出仓告警飞书卡片（card JSON 2.0 结构） */
 export function buildExitAlarmCard(params: {
   vendorName: string
-  stationCode: string
   date: string
   pushTime: string
   /** 计算 date/pushTime 所用的账号时区，用于卡片上的时区标签 */
@@ -183,7 +182,6 @@ export function buildExitAlarmCard(params: {
 }): Record<string, unknown> {
   const {
     vendorName,
-    stationCode,
     date,
     pushTime,
     tz,
@@ -205,7 +203,7 @@ export function buildExitAlarmCard(params: {
     md(
       [
         `📦 **Responsible vendor: ${vendorName}**`,
-        colored(`Station: ${stationCode} · ${date} ${pushTime} (${tzDisplayName(tz)})`, 'grey'),
+        colored(`${date} ${pushTime} (${tzDisplayName(tz)})`, 'grey'),
         pushDescription ? colored(pushDescription, 'grey') : '',
       ]
         .filter(Boolean)
@@ -260,7 +258,7 @@ export function buildExitAlarmCard(params: {
   }
 
   elements.push(hr())
-  elements.push(footerCaption(`${date} ${pushTime} · Dispatch monitoring as of ${pushTime} · iMile Warehouse Management System`))
+  elements.push(footerCaption(`${date} ${pushTime} · iMile Warehouse Management System`))
 
   const mentionLarkMd = buildMentionLarkMd(mentions)
   if (mentionLarkMd) {

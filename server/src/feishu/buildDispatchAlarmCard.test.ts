@@ -27,7 +27,6 @@ const unassignedBucket = (total: number): Dispatch24hDriverStat => ({
 
 const baseParams = {
   vendorName: 'iMile',
-  stationCode: 'S210312',
   date: '2026-08-31',
   pushTime: '14:45',
   tz: AUS_TZ.Sydney,

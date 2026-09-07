@@ -70,17 +70,28 @@ dispatchAlarmPortalRouter.get('/driver-map/:token', rateLimit, async (req: Reque
       res.json({ ok: true, data: null })
       return
     }
-    const { stationCode, date: dataDate, vendorCode, routeCodes, routeCodeWhitelist } = snapshot
+    const { stationCode, dataDates, vendorCode, routeCodes, routeCodeWhitelist } = snapshot
     // 同一 vendorCode 可能对应多条供应商配置（ADL-City / ADL-Lu），必须连路由码一起收窄，
     // 否则地图点位与派送单量会把同编码另一家的单也算进来
     const scope = { vendorCode, routeCodes, routeCodeWhitelist }
-    if (!stationCode || !/^\d{4}-\d{2}-\d{2}$/.test(dataDate)) {
+    // 按快照记录的真实到件日查（可能多天）；snapshot.date 是展示标签，多到件日时是拼接串，不能拿来查库
+    const dates = dataDates.filter((d) => /^\d{4}-\d{2}-\d{2}$/.test(d))
+    if (!stationCode || dates.length === 0) {
+      // 勾了司机地图却拿不到业务日期，前端会把整块地图静默隐藏——留一行日志，别再让人对着空白页猜
+      console.warn(
+        `[dispatch-alarm-portal/driver-map] 快照缺少可用业务日期，跳过地图 token=${token} station=${stationCode} dataDates=${JSON.stringify(dataDates)}`,
+      )
       res.json({ ok: true, data: null })
       return
     }
 
-    const hasRows = await hasDriverMapWaybillRows({ stationCode, dataDate })
-    if (!hasRows) {
+    // 缓存是按「站点+日」整站同步的：没同步过的日子现场补一次，同步过的只增量补坐标
+    for (const dataDate of dates) {
+      if (await hasDriverMapWaybillRows({ stationCode, dataDate })) {
+        await ensureProblemReasons({ stationCode, dataDate, scope })
+        await geocodePendingMapPoints({ stationCode, dataDate, scope })
+        continue
+      }
       const imileToken = await readDriverMapImileToken()
       if (!imileToken) {
         res.json({ ok: true, data: null })
@@ -98,13 +109,9 @@ dispatchAlarmPortalRouter.get('/driver-map/:token', rateLimit, async (req: Reque
         res.status(502).json({ ok: false, error: synced.message })
         return
       }
-      res.json({ ok: true, data: synced.data.points })
-      return
     }
 
-    await ensureProblemReasons({ stationCode, dataDate, scope })
-    await geocodePendingMapPoints({ stationCode, dataDate, scope })
-    const points = await queryDriverMapPoints({ stationCode, dataDate, scope })
+    const points = await queryDriverMapPoints({ stationCode, dataDate: dates, scope })
     if (!points.ok) {
       res.status(502).json({ ok: false, error: points.message })
       return

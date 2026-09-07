@@ -97,7 +97,7 @@ export function buildWorkOrderPushCard(params: {
   if (!hasTickets) {
     elements.push(md(colored('✅ No unresolved tickets remaining. Thank you for your prompt handling!', 'green')))
     elements.push(
-      footerCaption(`${baseDate} ${pushTime} (${tzDisplayName(tz)}) · Ticket push · iMile Warehouse Management System`),
+      footerCaption(`${baseDate} ${pushTime} (${tzDisplayName(tz)}) · iMile Warehouse Management System`),
     )
     const mentionLarkMdEmpty = buildMentionLarkMd(mentions)
     if (mentionLarkMdEmpty) {
@@ -170,7 +170,7 @@ export function buildWorkOrderPushCard(params: {
       supplierConfigId: supplierConfigId ?? '',
     }),
   )
-  elements.push(footerCaption(`${baseDate} ${pushTime} (${tzDisplayName(tz)}) · Ticket push · iMile Warehouse Management System`))
+  elements.push(footerCaption(`${baseDate} ${pushTime} (${tzDisplayName(tz)}) · iMile Warehouse Management System`))
 
   const mentionLarkMd = buildMentionLarkMd(mentions)
   if (mentionLarkMd) {

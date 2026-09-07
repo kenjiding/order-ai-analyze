@@ -332,13 +332,17 @@ export async function hasDriverMapWaybillRows(input: {
   return Boolean(row)
 }
 
-/** 从缓存表组装地图点位（不触发 iMile 拉取）；派送单量等计数只统计 scope 内的运单 */
+/**
+ * 从缓存表组装地图点位（不触发 iMile 拉取）；派送单量等计数只统计 scope 内的运单。
+ * dataDate 传数组时把这几天的点位合并成一份（「立刻推送」可选多个到件日）。
+ */
 export async function queryDriverMapPoints(input: {
   stationCode: string
-  dataDate: string
+  dataDate: string | string[]
   scope?: DriverMapVendorScope
 }): Promise<DriverMapPointsQueryOutcome> {
   const { stationCode, dataDate, scope } = input
+  const dataDates = Array.isArray(dataDate) ? dataDate : [dataDate]
   const scopeFilter = buildScopeFilter(scope)
   const db = getDb()
   const p = schema.driverMapWaybillPoints
@@ -359,14 +363,14 @@ export async function queryDriverMapPoints(input: {
       longitude: p.longitude,
     })
     .from(p)
-    .where(and(eq(p.stationCode, stationCode), eq(p.dataDate, dataDate), scopeFilter.sqlWhere))
+    .where(and(eq(p.stationCode, stationCode), inArray(p.dataDate, dataDates), scopeFilter.sqlWhere))
   const rows = allRows.filter(scopeFilter.accept)
 
   const built = buildDriversFromRows(rows)
   return {
     ok: true,
     data: {
-      dataDate,
+      dataDate: dataDates.join(' ～ '),
       stationCode,
       drivers: built.drivers,
       totalCount: built.totalCount,

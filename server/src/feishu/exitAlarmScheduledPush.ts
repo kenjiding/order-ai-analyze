@@ -236,7 +236,6 @@ export async function executeExitAlarmPush(params: {
           : null
       const card = buildExitAlarmCard({
         vendorName,
-        stationCode,
         date: todayDateStr,
         pushTime,
         tz,

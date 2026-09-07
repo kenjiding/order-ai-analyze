@@ -137,7 +137,7 @@ export async function executeDispatchAlarmPush(params: {
   }
 
   const rows = [...rowByWaybillNo.values()]
-  const dateLabel = dates.join(' / ')
+  const dateLabel = dates.join(' ～ ')
   let pushedCount = 0
   const errors: string[] = []
 
@@ -194,6 +194,7 @@ export async function executeDispatchAlarmPush(params: {
               drivers: stat.drivers,
               unassigned: stat.unassigned,
               showDriverMap: Boolean(showDriverMap),
+              dataDates: dates,
             })
           : null
 
@@ -201,7 +202,6 @@ export async function executeDispatchAlarmPush(params: {
       const noticeText = (importantNotice ?? '').trim()
       const card = buildDispatchAlarmCard({
         vendorName,
-        stationCode,
         date: dateLabel,
         pushTime,
         tz,
