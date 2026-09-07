@@ -1,5 +1,6 @@
 // @ts-nocheck
 import { FileSpreadsheet, Loader2, Upload, X } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
 
 const VARIANT_STYLES = {
   attendance: {
@@ -27,6 +28,7 @@ export function WageFileUploadBar({
   primaryAction,
   showClearWhenLoaded = true,
 }) {
+  const { t } = useTranslation('wageSalary')
   const styles = VARIANT_STYLES[variant] ?? VARIANT_STYLES.attendance
   const hasFile = Boolean(sourceFileName) || (recordCount != null && recordCount > 0)
 
@@ -63,13 +65,13 @@ export function WageFileUploadBar({
           <span className="truncate max-w-[12rem] sm:max-w-[18rem] font-medium">{sourceFileName}</span>
           {recordCount != null && recordCount > 0 && (
             <span className="shrink-0 rounded bg-white px-1.5 py-0.5 text-[11px] font-semibold text-slate-500 ring-1 ring-slate-200">
-              {recordCount} 条
+              {t('fileUpload.recordCount', { count: recordCount })}
             </span>
           )}
         </div>
       ) : recordCount != null && recordCount > 0 ? (
         <span className="shrink-0 rounded-md border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs font-semibold text-slate-500 tabular-nums ring-1 ring-slate-200">
-          {recordCount} 条
+          {t('fileUpload.recordCount', { count: recordCount })}
         </span>
       ) : null}
 
@@ -77,7 +79,7 @@ export function WageFileUploadBar({
         <label className="cursor-pointer">
           <span className="admin-btn py-1.5 px-3 text-xs sm:text-sm">
             <Upload className="h-3.5 w-3.5" />
-            {hasFile ? '更换文件' : '选择文件'}
+            {hasFile ? t('fileUpload.replaceFile') : t('fileUpload.selectFile')}
           </span>
           <input type="file" accept={accept} onChange={onFileSelect} className="hidden" />
         </label>
@@ -105,7 +107,7 @@ export function WageFileUploadBar({
             className="admin-btn py-1.5 px-3 text-xs sm:text-sm text-slate-600"
           >
             <X className="h-3.5 w-3.5" />
-            清空
+            {t('fileUpload.clear')}
           </button>
         )}
       </div>

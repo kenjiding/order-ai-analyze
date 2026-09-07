@@ -1,5 +1,6 @@
 import { InputNumber } from 'antd'
 import { useEffect, useMemo, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { formatInteger, formatNumber } from '../formatAndParse'
 import type { DailyRouteCodeCount } from '../cancelScanAnalysisTypes'
 import type { RouteCodeDistributionItem } from '../scannerEfficiencyApi'
@@ -29,12 +30,6 @@ function formatScanDateMonthDay(dateKey: string): string {
   return `${Number(matched[2])}/${Number(matched[3])}`
 }
 
-function formatDailyCountsInline(dailyCounts: { date: string; count: number }[]): string {
-  return dailyCounts
-    .map((day) => `${formatScanDateMonthDay(day.date)}：${formatInteger(day.count)}`)
-    .join('，')
-}
-
 function zoneLabel(zone: string): string {
   return zone.replace(/区$/, '') || zone
 }
@@ -55,8 +50,19 @@ export function RouteCodeZoneBoard({
   totalWaybills,
   zoneInboundScanTotals,
 }: Props) {
+  const { t } = useTranslation('scannerEfficiency')
   const [selectedZone, setSelectedZone] = useState<string | null>(null)
   const [misallocationMaxCount, setMisallocationMaxCount] = useState<number | null>(null)
+
+  const formatDailyCountsInline = (dailyCounts: { date: string; count: number }[]) =>
+    dailyCounts
+      .map((day) =>
+        t('cancelScan.dailyInline', {
+          date: formatScanDateMonthDay(day.date),
+          count: formatInteger(day.count),
+        }),
+      )
+      .join(t('common.listSeparator'))
 
   const filteredGroups = useMemo(() => {
     let groups: RouteZoneGroup[]
@@ -120,31 +126,27 @@ export function RouteCodeZoneBoard({
     <div className="cancel-scan-zone-board">
       <div className="cancel-scan-zone-board__header">
         <div>
-          <h3 className="cancel-scan-zone-board__title">路由码分布</h3>
+          <h3 className="cancel-scan-zone-board__title">{t('cancelScan.routeBoardTitle')}</h3>
           <p className="cancel-scan-zone-board__subtitle">
-            基于 {formatInteger(totalWaybills)} 条运单 · 首字母划分大区 · 点击方格查看路由码明细
-            {hasInboundScanTotals ? (
-              <>
-                {' '}
-                · 占比 = 细分错误票数 / 到件扫描票数（同区间同大区）
-              </>
-            ) : null}
-            {hiddenRouteCodeCount > 0 ? (
-              <>
-                {' '}
-                · 已隐藏 {formatInteger(hiddenRouteCodeCount)} 条
-                {dailyRouteCodeCounts?.length ? '「日 × 路由码」' : '路由码'}记录
-              </>
-            ) : null}
+            {t('cancelScan.routeBoardSubtitle', { count: formatInteger(totalWaybills) })}
+            {hasInboundScanTotals ? t('cancelScan.errorRateFormula') : null}
+            {hiddenRouteCodeCount > 0
+              ? t('cancelScan.hiddenRecords', {
+                  count: formatInteger(hiddenRouteCodeCount),
+                  mode: dailyRouteCodeCounts?.length
+                    ? t('cancelScan.hiddenModeDaily')
+                    : t('cancelScan.hiddenModeRoute'),
+                })
+              : null}
           </p>
         </div>
         <div className="cancel-scan-zone-board__toolbar">
           <label className="cancel-scan-zone-board__filter">
-            <span className="cancel-scan-zone-board__filter-label">错误分配过滤</span>
+            <span className="cancel-scan-zone-board__filter-label">{t('cancelScan.filterLabel')}</span>
             <InputNumber
               min={0}
               precision={0}
-              placeholder="不限"
+              placeholder={t('cancelScan.filterPlaceholder')}
               value={misallocationMaxCount ?? undefined}
               onChange={(value) => {
                 if (value == null) {
@@ -158,22 +160,19 @@ export function RouteCodeZoneBoard({
             />
           </label>
           <div className="cancel-scan-zone-board__summary">
-            合计 <strong>{formatInteger(grandTotal)}</strong> 票 ·{' '}
-            <strong>{formatInteger(filteredGroups.length)}</strong> 个大区
-            {overallErrorRate != null ? (
-              <>
-                {' '}
-                · 总占比 <strong>{formatErrorRate(overallErrorRate)}</strong>
-              </>
-            ) : null}
+            {t('cancelScan.grandTotalSummary', {
+              total: formatInteger(grandTotal),
+              zones: formatInteger(filteredGroups.length),
+            })}
+            {overallErrorRate != null
+              ? t('cancelScan.totalShareLabel', { rate: formatErrorRate(overallErrorRate) })
+              : null}
           </div>
         </div>
       </div>
 
       {filteredGroups.length === 0 ? (
-        <div className="cancel-scan-panel__state">
-          当前阈值下没有可展示的路由码，请调大「错误分配过滤」数值或清空输入。
-        </div>
+        <div className="cancel-scan-panel__state">{t('cancelScan.noRoutesAtThreshold')}</div>
       ) : (
         <>
           <CancelScanZoneBarChart
@@ -182,7 +181,7 @@ export function RouteCodeZoneBoard({
             onZoneSelect={setSelectedZone}
           />
 
-          <div className="cancel-scan-zone-grid" role="tablist" aria-label="大区选择">
+          <div className="cancel-scan-zone-grid" role="tablist" aria-label={t('cancelScan.zoneSelectAria')}>
             {filteredGroups.map((group) => {
               const active = group.zone === selectedZone
               const theme = getZoneColorTheme(group.zone)
@@ -202,21 +201,24 @@ export function RouteCodeZoneBoard({
                   onClick={() => setSelectedZone(group.zone)}
                 >
                   <span className="cancel-scan-zone-tile__letter">{zoneLabel(group.zone)}</span>
-                  <span className="cancel-scan-zone-tile__count">{formatInteger(group.zoneTotal)} 票</span>
+                  <span className="cancel-scan-zone-tile__count">{t('cancelScan.zoneTickets', { count: formatInteger(group.zoneTotal) })}</span>
                   {errorRateLabel ? (
                     <span className="cancel-scan-zone-tile__error-rate">
-                      占比 {errorRateLabel}
+                      {t('cancelScan.sharePrefix', { rate: errorRateLabel })}
                       {group.inboundZoneTotal != null
-                        ? `（/${formatInteger(group.inboundZoneTotal)}）`
+                        ? t('cancelScan.inboundSuffix', { total: formatInteger(group.inboundZoneTotal) })
                         : null}
                     </span>
                   ) : (
-                    <span className="cancel-scan-zone-tile__share">全区 {formatShare(group.totalShare)}</span>
+                    <span className="cancel-scan-zone-tile__share">{t('cancelScan.zoneShare', { share: formatShare(group.totalShare) })}</span>
                   )}
                   <span className="cancel-scan-zone-tile__meta">
                     {errorRateLabel
-                      ? `全区 ${formatShare(group.totalShare)} · ${formatInteger(group.routeCodes.length)} 种路由码`
-                      : `${formatInteger(group.routeCodes.length)} 种路由码`}
+                      ? t('cancelScan.routeCountWithShare', {
+                          share: formatShare(group.totalShare),
+                          count: formatInteger(group.routeCodes.length),
+                        })
+                      : t('cancelScan.routeCount', { count: formatInteger(group.routeCodes.length) })}
                   </span>
                   <span
                     className="cancel-scan-zone-tile__meter"
@@ -246,18 +248,17 @@ export function RouteCodeZoneBoard({
                     <div>
                       <span className="cancel-scan-zone-detail__zone">{selectedGroup.zone}</span>
                       <span className="cancel-scan-zone-detail__stats">
-                        {formatInteger(selectedGroup.zoneTotal)} 票 · 全区占比{' '}
-                        {formatShare(selectedGroup.totalShare)} ·{' '}
-                        {formatInteger(selectedGroup.routeCodes.length)} 种路由码
-                        {formatErrorRate(selectedGroup.errorRate) ? (
-                          <>
-                            {' '}
-                            · 占比 {formatErrorRate(selectedGroup.errorRate)}
-                            {selectedGroup.inboundZoneTotal != null
-                              ? `（/${formatInteger(selectedGroup.inboundZoneTotal)} 到件）`
-                              : null}
-                          </>
-                        ) : null}
+                        {t('cancelScan.detailStats', {
+                          total: formatInteger(selectedGroup.zoneTotal),
+                          share: formatShare(selectedGroup.totalShare),
+                          routes: formatInteger(selectedGroup.routeCodes.length),
+                        })}
+                        {formatErrorRate(selectedGroup.errorRate)
+                          ? t('cancelScan.detailErrorRate', { rate: formatErrorRate(selectedGroup.errorRate) })
+                          : null}
+                        {formatErrorRate(selectedGroup.errorRate) && selectedGroup.inboundZoneTotal != null
+                          ? t('cancelScan.detailInboundSuffix', { total: formatInteger(selectedGroup.inboundZoneTotal) })
+                          : null}
                       </span>
                     </div>
                   </div>
@@ -276,7 +277,7 @@ export function RouteCodeZoneBoard({
                             </span>
                           ) : (
                             <span className="cancel-scan-zone-detail__count">
-                              {formatInteger(item.count)} 票
+                              {t('cancelScan.zoneTickets', { count: formatInteger(item.count) })}
                             </span>
                           )}
                         </div>
@@ -287,10 +288,10 @@ export function RouteCodeZoneBoard({
                           />
                         </div>
                         <div className="cancel-scan-zone-detail__row-meta">
-                          <span>区内 {formatShare(item.zoneShare)}</span>
-                          <span>全区 {formatShare(item.totalShare)}</span>
+                          <span>{t('cancelScan.inZoneShare', { share: formatShare(item.zoneShare) })}</span>
+                          <span>{t('cancelScan.inAllZoneShare', { share: formatShare(item.totalShare) })}</span>
                           {item.dailyCounts && item.dailyCounts.length > 0 ? (
-                            <span>合计 {formatInteger(item.count)} 票</span>
+                            <span>{t('cancelScan.totalTickets', { count: formatInteger(item.count) })}</span>
                           ) : null}
                         </div>
                       </div>
@@ -299,7 +300,7 @@ export function RouteCodeZoneBoard({
                 </ul>
               </>
             ) : (
-              <div className="cancel-scan-zone-detail__empty">选择上方大区查看路由码明细</div>
+              <div className="cancel-scan-zone-detail__empty">{t('cancelScan.selectZoneHint')}</div>
             )}
           </div>
         </>

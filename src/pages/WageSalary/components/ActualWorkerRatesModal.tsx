@@ -1,5 +1,7 @@
 import Modal from '../../../components/Modal'
 import type { Dispatch, SetStateAction } from 'react'
+import { useTranslation } from 'react-i18next'
+import { ROLES } from '../constants'
 
 type RateBand = { workday: number; sortingWeekend: number; publicHoliday: number }
 type RateSettings = Record<string, RateBand>
@@ -9,7 +11,6 @@ type Props = {
   onClose: () => void
   actualWorkerRateSettings: RateSettings
   setActualWorkerRateSettings: Dispatch<SetStateAction<RateSettings>>
-  roleMap: Record<string, string>
   persistActualWorkerRateSettings: (settings: RateSettings) => void | Promise<void>
   resetActualWorkerRateSettings: () => void | Promise<void>
 }
@@ -19,24 +20,23 @@ export function ActualWorkerRatesModal({
   onClose,
   actualWorkerRateSettings,
   setActualWorkerRateSettings,
-  roleMap,
   persistActualWorkerRateSettings,
   resetActualWorkerRateSettings,
 }: Props) {
+  const { t } = useTranslation('wageSalary')
+
   return (
-    <Modal isOpen={isOpen} onClose={onClose} title="小工实际时薪（供应商发放标准）" maxWidth="max-w-2xl">
+    <Modal isOpen={isOpen} onClose={onClose} title={t('actualRates.title')} maxWidth="max-w-2xl">
       <div className="space-y-4 border-b border-slate-100 bg-amber-50/80 px-6 py-4 text-sm leading-6 text-amber-950">
-        <p>
-          「时薪标准设置」用于工资记录与导出 Excel（对账口径）。此处填写供应商<strong>实际</strong>发给小工/叉车/前台的时薪；与对账口径不一致时，下方汇总会显示差额。
-        </p>
+        <p>{t('actualRates.intro')}</p>
       </div>
       <div className="space-y-6 p-6">
-        {Object.keys(actualWorkerRateSettings).map((role) => (
+        {ROLES.filter((role) => actualWorkerRateSettings[role]).map((role) => (
           <div key={role} className="border-b pb-4 last:border-b-0">
-            <h4 className="mb-3 font-medium text-gray-900">{roleMap[role]}</h4>
+            <h4 className="mb-3 font-medium text-gray-900">{t(`role.${role}`)}</h4>
             <div className="grid grid-cols-3 gap-4">
               <div>
-                <label className="mb-1 block text-sm text-gray-600">工作日实际时薪</label>
+                <label className="mb-1 block text-sm text-gray-600">{t('actualRates.workdayRate')}</label>
                 <input
                   type="number"
                   step="0.01"
@@ -51,7 +51,7 @@ export function ActualWorkerRatesModal({
                 />
               </div>
               <div>
-                <label className="mb-1 block text-sm text-gray-600">分拣周末实际时薪</label>
+                <label className="mb-1 block text-sm text-gray-600">{t('actualRates.sortingWeekendRate')}</label>
                 <input
                   type="number"
                   step="0.01"
@@ -66,7 +66,7 @@ export function ActualWorkerRatesModal({
                 />
               </div>
               <div>
-                <label className="mb-1 block text-sm text-gray-600">公共节假日实际时薪</label>
+                <label className="mb-1 block text-sm text-gray-600">{t('actualRates.publicHolidayRate')}</label>
                 <input
                   type="number"
                   step="0.01"
@@ -90,7 +90,7 @@ export function ActualWorkerRatesModal({
           onClick={resetActualWorkerRateSettings}
           className="rounded-lg border border-gray-300 px-4 py-2 text-gray-700 transition-colors hover:bg-gray-100"
         >
-          恢复默认
+          {t('actualRates.resetDefault')}
         </button>
         <div className="flex gap-3">
           <button
@@ -101,14 +101,14 @@ export function ActualWorkerRatesModal({
             }}
             className="rounded-lg bg-green-600 px-4 py-2 text-white transition-colors hover:bg-green-700"
           >
-            保存设置
+            {t('actualRates.saveSettings')}
           </button>
           <button
             type="button"
             onClick={onClose}
             className="rounded-lg bg-blue-600 px-4 py-2 text-white transition-colors hover:bg-blue-700"
           >
-            关闭
+            {t('actualRates.close')}
           </button>
         </div>
       </div>

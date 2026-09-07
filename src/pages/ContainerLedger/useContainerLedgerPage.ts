@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import type { Dayjs } from 'dayjs'
+import { useTranslation } from 'react-i18next'
 import {
   createBalance,
   deleteBalance,
@@ -48,9 +49,10 @@ const emptyAuditFilters: AuditFilters = {
 }
 
 export function useContainerLedgerPage() {
+  const { t } = useTranslation('container')
   const canDelete = usePermission('btn:container-ledger:delete')
 
-  const [tab, setTab] = useState<'balances' | 'audits' | 'reconciliation'>('balances')
+  const [tab, setTab] = useState<'balances' | 'audits' | 'reconciliation' | 'types'>('balances')
   const [accounts, setAccounts] = useState<ContainerAccount[]>([])
   const [balances, setBalances] = useState<ContainerBalance[]>([])
   const [loading, setLoading] = useState(false)
@@ -141,12 +143,12 @@ export function useContainerLedgerPage() {
         showToast(res.error, 'error')
         return false
       }
-      showToast('已新增台账记录', 'success')
+      showToast(t('toast.balanceCreated'), 'success')
       setCreateOpen(false)
       await refreshAfterChange()
       return true
     },
-    [refreshAfterChange],
+    [refreshAfterChange, t],
   )
 
   const submitEdit = useCallback(
@@ -159,12 +161,12 @@ export function useContainerLedgerPage() {
         showToast(res.error, 'error')
         return false
       }
-      showToast('已更新台账数量', 'success')
+      showToast(t('toast.balanceUpdated'), 'success')
       setEditing(null)
       await refreshAfterChange()
       return true
     },
-    [editing, refreshAfterChange],
+    [editing, refreshAfterChange, t],
   )
 
   const submitDelete = useCallback(
@@ -177,12 +179,12 @@ export function useContainerLedgerPage() {
         showToast(res.error, 'error')
         return false
       }
-      showToast('已删除台账记录', 'success')
+      showToast(t('toast.balanceDeleted'), 'success')
       setDeleting(null)
       await refreshAfterChange()
       return true
     },
-    [deleting, refreshAfterChange],
+    [deleting, refreshAfterChange, t],
   )
 
   return useMemo(

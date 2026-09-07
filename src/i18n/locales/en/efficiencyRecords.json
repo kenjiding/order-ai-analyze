@@ -1,0 +1,253 @@
+{
+  "page": {
+    "eyebrow": "Efficiency Archive",
+    "title": "Scan efficiency & attendance records",
+    "lead": "Select multiple dates to combine into a range and view merged results on the scan efficiency & attendance page.",
+    "refresh": "Refresh"
+  },
+  "stats": {
+    "total": "Total records",
+    "withSorting": "With sorting efficiency",
+    "withFrontDesk": "With front-desk saturation"
+  },
+  "dayKind": {
+    "full": {
+      "label": "Inbound + attendance",
+      "hint": "Both inbound and attendance present; included in daily efficiency stats"
+    },
+    "attendanceOnly": {
+      "label": "Attendance-only backfill",
+      "hint": "Attendance without inbound: no daily efficiency, but hours count toward overall/open-day denominators"
+    },
+    "scanOnly": {
+      "label": "Missing attendance",
+      "hint": "Inbound without attendance: volume counts toward totals, but no hours available that day"
+    }
+  },
+  "format": {
+    "dash": "—",
+    "efficiencyUnit": "parcels/hr",
+    "parcelsPerHour": "parcels/h",
+    "parcels": "parcels",
+    "hoursSuffix": "h",
+    "people": "people",
+    "selectedRangeSingle": "{{date}}",
+    "selectedRangeMulti": "{{start}} ~ {{end}} ({{count}} days)",
+    "cainiaoShare": "Cainiao {{pct}}%"
+  },
+  "toast": {
+    "loadFailed": "Failed to load scan efficiency & attendance records",
+    "recordUnavailable": "Record data unavailable — refresh and try again",
+    "autoIncludedAttendanceOnly": "Auto-included {{count}} attendance-only backfill day(s) in the selected range",
+    "selectAtLeastOne": "Select at least one record first",
+    "batchDeleteNone": "No records deleted — they may have already been removed",
+    "batchDeleteSuccess": "Deleted {{count}} record(s)",
+    "batchDeleteFailed": "Batch delete failed",
+    "deleteSuccess": "Deleted {{date}}",
+    "deleteFailed": "Delete failed"
+  },
+  "modal": {
+    "batchDeleteTitle": "Batch delete records",
+    "batchDeleteContent": "Delete {{count}} selected record(s)?{{range}} This cannot be undone.",
+    "batchDeleteRange": " ({{range}})",
+    "deleteTitle": "Delete record",
+    "deleteContent": "Delete the record for {{date}}? This cannot be undone.",
+    "deleteOk": "Delete",
+    "cancel": "Cancel"
+  },
+  "col": {
+    "date": "Date",
+    "kind": "Type",
+    "volume": "Volume",
+    "dayEfficiency": "Daily efficiency",
+    "openEfficiency": "Open-day efficiency",
+    "overallEfficiency": "Overall efficiency",
+    "sortingEfficiency": "Level-1 sorting efficiency",
+    "frontDeskSaturation": "Front-desk saturation",
+    "saved": "Saved",
+    "savedAt": "Saved at",
+    "actions": "Actions",
+    "view": "View",
+    "delete": "Delete"
+  },
+  "selection": {
+    "selected": "Selected {{count}} day(s):",
+    "hint": "Select multiple days to view combined efficiency for a period",
+    "clear": "Clear selection",
+    "compareNeedTwoToSix": "Select 2–6 days to compare",
+    "compareMaxSix": "Maximum 6 days",
+    "compare": "Compare differences",
+    "viewSelected": "View selected",
+    "deleteSelected": "Delete selected"
+  },
+  "table": {
+    "total": "{{total}} total",
+    "empty": "No records yet — load data on the scan efficiency & attendance page and save first."
+  },
+  "compare": {
+    "drawer": {
+      "eyebrow": "Compare Analysis",
+      "title": "Efficiency comparison ({{count}} days)",
+      "subtitleRange": "{{start}} ~ {{end}} ({{count}} days)"
+    },
+    "empty": {
+      "needFullRecords": "Need at least 2 days with both inbound and attendance for comparison; attendance-only and missing-attendance days are excluded from best/worst analysis",
+      "needTwoDates": "Select at least 2 different dates for comparison"
+    },
+    "section": {
+      "overview": "Efficiency overview",
+      "rootCause": "Root cause — efficiency gap sources",
+      "suggestions": "Improvement suggestions",
+      "hoursStructure": "Hours structure analysis",
+      "scannerCompare": "Sorter scan efficiency comparison",
+      "personnelCompare": "Personnel attendance comparison",
+      "aiAnalysis": "AI deep analysis"
+    },
+    "missing": {
+      "personnel": "Some dates lack personnel attendance data; front-desk hours factor not included.",
+      "scanner": "Some dates lack scanner data; personal efficiency factor not included."
+    },
+    "metrics": {
+      "dayEfficiency": "Daily efficiency",
+      "openEfficiency": "Open-day efficiency",
+      "overallEfficiency": "Overall efficiency"
+    },
+    "chart": {
+      "worstDay": "▼ Worst day",
+      "bestDay": "▲ Best day",
+      "efficiencyGap": "Efficiency gap",
+      "legendWorst": "Worst day (red)",
+      "legendBest": "Best day (green)",
+      "legendOther": "Other dates",
+      "highestEfficiency": "Highest efficiency",
+      "lowestEfficiency": "Lowest efficiency ⚠",
+      "volumeLabel": "Volume",
+      "totalHours": "Total hours"
+    },
+    "rootCause": {
+      "visibleGap": "Visible efficiency gap",
+      "normalizedGapTitle": "Pure operational gap (Cainiao mix stripped)",
+      "normalizedGapMasked": "Cainiao mix masked {{amount}} parcels/h of operational issues",
+      "normalizedGapMinor": "Cainiao mix has minor impact on the gap",
+      "legendHurts": "Red bars",
+      "legendHurtsDesc": " = widen gap (hurt worst day)",
+      "legendHelps": "Green bars",
+      "legendHelpsDesc": " = narrow gap (help worst day)",
+      "hurtFactors": "Drag factors (widened the gap)",
+      "helpFactors": "Offset factors (partially closed the gap)",
+      "topHurt": "Top drag",
+      "helpsGap": "Offsets gap",
+      "contributionPositive": "+{{amount}} parcels/h",
+      "contributionNegative": "−{{amount}} parcels/h",
+      "noSignificant": "No significant impact: {{labels}}",
+      "factorsSum": "Factors combined",
+      "approxTotalGap": "≈ total gap {{amount}} parcels/h"
+    },
+    "hours": {
+      "frontDeskShare": "Front-desk hour share",
+      "outputPerSorterHour": "Output per sorter hour",
+      "hoursPerSorter": "Avg hours on site",
+      "sorterCount": "Sorter headcount",
+      "worstDay": "Worst day",
+      "bestDay": "Best day",
+      "deltaUnfavorable": "{{delta}} worse — unfavorable for worst day",
+      "footnote": "Front-desk hours don't produce scan volume; higher share drags total efficiency. \"Output per sorter hour\" = volume ÷ sorter hours — effective output density.",
+      "lowestEfficiency": "⚠ Lowest efficiency",
+      "highestEfficiency": "Highest efficiency",
+      "outputDensity": "Output density",
+      "sorterTooltip": "Sorters {{hours}}",
+      "frontDeskTooltip": "Front desk {{hours}}",
+      "otherTooltip": "Other {{hours}}",
+      "sorterLegend": "Sorters {{hours}} ({{pct}}%)",
+      "frontDeskLegend": "Front desk {{hours}} ({{pct}}%)",
+      "frontDeskNonProductive": "← non-productive hours",
+      "otherLegend": "Other {{hours}} ({{pct}}%)"
+    },
+    "scanner": {
+      "empty": "No sorter scan efficiency data",
+      "colScanner": "Scanner",
+      "colDelta": "Delta",
+      "colDeltaSub": "Best − worst",
+      "colAvgEff": "avg {{avg}} parcels/h",
+      "bestDayHeader": "▲ Best day",
+      "worstDayHeader": "▼ Worst day",
+      "absent": "Absent",
+      "deltaWorstLower": "↓ lower on worst",
+      "deltaWorstHigher": "↑ higher on worst",
+      "footnote": "Adjusted efficiency (parcels/h, Cainiao-mix corrected).",
+      "footnoteDelta": "Delta = best-day efficiency − worst-day efficiency; larger positive values mean a bigger drop on the worst day. Sorted accordingly.",
+      "footnoteAbsent": "Absent",
+      "footnoteAbsentDesc": " means the sorter did not work that day."
+    },
+    "personnel": {
+      "empty": "No personnel attendance detail data",
+      "colName": "Name",
+      "bestHeader": "▲ Best",
+      "worstHeader": "▼ Worst",
+      "headerVolume": "{{volume}} parcels",
+      "headerCainiao": "Cainiao {{pct}}%",
+      "absentWorst": "No show",
+      "roleFrontDesk": "Front desk",
+      "roleSorter": "Sorting",
+      "roleOther": "Other",
+      "footnote": "Headers show daily volume and Cainiao share; cells show hours, scan efficiency (if any), and role.",
+      "footnoteWorstAbsent": "Worst day",
+      "footnoteWorstAbsentDesc": " no-shows are highlighted in red."
+    },
+    "ai": {
+      "title": "AI deep analysis",
+      "subtitle": "Combined view of staffing, scan efficiency, and hours structure",
+      "analyzing": "Analyzing…",
+      "reanalyze": "Re-analyze",
+      "start": "Start analysis",
+      "failed": "AI analysis failed — try again later.",
+      "loading": "Analyzing daily differences in depth…",
+      "findings": "Findings",
+      "suggestions": "Suggestions",
+      "placeholder": "Click \"Start analysis\" for AI diagnosis using personnel detail, scanner performance, and hours structure across all dates."
+    }
+  },
+  "analysis": {
+    "errors": {
+      "insufficientComparableDays": "Fewer than 2 comparable days"
+    },
+    "rootCause": {
+      "cainiaoShare": "Cainiao mix effect",
+      "frontDeskRatio": "Front-desk hour drag",
+      "volume": "Inbound volume gap",
+      "hoursPerPerson": "Hours-per-person excess",
+      "personalEfficiency": "Sorter personal efficiency",
+      "residual": "Operational residual (unexplained)"
+    },
+    "detail": {
+      "cainiaoHigherOnWorst": "Worst day Cainiao share {{worstPct}}%, higher than best day {{bestPct}}%. Cainiao parcels process faster, giving worst day a {{worstBonus}} parcels/h structural boost (best day only {{bestBonus}} parcels/h), partially offsetting the gap but masking larger operational issues.",
+      "cainiaoLowerOnWorst": "Worst day Cainiao share {{worstPct}}%, lower than best day {{bestPct}}%. Lower Cainiao share naturally lowers efficiency, widening the gap.",
+      "cainiaoSimilar": "Similar Cainiao share on both days ({{pct}}%); Cainiao mix contributes little to the gap.",
+      "frontDesk": "Worst day front-desk share {{worstPct}}%, best day {{bestPct}}% (front desk doesn't produce scan volume; higher share lowers total efficiency)",
+      "volumeWithBest": "Best day volume {{bestVolume}} parcels, worst day {{worstVolume}} parcels ({{diffPct}}% gap). Low volume with fixed staffing dilutes efficiency.",
+      "volumeSimple": "Volume: best day {{bestVolume}} parcels, worst day {{worstVolume}} parcels",
+      "hoursPerPerson": "Best day avg hours {{bestHpp}}h, worst day {{worstHpp}}h (longer hours without added output suggests excess on-site time on low-volume days)",
+      "hoursPerPersonIncomplete": "Incomplete hours-per-person data",
+      "scanner": "Best day sorter composite efficiency {{bestEff}} parcels/h, worst day {{worstEff}} parcels/h (personal efficiency after Cainiao correction)",
+      "scannerMissing": "Some dates lack sorter scan data; personal efficiency contribution unavailable",
+      "residual": "After quantifiable structural factors, ~{{residualAbs}} parcels/h of the gap remains unexplained — possibly staffing state, equipment issues, or process disruption. Pure operational gap (Cainiao stripped): {{pureBest}} vs {{pureWorst}} = {{normalizedGap}} parcels/h."
+    },
+    "suggestion": {
+      "volumeReduceStaff": "Worst day volume only {{worstVolume}} parcels (best day {{bestVolume}}); consider reducing sorters by ~{{reducible}} on low-volume days to avoid wasted hours.",
+      "volumeInsufficient": "Worst day volume only {{worstVolume}} parcels, {{diffPct}}% below best day — insufficient inbound volume is the main driver; investigate arrival fluctuations.",
+      "frontDesk": "Worst day front-desk share {{worstPct}}% ({{worstHours}}h total), well above best day {{bestPct}}%; front desk consumes hours without scan output — trim front-desk shifts on low-volume days.",
+      "hoursPerPersonLonger": "Worst day avg hours {{worstHpp}}h, above best day {{bestHpp}}h — sorters stay on-site too long on low-volume days; adjust shift length to volume.",
+      "hoursPerPersonShorter": "Worst day avg hours {{worstHpp}}h, below best day {{bestHpp}}h — ensure adequate peak staffing to avoid slowing sorting pace.",
+      "cainiaoLower": "Worst day Cainiao share {{worstPct}}%, below best day {{bestPct}}%. Cainiao parcels process faster; lower share pulls overall efficiency down — part of the gap is volume mix.",
+      "cainiaoHigher": "Worst day Cainiao share {{worstPct}}% is higher than best day {{bestPct}}% — the gap is mainly not Cainiao-driven; focus on staffing and front-desk hours.",
+      "cainiaoStable": "Cainiao share varies {{spreadPct}}% across days — modest day-to-day spread; higher Cainiao share naturally boosts efficiency — interpret comparisons with volume mix in mind.",
+      "scannerGap": "Sorter composite efficiency varies {{gap}} parcels/h across days — review low-efficiency day staffing and upskill weaker performers.",
+      "default": "Efficiency gaps are small with factors evenly distributed — accumulate more days to spot patterns."
+    },
+    "roles": {
+      "frontDesk": "Front desk",
+      "sorter": "Sorter",
+      "other": "Other"
+    }
+  }
+}

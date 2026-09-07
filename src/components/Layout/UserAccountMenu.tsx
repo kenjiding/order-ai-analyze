@@ -1,6 +1,7 @@
 import { useMemo, useState, type ReactNode } from 'react'
 import { Dropdown } from 'antd'
 import { ChevronDown, LogOut, MapPin, Settings, Shield, User } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
 import { useNavigate } from 'react-router-dom'
 import type { AuthUser } from '../../api/authApi'
 import { useAuthStore } from '../../stores/authStore'
@@ -15,13 +16,13 @@ function getInitials(user: AuthUser | null): string {
   return source.slice(0, 2).toUpperCase()
 }
 
-function getRoleLabel(role: AuthUser['role']): string {
-  return role === 'super_admin' ? '超级管理员' : '普通用户'
+function getRoleLabel(role: AuthUser['role'], t: (key: string) => string): string {
+  return role === 'super_admin' ? t('superAdmin') : t('regularUser')
 }
 
-function getAccountSubtitle(user: AuthUser | null): string {
+function getAccountSubtitle(user: AuthUser | null, t: (key: string) => string): string {
   if (!user) return '—'
-  return user.regionName?.trim() || getRoleLabel(user.role)
+  return user.regionName?.trim() || getRoleLabel(user.role, t)
 }
 
 type MetaRowProps = {
@@ -78,13 +79,14 @@ function MenuAction({ icon, label, onClick, disabled, tone = 'default' }: MenuAc
 }
 
 export default function UserAccountMenu() {
+  const { t } = useTranslation('common')
   const navigate = useNavigate()
   const { user, logout } = useAuthStore()
   const [open, setOpen] = useState(false)
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [loggingOut, setLoggingOut] = useState(false)
 
-  const displayName = user?.displayName?.trim() || user?.username || '已登录'
+  const displayName = user?.displayName?.trim() || user?.username || t('loggedIn')
   const initials = useMemo(() => getInitials(user), [user])
 
   const handleLogout = async () => {
@@ -118,18 +120,18 @@ export default function UserAccountMenu() {
       </div>
 
       <div className="px-3 py-1.5">
-        <MetaRow icon={<User className="h-3 w-3" aria-hidden />} label="账号" value={user?.username ?? '—'} />
+        <MetaRow icon={<User className="h-3 w-3" aria-hidden />} label={t('account')} value={user?.username ?? '—'} />
         {user?.role ? (
           <MetaRow
             icon={<Shield className="h-3 w-3" aria-hidden />}
-            label="角色"
-            value={getRoleLabel(user.role)}
+            label={t('role')}
+            value={getRoleLabel(user.role, t)}
           />
         ) : null}
         {user?.regionName ? (
           <MetaRow
             icon={<MapPin className="h-3 w-3" aria-hidden />}
-            label="区域"
+            label={t('region')}
             value={user.regionName}
           />
         ) : null}
@@ -138,7 +140,7 @@ export default function UserAccountMenu() {
       <div className="border-t border-[var(--admin-line)] p-1">
         <MenuAction
           icon={<Settings className="h-3.5 w-3.5" aria-hidden />}
-          label="系统设置"
+          label={t('systemSettings')}
           onClick={() => {
             setOpen(false)
             setSettingsOpen(true)
@@ -146,7 +148,7 @@ export default function UserAccountMenu() {
         />
         <MenuAction
           icon={<LogOut className="h-3.5 w-3.5" aria-hidden />}
-          label={loggingOut ? '退出中…' : '退出登录'}
+          label={loggingOut ? t('loggingOut') : t('logout')}
           disabled={loggingOut}
           tone="danger"
           onClick={() => {
@@ -188,7 +190,7 @@ export default function UserAccountMenu() {
           <span className="min-w-0 flex-1 leading-tight">
             <span className="block truncate text-xs font-semibold text-slate-900">{displayName}</span>
             <span className="block truncate text-[10px] text-slate-500">
-              {getAccountSubtitle(user)}
+              {getAccountSubtitle(user, t)}
             </span>
           </span>
           <ChevronDown

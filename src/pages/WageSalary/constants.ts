@@ -1,13 +1,8 @@
 import type { RateSettings } from '../../payroll/wageRateCalculation'
 
-export const ROLE_MAP: Record<string, string> = {
-  worker: '普通小工',
-  seniorWorker: '高级小工',
-  forklift: '叉车',
-  receptionist: '前台',
-}
-
 export const ROLES = ['worker', 'seniorWorker', 'forklift', 'receptionist'] as const
+
+export type WageRole = (typeof ROLES)[number]
 
 export function roleBadgeClassName(role: string): string {
   switch (role) {

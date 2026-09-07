@@ -1,0 +1,84 @@
+{
+  "page": {
+    "eyebrow": "SLA Monitoring",
+    "title": "滞留数据告警",
+    "enabledRatio": "已启用 / 总数",
+    "add": "添加滞留数据告警"
+  },
+  "list": {
+    "empty": "暂无滞留数据告警配置，点击右上角「添加滞留数据告警」新建",
+    "enabled": "已启用",
+    "disabled": "已停用",
+    "missingImileToken": "缺少 iMile token",
+    "scheduleSummary": "每{{weekdays}}，在 {{times}} 自动获取前一日数据并推送告警 · 已选 {{vendorCount}} 家供应商",
+    "scheduleSummaryWithClearance": "每{{weekdays}}，在 {{times}} 自动获取前一日数据并推送告警 · 已选 {{vendorCount}} 家供应商 · 清货价 ${{price}}/件",
+    "switchOn": "启用",
+    "switchOff": "停用",
+    "pushNowConfirmTitle": "确认立刻推送？",
+    "pushNowConfirmDesc": "将按该配置直接拉数推送，不参考推送时间。",
+    "pushNow": "立刻推送",
+    "exportExcel": "导出Excel（未达标 {{count}}）",
+    "deleteConfirm": "确认删除该滞留数据告警配置？"
+  },
+  "drawer": {
+    "editTitle": "编辑滞留数据告警",
+    "addTitle": "添加滞留数据告警",
+    "basicConfig": "基础配置",
+    "station": "站点",
+    "arrivalScanTime": "到件扫描时间",
+    "arrivalScanHint": "到件扫描时间只影响立即推送",
+    "scheduleConfig": "定时推送配置",
+    "scheduleConfigDesc": "推送星期 / 推送时间点",
+    "pushWeekdays": "推送星期",
+    "pushTimes": "推送时间",
+    "noPushTimes": "暂无推送时间",
+    "otherConfig": "其他配置",
+    "routeWhitelistPush": "路由码白名单数据推送",
+    "clearancePrice": "滞留清货价",
+    "clearancePricePlaceholder": "不填则不推送清货费用",
+    "vendorConfig": "供应商配置"
+  },
+  "weekday": {
+    "1": "周一",
+    "2": "周二",
+    "3": "周三",
+    "4": "周四",
+    "5": "周五",
+    "6": "周六",
+    "7": "周日"
+  },
+  "notSet": "未设置",
+  "listSeparator": "、",
+  "validation": {
+    "selectStation": "请选择站点",
+    "selectWeekday": "请至少选择一个推送星期",
+    "addPushTime": "请至少添加一个推送时间",
+    "selectVendor": "请至少选择一个供应商"
+  },
+  "toast": {
+    "missingImileTokenBeforeSave": "请先在全局设置中配置 iMile token，再保存滞留数据告警",
+    "loadError": "滞留数据告警配置加载失败",
+    "createSuccess": "滞留数据告警已添加",
+    "updateSuccess": "滞留数据告警已更新",
+    "saveError": "保存失败",
+    "deleteSuccess": "已删除",
+    "deleteError": "删除失败",
+    "toggleError": "更新失败",
+    "missingImileTokenResave": "缺少 iMile token，请编辑该配置并重新保存",
+    "selectVendorFirst": "请先为该配置选择供应商",
+    "pushFailed": "推送失败: {{error}}",
+    "pushPartial": "已推送 {{pushed}}/{{total}}（数据日 {{dates}}），部分失败: {{errors}}",
+    "pushComplete": "推送完成 {{pushed}}/{{total}}（数据日 {{dates}}）",
+    "noWaybillsToExport": "本次推送没有滞留未出仓运单，无需导出"
+  },
+  "export": {
+    "creator": "滞留数据告警",
+    "unknownVendor": "未知供应商",
+    "colIndex": "序号",
+    "colWaybill": "运单号",
+    "colType": "类型",
+    "typeMain": "主统计",
+    "typeWhitelist": "白名单",
+    "filename": "滞留数据告警_未达标运单_{{station}}_{{dates}}.xlsx"
+  }
+}

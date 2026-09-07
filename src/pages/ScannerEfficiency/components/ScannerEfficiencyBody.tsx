@@ -1,5 +1,6 @@
 import { Tabs, Tooltip } from 'antd'
 import { useCallback, useMemo, useState, type ReactNode } from 'react'
+import { useTranslation } from 'react-i18next'
 import {
   generateWarehouseInsight,
   generateScannerInsight,
@@ -29,6 +30,7 @@ type Props = {
 }
 
 export default function ScannerEfficiencyBody({ vm, level1Push }: Props) {
+  const { t } = useTranslation('scannerEfficiency')
   // AI 分析状态提升到此处，切换 tab 不会重置
   const [warehouseAiProvider, setWarehouseAiProvider] = useState<EfficiencyInsightAiProvider>('deepseek')
   const [warehouseLoading, setWarehouseLoading] = useState(false)
@@ -48,7 +50,7 @@ export default function ScannerEfficiencyBody({ vm, level1Push }: Props) {
       const result = await generateWarehouseInsight(vm.attendanceResult, warehouseAiProvider)
       setWarehouseAnalysis(result)
     } catch (err) {
-      setWarehouseError(err instanceof Error ? err.message : 'AI 分析失败，请稍后重试。')
+      setWarehouseError(err instanceof Error ? err.message : t('ai.failed'))
     } finally {
       setWarehouseLoading(false)
     }
@@ -62,7 +64,7 @@ export default function ScannerEfficiencyBody({ vm, level1Push }: Props) {
       const result = await generateScannerInsight(vm.scannerResult, scannerAiProvider, vm.scannerTotalEfficiencyRows)
       setScannerAnalysis(result)
     } catch (err) {
-      setScannerError(err instanceof Error ? err.message : 'AI 分析失败，请稍后重试。')
+      setScannerError(err instanceof Error ? err.message : t('ai.failed'))
     } finally {
       setScannerLoading(false)
     }
@@ -127,7 +129,7 @@ export default function ScannerEfficiencyBody({ vm, level1Push }: Props) {
   const tabItems = useMemo(() => {
     const hasAttendance = Boolean(attendanceResult)
     const disabledLabel = (label: string): ReactNode => (
-      <Tooltip title="此部分数据需要上传考勤数据" placement="bottom">
+      <Tooltip title={t('tabs.needsAttendance')} placement="bottom">
         <span>{label}</span>
       </Tooltip>
     )
@@ -137,18 +139,18 @@ export default function ScannerEfficiencyBody({ vm, level1Push }: Props) {
       disabled: !hasAttendance,
     })
     const items: { key: TabKey; label: ReactNode; disabled?: boolean }[] = [
-      attendanceTab(TAB_KEYS.WAREHOUSE, '开仓效率 / 总体效率'),
+      attendanceTab(TAB_KEYS.WAREHOUSE, t('tabs.warehouse')),
       // 一级分拣仅依赖到件扫描，不要求考勤
-      { key: TAB_KEYS.SCANNER, label: '分拣员个人效率' },
-      { key: TAB_KEYS.FRONT_DESK, label: '包裹分配密度' },
-      { key: TAB_KEYS.CANCEL_SCAN, label: '细分错误率分析' },
-      attendanceTab(TAB_KEYS.WEEKLY, '周报生成器'),
+      { key: TAB_KEYS.SCANNER, label: t('tabs.scanner') },
+      { key: TAB_KEYS.FRONT_DESK, label: t('tabs.frontDesk') },
+      { key: TAB_KEYS.CANCEL_SCAN, label: t('tabs.cancelScan') },
+      attendanceTab(TAB_KEYS.WEEKLY, t('tabs.weekly')),
     ]
     if (showPushTab) {
-      items.push(attendanceTab(TAB_KEYS.PUSH, '推送'))
+      items.push(attendanceTab(TAB_KEYS.PUSH, t('tabs.push')))
     }
     return items
-  }, [attendanceResult, showPushTab])
+  }, [attendanceResult, showPushTab, t])
 
   return (
     <>
@@ -203,23 +205,23 @@ export default function ScannerEfficiencyBody({ vm, level1Push }: Props) {
             activeTab !== TAB_KEYS.FRONT_DESK && (
             <section className="se-empty-panel overflow-hidden">
               <div className="se-section-head border-b-0 bg-transparent">
-                <h2 className="se-section-title mt-0">先载入到件扫描数据</h2>
+                <h2 className="se-section-title mt-0">{t('empty.loadInboundFirst')}</h2>
                 <p className="se-section-desc">
-                  上传 Excel 或通过 API 拉取到件记录后，即可查看货量趋势与效率分析。
+                  {t('empty.loadInboundDesc')}
                 </p>
               </div>
               <div className="se-empty-steps px-5 pb-5">
                 <div className="se-empty-step">
                   <div className="se-empty-step-num">1</div>
-                  只载入到件数据：先得到按日货量，含扫描员信息时可自动算分拣效率。支持多文件或多次 API 合并，运单号重复时保留最早扫描记录。
+                  {t('empty.step1')}
                 </div>
                 <div className="se-empty-step">
                   <div className="se-empty-step-num">2</div>
-                  同时上传考勤：自动输出开仓效率与总体效率。
+                  {t('empty.step2')}
                 </div>
                 <div className="se-empty-step">
                   <div className="se-empty-step-num">3</div>
-                  日期自动匹配：按到件文件日期去找对应考勤日期。
+                  {t('empty.step3')}
                 </div>
               </div>
             </section>
@@ -241,8 +243,8 @@ export default function ScannerEfficiencyBody({ vm, level1Push }: Props) {
           {hasScanData && activeTab === TAB_KEYS.WAREHOUSE && (
             <section className="admin-panel overflow-hidden space-y-0">
               <SectionTitle
-                title="到件货量按日"
-                description="左侧为按日汇总表（含菜鸟票与菜鸟占比：运单号以 3 开头）。右侧折线仅反映各日总货量（票）趋势。文件合并后先按运单号全局去重，再按日统计；开仓/总体效率口径不变。"
+                title={t('section.dailyVolumeTitle')}
+                description={t('section.dailyVolumeDesc')}
               />
               <div className="grid gap-4 p-4 pt-0 xl:grid-cols-[minmax(0,1.05fr)_minmax(320px,0.95fr)] xl:items-start">
                 <div className="min-w-0">
@@ -250,7 +252,7 @@ export default function ScannerEfficiencyBody({ vm, level1Push }: Props) {
                     boundedScroll
                     columns={dailyVolumeColumns}
                     rows={dailyRowsAsTable}
-                    emptyText="暂无到件数据。"
+                    emptyText={t('empty.noInboundData')}
                   />
                 </div>
                 <div className="admin-panel min-w-0 overflow-hidden p-4 sm:p-5">
@@ -279,14 +281,14 @@ export default function ScannerEfficiencyBody({ vm, level1Push }: Props) {
 
               <section className="admin-panel overflow-hidden">
                 <SectionTitle
-                  title="人员工时汇总"
-                  description="按人员汇总统计窗口内（含无到件补录日）的考勤总工时、活跃与开仓参与天数。扫描量为一级分拣同源个人总票数（与「扫描员一级分拣效率汇总」一致）；在岗效率为扫描量÷总工时(小时)。扫描员与考勤「昵称」匹配：忽略大小写；多级编码（如 ADL-DC-Serene）取末段与昵称精确或前缀对应（如 Serene、pan↔PanPan）。无匹配时显示为 —。"
+                  title={t('section.personHoursTitle')}
+                  description={t('section.personHoursDesc')}
                 />
                 <div className="overflow-x-auto p-4 pt-0">
                   <DataTable
                     columns={attendancePersonColumns}
                     rows={attendancePersonAsTable}
-                    emptyText="暂无人员工时数据。"
+                    emptyText={t('empty.noPersonHours')}
                   />
                 </div>
               </section>
@@ -297,14 +299,16 @@ export default function ScannerEfficiencyBody({ vm, level1Push }: Props) {
             <section className="se-alert-warn overflow-hidden">
               <SectionTitle
                 bare
-                title="开仓效率 / 总体效率模块未启用"
-                description="当前尚未上传可识别的考勤数据，无法计算工时口径效率。"
+                title={t('section.warehouseDisabledTitle')}
+                description={t('section.warehouseDisabledDesc')}
               />
               <div className="px-5 py-4 text-sm leading-7">
-                请上传"考勤记录报表.csv"或同结构文件（至少包含日期、人员；有「工作时长」则优先使用，否则使用「总时长」），即可启用该标签页。
+                {t('section.warehouseDisabledBody')}
                 <br />
-                当前考勤识别：有效 {formatInteger(attendanceSourceInfo.rowCount)} 行，未识别{' '}
-                {formatInteger(attendanceSourceInfo.droppedRows)} 行。
+                {t('section.warehouseDisabledStats', {
+                  valid: formatInteger(attendanceSourceInfo.rowCount),
+                  dropped: formatInteger(attendanceSourceInfo.droppedRows),
+                })}
               </div>
             </section>
           )}
@@ -323,8 +327,8 @@ export default function ScannerEfficiencyBody({ vm, level1Push }: Props) {
               />
               <section className="admin-panel overflow-hidden">
                 <SectionTitle
-                  title="一级分拣效率（按日合计）"
-                  description="按日汇总所有扫描员的一级分拣扫描量与推算有效工时；与下方扫描员汇总、按小时段分布对照。左侧为表，右侧折线图为每日合计效率（票/小时），与表中「效率」列一致。"
+                  title={t('section.sortingDailyTitle')}
+                  description={t('section.sortingDailyDesc')}
                 />
                 <div className="grid gap-4 p-4 pt-0 xl:grid-cols-[minmax(0,1.05fr)_minmax(320px,0.95fr)] xl:items-start">
                   <div className="min-w-0">
@@ -332,7 +336,7 @@ export default function ScannerEfficiencyBody({ vm, level1Push }: Props) {
                       boundedScroll
                       columns={scannerDailyColumns}
                       rows={scannerDailyAsTable}
-                      emptyText="暂无分拣按日效率。"
+                      emptyText={t('empty.noSortingDaily')}
                     />
                   </div>
                   <div className="admin-panel min-w-0 overflow-hidden p-4 sm:p-5">
@@ -370,13 +374,13 @@ export default function ScannerEfficiencyBody({ vm, level1Push }: Props) {
             <section className="se-alert-warn overflow-hidden">
               <SectionTitle
                 bare
-                title="一级分拣模块未启用"
-                description="当前到件文件可用于开仓/总体效率，但未满足一级分拣同源列要求。"
+                title={t('section.sortingDisabledTitle')}
+                description={t('section.sortingDisabledDesc')}
               />
               <div className="px-5 py-4 text-sm leading-7">
-                一级分拣模块同源列：扫描时间 / 运单号 / 扫描员。
+                {t('section.sortingDisabledBody')}
                 <br />
-                只要这三列可识别，就会自动恢复个人效率统计。
+                {t('section.sortingDisabledHint')}
               </div>
             </section>
           )}
@@ -435,26 +439,26 @@ export default function ScannerEfficiencyBody({ vm, level1Push }: Props) {
         {hasScanData && (
           <section className="se-workspace-footer">
             <SectionTitle
-              title="统计口径说明"
-              description="页面遵循你给的业务规则，并对多文件、跨天数据做了统一处理。"
+              title={t('section.rulesTitle')}
+              description={t('section.rulesDesc')}
             />
             <div className="grid gap-3 px-5 pb-5 lg:grid-cols-3">
               <div className="se-rules-card">
-                开仓日：分拣人数 &gt; {settings.openDayThreshold}。
+                {t('section.rulesOpenDay', { threshold: settings.openDayThreshold })}
                 <br />
-                不开仓日：分拣人数 ≤ {settings.openDayThreshold}。
+                {t('section.rulesNonOpenDay', { threshold: settings.openDayThreshold })}
               </div>
               <div className="se-rules-card">
-                开仓效率 = 上传总货量 / 统计窗口内「开仓日」考勤总工时。
+                {t('section.rulesOpenEfficiency')}
                 <br />
-                总体效率 = 上传总货量 / 统计窗口内全部考勤总工时（含不开仓、仅配送等日）。
+                {t('section.rulesOverallEfficiency')}
                 <br />
-                统计窗口 = 到件最早日 ～ max(到件最迟日, 考勤中不早于最早日的最迟日)。
+                {t('section.rulesWindow')}
               </div>
               <div className="se-rules-card">
-                日表在到件行之外，追加「统计窗口」内无到件、不开仓的日期（总货量 0，仍显示分拣人数与工时）。分母在窗口内按日汇总。人员表为考勤汇总，不含按票分摊。
+                {t('section.rulesDailyTable')}
                 <br />
-                菜鸟件：运单号以 3 开头，仅作结构观测（占比），不参与开仓/总体效率计算。
+                {t('section.rulesCainiao')}
               </div>
             </div>
           </section>
@@ -493,8 +497,8 @@ export default function ScannerEfficiencyBody({ vm, level1Push }: Props) {
           <section className="space-y-3">
             <SectionTitle
               eyebrow="Attendance Matching"
-              title={`效率明细/天（组合图·${efficiencyDetailDimension === 'week' ? '周维度' : '日维度'}）`}
-              description="蓝色柱为总货量（左轴），绿色面积折线为分拣人数（独立比例尺），橙线为当天效率（右轴）。"
+              title={t('section.efficiencyDetailComboTitle', { dimension: efficiencyDetailDimension === 'week' ? t('dimension.week') : t('dimension.day') })}
+              description={t('section.efficiencyDetailComboDesc')}
             />
             <div className="admin-panel overflow-hidden p-4 sm:p-5">
               <DailyEfficiencyComboChart

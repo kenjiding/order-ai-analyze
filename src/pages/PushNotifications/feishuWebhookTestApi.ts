@@ -1,5 +1,13 @@
 import { backendFetch } from '../../api/httpClient'
+import { i18n } from '../../i18n/index'
 import type { PushApiScope } from '../../permissions/pushNotificationAccess'
+
+const pt = (key: string, options?: Record<string, unknown>) =>
+  String(i18n.t(key, { ns: 'pushNotifications', ...options }))
+
+function feishuWireDetail(code: string, msg: string): string {
+  return [code ? `code ${code}` : '', msg].filter(Boolean).join(' · ')
+}
 
 /** 飞书推送链路服务端自带超时+重试（单跳约 15s×3 次），客户端超时留够余量，避免服务端还在重试时前端先放弃 */
 const FEISHU_PUSH_TIMEOUT_MS = 60_000
@@ -21,9 +29,9 @@ function isTimeoutError(err: unknown): boolean {
 
 function backendUnreachableMessage(path: string, err: unknown): string {
   if (isTimeoutError(err)) {
-    return `请求超时（${FEISHU_PUSH_TIMEOUT_MS / 1000}s），飞书接口可能响应缓慢，请稍后重试。`
+    return pt('api.requestTimeout', { seconds: FEISHU_PUSH_TIMEOUT_MS / 1000 })
   }
-  return `无法访问后端 (${path})。请确认已运行 server（如 pnpm dev:server）或检查 VITE_API_BASE。`
+  return pt('api.backendUnreachable', { path })
 }
 
 export type FeishuPushTestPayload = {
@@ -92,10 +100,10 @@ export async function postFeishuPushTest(payload: FeishuPushTestPayload): Promis
         ok: false,
         httpStatus: parsed.httpStatus ?? res.status,
         feishu: parsed.feishu,
-        error: typeof parsed.error === 'string' ? parsed.error : '推送测试失败。',
+        error: typeof parsed.error === 'string' ? parsed.error : pt('api.pushTestFailed'),
       }
     }
-    return { ok: false, httpStatus: res.status, error: '无法解析服务端响应。' }
+    return { ok: false, httpStatus: res.status, error: pt('api.unparseableResponse') }
   } catch (err) {
     return { ok: false, error: backendUnreachableMessage(path, err) }
   }
@@ -134,10 +142,10 @@ export async function postFeishuPushText(payload: {
         ok: false,
         httpStatus: parsed.httpStatus ?? res.status,
         feishu: parsed.feishu,
-        error: typeof parsed.error === 'string' ? parsed.error : '文案推送失败。',
+        error: typeof parsed.error === 'string' ? parsed.error : pt('api.textPushFailed'),
       }
     }
-    return { ok: false, httpStatus: res.status, error: '无法解析服务端响应。' }
+    return { ok: false, httpStatus: res.status, error: pt('api.unparseableResponse') }
   } catch (err) {
     return { ok: false, error: backendUnreachableMessage(path, err) }
   }
@@ -171,10 +179,10 @@ export async function postFeishuPushCard(payload: {
         ok: false,
         httpStatus: parsed.httpStatus ?? res.status,
         feishu: parsed.feishu,
-        error: typeof parsed.error === 'string' ? parsed.error : '卡片推送失败。',
+        error: typeof parsed.error === 'string' ? parsed.error : pt('api.cardPushFailed'),
       }
     }
-    return { ok: false, httpStatus: res.status, error: '无法解析服务端响应。' }
+    return { ok: false, httpStatus: res.status, error: pt('api.unparseableResponse') }
   } catch (err) {
     return { ok: false, error: backendUnreachableMessage(path, err) }
   }
@@ -213,10 +221,10 @@ export async function postFeishuPushRichMessage(payload: {
         ok: false,
         httpStatus: parsed.httpStatus ?? res.status,
         feishu: parsed.feishu,
-        error: typeof parsed.error === 'string' ? parsed.error : '富文本卡片推送失败。',
+        error: typeof parsed.error === 'string' ? parsed.error : pt('api.richCardPushFailed'),
       }
     }
-    return { ok: false, httpStatus: res.status, error: '无法解析服务端响应。' }
+    return { ok: false, httpStatus: res.status, error: pt('api.unparseableResponse') }
   } catch (err) {
     return { ok: false, error: backendUnreachableMessage(path, err) }
   }
@@ -239,9 +247,9 @@ export async function fetchDeliveryWeatherLarkMd(params: {
     if (parsed?.ok === true && typeof parsed.data?.larkMd === 'string') {
       return { ok: true, larkMd: parsed.data.larkMd }
     }
-    return { ok: false, error: typeof parsed?.error === 'string' ? parsed.error : '获取天气预报失败。' }
+    return { ok: false, error: typeof parsed?.error === 'string' ? parsed.error : pt('api.weatherFailed') }
   } catch {
-    return { ok: false, error: `无法访问后端 (${path})。` }
+    return { ok: false, error: pt('api.backendUnreachableShort', { path }) }
   }
 }
 
@@ -258,7 +266,7 @@ export async function fetchFeishuAppBotChats(): Promise<
     if (parsed?.ok === true && Array.isArray(parsed.data)) {
       return { ok: true, chats: parsed.data }
     }
-    return { ok: false, error: typeof parsed?.error === 'string' ? parsed.error : '获取机器人所在群列表失败。' }
+    return { ok: false, error: typeof parsed?.error === 'string' ? parsed.error : pt('api.botChatsFailed') }
   } catch (err) {
     return { ok: false, error: backendUnreachableMessage(path, err) }
   }
@@ -299,10 +307,10 @@ export async function postFeishuPushRichMessageViaAppBot(payload: {
         ok: false,
         httpStatus: parsed.httpStatus ?? res.status,
         feishu: parsed.feishu,
-        error: typeof parsed.error === 'string' ? parsed.error : '应用机器人富文本推送失败。',
+        error: typeof parsed.error === 'string' ? parsed.error : pt('api.appBotRichPushFailed'),
       }
     }
-    return { ok: false, httpStatus: res.status, error: '无法解析服务端响应。' }
+    return { ok: false, httpStatus: res.status, error: pt('api.unparseableResponse') }
   } catch (err) {
     return { ok: false, error: backendUnreachableMessage(path, err) }
   }
@@ -321,7 +329,7 @@ export async function fetchFeishuChatMembers(
     if (parsed?.ok === true && Array.isArray(parsed.data)) {
       return { ok: true, members: parsed.data }
     }
-    return { ok: false, error: typeof parsed?.error === 'string' ? parsed.error : '获取群成员列表失败。' }
+    return { ok: false, error: typeof parsed?.error === 'string' ? parsed.error : pt('api.chatMembersFailed') }
   } catch (err) {
     return { ok: false, error: backendUnreachableMessage(path, err) }
   }
@@ -348,7 +356,7 @@ export async function fetchFeishuPushMessages(
     if (parsed?.ok === true && Array.isArray(parsed.data)) {
       return { ok: true, data: parsed.data }
     }
-    return { ok: false, error: typeof parsed?.error === 'string' ? parsed.error : '获取推送记录失败。' }
+    return { ok: false, error: typeof parsed?.error === 'string' ? parsed.error : pt('api.pushRecordsFailed') }
   } catch (err) {
     return { ok: false, error: backendUnreachableMessage(path, err) }
   }
@@ -375,7 +383,7 @@ export async function fetchFeishuPushMessageReadStatus(
     if (parsed?.ok === true && parsed.data) {
       return { ok: true, data: parsed.data }
     }
-    return { ok: false, error: typeof parsed?.error === 'string' ? parsed.error : '查询已读状态失败。' }
+    return { ok: false, error: typeof parsed?.error === 'string' ? parsed.error : pt('api.readStatusFailed') }
   } catch (err) {
     return { ok: false, error: backendUnreachableMessage(path, err) }
   }
@@ -386,8 +394,9 @@ export function summarizeFeishuTestFailure(result: FeishuPushTestFail): string {
   const fb = result.feishu as Record<string, unknown> | null | undefined
   const msg = fb && typeof fb.msg === 'string' ? fb.msg : ''
   const code = fb && typeof fb.code !== 'undefined' ? String(fb.code) : ''
-  const suffix = msg || code ? `飞书响应：${[code ? `code ${code}` : '', msg].filter(Boolean).join(' · ')}` : ''
-  return [result.error ?? '推送测试失败。', suffix].filter(Boolean).join(' ')
+  const suffix =
+    msg || code ? pt('api.feishuResponse', { detail: feishuWireDetail(code, msg) }) : ''
+  return [result.error ?? pt('api.pushTestFailed'), suffix].filter(Boolean).join(' ')
 }
 
 export async function postFeishuPushImage(
@@ -436,10 +445,10 @@ export async function postFeishuPushImage(
         httpStatus: parsed.httpStatus ?? res.status,
         feishu: parsed.feishu,
         feishuUpload: parsed.feishuUpload,
-        error: typeof parsed.error === 'string' ? parsed.error : '图片推送失败。',
+        error: typeof parsed.error === 'string' ? parsed.error : pt('api.imagePushFailed'),
       }
     }
-    return { ok: false, httpStatus: res.status, error: '无法解析服务端响应。' }
+    return { ok: false, httpStatus: res.status, error: pt('api.unparseableResponse') }
   } catch (err) {
     return { ok: false, error: backendUnreachableMessage(path, err) }
   }
@@ -450,15 +459,18 @@ export function summarizeFeishuPushImageFailure(result: FeishuPushImageFail): st
     const upl = result.feishuUpload as Record<string, unknown>
     const umsg = typeof upl.msg === 'string' ? upl.msg : ''
     const ucode = typeof upl.code !== 'undefined' ? String(upl.code) : ''
-    if (umsg || ucode)
-      return [result.error ?? '上传图片失败', `飞书上载：${[ucode ? `code ${ucode}` : '', umsg].filter(Boolean).join(' · ')}`].join(
-        ' · ',
-      )
+    if (umsg || ucode) {
+      return [
+        result.error ?? pt('api.imageUploadFailed'),
+        pt('api.feishuUpload', { detail: feishuWireDetail(ucode, umsg) }),
+      ].join(' · ')
+    }
   }
   if (result.error && !result.feishu) return result.error
   const fb = result.feishu as Record<string, unknown> | null | undefined
   const msg = fb && typeof fb.msg === 'string' ? fb.msg : ''
   const code = fb && typeof fb.code !== 'undefined' ? String(fb.code) : ''
-  const suffix = msg || code ? `飞书 webhook：${[code ? `code ${code}` : '', msg].filter(Boolean).join(' · ')}` : ''
-  return [result.error ?? '图片推送失败', suffix].filter(Boolean).join(' · ')
+  const suffix =
+    msg || code ? pt('api.feishuWebhook', { detail: feishuWireDetail(code, msg) }) : ''
+  return [result.error ?? pt('api.imagePushFailed'), suffix].filter(Boolean).join(' · ')
 }

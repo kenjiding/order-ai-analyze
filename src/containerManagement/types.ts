@@ -1,7 +1,20 @@
 /** 容器管理：与后端接口对齐的类型定义 */
 import type { AccountPushNotify } from './pushNotify'
 
-export type ContainerType = 'BIG_BASKET' | 'SILVER_BOX'
+/**
+ * 品类码。值域由后端 container_types 表决定，前端拿不到编译期的联合类型，
+ * 真正的约束在后端 containerTypeService 的 isActiveType/isKnownType。
+ */
+export type ContainerType = string
+
+/** 品类字典的一行；inUse=true 表示已被流转或台账引用，只能停用不能删 */
+export type ContainerTypeItem = {
+  /** 内部标识，后端自动生成，界面不展示 */
+  code: string
+  name: string
+  active: boolean
+  inUse: boolean
+}
 export type AccountKind = 'BROKER' | 'CUSTOMER' | 'CSP' | 'INTERNAL_WAREHOUSE'
 export type TransferKind =
   | 'LEND'
@@ -25,6 +38,7 @@ export type BalanceReasonType =
   | 'HISTORICAL_BACKFILL'
   | 'TRANSFER_SETTLEMENT'
   | 'TRANSFER_VOID'
+  | 'TRANSIT_LOSS'
 export type BalanceAuditAction = 'CREATE' | 'UPDATE' | 'DELETE' | 'TRANSFER'
 export type TransferChangeAction = 'UPDATE' | 'DELETE' | 'VOID'
 

@@ -1,4 +1,5 @@
 import type { AnalysisRow } from '../OrderExceptionManagement/analysisTypes'
+import { plT } from './packageLossI18n'
 
 export const IN_HUB_LOSS_SCOPE = '库内丢失'
 
@@ -51,11 +52,20 @@ export type InHubLossFact = InHubLossFlow & {
 }
 
 export const SANKEY_DIM_OPTIONS = [
-  { value: 'vendor', label: '所属供应商' },
-  { value: 'route', label: '路由码' },
-  { value: 'suspect', label: '首个嫌疑派件员' },
-  { value: 'person', label: '最新责任人' },
-] as const
+  { value: 'vendor' as const, label: '' },
+  { value: 'route' as const, label: '' },
+  { value: 'suspect' as const, label: '' },
+  { value: 'person' as const, label: '' },
+]
+
+export function getSankeyDimOptions() {
+  return [
+    { value: 'vendor' as const, label: plT('analytics.dimVendor') },
+    { value: 'route' as const, label: plT('analytics.dimRoute') },
+    { value: 'suspect' as const, label: plT('analytics.dimSuspect') },
+    { value: 'person' as const, label: plT('analytics.dimPerson') },
+  ]
+}
 
 export type SankeyDimKey = (typeof SANKEY_DIM_OPTIONS)[number]['value']
 
@@ -382,8 +392,8 @@ export function resolveScopeDrillView(
     return {
       path: EMPTY_SCOPE_DRILL,
       data: analytics.scopeMix,
-      caption: '全部已分析单，按异常类型。点击柱形下钻到子类型',
-      ariaLabel: '异常类型单量分布',
+      caption: plT('analytics.scopeAllCaption'),
+      ariaLabel: plT('analytics.scopeAllAria'),
       canDrill: analytics.scopeMix.length > 0,
       crumbs: [],
     }
@@ -395,11 +405,11 @@ export function resolveScopeDrillView(
     return {
       path: { scope, subtype: null },
       data: subtypes,
-      caption: `${scope} · 按子类型。点击柱形下钻到路由码`,
-      ariaLabel: `${scope}子类型单量分布`,
+      caption: plT('analytics.scopeSubtypeCaption', { scope }),
+      ariaLabel: plT('analytics.scopeSubtypeAria', { scope }),
       canDrill: subtypes.length > 0,
       crumbs: [
-        { label: '全部异常类型', path: EMPTY_SCOPE_DRILL },
+        { label: plT('analytics.breadcrumbAllTypes'), path: EMPTY_SCOPE_DRILL },
         { label: scope, path: { scope, subtype: null } },
       ],
     }
@@ -408,11 +418,11 @@ export function resolveScopeDrillView(
   return {
     path: { scope, subtype },
     data: routes,
-    caption: `${scope} / ${subtype} · 按路由码`,
-    ariaLabel: `${scope}${subtype}路由码单量分布`,
+    caption: plT('analytics.scopeRouteCaption', { scope, subtype }),
+    ariaLabel: plT('analytics.scopeRouteAria', { scope, subtype }),
     canDrill: false,
     crumbs: [
-      { label: '全部异常类型', path: EMPTY_SCOPE_DRILL },
+      { label: plT('analytics.breadcrumbAllTypes'), path: EMPTY_SCOPE_DRILL },
       { label: scope, path: { scope, subtype: null } },
       { label: subtype, path: { scope, subtype } },
     ],
@@ -435,8 +445,8 @@ export function resolveVendorDrillView(
     return {
       path: EMPTY_VENDOR_DRILL,
       data: analytics.vendorMix,
-      caption: '仅库内丢失，按供应商。点击柱形下钻到路由码',
-      ariaLabel: '库内丢失供应商单量分布',
+      caption: plT('analytics.vendorAllCaption'),
+      ariaLabel: plT('analytics.vendorAllAria'),
       canDrill: analytics.vendorMix.length > 0,
       crumbs: [],
     }
@@ -448,11 +458,11 @@ export function resolveVendorDrillView(
     return {
       path: { vendor, route: null },
       data: routes,
-      caption: `${vendor} · 按路由码。点击柱形下钻到司机`,
-      ariaLabel: `${vendor}路由码单量分布`,
+      caption: plT('analytics.vendorRouteCaption', { vendor }),
+      ariaLabel: plT('analytics.vendorRouteAria', { vendor }),
       canDrill: routes.length > 0,
       crumbs: [
-        { label: '全部供应商', path: EMPTY_VENDOR_DRILL },
+        { label: plT('analytics.breadcrumbAllVendors'), path: EMPTY_VENDOR_DRILL },
         { label: vendor, path: { vendor, route: null } },
       ],
     }
@@ -461,11 +471,11 @@ export function resolveVendorDrillView(
   return {
     path: { vendor, route },
     data: suspects,
-    caption: `${vendor} / ${route} · 按司机（首个嫌疑派件员）`,
-    ariaLabel: `${vendor}${route}司机单量分布`,
+    caption: plT('analytics.vendorDriverCaption', { vendor, route }),
+    ariaLabel: plT('analytics.vendorDriverAria', { vendor, route }),
     canDrill: false,
     crumbs: [
-      { label: '全部供应商', path: EMPTY_VENDOR_DRILL },
+      { label: plT('analytics.breadcrumbAllVendors'), path: EMPTY_VENDOR_DRILL },
       { label: vendor, path: { vendor, route: null } },
       { label: route, path: { vendor, route } },
     ],
@@ -494,9 +504,10 @@ const DIM_SPEC: Record<
 /** 子类型始终作为第一列；其余按固定顺序：所属供应商 → 路由码 → 首个嫌疑派件员 → 最新责任人。 */
 export function resolveSankeyColumns(selected: readonly SankeyDimKey[]): SankeyColumn[] {
   const selectedSet = new Set(selected)
+  const dimOptions = getSankeyDimOptions()
   return [
-    { key: 'subtype', title: '子类型' },
-    ...SANKEY_DIM_OPTIONS.filter((option) => selectedSet.has(option.value)).map((option) => ({
+    { key: 'subtype', title: plT('analytics.dimSubtype') },
+    ...dimOptions.filter((option) => selectedSet.has(option.value)).map((option) => ({
       key: option.value,
       title: option.label,
     })),
@@ -859,11 +870,13 @@ function buildInsight(
 ): string | null {
   if (inHubCount <= 0) return null
   const head = subtypes[0]
-  const parts = [`库内丢失 ${inHubCount} 单，占已分析 ${pct(inHubShare)}`]
-  if (head) parts.push(`${head.key} ${head.count} 单（${pct(head.share)}）`)
-  if (topRoute) parts.push(`路由集中在 ${topRoute}`)
-  if (topSuspect && topSuspect !== UNLABELED_SUSPECT) parts.push(`首个嫌疑派件员集中在 ${topSuspect}`)
-  if (topPerson) parts.push(`责任人集中在 ${topPerson}`)
+  const parts = [plT('analytics.insightInHub', { count: inHubCount, share: pct(inHubShare) })]
+  if (head) parts.push(plT('analytics.insightHead', { key: head.key, count: head.count, share: pct(head.share) }))
+  if (topRoute) parts.push(plT('analytics.insightRoute', { route: topRoute }))
+  if (topSuspect && topSuspect !== UNLABELED_SUSPECT) {
+    parts.push(plT('analytics.insightSuspect', { suspect: topSuspect }))
+  }
+  if (topPerson) parts.push(plT('analytics.insightPerson', { person: topPerson }))
   return `${parts.join('。')}。`
 }
 

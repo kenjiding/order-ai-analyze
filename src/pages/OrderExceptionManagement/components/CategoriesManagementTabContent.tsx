@@ -1,8 +1,9 @@
 import { Button, Input, Select } from 'antd'
 import { Pencil, Plus, Trash2 } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import type { ConcreteLossScope, ExceptionCategoryEntity, LossScope } from '../types'
-import { LOSS_SCOPE_OPTIONS } from '../types'
+import { concreteLossScopeOptions, editLossScopeOptions } from '../orderExceptionDomain'
 
 type CategoryEditPatch = {
   name?: string
@@ -25,8 +26,6 @@ type Props = {
   onDeleteCategory: (id: string) => void | Promise<void>
 }
 
-const newLossScopeOptions = LOSS_SCOPE_OPTIONS.map((v) => ({ label: v, value: v }))
-
 export function CategoriesManagementTabContent({
   categories,
   sampleCountByCategoryId,
@@ -41,6 +40,8 @@ export function CategoriesManagementTabContent({
   onUpdateCategory,
   onDeleteCategory,
 }: Props) {
+  const { t, i18n } = useTranslation('orderException')
+  const { t: tc } = useTranslation('common')
   const [editingId, setEditingId] = useState<string | null>(null)
   const [draftName, setDraftName] = useState('')
   const [draftDescription, setDraftDescription] = useState('')
@@ -53,11 +54,12 @@ export function CategoriesManagementTabContent({
     lossScope: LossScope
   } | null>(null)
 
-  const editScopeOptions = useMemo(() => {
-    const o: LossScope[] = [...LOSS_SCOPE_OPTIONS]
-    if (draftLossScope === '未知') o.push('未知')
-    return o.map((v) => ({ label: v, value: v }))
-  }, [draftLossScope])
+  const newLossScopeOptions = useMemo(() => concreteLossScopeOptions(t), [t])
+
+  const editScopeOptions = useMemo(
+    () => editLossScopeOptions(t, draftLossScope),
+    [draftLossScope, t],
+  )
 
   useEffect(() => {
     if (editingId && !categories.some((c) => c.id === editingId)) {
@@ -123,7 +125,7 @@ export function CategoriesManagementTabContent({
   if (!hasRepo) {
     return (
       <section className="admin-panel p-5">
-        <p className="text-sm text-slate-600">当前环境不支持 IndexedDB，无法管理分类。</p>
+        <p className="text-sm text-slate-600">{t('categories.noIdb')}</p>
       </section>
     )
   }
@@ -131,24 +133,22 @@ export function CategoriesManagementTabContent({
   return (
     <div className="space-y-5">
       <section className="admin-panel p-5">
-        <h3 className="text-sm font-semibold text-slate-950">新建异常分类</h3>
-        <p className="mt-1 text-xs text-slate-500">
-          每个分类对应一类异常模式；分类说明会参与后续分析的 few-shot 提示。
-        </p>
+        <h3 className="text-sm font-semibold text-slate-950">{t('categories.createTitle')}</h3>
+        <p className="mt-1 text-xs text-slate-500">{t('categories.createDescription')}</p>
         <div className="mt-4 space-y-3">
           <div className="flex flex-col gap-3 lg:flex-row lg:items-end">
             <div className="flex min-w-0 flex-1 flex-col gap-3 sm:flex-row sm:items-end">
               <div className="min-w-0 flex-1">
-                <div className="mb-1 text-xs font-medium text-slate-600">分类名称</div>
+                <div className="mb-1 text-xs font-medium text-slate-600">{t('categories.categoryName')}</div>
                 <Input
                   value={newCategoryName}
                   onChange={(e) => onNewCategoryNameChange(e.target.value)}
-                  placeholder="例如：库区漏扫描"
+                  placeholder={t('categories.categoryNamePlaceholder')}
                   allowClear
                 />
               </div>
               <div className="w-full shrink-0 sm:w-[200px]">
-                <div className="mb-1 text-xs font-medium text-slate-600">丢失类型</div>
+                <div className="mb-1 text-xs font-medium text-slate-600">{t('categories.lossType')}</div>
                 <Select<ConcreteLossScope>
                   className="w-full"
                   value={newCategoryLossScope}
@@ -158,32 +158,28 @@ export function CategoriesManagementTabContent({
               </div>
             </div>
             <Button type="primary" icon={<Plus className="h-4 w-4" />} onClick={onCreateCategory}>
-              创建分类
+              {t('categories.createCategory')}
             </Button>
           </div>
-          <p className="text-xs text-slate-400">丢失类型与模型输出的「异常类型」一致，用作 few-shot 典型提示。</p>
+          <p className="text-xs text-slate-400">{t('categories.lossTypeHint')}</p>
           <div>
-            <div className="mb-1 text-xs font-medium text-slate-600">分类描述（可选）</div>
+            <div className="mb-1 text-xs font-medium text-slate-600">{t('categories.descriptionOptional')}</div>
             <Input.TextArea
               value={newCategoryDescription}
               onChange={(e) => onNewCategoryDescriptionChange(e.target.value)}
               rows={3}
-              placeholder="简要说明这类异常的判断要点，会一并交给模型作为分类提示"
+              placeholder={t('categories.descriptionPlaceholder')}
             />
           </div>
         </div>
       </section>
 
       <section className="admin-panel p-5">
-        <h3 className="text-sm font-semibold text-slate-950">异常分类管理</h3>
-        <p className="mt-1 text-xs text-slate-500">
-          修改名称、丢失类型与描述（会进入后续分析 few-shot）；删除分类将同时移除其下所有样本。
-        </p>
+        <h3 className="text-sm font-semibold text-slate-950">{t('categories.manageTitle')}</h3>
+        <p className="mt-1 text-xs text-slate-500">{t('categories.manageDescription')}</p>
 
         {!categories.length ? (
-          <p className="mt-4 text-sm text-slate-500">
-            暂无已保存分类，可在上方新建。
-          </p>
+          <p className="mt-4 text-sm text-slate-500">{t('categories.empty')}</p>
         ) : (
           <ul className="mt-4 divide-y divide-slate-200 rounded-lg border border-slate-200 bg-white">
             {categories.map((c) => {
@@ -195,11 +191,11 @@ export function CategoriesManagementTabContent({
                     <div key={c.id} className="space-y-3">
                       <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
                         <div className="min-w-0 flex-1">
-                          <div className="mb-1 text-xs font-medium text-slate-600">分类名称</div>
+                          <div className="mb-1 text-xs font-medium text-slate-600">{t('categories.categoryName')}</div>
                           <Input value={draftName} onChange={(e) => setDraftName(e.target.value)} />
                         </div>
                         <div className="w-full shrink-0 sm:w-[200px]">
-                          <div className="mb-1 text-xs font-medium text-slate-600">丢失类型</div>
+                          <div className="mb-1 text-xs font-medium text-slate-600">{t('categories.lossType')}</div>
                           <Select<LossScope>
                             className="w-full"
                             value={draftLossScope}
@@ -209,7 +205,7 @@ export function CategoriesManagementTabContent({
                         </div>
                       </div>
                       <div>
-                        <div className="mb-1 text-xs font-medium text-slate-600">分类描述</div>
+                        <div className="mb-1 text-xs font-medium text-slate-600">{t('categories.descriptionOptional')}</div>
                         <Input.TextArea
                           value={draftDescription}
                           onChange={(e) => setDraftDescription(e.target.value)}
@@ -223,10 +219,10 @@ export function CategoriesManagementTabContent({
                           disabled={saving}
                           onClick={() => void saveEdit()}
                         >
-                          保存
+                          {tc('save')}
                         </Button>
                         <Button disabled={saving} onClick={cancelEdit}>
-                          取消
+                          {tc('cancel')}
                         </Button>
                       </div>
                     </div>
@@ -242,10 +238,13 @@ export function CategoriesManagementTabContent({
                             {c.description}
                           </p>
                         ) : (
-                          <p className="mt-1 text-sm text-slate-400">（无描述）</p>
+                          <p className="mt-1 text-sm text-slate-400">{t('categories.noDescription')}</p>
                         )}
                         <div className="mt-2 text-xs text-slate-500">
-                          样本数 {samples} · 更新 {new Date(c.updatedAt).toLocaleString()}
+                          {t('categories.sampleCount', {
+                            count: samples,
+                            date: new Date(c.updatedAt).toLocaleString(i18n.language),
+                          })}
                         </div>
                       </div>
                       <div className="flex shrink-0 flex-wrap gap-2 sm:pt-0">
@@ -255,7 +254,7 @@ export function CategoriesManagementTabContent({
                           className="admin-btn inline-flex items-center gap-2 border border-slate-200 bg-white text-slate-800 hover:bg-slate-50"
                         >
                           <Pencil className="h-4 w-4" aria-hidden />
-                          编辑
+                          {tc('edit')}
                         </button>
                         <button
                           type="button"
@@ -263,7 +262,7 @@ export function CategoriesManagementTabContent({
                           className="admin-btn inline-flex items-center gap-2 border border-rose-200 bg-rose-50 text-rose-900 hover:bg-rose-100"
                         >
                           <Trash2 className="h-4 w-4" aria-hidden />
-                          删除
+                          {tc('delete')}
                         </button>
                       </div>
                     </div>

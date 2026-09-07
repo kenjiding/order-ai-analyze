@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { Alert, Button, Drawer, Space, TimePicker } from 'antd'
 import dayjs from 'dayjs'
 import { Gauge, Save } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
 import { FormSection } from '../../../components/FormSection'
 import { StationSelect } from '../../../components/Layout/StationSelect'
 import {
@@ -36,6 +37,7 @@ export function DispatchPerformanceConfigDrawer({
   catalogLoading,
   onSubmit,
 }: Props) {
+  const { t } = useTranslation(['dispatchPerformance', 'common'])
   const { stations } = useGlobalFilterStore()
   const [stationCode, setStationCode] = useState('')
   const [pushConfigIds, setPushConfigIds] = useState<string[]>([])
@@ -46,9 +48,6 @@ export function DispatchPerformanceConfigDrawer({
 
   useEffect(() => {
     if (!open) return
-    // 抽屉打开时把「编辑对象」同步进表单 state，与 DispatchAlarmScheduleDrawer 同一写法。
-    // set-state-in-effect 规则针对的是派生状态引发的级联渲染，这里是把外部 props 灌进
-    // 可编辑表单的一次性初始化，只在 open 翻转时发生。
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setStationCode(editing?.stationCode ?? '')
     setPushConfigIds(editing?.pushConfigIds ?? [])
@@ -58,16 +57,14 @@ export function DispatchPerformanceConfigDrawer({
 
   const handleConfirm = () => {
     if (!stationCode) {
-      setError('请选择站点')
+      setError(t('validation.selectStation', { ns: 'dispatchPerformance' }))
       return
     }
-    // 目录之外的 id（换过州、供应商配置被删）不提交，否则结算时会静默少一家
     const scopedPushConfigIds = pushConfigIds.filter((id) => catalogIdSet.has(id))
     if (scopedPushConfigIds.length === 0) {
-      setError('请至少选择一个供应商')
+      setError(t('validation.selectVendor', { ns: 'dispatchPerformance' }))
       return
     }
-    // 站点名只是展示用快照，避免列表页为了显示名字再去查 iMile
     const stationName = stations.find((s) => s.value === stationCode)?.label ?? ''
     onSubmit({
       stationCode,
@@ -89,13 +86,17 @@ export function DispatchPerformanceConfigDrawer({
       title={
         <div className="flex items-center gap-2">
           <Gauge className="h-4 w-4 text-[var(--admin-accent)]" aria-hidden />
-          <span>{editing ? '编辑统计配置' : '添加统计配置'}</span>
+          <span>
+            {editing
+              ? t('drawer.editTitle', { ns: 'dispatchPerformance' })
+              : t('drawer.addTitle', { ns: 'dispatchPerformance' })}
+          </span>
         </div>
       }
       footer={
         <Space className="justify-end w-full">
           <Button onClick={onClose} disabled={saving}>
-            取消
+            {t('cancel', { ns: 'common' })}
           </Button>
           <Button
             type="primary"
@@ -103,21 +104,27 @@ export function DispatchPerformanceConfigDrawer({
             onClick={handleConfirm}
             loading={saving}
           >
-            确认
+            {t('confirm', { ns: 'common' })}
           </Button>
         </Space>
       }
     >
       <div className="space-y-5">
-        <FormSection icon={Gauge} title="基础配置">
+        <FormSection icon={Gauge} title={t('drawer.basicConfig', { ns: 'dispatchPerformance' })}>
           <div className="space-y-3">
             <div className="flex items-center gap-2">
-              <span className="text-xs font-medium text-slate-500">站点</span>
+              <span className="text-xs font-medium text-slate-500">
+                {t('drawer.station', { ns: 'dispatchPerformance' })}
+              </span>
               <StationSelect value={stationCode} onChange={setStationCode} disabled={saving} />
-              <span className="text-xs text-slate-400">一个站点只能有一条配置</span>
+              <span className="text-xs text-slate-400">
+                {t('drawer.oneStationOnly', { ns: 'dispatchPerformance' })}
+              </span>
             </div>
             <div className="flex items-center gap-2">
-              <span className="text-xs font-medium text-slate-500">触发统计时间</span>
+              <span className="text-xs font-medium text-slate-500">
+                {t('drawer.triggerTime', { ns: 'dispatchPerformance' })}
+              </span>
               <TimePicker
                 value={dayjs(settleTime, 'HH:mm')}
                 format="HH:mm"
@@ -129,7 +136,9 @@ export function DispatchPerformanceConfigDrawer({
                   if (val) setSettleTime(val.format('HH:mm'))
                 }}
               />
-              <span className="text-xs text-slate-400">每天这个点开始跑统计，按该站点所属州的本地时间</span>
+              <span className="text-xs text-slate-400">
+                {t('drawer.triggerTimeHint', { ns: 'dispatchPerformance' })}
+              </span>
             </div>
           </div>
         </FormSection>
@@ -140,25 +149,22 @@ export function DispatchPerformanceConfigDrawer({
           onChange={setPushConfigIds}
           disabled={saving}
           catalogLoading={catalogLoading}
-          // 统计不推送任何消息，没配 Webhook / 飞书群的供应商也必须能勾（后端只要求 vendorCode，
-          // 见 dailyStatsJob.resolveStationTargets）；沿用推送口径会让那家的单永久缺失
           requirePushable={false}
-          description="只统计这里勾选的供应商"
-          footnote="漏勾的那家历史数据会永久缺失（结算不回补），请对照该站点实际承运商核对。"
+          description={t('drawer.vendorDescription', { ns: 'dispatchPerformance' })}
+          footnote={t('drawer.vendorFootnote', { ns: 'dispatchPerformance' })}
         />
 
         <Alert
           type="info"
           showIcon
-          message="统计时机"
+          message={t('drawer.timingTitle', { ns: 'dispatchPerformance' })}
           description={
             <div className="space-y-1 text-xs">
-              <div>确认后由定时任务每日在「触发统计时间」自动统计，两个指标结算时机差一天：</div>
-              <div>· 11点前出仓率 —— 结算「昨天到件」那批，出仓阈值一过即定终值</div>
-              <div>· 24小时派签率 —— 结算「前天到件」那批，必须等 24 小时窗口到期</div>
+              <div>{t('drawer.timingIntro', { ns: 'dispatchPerformance' })}</div>
+              <div>{t('drawer.timingBefore11', { ns: 'dispatchPerformance' })}</div>
+              <div>{t('drawer.timingSign24h', { ns: 'dispatchPerformance' })}</div>
               <div className="text-slate-400">
-                提前算派签会被归班盘点重新派出，数据会乱，所以要多等一天。
-                触发时间也别早于 11:00，否则会把「窗口还没到期」记成未达标。
+                {t('drawer.timingFootnote', { ns: 'dispatchPerformance' })}
               </div>
             </div>
           }

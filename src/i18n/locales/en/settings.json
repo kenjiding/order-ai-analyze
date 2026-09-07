@@ -1,0 +1,38 @@
+{
+  "title": "Settings",
+  "subtitle": "API credentials and attendance sync, saved per account",
+  "footerHint": "Saved to the server for your account — syncs when you sign in elsewhere.",
+  "navLabel": "Settings sections",
+  "sections": {
+    "imile": "iMile API",
+    "zkt": "ZKT attendance",
+    "about": "About"
+  },
+  "imile": {
+    "title": "iMile Bearer Token",
+    "description": "One token for all iMile API calls in this console. Update here when it expires.",
+    "tokenLabel": "Token",
+    "tokenHint": "Paste the token segment after Bearer in the Authorization header.",
+    "tokenPlaceholder": "Paste token from Authorization header",
+    "alertTitle": "Token expiry alerts",
+    "alertDescription": "Groups are used only to fetch members; alerts go via DM, not group chat."
+  },
+  "zkt": {
+    "title": "ZKT attendance API",
+    "description": "Used when pulling attendance via API. Server re-authenticates when the session expires.",
+    "username": "Username",
+    "password": "Password",
+    "usernamePlaceholder": "e.g. AUS_ADL",
+    "passwordPlaceholder": "Attendance system password",
+    "departments": "Departments",
+    "departmentsHint": "Comma-separated department IDs sent to the attendance API."
+  },
+  "about": {
+    "title": "About",
+    "description": "Where data lives and how credentials are stored.",
+    "body": "Local-first: payroll and scan data stay in your browser; exception samples use IndexedDB. Network calls go through the backend proxy only. Keep credentials secure.",
+    "offlineNote": "「Offline compute · local storage」means core data is not stored in remote business databases — it stays in this browser."
+  },
+  "saveFailed": "Failed to save settings",
+  "saved": "Settings saved"
+}

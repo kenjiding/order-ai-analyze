@@ -12,7 +12,7 @@ import {
   loadActualWorkerRateSettingsFromStorage,
   saveActualWorkerRateSettingsToStorage,
 } from './storage'
-import { DEFAULT_RATE_SETTINGS, DEFAULT_ACTUAL_WORKER_RATE_SETTINGS, ROLE_MAP, ROLES } from './constants'
+import { DEFAULT_RATE_SETTINGS, DEFAULT_ACTUAL_WORKER_RATE_SETTINGS, ROLES } from './constants'
 import {
   buildRateSettingsExportRows,
   buildWageExportFileName,
@@ -20,10 +20,12 @@ import {
   buildWeeklyBillingSummaryRows,
   buildDailyRawAttendanceExportRows,
   buildEmployeeAttendanceDetailExportRows,
+  buildMergedNicknameExportRows,
 } from './wageExport'
 import { generateId } from '../../utils/generateId'
 import { showToast } from '../../utils/toast'
 import { confirmDialog } from '../../utils/confirmDialog'
+import { i18n } from '../../i18n'
 import {
   formatDateDisplay,
   formatWorkdayDisplay,
@@ -44,6 +46,12 @@ import {
   reconcileFinanceWithWageRecords,
   buildReconciliationExportRows,
 } from '../../payroll/financeWageReconciliation'
+
+const WAGE_NS = 'wageSalary'
+
+function wt(key: string, options?: Record<string, unknown>): string {
+  return i18n.t(key, { ns: WAGE_NS, ...options })
+}
 
 /** 与上传解析一致的 read 选项；导出合并原始表时复用 */
 const WAGE_XLSX_READ_OPTS = {
@@ -109,8 +117,8 @@ function appendOriginalWorkbookSheets(targetBook, sourceBook) {
   for (const sheetName of sourceBook.SheetNames) {
     const orig = sourceBook.Sheets[sheetName]
     if (!orig) continue
-    const displayBase = String(sheetName || '').trim() || '原始数据'
-    const name = uniqueSheetName(`原始_${displayBase}`, used)
+    const displayBase = String(sheetName || '').trim() || wt('export.originalDataFallback')
+    const name = uniqueSheetName(`${wt('export.originalSheetPrefix')}${displayBase}`, used)
     try {
       const copy = cloneWorksheetForAppend(orig)
       XLSX.utils.book_append_sheet(targetBook, copy, name)
@@ -194,10 +202,10 @@ export function useWageSalaryPage() {
         await saveRateSettingsToStorage(settings)
         setRateSettings(settings)
         setWageRecords((prev) => prev.map((r) => recalcWageAmounts({ ...r }, settings)))
-        showToast('时薪设置已保存', 'success')
+        showToast(wt('toast.rateSettingsSaved'), 'success')
       } catch (error) {
         console.error('保存时薪设置失败:', error)
-        showToast('保存时薪设置失败', 'error')
+        showToast(wt('toast.rateSettingsSaveFailed'), 'error')
       }
     },
     [showToast],
@@ -213,7 +221,7 @@ export function useWageSalaryPage() {
     setWageRecords((prev) =>
       prev.map((r) => recalcWageAmounts({ ...r }, DEFAULT_RATE_SETTINGS)),
     )
-    showToast('已重置为默认时薪', 'success')
+    showToast(wt('toast.rateSettingsReset'), 'success')
   }, [showToast])
 
   const persistActualWorkerRateSettings = useCallback(
@@ -221,10 +229,10 @@ export function useWageSalaryPage() {
       try {
         await saveActualWorkerRateSettingsToStorage(settings)
         setActualWorkerRateSettings(settings)
-        showToast('实际时薪设置已保存', 'success')
+        showToast(wt('toast.actualRatesSaved'), 'success')
       } catch (error) {
         console.error('保存实际时薪设置失败:', error)
-        showToast('保存实际时薪设置失败', 'error')
+        showToast(wt('toast.actualRatesSaveFailed'), 'error')
       }
     },
     [showToast],
@@ -238,7 +246,7 @@ export function useWageSalaryPage() {
     } catch (e) {
       console.error(e)
     }
-    showToast('已重置实际时薪为默认', 'success')
+    showToast(wt('toast.actualRatesReset'), 'success')
   }, [showToast])
 
   const handleFileUpload = async (event) => {
@@ -277,18 +285,22 @@ export function useWageSalaryPage() {
 
       if (matchedCount > 0 && newCount > 0) {
         showToast(
-          `成功读取 ${sortedData.length} 条记录（${matchedCount} 条已匹配角色，${newCount} 条新员工）`,
+          wt('toast.fileReadSuccessMixed', {
+            total: sortedData.length,
+            matched: matchedCount,
+            newCount,
+          }),
           'success',
         )
       } else if (matchedCount > 0) {
-        showToast(`成功读取 ${sortedData.length} 条记录（全部已匹配角色）`, 'success')
+        showToast(wt('toast.fileReadSuccessAllMatched', { total: sortedData.length }), 'success')
       } else {
-        showToast(`成功读取 ${sortedData.length} 条记录（全部为新员工）`, 'success')
+        showToast(wt('toast.fileReadSuccessAllNew', { total: sortedData.length }), 'success')
       }
     } catch (error) {
       console.error('读取文件失败:', error)
       setPendingImportRaw(null)
-      showToast('读取文件失败，请确保文件格式正确', 'error')
+      showToast(wt('toast.fileReadFailed'), 'error')
     }
 
     event.target.value = ''
@@ -296,11 +308,11 @@ export function useWageSalaryPage() {
 
   const handleZktApiFetch = async (startDate, endDate) => {
     if (!startDate || !endDate) {
-      showToast('请选择有效的日期区间', 'error')
+      showToast(wt('toast.invalidDateRange'), 'error')
       return
     }
     if (!zktAttendance.username.trim() || !zktAttendance.password) {
-      showToast('请先在系统设置中配置 ZKT 考勤 API 账号与密码', 'error')
+      showToast(wt('toast.zktCredentialsMissing'), 'error')
       return
     }
 
@@ -331,17 +343,14 @@ export function useWageSalaryPage() {
       })
 
       if (result.count > 0 && result.fetched < result.count) {
-        throw new Error(`ZKT 考勤数据不完整：count=${result.count}，实际拉取 ${result.fetched} 条`)
+        throw new Error(wt('toast.zktIncomplete', { count: result.count, fetched: result.fetched }))
       }
 
       const sheetRows = mapZktTimeCardToAttendanceSheetRows(result.data)
       const sortedData = transformSheetRowsToUploadedData(sheetRows, employees)
 
       if (!sortedData.length) {
-        showToast(
-          `ZKT 返回 ${result.count} 条，但没有可计算薪资的有效工时（工作时长/总时长）记录`,
-          'warning',
-        )
+        showToast(wt('toast.zktNoValidHours', { count: result.count }), 'warning')
         return
       }
 
@@ -358,17 +367,28 @@ export function useWageSalaryPage() {
 
       if (matchedCount > 0 && newCount > 0) {
         showToast(
-          `已载入 ${sortedData.length} 条（count=${result.count}，${matchedCount} 条已匹配角色，${newCount} 条新员工）`,
+          wt('toast.zktLoadSuccessMixed', {
+            total: sortedData.length,
+            count: result.count,
+            matched: matchedCount,
+            newCount,
+          }),
           'success',
         )
       } else if (matchedCount > 0) {
-        showToast(`已载入 ${sortedData.length} 条（count=${result.count}，全部已匹配角色）`, 'success')
+        showToast(
+          wt('toast.zktLoadSuccessAllMatched', { total: sortedData.length, count: result.count }),
+          'success',
+        )
       } else {
-        showToast(`已载入 ${sortedData.length} 条（count=${result.count}，全部为新员工）`, 'success')
+        showToast(
+          wt('toast.zktLoadSuccessAllNew', { total: sortedData.length, count: result.count }),
+          'success',
+        )
       }
     } catch (error) {
       console.error('ZKT 考勤拉取失败:', error)
-      showToast(error?.message || 'ZKT 考勤拉取失败', 'error')
+      showToast(error?.message || wt('toast.zktFetchFailed'), 'error')
     } finally {
       setIsLoadingZktAttendance(false)
     }
@@ -376,7 +396,7 @@ export function useWageSalaryPage() {
 
   const handleSubmitUpload = async () => {
     if (uploadedData.length === 0) {
-      showToast('请先上传文件或拉取考勤 API 数据', 'error')
+      showToast(wt('toast.uploadDataRequired'), 'error')
       return
     }
 
@@ -386,15 +406,21 @@ export function useWageSalaryPage() {
 
       if (validationErrors.length > 0) {
         const errorMsg =
-          `数据验证失败，发现 ${validationErrors.length} 条无效记录：\n\n` +
+          wt('toast.validationFailedHeader', { count: validationErrors.length }) +
           validationErrors
             .slice(0, 10)
-            .map(
-              (err) =>
-                `第 ${err.index} 行 - ${err.label} (${err.employeeId}): ${err.error}`,
+            .map((err) =>
+              wt('toast.validationFailedRow', {
+                index: err.index,
+                label: err.label,
+                employeeId: err.employeeId,
+                error: err.error,
+              }),
             )
             .join('\n') +
-          (validationErrors.length > 10 ? `\n...还有 ${validationErrors.length - 10} 条错误` : '')
+          (validationErrors.length > 10
+            ? wt('toast.validationFailedMore', { count: validationErrors.length - 10 })
+            : '')
         showToast(errorMsg, 'error')
         setIsUploading(false)
         return
@@ -442,10 +468,10 @@ export function useWageSalaryPage() {
       }
       setPendingImportRaw(null)
       setUploadedData([])
-      showToast(`计算完成：生成 ${computed.length} 条工资记录（不累加历史）。`, 'success')
+      showToast(wt('toast.payrollComplete', { count: computed.length }), 'success')
     } catch (error) {
       console.error('上传失败:', error)
-      showToast(`上传失败: ${error.message || '处理错误'}`, 'error')
+      showToast(wt('toast.uploadFailed', { error: error.message || wt('toast.processingError') }), 'error')
     } finally {
       setIsUploading(false)
     }
@@ -459,7 +485,7 @@ export function useWageSalaryPage() {
         return recalcWageAmounts(merged, rateSettings)
       }),
     )
-    showToast('更新成功', 'success')
+    showToast(wt('toast.updateSuccess'), 'success')
   }
 
   const startRowEditing = (record) => {
@@ -500,14 +526,14 @@ export function useWageSalaryPage() {
 
   const handleDeleteRecord = async (recordId) => {
     const confirmed = await confirmDialog({
-      title: '删除工资记录',
-      content: '确定要删除这条记录吗？',
-      okText: '删除',
+      title: wt('confirm.deleteRecordTitle'),
+      content: wt('confirm.deleteRecordContent'),
+      okText: wt('records.delete'),
       danger: true,
     })
     if (!confirmed) return
     setWageRecords((prev) => prev.filter((r) => r._id !== recordId))
-    showToast('删除成功', 'success')
+    showToast(wt('toast.deleteSuccess'), 'success')
   }
 
   const handleUpdateEmployeeRole = (employeeRecordId, newRole) => {
@@ -516,7 +542,7 @@ export function useWageSalaryPage() {
       void saveEmployeesToStorage(next).catch((err) => console.error('保存员工列表失败:', err))
       return next
     })
-    showToast('员工角色更新成功', 'success')
+    showToast(wt('toast.employeeRoleUpdated'), 'success')
     setEditingEmployeeId(null)
   }
 
@@ -525,9 +551,15 @@ export function useWageSalaryPage() {
     const nick = String(nickname ?? '').trim()
     const display = nick || String(employeeId)
     const confirmed = await confirmDialog({
-      title: '删除员工',
-      content: `确定要删除员工 ${display} (${employeeId}${nick ? ` / 昵称 ${nick}` : ''}) 吗？将同时移除当前工资表中对应昵称的薪资记录。`,
-      okText: '删除',
+      title: wt('confirm.deleteEmployeeTitle'),
+      content: wt('confirm.deleteEmployeeContent', {
+        display,
+        employeeId,
+        nicknamePart: nick
+          ? wt('confirm.deleteEmployeeNicknamePart', { nickname: nick })
+          : '',
+      }),
+      okText: wt('records.delete'),
       danger: true,
     })
     if (!confirmed) return
@@ -543,7 +575,7 @@ export function useWageSalaryPage() {
           String(r.nickname ?? '').trim() !== nick,
       ),
     )
-    showToast('员工删除成功', 'success')
+    showToast(wt('toast.employeeDeleted'), 'success')
   }
 
   const handleUpdateUploadedRole = (index, newRole) => {
@@ -624,7 +656,7 @@ export function useWageSalaryPage() {
 
   const handleExport = () => {
     if (filteredWageRecords.length === 0) {
-      showToast('没有可导出的数据', 'error')
+      showToast(wt('toast.noExportData'), 'error')
       return
     }
 
@@ -672,27 +704,16 @@ export function useWageSalaryPage() {
     const totalHoursAll = mergedRows.reduce((s, row) => s + row.totalHoursDecimal, 0)
     const totalWageAll = mergedRows.reduce((s, row) => s + row.totalWage, 0)
 
-    const exportData = mergedRows.map((row) => ({
-      姓名: row.name || '',
-      昵称: row.nickname || '',
-      姓氏: row.surname || '',
-      总时长: Number(row.totalHoursDecimal.toFixed(2)),
-      总价格: Number(row.totalWage.toFixed(2)),
-    }))
-
-    exportData.push({
-      姓名: '合计',
-      昵称: '',
-      姓氏: '',
-      总时长: Number(totalHoursAll.toFixed(2)),
-      总价格: Number(totalWageAll.toFixed(2)),
+    const exportData = buildMergedNicknameExportRows(mergedRows, {
+      totalHours: totalHoursAll,
+      totalWage: totalWageAll,
     })
 
     const worksheet = XLSX.utils.json_to_sheet(exportData)
     const workbook = XLSX.utils.book_new()
-    XLSX.utils.book_append_sheet(workbook, worksheet, '工资数据')
+    XLSX.utils.book_append_sheet(workbook, worksheet, wt('export.sheetPayrollData'))
 
-    const rateSheetRows = buildRateSettingsExportRows(rateSettings, ROLE_MAP, ROLES)
+    const rateSheetRows = buildRateSettingsExportRows(rateSettings, ROLES)
 
     const weeklySummaryRows = buildWeeklyBillingSummaryRows(
       filteredWageRecords,
@@ -702,13 +723,13 @@ export function useWageSalaryPage() {
     XLSX.utils.book_append_sheet(
       workbook,
       XLSX.utils.json_to_sheet(weeklySummaryRows),
-      '周对账汇总',
+      wt('export.sheetWeeklySummary'),
     )
 
     XLSX.utils.book_append_sheet(
       workbook,
       XLSX.utils.json_to_sheet(rateSheetRows),
-      '时薪标准',
+      wt('export.sheetRateSettings'),
     )
 
     const attendanceDetailSource =
@@ -719,7 +740,7 @@ export function useWageSalaryPage() {
       XLSX.utils.book_append_sheet(
         workbook,
         XLSX.utils.json_to_sheet(employeeAttendanceDetailRows),
-        '员工考勤详情',
+        wt('export.sheetAttendanceDetail'),
       )
     }
 
@@ -727,7 +748,7 @@ export function useWageSalaryPage() {
       XLSX.utils.book_append_sheet(
         workbook,
         XLSX.utils.json_to_sheet(committedApiAttendanceRows),
-        '每日原始考勤记录',
+        wt('export.sheetDailyRaw'),
       )
     }
 
@@ -750,14 +771,24 @@ export function useWageSalaryPage() {
     saveAs(blob, fileName)
 
     const attendanceExtras: string[] = []
-    if (employeeAttendanceDetailRows.length > 0) attendanceExtras.push('员工考勤详情')
-    if (committedApiAttendanceRows.length > 0) attendanceExtras.push('每日原始考勤记录')
+    if (employeeAttendanceDetailRows.length > 0) {
+      attendanceExtras.push(wt('toast.exportExtraAttendanceDetail'))
+    }
+    if (committedApiAttendanceRows.length > 0) {
+      attendanceExtras.push(wt('toast.exportExtraDailyRaw'))
+    }
     const exportParts = [
-      committedImportRaw ? '原始上传工作表' : '',
+      committedImportRaw ? wt('toast.exportExtraOriginalSheets') : '',
       ...attendanceExtras,
     ].filter(Boolean)
-    const exportExtra = exportParts.length > 0 ? `（已附带${exportParts.join('与')}）` : ''
-    showToast(`导出成功${exportExtra}`, 'success')
+    if (exportParts.length > 0) {
+      showToast(
+        wt('toast.exportWithExtras', { extras: exportParts.join(wt('toast.exportExtrasJoiner')) }),
+        'success',
+      )
+    } else {
+      showToast(wt('toast.exportSuccess'), 'success')
+    }
   }
 
   const handleClearUploadedData = () => {
@@ -792,21 +823,29 @@ export function useWageSalaryPage() {
 
       if (parseErrors.length > 0) {
         const errorMsg =
-          `财务流水解析：有效 ${rows.length} 条，跳过 ${parseErrors.length} 条无效记录：\n\n` +
+          wt('toast.financeParseSummary', { valid: rows.length, skipped: parseErrors.length }) +
           parseErrors
             .slice(0, 8)
-            .map((err) => `第 ${err.rowIndex} 行 - ${err.personName}: ${err.error}`)
+            .map((err) =>
+              wt('toast.financeParseRow', {
+                index: err.rowIndex,
+                personName: err.personName,
+                error: err.error,
+              }),
+            )
             .join('\n') +
-          (parseErrors.length > 8 ? `\n...还有 ${parseErrors.length - 8} 条错误` : '')
+          (parseErrors.length > 8
+            ? wt('toast.financeParseMore', { count: parseErrors.length - 8 })
+            : '')
         showToast(errorMsg, rows.length > 0 ? 'success' : 'error')
       } else {
-        showToast(`成功读取 ${rows.length} 条财务流水记录`, 'success')
+        showToast(wt('toast.financeReadSuccess', { count: rows.length }), 'success')
       }
     } catch (error) {
       console.error('读取财务流水失败:', error)
       setFinanceLedgerRows([])
       setFinanceSourceFileName('')
-      showToast('读取财务流水失败，请确保文件格式正确', 'error')
+      showToast(wt('toast.financeReadFailed'), 'error')
     }
 
     event.target.value = ''
@@ -819,14 +858,14 @@ export function useWageSalaryPage() {
 
   const handleExportReconciliation = () => {
     if (!reconciliationResult || reconciliationResult.rows.length === 0) {
-      showToast('没有可导出的差异对比数据', 'error')
+      showToast(wt('toast.noReconciliationExport'), 'error')
       return
     }
 
     const exportRows = buildReconciliationExportRows(reconciliationResult)
     const worksheet = XLSX.utils.json_to_sheet(exportRows)
     const workbook = XLSX.utils.book_new()
-    XLSX.utils.book_append_sheet(workbook, worksheet, '差异对比')
+    XLSX.utils.book_append_sheet(workbook, worksheet, wt('export.sheetReconciliation'))
 
     const excelBuffer = XLSX.write(workbook, { bookType: 'xlsx', type: 'array' })
     const blob = new Blob([excelBuffer], {
@@ -834,9 +873,11 @@ export function useWageSalaryPage() {
     })
 
     const dateRangeLabel = deriveAttendanceDateRangeLabel(wageRecords)
-    const baseName = dateRangeLabel ? `差异对比_${dateRangeLabel}` : '差异对比'
-    saveAs(blob, `${baseName}.xlsx`)
-    showToast('差异对比导出成功', 'success')
+    const fileName = dateRangeLabel
+      ? wt('export.reconciliationFileName', { period: dateRangeLabel })
+      : `${wt('export.reconciliationFileNameDefault')}.xlsx`
+    saveAs(blob, fileName)
+    showToast(wt('toast.reconciliationExportSuccess'), 'success')
   }
 
   return {
@@ -876,7 +917,6 @@ export function useWageSalaryPage() {
     billingVsActualSummary,
     setRateSettings,
     statistics,
-    roleMap: ROLE_MAP,
     roles: [...ROLES],
     persistRateSettings,
     resetRateSettings,

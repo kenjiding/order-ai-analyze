@@ -1,3 +1,5 @@
+import { i18n } from '../../i18n/index'
+
 export type ZoneColorTheme = {
   key: string
   accent: string
@@ -59,14 +61,16 @@ const OTHER_THEME: ZoneColorTheme = {
 }
 
 function zoneLetter(zone: string): string {
-  const label = zone.replace(/区$/, '').trim()
+  const label = zone.replace(/区$/, '').replace(/^Zone\s/i, '').trim()
   const match = label.match(/[A-Za-z]/)
   return match ? match[0].toUpperCase() : ''
 }
 
 export function getZoneColorTheme(zone: string): ZoneColorTheme {
-  if (zone === '未知区') return UNKNOWN_THEME
-  if (zone === '其他区') return OTHER_THEME
+  const unknown = String(i18n.t('cancelScan.zoneUnknown', { ns: 'scannerEfficiency' }))
+  const other = String(i18n.t('cancelScan.zoneOther', { ns: 'scannerEfficiency' }))
+  if (zone === unknown) return UNKNOWN_THEME
+  if (zone === other) return OTHER_THEME
   const letter = zoneLetter(zone)
   if (letter && LETTER_THEMES[letter]) return LETTER_THEMES[letter]
   return UNKNOWN_THEME

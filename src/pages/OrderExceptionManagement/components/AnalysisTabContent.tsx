@@ -1,6 +1,7 @@
 import { Select, Tooltip } from 'antd'
 import { Loader2, Play, Settings2, Upload } from 'lucide-react'
 import { useCallback, type ChangeEvent } from 'react'
+import { useTranslation } from 'react-i18next'
 import { PERMISSION_KEYS, usePermission } from '../../../hooks/usePermission'
 import {
   type OrderAnalyzeAiProvider,
@@ -17,19 +18,6 @@ const ANALYZE_MODEL_OPTIONS: { value: OrderAnalyzeAiProvider; label: string }[] 
   { value: 'deepseek', label: 'DeepSeek' },
   { value: 'openai', label: 'OpenAI' },
 ]
-
-function formatTokenCount(n: number): string {
-  return n.toLocaleString('zh-CN')
-}
-
-function formatDuration(ms: number): string {
-  if (ms < 1000) return `${ms} 毫秒`
-  if (ms < 60_000) return `${(ms / 1000).toFixed(1)} 秒`
-  const totalSec = Math.round(ms / 1000)
-  const min = Math.floor(totalSec / 60)
-  const sec = totalSec % 60
-  return sec > 0 ? `${min} 分 ${sec} 秒` : `${min} 分`
-}
 
 type Props = {
   analyzeOrderText: string
@@ -96,7 +84,27 @@ export function AnalysisTabContent({
   appliedPostFilter,
   onRunPostFilter,
 }: Props) {
+  const { t, i18n } = useTranslation('orderException')
   const canAnalyze = usePermission(PERMISSION_KEYS.btnOrderExceptionAnalyze)
+
+  const formatTokenCount = useCallback(
+    (n: number) => n.toLocaleString(i18n.language),
+    [i18n.language],
+  )
+
+  const formatDuration = useCallback(
+    (ms: number) => {
+      if (ms < 1000) return t('analyze.durationMs', { ms })
+      if (ms < 60_000) return t('analyze.durationSec', { sec: (ms / 1000).toFixed(1) })
+      const totalSec = Math.round(ms / 1000)
+      const min = Math.floor(totalSec / 60)
+      const sec = totalSec % 60
+      return sec > 0
+        ? t('analyze.durationMinSec', { min, sec })
+        : t('analyze.durationMin', { min })
+    },
+    [t],
+  )
 
   const onOrderFileChange = useCallback(
     (event: ChangeEvent<HTMLInputElement>) => {
@@ -118,29 +126,37 @@ export function AnalysisTabContent({
     apiTiming && analyzedOrderCount > 0 ? Math.round(apiTiming.aiMs / analyzedOrderCount) : null
   const showAnalyzeStats = Boolean(tokenUsage || durationMs != null || apiTiming != null)
 
+  const analyzeButtonLabel = !isAnalyzing
+    ? t('analyze.startAnalyze')
+    : batchAnalyze
+      ? t('analyze.startAnalyze')
+      : isPaused
+        ? t('analyze.continueAnalyze')
+        : t('analyze.pauseAnalyze')
+
   return (
     <div className="space-y-5">
       <section className="admin-panel p-5">
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <h3 className="text-sm font-semibold text-slate-950">待分析订单</h3>
+          <h3 className="text-sm font-semibold text-slate-950">{t('analyze.pendingOrdersTitle')}</h3>
           <div className="flex flex-wrap items-center gap-3">
             <label className="flex flex-wrap items-center gap-2 text-xs font-medium text-slate-600">
-              <span className="shrink-0">分析模型</span>
+              <span className="shrink-0">{t('analyze.analyzeModel')}</span>
               <Select<OrderAnalyzeAiProvider>
                 className="min-w-[140px]"
                 value={analyzeAiProvider}
                 options={ANALYZE_MODEL_OPTIONS}
                 disabled={isAnalyzing}
                 onChange={(v) => onAnalyzeAiProviderChange(v)}
-                aria-label="选择分析模型"
+                aria-label={t('analyze.selectAnalyzeModel')}
               />
             </label>
             <label
-              title="支持 xlsx / xls / csv / txt；表格需含「订单号」列，或首列为订单号。"
+              title={t('analyze.importFileHint')}
               className="inline-flex cursor-pointer items-center gap-2 rounded-md border border-slate-200 bg-slate-50/80 px-3 py-2 text-xs font-medium text-slate-700 transition hover:border-[#2f8f87]/40 hover:bg-[#2f8f87]/5 hover:text-[#1f6f68] has-[:disabled]:cursor-not-allowed has-[:disabled]:opacity-50"
             >
               <Upload className="h-3.5 w-3.5 shrink-0" aria-hidden />
-              导入文件
+              {t('analyze.importFile')}
               <input
                 type="file"
                 accept=".xlsx,.xls,.csv,.txt,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel,text/csv,text/plain"
@@ -161,7 +177,7 @@ export function AnalysisTabContent({
                 onChange={(e) => onBatchAnalyzeChange(e.target.checked)}
                 className="h-4 w-4 shrink-0 rounded border-slate-300 text-[#2f8f87] accent-[#2f8f87] focus:ring-2 focus:ring-[#2f8f87]/25 focus:ring-offset-0 disabled:cursor-not-allowed"
               />
-              <span className="text-xs font-medium leading-none text-slate-800">批量分析</span>
+              <span className="text-xs font-medium leading-none text-slate-800">{t('analyze.batchAnalyze')}</span>
             </label>
             <button
               type="button"
@@ -170,9 +186,9 @@ export function AnalysisTabContent({
               className="admin-btn border border-slate-300 bg-white text-slate-800 shadow-sm hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
             >
               <Settings2 className="h-4 w-4" />
-              分析配置
+              {t('analyze.analysisConfig')}
             </button>
-            <Tooltip title={!canAnalyze ? '无操作权限' : undefined}>
+            <Tooltip title={!canAnalyze ? t('noPermission') : undefined}>
               <button
                 type="button"
                 disabled={!canAnalyze || (isAnalyzing && batchAnalyze)}
@@ -194,7 +210,7 @@ export function AnalysisTabContent({
               >
                 {isAnalyzing && isPaused ? <Play className="h-4 w-4" aria-hidden /> : null}
                 {isAnalyzing && !isPaused ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : null}
-                {!isAnalyzing ? '开始分析' : batchAnalyze ? '开始分析' : isPaused ? '继续分析' : '暂停分析'}
+                {analyzeButtonLabel}
               </button>
             </Tooltip>
           </div>
@@ -202,11 +218,9 @@ export function AnalysisTabContent({
         {importedAnalyzeOrders ? (
           <div className="mt-3 flex items-center justify-end gap-2 text-xs text-slate-600" aria-live="polite">
             <span>
-              已导入{' '}
-              <span className="font-semibold text-slate-900">
-                {importedAnalyzeOrders.orderNos.length.toLocaleString('zh-CN')}
-              </span>{' '}
-              个订单
+              {t('analyze.importedCount', {
+                count: importedAnalyzeOrders.orderNos.length.toLocaleString(i18n.language),
+              })}
             </span>
             <button
               type="button"
@@ -214,7 +228,7 @@ export function AnalysisTabContent({
               onClick={onClearImportedAnalyzeOrders}
               className="text-[#1f6f68] underline decoration-dashed underline-offset-2 hover:text-[#2f8f87] disabled:cursor-not-allowed disabled:opacity-50"
             >
-              清除
+              {t('results.clearFilter')}
             </button>
           </div>
         ) : null}
@@ -223,7 +237,7 @@ export function AnalysisTabContent({
             value={analyzeOrderText}
             onChange={(e) => onAnalyzeOrderTextChange(e.target.value)}
             rows={8}
-            placeholder="每行一个或使用逗号分隔"
+            placeholder={t('analyze.orderPlaceholder')}
             className="mt-1 w-full rounded-md border border-slate-300 bg-white px-3 py-2 font-mono text-sm text-slate-900 shadow-sm focus:border-[#2f8f87] focus:outline-none focus:ring-2 focus:ring-[#2f8f87]/25"
           />
         </label>
@@ -232,37 +246,43 @@ export function AnalysisTabContent({
             <p className="text-xs text-slate-600" aria-live="polite">
               {durationMs != null ? (
                 <>
-                  总耗时：
+                  {t('analyze.totalDuration')}
                   <span className="font-semibold text-slate-900">{formatDuration(durationMs)}</span>
                   {avgDurationMsPerOrder != null ? (
-                    <> （平均每单 {formatDuration(avgDurationMsPerOrder)}）</>
+                    <> {t('analyze.avgPerOrder', { duration: formatDuration(avgDurationMsPerOrder) })}</>
                   ) : null}
                 </>
               ) : null}
               {apiTiming ? (
                 <>
                   {durationMs != null ? ' · ' : null}
-                  iMile 接口：
+                  {t('analyze.imileApi')}
                   <span className="font-semibold text-slate-900">{formatDuration(apiTiming.imileMs)}</span>
                   {avgImileMsPerOrder != null ? (
-                    <> （平均每单 {formatDuration(avgImileMsPerOrder)}）</>
+                    <> {t('analyze.avgPerOrder', { duration: formatDuration(avgImileMsPerOrder) })}</>
                   ) : null}
                   {' · '}
-                  AI 接口：
+                  {t('analyze.aiApi')}
                   <span className="font-semibold text-slate-900">{formatDuration(apiTiming.aiMs)}</span>
-                  {avgAiMsPerOrder != null ? <> （平均每单 {formatDuration(avgAiMsPerOrder)}）</> : null}
+                  {avgAiMsPerOrder != null ? (
+                    <> {t('analyze.avgPerOrder', { duration: formatDuration(avgAiMsPerOrder) })}</>
+                  ) : null}
                 </>
               ) : null}
               {tokenUsage ? (
                 <>
                   {durationMs != null || apiTiming != null ? ' · ' : null}
-                  Token 消耗：
+                  {t('analyze.tokenUsage')}
                   <span className="font-semibold text-slate-900">{formatTokenCount(tokenUsage.totalTokens)}</span>{' '}
-                  （输入 {formatTokenCount(tokenUsage.promptTokens)} / 输出{' '}
-                  {formatTokenCount(tokenUsage.completionTokens)}）
-                  {tokenUsage.apiCalls > 0 ? <> · API {formatTokenCount(tokenUsage.apiCalls)} 次</> : null}
+                  {t('analyze.tokenInOut', {
+                    prompt: formatTokenCount(tokenUsage.promptTokens),
+                    completion: formatTokenCount(tokenUsage.completionTokens),
+                  })}
+                  {tokenUsage.apiCalls > 0 ? (
+                    <> {t('analyze.apiCalls', { count: formatTokenCount(tokenUsage.apiCalls) })}</>
+                  ) : null}
                   {avgTokensPerOrder != null ? (
-                    <> · 平均每单 {formatTokenCount(avgTokensPerOrder)} Token</>
+                    <> {t('analyze.avgTokenPerOrder', { count: formatTokenCount(avgTokensPerOrder) })}</>
                   ) : null}
                 </>
               ) : null}
@@ -283,7 +303,7 @@ export function AnalysisTabContent({
         appliedPostFilter={appliedPostFilter}
         onRunPostFilter={onRunPostFilter}
         exportPermission={PERMISSION_KEYS.btnOrderExceptionAnalyze}
-        emptyText="暂无结果，填写订单号并点击开始分析。"
+        emptyText={t('analyze.emptyResultsHint')}
         submittedJobBanner={submittedJobBanner}
         onDismissSubmittedJobBanner={onDismissSubmittedJobBanner}
         onGoToJobsTab={onGoToJobsTab}

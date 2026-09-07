@@ -1,6 +1,7 @@
 import { useMemo } from 'react'
 import { Alert, Button, DatePicker } from 'antd'
 import dayjs from 'dayjs'
+import { useTranslation } from 'react-i18next'
 import { colorFromMap } from '../vendorColors'
 import type { useVendorRegionMapPage } from '../useVendorRegionMapPage'
 import { VendorRegionMapCanvas } from './VendorRegionMapCanvas'
@@ -12,7 +13,9 @@ type Props = {
 }
 
 export function VendorRegionMapTab({ page }: Props) {
-  // 按票量降序排列，最大量的一家在最前
+  const { t } = useTranslation('vendorRegionMap')
+  const { t: tc } = useTranslation('common')
+
   const vendors = useMemo(() => {
     const list = [...(page.data?.vendors ?? [])]
     list.sort((a, b) => b.packageCount - a.packageCount)
@@ -24,13 +27,24 @@ export function VendorRegionMapTab({ page }: Props) {
     .filter((vendor) => page.selectedSupplierKeys.includes(vendor.supplierKey))
     .reduce((sum, vendor) => sum + vendor.packageCount, 0)
 
+  const datePresets = useMemo(
+    () => [
+      { label: tc('today'), value: [dayjs().startOf('day'), dayjs().endOf('day')] as [dayjs.Dayjs, dayjs.Dayjs] },
+      {
+        label: tc('last7Days'),
+        value: [dayjs().subtract(6, 'day').startOf('day'), dayjs().endOf('day')] as [dayjs.Dayjs, dayjs.Dayjs],
+      },
+    ],
+    [tc],
+  )
+
   return (
     <div className="space-y-5">
       <section className="admin-panel vrm-head">
         <div className="vrm-head__main">
           <div className="vrm-head__controls">
             <label className="vrm-field">
-              <span className="vrm-field__label">统计日期</span>
+              <span className="vrm-field__label">{t('statDate')}</span>
               <DatePicker.RangePicker
                 value={page.dateRange}
                 onChange={(values) => {
@@ -39,17 +53,11 @@ export function VendorRegionMapTab({ page }: Props) {
                 format="YYYY-MM-DD"
                 inputReadOnly
                 allowClear={false}
-                presets={[
-                  { label: '今天', value: [dayjs().startOf('day'), dayjs().endOf('day')] },
-                  {
-                    label: '近 7 天',
-                    value: [dayjs().subtract(6, 'day').startOf('day'), dayjs().endOf('day')],
-                  },
-                ]}
+                presets={datePresets}
               />
             </label>
             <Button type="primary" loading={page.loading} onClick={() => void page.query()}>
-              查询
+              {t('query')}
             </Button>
           </div>
         </div>
@@ -60,19 +68,23 @@ export function VendorRegionMapTab({ page }: Props) {
       <section className="admin-panel vrm-vendors">
         <div className="vrm-vendors__head">
           <div>
-            <h2 className="vrm-vendors__title">供应商筛选</h2>
+            <h2 className="vrm-vendors__title">{t('vendorFilter')}</h2>
             <p className="vrm-vendors__meta">
               {vendors.length > 0
-                ? `已选 ${selectedCount} / ${vendors.length} 家，覆盖 ${nf.format(selectedPackages)} 票`
-                : '查询后按供应商切换图层'}
+                ? t('selectedCoverage', {
+                    selected: selectedCount,
+                    total: vendors.length,
+                    parcels: nf.format(selectedPackages),
+                  })
+                : t('queryHint')}
             </p>
           </div>
           <div className="vrm-vendors__actions">
             <Button onClick={() => page.selectAllVendors()} disabled={vendors.length === 0}>
-              全选
+              {t('selectAll')}
             </Button>
             <Button onClick={() => page.invertVendorSelection()} disabled={vendors.length === 0}>
-              反选
+              {t('invertSelection')}
             </Button>
           </div>
         </div>
@@ -85,10 +97,8 @@ export function VendorRegionMapTab({ page }: Props) {
           </div>
         ) : vendors.length === 0 ? (
           <div className="vrm-empty">
-            <div className="vrm-empty__title">还没有可切换的供应商</div>
-            <div className="vrm-empty__hint">
-              选好日期后点「查询」，匹配到路由码的供应商会在这里列出。
-            </div>
+            <div className="vrm-empty__title">{t('noVendorsTitle')}</div>
+            <div className="vrm-empty__hint">{t('noVendorsHint')}</div>
           </div>
         ) : (
           <div className="vrm-vendors__grid">
@@ -102,7 +112,11 @@ export function VendorRegionMapTab({ page }: Props) {
                   className="vrm-vendor"
                   aria-pressed={checked}
                   onClick={() => page.toggleVendor(vendor.supplierKey, !checked)}
-                  title={`${vendor.supplierName}${vendor.vendorCode ? `（${vendor.vendorCode}）` : ''}：${nf.format(vendor.packageCount)} 票 / ${vendor.zipCount} 个邮区`}
+                  title={t('vendorTooltip', {
+                    name: `${vendor.supplierName}${vendor.vendorCode ? `（${vendor.vendorCode}）` : ''}`,
+                    count: nf.format(vendor.packageCount),
+                    zips: vendor.zipCount,
+                  })}
                 >
                   <span className="vrm-swatch" style={{ background: color }} aria-hidden />
                   <span className="vrm-vendor__name">{vendor.supplierName}</span>

@@ -1,6 +1,6 @@
 import { useCallback, useRef, useState } from 'react'
 import { loadFeishuPushStore } from '../PushNotifications/feishuPushRepository.idb'
-import { FEISHU_PUSH_KIND_LABELS } from '../PushNotifications/feishuPushTypes'
+import { feishuPushKindLabel } from '../PushNotifications/feishuPushTypes'
 import {
   postFeishuPushImage,
   summarizeFeishuPushImageFailure,
@@ -11,13 +11,13 @@ import { dayjs } from './dayjsSetup'
 import { upsertSortEfficiencyPushDaySnapshot } from './sortEfficiencyPushSnapshotRepository.idb'
 import type { EfficiencyDetailDimension } from './DailyEfficiencyBubbleChart'
 import type { ScannerEfficiencyViewModel } from './useScannerEfficiencyPage'
+import { i18n } from '../../i18n/index'
 import { showToast } from '../../utils/toast'
 
-const LEVEL1_PUSH_ERROR_HINT =
-  '可到「推送通知 → 物流运营推送」维护 webhook；若上载失败请在后端 .env 核对 FEISHU_APP_ID 与 FEISHU_APP_SECRET。'
+const level1PushErrorHint = () => String(i18n.t('push.errorHint', { ns: 'scannerEfficiency' }))
 
 function pushErrorToast(text: string) {
-  showToast(`${text} ${LEVEL1_PUSH_ERROR_HINT}`, 'error', 8)
+  showToast(`${text} ${level1PushErrorHint()}`, 'error', 8)
 }
 
 // ── 可配置推送图表 ────────────────────────────────────────────────────
@@ -30,18 +30,22 @@ export const PUSH_CHART_ALL_KEYS: PushChartKey[] = [
   'scanner_hourly',
 ]
 
+export function pushChartLabel(key: PushChartKey): string {
+  return String(i18n.t(`push.chart.${key}`, { ns: 'scannerEfficiency' }))
+}
+
 export const PUSH_CHART_LABELS: Record<PushChartKey, string> = {
-  attendance_table: '效率明细/天（表）',
-  attendance_chart: '效率明细/天（图）',
-  scanner_summary: '扫描员汇总',
-  scanner_hourly: '按小时段',
+  get attendance_table() { return pushChartLabel('attendance_table') },
+  get attendance_chart() { return pushChartLabel('attendance_chart') },
+  get scanner_summary() { return pushChartLabel('scanner_summary') },
+  get scanner_hourly() { return pushChartLabel('scanner_hourly') },
 }
 
 /** 需要 attendanceResult 才能捕获的图表 key */
 const ATTENDANCE_KEYS = new Set<PushChartKey>(['attendance_table', 'attendance_chart'])
 
 function efficiencyDetailDimensionLabel(dimension: EfficiencyDetailDimension): string {
-  return dimension === 'week' ? '周维度' : '日维度'
+  return dimension === 'week' ? String(i18n.t('dimension.week', { ns: 'scannerEfficiency' })) : String(i18n.t('dimension.day', { ns: 'scannerEfficiency' }))
 }
 /** 需要 scannerResult 才能捕获的图表 key */
 const SCANNER_KEYS = new Set<PushChartKey>(['scanner_summary', 'scanner_hourly'])
@@ -65,19 +69,27 @@ export function getAvailableChartKeys(
 }
 
 // ── 日期格式化 ────────────────────────────────────────────────────────
+function formatSortingStatsDatePiece(d: string): string {
+  const p = dayjs(d, ['YYYY-MM-DD', 'YYYY-M-D'], true)
+  if (!p.isValid()) return d
+  return String(
+    i18n.t('push.dateFormat', {
+      ns: 'scannerEfficiency',
+      year: p.year(),
+      month: p.month() + 1,
+      day: p.date(),
+    }),
+  )
+}
+
 function formatSortingStatsDateBracketCn(dailyDates: readonly { date: string }[]): string {
   if (!dailyDates.length) {
-    const n = dayjs()
-    return `${n.year()}年${n.month() + 1}月${n.date()}日`
+    return formatSortingStatsDatePiece(dayjs().format('YYYY-MM-DD'))
   }
   const start = dailyDates[0].date
   const end = dailyDates[dailyDates.length - 1].date
-  const piece = (d: string): string => {
-    const p = dayjs(d, ['YYYY-MM-DD', 'YYYY-M-D'], true)
-    return p.isValid() ? `${p.year()}年${p.month() + 1}月${p.date()}日` : d
-  }
-  if (start === end) return piece(start)
-  return `${piece(start)}～${piece(end)}`
+  if (start === end) return formatSortingStatsDatePiece(start)
+  return `${formatSortingStatsDatePiece(start)}${String(i18n.t('push.dateRangeSeparator', { ns: 'scannerEfficiency' }))}${formatSortingStatsDatePiece(end)}`
 }
 
 // ── Hook ──────────────────────────────────────────────────────────────
@@ -117,15 +129,15 @@ export function useScannerLevel1FeishuPush(
     const store = await loadFeishuPushStore()
     const entries = store.sort_efficiency.filter((e) => e.webhookUrl.trim() && e.isDisabled !== true)
     if (!entries.length) {
-      const kindLabel = FEISHU_PUSH_KIND_LABELS.sort_efficiency
+      const kindLabel = feishuPushKindLabel('sort_efficiency')
       pushErrorToast(
-        `请先前往「推送通知」页面配置并启用「${kindLabel}」，至少保留一条可用的群 webhook。`
+        String(i18n.t('push.configureWebhook', { ns: 'scannerEfficiency', kind: kindLabel }))
       )
       return
     }
 
     if (!selectedChartKeys.length) {
-      showToast('请至少选择一个要推送的图表。', 'error')
+      showToast(String(i18n.t('push.selectChart', { ns: 'scannerEfficiency' })), 'error')
       return
     }
 
@@ -173,25 +185,25 @@ export function useScannerLevel1FeishuPush(
         {
           key: 'attendance_table',
           ref: attendanceTableCaptureRef,
-          headlineSuffix: `效率明细/天（表格·${attendanceDimensionLabel}）`,
+          headlineSuffix: String(i18n.t('push.headline.attendanceTable', { ns: 'scannerEfficiency', dimension: attendanceDimensionLabel })),
           withDataSnapshot: false,
         },
         {
           key: 'attendance_chart',
           ref: attendanceChartCaptureRef,
-          headlineSuffix: `效率明细/天（组合图·${attendanceDimensionLabel}）`,
+          headlineSuffix: String(i18n.t('push.headline.attendanceChart', { ns: 'scannerEfficiency', dimension: attendanceDimensionLabel })),
           withDataSnapshot: false,
         },
         {
           key: 'scanner_summary',
           ref: scannerSummaryCaptureRef,
-          headlineSuffix: '一级分拣效率（百字简报 + 汇总图）',
+          headlineSuffix: String(i18n.t('push.headline.scannerSummary', { ns: 'scannerEfficiency' })),
           withDataSnapshot: true,
         },
         {
           key: 'scanner_hourly',
           ref: scannerHourlyCaptureRef,
-          headlineSuffix: '按小时段分布',
+          headlineSuffix: String(i18n.t('push.headline.scannerHourly', { ns: 'scannerEfficiency' })),
           withDataSnapshot: false,
         },
       ]
@@ -201,7 +213,7 @@ export function useScannerLevel1FeishuPush(
       )
 
       if (!toCapture.length) {
-        pushErrorToast('选中的图表当前均无数据或未渲染，请确认数据已载入。')
+        pushErrorToast(String(i18n.t('push.noRenderable', { ns: 'scannerEfficiency' })))
         return
       }
 
@@ -217,7 +229,7 @@ export function useScannerLevel1FeishuPush(
           capturedImages.push({ target, img })
         } catch (err) {
           const hint = err instanceof Error ? err.message : String(err)
-          pushErrorToast(`截图失败（${PUSH_CHART_LABELS[target.key]}）：${hint}`)
+          pushErrorToast(String(i18n.t('push.screenshotFailed', { ns: 'scannerEfficiency', chart: pushChartLabel(target.key), hint })))
           return
         }
       }
@@ -241,24 +253,35 @@ export function useScannerLevel1FeishuPush(
           mergedImg = await mergeImagesVertically(mergeableCaptures.map((c) => c.img))
         } catch (err) {
           const hint = err instanceof Error ? err.message : String(err)
-          pushErrorToast(`图片合并失败：${hint}`)
+          pushErrorToast(String(i18n.t('push.mergeFailed', { ns: 'scannerEfficiency', hint })))
           return
         }
         const mergeableNames = mergeableCaptures.map((c) => PUSH_CHART_LABELS[c.target.key]).join(' + ')
         const hasSummary = mergeableCaptures.some((c) => c.target.key === 'scanner_summary')
         pushTasks.push({
           img: mergedImg,
-          headlineText: `[仓库管理]【${dateBracket}】${mergeableNames}`,
+          headlineText: String(
+            i18n.t('push.headline.warehousePrefix', {
+              ns: 'scannerEfficiency',
+              date: dateBracket,
+              suffix: mergeableNames,
+            }),
+          ),
           withDataSnapshot: hasSummary,
           label: mergeableNames,
         })
       }
 
-      // 按小时段独立推送
       for (const { target, img } of separateCaptures) {
         pushTasks.push({
           img,
-          headlineText: `[仓库管理]【${dateBracket}】${target.headlineSuffix}`,
+          headlineText: String(
+            i18n.t('push.headline.warehousePrefix', {
+              ns: 'scannerEfficiency',
+              date: dateBracket,
+              suffix: target.headlineSuffix,
+            }),
+          ),
           withDataSnapshot: target.withDataSnapshot,
           label: PUSH_CHART_LABELS[target.key],
         })
@@ -269,7 +292,7 @@ export function useScannerLevel1FeishuPush(
       const errors: string[] = []
 
       for (const entry of entries) {
-        const name = entry.pushName.trim() || '未命名推送'
+        const name = entry.pushName.trim() || String(i18n.t('push.unnamedPush', { ns: 'scannerEfficiency' }))
         for (const task of pushTasks) {
           const pushRes = await postFeishuPushImage({
             pushScope: 'warehouse-efficiency',
@@ -293,19 +316,21 @@ export function useScannerLevel1FeishuPush(
 
       const totalImgCount = pushTasks.length
       const chartNames = capturedImages.map((c) => PUSH_CHART_LABELS[c.target.key]).join('、')
-      const kindLabel = FEISHU_PUSH_KIND_LABELS.sort_efficiency
-      const base = `已向「${kindLabel}」配置的 ${entries.length} 条机器人各推送：${totalImgCount} 张图（${chartNames}）。`
+      const kindLabel = feishuPushKindLabel('sort_efficiency')
+      const base = String(i18n.t('push.successBase', { ns: 'scannerEfficiency', kind: kindLabel, count: entries.length, images: totalImgCount, charts: chartNames }))
 
       if (errors.length === 0) {
         showToast(
-          warnings.size ? `${base} 提示：${[...warnings].join(' ')}` : base,
+          warnings.size
+            ? String(i18n.t('push.successWithWarnings', { ns: 'scannerEfficiency', base, warnings: [...warnings].join(' ') }))
+            : base,
           'success',
-          6
+          6,
         )
       } else if (errors.length >= entries.length * pushTasks.length) {
         pushErrorToast(errors.join(' '))
       } else {
-        showToast(`部分失败：${errors.join(' ')}`, 'warning', 8)
+        showToast(String(i18n.t('push.partialFailed', { ns: 'scannerEfficiency', errors: errors.join(' ') })), 'warning', 8)
       }
     } finally {
       if (!wasExpanded) {

@@ -7,9 +7,9 @@
  */
 import { useEffect, useState } from 'react'
 import { Alert, Button, Input, Modal, Select, Switch } from 'antd'
+import { useTranslation } from 'react-i18next'
 import {
   ACCOUNT_KINDS,
-  accountKindLabel,
   defaultIsExternal,
 } from '../../../containerManagement/constants'
 import {
@@ -74,6 +74,8 @@ type Props = {
 }
 
 export function AccountFormModal({ open, editing, users, submitting, onCancel, onSubmit }: Props) {
+  const { t } = useTranslation('container')
+  const { t: tc } = useTranslation('common')
   const isEditing = editing !== null
   const [name, setName] = useState('')
   const [kind, setKind] = useState<AccountKind>('CUSTOMER')
@@ -98,11 +100,11 @@ export function AccountFormModal({ open, editing, users, submitting, onCancel, o
   const handleOk = async () => {
     const trimmed = name.trim()
     if (!trimmed) {
-      setError('请填写站点名称')
+      setError(t('accounts.nameRequired'))
       return
     }
     if (trimmed.length > 200) {
-      setError('站点名称最长 200 字')
+      setError(t('accounts.nameMax'))
       return
     }
     setError(null)
@@ -111,7 +113,7 @@ export function AccountFormModal({ open, editing, users, submitting, onCancel, o
 
   return (
     <Modal
-      title={isEditing ? '编辑站点账户' : '新增站点账户'}
+      title={isEditing ? t('accounts.modalEditTitle') : t('accounts.modalCreateTitle')}
       open={open}
       onCancel={onCancel}
       destroyOnHidden
@@ -120,27 +122,25 @@ export function AccountFormModal({ open, editing, users, submitting, onCancel, o
       footer={
         <div className="flex items-center justify-between gap-2">
           <span className="text-xs text-slate-500">
-            {isEditing
-              ? '绑定用户为全量覆盖，保存后立即生效。'
-              : '绑定用户与通知配置随站点一起创建，任一环节失败则整体不创建。'}
+            {isEditing ? t('accounts.footerEditHint') : t('accounts.footerCreateHint')}
           </span>
           <div className="flex gap-2">
             <Button onClick={onCancel} disabled={submitting}>
-              取消
+              {tc('cancel')}
             </Button>
             <Button type="primary" loading={submitting} onClick={() => void handleOk()}>
-              {isEditing ? '保存' : '创建'}
+              {isEditing ? tc('save') : t('ledger.create')}
             </Button>
           </div>
         </div>
       }
     >
       <div className="space-y-3">
-        <Section title="基本信息">
+        <Section title={t('accounts.sectionBasic')}>
           <div className="grid gap-x-4 gap-y-3 px-4 py-4 sm:grid-cols-2">
-            <Field label="名称" required>
+            <Field label={t('accounts.colName')} required>
               <Input
-                placeholder="例如：墨尔本一号仓"
+                placeholder={t('accounts.namePlaceholder')}
                 allowClear
                 value={name}
                 onChange={(e) => {
@@ -149,7 +149,7 @@ export function AccountFormModal({ open, editing, users, submitting, onCancel, o
                 }}
               />
             </Field>
-            <Field label="类型" required>
+            <Field label={t('accounts.colKind')} required>
               <Select
                 value={kind}
                 onChange={(next) => {
@@ -158,7 +158,7 @@ export function AccountFormModal({ open, editing, users, submitting, onCancel, o
                 }}
                 options={ACCOUNT_KINDS.map((item) => ({
                   value: item,
-                  label: accountKindLabel[item],
+                  label: t(`accountKind.${item}`),
                 }))}
               />
             </Field>
@@ -173,26 +173,26 @@ export function AccountFormModal({ open, editing, users, submitting, onCancel, o
                   }}
                 />
                 <div className="min-w-0">
-                  <div className="text-sm text-slate-800">该站点方没有本系统账号</div>
+                  <div className="text-sm text-slate-800">{t('accounts.noSystemAccount')}</div>
                 </div>
               </div>
             </div>
           </div>
         </Section>
 
-        <Section title="绑定用户">
+        <Section title={t('accounts.sectionBoundUsers')}>
           <div className="px-4 py-4">
             <Field
-              label="可操作该站点的用户"
+              label={t('accounts.boundUsersLabel')}
               hint={
                 userIds.length > 0
-                  ? `已选 ${userIds.length} 人。被绑定的用户能看到该站点的台账与流转，并可以该站点身份发起流转、确认收货。`
-                  : '未绑定时，只有超级管理员能看到该站点。'
+                  ? t('accounts.boundUsersHintSelected', { count: userIds.length })
+                  : t('accounts.boundUsersHintEmpty')
               }
             >
               <Select
                 mode="multiple"
-                placeholder="选择用户，可搜索"
+                placeholder={t('accounts.selectUsers')}
                 value={userIds}
                 onChange={setUserIds}
                 allowClear
@@ -207,7 +207,7 @@ export function AccountFormModal({ open, editing, users, submitting, onCancel, o
         </Section>
 
         <Section
-          title="流转通知"
+          title={t('accounts.sectionPushNotify')}
           action={
             <Switch
               checked={pushNotify.enabled}

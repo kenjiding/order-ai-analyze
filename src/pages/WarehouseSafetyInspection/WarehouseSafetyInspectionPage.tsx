@@ -1,13 +1,16 @@
 import { ClipboardCheck } from 'lucide-react'
+import { useMemo } from 'react'
+import { useTranslation } from 'react-i18next'
 import { PageSectionTabs } from '../../components/PageSectionTabs'
 import { DailyChecklistTable } from './components/DailyChecklistTable'
 import { useDailyChecklistForm } from './useDailyChecklistForm'
 
-const SECTION_TABS = [{ id: 'daily', label: '日常检查表（一）' }]
-
 export default function WarehouseSafetyInspectionPage() {
+  const { t } = useTranslation('warehouseSafety')
   const dailyVm = useDailyChecklistForm()
   const activeTab = 'daily'
+
+  const sectionTabs = useMemo(() => [{ id: 'daily', label: t('page.tabDaily') }], [t])
 
   return (
     <div className="admin-page space-y-5">
@@ -17,10 +20,8 @@ export default function WarehouseSafetyInspectionPage() {
             <ClipboardCheck className="h-5 w-5" aria-hidden />
           </div>
           <div>
-            <h1 className="text-lg font-semibold text-slate-950">仓库安全日常检查</h1>
-            <p className="mt-1 max-w-2xl text-sm text-slate-600">
-              按检查要点逐项自查，默认无风险以减少录入；佐证照片仅存于浏览器，导出 Excel 时一并写入。
-            </p>
+            <h1 className="text-lg font-semibold text-slate-950">{t('page.title')}</h1>
+            <p className="mt-1 max-w-2xl text-sm text-slate-600">{t('page.description')}</p>
           </div>
         </div>
       </header>
@@ -28,7 +29,7 @@ export default function WarehouseSafetyInspectionPage() {
       <section className="admin-panel overflow-hidden">
         <PageSectionTabs
           activeId={activeTab}
-          items={SECTION_TABS}
+          items={sectionTabs}
           onChange={() => {
             /* 后续扩展更多检查表 */
           }}

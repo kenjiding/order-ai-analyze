@@ -34,7 +34,6 @@ import {
 } from '../containerManagement/reconciliationService'
 import {
   isAccountKind,
-  isContainerType,
   isManualBalanceReasonType,
   isSelectableTransferKind,
   isTransferStatus,
@@ -45,6 +44,15 @@ import {
   parseTransferNo,
   type TransferStatus,
 } from '../containerManagement/constants'
+import {
+  createContainerType,
+  deleteContainerType,
+  isActiveType,
+  isKnownType,
+  listContainerTypes,
+  refreshTypes,
+  updateContainerType,
+} from '../containerManagement/containerTypeService'
 import { readImage, saveImageFromDataUrl } from '../containerManagement/imageStorage'
 import {
   normalizeAccountPushNotify,
@@ -86,6 +94,12 @@ const PROXY_CONFIRM = 'btn:container-transfers:proxy-confirm'
  */
 const VOID_TRANSFER = 'btn:container-transfers:void'
 
+/**
+ * 品类字典是全系统共用的基础数据：改一次影响所有站点的下拉、表单与对账列，
+ * 且 code 一旦被流转引用就不可回收，所以只发给管理岗。读列表不设限 —— 所有表单都要用。
+ */
+const MANAGE_TYPES = 'btn:container-ledger:manage-types'
+
 /** 一次提交的流转组数上限：整批一个事务，太多组会长时间占住行锁 */
 const MAX_TRANSFER_BATCH = 20
 
@@ -123,16 +137,26 @@ function parseDate(raw: unknown): Date | undefined {
   return Number.isNaN(date.getTime()) ? undefined : date
 }
 
-function parseLineItems(raw: unknown): TransferLineInput[] | string {
+/**
+ * allowInactive：接收方申报实收这类「对既有单据的操作」传 true。
+ * 品类被停用后，它的在途单仍然要能申报、能结算 —— 否则停用一个品类会把在途的单全卡死。
+ * 申报明细的品类必须属于原单，这条由 applyReceivedLineItems 保证，这里不重复。
+ */
+function parseLineItems(raw: unknown, allowInactive = false): TransferLineInput[] | string {
   if (!Array.isArray(raw) || raw.length === 0) return '至少需要一条流转明细'
   const result: TransferLineInput[] = []
   for (const entry of raw) {
     if (!entry || typeof entry !== 'object') return '流转明细格式不正确'
     const item = entry as { containerType?: unknown; quantity?: unknown }
-    if (!isContainerType(item.containerType)) return '品类不合法'
+    const containerType = item.containerType
+    if (typeof containerType !== 'string') return '品类不合法'
+    // 新建只认启用中的品类；对既有单据的操作认全部已知品类
+    if (allowInactive ? !isKnownType(containerType) : !isActiveType(containerType)) {
+      return allowInactive ? '品类不合法' : '品类不合法或已停用'
+    }
     const quantity = Number(item.quantity)
     if (!Number.isInteger(quantity)) return '数量必须为整数'
-    result.push({ containerType: item.containerType, quantity })
+    result.push({ containerType, quantity })
   }
   return result
 }
@@ -327,6 +351,52 @@ containerManagementRouter.put('/accounts/:id/users', async (req: AuthenticatedRe
   }
 })
 
+// ---------------------------------------------------------------- 容器品类字典
+
+/** 品类列表：所有表单的下拉都要用，不设权限；停用的也返回，历史数据要显示得出名字 */
+containerManagementRouter.get('/types', async (_req: AuthenticatedRequest, res) => {
+  try {
+    res.json({ ok: true, data: await listContainerTypes() })
+  } catch (error) {
+    handleError(res, error, '获取品类列表失败')
+  }
+})
+
+containerManagementRouter.post('/types', async (req: AuthenticatedRequest, res) => {
+  if (!hasContainerPermission(req, MANAGE_TYPES)) return fail(res, 403, '无管理品类的权限')
+  const body = req.body as { name?: unknown }
+  try {
+    // 编码由后端生成：它只是内部标识，让业务方手填等于把实现细节摊出去
+    const data = await createContainerType({ name: body.name })
+    res.status(201).json({ ok: true, data })
+  } catch (error) {
+    handleError(res, error, '新增品类失败')
+  }
+})
+
+/** 只允许改名称与启停 —— code 是历史数据里存的值，改了全部对不上号 */
+containerManagementRouter.patch('/types/:code', async (req: AuthenticatedRequest, res) => {
+  if (!hasContainerPermission(req, MANAGE_TYPES)) return fail(res, 403, '无管理品类的权限')
+  const body = req.body as { name?: unknown; active?: unknown }
+  try {
+    const data = await updateContainerType(String(req.params.code ?? '').trim(), body)
+    res.json({ ok: true, data })
+  } catch (error) {
+    handleError(res, error, '更新品类失败')
+  }
+})
+
+/** 物理删除仅限从未被引用的品类；有历史记录的由 service 拦下来，提示改用停用 */
+containerManagementRouter.delete('/types/:code', async (req: AuthenticatedRequest, res) => {
+  if (!hasContainerPermission(req, MANAGE_TYPES)) return fail(res, 403, '无管理品类的权限')
+  try {
+    await deleteContainerType(String(req.params.code ?? '').trim())
+    res.json({ ok: true, data: null })
+  } catch (error) {
+    handleError(res, error, '删除品类失败')
+  }
+})
+
 // ---------------------------------------------------------------- 容器台账
 
 containerManagementRouter.get('/balances', async (req: AuthenticatedRequest, res) => {
@@ -357,7 +427,8 @@ containerManagementRouter.post('/balances', async (req: AuthenticatedRequest, re
   const body = req.body as { accountId?: unknown; containerType?: unknown; quantity?: unknown }
   const accountId = String(body.accountId ?? '').trim()
   if (!accountId) return fail(res, 400, '请选择站点账户')
-  if (!isContainerType(body.containerType)) return fail(res, 400, '品类不合法')
+  await refreshTypes().catch(() => {})
+  if (!isActiveType(body.containerType)) return fail(res, 400, '品类不合法或已停用')
   const quantity = Number(body.quantity)
   if (!Number.isInteger(quantity) || quantity < 0) return fail(res, 400, '数量必须为 0 或正整数')
   try {
@@ -435,7 +506,7 @@ containerManagementRouter.get('/balance-audits', async (req: AuthenticatedReques
     const data = await listBalanceAudits({
       visibleAccountIds: visible,
       accountId,
-      containerType: isContainerType(containerTypeRaw) ? containerTypeRaw : undefined,
+      containerType: isKnownType(containerTypeRaw) ? containerTypeRaw : undefined,
       reasonType: String(req.query.reasonType ?? '').trim() || undefined,
       action: String(req.query.action ?? '').trim() || undefined,
       start: parseDate(req.query.start),
@@ -501,6 +572,8 @@ containerManagementRouter.post('/transfers', async (req: AuthenticatedRequest, r
     return fail(res, 400, `一次最多提交 ${MAX_TRANSFER_BATCH} 组`)
   }
 
+  // 品类校验读的是进程内快照，这里先刷一次：多进程下别的 worker 刚建的品类要认得出
+  await refreshTypes().catch(() => {})
   const parsed = parseTransferCreateItems(rawItems, '组')
   if (typeof parsed === 'string') return fail(res, 400, parsed)
 
@@ -531,6 +604,8 @@ containerManagementRouter.post('/transfers/import', async (req: AuthenticatedReq
     return fail(res, 400, `一次最多导入 ${MAX_TRANSFER_IMPORT} 行`)
   }
 
+  // 品类校验读的是进程内快照，这里先刷一次：多进程下别的 worker 刚建的品类要认得出
+  await refreshTypes().catch(() => {})
   const parsed = parseTransferCreateItems(rawItems, '行')
   if (typeof parsed === 'string') return fail(res, 400, parsed)
 
@@ -639,6 +714,7 @@ containerManagementRouter.patch('/transfers/:id', async (req: AuthenticatedReque
   }
   let lineItems: TransferLineInput[] | undefined
   if (body.lineItems !== undefined) {
+    await refreshTypes().catch(() => {})
     const parsed = parseLineItems(body.lineItems)
     if (typeof parsed === 'string') return fail(res, 400, parsed)
     lineItems = parsed
@@ -735,7 +811,7 @@ containerManagementRouter.patch('/transfers/:id/confirm', async (req: Authentica
  *
  * 仅当接收方在本系统没有账号（isExternal）时开放：他们登不进来，单子否则会永久卡在
  * PENDING_RECEIVER 并一直软占用转出方可用量。账务口径与接收方本人确认完全一致
- * （按申报数量全额入账），差别只在 proxyConfirmed 标记与选填的回单凭证。
+ * （按申报数量全额入账），差别只在 proxyConfirmed 标记与必填的回单凭证。
  *
  * 少收场景不在这里处理：先按申报数入账，再走台账调整，那条路已经存在。
  */
@@ -779,7 +855,8 @@ async function handleReceiverReport(
   isUpdate: boolean,
 ): Promise<void> {
   const body = req.body as { lineItems?: unknown; reason?: unknown; receiverReportImageUrl?: unknown }
-  const parsed = parseLineItems(body.lineItems)
+  await refreshTypes().catch(() => {})
+  const parsed = parseLineItems(body.lineItems, true)
   if (typeof parsed === 'string') return fail(res, 400, parsed)
   const reason = String(body.reason ?? '').trim()
   if (!reason) return fail(res, 400, '请填写原因')

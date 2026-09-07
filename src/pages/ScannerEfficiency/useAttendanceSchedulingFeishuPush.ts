@@ -1,6 +1,7 @@
 import { useCallback, useRef, useState } from 'react'
+import { i18n } from '../../i18n/index'
 import { loadFeishuPushStore } from '../PushNotifications/feishuPushRepository.idb'
-import { FEISHU_PUSH_KIND_LABELS } from '../PushNotifications/feishuPushTypes'
+import { feishuPushKindLabel } from '../PushNotifications/feishuPushTypes'
 import {
   postFeishuPushImage,
   summarizeFeishuPushImageFailure,
@@ -9,11 +10,12 @@ import type { AttendanceSchedulingPlanPreview } from './attendanceSchedulingPlan
 import { captureScannerPushRegion, mergeImagesVertically } from './feishuLevel1ScreenshotCapture'
 import { showToast } from '../../utils/toast'
 
-const PUSH_ERROR_HINT =
-  '请到「飞书推送 → 仓库出勤/排班推送」维护 webhook；若上载失败请在后端 .env 核对 FEISHU_APP_ID 与 FEISHU_APP_SECRET。'
+function t(key: string, options?: Record<string, unknown>): string {
+  return String(i18n.t(key, { ns: 'scannerEfficiency', ...options }))
+}
 
 function pushErrorToast(text: string) {
-  showToast(`${text} ${PUSH_ERROR_HINT}`, 'error', 8)
+  showToast(`${text} ${t('scheduling.errorHint')}`, 'error', 8)
 }
 
 export function useAttendanceSchedulingFeishuPush() {
@@ -26,15 +28,15 @@ export function useAttendanceSchedulingFeishuPush() {
 
   const pushSchedulingPlanPreviews = useCallback(async (previews: AttendanceSchedulingPlanPreview[]) => {
     if (!previews.length) {
-      showToast('统计窗口内无开仓日，无法推送排班计划。', 'error')
+      showToast(t('scheduling.noOpenDays'), 'error')
       return
     }
 
     const store = await loadFeishuPushStore()
     const entries = store.attendance_scheduling.filter((e) => e.webhookUrl.trim() && e.isDisabled !== true)
     if (!entries.length) {
-      const kindLabel = FEISHU_PUSH_KIND_LABELS.attendance_scheduling
-      pushErrorToast(`请先前往「飞书推送 → ${kindLabel}」配置并启用 webhook，至少保留一条可用条目。`)
+      const kindLabel = feishuPushKindLabel('attendance_scheduling')
+      pushErrorToast(t('scheduling.configureWebhook', { kind: kindLabel }))
       return
     }
 
@@ -46,24 +48,24 @@ export function useAttendanceSchedulingFeishuPush() {
       for (const preview of previews) {
         const root = previewCaptureRefs.current.get(preview.planDate)
         if (!root) {
-          pushErrorToast(`预览区域尚未就绪（${preview.title}）。`)
+          pushErrorToast(t('scheduling.previewNotReady', { title: preview.title }))
           return
         }
         try {
           images.push(await captureScannerPushRegion(root))
         } catch (err) {
           const hint = err instanceof Error ? err.message : String(err)
-          pushErrorToast(`截图失败（${preview.title}）：${hint}`)
+          pushErrorToast(t('scheduling.screenshotFailed', { title: preview.title, hint }))
           return
         }
       }
 
       const mergedImg = images.length === 1 ? images[0]! : await mergeImagesVertically(images)
-      const headlineText = `[仓库管理] ${previews.map((p) => p.title).join(' / ')}`
+      const headlineText = t('scheduling.headline', { titles: previews.map((p) => p.title).join(' / ') })
 
       const errors: string[] = []
       for (const entry of entries) {
-        const name = entry.pushName.trim() || '未命名推送'
+        const name = entry.pushName.trim() || t('push.unnamedPush')
         const pushRes = await postFeishuPushImage({
           pushScope: 'attendance-scheduling',
           webhookUrl: entry.webhookUrl,
@@ -76,14 +78,14 @@ export function useAttendanceSchedulingFeishuPush() {
         }
       }
 
-      const kindLabel = FEISHU_PUSH_KIND_LABELS.attendance_scheduling
-      const base = `已向「${kindLabel}」配置的 ${entries.length} 条机器人推送 ${previews.length} 份排班计划截图。`
+      const kindLabel = feishuPushKindLabel('attendance_scheduling')
+      const base = t('scheduling.successBase', { kind: kindLabel, count: entries.length, plans: previews.length })
       if (errors.length === 0) {
         showToast(base, 'success', 6)
       } else if (errors.length >= entries.length) {
         pushErrorToast(errors.join(' '))
       } else {
-        showToast(`部分失败：${errors.join(' ')}`, 'warning', 8)
+        showToast(t('push.partialFailed', { errors: errors.join(' ') }), 'warning', 8)
       }
     } finally {
       setPushing(false)

@@ -1,0 +1,88 @@
+{
+  "page": {
+    "title": "出勤工作时间记录",
+    "description": "按工序 / 班次记录员工出勤工作时长，用于计算各工序人效。"
+  },
+  "actions": {
+    "addProcess": "添加出勤工序",
+    "finish": "结束",
+    "edit": "编辑",
+    "delete": "删除",
+    "cancel": "取消",
+    "save": "保存",
+    "add": "添加"
+  },
+  "table": {
+    "empty": "暂无出勤记录",
+    "worker": "人员",
+    "process": "工序",
+    "shift": "岗位",
+    "startTime": "开始时间",
+    "endTime": "结束时间",
+    "totalDuration": "总时长",
+    "zoneCode": "负责区号",
+    "notes": "备注",
+    "actions": "操作",
+    "inProgress": "进行中",
+    "totalDurationInline": "总时长 {{hours}}"
+  },
+  "filter": {
+    "allRegions": "全部州/区域",
+    "today": "今天",
+    "last7Days": "近 7 天"
+  },
+  "dialog": {
+    "editTitle": "编辑出勤工序",
+    "addTitle": "添加出勤工序",
+    "region": "州 / 区域",
+    "regionRequired": "请选择州/区域",
+    "regionPlaceholder": "请选择记录所属州/区域",
+    "process": "工序",
+    "processRequired": "请选择工序",
+    "processPlaceholder": "请选择工序 / 班次",
+    "worker": "人员",
+    "workerRequired": "请输入人员姓名",
+    "workerPlaceholder": "输入或选择人员姓名，可直接创建新人员",
+    "searching": "搜索中…",
+    "startTime": "开始时间",
+    "startTimeRequired": "请选择开始时间",
+    "endTime": "结束时间",
+    "endTimeRequired": "请选择结束时间",
+    "endTimeAfterStart": "结束时间必须晚于开始时间",
+    "zoneCode": "负责的区号",
+    "zoneCodePlaceholder": "例如：A1、B3",
+    "notes": "备注",
+    "notesOptional": "选填",
+    "endTimeOptionalPlaceholder": "未填写，可稍后编辑补充",
+    "selectProcessCascader": "选择工序 / 班次",
+    "selectStartTime": "选择开始时间",
+    "selectEndTime": "选择结束时间"
+  },
+  "processCategory": {
+    "coarse_sort": "粗分",
+    "fine_sort": "细分",
+    "forklift": "叉车",
+    "front_desk": "前台",
+    "loading": "上料",
+    "supply": "供货",
+    "grid_slot": "格口"
+  },
+  "shift": {
+    "morning": "早班",
+    "noon": "午班",
+    "evening": "晚班"
+  },
+  "toast": {
+    "updated": "已更新出勤记录",
+    "added": "已添加出勤记录",
+    "deleted": "已删除出勤记录",
+    "finished": "已记录结束时间",
+    "endTimeAfterStart": "结束时间必须晚于开始时间",
+    "selectProcess": "请选择工序",
+    "enterWorkerName": "请输入人员姓名"
+  },
+  "confirm": {
+    "deleteTitle": "确认删除该出勤记录？",
+    "deleteContent": "将删除「{{workerName}}」的出勤工序记录，删除后不可恢复。"
+  }
+}

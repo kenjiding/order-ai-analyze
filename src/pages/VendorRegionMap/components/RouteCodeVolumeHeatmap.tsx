@@ -1,5 +1,6 @@
 import { Chart } from '@antv/g2'
 import { useEffect, useMemo, useRef } from 'react'
+import { useTranslation } from 'react-i18next'
 import type { VendorTrendRoutePoint } from '../vendorRegionMapTypes'
 
 type Props = {
@@ -18,6 +19,7 @@ const ROW_HEIGHT = 22
  * 某一行由深转浅直至断掉 = 这条线路没货了（司机要走）；新出现的行 = 扩容。
  */
 export function RouteCodeVolumeHeatmap({ dates, routeDaily, supplierKey, supplierName }: Props) {
+  const { t } = useTranslation('vendorRegionMap')
   const containerRef = useRef<HTMLDivElement>(null)
 
   const { cells, routeCodes } = useMemo(() => {
@@ -59,7 +61,7 @@ export function RouteCodeVolumeHeatmap({ dates, routeDaily, supplierKey, supplie
     chart.axis('x', { title: false, labelAutoHide: true, labelAutoRotate: false,
       labelFormatter: (v: string) => (v.length >= 10 ? v.slice(5) : v) })
     chart.axis('y', { title: false, labelFontSize: 11 })
-    chart.legend('color', { position: 'right', title: '票量' })
+    chart.legend('color', { position: 'right', title: t('trend.heatmapLegend') })
     chart.interaction('tooltip', true)
 
     chart
@@ -72,19 +74,19 @@ export function RouteCodeVolumeHeatmap({ dates, routeDaily, supplierKey, supplie
       .style('radius', 2)
       .tooltip({
         title: (d: Cell) => `${d.routeCode} · ${d.date}`,
-        items: [{ name: '票量', field: 'count' }],
+        items: [{ name: t('trend.heatmapLegend'), field: 'count' }],
       })
 
     void chart.render()
     return () => {
       chart.destroy()
     }
-  }, [cells, cellsKey, height, routeCodes])
+  }, [cells, cellsKey, height, routeCodes, t])
 
   if (cells.length === 0) {
     return (
       <div className="vrm-chart-empty">
-        {dates.length === 0 ? '点「查询」后显示路由码分布。' : `${supplierName} 在该区间内没有路由码数据。`}
+        {dates.length === 0 ? t('trend.heatmapEmptyQuery') : t('trend.heatmapEmptyVendor', { name: supplierName })}
       </div>
     )
   }
@@ -94,7 +96,7 @@ export function RouteCodeVolumeHeatmap({ dates, routeDaily, supplierKey, supplie
       ref={containerRef}
       className="vrm-chart"
       role="img"
-      aria-label={`${supplierName} 路由码按日货量热力图`}
+      aria-label={t('trend.heatmapAria', { name: supplierName })}
     />
   )
 }

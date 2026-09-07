@@ -12,6 +12,7 @@ import {
   Clock,
   XCircle,
 } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
 import type { TransferDetail } from '../../../containerManagement/types'
 import {
   buildNegotiationTimelineEvents,
@@ -129,6 +130,8 @@ export function NegotiationTimelinePanel({
   error,
   variant = 'drawer',
 }: Props) {
+  const { t } = useTranslation('container')
+
   if (loading) {
     return (
       <div className="animate-pulse space-y-5" aria-busy>
@@ -152,31 +155,32 @@ export function NegotiationTimelinePanel({
 
   if (!detail) return null
 
-  const events = buildNegotiationTimelineEvents(detail)
+  const events = buildNegotiationTimelineEvents(detail, t)
 
   return (
     <div className={cx('text-sm', variant === 'inline' && 'border-t border-slate-200 pt-4')}>
       {variant === 'inline' ? (
         <div className="mb-4 flex items-center justify-between gap-2">
-          <h4 className="text-sm font-semibold text-slate-900">协商时间线</h4>
+          <h4 className="text-sm font-semibold text-slate-900">{t('transfers.timelineTitle')}</h4>
           <span className="rounded-md bg-slate-100 px-2 py-0.5 font-mono text-xs text-slate-500">
-            {events.length} 个节点
+            {t('transfers.timelineNodesInline', { count: events.length })}
           </span>
         </div>
       ) : (
         <p className="mb-4 text-xs text-slate-500">
-          共 <span className="font-mono tabular-nums">{events.length}</span> 个节点
+          {t('transfers.timelineNodes', { count: events.length })}
         </p>
       )}
 
       <ol className="m-0 list-none space-y-0 p-0">
         {events.map((ev, index) => {
           const isLast = index === events.length - 1
-          const tone = TONE_STYLE[timelineTone(ev)]
+          const tone = TONE_STYLE[timelineTone(ev, t)]
           const quantityLines =
             'quantityLines' in ev && ev.quantityLines?.length ? ev.quantityLines : undefined
           const evidenceSrc = 'evidenceImageUrl' in ev ? ev.evidenceImageUrl : undefined
-          const evidenceLabel = ('evidenceLabel' in ev ? ev.evidenceLabel : undefined) ?? '证据'
+          const evidenceLabel =
+            ('evidenceLabel' in ev ? ev.evidenceLabel : undefined) ?? t('transfers.timelineEvidenceDefault')
 
           return (
             <li key={ev.key} className="flex gap-3 sm:gap-4">
@@ -242,7 +246,7 @@ export function NegotiationTimelinePanel({
 
                   {ev.kind === 'report' && ev.receiverReportReason ? (
                     <div className="space-y-1 rounded-lg border border-amber-200 bg-amber-50/70 px-3 py-2.5">
-                      <p className="text-xs font-medium text-amber-800">申报原因</p>
+                      <p className="text-xs font-medium text-amber-800">{t('transfers.timelineReportReason')}</p>
                       <p className="whitespace-pre-wrap text-sm leading-relaxed text-slate-700">
                         {ev.receiverReportReason}
                       </p>
@@ -260,7 +264,7 @@ export function NegotiationTimelinePanel({
                       >
                         <img
                           src={evidenceSrc}
-                          alt="申报证据"
+                          alt={t('transfers.timelineEvidenceAlt')}
                           className="max-h-40 max-w-full rounded object-contain"
                         />
                       </a>

@@ -1,5 +1,6 @@
 import { Select } from 'antd'
 import { MapPin } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
 import { useGlobalFilterStore } from '../../stores/globalFilterStore'
 
 type Props = {
@@ -7,16 +8,11 @@ type Props = {
   onChange: (value: string) => void
   disabled?: boolean
   placeholder?: string
-  /** 覆盖下拉框宽度；缺省 min-w-[200px] */
   className?: string
 }
 
-/**
- * 独立的站点选择器：复用 Header「责任站点」选择器同一份站点列表数据源
- * （由 useGlobalStationBootstrap 在 Header 挂载时加载），但 value/onChange 走调用方
- * 自己的状态，不读写全局的 selectedStations —— 供表单内需要"选自己的站点"的场景使用。
- */
-export function StationSelect({ value, onChange, disabled, placeholder = '选择站点', className = 'min-w-[200px]' }: Props) {
+export function StationSelect({ value, onChange, disabled, placeholder, className = 'min-w-[200px]' }: Props) {
+  const { t } = useTranslation('common')
   const { stations, stationsLoading } = useGlobalFilterStore()
 
   return (
@@ -28,7 +24,7 @@ export function StationSelect({ value, onChange, disabled, placeholder = '选择
         options={stations.map((s) => ({ label: s.label, value: s.value }))}
         loading={stationsLoading}
         disabled={disabled}
-        placeholder={placeholder}
+        placeholder={placeholder ?? t('selectStation')}
         className={className}
         showSearch
         optionFilterProp="label"

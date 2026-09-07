@@ -1,6 +1,7 @@
 import { Button, DatePicker, Tooltip, Typography } from 'antd'
 import { Save, Send } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { PERMISSION_KEYS, usePermission } from '../../../hooks/usePermission'
 import {
   buildManualAttendanceSchedulingPlanPreview,
@@ -47,6 +48,7 @@ function defaultPlanDate(): string {
 }
 
 export function AttendanceSchedulingPushPanel() {
+  const { t } = useTranslation('pushNotifications')
   const canSend = usePermission(PERMISSION_KEYS.btnPushNotificationsAttendanceScheduling)
   const { pushing, setPreviewCaptureRef, pushSchedulingPlanPreviews } = useAttendanceSchedulingFeishuPush()
   const [planDate, setPlanDate] = useState(defaultPlanDate)
@@ -140,13 +142,13 @@ export function AttendanceSchedulingPushPanel() {
       await persistAttendanceSchedulingPushTemplate(template)
       templateRef.current = template
       saveDaySnapshot(planDate, stripped)
-      showToast('已保存排班模版，下次进入将自动回填。', 'success')
+      showToast(t('attendanceTab.templateSaved'), 'success')
     } catch {
-      showToast('模版保存失败，请重试。', 'error')
+      showToast(t('attendanceTab.templateSaveFailed'), 'error')
     } finally {
       setSavingTemplate(false)
     }
-  }, [cellTexts, planDate])
+  }, [cellTexts, planDate, t])
 
   return (
     <div className="attendance-scheduling-push-tab space-y-4">
@@ -154,7 +156,7 @@ export function AttendanceSchedulingPushPanel() {
         <div className="flex flex-wrap items-center gap-3">
           <div className="flex items-center gap-2">
             <Typography.Text type="secondary" className="text-xs">
-              排班日期
+              {t('attendanceTab.planDate')}
             </Typography.Text>
             <DatePicker
               value={dayjs(planDate)}
@@ -173,9 +175,9 @@ export function AttendanceSchedulingPushPanel() {
             disabled={!templateLoaded || savingTemplate || pushing}
             onClick={() => void handleSaveTemplate()}
           >
-            保存模版
+            {t('attendanceTab.saveTemplate')}
           </Button>
-          <Tooltip title={!canSend ? '无操作权限' : undefined}>
+          <Tooltip title={!canSend ? t('common.noPermission') : undefined}>
             <Button
               type="primary"
               icon={<Send className="h-4 w-4" />}
@@ -183,14 +185,14 @@ export function AttendanceSchedulingPushPanel() {
               disabled={!canSend || !templateLoaded || pushing}
               onClick={() => {
                 if (!canSend) {
-                  showToast('无操作权限', 'error')
+                  showToast(t('common.noPermission'), 'error')
                   return
                 }
                 saveDaySnapshot(planDate, stripPlanDatePrefixFromCellTexts(cellTexts, planDate))
                 void pushSchedulingPlanPreviews([previewForPush])
               }}
             >
-              推送到飞书
+              {t('attendanceTab.pushToFeishu')}
             </Button>
           </Tooltip>
         </div>
@@ -222,10 +224,12 @@ function AttendanceSchedulingPushPanelBody({
   cellTexts: Record<string, string>
   onCellChange: (key: string, text: string) => void
 }) {
+  const { t } = useTranslation('pushNotifications')
+
   if (!loaded) {
     return (
       <Typography.Text type="secondary" className="block py-8 text-center text-sm">
-        正在加载排班模版…
+        {t('attendanceTab.loadingTemplate')}
       </Typography.Text>
     )
   }

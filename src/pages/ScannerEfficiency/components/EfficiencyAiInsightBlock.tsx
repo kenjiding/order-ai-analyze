@@ -1,3 +1,4 @@
+import { useTranslation } from 'react-i18next'
 import { Select } from 'antd'
 import { formatCainiaoSharePercent } from '../cainiaoWaybill'
 import type { EfficiencyAiAnalysis, EfficiencyInsightAiProvider } from '../efficiencyInsightApi'
@@ -28,14 +29,15 @@ export function EfficiencyAiInsightBlock({
   analysis,
   onGenerate,
 }: Props) {
+  const { t } = useTranslation('scannerEfficiency')
   return (
     <section className="se-ai-insight-block admin-panel overflow-hidden">
       <div className="se-ai-insight-header">
         <div className="se-ai-insight-header-left">
           <span className="se-ai-insight-icon">✦</span>
-          <span className="se-ai-insight-title">AI 数据分析建议</span>
+          <span className="se-ai-insight-title">{t('ai.title')}</span>
           <span className="se-ai-insight-subtitle">
-            {tab === 'warehouse' ? '基于开仓效率 / 总体效率数据' : '基于分拣员个人效率数据'}
+            {tab === 'warehouse' ? t('ai.warehouseContext') : t('ai.scannerContext')}
           </span>
         </div>
         <div className="se-ai-insight-actions">
@@ -51,7 +53,7 @@ export function EfficiencyAiInsightBlock({
             onClick={onGenerate}
             disabled={loading}
           >
-            {loading ? '分析中…' : analysis ? '重新分析' : '开始分析'}
+            {loading ? t('ai.analyzing') : analysis ? t('ai.regenerate') : t('ai.start')}
           </button>
         </div>
       </div>
@@ -65,7 +67,7 @@ export function EfficiencyAiInsightBlock({
           <div className="se-ai-insight-loading-dots">
             <span /><span /><span />
           </div>
-          <span>正在分析数据，请稍候…</span>
+          <span>{t('ai.loadingDetail')}</span>
         </div>
       )}
 
@@ -73,7 +75,7 @@ export function EfficiencyAiInsightBlock({
         <div className="se-ai-insight-body">
           {analysis.findings.length > 0 && (
             <div className="se-ai-insight-section">
-              <div className="se-ai-insight-section-label se-ai-insight-label-findings">数据亮点 / 问题</div>
+              <div className="se-ai-insight-section-label se-ai-insight-label-findings">{t('ai.findings')}</div>
               <ul className="se-ai-insight-list">
                 {analysis.findings.map((item, i) => (
                   <li key={i} className="se-ai-insight-item se-ai-insight-item-finding">
@@ -86,7 +88,7 @@ export function EfficiencyAiInsightBlock({
           )}
           {analysis.suggestions.length > 0 && (
             <div className="se-ai-insight-section">
-              <div className="se-ai-insight-section-label se-ai-insight-label-suggestions">改进建议</div>
+              <div className="se-ai-insight-section-label se-ai-insight-label-suggestions">{t('ai.suggestions')}</div>
               <ul className="se-ai-insight-list">
                 {analysis.suggestions.map((item, i) => (
                   <li key={i} className="se-ai-insight-item se-ai-insight-item-suggestion">
@@ -100,7 +102,7 @@ export function EfficiencyAiInsightBlock({
           {tab === 'scanner' && analysis.topPerformers.length > 0 && (
             <div className="se-ai-insight-section">
               <div className="se-ai-insight-section-label se-ai-insight-label-top-performers">
-                值得奖励的员工
+                {t('ai.topPerformers')}
               </div>
               <div className="se-ai-top-performers-grid">
                 {analysis.topPerformers.map((p, i) => (
@@ -110,7 +112,7 @@ export function EfficiencyAiInsightBlock({
                       <div className="se-ai-top-performer-name-row">
                         <div className="se-ai-top-performer-name">{p.scanner}</div>
                         <div className="se-ai-top-performer-cainiao">
-                          菜鸟占比 {formatCainiaoSharePercent(p.cainiaoShare)}
+                          {t('columns.cainiaoShare')} {formatCainiaoSharePercent(p.cainiaoShare)}
                         </div>
                       </div>
                       {p.reason && (
@@ -127,7 +129,7 @@ export function EfficiencyAiInsightBlock({
 
       {!analysis && !loading && !error && (
         <div className="se-ai-insight-placeholder">
-          点击「开始分析」，AI 将根据当前数据自动生成运营建议。
+          {t('ai.placeholder')}
         </div>
       )}
     </section>

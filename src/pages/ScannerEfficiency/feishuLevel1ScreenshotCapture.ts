@@ -1,5 +1,6 @@
 import { toJpeg } from 'html-to-image'
 import { FEISHU_PUSH_CAPTURE_PIXEL_RATIO, FEISHU_PUSH_JPEG_QUALITY } from '../../utils/feishuScreenshotImageSettings'
+import { i18n } from '../../i18n/index'
 
 /** 挂载此属性的元素及其子树在飞书推送截图克隆时会被跳过（例：推送按钮）。 */
 export const SKIP_FEISHU_CAPTURE_ATTR = 'data-feishu-capture-ignore'
@@ -54,7 +55,7 @@ function waitFrames(n: number): Promise<void> {
  * 用于把效率明细/天（表）、效率明细/天（图）、扫描员汇总合并后再推送。
  */
 export async function mergeImagesVertically(dataUrls: string[]): Promise<string> {
-  if (!dataUrls.length) throw new Error('没有可合并的图片。')
+  if (!dataUrls.length) throw new Error(String(i18n.t('capture.noImages', { ns: 'scannerEfficiency' })))
   if (dataUrls.length === 1) return dataUrls[0]
 
   const images = await Promise.all(
@@ -63,7 +64,7 @@ export async function mergeImagesVertically(dataUrls: string[]): Promise<string>
         new Promise<HTMLImageElement>((resolve, reject) => {
           const img = new Image()
           img.onload = () => resolve(img)
-          img.onerror = () => reject(new Error('图片加载失败'))
+          img.onerror = () => reject(new Error(String(i18n.t('capture.imageLoadFailed', { ns: 'scannerEfficiency' }))))
           img.src = url
         }),
     ),
@@ -76,7 +77,7 @@ export async function mergeImagesVertically(dataUrls: string[]): Promise<string>
   canvas.width = maxWidth
   canvas.height = totalHeight
   const ctx = canvas.getContext('2d')
-  if (!ctx) throw new Error('无法创建 Canvas 上下文。')
+  if (!ctx) throw new Error(String(i18n.t('capture.noCanvas', { ns: 'scannerEfficiency' })))
   ctx.fillStyle = '#ffffff'
   ctx.fillRect(0, 0, maxWidth, totalHeight)
 
@@ -91,7 +92,7 @@ export async function mergeImagesVertically(dataUrls: string[]): Promise<string>
 
 /** 将对账截图渲染为 JPEG data URL（供飞书 webhook 后端上载）。 */
 export async function captureScannerPushRegion(root: HTMLElement | null): Promise<string> {
-  if (!root) throw new Error('截图区域尚未就绪，请稍后重试。')
+  if (!root) throw new Error(String(i18n.t('capture.regionNotReady', { ns: 'scannerEfficiency' })))
   const restoreTables = relaxBoundedTablesInSubtree(root)
   await waitFrames(2)
   try {

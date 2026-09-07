@@ -1,0 +1,29 @@
+{
+  "brand": {
+    "chaseDispatch": "Long time - No return warehouse or Overdue Deliveries",
+    "dispatchAlarm": "24H Delivery Alert"
+  },
+  "loading": "正在加载运单…",
+  "linkUnavailable": "链接不可用",
+  "linkExpiredHint": "该分享链接无效或已过期（链接有效期 1 天）。请联系仓库团队重新推送。",
+  "chaseSubtitle": "{{baseDate}} {{pushTime}} · 滞留待派包裹",
+  "dispatchSubtitle": "站点 {{stationCode}} · {{date}} {{pushTime}} · 24H 派签率 {{rate}}（阈值 {{threshold}}%）",
+  "metricTotalStagnant": "滞留合计",
+  "metricNotMet24h": "24H 未达标",
+  "copyAll": "复制全部",
+  "copy": "复制",
+  "emptyChase": "暂无滞留包裹，无需催派。",
+  "emptyDispatch": "全部运单已在 24H 内签收，无问题件。",
+  "groupDays": "{{days}} 天",
+  "groupNotSigned": "未签收",
+  "groupSignedLate": "超时签收（>24H）",
+  "groupProblem": "问题件",
+  "unassignedDriver": "未派件（无司机）",
+  "unknownRoute": "未知路由",
+  "priorityParcel": "优先客户包裹 — 尚未派送",
+  "noWaybillsInGroup": "该分组暂无运单号",
+  "noWaybillsToCopy": "没有可复制的运单",
+  "copied": "已复制 {{count}} 条 · {{label}}",
+  "copyFailed": "复制失败",
+  "footer": "来自 {{brand}} 推送的快照。可按需复制运单到 TMS 或剪贴板。链接 1 天后失效。"
+}

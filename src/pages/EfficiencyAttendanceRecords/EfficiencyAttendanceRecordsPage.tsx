@@ -3,6 +3,9 @@ import { Button, Modal, Table, Tag, Tooltip } from 'antd'
 import type { ColumnsType, TableRowSelection } from 'antd/es/table/interface'
 import { Archive, BarChart2, Eye, RefreshCw, Trash2 } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
+import { useTranslation } from 'react-i18next'
+import { getDateTimeLocale } from '../../i18n'
+import { useAppLocale } from '../../i18n/hooks'
 import {
   deleteDailyEfficiencyRecord,
   deleteDailyEfficiencyRecords,
@@ -22,11 +25,11 @@ import { CompareAnalysisDrawer } from './CompareAnalysisDrawer'
 
 type RecordRow = EfficiencyAttendanceDayRecordListItem & { key: string }
 
-function formatSavedAt(value: string): string {
-  if (!value) return '—'
+function formatSavedAt(value: string, dateLocale: string, dash: string): string {
+  if (!value) return dash
   const date = new Date(value)
   if (Number.isNaN(date.getTime())) return value
-  return date.toLocaleString('zh-CN', {
+  return date.toLocaleString(dateLocale, {
     year: 'numeric',
     month: '2-digit',
     day: '2-digit',
@@ -35,37 +38,16 @@ function formatSavedAt(value: string): string {
   })
 }
 
-const DAY_KIND_META: Record<EfficiencyAttendanceDayKind, { label: string; hint: string; className: string }> = {
-  full: {
-    label: '到件+考勤',
-    hint: '有到件也有考勤，正常参与日效率统计',
-    className: 'bg-[var(--admin-accent-soft)] text-[#1f6f68]',
-  },
-  attendanceOnly: {
-    label: '无到件补录',
-    hint: '有考勤无到件：不产生日效率，但工时计入总体/开仓效率的分母',
-    className: 'bg-amber-50 text-amber-700',
-  },
-  scanOnly: {
-    label: '缺考勤',
-    hint: '有到件无考勤：货量计入总货量，但当日无工时可用',
-    className: 'bg-red-50 text-red-600',
-  },
-}
-
-function formatEfficiency(value: number | null): string {
-  if (value == null || !Number.isFinite(value)) return '—'
-  return `${formatNumber(value, 2)} 票/时`
-}
-
-function formatSelectedRange(dates: string[]): string {
-  if (!dates.length) return ''
-  const sorted = [...dates].sort((a, b) => a.localeCompare(b))
-  if (sorted.length === 1) return sorted[0]!
-  return `${sorted[0]} ~ ${sorted[sorted.length - 1]}（${sorted.length} 天）`
+function formatEfficiency(value: number | null, dash: string, unit: string): string {
+  if (value == null || !Number.isFinite(value)) return dash
+  return `${formatNumber(value, 2)} ${unit}`
 }
 
 export default function EfficiencyAttendanceRecordsPage() {
+  const { t } = useTranslation('efficiencyRecords')
+  const { locale } = useAppLocale()
+  const dateLocale = getDateTimeLocale(locale)
+  const dash = t('format.dash')
   const navigate = useNavigate()
   const [loading, setLoading] = useState(true)
   const [rows, setRows] = useState<RecordRow[]>([])
@@ -76,6 +58,41 @@ export default function EfficiencyAttendanceRecordsPage() {
   const [compareOpen, setCompareOpen] = useState(false)
   const [currentPage, setCurrentPage] = useState(1)
   const [pageSize, setPageSize] = useState(20)
+
+  const dayKindMeta = useMemo(
+    (): Record<EfficiencyAttendanceDayKind, { label: string; hint: string; className: string }> => ({
+      full: {
+        label: t('dayKind.full.label'),
+        hint: t('dayKind.full.hint'),
+        className: 'bg-[var(--admin-accent-soft)] text-[#1f6f68]',
+      },
+      attendanceOnly: {
+        label: t('dayKind.attendanceOnly.label'),
+        hint: t('dayKind.attendanceOnly.hint'),
+        className: 'bg-amber-50 text-amber-700',
+      },
+      scanOnly: {
+        label: t('dayKind.scanOnly.label'),
+        hint: t('dayKind.scanOnly.hint'),
+        className: 'bg-red-50 text-red-600',
+      },
+    }),
+    [t],
+  )
+
+  const formatSelectedRange = useCallback(
+    (dates: string[]): string => {
+      if (!dates.length) return ''
+      const sorted = [...dates].sort((a, b) => a.localeCompare(b))
+      if (sorted.length === 1) return t('format.selectedRangeSingle', { date: sorted[0] })
+      return t('format.selectedRangeMulti', {
+        start: sorted[0],
+        end: sorted[sorted.length - 1],
+        count: sorted.length,
+      })
+    },
+    [t],
+  )
 
   const loadRecords = useCallback(async () => {
     setLoading(true)
@@ -98,11 +115,11 @@ export default function EfficiencyAttendanceRecordsPage() {
       setRows(nextRows)
       setSelectedRowKeys((prev) => prev.filter((key) => nextRecordByDate.has(key)))
     } catch (error: unknown) {
-      showToast(error instanceof Error ? error.message : '加载效率考勤记录失败', 'error')
+      showToast(error instanceof Error ? error.message : t('toast.loadFailed'), 'error')
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [t])
 
   useEffect(() => {
     void loadRecords()
@@ -130,12 +147,10 @@ export default function EfficiencyAttendanceRecordsPage() {
         .filter((record): record is EfficiencyAttendanceDayRecord => record != null)
 
       if (!picked.length) {
-        showToast('记录数据不可用，请刷新后重试', 'error')
+        showToast(t('toast.recordUnavailable'), 'error')
         return
       }
 
-      // 「总体/开仓效率」的分母是统计窗口内的全部考勤工时，含无到件补录日。
-      // 只回填被勾选的日期会漏掉这些工时，效率虚高，所以按所选区间自动补齐。
       const pickedDates = new Set(picked.map((record) => record.date))
       const sortedDates = [...pickedDates].sort((a, b) => a.localeCompare(b))
       const rangeStart = sortedDates[0]!
@@ -150,7 +165,7 @@ export default function EfficiencyAttendanceRecordsPage() {
 
       const records = [...picked, ...filled].sort((a, b) => a.date.localeCompare(b.date))
       if (filled.length) {
-        showToast(`已自动纳入区间内 ${filled.length} 个无到件补录日的工时`, 'info')
+        showToast(t('toast.autoIncludedAttendanceOnly', { count: filled.length }), 'info')
       }
 
       navigate('/efficiency', {
@@ -159,16 +174,16 @@ export default function EfficiencyAttendanceRecordsPage() {
         },
       })
     },
-    [navigate, recordByDate],
+    [navigate, recordByDate, t],
   )
 
   const handleViewSelected = useCallback(() => {
     if (!selectedDates.length) {
-      showToast('请先选择至少一条记录', 'warning')
+      showToast(t('toast.selectAtLeastOne'), 'warning')
       return
     }
     navigateWithRecords(selectedDates)
-  }, [navigateWithRecords, selectedDates])
+  }, [navigateWithRecords, selectedDates, t])
 
   const handleView = useCallback(
     (date: string) => {
@@ -179,61 +194,64 @@ export default function EfficiencyAttendanceRecordsPage() {
 
   const handleDeleteSelected = useCallback(() => {
     if (!selectedDates.length) {
-      showToast('请先选择至少一条记录', 'warning')
+      showToast(t('toast.selectAtLeastOne'), 'warning')
       return
     }
 
     const rangeLabel = formatSelectedRange(selectedDates)
     Modal.confirm({
-      title: '批量删除效率考勤记录',
-      content: `确定删除已选的 ${selectedDates.length} 条记录吗？${rangeLabel ? `（${rangeLabel}）` : ''}此操作不可恢复。`,
-      okText: '删除',
+      title: t('modal.batchDeleteTitle'),
+      content: t('modal.batchDeleteContent', {
+        count: selectedDates.length,
+        range: rangeLabel ? t('modal.batchDeleteRange', { range: rangeLabel }) : '',
+      }),
+      okText: t('modal.deleteOk'),
       okButtonProps: { danger: true },
-      cancelText: '取消',
+      cancelText: t('modal.cancel'),
       onOk: async () => {
         setBatchDeleting(true)
         try {
           const result = await deleteDailyEfficiencyRecords(selectedDates)
           if (!result.deletedCount) {
-            showToast('未删除任何记录，可能已被删除', 'warning')
+            showToast(t('toast.batchDeleteNone'), 'warning')
           } else {
-            showToast(`已删除 ${result.deletedCount} 条记录`, 'success')
+            showToast(t('toast.batchDeleteSuccess', { count: result.deletedCount }), 'success')
           }
           setSelectedRowKeys((prev) => prev.filter((key) => !result.deletedDates.includes(key)))
           await loadRecords()
         } catch (error: unknown) {
-          showToast(error instanceof Error ? error.message : '批量删除失败', 'error')
+          showToast(error instanceof Error ? error.message : t('toast.batchDeleteFailed'), 'error')
         } finally {
           setBatchDeleting(false)
         }
       },
     })
-  }, [loadRecords, selectedDates])
+  }, [formatSelectedRange, loadRecords, selectedDates, t])
 
   const handleDelete = useCallback(
     (date: string) => {
       Modal.confirm({
-        title: '删除效率考勤记录',
-        content: `确定删除 ${date} 的记录吗？此操作不可恢复。`,
-        okText: '删除',
+        title: t('modal.deleteTitle'),
+        content: t('modal.deleteContent', { date }),
+        okText: t('modal.deleteOk'),
         okButtonProps: { danger: true },
-        cancelText: '取消',
+        cancelText: t('modal.cancel'),
         onOk: async () => {
           setDeletingDate(date)
           try {
             await deleteDailyEfficiencyRecord(date)
-            showToast(`已删除 ${date}`, 'success')
+            showToast(t('toast.deleteSuccess', { date }), 'success')
             setSelectedRowKeys((prev) => prev.filter((key) => key !== date))
             await loadRecords()
           } catch (error: unknown) {
-            showToast(error instanceof Error ? error.message : '删除失败', 'error')
+            showToast(error instanceof Error ? error.message : t('toast.deleteFailed'), 'error')
           } finally {
             setDeletingDate(null)
           }
         },
       })
     },
-    [loadRecords],
+    [loadRecords, t],
   )
 
   const rowSelection: TableRowSelection<RecordRow> = {
@@ -242,121 +260,128 @@ export default function EfficiencyAttendanceRecordsPage() {
     preserveSelectedRowKeys: true,
   }
 
-  const columns: ColumnsType<RecordRow> = [
-    {
-      title: '日期',
-      dataIndex: 'date',
-      key: 'date',
-      width: 120,
-      render: (date: string) => <span className="font-medium tabular-nums text-slate-900">{date}</span>,
-    },
-    {
-      title: '类型',
-      dataIndex: 'kind',
-      key: 'kind',
-      width: 120,
-      render: (kind: EfficiencyAttendanceDayKind) => {
-        const meta = DAY_KIND_META[kind]
-        return (
-          <Tooltip title={meta.hint}>
-            <Tag bordered={false} className={`mr-0 ${meta.className}`}>
-              {meta.label}
-            </Tag>
-          </Tooltip>
-        )
+  const efficiencyUnit = t('format.efficiencyUnit')
+
+  const columns: ColumnsType<RecordRow> = useMemo(
+    () => [
+      {
+        title: t('col.date'),
+        dataIndex: 'date',
+        key: 'date',
+        width: 120,
+        render: (date: string) => <span className="font-medium tabular-nums text-slate-900">{date}</span>,
       },
-    },
-    {
-      title: '货量',
-      dataIndex: 'volume',
-      key: 'volume',
-      width: 96,
-      align: 'right',
-      render: (value: number | null) => (
-        <span className="tabular-nums text-slate-800">{value != null ? formatInteger(value) : '—'}</span>
-      ),
-    },
-    {
-      title: '日效率',
-      dataIndex: 'dayEfficiency',
-      key: 'dayEfficiency',
-      width: 128,
-      render: (value: number | null) => (
-        <span className="tabular-nums text-slate-700">{formatEfficiency(value)}</span>
-      ),
-    },
-    {
-      title: '开仓效率',
-      dataIndex: 'openEfficiency',
-      key: 'openEfficiency',
-      width: 128,
-      render: (value: number | null) => (
-        <span className="tabular-nums text-slate-700">{formatEfficiency(value)}</span>
-      ),
-    },
-    {
-      title: '总体效率',
-      dataIndex: 'overallEfficiency',
-      key: 'overallEfficiency',
-      width: 128,
-      render: (value: number | null) => (
-        <span className="tabular-nums text-slate-700">{formatEfficiency(value)}</span>
-      ),
-    },
-    {
-      title: '一级分拣效率',
-      dataIndex: 'sortingEfficiency',
-      key: 'sortingEfficiency',
-      width: 136,
-      render: (value: number | null) => (
-        <span className="tabular-nums text-slate-700">{formatEfficiency(value)}</span>
-      ),
-    },
-    {
-      title: '前台饱和度',
-      dataIndex: 'hasFrontDesk',
-      key: 'hasFrontDesk',
-      width: 108,
-      render: (value: boolean) =>
-        value ? (
-          <Tag bordered={false} className="mr-0 bg-[var(--admin-accent-soft)] text-[#1f6f68]">
-            已保存
-          </Tag>
-        ) : (
-          <span className="text-slate-400">—</span>
+      {
+        title: t('col.kind'),
+        dataIndex: 'kind',
+        key: 'kind',
+        width: 120,
+        render: (kind: EfficiencyAttendanceDayKind) => {
+          const meta = dayKindMeta[kind]
+          return (
+            <Tooltip title={meta.hint}>
+              <Tag bordered={false} className={`mr-0 ${meta.className}`}>
+                {meta.label}
+              </Tag>
+            </Tooltip>
+          )
+        },
+      },
+      {
+        title: t('col.volume'),
+        dataIndex: 'volume',
+        key: 'volume',
+        width: 96,
+        align: 'right',
+        render: (value: number | null) => (
+          <span className="tabular-nums text-slate-800">{value != null ? formatInteger(value) : dash}</span>
         ),
-    },
-    {
-      title: '保存时间',
-      dataIndex: 'updatedAt',
-      key: 'updatedAt',
-      width: 168,
-      render: (value: string) => <span className="text-sm tabular-nums text-slate-600">{formatSavedAt(value)}</span>,
-    },
-    {
-      title: '操作',
-      key: 'actions',
-      width: 148,
-      fixed: 'right',
-      render: (_, row) => (
-        <div className="flex items-center gap-2">
-          <Button type="link" className="px-0" icon={<Eye className="h-4 w-4" aria-hidden />} onClick={() => handleView(row.date)}>
-            查看
-          </Button>
-          <Button
-            type="link"
-            danger
-            className="px-0"
-            loading={deletingDate === row.date || batchDeleting}
-            icon={<Trash2 className="h-4 w-4" aria-hidden />}
-            onClick={() => handleDelete(row.date)}
-          >
-            删除
-          </Button>
-        </div>
-      ),
-    },
-  ]
+      },
+      {
+        title: t('col.dayEfficiency'),
+        dataIndex: 'dayEfficiency',
+        key: 'dayEfficiency',
+        width: 128,
+        render: (value: number | null) => (
+          <span className="tabular-nums text-slate-700">{formatEfficiency(value, dash, efficiencyUnit)}</span>
+        ),
+      },
+      {
+        title: t('col.openEfficiency'),
+        dataIndex: 'openEfficiency',
+        key: 'openEfficiency',
+        width: 128,
+        render: (value: number | null) => (
+          <span className="tabular-nums text-slate-700">{formatEfficiency(value, dash, efficiencyUnit)}</span>
+        ),
+      },
+      {
+        title: t('col.overallEfficiency'),
+        dataIndex: 'overallEfficiency',
+        key: 'overallEfficiency',
+        width: 128,
+        render: (value: number | null) => (
+          <span className="tabular-nums text-slate-700">{formatEfficiency(value, dash, efficiencyUnit)}</span>
+        ),
+      },
+      {
+        title: t('col.sortingEfficiency'),
+        dataIndex: 'sortingEfficiency',
+        key: 'sortingEfficiency',
+        width: 136,
+        render: (value: number | null) => (
+          <span className="tabular-nums text-slate-700">{formatEfficiency(value, dash, efficiencyUnit)}</span>
+        ),
+      },
+      {
+        title: t('col.frontDeskSaturation'),
+        dataIndex: 'hasFrontDesk',
+        key: 'hasFrontDesk',
+        width: 108,
+        render: (value: boolean) =>
+          value ? (
+            <Tag bordered={false} className="mr-0 bg-[var(--admin-accent-soft)] text-[#1f6f68]">
+              {t('col.saved')}
+            </Tag>
+          ) : (
+            <span className="text-slate-400">{dash}</span>
+          ),
+      },
+      {
+        title: t('col.savedAt'),
+        dataIndex: 'updatedAt',
+        key: 'updatedAt',
+        width: 168,
+        render: (value: string) => (
+          <span className="text-sm tabular-nums text-slate-600">{formatSavedAt(value, dateLocale, dash)}</span>
+        ),
+      },
+      {
+        title: t('col.actions'),
+        key: 'actions',
+        width: 148,
+        fixed: 'right',
+        render: (_, row) => (
+          <div className="flex items-center gap-2">
+            <Button type="link" className="px-0" icon={<Eye className="h-4 w-4" aria-hidden />} onClick={() => handleView(row.date)}>
+              {t('col.view')}
+            </Button>
+            <Button
+              type="link"
+              danger
+              className="px-0"
+              loading={deletingDate === row.date || batchDeleting}
+              icon={<Trash2 className="h-4 w-4" aria-hidden />}
+              onClick={() => handleDelete(row.date)}
+            >
+              {t('col.delete')}
+            </Button>
+          </div>
+        ),
+      },
+    ],
+    [batchDeleting, dash, dateLocale, dayKindMeta, deletingDate, efficiencyUnit, handleDelete, handleView, t],
+  )
 
   return (
     <div className="admin-page">
@@ -364,11 +389,9 @@ export default function EfficiencyAttendanceRecordsPage() {
         <div className="border-b border-[var(--admin-line)] px-5 py-5 sm:px-6">
           <div className="flex flex-wrap items-start justify-between gap-4">
             <div className="min-w-0">
-              <p className="admin-eyebrow">Efficiency Archive</p>
-              <h1 className="mt-1 text-xl font-semibold tracking-tight text-slate-950 sm:text-2xl">效率考勤记录</h1>
-              <p className="mt-2 max-w-2xl text-sm leading-relaxed text-slate-600">
-                可多选若干日期组合为一段时间，在效率考勤页按区间展示合并后的计算结果。
-              </p>
+              <p className="admin-eyebrow">{t('page.eyebrow')}</p>
+              <h1 className="mt-1 text-xl font-semibold tracking-tight text-slate-950 sm:text-2xl">{t('page.title')}</h1>
+              <p className="mt-2 max-w-2xl text-sm leading-relaxed text-slate-600">{t('page.lead')}</p>
             </div>
             <Button
               type="default"
@@ -376,25 +399,25 @@ export default function EfficiencyAttendanceRecordsPage() {
               loading={loading}
               onClick={() => void loadRecords()}
             >
-              刷新
+              {t('page.refresh')}
             </Button>
           </div>
         </div>
 
         <div className="grid grid-cols-1 divide-y divide-[var(--admin-line)] sm:grid-cols-3 sm:divide-x sm:divide-y-0">
           <div className="px-5 py-4 sm:px-6">
-            <div className="text-[11px] font-medium uppercase tracking-wide text-slate-500">记录总数</div>
+            <div className="text-[11px] font-medium uppercase tracking-wide text-slate-500">{t('stats.total')}</div>
             <div className="mt-1 flex items-center gap-2 text-2xl font-semibold tabular-nums text-slate-950">
               <Archive className="h-5 w-5 text-[#2f8f87]" aria-hidden />
               {stats.total}
             </div>
           </div>
           <div className="px-5 py-4 sm:px-6">
-            <div className="text-[11px] font-medium uppercase tracking-wide text-slate-500">含分拣效率</div>
+            <div className="text-[11px] font-medium uppercase tracking-wide text-slate-500">{t('stats.withSorting')}</div>
             <div className="mt-1 text-2xl font-semibold tabular-nums text-slate-950">{stats.withSorting}</div>
           </div>
           <div className="px-5 py-4 sm:px-6">
-            <div className="text-[11px] font-medium uppercase tracking-wide text-slate-500">含前台饱和度</div>
+            <div className="text-[11px] font-medium uppercase tracking-wide text-slate-500">{t('stats.withFrontDesk')}</div>
             <div className="mt-1 text-2xl font-semibold tabular-nums text-slate-950">{stats.withFrontDesk}</div>
           </div>
         </div>
@@ -405,27 +428,23 @@ export default function EfficiencyAttendanceRecordsPage() {
           <div className="min-w-0 text-sm text-slate-600">
             {selectedDates.length ? (
               <>
-                已选 <span className="font-semibold tabular-nums text-slate-900">{selectedDates.length}</span> 天：
+                {t('selection.selected', { count: selectedDates.length })}
                 <span className="ml-1 tabular-nums text-slate-800">{formatSelectedRange(selectedDates)}</span>
               </>
             ) : (
-              '勾选多天后可组合查看一段时间内的效率数据'
+              t('selection.hint')
             )}
           </div>
           <div className="flex flex-wrap items-center gap-2">
-            <Button
-              type="default"
-              disabled={!selectedDates.length}
-              onClick={() => setSelectedRowKeys([])}
-            >
-              清空选择
+            <Button type="default" disabled={!selectedDates.length} onClick={() => setSelectedRowKeys([])}>
+              {t('selection.clear')}
             </Button>
             <Tooltip
               title={
                 selectedDates.length < 2
-                  ? '请勾选 2~6 天进行对比'
+                  ? t('selection.compareNeedTwoToSix')
                   : selectedDates.length > 6
-                    ? '最多选 6 天'
+                    ? t('selection.compareMaxSix')
                     : undefined
               }
             >
@@ -434,7 +453,7 @@ export default function EfficiencyAttendanceRecordsPage() {
                 disabled={selectedDates.length < 2 || selectedDates.length > 6}
                 onClick={() => setCompareOpen(true)}
               >
-                对比分析差异
+                {t('selection.compare')}
               </Button>
             </Tooltip>
             <Button
@@ -443,7 +462,7 @@ export default function EfficiencyAttendanceRecordsPage() {
               disabled={!selectedDates.length || batchDeleting}
               onClick={handleViewSelected}
             >
-              查看选中
+              {t('selection.viewSelected')}
             </Button>
             <Button
               danger
@@ -452,7 +471,7 @@ export default function EfficiencyAttendanceRecordsPage() {
               loading={batchDeleting}
               onClick={handleDeleteSelected}
             >
-              删除选中
+              {t('selection.deleteSelected')}
             </Button>
           </div>
         </div>
@@ -468,13 +487,13 @@ export default function EfficiencyAttendanceRecordsPage() {
             pageSize,
             showSizeChanger: true,
             pageSizeOptions: [10, 20, 50, 100],
-            showTotal: (total) => `共 ${total} 条`,
+            showTotal: (total) => t('table.total', { total }),
             onChange: (page, size) => {
               setCurrentPage(page)
               setPageSize(size)
             },
           }}
-          locale={{ emptyText: '暂无效率考勤记录，请先在效率考勤页载入数据并保存。' }}
+          locale={{ emptyText: t('table.empty') }}
           scroll={{ x: 1080 }}
         />
       </section>

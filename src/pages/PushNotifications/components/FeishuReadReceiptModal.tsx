@@ -1,5 +1,6 @@
 import { Button, Empty, List, Modal, Progress, Spin, Tag, Tooltip } from 'antd'
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import {
   fetchFeishuPushMessageReadStatus,
   fetchFeishuPushMessages,
@@ -22,17 +23,22 @@ function formatDateTime(iso: string): string {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`
 }
 
-const MSG_TYPE_LABEL: Record<string, string> = {
-  interactive: '富文本卡片',
-  text: '文案',
-  image: '图片',
-}
-
 export function FeishuReadReceiptModal({ open, supplierId, supplierLabel, onClose }: Props) {
+  const { t } = useTranslation('pushNotifications')
   const [loading, setLoading] = useState(false)
   const [records, setRecords] = useState<FeishuPushMessageRecord[]>([])
   const [statusById, setStatusById] = useState<Record<string, FeishuReadStatus | 'loading' | 'error'>>({})
   const [expandedId, setExpandedId] = useState<string | null>(null)
+
+  const msgTypeLabel = useMemo(
+    () =>
+      ({
+        interactive: t('readReceipt.msgTypeInteractive'),
+        text: t('readReceipt.msgTypeText'),
+        image: t('readReceipt.msgTypeImage'),
+      }) as Record<string, string>,
+    [t],
+  )
 
   useEffect(() => {
     if (!open || !supplierId) return
@@ -43,13 +49,13 @@ export function FeishuReadReceiptModal({ open, supplierId, supplierLabel, onClos
       const res = await fetchFeishuPushMessages(supplierId)
       setLoading(false)
       if (!res.ok) {
-        showToast(`获取推送记录失败：${res.error}`, 'error')
+        showToast(t('readReceipt.loadFailed', { error: res.error }), 'error')
         setRecords([])
         return
       }
       setRecords(res.data)
     })()
-  }, [open, supplierId])
+  }, [open, supplierId, t])
 
   const toggleExpand = async (record: FeishuPushMessageRecord) => {
     if (expandedId === record.id) {
@@ -62,20 +68,27 @@ export function FeishuReadReceiptModal({ open, supplierId, supplierLabel, onClos
     const res = await fetchFeishuPushMessageReadStatus(record.id)
     if (!res.ok) {
       setStatusById((prev) => ({ ...prev, [record.id]: 'error' }))
-      showToast(`查询已读状态失败：${res.error}`, 'error')
+      showToast(t('readReceipt.readStatusFailed', { error: res.error }), 'error')
       return
     }
     setStatusById((prev) => ({ ...prev, [record.id]: res.data }))
   }
 
   return (
-    <Modal open={open} title={`「${supplierLabel}」已读情况`} onCancel={onClose} footer={null} width={560} destroyOnHidden>
+    <Modal
+      open={open}
+      title={t('readReceipt.title', { name: supplierLabel })}
+      onCancel={onClose}
+      footer={null}
+      width={560}
+      destroyOnHidden
+    >
       {loading ? (
         <div className="flex justify-center py-8">
           <Spin />
         </div>
       ) : records.length === 0 ? (
-        <Empty description="暂无通过应用机器人发送的推送记录（仅记录配置了 chat_id 后发出的消息，且仅 7 天内可查已读）" />
+        <Empty description={t('readReceipt.empty')} />
       ) : (
         <List
           dataSource={records}
@@ -87,37 +100,34 @@ export function FeishuReadReceiptModal({ open, supplierId, supplierLabel, onClos
                 <div className="flex items-center justify-between gap-2">
                   <div className="min-w-0">
                     <div className="truncate text-sm text-slate-700">
-                      {MSG_TYPE_LABEL[record.msgType] ?? record.msgType}
+                      {msgTypeLabel[record.msgType] ?? record.msgType}
                       {record.pushLabel ? ` · ${record.pushLabel}` : ''}
                     </div>
                     <div className="text-xs text-slate-400">{formatDateTime(record.createdAt)}</div>
                   </div>
                   <Button type="link" onClick={() => void toggleExpand(record)}>
-                    {expanded ? '收起' : '查看已读'}
+                    {expanded ? t('readReceipt.collapse') : t('readReceipt.viewRead')}
                   </Button>
                 </div>
                 {expanded ? (
                   <div className="mt-2 rounded bg-slate-50 p-3">
                     {status === 'loading' || status === undefined ? (
-                      <Spin size="small" />
+                      <Spin />
                     ) : status === 'error' ? (
-                      <span className="text-xs text-red-500">
-                        查询失败，可能已超过飞书 7 天可查期限，或消息/群信息已失效。
-                      </span>
+                      <span className="text-xs text-red-500">{t('readReceipt.queryFailed')}</span>
                     ) : (
                       <>
                         <Progress
                           percent={status.totalMembers > 0 ? Math.round((status.readCount / status.totalMembers) * 100) : 0}
-                          size="small"
                         />
                         <div className="mb-2 text-xs text-slate-500">
-                          已读 {status.readCount} / {status.totalMembers} 人
+                          {t('readReceipt.readProgress', { read: status.readCount, total: status.totalMembers })}
                         </div>
                         <div className="space-y-1">
                           <div>
-                            <span className="text-xs font-semibold text-emerald-600">已读：</span>
+                            <span className="text-xs font-semibold text-emerald-600">{t('readReceipt.readLabel')}</span>
                             {status.readUsers.length === 0 ? (
-                              <span className="text-xs text-slate-400">暂无</span>
+                              <span className="text-xs text-slate-400">{t('readReceipt.none')}</span>
                             ) : (
                               status.readUsers.map((u) => (
                                 <Tooltip key={u.userId} title={u.userId}>
@@ -127,9 +137,9 @@ export function FeishuReadReceiptModal({ open, supplierId, supplierLabel, onClos
                             )}
                           </div>
                           <div>
-                            <span className="text-xs font-semibold text-amber-600">未读：</span>
+                            <span className="text-xs font-semibold text-amber-600">{t('readReceipt.unreadLabel')}</span>
                             {status.unreadUsers.length === 0 ? (
-                              <span className="text-xs text-slate-400">暂无</span>
+                              <span className="text-xs text-slate-400">{t('readReceipt.none')}</span>
                             ) : (
                               status.unreadUsers.map((u) => (
                                 <Tooltip key={u.userId} title={u.userId}>

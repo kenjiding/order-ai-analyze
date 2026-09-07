@@ -2,6 +2,7 @@ import { useRef, type ChangeEvent } from 'react'
 import { Button, DatePicker, InputNumber, Tooltip } from 'antd'
 import type { Dayjs } from 'dayjs'
 import { FileSpreadsheet, Pause, Play, Search, Upload, Warehouse } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
 import { PERMISSION_KEYS, usePermission } from '../../../hooks/usePermission'
 import { OrderExceptionAnalysisResults } from '../../OrderExceptionManagement/components/OrderExceptionAnalysisResults'
 import type { AnalysisRow, AnalyzeProgress } from '../../OrderExceptionManagement/analysisTypes'
@@ -67,6 +68,7 @@ export function InHubPackageLossTab({
   onAnalyze,
   onImport,
 }: Props) {
+  const { t } = useTranslation('packageLoss')
   const fileInputRef = useRef<HTMLInputElement>(null)
   const canAnalyze = usePermission(PERMISSION_KEYS.btnPackageLossMonitorAnalyze)
   const busy = isQuerying || isAnalyzing
@@ -81,17 +83,17 @@ export function InHubPackageLossTab({
     : busy || !canAnalyze || !stationCode || timeoutInvalid || dateRangeInvalid || exceedsRangeLimit
   const importDisabled = busy || !canAnalyze
   const analyzeTooltip = !canAnalyze
-    ? '无操作权限'
+    ? t('noPermission')
     : !stationCode
-      ? '请先在右上角选择责任站点'
+      ? t('selectStation')
       : timeoutInvalid
-        ? '请填写有效的超时天数'
+        ? t('invalidIdleDays')
         : dateRangeInvalid
-          ? '请选择有效的时间范围'
+          ? t('invalidTimeRange')
           : exceedsRangeLimit
-            ? '时间范围不能超过 1 个月'
+            ? t('rangeTooLong')
             : undefined
-  const importTooltip = !canAnalyze ? '无操作权限' : undefined
+  const importTooltip = !canAnalyze ? t('noPermission') : undefined
   const hasRunSurface = Boolean(queryMeta || importMeta || busy)
   const showIdleEmpty = !hasRunSurface && analytics.doneCount === 0 && rows.length === 0
 
@@ -114,13 +116,13 @@ export function InHubPackageLossTab({
         <div className="package-loss-query">
           <div className="package-loss-query-head">
             <div className="min-w-0">
-              <h3 className="package-loss-query-title">查询条件</h3>
-              <p className="package-loss-query-desc">按站点与时间取号，超过无操作天数的运单进入分析。</p>
+              <h3 className="package-loss-query-title">{t('queryTitle')}</h3>
+              <p className="package-loss-query-desc">{t('queryDesc')}</p>
             </div>
             {stationCode ? (
               <span className="package-loss-station-badge">{stationLabel || stationCode}</span>
             ) : (
-              <p className="package-loss-warn">请先在右上角选择责任站点</p>
+              <p className="package-loss-warn">{t('selectStationWarn')}</p>
             )}
           </div>
 
@@ -128,7 +130,7 @@ export function InHubPackageLossTab({
             <div className="package-loss-query-fields">
               <div className="package-loss-field">
                 <label className="package-loss-field-label" htmlFor="in-hub-date-range">
-                  库内丢包时间范围
+                  {t('timeRange')}
                 </label>
                 <DatePicker.RangePicker
                   id="in-hub-date-range"
@@ -143,12 +145,12 @@ export function InHubPackageLossTab({
                   }}
                   className="w-64"
                 />
-                <span className="package-loss-field-hint">最长 31 天</span>
+                <span className="package-loss-field-hint">{t('max31Days')}</span>
               </div>
 
               <div className="package-loss-field">
                 <label className="package-loss-field-label" htmlFor="in-hub-timeout-days">
-                  无操作天数
+                  {t('idleDays')}
                 </label>
                 <InputNumber
                   id="in-hub-timeout-days"
@@ -160,9 +162,9 @@ export function InHubPackageLossTab({
                   }}
                   disabled={busy}
                   className="w-28"
-                  aria-label="订单分析的超时天数"
+                  aria-label={t('idleDaysAria')}
                 />
-                <span className="package-loss-field-hint">超过此天数视为丢包</span>
+                <span className="package-loss-field-hint">{t('idleDaysHint')}</span>
               </div>
             </div>
 
@@ -182,7 +184,7 @@ export function InHubPackageLossTab({
                     icon={<Upload className="h-4 w-4" aria-hidden />}
                     onClick={() => fileInputRef.current?.click()}
                   >
-                    导入数据
+                    {t('importData')}
                   </Button>
                 </span>
               </Tooltip>
@@ -210,7 +212,7 @@ export function InHubPackageLossTab({
                       else onPauseAnalyze()
                     }}
                   >
-                    {isQuerying ? '取号中' : isAnalyzing ? (isPaused ? '继续分析' : '暂停分析') : '查询并分析'}
+                    {isQuerying ? t('queryAnalyzing') : isAnalyzing ? (isPaused ? t('resumeAnalysis') : t('pauseAnalysis')) : t('queryAndAnalyze')}
                   </Button>
                 </span>
               </Tooltip>
@@ -232,8 +234,8 @@ export function InHubPackageLossTab({
         {showIdleEmpty ? (
           <div className="package-loss-idle">
             <Warehouse className="package-loss-idle-icon" aria-hidden />
-            <p className="package-loss-idle-title">还没有库内丢包结果</p>
-            <p className="package-loss-idle-desc">选择责任站点与时间后查询，或导入上次导出的 Excel。</p>
+            <p className="package-loss-idle-title">{t('idleTitle')}</p>
+            <p className="package-loss-idle-desc">{t('idleDesc')}</p>
           </div>
         ) : null}
 
@@ -251,7 +253,7 @@ export function InHubPackageLossTab({
         appliedPostFilter={appliedPostFilter}
         onRunPostFilter={onRunPostFilter}
         exportPermission={exportPermission}
-        emptyText="暂无明细。查询完成后单票结果会出现在这里。"
+        emptyText={t('emptyDetails')}
         showPushSection={false}
       />
     </div>
@@ -273,6 +275,7 @@ function InHubRunStatus({
   importMeta: PackageLossImportMeta | null
   analyzeProgress: AnalyzeProgress | null
 }) {
+  const { t } = useTranslation('packageLoss')
   const progressPercent =
     analyzeProgress && analyzeProgress.total > 0
       ? Math.round((analyzeProgress.completed / analyzeProgress.total) * 100)
@@ -282,9 +285,9 @@ function InHubRunStatus({
     return (
       <div className="package-loss-status" aria-live="polite">
         <div className="package-loss-counts package-loss-counts--import">
-          <StatusMetric label="已导入" value={String(importMeta.total)} accent />
+          <StatusMetric label={t('imported')} value={String(importMeta.total)} accent />
           <div className="package-loss-count">
-            <span className="package-loss-count-label">文件</span>
+            <span className="package-loss-count-label">{t('file')}</span>
             <span className="package-loss-count-file" title={importMeta.fileName}>
               <FileSpreadsheet className="h-3.5 w-3.5 shrink-0" aria-hidden />
               {importMeta.fileName}
@@ -298,12 +301,12 @@ function InHubRunStatus({
   return (
     <div className="package-loss-status" aria-live="polite">
       <div className="package-loss-counts">
-        <StatusMetric label="取消扫描" value={String(queryMeta?.byScanType['1504'] ?? 0)} />
-        <StatusMetric label="未取件" value={String(queryMeta?.byScanType['400'] ?? 0)} />
-        <StatusMetric label="异常完结" value={String(queryMeta?.exceptionClosedCount ?? 0)} />
-        <StatusMetric label="待分析" value={String(queryMeta?.total ?? 0)} accent />
+        <StatusMetric label={t('cancelScan')} value={String(queryMeta?.byScanType['1504'] ?? 0)} />
+        <StatusMetric label={t('notPickedUp')} value={String(queryMeta?.byScanType['400'] ?? 0)} />
+        <StatusMetric label={t('exceptionClosed')} value={String(queryMeta?.exceptionClosedCount ?? 0)} />
+        <StatusMetric label={t('pendingAnalysis')} value={String(queryMeta?.total ?? 0)} accent />
         <StatusMetric
-          label="已分析"
+          label={t('analyzed')}
           value={analyzeProgress ? `${analyzeProgress.succeeded}/${analyzeProgress.total}` : '0'}
         />
       </div>
@@ -319,7 +322,7 @@ function InHubRunStatus({
             aria-valuemin={0}
             aria-valuemax={100}
             aria-valuenow={isQuerying ? undefined : progressPercent}
-            aria-label={isQuerying ? '正在取号' : '分析进度'}
+            aria-label={isQuerying ? t('fetchingOrders') : t('analyzed')}
           >
             <span
               className="package-loss-progress-value"
@@ -328,8 +331,12 @@ function InHubRunStatus({
           </div>
           <span className="package-loss-progress-label">
             {isQuerying
-              ? '正在取号'
-              : `${analyzeProgress?.completed ?? 0} / ${analyzeProgress?.total ?? 0}${isPaused ? '（已暂停）' : ''}`}
+              ? t('fetchingProgress')
+              : t('analysisProgress', {
+                  completed: analyzeProgress?.completed ?? 0,
+                  total: analyzeProgress?.total ?? 0,
+                  paused: isPaused ? t('pausedSuffix') : '',
+                })}
           </span>
         </div>
       ) : null}

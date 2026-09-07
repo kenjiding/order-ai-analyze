@@ -1,13 +1,7 @@
 // @ts-nocheck
 import { useMemo, useState } from 'react'
 import { Download } from 'lucide-react'
-
-const STATUS_LABEL = {
-  matched: '一致',
-  fieldMismatch: '字段差异',
-  systemOnly: '仅系统',
-  financeOnly: '仅财务',
-}
+import { useTranslation } from 'react-i18next'
 
 const STATUS_CLASS = {
   matched: 'bg-emerald-50 text-emerald-800 border-emerald-200',
@@ -42,7 +36,18 @@ export function WageReconciliationPanel({
   onExportReconciliation,
   alwaysVisible = false,
 }) {
+  const { t } = useTranslation('wageSalary')
   const [showAll, setShowAll] = useState(false)
+
+  const statusLabels = useMemo(
+    () => ({
+      matched: t('reconciliation.status.matched'),
+      fieldMismatch: t('reconciliation.status.fieldMismatch'),
+      systemOnly: t('reconciliation.status.systemOnly'),
+      financeOnly: t('reconciliation.status.financeOnly'),
+    }),
+    [t],
+  )
 
   const displayRows = useMemo(() => {
     if (!reconciliationResult) return []
@@ -55,8 +60,8 @@ export function WageReconciliationPanel({
   if (financeLedgerCount === 0) {
     return (
       <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
-        <h3 className="text-lg font-semibold text-gray-900 mb-2">财务流水差异对比</h3>
-        <p className="text-sm text-gray-600">请先上传财务流水文件，系统将自动与当前工资记录对比。</p>
+        <h3 className="text-lg font-semibold text-gray-900 mb-2">{t('reconciliation.panelTitle')}</h3>
+        <p className="text-sm text-gray-600">{t('reconciliation.uploadFinanceFirst')}</p>
       </div>
     )
   }
@@ -64,8 +69,10 @@ export function WageReconciliationPanel({
   if (wageRecordsCount === 0) {
     return (
       <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
-        <h3 className="text-lg font-semibold text-gray-900 mb-2">财务流水差异对比</h3>
-        <p className="text-sm text-gray-600">已上传 {financeLedgerCount} 条财务流水。请先上传考勤并计算薪资后再对比。</p>
+        <h3 className="text-lg font-semibold text-gray-900 mb-2">{t('reconciliation.panelTitle')}</h3>
+        <p className="text-sm text-gray-600">
+          {t('reconciliation.uploadAttendanceFirst', { count: financeLedgerCount })}
+        </p>
       </div>
     )
   }
@@ -77,7 +84,7 @@ export function WageReconciliationPanel({
   return (
     <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
       <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
-        <h3 className="text-lg font-semibold text-gray-900">财务流水差异对比</h3>
+        <h3 className="text-lg font-semibold text-gray-900">{t('reconciliation.panelTitle')}</h3>
         <div className="flex flex-wrap items-center gap-2">
           <label className="inline-flex items-center gap-2 text-sm text-gray-700 cursor-pointer">
             <input
@@ -86,7 +93,7 @@ export function WageReconciliationPanel({
               onChange={(e) => setShowAll(e.target.checked)}
               className="h-4 w-4 rounded border-gray-300 text-blue-600 accent-blue-600"
             />
-            显示全部（含一致）
+            {t('reconciliation.showAllIncludingMatched')}
           </label>
           <button
             type="button"
@@ -95,16 +102,16 @@ export function WageReconciliationPanel({
             className="inline-flex items-center gap-2 rounded-lg bg-green-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-green-700 disabled:cursor-not-allowed disabled:bg-gray-200 disabled:text-gray-500"
           >
             <Download className="w-4 h-4" />
-            导出差异对比
+            {t('reconciliation.exportDiff')}
           </button>
         </div>
       </div>
 
       <div className="mb-4 rounded-lg border border-violet-200 bg-violet-50/90 p-4">
-        <h4 className="text-sm font-semibold text-violet-950 mb-3">汇总对照</h4>
+        <h4 className="text-sm font-semibold text-violet-950 mb-3">{t('reconciliation.summaryTitle')}</h4>
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
           <div className="rounded-md border border-violet-100 bg-white px-4 py-3 shadow-sm">
-            <div className="text-xs font-medium text-gray-600">总工时（财务 / 系统 / 差额）</div>
+            <div className="text-xs font-medium text-gray-600">{t('reconciliation.totalHoursCompare')}</div>
             <div className="mt-1 text-sm tabular-nums text-gray-900">
               {formatNum(summary.financeTotalHours)} / {formatNum(summary.systemTotalHours)}
               <span className={`ml-2 ${diffValueClass(summary.hoursDelta)}`}>
@@ -113,7 +120,7 @@ export function WageReconciliationPanel({
             </div>
           </div>
           <div className="rounded-md border border-violet-100 bg-white px-4 py-3 shadow-sm">
-            <div className="text-xs font-medium text-gray-600">总工资（财务 / 系统 / 差额）</div>
+            <div className="text-xs font-medium text-gray-600">{t('reconciliation.totalWageCompare')}</div>
             <div className="mt-1 text-sm tabular-nums text-gray-900">
               ${formatNum(summary.financeTotalWage)} / ${formatNum(summary.systemTotalWage)}
               <span className={`ml-2 ${diffValueClass(summary.wageDelta)}`}>
@@ -122,13 +129,19 @@ export function WageReconciliationPanel({
             </div>
           </div>
           <div className="rounded-md border border-violet-100 bg-white px-4 py-3 shadow-sm">
-            <div className="text-xs font-medium text-gray-600">匹配统计</div>
+            <div className="text-xs font-medium text-gray-600">{t('reconciliation.matchStats')}</div>
             <div className="mt-1 text-sm text-gray-900">
-              一致 {summary.matchedCount} · 差异 {summary.fieldMismatchCount} · 仅系统{' '}
-              {summary.systemOnlyCount} · 仅财务 {summary.financeOnlyCount}
+              {t('reconciliation.matchStatsDetail', {
+                matched: summary.matchedCount,
+                mismatch: summary.fieldMismatchCount,
+                systemOnly: summary.systemOnlyCount,
+                financeOnly: summary.financeOnlyCount,
+              })}
               {summary.duplicateFinanceKeyCount > 0 && (
                 <span className="ml-1 text-orange-700">
-                  （财务重复键 {summary.duplicateFinanceKeyCount}）
+                  {t('reconciliation.duplicateFinanceKeys', {
+                    count: summary.duplicateFinanceKeyCount,
+                  })}
                 </span>
               )}
             </div>
@@ -138,20 +151,30 @@ export function WageReconciliationPanel({
 
       {displayRows.length === 0 ? (
         <p className="text-sm text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-lg px-4 py-3">
-          所有记录均一致，无差异行。
+          {t('reconciliation.allMatched')}
         </p>
       ) : (
         <div className="overflow-x-auto">
           <table className="min-w-full divide-y divide-gray-200 text-sm">
             <thead className="bg-gray-50">
               <tr>
-                <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">状态</th>
-                <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">日期</th>
-                <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">人员(财/系/昵称)</th>
-                <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">职位(财/系)</th>
-                <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">工作日(财/系)</th>
-                <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">工时(财/系/差)</th>
-                <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">工资(财/系/差)</th>
+                <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">{t('col.status')}</th>
+                <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">{t('col.date')}</th>
+                <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">
+                  {t('col.personFinanceSystemNickname')}
+                </th>
+                <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">
+                  {t('col.positionFinanceSystem')}
+                </th>
+                <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">
+                  {t('col.workdayFinanceSystem')}
+                </th>
+                <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">
+                  {t('col.hoursFinanceSystemDelta')}
+                </th>
+                <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">
+                  {t('col.wageFinanceSystemDelta')}
+                </th>
               </tr>
             </thead>
             <tbody className="bg-white divide-y divide-gray-200">
@@ -161,11 +184,11 @@ export function WageReconciliationPanel({
                     <span
                       className={`inline-flex rounded border px-2 py-0.5 text-xs font-medium ${STATUS_CLASS[row.status]}`}
                     >
-                      {STATUS_LABEL[row.status]}
+                      {statusLabels[row.status]}
                     </span>
                     {row.duplicateFinanceKey && (
-                      <span className="ml-1 text-xs text-orange-600" title="财务侧同日期+人员存在多行">
-                        重复
+                      <span className="ml-1 text-xs text-orange-600" title={t('reconciliation.duplicateRowTitle')}>
+                        {t('reconciliation.duplicateRow')}
                       </span>
                     )}
                   </td>

@@ -1,3 +1,5 @@
+import { useTranslation } from 'react-i18next'
+import { i18n } from '../../../i18n/index'
 import { Clock3, Package, UserRound } from 'lucide-react'
 import type { FrontDeskDensityAllocation } from '../frontDeskSaturation'
 import { formatInteger, formatNumber } from '../formatAndParse'
@@ -21,24 +23,26 @@ function idleGapTone(minutes: number | null): {
   value: string
   hint: string
 } {
+  const t = (key: string, options?: Record<string, unknown>) =>
+    String(i18n.t(key, { ns: 'scannerEfficiency', ...options }))
   if (minutes == null || !Number.isFinite(minutes)) {
     return {
       panel: 'bg-slate-50 text-slate-600 ring-slate-200/80',
       value: '—',
-      hint: '暂无空档数据',
+      hint: t('frontDesk.densityDetailNoGap'),
     }
   }
-  const value = `${formatNumber(minutes, 0)} 分钟`
+  const value = t('common.minutesValue', { value: formatNumber(minutes, 0) })
   if (minutes >= 120) {
-    return { panel: 'bg-red-50 text-red-900 ring-red-200/80', value, hint: '空档偏长' }
+    return { panel: 'bg-red-50 text-red-900 ring-red-200/80', value, hint: t('frontDesk.densityDetailLongGap') }
   }
   if (minutes >= 60) {
-    return { panel: 'bg-orange-50 text-orange-950 ring-orange-200/80', value, hint: '需关注' }
+    return { panel: 'bg-orange-50 text-orange-950 ring-orange-200/80', value, hint: t('frontDesk.densityDetailWatch') }
   }
   if (minutes >= 30) {
-    return { panel: 'bg-amber-50 text-amber-950 ring-amber-200/80', value, hint: '略有余量' }
+    return { panel: 'bg-amber-50 text-amber-950 ring-amber-200/80', value, hint: t('frontDesk.densityDetailMargin') }
   }
-  return { panel: 'bg-[#e1f5f1] text-[#1f6f68] ring-[#2f8f87]/20', value, hint: '衔接紧凑' }
+  return { panel: 'bg-[#e1f5f1] text-[#1f6f68] ring-[#2f8f87]/20', value, hint: t('frontDesk.densityDetailTight') }
 }
 
 function AllocationRow({ item }: { item: FrontDeskDensityAllocation }) {
@@ -59,6 +63,7 @@ function AllocationRow({ item }: { item: FrontDeskDensityAllocation }) {
 }
 
 export function DensityHeatmapCellDetail({ date, slot, count, allocations, clockOut }: Props) {
+  const { t } = useTranslation('scannerEfficiency')
   const idleTone = clockOut ? idleGapTone(clockOut.idleMinutes) : null
 
   return (
@@ -73,7 +78,7 @@ export function DensityHeatmapCellDetail({ date, slot, count, allocations, clock
           </div>
           <div className="inline-flex shrink-0 items-center gap-1 rounded-full bg-[#e1f5f1] px-2.5 py-1 text-xs font-semibold text-[#1f6f68]">
             <Package className="h-3.5 w-3.5" aria-hidden />
-            {formatInteger(count)} 箱
+            {formatInteger(count)}
           </div>
         </div>
       </div>
@@ -88,14 +93,14 @@ export function DensityHeatmapCellDetail({ date, slot, count, allocations, clock
           ))}
         </ul>
       ) : (
-        <div className="px-3 py-3 text-xs text-slate-500">该时段无分配明细。</div>
+        <div className="px-3 py-3 text-xs text-slate-500">{t('frontDesk.densityDetailEmpty')}</div>
       )}
 
       {clockOut && (
         <div className="border-t border-[var(--admin-line)] bg-white px-3 py-2.5">
           <div className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-[0.12em] text-[#65758b]">
             <UserRound className="h-3.5 w-3.5" aria-hidden />
-            前台下班
+            {t('frontDesk.clockOutLabel')}
           </div>
           <div className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-slate-700">
             {clockOut.person ? (
@@ -108,7 +113,7 @@ export function DensityHeatmapCellDetail({ date, slot, count, allocations, clock
               className={`mt-2 flex items-center justify-between gap-3 rounded-lg px-2.5 py-2 ring-1 ${idleTone.panel}`}
             >
               <div>
-                <div className="text-[11px] font-medium opacity-80">分配后空档</div>
+                <div className="text-[11px] font-medium opacity-80">{t('frontDesk.densityDetailGapLabel')}</div>
                 <div className="mt-0.5 text-sm font-semibold tabular-nums">{idleTone.value}</div>
               </div>
               <div className="text-[11px] font-medium opacity-75">{idleTone.hint}</div>

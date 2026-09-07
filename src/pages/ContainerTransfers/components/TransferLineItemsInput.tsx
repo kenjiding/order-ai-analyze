@@ -1,9 +1,8 @@
 import { InputNumber, Space } from 'antd'
-import { containerTypeLabel } from '../../../containerManagement/constants'
+import { useTranslation } from 'react-i18next'
 import type { ContainerType, TransferLineDraft } from '../../../containerManagement/types'
 
 type Props = {
-  /** 品类固定（只有大蓝筐和银筐两种），一行铺开，只填数量 */
   lines: TransferLineDraft[]
   onChange: (lines: TransferLineDraft[]) => void
   maxByType?: Record<string, number>
@@ -20,6 +19,8 @@ export function TransferLineItemsInput({
   disabled,
   error,
 }: Props) {
+  const { t } = useTranslation('container')
+
   const update = (type: ContainerType, quantity: string) => {
     onChange(lines.map((line) => (line.containerType === type ? { ...line, quantity } : line)))
   }
@@ -31,9 +32,7 @@ export function TransferLineItemsInput({
           const max = maxByType?.[line.containerType]
           return (
             <Space.Compact key={line.containerType} block>
-              <Space.Addon>
-                {containerTypeLabel[line.containerType] ?? line.containerType}
-              </Space.Addon>
+              <Space.Addon>{t(`containerType.${line.containerType}`)}</Space.Addon>
               <InputNumber
                 style={{ width: '100%' }}
                 min={minQuantity}
@@ -41,7 +40,9 @@ export function TransferLineItemsInput({
                 step={1}
                 precision={0}
                 disabled={disabled}
-                placeholder={max === undefined ? '数量' : `0 ~ ${max}`}
+                placeholder={
+                  max === undefined ? t('transfers.qtyPlaceholder') : t('transfers.qtyRangePlaceholder', { max })
+                }
                 value={line.quantity === '' ? null : Number(line.quantity)}
                 onChange={(value) =>
                   update(line.containerType, value === null ? '' : String(value))

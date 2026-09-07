@@ -6,14 +6,13 @@
  * 按钮不在卡片里改库存，只深链回系统对应页面并自动定位到这一笔，实际操作仍走系统内的权限校验。
  */
 import {
-  containerTypeLabel,
   formatTransferNo,
   transferKindLabel,
   transferStatusLabel,
-  type ContainerType,
   type TransferKind,
   type TransferStatus,
 } from '../containerManagement/constants'
+import { labelOf as typeLabelOf } from '../containerManagement/containerTypeService'
 import type { TransferSide } from '../containerManagement/transferNotify'
 import type { TransferView } from '../containerManagement/transferService'
 import { buildContainerTransferUrl } from './publicWebOrigin'
@@ -88,7 +87,7 @@ function colored(value: string, color: MarkColor): string {
 }
 
 function labelOf(containerType: string): string {
-  return containerTypeLabel[containerType as ContainerType] ?? containerType
+  return typeLabelOf(containerType)
 }
 
 /** 三格指标磁贴，与系统内协商抽屉的「转出方发出 / 接收方实收 / 已入账」一一对应 */

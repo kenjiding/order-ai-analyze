@@ -1,5 +1,7 @@
 import { Table, Tag, Tooltip, Empty } from 'antd'
 import type { ColumnsType } from 'antd/es/table'
+import { useMemo } from 'react'
+import { useTranslation } from 'react-i18next'
 import { QuadrantBar, QuadrantLegend } from './QuadrantBar'
 import type {
   DispatchDriverNode,
@@ -8,7 +10,6 @@ import type {
   DispatchSupplierNode,
 } from '../dispatchPerformanceTypes'
 
-/** 指标阈值沿用 metricsCatalog 的既有口径，两个指标各有各的线 */
 const BEFORE11_ALERT_PCT = 95
 const BEFORE11_TARGET_PCT = 99
 const SIGN_ALERT_PCT = 92
@@ -30,7 +31,6 @@ function RateCell({
   rate: number | null
   alertPct: number
   targetPct: number
-  /** rate 为 null 时的文案：区分「还没结算」和「这个范围本来就没单」 */
   pendingLabel?: string
 }) {
   if (rate == null) {
@@ -47,24 +47,29 @@ function RateCell({
   )
 }
 
-/**
- * 白名单标记：该路由在供应商配置的路由码白名单里，不参与考核。
- * 区间内改过配置时只有部分天数不计入，此时必须说清是「部分」，
- * 否则用户会以为整条路由都没算进供应商的率。
- */
-function WhitelistTag({ whitelistTotal, total }: { whitelistTotal: number; total: number }) {
+function WhitelistTag({
+  whitelistTotal,
+  total,
+  t,
+}: {
+  whitelistTotal: number
+  total: number
+  t: (key: string, options?: Record<string, unknown>) => string
+}) {
   if (whitelistTotal <= 0) return null
   const partial = whitelistTotal < total
   return (
     <Tooltip
       title={
         partial
-          ? `本区间内该路由有 ${whitelistTotal} / ${total} 单落在白名单上（中途改过白名单配置）：这部分没有计入上面供应商行与站点汇总的两个率，其余照常计入。`
-          : '该路由在供应商配置的路由码白名单里：本行指标照常统计，但不计入上面供应商行与站点汇总的两个率。'
+          ? t('breakdown.whitelistPartialTooltip', { whitelistTotal, total })
+          : t('breakdown.whitelistFullTooltip')
       }
     >
       <Tag color="default" className="m-0 text-xs">
-        {partial ? `白名单 · ${whitelistTotal} 单不计入` : '白名单 · 不计入'}
+        {partial
+          ? t('breakdown.whitelistPartialTag', { count: whitelistTotal })
+          : t('breakdown.whitelistFullTag')}
       </Tag>
     </Tooltip>
   )
@@ -72,7 +77,6 @@ function WhitelistTag({ whitelistTotal, total }: { whitelistTotal: number; total
 
 function GapCell({ gap }: { gap: number | null }) {
   if (gap == null) return <span className="text-slate-300">—</span>
-  // 正差值 = 出仓率高于派签率，货交出去了却没派完，落差越大越指向司机侧
   const sign = gap > 0 ? '+' : ''
   return (
     <span className={`tabular-nums ${gap >= 10 ? 'font-semibold text-amber-600' : 'text-slate-600'}`}>
@@ -82,18 +86,20 @@ function GapCell({ gap }: { gap: number | null }) {
   )
 }
 
-/** 三层表格共用的指标列，只有第一列（名称）随层级不同 */
-function metricColumns<T extends DispatchMetrics>(): ColumnsType<T> {
+function metricColumns<T extends DispatchMetrics>(
+  t: (key: string, options?: Record<string, unknown>) => string,
+): ColumnsType<T> {
+  const settlingLabel = t('breakdown.settling')
   return [
     {
-      title: '总单量',
+      title: t('breakdown.totalWaybills'),
       dataIndex: 'total',
       width: 90,
       align: 'right',
       render: (total: number) => <span className="tabular-nums">{total}</span>,
     },
     {
-      title: '11点前出仓率',
+      title: t('breakdown.before11HubExitRate'),
       dataIndex: 'before11Rate',
       width: 130,
       align: 'right',
@@ -102,40 +108,39 @@ function metricColumns<T extends DispatchMetrics>(): ColumnsType<T> {
       ),
     },
     {
-      title: '24H派签率',
+      title: t('breakdown.signRate24h'),
       dataIndex: 'signRate',
       width: 120,
       align: 'right',
-      // 派签比出仓晚一天结算，最新那天只有出仓率；显示「结算中」而不是把 null 画成 0%
       render: (rate: number | null, row) => (
         <RateCell
           rate={rate}
           alertPct={SIGN_ALERT_PCT}
           targetPct={SIGN_TARGET_PCT}
-          pendingLabel={row.total > 0 && !row.dispatchSettled ? '结算中' : undefined}
+          pendingLabel={row.total > 0 && !row.dispatchSettled ? settlingLabel : undefined}
         />
       ),
     },
     {
-      title: '落差',
+      title: t('breakdown.rateGap'),
       dataIndex: 'rateGap',
       width: 90,
       align: 'right',
       render: (gap: number | null) => <GapCell gap={gap} />,
     },
     {
-      title: '达成分布',
+      title: t('breakdown.quadrantDistribution'),
       key: 'quadrant',
       width: 200,
       render: (_, row) =>
         row.dispatchSettled ? (
           <QuadrantBar quadrant={row.quadrant} total={row.total} />
         ) : (
-          <span className="text-xs text-slate-400">派签结算后可见</span>
+          <span className="text-xs text-slate-400">{t('breakdown.quadrantPending')}</span>
         ),
     },
     {
-      title: '问题件',
+      title: t('breakdown.problemWaybills'),
       dataIndex: 'problemCount',
       width: 90,
       align: 'right',
@@ -151,15 +156,26 @@ function metricColumns<T extends DispatchMetrics>(): ColumnsType<T> {
   ]
 }
 
-/** count 是权威数量；nos 被服务端按司机封顶截断过（见 MAX_WAYBILL_NOS_PER_DRIVER） */
-function WaybillList({ label, nos, count }: { label: string; nos: string[]; count: number }) {
+function WaybillList({
+  label,
+  nos,
+  count,
+  t,
+}: {
+  label: string
+  nos: string[]
+  count: number
+  t: (key: string, options?: Record<string, unknown>) => string
+}) {
   if (nos.length === 0) return null
   return (
     <div className="space-y-1">
       <div className="text-xs font-medium text-slate-500">
         {label}（{count}）
         {nos.length < count ? (
-          <span className="ml-1 font-normal text-slate-400">仅显示前 {nos.length} 条</span>
+          <span className="ml-1 font-normal text-slate-400">
+            {t('breakdown.waybillListTruncated', { shown: nos.length })}
+          </span>
         ) : null}
       </div>
       <div className="flex flex-wrap gap-1">
@@ -173,41 +189,63 @@ function WaybillList({ label, nos, count }: { label: string; nos: string[]; coun
   )
 }
 
-function DriverDetail({ driver }: { driver: DispatchDriverNode }) {
+function DriverDetail({
+  driver,
+  t,
+}: {
+  driver: DispatchDriverNode
+  t: (key: string, options?: Record<string, unknown>) => string
+}) {
   const hasAny =
     driver.neverSignedWaybillNos.length > 0 ||
     driver.lateSignedWaybillNos.length > 0 ||
     driver.problemWaybillNos.length > 0 ||
     driver.before11UnmetWaybillNos.length > 0
   if (!hasAny) {
-    return <div className="px-4 py-2 text-xs text-slate-400">该司机本区间内全部达标</div>
+    return (
+      <div className="px-4 py-2 text-xs text-slate-400">{t('breakdown.driverAllMet')}</div>
+    )
   }
   return (
     <div className="space-y-3 px-4 py-3">
       <WaybillList
-        label="从未签收"
+        label={t('breakdown.neverSigned')}
         nos={driver.neverSignedWaybillNos}
         count={driver.neverSignedCount}
+        t={t}
       />
       <WaybillList
-        label="超时签收"
+        label={t('breakdown.lateSigned')}
         nos={driver.lateSignedWaybillNos}
         count={driver.lateSignedCount}
+        t={t}
       />
-      <WaybillList label="问题件" nos={driver.problemWaybillNos} count={driver.problemCount} />
       <WaybillList
-        label="未在11点前出仓"
+        label={t('breakdown.problemWaybill')}
+        nos={driver.problemWaybillNos}
+        count={driver.problemCount}
+        t={t}
+      />
+      <WaybillList
+        label={t('breakdown.before11Unmet')}
         nos={driver.before11UnmetWaybillNos}
         count={driver.total - driver.before11Met}
+        t={t}
       />
     </div>
   )
 }
 
-function DriverTable({ drivers }: { drivers: DispatchDriverNode[] }) {
+function DriverTable({
+  drivers,
+  t,
+}: {
+  drivers: DispatchDriverNode[]
+  t: (key: string, options?: Record<string, unknown>) => string
+}) {
   const columns: ColumnsType<DispatchDriverNode> = [
     {
-      title: '司机',
+      title: t('breakdown.driver'),
       dataIndex: 'courierName',
       render: (name: string, row) =>
         row.courierCode ? (
@@ -216,11 +254,10 @@ function DriverTable({ drivers }: { drivers: DispatchDriverNode[] }) {
             <div className="font-mono text-xs text-slate-400">{row.courierCode}</div>
           </div>
         ) : (
-          // 未派件的单没有司机可归，单独成行；它天然计入两个指标的未达标
-          <span className="text-slate-500">未派件（无司机）</span>
+          <span className="text-slate-500">{t('breakdown.unassignedDriver')}</span>
         ),
     },
-    ...metricColumns<DispatchDriverNode>(),
+    ...metricColumns<DispatchDriverNode>(t),
   ]
 
   return (
@@ -230,7 +267,7 @@ function DriverTable({ drivers }: { drivers: DispatchDriverNode[] }) {
       dataSource={drivers}
       pagination={false}
       expandable={{
-        expandedRowRender: (driver) => <DriverDetail driver={driver} />,
+        expandedRowRender: (driver) => <DriverDetail driver={driver} t={t} />,
         rowExpandable: (driver) =>
           driver.neverSignedWaybillNos.length > 0 ||
           driver.lateSignedWaybillNos.length > 0 ||
@@ -241,23 +278,29 @@ function DriverTable({ drivers }: { drivers: DispatchDriverNode[] }) {
   )
 }
 
-function RouteTable({ routes }: { routes: DispatchRouteNode[] }) {
+function RouteTable({
+  routes,
+  t,
+}: {
+  routes: DispatchRouteNode[]
+  t: (key: string, options?: Record<string, unknown>) => string
+}) {
   const columns: ColumnsType<DispatchRouteNode> = [
     {
-      title: '路由码',
+      title: t('breakdown.routeCode'),
       dataIndex: 'routeCode',
       render: (routeCode: string, row) => (
         <div className="flex items-center gap-2">
           {routeCode ? (
             <span className="font-mono text-slate-800">{routeCode}</span>
           ) : (
-            <span className="text-slate-500">（无路由码）</span>
+            <span className="text-slate-500">{t('breakdown.noRouteCode')}</span>
           )}
-          <WhitelistTag whitelistTotal={row.whitelistTotal} total={row.total} />
+          <WhitelistTag whitelistTotal={row.whitelistTotal} total={row.total} t={t} />
         </div>
       ),
     },
-    ...metricColumns<DispatchRouteNode>(),
+    ...metricColumns<DispatchRouteNode>(t),
   ]
 
   return (
@@ -267,7 +310,7 @@ function RouteTable({ routes }: { routes: DispatchRouteNode[] }) {
       dataSource={routes}
       pagination={false}
       expandable={{
-        expandedRowRender: (route) => <DriverTable drivers={route.drivers} />,
+        expandedRowRender: (route) => <DriverTable drivers={route.drivers} t={t} />,
         rowExpandable: (route) => route.drivers.length > 0,
       }}
     />
@@ -281,25 +324,29 @@ export function PerformanceBreakdownTable({
   suppliers: DispatchSupplierNode[]
   loading: boolean
 }) {
-  const columns: ColumnsType<DispatchSupplierNode> = [
-    {
-      title: '供应商',
-      dataIndex: 'supplierName',
-      render: (name: string, row) => (
-        <div className="min-w-0">
-          <div className="truncate font-medium text-slate-900">{name}</div>
-          <div className="font-mono text-xs text-slate-400">{row.vendorCode}</div>
-          {/* 展开后各路由之和会大于本行 total，这里把差额说清楚，免得被当成算错 */}
-          {row.whitelistTotal > 0 ? (
-            <div className="mt-0.5 text-xs text-slate-400">
-              另有 {row.whitelistTotal} 单白名单路由，未计入本行
-            </div>
-          ) : null}
-        </div>
-      ),
-    },
-    ...metricColumns<DispatchSupplierNode>(),
-  ]
+  const { t } = useTranslation('dispatchPerformance')
+
+  const columns: ColumnsType<DispatchSupplierNode> = useMemo(
+    () => [
+      {
+        title: t('breakdown.vendor'),
+        dataIndex: 'supplierName',
+        render: (name: string, row) => (
+          <div className="min-w-0">
+            <div className="truncate font-medium text-slate-900">{name}</div>
+            <div className="font-mono text-xs text-slate-400">{row.vendorCode}</div>
+            {row.whitelistTotal > 0 ? (
+              <div className="mt-0.5 text-xs text-slate-400">
+                {t('breakdown.whitelistExtra', { count: row.whitelistTotal })}
+              </div>
+            ) : null}
+          </div>
+        ),
+      },
+      ...metricColumns<DispatchSupplierNode>((key, options) => t(key, options)),
+    ],
+    [t],
+  )
 
   return (
     <div className="space-y-3">
@@ -312,14 +359,13 @@ export function PerformanceBreakdownTable({
         pagination={false}
         locale={{
           emptyText: (
-            <Empty
-              image={Empty.PRESENTED_IMAGE_SIMPLE}
-              description="该区间暂无已结算数据"
-            />
+            <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={t('breakdown.empty')} />
           ),
         }}
         expandable={{
-          expandedRowRender: (supplier) => <RouteTable routes={supplier.routes} />,
+          expandedRowRender: (supplier) => (
+            <RouteTable routes={supplier.routes} t={(key, options) => t(key, options)} />
+          ),
           rowExpandable: (supplier) => supplier.routes.length > 0,
         }}
       />

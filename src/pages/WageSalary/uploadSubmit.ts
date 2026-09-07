@@ -1,3 +1,4 @@
+import { i18n } from '../../i18n'
 import { generateId } from '../../utils/generateId'
 import {
   calculateDecimalHours,
@@ -6,6 +7,12 @@ import {
   type RateSettings,
 } from './calculations'
 import { convertDateToStandard } from './dateUtils'
+
+const NS = 'wageSalary'
+
+function wt(key: string, options?: Record<string, unknown>): string {
+  return i18n.t(key, { ns: NS, ...options })
+}
 
 export type SubmitValidationError = {
   index: number
@@ -48,21 +55,23 @@ export function normalizeUploadedRowsForSubmit(
     const rowLabel =
       String(record.nickname ?? '').trim() ||
       String(record.employeeId ?? '').trim() ||
-      '未知'
+      wt('validation.unknownRow')
 
     const effectiveHours = record.effectiveHours as string | number
     const effectiveHoursDecimal = calculateDecimalHours(effectiveHours)
 
     if (!record.date || effectiveHoursDecimal <= 0) {
       const missingFields: string[] = []
-      if (!record.date) missingFields.push('日期')
-      if (effectiveHoursDecimal <= 0) missingFields.push('工作时长')
+      if (!record.date) missingFields.push(wt('validation.fieldDate'))
+      if (effectiveHoursDecimal <= 0) missingFields.push(wt('validation.fieldWorkHours'))
 
       validationErrors.push({
         index: i + 1,
-        employeeId: String(record.employeeId || '试工'),
+        employeeId: String(record.employeeId || wt('validation.trialWorker')),
         label: rowLabel,
-        error: `缺少必填字段: ${missingFields.join('、')}`,
+        error: wt('validation.missingRequiredFields', {
+          fields: missingFields.join(wt('validation.fieldsSeparator')),
+        }),
       })
       continue
     }
@@ -71,9 +80,9 @@ export function normalizeUploadedRowsForSubmit(
     if (!standardDate || standardDate.trim() === '') {
       validationErrors.push({
         index: i + 1,
-        employeeId: String(record.employeeId || '试工'),
+        employeeId: String(record.employeeId || wt('validation.trialWorker')),
         label: rowLabel,
-        error: `日期格式无效: ${record.date}`,
+        error: wt('validation.invalidDateFormat', { date: record.date }),
       })
       continue
     }

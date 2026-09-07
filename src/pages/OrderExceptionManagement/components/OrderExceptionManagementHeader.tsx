@@ -1,4 +1,6 @@
 import { ClipboardList, Layers, PackageSearch, Settings2, Warehouse } from 'lucide-react'
+import { useMemo } from 'react'
+import { useTranslation } from 'react-i18next'
 import { PageSectionTabs } from '../../../components/PageSectionTabs'
 import type { PageSectionTabItem } from '../../../components/PageSectionTabs'
 import type { TabId } from '../useOrderExceptionManagementPage'
@@ -14,27 +16,33 @@ export function OrderExceptionManagementHeader({
   onTabChange,
   activeJobCount,
 }: Props) {
-  const tabItems: PageSectionTabItem[] = [
-    { id: 'analyze', label: 'AI异常订单分析', icon: PackageSearch },
-    { id: 'in-hub', label: '库内异常订单分析', icon: Warehouse },
-    {
-      id: 'jobs',
-      label: '任务队列',
-      icon: Layers,
-      badge: activeJobCount > 0 ? String(activeJobCount) : undefined,
-    },
-    { id: 'warehouse-config', label: '分析配置', icon: Settings2 },
-    { id: 'regression', label: '测试用例', icon: ClipboardList },
-  ]
+  const { t } = useTranslation('orderException')
+
+  const tabItems: PageSectionTabItem[] = useMemo(
+    () => [
+      { id: 'analyze', label: t('tabAnalyze'), icon: PackageSearch },
+      { id: 'in-hub', label: t('tabInHub'), icon: Warehouse },
+      {
+        id: 'jobs',
+        label: t('tabJobs'),
+        icon: Layers,
+        badge: activeJobCount > 0 ? String(activeJobCount) : undefined,
+      },
+      { id: 'warehouse-config', label: t('tabWarehouseConfig'), icon: Settings2 },
+      { id: 'regression', label: t('tabRegression'), icon: ClipboardList },
+    ],
+    [activeJobCount, t],
+  )
+
   return (
     <div className="admin-panel overflow-hidden">
       <div className="border-b border-slate-200 px-5 py-4">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
-            <div className="admin-eyebrow">Exception Operations</div>
+            <div className="admin-eyebrow">{t('eyebrow')}</div>
             <h2 className="mt-1 flex items-center gap-2 text-xl font-semibold tracking-tight text-slate-950">
               <PackageSearch className="h-5 w-5 text-[#2f8f87]" aria-hidden />
-              AI订单异常管理
+              {t('title')}
             </h2>
           </div>
         </div>

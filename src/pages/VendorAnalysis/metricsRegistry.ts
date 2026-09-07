@@ -1,3 +1,5 @@
+import { i18n } from '../../i18n'
+
 /**
  * 供应商数据分析的指标注册表（前端侧唯一事实来源，UI 无关、无 JSX）。
  *
@@ -58,9 +60,17 @@ export const VENDOR_ANALYSIS_METRICS: VendorMetricDef[] = [
  * 勾选集合里命中的日期敏感指标展示名（去重）。
  * 供新建分析在「数据参考日期非当天」时提示这些指标可能不准确。
  */
+export function getMetricLabel(key: string): string {
+  const m = METRIC_BY_KEY.get(key)
+  if (!m) return key
+  return String(i18n.t(`metrics.${key}`, { ns: 'vendorAnalysis', defaultValue: m.label }))
+}
+
 export function enabledDateSensitiveLabels(enabledKeys: readonly string[]): string[] {
   const enabled = new Set(enabledKeys)
-  const labels = VENDOR_ANALYSIS_METRICS.filter((m) => m.dateSensitive && enabled.has(m.key)).map((m) => m.label)
+  const labels = VENDOR_ANALYSIS_METRICS.filter((m) => m.dateSensitive && enabled.has(m.key)).map((m) =>
+    getMetricLabel(m.key),
+  )
   return [...new Set(labels)]
 }
 
@@ -91,16 +101,11 @@ export function mergeModuleMetricKeys(
 }
 
 /** 指标 key → 「供应商·客诉率」式展示名，供任务队列的「指标配置」列使用 */
-const CATEGORY_LABEL: Record<VendorMetricDef['category'], string> = {
-  vendor: '供应商',
-  driver: '司机',
-  module: '模块',
-}
-
 export function metricDisplayLabel(key: string): string {
   const m = METRIC_BY_KEY.get(key)
   if (!m) return key
-  return `${CATEGORY_LABEL[m.category]}·${m.label}`
+  const cat = String(i18n.t(`metricCategory.${m.category}`, { ns: 'vendorAnalysis' }))
+  return `${cat}·${getMetricLabel(key)}`
 }
 
 /** 勾选集合 → 需要抓取的数据源并集（去重 + 排序，与后端解析结果一致） */

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import {
   ORDER_EXCEPTION_ANALYZE_MAX_BATCH,
   captureRegressionCase,
@@ -152,6 +153,8 @@ function logOrderAnalysisFacts(orderNo: string, facts: OrderTrackFacts | undefin
 }
 
 export function useOrderExceptionManagementPage() {
+  const { t } = useTranslation('orderException')
+  const { t: tc } = useTranslation('common')
   const { imileToken } = useAppSettings()
   const scanStationCode = useGlobalFilterStore((state) => state.selectedStations[0])
   const [activeTab, setActiveTab] = useState<TabId>('analyze')
@@ -273,38 +276,38 @@ export function useOrderExceptionManagementPage() {
     try {
       await saveWarehouseConfigApi(warehouseDraftConfig)
       setWarehouseSavedConfig(warehouseDraftConfig)
-      showToast('仓库配置已保存', 'success')
+      showToast(t('toast.warehouseConfigSaved'), 'success')
     } catch (e) {
-      showToast((e as Error).message || '保存失败', 'error')
+      showToast((e as Error).message || tc('saveFailed'), 'error')
     } finally {
       setIsSavingWarehouseConfig(false)
     }
-  }, [warehouseDraftConfig])
+  }, [warehouseDraftConfig, t, tc])
 
   const resetWarehouseConfig = useCallback(() => {
     const defaults = cloneDefaultWarehouseConfig()
     setWarehouseDraftConfig(defaults)
     setSelectedWarehouseHubId(defaults.profiles[0]?.hubId ?? null)
-    showToast('已恢复默认配置（尚未保存）', 'success')
-  }, [])
+    showToast(t('toast.defaultsRestoredNotSaved'), 'success')
+  }, [t])
 
   const ensureToken = useCallback((): string | null => {
-    const t = imileToken.trim()
-    if (!t) {
-      showToast('请在右上角系统设置中填写 iMile Bearer Token', 'error')
+    const token = imileToken.trim()
+    if (!token) {
+      showToast(t('toast.missingImileTokenSettings'), 'error')
       return null
     }
-    return t
-  }, [imileToken])
+    return token
+  }, [imileToken, t])
 
   const loadRegressionCases = useCallback(async () => {
     try {
       const { cases } = await listRegressionCases()
       setRegressionCases(cases)
     } catch (e) {
-      showToast((e as Error).message || '加载用例失败', 'error')
+      showToast((e as Error).message || t('toast.loadCasesFailed'), 'error')
     }
-  }, [])
+  }, [t])
 
   useEffect(() => {
     if (activeTab === 'regression') {
@@ -323,11 +326,11 @@ export function useOrderExceptionManagementPage() {
         jobsPollingRef.current = null
       }
     } catch (e) {
-      if (!silent) showToast((e as Error).message || '任务列表加载失败', 'error')
+      if (!silent) showToast((e as Error).message || t('toast.jobsLoadFailed'), 'error')
     } finally {
       setIsJobsLoading(false)
     }
-  }, [])
+  }, [t])
 
   // 挂载时立即拉取一次，badge 和列表不依赖用户先切 Tab
   useEffect(() => {
@@ -348,8 +351,8 @@ export function useOrderExceptionManagementPage() {
   const loadJobResults = useCallback(async (jobId: string) => {
     try {
       const job = await getJobById(jobId)
-      if (!job) throw new Error('任务不存在')
-      if (job.status !== 'succeeded') throw new Error('任务尚未完成')
+      if (!job) throw new Error(t('toast.jobNotFound'))
+      if (job.status !== 'succeeded') throw new Error(t('toast.jobNotFinished'))
       const artifact = await getJobArtifact(jobId)
       const orderNos = Array.isArray(job.payload.orderNos) ? (job.payload.orderNos as string[]) : []
       const rows = orderNos.map((orderNo) =>
@@ -375,58 +378,64 @@ export function useOrderExceptionManagementPage() {
       setLastAnalyzeOrderCount(orderNos.length)
       setSubmittedJobBanner(null)
       setActiveTab('analyze')
-      showToast(`已加载 ${orderNos.length} 单分析结果`, 'success')
+      showToast(t('toast.loadedResults', { count: orderNos.length }), 'success')
       if (artifact.cancelScanRecheck?.error) {
-        showToast(`库外丢失取消扫描核验未完成：${artifact.cancelScanRecheck.error}`, 'error')
+        showToast(t('toast.cancelScanRecheckIncomplete', { error: artifact.cancelScanRecheck.error }), 'error')
       }
       if (artifact.driverVendorEnrich?.errors.length) {
-        showToast(`部分嫌疑派件员供应商未查到：${artifact.driverVendorEnrich.errors[0]}`, 'error')
+        showToast(
+          t('toast.driverVendorLookupPartial', { error: artifact.driverVendorEnrich.errors[0] }),
+          'error',
+        )
       }
     } catch (e) {
-      showToast((e as Error).message || '加载结果失败', 'error')
+      showToast((e as Error).message || t('toast.loadResultsFailed'), 'error')
     }
-  }, [])
+  }, [t])
 
   const cancelJobById = useCallback(async (jobId: string) => {
     try {
       await cancelJobApi(jobId)
       await refreshJobs()
-      showToast('任务已取消', 'success')
+      showToast(t('toast.jobCancelled'), 'success')
     } catch (e) {
-      showToast((e as Error).message || '取消失败', 'error')
+      showToast((e as Error).message || t('toast.cancelFailed'), 'error')
     }
-  }, [refreshJobs])
+  }, [refreshJobs, t])
 
   const deleteJobById = useCallback(async (jobId: string) => {
     try {
       await deleteJobApi(jobId)
       setJobsList((prev) => prev.filter((j) => j.id !== jobId))
-      showToast('已删除', 'success')
+      showToast(tc('deleted'), 'success')
     } catch (e) {
-      showToast((e as Error).message || '删除失败', 'error')
+      showToast((e as Error).message || tc('deleteFailed'), 'error')
     }
-  }, [])
+  }, [t, tc])
 
   const retryJob = useCallback(async (job: PublicJob) => {
     const token = imileToken.trim()
     if (!token) {
-      showToast('请先填写 iMile Bearer Token', 'error')
+      showToast(t('toast.missingImileToken'), 'error')
       return
     }
     const orderNos = Array.isArray(job.payload.orderNos) ? (job.payload.orderNos as string[]) : []
     const aiProvider = (job.payload.aiProvider as OrderAnalyzeAiProvider | undefined) ?? 'deepseek'
     if (!orderNos.length) {
-      showToast('任务中未找到订单号', 'error')
+      showToast(t('toast.jobNoOrderNos'), 'error')
       return
     }
     try {
       const { jobId } = await postOrderExceptionAnalyzeAsync({ imileToken: token, orderNos, aiProvider, scanStationCode })
       await refreshJobs()
-      showToast(`重新提交成功（${orderNos.length} 单），任务 ID: ${jobId.slice(0, 8)}…`, 'success')
+      showToast(
+        t('toast.resubmitSuccess', { count: orderNos.length, jobId: jobId.slice(0, 8) }),
+        'success',
+      )
     } catch (e) {
-      showToast((e as Error).message || '重新提交失败', 'error')
+      showToast((e as Error).message || t('toast.resubmitFailed'), 'error')
     }
-  }, [imileToken, refreshJobs, scanStationCode])
+  }, [imileToken, refreshJobs, scanStationCode, t])
 
   const activeJobCount = jobsList.filter((j) => j.status === 'pending' || j.status === 'running').length
 
@@ -464,14 +473,11 @@ export function useOrderExceptionManagementPage() {
             .join('\n')
         )
     if (!orderNos.length) {
-      showToast('请填写待分析订单号或导入文件', 'error')
+      showToast(t('toast.enterOrderNosOrImport'), 'error')
       return
     }
     if (orderNos.length > ORDER_EXCEPTION_ANALYZE_MAX_BATCH) {
-      showToast(
-        `去重后一次最多分析 ${ORDER_EXCEPTION_ANALYZE_MAX_BATCH} 个订单，请删减后重试`,
-        'error'
-      )
+      showToast(t('toast.batchLimitExceeded', { max: ORDER_EXCEPTION_ANALYZE_MAX_BATCH }), 'error')
       return
     }
 
@@ -479,7 +485,7 @@ export function useOrderExceptionManagementPage() {
       isWarehouseConfigLoaded &&
       JSON.stringify(warehouseDraftConfig) !== JSON.stringify(warehouseSavedConfig)
     ) {
-      showToast('仓库配置有未保存修改，本次分析将使用上次保存的版本', 'error')
+      showToast(t('toast.warehouseConfigUnsaved'), 'error')
     }
 
     const runId = analyzeRunIdRef.current + 1
@@ -516,10 +522,10 @@ export function useOrderExceptionManagementPage() {
         setAnalyzeProgress(null)
         // 乐观更新 jobs 列表（不等 tab 切换再刷新）
         void refreshJobs()
-        showToast(`批量任务已提交（${orderNos.length} 单），在「任务队列」标签查看进度`, 'success')
+        showToast(t('toast.batchJobSubmitted', { count: orderNos.length }), 'success')
       } catch (e) {
         if (isStaleRun()) return
-        showToast((e as Error).message || '提交失败', 'error')
+        showToast((e as Error).message || t('toast.submitFailed'), 'error')
       } finally {
         setIsAnalyzing(false)
         setAnalyzeDurationMs(null)
@@ -539,7 +545,7 @@ export function useOrderExceptionManagementPage() {
         setAnalysisRows((prev) =>
           prev.map((row) =>
             row.orderNo === orderNo
-              ? { ...row, status: 'analyzing' as const, reason: '分析中…' }
+              ? { ...row, status: 'analyzing' as const, reason: t('rowStatus.analyzing') }
               : row
           )
         )
@@ -576,11 +582,11 @@ export function useOrderExceptionManagementPage() {
           setAnalyzeTokenUsage(accumulatedTokenUsage)
           if (driverVendorEnrich?.errors.length && !driverVendorEnrichWarned) {
             driverVendorEnrichWarned = true
-            showToast(`部分嫌疑派件员供应商未查到：${driverVendorEnrich.errors[0]}`, 'error')
+            showToast(t('toast.driverVendorLookupPartial', { error: driverVendorEnrich.errors[0] }), 'error')
           }
           if (cancelScanRecheck?.error && !cancelScanRecheckWarned) {
             cancelScanRecheckWarned = true
-            showToast(`库外丢失取消扫描核验未完成：${cancelScanRecheck.error}`, 'error')
+            showToast(t('toast.cancelScanRecheckIncomplete', { error: cancelScanRecheck.error }), 'error')
           }
           if (timing) {
             accumulatedApiTiming = mergeAnalyzeApiTiming(accumulatedApiTiming, timing)
@@ -589,7 +595,7 @@ export function useOrderExceptionManagementPage() {
           succeeded += 1
         } catch (e) {
           if (isStaleRun()) return
-          const message = (e as Error).message || '分析失败'
+          const message = (e as Error).message || t('rowStatus.analyzeFailed')
           setAnalysisRows((prev) =>
             prev.map((r) =>
               r.orderNo === orderNo
@@ -626,11 +632,11 @@ export function useOrderExceptionManagementPage() {
     setIsAnalyzing(false)
 
     if (failed === 0) {
-      showToast('分析完成', 'success')
+      showToast(t('toast.analyzeComplete'), 'success')
     } else if (succeeded === 0) {
-      showToast('全部分析失败，请检查网络或 Token 后重试', 'error')
+      showToast(t('toast.analyzeAllFailed'), 'error')
     } else {
-      showToast(`分析结束：${succeeded} 单成功，${failed} 单失败`, 'error')
+      showToast(t('toast.analyzePartial', { succeeded, failed }), 'error')
     }
   }, [
     analyzeAiProvider,
@@ -641,6 +647,7 @@ export function useOrderExceptionManagementPage() {
     isWarehouseConfigLoaded,
     refreshJobs,
     scanStationCode,
+    t,
     waitWhilePaused,
     warehouseDraftConfig,
     warehouseSavedConfig,
@@ -651,7 +658,7 @@ export function useOrderExceptionManagementPage() {
     const token = ensureToken()
     if (!token) return
     if (!scanStationCode) {
-      showToast('请先在右上角选择责任站点', 'error')
+      showToast(t('toast.selectStationFirst'), 'error')
       return
     }
     if (
@@ -662,11 +669,11 @@ export function useOrderExceptionManagementPage() {
       inHubGreaterDays < 0 ||
       inHubLessDays < 0
     ) {
-      showToast('请填写合法的天数区间', 'error')
+      showToast(t('toast.invalidDayRange'), 'error')
       return
     }
     if (inHubLessDays <= inHubGreaterDays) {
-      showToast('"小于"天数须大于"大于"天数', 'error')
+      showToast(t('toast.lessMustExceedGreater'), 'error')
       return
     }
 
@@ -681,22 +688,22 @@ export function useOrderExceptionManagementPage() {
       setInHubQueryMeta({ start, end, totalResult })
 
       if (!waybillNos.length) {
-        showToast('未查询到库内运单，无需分析', 'error')
+        showToast(t('toast.noInHubWaybills'), 'error')
         return
       }
 
       setImportedAnalyzeOrders({
-        fileName: `库内异常订单查询（${start}~${end}）`,
+        fileName: t('inHub.queryFileName', { start, end }),
         orderNos: waybillNos,
       })
       setActiveTab('analyze')
       await onAnalyze(waybillNos)
     } catch (e) {
-      showToast((e as Error).message || '库内运单查询失败', 'error')
+      showToast((e as Error).message || t('toast.inHubQueryFailed'), 'error')
     } finally {
       setIsQueryingInHub(false)
     }
-  }, [ensureToken, scanStationCode, inHubGreaterDays, inHubLessDays, onAnalyze])
+  }, [ensureToken, inHubGreaterDays, inHubLessDays, onAnalyze, scanStationCode, t])
 
   const onAnalyzeOrderFileUpload = useCallback(
     async (file: File) => {
@@ -712,15 +719,22 @@ export function useOrderExceptionManagementPage() {
 
       if (result.orderNos.length > ORDER_EXCEPTION_ANALYZE_MAX_BATCH) {
         showToast(
-          `已从 ${file.name} 提取 ${result.orderNos.length} 个订单号，超出单次上限 ${ORDER_EXCEPTION_ANALYZE_MAX_BATCH}，请删减后分析`,
-          'error'
+          t('toast.importExceedsLimit', {
+            fileName: file.name,
+            count: result.orderNos.length,
+            max: ORDER_EXCEPTION_ANALYZE_MAX_BATCH,
+          }),
+          'error',
         )
         return
       }
 
-      showToast(`已从 ${file.name} 提取 ${result.orderNos.length} 个订单号，点击「开始分析」继续`, 'success')
+      showToast(
+        t('toast.importSuccess', { fileName: file.name, count: result.orderNos.length }),
+        'success',
+      )
     },
-    [isAnalyzing]
+    [isAnalyzing, t],
   )
 
   const onClearImportedAnalyzeOrders = useCallback(() => {
@@ -732,7 +746,7 @@ export function useOrderExceptionManagementPage() {
     if (!token) return
     const orderNo = captureOrderNo.trim()
     if (!orderNo) {
-      showToast('请填写订单号', 'error')
+      showToast(t('toast.enterOrderNo'), 'error')
       return
     }
 
@@ -748,9 +762,9 @@ export function useOrderExceptionManagementPage() {
         },
       })
       await loadRegressionCases()
-      showToast(`用例 ${orderNo} 已固化`, 'success')
+      showToast(t('toast.caseCaptured', { orderNo }), 'success')
     } catch (e) {
-      showToast((e as Error).message || '录入失败', 'error')
+      showToast((e as Error).message || t('toast.captureFailed'), 'error')
     } finally {
       setIsCapturing(false)
     }
@@ -761,6 +775,7 @@ export function useOrderExceptionManagementPage() {
     captureSubType,
     ensureToken,
     loadRegressionCases,
+    t,
   ])
 
   const onDeleteRegressionCase = useCallback(
@@ -769,19 +784,19 @@ export function useOrderExceptionManagementPage() {
       try {
         await deleteRegressionCase(id)
         await loadRegressionCases()
-        showToast('已删除用例', 'success')
+        showToast(t('toast.caseDeleted'), 'success')
       } catch (e) {
-        showToast((e as Error).message || '删除失败', 'error')
+        showToast((e as Error).message || tc('deleteFailed'), 'error')
       } finally {
         setIsDeletingRegressionId(null)
       }
     },
-    [loadRegressionCases]
+    [loadRegressionCases, t, tc],
   )
 
   const onRunRegression = useCallback(async () => {
     if (!regressionCases.length) {
-      showToast('暂无回归用例', 'error')
+      showToast(t('toast.noRegressionCases'), 'error')
       return
     }
 
@@ -796,15 +811,21 @@ export function useOrderExceptionManagementPage() {
       setRegressionTokenUsage(report.tokenUsage)
       const text =
         report.summary.failed === 0
-          ? `回归全部通过（${report.summary.passed}/${report.summary.total}）`
-          : `回归完成：${report.summary.passed} 通过，${report.summary.failed} 失败`
+          ? t('toast.regressionAllPassed', {
+              passed: report.summary.passed,
+              total: report.summary.total,
+            })
+          : t('toast.regressionFinished', {
+              passed: report.summary.passed,
+              failed: report.summary.failed,
+            })
       showToast(text, report.summary.failed === 0 ? 'success' : 'error')
     } catch (e) {
-      showToast((e as Error).message || '回归测试失败', 'error')
+      showToast((e as Error).message || t('toast.regressionFailed'), 'error')
     } finally {
       setIsRunningRegression(false)
     }
-  }, [analyzeAiProvider, regressionCases.length])
+  }, [analyzeAiProvider, regressionCases.length, t])
 
   return {
     activeTab,

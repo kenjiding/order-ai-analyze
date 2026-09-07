@@ -75,6 +75,7 @@ export const PERMISSION_KEYS = {
   menuPriorityClients: 'menu:priority-clients',
   btnContainerAccountsManage: 'btn:container-accounts:manage',
   btnContainerLedgerDelete: 'btn:container-ledger:delete',
+  btnContainerLedgerManageTypes: 'btn:container-ledger:manage-types',
   btnContainerTransfersVoid: 'btn:container-transfers:void',
   btnWageSalaryExport: 'btn:wage-salary:export',
   btnWageSalaryEdit: 'btn:wage-salary:edit',

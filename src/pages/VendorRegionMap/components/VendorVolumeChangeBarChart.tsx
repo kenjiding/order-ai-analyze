@@ -1,5 +1,6 @@
 import { Chart } from '@antv/g2'
 import { useEffect, useMemo, useRef } from 'react'
+import { useTranslation } from 'react-i18next'
 import { adminColors } from '../../../theme/adminColors'
 import type { VendorTrendSupplier } from '../vendorRegionMapTypes'
 
@@ -21,6 +22,7 @@ const DROP_COLOR = '#dc2626'
 const RISE_COLOR = '#16a34a'
 
 export function VendorVolumeChangeBarChart({ suppliers, comparableDays, onSelect }: Props) {
+  const { t } = useTranslation('vendorRegionMap')
   const containerRef = useRef<HTMLDivElement>(null)
   const onSelectRef = useRef(onSelect)
 
@@ -77,7 +79,7 @@ export function VendorVolumeChangeBarChart({ suppliers, comparableDays, onSelect
     chart.scale('y', { type: 'linear', nice: true })
     chart.axis('x', { title: false, labelFontSize: 11 })
     chart.axis('y', {
-      title: '环比涨跌',
+      title: t('trend.barMom'),
       grid: true,
       gridLineDash: [4, 4],
       gridStroke: adminColors.line,
@@ -98,12 +100,12 @@ export function VendorVolumeChangeBarChart({ suppliers, comparableDays, onSelect
         title: (d: Row) => d.supplierName,
         items: [
           {
-            name: '环比',
+            name: t('trend.barMom'),
             field: 'changeRate',
             valueFormatter: (v: number) => `${v >= 0 ? '+' : ''}${(v * 100).toFixed(1)}%`,
           },
-          { name: '前段日均', field: 'prevAvg', valueFormatter: (v: number) => v.toFixed(1) },
-          { name: '后段日均', field: 'recentAvg', valueFormatter: (v: number) => v.toFixed(1) },
+          { name: t('trend.barPrevAvg'), field: 'prevAvg', valueFormatter: (v: number) => v.toFixed(1) },
+          { name: t('trend.barRecentAvg'), field: 'recentAvg', valueFormatter: (v: number) => v.toFixed(1) },
         ],
       })
 
@@ -116,14 +118,12 @@ export function VendorVolumeChangeBarChart({ suppliers, comparableDays, onSelect
     return () => {
       chart.destroy()
     }
-  }, [height, rows, rowsKey])
+  }, [height, rows, rowsKey, t])
 
   if (rows.length === 0) {
     return (
       <div className="vrm-chart-empty">
-        {comparableDays < 2
-          ? '可比日期不足 2 天，算不出环比。把区间拉长一些。'
-          : '没有可比的供应商（都是区间内新增的）。'}
+        {comparableDays < 2 ? t('trend.barInsufficient') : t('trend.barAllNew')}
       </div>
     )
   }
@@ -134,11 +134,11 @@ export function VendorVolumeChangeBarChart({ suppliers, comparableDays, onSelect
         ref={containerRef}
         className="vrm-chart vrm-chart--clickable"
         role="img"
-        aria-label="供应商货量环比涨跌排行"
+        aria-label={t('trend.barAria')}
       />
       {newcomers.length > 0 ? (
         <p className="vrm-chart-note">
-          区间内新增、无环比基数：
+          {t('trend.newInRange')}
           {newcomers.map((supplier) => supplier.supplierName).join('、')}
         </p>
       ) : null}

@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { i18n } from '../../i18n/index'
 import { sortingEfficiencyForPerson } from './sortingLookup'
 import type { ScannerEfficiencyResult } from './aggregates'
 import type { DataTableColumn, DataTableRow } from './components/ui'
@@ -10,6 +11,9 @@ import {
   SCANNER_EFFICIENCY_TABLE_LOW_CLASS,
   SCANNER_EFFICIENCY_TABLE_NORMAL_CLASS,
 } from './scannerEfficiencyThresholds'
+
+const t = (key: string, options?: Record<string, unknown>) =>
+  String(i18n.t(key, { ns: 'scannerEfficiency', ...options }))
 
 /** 数值列排序：无效值视为 -∞，配合 descend→ascend 时高值优先、空值靠后 */
 function compareNumericField(
@@ -78,7 +82,7 @@ function DailyTotalHoursCell({
       <button
         type="button"
         className="block w-full min-w-[5rem] cursor-pointer rounded border border-transparent bg-transparent px-1 py-0.5 text-left text-sm tabular-nums text-slate-900 hover:border-slate-200 hover:bg-slate-50 focus-visible:border-[#2f8f87] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#2f8f87]/30"
-        aria-label={`${dateKey} 总工时(含修正工时)，点击修改`}
+        aria-label={t('columns.totalHoursEditAria', { date: dateKey })}
         onClick={() => {
           setText(Number.isFinite(hours) ? hours.toFixed(2) : '')
           setEditing(true)
@@ -94,7 +98,7 @@ function DailyTotalHoursCell({
       ref={inputRef}
       type="text"
       inputMode="decimal"
-      aria-label={`${dateKey} 总工时(含修正工时)`}
+      aria-label={t('columns.totalHoursInputAria', { date: dateKey })}
       className="w-full min-w-[5.5rem] rounded border border-slate-200 bg-white px-2 py-1 text-left text-sm tabular-nums text-slate-900 shadow-sm outline-none focus:border-[#2f8f87] focus:ring-2 focus:ring-[#2f8f87]/25"
       value={text}
       onChange={(e) => {
@@ -173,28 +177,28 @@ function attendanceMatchFooterCell(
   const topClass = accent?.topClass ?? 'font-medium text-slate-900'
   const sizeClass = accent?.emphasized ? 'text-base' : 'text-xs'
   return (
-    <span className={`${sizeClass} leading-snug ${topClass}`}>总计 {total}</span>
+    <span className={`${sizeClass} leading-snug ${topClass}`}>{t('tableFooter.totalWithValue', { value: total })}</span>
   )
 }
 
 export function buildDailyVolumeColumns(): DataTableColumn[] {
   return [
-    { key: 'date', title: '日期' },
-    { key: 'volume', title: '总货量', render: (row: DataTableRow) => formatInteger(Number(row.volume)) },
+    { key: 'date', title: t('columns.date') },
+    { key: 'volume', title: t('columns.totalVolume'), render: (row: DataTableRow) => formatInteger(Number(row.volume)) },
     {
       key: 'cainiaoVolume',
-      title: '菜鸟票',
+      title: t('columns.cainiaoVolume'),
       render: (row: DataTableRow) => formatInteger(Number(row.cainiaoVolume)),
     },
     {
       key: 'cainiaoShare',
-      title: '菜鸟占比',
+      title: t('columns.cainiaoShare'),
       render: (row: DataTableRow) =>
         formatCainiaoSharePercent(Number(row.volume) > 0 ? Number(row.cainiaoShare) : null),
     },
     {
       key: 'scannerCount',
-      title: '扫描员人数',
+      title: t('columns.scannerCount'),
       render: (row: DataTableRow) => formatInteger(Number(row.scannerCount)),
     },
   ]
@@ -211,7 +215,7 @@ export function buildAttendanceMatchColumns(options?: {
   return [
     {
       key: 'date',
-      title: '日期',
+      title: t('columns.date'),
       render: (row: DataTableRow) => {
         if (row.isWeekGroupHeader) {
           const color = String(row.weekColor ?? '#2563eb')
@@ -223,7 +227,7 @@ export function buildAttendanceMatchColumns(options?: {
           )
         }
         if (row.isWeekGroupFooter) {
-          const label = String(row.date ?? '本周小计')
+          const label = String(row.date ?? t('tableFooter.weekSubtotal'))
           const color = row.weekColor ? String(row.weekColor) : null
           if (color) {
             return (
@@ -244,7 +248,7 @@ export function buildAttendanceMatchColumns(options?: {
     },
     {
       key: 'volume',
-      title: '总货量',
+      title: t('columns.totalVolume'),
       render: (row: DataTableRow) => {
         if (row.matchFooterStats && (row.isWeekGroupFooter || row.isAttendanceMatchFooter)) {
           const s = row.matchFooterStats as MatchFooterStats
@@ -256,7 +260,7 @@ export function buildAttendanceMatchColumns(options?: {
     },
     {
       key: 'attendanceTotalLaborCost',
-      title: '总成本',
+      title: t('columns.totalCost'),
       render: (row: DataTableRow) => {
         if (row.matchFooterStats && (row.isWeekGroupFooter || row.isAttendanceMatchFooter)) {
           const s = row.matchFooterStats as MatchFooterStats
@@ -278,7 +282,7 @@ export function buildAttendanceMatchColumns(options?: {
     },
     {
       key: 'cainiaoShare',
-      title: '菜鸟占比',
+      title: t('columns.cainiaoShare'),
       render: (row: DataTableRow) => {
         if (row.matchFooterStats && (row.isWeekGroupFooter || row.isAttendanceMatchFooter)) {
           const s = row.matchFooterStats as MatchFooterStats
@@ -297,7 +301,7 @@ export function buildAttendanceMatchColumns(options?: {
     },
     {
       key: 'sorterCount',
-      title: '分拣人数',
+      title: t('columns.sorterCount'),
       render: (row: DataTableRow) => {
         if (isGroupedMetaRow(row)) return row.isWeekGroupHeader ? '—' : '—'
         return row.hasAttendance ? formatInteger(Number(row.sorterCount)) : '-'
@@ -305,7 +309,7 @@ export function buildAttendanceMatchColumns(options?: {
     },
     {
       key: 'totalHours',
-      title: '总工时(含修正工时)',
+      title: t('columns.totalHoursAdjusted'),
       render: (row: DataTableRow) => {
         if (row.matchFooterStats && (row.isWeekGroupFooter || row.isAttendanceMatchFooter)) {
           const s = row.matchFooterStats as MatchFooterStats
@@ -325,7 +329,7 @@ export function buildAttendanceMatchColumns(options?: {
     },
     {
       key: 'dayEfficiency',
-      title: '当天效率(h)',
+      title: t('columns.dayEfficiency'),
       render: (row: DataTableRow) => {
         if (row.matchFooterStats && (row.isWeekGroupFooter || row.isAttendanceMatchFooter)) {
           const s = row.matchFooterStats as MatchFooterStats
@@ -359,7 +363,7 @@ export function buildAttendanceMatchColumns(options?: {
     },
     {
       key: 'attendanceCostPerTicket',
-      title: '每票成本',
+      title: t('columns.costPerTicket'),
       render: (row: DataTableRow) => {
         if (row.matchFooterStats && (row.isWeekGroupFooter || row.isAttendanceMatchFooter)) {
           const s = row.matchFooterStats as MatchFooterStats
@@ -374,7 +378,8 @@ export function buildAttendanceMatchColumns(options?: {
           return (
             <span className="text-base leading-snug">
               <span className="font-medium text-slate-900">
-                总计 <span className={costPerTicketHighlightClass(footerCost)}>{unit}</span>
+                {t('tableFooter.total')}{' '}
+                <span className={costPerTicketHighlightClass(footerCost)}>{unit}</span>
               </span>
             </span>
           )
@@ -399,26 +404,26 @@ export function buildAttendancePersonColumns(
   scannerResult: ScannerEfficiencyResult | null,
 ): DataTableColumn[] {
   return [
-    { key: 'sorterName', title: '人员' },
-    { key: 'totalHours', title: '总工时(小时)', render: (row: DataTableRow) => formatNumber(Number(row.totalHours), 2) },
+    { key: 'sorterName', title: t('columns.person') },
+    { key: 'totalHours', title: t('columns.totalHours'), render: (row: DataTableRow) => formatNumber(Number(row.totalHours), 2) },
     {
       key: 'sortingScanCount',
-      title: '扫描量',
+      title: t('columns.scanCount'),
       render: (row: DataTableRow) =>
         row.personMatchedSortingScan == null ? '—' : formatInteger(Number(row.personMatchedSortingScan)),
     },
     {
       key: 'onDutyEfficiency',
-      title: '在岗效率(票/小时)',
+      title: t('columns.onDutyEfficiency'),
       render: (row: DataTableRow) =>
         row.personOnDutyEfficiencyPerHour == null
           ? '—'
           : formatNumber(Number(row.personOnDutyEfficiencyPerHour), 2),
     },
-    { key: 'activeDays', title: '活跃天数', render: (row: DataTableRow) => formatInteger(Number(row.activeDays)) },
+    { key: 'activeDays', title: t('columns.activeDays'), render: (row: DataTableRow) => formatInteger(Number(row.activeDays)) },
     {
       key: 'sortingEfficiency',
-      title: '一级分拣效率(票/小时)',
+      title: t('columns.sortingEfficiency'),
       render: (row: DataTableRow) => {
         const v = sortingEfficiencyForPerson(
           {
@@ -436,17 +441,17 @@ export function buildAttendancePersonColumns(
 
 export function buildScannerDailyColumns(): DataTableColumn[] {
   return [
-    { key: 'date', title: '日期' },
-    { key: 'scanCount', title: '扫描量', render: (row: DataTableRow) => formatInteger(Number(row.scanCount)) },
-    { key: 'scannerCount', title: '扫描员人数', render: (row: DataTableRow) => formatInteger(Number(row.scannerCount)) },
+    { key: 'date', title: t('columns.date') },
+    { key: 'scanCount', title: t('columns.scanCount'), render: (row: DataTableRow) => formatInteger(Number(row.scanCount)) },
+    { key: 'scannerCount', title: t('columns.scannerCount'), render: (row: DataTableRow) => formatInteger(Number(row.scannerCount)) },
     {
       key: 'effectiveHours',
-      title: '有效工时(h)',
+      title: t('columns.effectiveHours'),
       render: (row: DataTableRow) => formatNumber(Number(row.effectiveHours), 2),
     },
     {
       key: 'efficiency',
-      title: '效率(票/小时)',
+      title: t('columns.efficiency'),
       render: (row: DataTableRow) => formatNumber(Number(row.efficiency), 2),
     },
   ]
@@ -454,10 +459,10 @@ export function buildScannerDailyColumns(): DataTableColumn[] {
 
 export function buildScannerTotalEfficiencyColumns(): DataTableColumn[] {
   return [
-    { key: 'scanner', title: '分拣员' },
+    { key: 'scanner', title: t('columns.scanner') },
     {
       key: 'scanCount',
-      title: '扫描量',
+      title: t('columns.scanCount'),
       sortDirections: METRIC_SORT_DIRECTIONS,
       defaultSortOrder: 'descend',
       sorter: (a, b) => compareNumericField(a, b, (row) => row.scanCount),
@@ -468,7 +473,7 @@ export function buildScannerTotalEfficiencyColumns(): DataTableColumn[] {
     },
     {
       key: 'cainiaoShare',
-      title: '菜鸟占比',
+      title: t('columns.cainiaoShare'),
       render: (row: DataTableRow) => {
         if (row.cainiaoShare == null) return '—'
         return formatCainiaoSharePercent(Number(row.cainiaoShare))
@@ -476,7 +481,7 @@ export function buildScannerTotalEfficiencyColumns(): DataTableColumn[] {
     },
     {
       key: 'totalHours',
-      title: '总工时(小时)',
+      title: t('columns.totalHours'),
       render: (row: DataTableRow) => {
         if (row.totalHours == null) return '—'
         return formatNumber(Number(row.totalHours), 2)
@@ -484,7 +489,7 @@ export function buildScannerTotalEfficiencyColumns(): DataTableColumn[] {
     },
     {
       key: 'cainiaoAdjustedTotalEfficiency',
-      title: '总效率(票/小时)',
+      title: t('columns.totalEfficiency'),
       sortDirections: METRIC_SORT_DIRECTIONS,
       sorter: (a, b) =>
         compareNumericField(a, b, (row) => row.cainiaoAdjustedTotalEfficiency ?? row.totalEfficiency),
@@ -505,10 +510,10 @@ export function buildScannerTotalEfficiencyColumns(): DataTableColumn[] {
 
 export function buildScannerPersonColumns(): DataTableColumn[] {
   return [
-    { key: 'scanner', title: '扫描员', width: 160 },
+    { key: 'scanner', title: t('columns.scanner'), width: 160 },
     {
       key: 'scanCount',
-      title: '总扫描量',
+      title: t('columns.totalScanCount'),
       sortDirections: METRIC_SORT_DIRECTIONS,
       defaultSortOrder: 'descend',
       sorter: (a, b) => compareNumericField(a, b, (row) => row.scanCount),
@@ -519,7 +524,7 @@ export function buildScannerPersonColumns(): DataTableColumn[] {
     },
     {
       key: 'cainiaoShare',
-      title: '菜鸟占比',
+      title: t('columns.cainiaoShare'),
       render: (row: DataTableRow) => {
         if (row.cainiaoShare == null) return '—'
         return formatCainiaoSharePercent(Number(row.cainiaoShare))
@@ -527,7 +532,7 @@ export function buildScannerPersonColumns(): DataTableColumn[] {
     },
     {
       key: 'activeDays',
-      title: '活跃天数',
+      title: t('columns.activeDays'),
       render: (row: DataTableRow) =>
         row.isTableAverageRow
           ? formatNumber(Number(row.activeDays), 2)
@@ -535,12 +540,12 @@ export function buildScannerPersonColumns(): DataTableColumn[] {
     },
     {
       key: 'effectiveHours',
-      title: '一级分拣有效工时',
+      title: t('columns.sortingEffectiveHours'),
       render: (row: DataTableRow) => formatNumber(Number(row.effectiveHours), 2),
     },
     {
       key: 'cainiaoAdjustedEfficiency',
-      title: '修正效率',
+      title: t('columns.adjustedEfficiency'),
       sortDirections: METRIC_SORT_DIRECTIONS,
       sorter: (a, b) =>
         compareNumericField(a, b, (row) => row.cainiaoAdjustedEfficiency ?? row.adjustedEfficiency),

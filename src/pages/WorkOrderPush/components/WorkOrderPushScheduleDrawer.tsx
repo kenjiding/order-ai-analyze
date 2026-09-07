@@ -3,7 +3,8 @@ import dayjs from 'dayjs'
 import { Clock, Save, Ticket } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import { Plus, X } from 'lucide-react'
-import { useEffect, useState, type ReactNode } from 'react'
+import { useEffect, useMemo, useState, type ReactNode } from 'react'
+import { useTranslation } from 'react-i18next'
 import { StationSelect } from '../../../components/Layout/StationSelect'
 import {
   SupplierMentionToggle,
@@ -13,16 +14,6 @@ import {
 } from '../../../shared/supplierPushConfig'
 import { showToast } from '../../../utils/toast'
 import type { PushTimeSlot, WeekdayNum, WorkOrderPushSchedule, WorkOrderPushScheduleDraft } from '../workOrderPushTypes'
-
-const WEEKDAYS: { value: WeekdayNum; label: string }[] = [
-  { value: 1, label: '周一' },
-  { value: 2, label: '周二' },
-  { value: 3, label: '周三' },
-  { value: 4, label: '周四' },
-  { value: 5, label: '周五' },
-  { value: 6, label: '周六' },
-  { value: 7, label: '周日' },
-]
 
 function generateId(): string {
   return `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`
@@ -79,8 +70,20 @@ export function WorkOrderPushScheduleDrawer({
   saving,
   onSubmit,
 }: Props) {
+  const { t } = useTranslation('workOrderPush')
+  const { t: tc } = useTranslation('common')
+
+  const weekdays = useMemo(
+    () =>
+      ([1, 2, 3, 4, 5, 6, 7] as WeekdayNum[]).map((value) => ({
+        value,
+        label: t(`weekday.${value}`),
+      })),
+    [t],
+  )
+
   const [stationCode, setStationCode] = useState('')
-  const [weekdays, setWeekdays] = useState<WeekdayNum[]>([])
+  const [selectedWeekdays, setSelectedWeekdays] = useState<WeekdayNum[]>([])
   const [pushTimes, setPushTimes] = useState<PushTimeSlot[]>([])
   const [pushConfigIds, setPushConfigIds] = useState<string[]>([])
   const [mentionEnabled, setMentionEnabled] = useState(false)
@@ -88,7 +91,7 @@ export function WorkOrderPushScheduleDrawer({
   useEffect(() => {
     if (!open) return
     setStationCode(editingSchedule?.stationCode ?? '')
-    setWeekdays(editingSchedule?.weekdays ?? [])
+    setSelectedWeekdays(editingSchedule?.weekdays ?? [])
     setPushTimes(editingSchedule?.pushTimes ?? [])
     setPushConfigIds(editingSchedule?.pushConfigIds ?? [])
     setMentionEnabled(editingSchedule?.mentionEnabled ?? false)
@@ -104,24 +107,24 @@ export function WorkOrderPushScheduleDrawer({
 
   const handleConfirm = async () => {
     if (!stationCode) {
-      showToast('请选择站点', 'error')
+      showToast(t('validation.selectStation'), 'error')
       return
     }
-    if (weekdays.length === 0) {
-      showToast('请至少选择一个推送星期', 'error')
+    if (selectedWeekdays.length === 0) {
+      showToast(t('validation.selectWeekday'), 'error')
       return
     }
     if (pushTimes.length === 0) {
-      showToast('请至少添加一个推送时间', 'error')
+      showToast(t('validation.addPushTime'), 'error')
       return
     }
     const scopedPushConfigIds = pushConfigIds.filter((id) => catalogIdSet.has(id))
     if (scopedPushConfigIds.length === 0) {
-      showToast('请至少选择一个供应商', 'error')
+      showToast(t('validation.selectVendor'), 'error')
       return
     }
     const draft: WorkOrderPushScheduleDraft = {
-      weekdays,
+      weekdays: selectedWeekdays,
       pushTimes,
       isEnabled: true,
       stationCode,
@@ -142,36 +145,40 @@ export function WorkOrderPushScheduleDrawer({
       title={
         <div className="flex items-center gap-2">
           <Ticket className="h-4 w-4 text-[var(--admin-accent)]" aria-hidden />
-          <span>{editingSchedule ? '编辑工单推送' : '添加工单推送'}</span>
+          <span>{editingSchedule ? t('drawer.editTitle') : t('drawer.addTitle')}</span>
         </div>
       }
       footer={
         <div className="flex items-center justify-end gap-2">
           <Button onClick={onClose} disabled={saving}>
-            取消
+            {tc('cancel')}
           </Button>
           <Button type="primary" icon={<Save className="h-3.5 w-3.5" />} loading={saving} onClick={() => void handleConfirm()}>
-            确定
+            {tc('confirm')}
           </Button>
         </div>
       }
     >
       <div className="space-y-5">
-        <FormSection icon={Ticket} title="站点">
+        <FormSection icon={Ticket} title={t('drawer.station')}>
           <StationSelect value={stationCode} onChange={setStationCode} disabled={saving} />
         </FormSection>
 
         <FormSection
           icon={Clock}
-          title="定时推送配置"
-          description="工单出现时间不可预测，在推送星期内的下方时间点各检查一次未处理工单，有未处理工单才会推送对应供应商，没有则跳过"
+          title={t('drawer.scheduleConfig')}
+          description={t('drawer.scheduleConfigDesc')}
         >
           <div className="divide-y divide-[var(--admin-line)]">
             <div className="flex items-center gap-4 py-3 first:pt-0">
-              <span className="w-16 shrink-0 text-xs font-medium text-slate-500">推送星期</span>
-              <Checkbox.Group value={weekdays} disabled={saving} onChange={(vals) => setWeekdays(vals as WeekdayNum[])}>
+              <span className="w-16 shrink-0 text-xs font-medium text-slate-500">{t('drawer.pushWeekdays')}</span>
+              <Checkbox.Group
+                value={selectedWeekdays}
+                disabled={saving}
+                onChange={(vals) => setSelectedWeekdays(vals as WeekdayNum[])}
+              >
                 <div className="flex flex-wrap gap-x-4 gap-y-1">
-                  {WEEKDAYS.map((day) => (
+                  {weekdays.map((day) => (
                     <Checkbox key={day.value} value={day.value}>
                       <span className="text-sm">{day.label}</span>
                     </Checkbox>
@@ -181,7 +188,7 @@ export function WorkOrderPushScheduleDrawer({
             </div>
 
             <div className="flex items-start gap-4 py-3 last:pb-0">
-              <span className="mt-1 w-16 shrink-0 text-xs font-medium text-slate-500">推送时间</span>
+              <span className="mt-1 w-16 shrink-0 text-xs font-medium text-slate-500">{t('drawer.pushTimes')}</span>
               <div className="flex flex-wrap items-center gap-2">
                 {pushTimes.map((slot) => (
                   <div
@@ -217,10 +224,10 @@ export function WorkOrderPushScheduleDrawer({
                     onClick={handleAddTime}
                     className="!border-[var(--admin-accent)]/40 !text-xs !text-[var(--admin-accent)] hover:!border-[var(--admin-accent)] hover:!bg-[var(--admin-accent-soft)]"
                   >
-                    添加
+                    {tc('add')}
                   </Button>
                 )}
-                {pushTimes.length === 0 && <span className="text-xs text-slate-400">暂无推送时间</span>}
+                {pushTimes.length === 0 && <span className="text-xs text-slate-400">{t('drawer.noPushTimes')}</span>}
               </div>
             </div>
           </div>
@@ -228,8 +235,8 @@ export function WorkOrderPushScheduleDrawer({
 
         <FormSection
           icon={Ticket}
-          title="供应商配置"
-          description="勾选参与该条工单推送的供应商"
+          title={t('drawer.vendorConfig')}
+          description={t('drawer.vendorConfigDesc')}
           action={
             <div className="flex items-center gap-3">
               <SupplierMentionToggle value={mentionEnabled} onChange={setMentionEnabled} disabled={saving} />

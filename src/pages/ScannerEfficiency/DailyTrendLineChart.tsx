@@ -1,3 +1,4 @@
+import { useTranslation } from 'react-i18next'
 import { Chart } from '@antv/g2'
 import { useEffect, useMemo, useRef } from 'react'
 
@@ -12,23 +13,9 @@ type Props = {
   className?: string
 }
 
-const STYLE = {
-  volume: {
-    stroke: '#2f8f87',
-    fill: '#2f8f87',
-    legend: '总货量（票）',
-    empty: '上传到件数据后显示趋势图。',
-    yTitle: '总货量（票）',
-    aria: '按日总货量趋势折线图',
-  },
-  sortingEfficiency: {
-    stroke: '#1d4ed8',
-    fill: '#1d4ed8',
-    legend: '按日合计效率（票/小时）',
-    empty: '暂无分拣按日数据。',
-    yTitle: '效率（票/小时）',
-    aria: '一级分拣按日合计效率折线图',
-  },
+const CHART_COLORS = {
+  volume: { stroke: '#2f8f87', fill: '#2f8f87' },
+  sortingEfficiency: { stroke: '#1d4ed8', fill: '#1d4ed8' },
 } as const
 
 function splitEfficiencySegments(points: DailyTrendPoint[]): { date: string; value: number }[][] {
@@ -47,8 +34,27 @@ function splitEfficiencySegments(points: DailyTrendPoint[]): { date: string; val
 }
 
 export default function DailyTrendLineChart({ points, variant, className }: Props) {
+  const { t } = useTranslation('scannerEfficiency')
   const containerRef = useRef<HTMLDivElement>(null)
-  const s = STYLE[variant]
+  const s = useMemo(() => {
+    const colors = CHART_COLORS[variant]
+    if (variant === 'volume') {
+      return {
+        ...colors,
+        legend: t('chart.volumeLegend'),
+        empty: t('chart.volumeEmpty'),
+        yTitle: t('chart.volumeYTitle'),
+        aria: t('chart.volumeAria'),
+      }
+    }
+    return {
+      ...colors,
+      legend: t('chart.sortingLegend'),
+      empty: t('chart.sortingEmpty'),
+      yTitle: t('chart.sortingYTitle'),
+      aria: t('chart.sortingAria'),
+    }
+  }, [t, variant])
 
   const skipChart = !points.length
 
@@ -62,7 +68,7 @@ export default function DailyTrendLineChart({ points, variant, className }: Prop
     const el = containerRef.current
     if (!el) return
 
-    const cfg = STYLE[variant]
+    const cfg = s
 
     const chart = new Chart({
       container: el,
@@ -133,7 +139,7 @@ export default function DailyTrendLineChart({ points, variant, className }: Prop
     return () => {
       chart.destroy()
     }
-  }, [skipChart, variant, pointsKey, points])
+  }, [skipChart, variant, pointsKey, points, s])
 
   if (!points.length) {
     return (

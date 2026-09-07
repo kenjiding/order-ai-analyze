@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Button, Checkbox, Form, Input, Modal, Table, Tag } from 'antd'
 import type { ColumnsType } from 'antd/es/table'
 import { Pencil, Plus, Star, Trash2 } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
 import { backendFetch } from '../../api/httpClient'
 import { confirmDialog } from '../../utils/confirmDialog'
 import { showToast } from '../../utils/toast'
@@ -23,9 +24,9 @@ async function callApi<T>(path: string, options?: RequestInit): Promise<{ ok: tr
     })
     const json = (await res.json()) as { ok?: boolean; data?: T; error?: string }
     if (json.ok === true) return { ok: true, data: json.data as T }
-    return { ok: false, error: typeof json.error === 'string' ? json.error : '请求失败' }
+    return { ok: false, error: typeof json.error === 'string' ? json.error : '' }
   } catch {
-    return { ok: false, error: '无法访问后端' }
+    return { ok: false, error: '' }
   }
 }
 
@@ -36,6 +37,8 @@ type FormValues = {
 }
 
 export default function PriorityClientsPage() {
+  const { t } = useTranslation('priorityClients')
+  const { t: tc } = useTranslation('common')
   const [form] = Form.useForm<FormValues>()
   const [clients, setClients] = useState<PriorityClient[]>([])
   const [loading, setLoading] = useState(false)
@@ -49,11 +52,11 @@ export default function PriorityClientsPage() {
     const res = await callApi<PriorityClient[]>('')
     setLoading(false)
     if (!res.ok) {
-      showToast(res.error, 'error')
+      showToast(res.error || t('requestFailed'), 'error')
       return
     }
     setClients(res.data)
-  }, [])
+  }, [t])
 
   useEffect(() => {
     void load()
@@ -85,7 +88,7 @@ export default function PriorityClientsPage() {
       : await callApi<PriorityClient>('', { method: 'POST', body: JSON.stringify(draft) })
     setSubmitting(false)
     if (!res.ok) {
-      showToast(res.error, 'error')
+      showToast(res.error || t('requestFailed'), 'error')
       return
     }
     setClients((prev) =>
@@ -93,26 +96,26 @@ export default function PriorityClientsPage() {
         ? prev.map((item) => (item.id === res.data.id ? res.data : item))
         : [...prev, res.data].sort((a, b) => a.clientCode.localeCompare(b.clientCode)),
     )
-    showToast(editing ? '已更新优先客户' : '已新增优先客户', 'success')
+    showToast(editing ? t('toastUpdated') : t('toastAdded'), 'success')
     setFormOpen(false)
     setEditing(null)
-  }, [editing, form])
+  }, [editing, form, t])
 
   const remove = useCallback(async (record: PriorityClient) => {
     const confirmed = await confirmDialog({
-      title: `确认移除优先客户「${record.clientName}」？`,
-      content: `商家编码 ${record.clientCode} 将从优先客户名单中删除。`,
+      title: t('confirmRemoveTitle', { name: record.clientName }),
+      content: t('confirmRemoveContent', { code: record.clientCode }),
       danger: true,
     })
     if (!confirmed) return
     const res = await callApi<{ id: string }>(`/${record.id}`, { method: 'DELETE' })
     if (!res.ok) {
-      showToast(res.error, 'error')
+      showToast(res.error || t('requestFailed'), 'error')
       return
     }
     setClients((prev) => prev.filter((item) => item.id !== record.id))
-    showToast('已移除优先客户', 'success')
-  }, [])
+    showToast(t('toastRemoved'), 'success')
+  }, [t])
 
   const filtered = useMemo(() => {
     const kw = keyword.trim().toLowerCase()
@@ -122,51 +125,54 @@ export default function PriorityClientsPage() {
     )
   }, [clients, keyword])
 
-  const columns: ColumnsType<PriorityClient> = [
-    {
-      title: '商家编码 / Client Code',
-      dataIndex: 'clientCode',
-      key: 'clientCode',
-      width: 180,
-      render: (value: string) => <span className="font-medium tabular-nums text-slate-900">{value}</span>,
-    },
-    {
-      title: '商家名称 / Client Name',
-      dataIndex: 'clientName',
-      key: 'clientName',
-    },
-    {
-      title: 'VIP',
-      dataIndex: 'isVip',
-      key: 'isVip',
-      width: 80,
-      render: (value: boolean) =>
-        value ? <Tag color="gold">VIP</Tag> : <span className="text-slate-400">—</span>,
-    },
-    {
-      title: '操作',
-      key: 'actions',
-      width: 110,
-      fixed: 'right',
-      render: (_, record) => (
-        <div className="flex items-center gap-1">
-          <Button
-            type="text"
-            icon={<Pencil className="h-4 w-4" aria-hidden />}
-            onClick={() => openForm(record)}
-            aria-label="编辑"
-          />
-          <Button
-            type="text"
-            danger
-            icon={<Trash2 className="h-4 w-4" aria-hidden />}
-            onClick={() => void remove(record)}
-            aria-label="删除"
-          />
-        </div>
-      ),
-    },
-  ]
+  const columns: ColumnsType<PriorityClient> = useMemo(
+    () => [
+      {
+        title: t('colClientCode'),
+        dataIndex: 'clientCode',
+        key: 'clientCode',
+        width: 180,
+        render: (value: string) => <span className="font-medium tabular-nums text-slate-900">{value}</span>,
+      },
+      {
+        title: t('colClientName'),
+        dataIndex: 'clientName',
+        key: 'clientName',
+      },
+      {
+        title: t('colVip'),
+        dataIndex: 'isVip',
+        key: 'isVip',
+        width: 80,
+        render: (value: boolean) =>
+          value ? <Tag color="gold">VIP</Tag> : <span className="text-slate-400">—</span>,
+      },
+      {
+        title: t('colActions'),
+        key: 'actions',
+        width: 110,
+        fixed: 'right',
+        render: (_, record) => (
+          <div className="flex items-center gap-1">
+            <Button
+              type="text"
+              icon={<Pencil className="h-4 w-4" aria-hidden />}
+              onClick={() => openForm(record)}
+              aria-label={t('editAria')}
+            />
+            <Button
+              type="text"
+              danger
+              icon={<Trash2 className="h-4 w-4" aria-hidden />}
+              onClick={() => void remove(record)}
+              aria-label={t('deleteAria')}
+            />
+          </div>
+        ),
+      },
+    ],
+    [openForm, remove, t],
+  )
 
   return (
     <div className="admin-page space-y-5">
@@ -177,26 +183,24 @@ export default function PriorityClientsPage() {
               <Star className="h-5 w-5" aria-hidden />
             </div>
             <div>
-              <h1 className="text-lg font-semibold text-slate-950">优先客户配置</h1>
-              <p className="mt-1 max-w-2xl text-sm text-slate-600">
-                维护需要优先处理的商家名单，勾选 VIP 的为 VIP 客户。
-              </p>
+              <h1 className="text-lg font-semibold text-slate-950">{t('title')}</h1>
+              <p className="mt-1 max-w-2xl text-sm text-slate-600">{t('description')}</p>
             </div>
           </div>
           <Button type="primary" icon={<Plus className="h-4 w-4" aria-hidden />} onClick={() => openForm(null)}>
-            新增优先客户
+            {t('addClient')}
           </Button>
         </div>
         <div className="mt-4 flex flex-wrap items-center gap-3">
           <Input.Search
             allowClear
             className="w-56"
-            placeholder="搜索商家编码 / 名称"
+            placeholder={t('searchPlaceholder')}
             value={keyword}
             onChange={(event) => setKeyword(event.target.value)}
           />
           <span className="inline-flex items-center rounded-md bg-slate-100 px-3 py-1 text-xs text-slate-600">
-            当前优先客户：{filtered.length} / {clients.length}
+            {t('clientCount', { filtered: filtered.length, total: clients.length })}
           </span>
         </div>
       </header>
@@ -207,17 +211,17 @@ export default function PriorityClientsPage() {
           columns={columns}
           dataSource={filtered}
           loading={loading}
-          pagination={{ pageSize: 20, showSizeChanger: false, showTotal: (t) => `共 ${t} 条` }}
+          pagination={{ pageSize: 20, showSizeChanger: false, showTotal: (total) => t('tableTotal', { total }) }}
           scroll={{ x: 620 }}
-          locale={{ emptyText: '暂无优先客户' }}
+          locale={{ emptyText: t('emptyText') }}
         />
       </section>
 
       <Modal
         open={formOpen}
-        title={editing ? '编辑优先客户' : '新增优先客户'}
-        okText="保存"
-        cancelText="取消"
+        title={editing ? t('editClient') : t('addClient')}
+        okText={tc('save')}
+        cancelText={tc('cancel')}
         confirmLoading={submitting}
         onOk={() => void submit()}
         onCancel={() => {
@@ -229,20 +233,20 @@ export default function PriorityClientsPage() {
         <Form form={form} layout="vertical" className="pt-2">
           <Form.Item
             name="clientCode"
-            label="商家编码 / Client Code"
-            rules={[{ required: true, message: '请输入商家编码' }]}
+            label={t('colClientCode')}
+            rules={[{ required: true, message: t('clientCodeRequired') }]}
           >
-            <Input placeholder="如 C2104339201" />
+            <Input placeholder={t('clientCodePlaceholder')} />
           </Form.Item>
           <Form.Item
             name="clientName"
-            label="商家名称 / Client Name"
-            rules={[{ required: true, message: '请输入商家名称' }]}
+            label={t('colClientName')}
+            rules={[{ required: true, message: t('clientNameRequired') }]}
           >
-            <Input placeholder="如 ZtoZ" />
+            <Input placeholder={t('clientNamePlaceholder')} />
           </Form.Item>
           <Form.Item name="isVip" valuePropName="checked" className="mb-0">
-            <Checkbox>VIP 客户</Checkbox>
+            <Checkbox>{t('vipClient')}</Checkbox>
           </Form.Item>
         </Form>
       </Modal>

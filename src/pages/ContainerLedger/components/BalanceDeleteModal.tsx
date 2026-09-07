@@ -1,6 +1,6 @@
 import { useEffect } from 'react'
 import { Alert, Button, Form, Input, Modal } from 'antd'
-import { containerTypeLabel } from '../../../containerManagement/constants'
+import { useTranslation } from 'react-i18next'
 import type { BalanceReasonType, ContainerBalance } from '../../../containerManagement/types'
 import { ReasonTypeSelect } from './ReasonTypeSelect'
 import type { BalanceReasonDraft } from '../useContainerLedgerPage'
@@ -15,6 +15,8 @@ type Props = {
 }
 
 export function BalanceDeleteModal({ deleting, submitting, onCancel, onSubmit }: Props) {
+  const { t } = useTranslation('container')
+  const { t: tc } = useTranslation('common')
   const [form] = Form.useForm<Values>()
 
   useEffect(() => {
@@ -33,7 +35,7 @@ export function BalanceDeleteModal({ deleting, submitting, onCancel, onSubmit }:
 
   return (
     <Modal
-      title="删除台账记录"
+      title={t('ledger.deleteTitle')}
       open={deleting !== null}
       onCancel={onCancel}
       destroyOnHidden
@@ -41,10 +43,10 @@ export function BalanceDeleteModal({ deleting, submitting, onCancel, onSubmit }:
       footer={
         <div className="flex justify-end gap-2">
           <Button onClick={onCancel} disabled={submitting}>
-            取消
+            {tc('cancel')}
           </Button>
           <Button danger type="primary" loading={submitting} onClick={() => void handleOk()}>
-            确认删除
+            {t('ledger.confirmDelete')}
           </Button>
         </div>
       }
@@ -52,36 +54,36 @@ export function BalanceDeleteModal({ deleting, submitting, onCancel, onSubmit }:
       {deleting ? (
         <>
           <p className="mt-4 text-sm text-slate-600">
-            {deleting.accountName} · {containerTypeLabel[deleting.containerType]}（当前{' '}
-            {deleting.quantity}）
+            {deleting.accountName} · {t(`containerType.${deleting.containerType}`)}
+            {t('currentQuantity', { quantity: deleting.quantity })}
           </p>
           {deleting.quantity > 0 ? (
             <Alert
               className="mt-3"
               type="warning"
               showIcon
-              message={`该记录仍有 ${deleting.quantity} 个库存，删除后这部分数量将不再计入台账。`}
+              message={t('ledger.deleteStockWarning', { quantity: deleting.quantity })}
             />
           ) : null}
         </>
       ) : null}
       <Form form={form} layout="vertical" className="mt-4">
         <Form.Item
-          label="原因类型"
+          label={t('ledger.reasonType')}
           name="reasonType"
-          rules={[{ required: true, message: '请选择原因类型' }]}
+          rules={[{ required: true, message: t('ledger.selectReasonType') }]}
         >
           <ReasonTypeSelect />
         </Form.Item>
         <Form.Item
-          label="变更原因"
+          label={t('ledger.changeReason')}
           name="reason"
           rules={[
-            { required: true, message: '请填写变更原因' },
-            { max: 500, message: '变更原因最长 500 字' },
+            { required: true, message: t('ledger.enterChangeReason') },
+            { max: 500, message: t('ledger.changeReasonMax') },
           ]}
         >
-          <Input placeholder="必填" allowClear />
+          <Input placeholder={t('requiredPlaceholder')} allowClear />
         </Form.Item>
       </Form>
     </Modal>

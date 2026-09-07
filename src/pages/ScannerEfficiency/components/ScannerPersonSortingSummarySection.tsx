@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react'
 import ScannerSummaryBarChart, { type ScannerSummaryChartRow } from '../ScannerSummaryBarChart'
+import { useTranslation } from 'react-i18next'
 import { buildScannerPersonSummaryAverageRow } from '../scannerSummaryTableFooter'
 import { ScannerEfficiencyAntdTable } from './ScannerEfficiencyAntdTable'
 import { SectionTitle } from './ui'
@@ -26,19 +27,20 @@ export function ScannerPersonSortingSummarySection({
   columns,
   scannerTotalRows,
   boundedScroll = true,
-  emptyTableText = '暂无扫描员汇总。',
+  emptyTableText,
   sectionEyebrow,
-  sectionTitle = '扫描员一级分拣效率汇总',
+  sectionTitle,
   sectionDescription = '',
   sectionTitleRight,
 }: ScannerPersonSortingSummarySectionProps) {
+  const { t } = useTranslation('scannerEfficiency')
   const bodyRows = scannerTotalRows as unknown as DataTableRow[]
   const averageRow = buildScannerPersonSummaryAverageRow(scannerTotalRows)
   return (
     <section className="admin-panel overflow-hidden">
       <SectionTitle
         kicker={sectionEyebrow}
-        title={sectionTitle}
+        title={sectionTitle ?? t('section.scannerSummaryTitle')}
         description={sectionDescription}
         right={sectionTitleRight}
       />
@@ -49,7 +51,7 @@ export function ScannerPersonSortingSummarySection({
             columns={columns}
             rows={bodyRows}
             averageRow={averageRow}
-            emptyText={emptyTableText}
+            emptyText={emptyTableText ?? t('empty.noScannerSummary')}
           />
         </div>
         <div className="admin-panel min-w-0 overflow-hidden p-4 sm:p-5">

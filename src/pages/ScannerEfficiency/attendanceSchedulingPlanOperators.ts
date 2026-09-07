@@ -1,3 +1,4 @@
+import { i18n } from '../../i18n/index'
 import type { AttendanceEfficiencyResult, ParsedAttendanceRow, ScannerEfficiencyResult } from './aggregates'
 import { isPositionLevel } from './attendancePositionLevel'
 import { resolveLevel1SorterCountForDate } from './attendanceSchedulingPlanMetrics'
@@ -13,19 +14,24 @@ export type OperatorAttendancePlanRow = {
   note: string
 }
 
-export const OPERATOR_REMARK_FORKLIFT = '负责装货, 卸货，整理货物，记录货物，整理托盘等'
-export const OPERATOR_REMARK_SORTING =
-  '粗分 和 细分，整理仓库物品，笼车整理，割纸皮， 整理纸皮和托盘，清理垃圾'
-export const OPERATOR_REMARK_FRONT_DESK = '归班，盘点，分配包裹，上下架包裹，退返商家'
-export const OPERATOR_NOTE_SORTING = '叉车工作完成后会加入到粗分+细分+仓内整理里一起工作'
-export const OPERATOR_NOTE_FRONT_DESK = '前台完成上午工作后会加入细分环节'
-export const OPERATOR_NOTE_CLEANING = '清洁仓库是分拣完成后从中挑选2人做清洁工作'
+function st(key: string): string {
+  return String(i18n.t(key, { ns: 'scannerEfficiency' }))
+}
 
-const REMARK_FORKLIFT = OPERATOR_REMARK_FORKLIFT
-const REMARK_SORTING = OPERATOR_REMARK_SORTING
-const REMARK_FRONT_DESK = OPERATOR_REMARK_FRONT_DESK
-const NOTE_SORTING = OPERATOR_NOTE_SORTING
-const NOTE_CLEANING = OPERATOR_NOTE_CLEANING
+function operatorLabels() {
+  return {
+    remarkForklift: st('scheduling.operator.remarkForklift'),
+    remarkSorting: st('scheduling.operator.remarkSorting'),
+    remarkFrontDesk: st('scheduling.operator.remarkFrontDesk'),
+    noteSorting: st('scheduling.operator.noteSorting'),
+    noteFrontDesk: st('scheduling.operator.noteFrontDesk'),
+    noteCleaning: st('scheduling.operator.noteCleaning'),
+    positionCoarseFine: st('scheduling.operator.positionCoarseFine'),
+    positionCleaning: st('scheduling.operator.positionCleaning'),
+    positionForklift: st('scheduling.operator.defaultPositionForklift'),
+    positionFrontDesk: st('scheduling.operator.defaultPositionFrontDesk'),
+  }
+}
 
 function formatClockTime(value: Date | null | undefined): string {
   if (!value) return ''
@@ -178,58 +184,75 @@ export function resolveOperatorAttendancePlanRows({
   const medianLevel28 = medianAttendanceRow(sortingRows)
   const level28TotalHours = sortingRows.reduce((sum, row) => sum + row.hours, 0)
 
+  const labels = operatorLabels()
+
   return [
-    rowFromAttendance('叉车', 1, forklift, forklift?.hours ?? null, REMARK_FORKLIFT, NOTE_SORTING),
     rowFromAttendance(
-      '粗分 + 细分+仓内整理',
+      labels.positionForklift,
+      1,
+      forklift,
+      forklift?.hours ?? null,
+      labels.remarkForklift,
+      labels.noteSorting,
+    ),
+    rowFromAttendance(
+      labels.positionCoarseFine,
       level1SorterCount,
       medianLevel28,
       level28TotalHours > 0 ? level28TotalHours : null,
-      REMARK_SORTING,
+      labels.remarkSorting,
     ),
-    rowFromAttendance('前台', 1, frontDesk, frontDesk?.hours ?? null, REMARK_FRONT_DESK, OPERATOR_NOTE_FRONT_DESK),
-    rowFromAttendance('清洁仓库', 2, null, 0.5, '清洁仓库', NOTE_CLEANING),
+    rowFromAttendance(
+      labels.positionFrontDesk,
+      1,
+      frontDesk,
+      frontDesk?.hours ?? null,
+      labels.remarkFrontDesk,
+      labels.noteFrontDesk,
+    ),
+    rowFromAttendance(labels.positionCleaning, 2, null, 0.5, labels.positionCleaning, labels.noteCleaning),
   ]
 }
 
 /** 飞书排班推送手动模板：岗位结构 + 固定备注，数值由人工填写 */
 export function buildDefaultOperatorAttendancePlanRows(): OperatorAttendancePlanRow[] {
+  const labels = operatorLabels()
   return [
     {
-      position: '叉车',
+      position: labels.positionForklift,
       count: 0,
       plannedStart: '',
       plannedEnd: '',
       expectedHours: '',
-      remark: OPERATOR_REMARK_FORKLIFT,
-      note: OPERATOR_NOTE_SORTING,
+      remark: labels.remarkForklift,
+      note: labels.noteSorting,
     },
     {
-      position: '粗分 + 细分+仓内整理',
+      position: labels.positionCoarseFine,
       count: 0,
       plannedStart: '',
       plannedEnd: '',
       expectedHours: '',
-      remark: OPERATOR_REMARK_SORTING,
+      remark: labels.remarkSorting,
       note: '',
     },
     {
-      position: '前台',
+      position: labels.positionFrontDesk,
       count: 0,
       plannedStart: '',
       plannedEnd: '',
       expectedHours: '',
-      remark: OPERATOR_REMARK_FRONT_DESK,
-      note: OPERATOR_NOTE_FRONT_DESK,
+      remark: labels.remarkFrontDesk,
+      note: labels.noteFrontDesk,
     },
     {
-      position: '清洁仓库',
+      position: labels.positionCleaning,
       count: 0,
       plannedStart: '',
       plannedEnd: '',
       expectedHours: '',
-      remark: '清洁仓库',
-      note: OPERATOR_NOTE_CLEANING,
+      remark: labels.positionCleaning,
+      note: labels.noteCleaning,
     },
   ]
 }

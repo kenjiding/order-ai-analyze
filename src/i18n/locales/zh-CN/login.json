@@ -1,0 +1,18 @@
+{
+  "title": "账号验证",
+  "subtitle": "使用用户名与密码登录",
+  "username": "用户名",
+  "password": "密码",
+  "usernamePlaceholder": "请输入用户名",
+  "passwordPlaceholder": "请输入密码",
+  "togglePassword": "切换密码可见性",
+  "remember": "记住登录 30 天",
+  "forgotPassword": "忘记密码, 请联系管理员",
+  "submit": "进入控制台",
+  "submitting": "登录中…",
+  "footer": "在线会话 · 权限受控",
+  "usernameRequired": "请输入用户名",
+  "passwordRequired": "请输入密码",
+  "loginFailed": "登录失败",
+  "noPagesAssigned": "账号未分配任何可访问页面，请联系管理员"
+}

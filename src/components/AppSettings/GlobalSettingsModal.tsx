@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { Button, Input, Modal } from 'antd'
 import { KeyRound, Fingerprint, Info } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
 import { useAppSettings } from '../../context/AppSettingsContext'
 import {
   normalizeZktAttendanceSettings,
@@ -71,6 +72,7 @@ function Field({
 }
 
 function StatusBadge({ configured }: { configured: boolean }) {
+  const { t } = useTranslation('common')
   return (
     <span
       className={[
@@ -78,12 +80,14 @@ function StatusBadge({ configured }: { configured: boolean }) {
         configured ? 'bg-[#e1f5f1] text-[#1f6f68]' : 'bg-slate-100 text-slate-500',
       ].join(' ')}
     >
-      {configured ? '已配置' : '待配置'}
+      {configured ? t('configured') : t('notConfigured')}
     </span>
   )
 }
 
 export function GlobalSettingsModal({ isOpen, onClose }: Props) {
+  const { t } = useTranslation('settings')
+  const { t: tc } = useTranslation('common')
   const { imileToken, zktAttendance, tokenAlertContacts, updateSettings } = useAppSettings()
   const [activeSection, setActiveSection] = useState<SettingsSectionId>('imile')
   const [draft, setDraft] = useState<ImileSettingsDraft>(() =>
@@ -107,10 +111,10 @@ export function GlobalSettingsModal({ isOpen, onClose }: Props) {
     try {
       const result = await updateSettings(draft)
       if (!result.ok) {
-        showToast(result.error || '设置保存失败', 'error')
+        showToast(result.error || t('saveFailed'), 'error')
         return
       }
-      showToast('设置已保存', 'success')
+      showToast(t('saved'), 'success')
       onClose()
     } finally {
       setSaving(false)
@@ -120,17 +124,17 @@ export function GlobalSettingsModal({ isOpen, onClose }: Props) {
   const sections: { id: SettingsSectionId; label: string; icon: typeof KeyRound; configured?: boolean }[] = [
     {
       id: 'imile',
-      label: 'iMile 接口',
+      label: t('sections.imile'),
       icon: KeyRound,
       configured: Boolean(draft.imileToken.trim()),
     },
     {
       id: 'zkt',
-      label: 'ZKT 考勤',
+      label: t('sections.zkt'),
       icon: Fingerprint,
       configured: Boolean(draft.zktAttendance.username.trim() && draft.zktAttendance.password),
     },
-    { id: 'about', label: '关于', icon: Info },
+    { id: 'about', label: t('sections.about'), icon: Info },
   ]
 
   return (
@@ -141,22 +145,20 @@ export function GlobalSettingsModal({ isOpen, onClose }: Props) {
       maskClosable={!saving}
       title={
         <div>
-          <div className="text-base font-semibold text-slate-950">系统设置</div>
-          <div className="mt-0.5 text-xs font-normal text-slate-500">接口凭据与考勤对接，按登录账号保存</div>
+          <div className="text-base font-semibold text-slate-950">{t('title')}</div>
+          <div className="mt-0.5 text-xs font-normal text-slate-500">{t('subtitle')}</div>
         </div>
       }
       styles={{ header: { marginBottom: 16 }, body: { padding: 0 }, footer: { marginTop: 16 } }}
       footer={
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <p className="text-xs leading-5 text-slate-500">
-            保存到服务器并绑定当前账号，换电脑登录同一账号自动生效。
-          </p>
+          <p className="text-xs leading-5 text-slate-500">{t('footerHint')}</p>
           <div className="flex justify-end gap-2">
             <Button onClick={onClose} disabled={saving}>
-              取消
+              {tc('cancel')}
             </Button>
             <Button type="primary" loading={saving} onClick={() => void handleSave()}>
-              保存
+              {tc('save')}
             </Button>
           </div>
         </div>
@@ -165,7 +167,7 @@ export function GlobalSettingsModal({ isOpen, onClose }: Props) {
       <div className="flex flex-col overflow-hidden rounded-lg border border-[#d8e6ee] sm:h-[min(64vh,460px)] sm:flex-row">
         <nav
           className="flex shrink-0 gap-1 overflow-x-auto border-b border-[#d8e6ee] bg-[#f0f7fb] p-2 sm:w-52 sm:flex-col sm:overflow-x-visible sm:border-b-0 sm:border-r"
-          aria-label="设置分类"
+          aria-label={t('navLabel')}
         >
           {sections.map((s) => {
             const Icon = s.icon
@@ -194,24 +196,18 @@ export function GlobalSettingsModal({ isOpen, onClose }: Props) {
         <div className="min-h-0 min-w-0 flex-1 overflow-y-auto bg-white px-5 py-5 sm:px-6">
           {activeSection === 'imile' && (
             <div className="space-y-5">
-              <SectionHead
-                title="iMile Bearer Token"
-                description="控制台所有 iMile 接口共用这一个 Token，失效后在此更新即可全局生效。"
-              />
-              <Field label="Token" hint="粘贴 Authorization 请求头中 Bearer 之后的那一段。">
+              <SectionHead title={t('imile.title')} description={t('imile.description')} />
+              <Field label={t('imile.tokenLabel')} hint={t('imile.tokenHint')}>
                 <Input.Password
                   autoComplete="off"
                   value={draft.imileToken}
                   onChange={(e) => setDraft((prev) => ({ ...prev, imileToken: e.target.value }))}
-                  placeholder="粘贴 Authorization 中的 token 段"
+                  placeholder={t('imile.tokenPlaceholder')}
                 />
               </Field>
 
               <div className="border-t border-[#d8e6ee] pt-5">
-                <SectionHead
-                  title="Token 失效通知"
-                  description="选群只用于拉取成员名单，失效时按人私聊提醒，不在群里发。"
-                />
+                <SectionHead title={t('imile.alertTitle')} description={t('imile.alertDescription')} />
                 <div className="mt-4">
                   <TokenAlertContactPicker
                     active={isOpen && activeSection === 'imile'}
@@ -225,12 +221,9 @@ export function GlobalSettingsModal({ isOpen, onClose }: Props) {
 
           {activeSection === 'zkt' && (
             <div className="space-y-5">
-              <SectionHead
-                title="ZKT 考勤 API"
-                description="物流运营工作台以 API 模式拉取考勤时使用，会话过期后由服务端自动重新登录。"
-              />
+              <SectionHead title={t('zkt.title')} description={t('zkt.description')} />
               <div className="grid gap-4 sm:grid-cols-2">
-                <Field label="账号">
+                <Field label={t('zkt.username')}>
                   <Input
                     autoComplete="username"
                     value={draft.zktAttendance.username}
@@ -240,10 +233,10 @@ export function GlobalSettingsModal({ isOpen, onClose }: Props) {
                         zktAttendance: { ...prev.zktAttendance, username: e.target.value },
                       }))
                     }
-                    placeholder="如 AUS_ADL"
+                    placeholder={t('zkt.usernamePlaceholder')}
                   />
                 </Field>
-                <Field label="密码">
+                <Field label={t('zkt.password')}>
                   <Input.Password
                     autoComplete="current-password"
                     value={draft.zktAttendance.password}
@@ -253,14 +246,10 @@ export function GlobalSettingsModal({ isOpen, onClose }: Props) {
                         zktAttendance: { ...prev.zktAttendance, password: e.target.value },
                       }))
                     }
-                    placeholder="考勤系统密码"
+                    placeholder={t('zkt.passwordPlaceholder')}
                   />
                 </Field>
-                <Field
-                  className="sm:col-span-2"
-                  label="部门（departments）"
-                  hint="多选后以逗号分隔的部门 ID 传给考勤接口。"
-                >
+                <Field className="sm:col-span-2" label={t('zkt.departments')} hint={t('zkt.departmentsHint')}>
                   <ZktDepartmentCascader
                     username={draft.zktAttendance.username}
                     password={draft.zktAttendance.password}
@@ -279,13 +268,10 @@ export function GlobalSettingsModal({ isOpen, onClose }: Props) {
 
           {activeSection === 'about' && (
             <div className="space-y-4">
-              <SectionHead title="应用说明" description="数据落地位置与凭据保管方式。" />
-              <p className="text-sm leading-6 text-slate-600">
-                本控制台以本地计算优先：工资与扫码等数据默认保存在浏览器本机；订单异常样本使用 IndexedDB
-                持久化。网络请求仅在经过后端代理时使用，敏感凭据请妥善保管。
-              </p>
+              <SectionHead title={t('about.title')} description={t('about.description')} />
+              <p className="text-sm leading-6 text-slate-600">{t('about.body')}</p>
               <p className="rounded-lg border border-[#d8e6ee] bg-[#f0f7fb] px-4 py-3 text-sm leading-6 text-slate-600">
-                顶部栏显示的「离线计算 · 本机存储」表示核心数据不落远端业务库，仍以您在当前浏览器中的存储为准。
+                {t('about.offlineNote')}
               </p>
             </div>
           )}

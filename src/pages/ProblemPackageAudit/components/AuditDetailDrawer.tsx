@@ -13,6 +13,8 @@ import {
   Sparkles,
   XCircle,
 } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
+import type { TFunction } from 'i18next'
 import type { DaCodeAuditEntry, DaCodeItem, ImageAuditResult, PackageAuditEntry } from '../types'
 
 type Props = {
@@ -46,10 +48,12 @@ function ImageCard({
   url,
   result,
   index,
+  t,
 }: {
   url: string
   result: ImageAuditResult | undefined
   index: number
+  t: TFunction<'problemPackage'>
 }) {
   const qualified = result?.qualified
 
@@ -58,9 +62,9 @@ function ImageCard({
       <div className="relative aspect-[4/3] overflow-hidden bg-slate-100">
         <Image
           src={url}
-          alt={`图片 ${index + 1}`}
+          alt={t('imageAlt', { index: index + 1 })}
           style={{ height: '100%', width: '100%', objectFit: 'cover' }}
-          preview={{ mask: '预览' }}
+          preview={{ mask: t('preview') }}
           fallback="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath fill='%23cbd5e1' d='M5 3h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2zm7 7a2 2 0 1 0 0-4 2 2 0 0 0 0 4zm-5 6h10l-3-4-2 2-2-2-3 4z'/%3E%3C%2Fsvg%3E"
         />
         {qualified !== undefined && (
@@ -70,7 +74,7 @@ function ImageCard({
             }`}
           >
             {qualified ? <CheckCircle2 size={9} strokeWidth={2.5} /> : <XCircle size={9} strokeWidth={2.5} />}
-            {qualified ? '合格' : '不合格'}
+            {qualified ? t('qualifiedBadge') : t('unqualifiedBadge')}
           </div>
         )}
         <div className="absolute bottom-1.5 left-1.5 flex h-[18px] w-[18px] items-center justify-center rounded-full bg-black/50 text-[10px] font-bold text-white">
@@ -95,7 +99,7 @@ function ImageCard({
         <div className="bg-white px-2 py-1.5">
           <div className="mb-1 flex items-center gap-1">
             <ScanLine size={10} className="text-slate-300" />
-            <span className="text-[10px] text-slate-300">AI 观察</span>
+            <span className="text-[10px] text-slate-300">{t('aiObservation')}</span>
           </div>
           <p className="text-[11px] leading-[1.5] text-slate-500">{result.observation}</p>
         </div>
@@ -108,7 +112,7 @@ function ImageCard({
       )}
 
       {!result && (
-        <div className="px-2 py-1.5 text-[11px] text-slate-300">待审核</div>
+        <div className="px-2 py-1.5 text-[11px] text-slate-300">{t('pendingAudit')}</div>
       )}
     </div>
   )
@@ -131,9 +135,11 @@ function ReasonTag({ reasonDesc }: { reasonDesc: string }) {
 function AnalyzeButton({
   pkg,
   onAnalyze,
+  t,
 }: {
   pkg: PackageAuditEntry
   onAnalyze: () => void
+  t: TFunction<'problemPackage'>
 }) {
   const isInFlight = pkg.status === 'loading_detail' || pkg.status === 'analyzing'
 
@@ -141,26 +147,25 @@ function AnalyzeButton({
     return (
       <span className="flex items-center gap-1 text-[11px] text-teal-600">
         <Loader2 size={11} className="animate-spin" />
-        {pkg.status === 'loading_detail' ? '载入中…' : 'AI 分析中…'}
+        {pkg.status === 'loading_detail' ? t('statusLoading') : t('aiRecognizing')}
       </span>
     )
   }
 
   if (pkg.status === 'completed') {
     return (
-      <Tooltip title="重新用 AI 分析该问题件">
+      <Tooltip title={t('reanalyzeTooltip')}>
         <button
           className="flex items-center gap-1 rounded px-2 py-0.5 text-[11px] text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-600"
           onClick={(e) => { e.stopPropagation(); onAnalyze() }}
         >
           <RefreshCw size={11} />
-          重新分析
+          {t('reanalyze')}
         </button>
       </Tooltip>
     )
   }
 
-  // pending or error
   return (
     <button
       className="flex items-center gap-1 rounded-md px-2 py-0.5 text-[11px] font-medium text-teal-700 transition-colors hover:bg-teal-50"
@@ -168,12 +173,12 @@ function AnalyzeButton({
       onClick={(e) => { e.stopPropagation(); onAnalyze() }}
     >
       <Sparkles size={11} />
-      {pkg.status === 'error' ? '重试' : 'AI 分析'}
+      {pkg.status === 'error' ? t('retry') : t('aiAnalyze')}
     </button>
   )
 }
 
-function PackagePanel({ pkg }: { pkg: PackageAuditEntry }) {
+function PackagePanel({ pkg, t }: { pkg: PackageAuditEntry; t: TFunction<'problemPackage'> }) {
   const detail = pkg.detail
   const result = pkg.auditResult
   const isLoading = pkg.status === 'loading_detail' || pkg.status === 'analyzing'
@@ -192,13 +197,13 @@ function PackagePanel({ pkg }: { pkg: PackageAuditEntry }) {
         >
           {detail.problemReasonDesc && (
             <div className="mb-1.5 flex items-start gap-2">
-              <span className="mt-0.5 w-[52px] shrink-0 text-[11px] text-slate-400">问题原因</span>
+              <span className="mt-0.5 w-[52px] shrink-0 text-[11px] text-slate-400">{t('problemReason')}</span>
               <span className="text-[13px] font-medium text-slate-700">{detail.problemReasonDesc}</span>
             </div>
           )}
           {detail.problemRemark && (
             <div className="flex items-start gap-2">
-              <span className="mt-0.5 w-[52px] shrink-0 text-[11px] text-slate-400">派件描述</span>
+              <span className="mt-0.5 w-[52px] shrink-0 text-[11px] text-slate-400">{t('deliveryRemark')}</span>
               <span className="text-[12px] italic leading-relaxed text-slate-500">{detail.problemRemark}</span>
             </div>
           )}
@@ -209,20 +214,20 @@ function PackagePanel({ pkg }: { pkg: PackageAuditEntry }) {
       {isLoading && (
         <div className="flex items-center gap-2 text-[13px] text-slate-400">
           <Loader2 size={13} className="animate-spin" />
-          {pkg.status === 'loading_detail' ? '载入图片中…' : 'AI 识别中…'}
+          {pkg.status === 'loading_detail' ? t('loadingImages') : t('aiRecognizing')}
         </div>
       )}
 
       {/* Error */}
       {pkg.status === 'error' && (
-        <p className="text-[13px] text-red-500">错误：{pkg.error}</p>
+        <p className="text-[13px] text-red-500">{t('errorPrefix')}{pkg.error}</p>
       )}
 
       {/* No images */}
       {pkg.status === 'completed' && (!detail?.images || detail.images.length === 0) && (
         <div className="flex items-center gap-2 text-[13px] text-slate-400">
           <ImageOff size={14} />
-          该问题件未上传图片
+          {t('noImages')}
         </div>
       )}
 
@@ -240,11 +245,14 @@ function PackagePanel({ pkg }: { pkg: PackageAuditEntry }) {
               ? <CheckCircle2 size={15} className="shrink-0 text-green-600" />
               : <XCircle size={15} className="shrink-0 text-red-600" />}
             <span className={`text-[13px] font-medium ${result.overallQualified ? 'text-green-700' : 'text-red-700'}`}>
-              整体{result.overallQualified ? '合格' : '不合格'}
+              {t(result.overallQualified ? 'overallQualified' : 'overallUnqualified')}
             </span>
             {result.imageResults.length > 0 && (
               <span className="ml-auto text-[11px] text-slate-400">
-                {result.imageResults.filter((r) => r.qualified).length} / {result.imageResults.length} 张合格
+                {t('imagesQualified', {
+                  qualified: result.imageResults.filter((r) => r.qualified).length,
+                  total: result.imageResults.length,
+                })}
               </span>
             )}
           </div>
@@ -270,6 +278,7 @@ function PackagePanel({ pkg }: { pkg: PackageAuditEntry }) {
                 key={url}
                 url={url}
                 index={i}
+                t={t}
                 result={result?.imageResults.find((r) => r.index === i)}
               />
             ))}
@@ -290,13 +299,14 @@ export default function AuditDetailDrawer({
   onLoadPackages,
   onAnalyzeSingle,
 }: Props) {
+  const { t } = useTranslation('problemPackage')
   if (!entry) return null
 
   const packages = entry.packages
   const completedCount = packages.filter((p) => p.status === 'completed' || p.status === 'error').length
 
   const collapseItems = packages.map((pkg, i) => {
-    const waybillNo = pkg.packageInfo.waybillNo || pkg.packageInfo.dtlCode || `问题件 ${i + 1}`
+    const waybillNo = pkg.packageInfo.waybillNo || pkg.packageInfo.dtlCode || t('packageFallback', { index: i + 1 })
     const taskId = pkg.packageInfo.taskId
     const reasonDesc =
       pkg.detail?.problemReasonDesc ?? (pkg.packageInfo.problemReason as string | undefined) ?? ''
@@ -311,12 +321,13 @@ export default function AuditDetailDrawer({
           <div className="ml-auto flex items-center gap-2">
             <AnalyzeButton
               pkg={pkg}
+              t={t}
               onAnalyze={() => onAnalyzeSingle(daCode!, i)}
             />
           </div>
         </div>
       ),
-      children: <PackagePanel pkg={pkg} />,
+      children: <PackagePanel pkg={pkg} t={t} />,
     }
   })
 
@@ -324,11 +335,11 @@ export default function AuditDetailDrawer({
     <Drawer
       title={
         <div className="flex items-center gap-2">
-          <span className="text-[15px] font-medium text-slate-800">DA 代码详情</span>
+          <span className="text-[15px] font-medium text-slate-800">{t('drawerTitle')}</span>
           <span className="font-mono text-[13px] text-slate-400">{daCode}</span>
           {packages.length > 0 && (
             <span className="ml-auto text-[12px] font-normal text-slate-400">
-              {completedCount} / {packages.length} 已完成
+              {t('completedProgress', { done: completedCount, total: packages.length })}
             </span>
           )}
         </div>
@@ -344,15 +355,15 @@ export default function AuditDetailDrawer({
       {/* Loading packages */}
       {entry.loadStatus === 'loading' && (
         <div className="flex h-40 items-center justify-center">
-          <Spin tip="载入问题件列表…" />
+          <Spin tip={t('loadingPackages')} />
         </div>
       )}
 
       {/* Load error */}
       {entry.loadStatus === 'error' && (
         <div className="space-y-3 py-8 text-center">
-          <p className="text-[13px] text-red-500">载入失败：{entry.loadError}</p>
-          <Button onClick={() => onLoadPackages(entry.daCodeItem)}>重新载入</Button>
+          <p className="text-[13px] text-red-500">{t('loadFailed', { error: entry.loadError })}</p>
+          <Button onClick={() => onLoadPackages(entry.daCodeItem)}>{t('reload')}</Button>
         </div>
       )}
 
@@ -360,7 +371,7 @@ export default function AuditDetailDrawer({
       {entry.loadStatus === 'loaded' && packages.length === 0 && (
         <div className="flex flex-col items-center gap-2 py-16 text-slate-400">
           <Clock size={28} />
-          <p className="text-[13px]">该 DA 代码暂无问题件记录</p>
+          <p className="text-[13px]">{t('noPackages')}</p>
         </div>
       )}
 
@@ -389,13 +400,13 @@ export default function AuditDetailDrawer({
       {entry.loadStatus === 'idle' && (
         <div className="flex flex-col items-center gap-3 py-16 text-slate-400">
           <Clock size={28} />
-          <p className="text-[13px]">问题件列表尚未载入</p>
+          <p className="text-[13px]">{t('notLoaded')}</p>
           <Button
             icon={<Sparkles size={13} />}
             style={{ color: '#2f8f87', borderColor: '#2f8f87' }}
             onClick={() => onLoadPackages(entry.daCodeItem)}
           >
-            载入问题件列表
+            {t('loadPackageList')}
           </Button>
         </div>
       )}

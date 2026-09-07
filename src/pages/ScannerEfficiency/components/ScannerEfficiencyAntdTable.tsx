@@ -1,3 +1,4 @@
+import { useTranslation } from 'react-i18next'
 import { Table } from 'antd'
 import type { ColumnsType } from 'antd/es/table'
 import type { DataTableColumn, DataTableRow } from './ui'
@@ -12,7 +13,7 @@ type Props = {
   boundedScroll?: boolean
 }
 
-function toAntdColumns(columns: DataTableColumn[]): ColumnsType<DataTableRow> {
+function toAntdColumns(columns: DataTableColumn[], sortTooltip: string): ColumnsType<DataTableRow> {
   return columns.map((col) => ({
     key: col.key,
     dataIndex: col.key,
@@ -21,7 +22,7 @@ function toAntdColumns(columns: DataTableColumn[]): ColumnsType<DataTableRow> {
     sorter: col.sorter,
     sortDirections: col.sortDirections,
     defaultSortOrder: col.defaultSortOrder,
-    showSorterTooltip: col.sorter ? { title: '点击排序' } : false,
+    showSorterTooltip: col.sorter ? { title: sortTooltip } : false,
     render: col.render
       ? (_value, record) => col.render!(record)
       : (value) => (value == null || value === '' ? '—' : String(value)),
@@ -40,6 +41,8 @@ export function ScannerEfficiencyAntdTable({
   emptyText,
   boundedScroll = true,
 }: Props) {
+  const { t } = useTranslation('scannerEfficiency')
+
   if (!rows.length) {
     return (
       <div className="rounded-lg border border-dashed border-slate-300 bg-white px-6 py-12 text-center text-sm text-slate-500">
@@ -48,7 +51,7 @@ export function ScannerEfficiencyAntdTable({
     )
   }
 
-  const antdColumns = toAntdColumns(columns)
+  const antdColumns = toAntdColumns(columns, t('common.clickToSort'))
 
   return (
     <div

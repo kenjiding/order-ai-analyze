@@ -4,6 +4,7 @@
  */
 import { useEffect, useState } from 'react'
 import { Select } from 'antd'
+import { useTranslation } from 'react-i18next'
 import {
   fetchFeishuAppBotChats,
   fetchFeishuChatMembers,
@@ -22,6 +23,8 @@ type Props = {
 }
 
 export function AccountPushNotifyFields({ active, disabled, value, onChange }: Props) {
+  const { t } = useTranslation('container')
+  const { t: tc } = useTranslation('common')
   const [botChats, setBotChats] = useState<FeishuBotChatOption[]>([])
   const [botChatsLoading, setBotChatsLoading] = useState(false)
   const [chatMembers, setChatMembers] = useState<FeishuChatMemberOption[]>([])
@@ -33,13 +36,13 @@ export function AccountPushNotifyFields({ active, disabled, value, onChange }: P
     void fetchFeishuAppBotChats()
       .then((res) => {
         if (!res.ok) {
-          showToast(`获取机器人所在群列表失败：${res.error}`, 'error')
+          showToast(t('accounts.pushFetchGroupsFailed', { error: res.error }), 'error')
           return
         }
         setBotChats(res.chats)
       })
       .finally(() => setBotChatsLoading(false))
-  }, [active])
+  }, [active, t])
 
   useEffect(() => {
     const chatId = value.chatId.trim()
@@ -51,13 +54,13 @@ export function AccountPushNotifyFields({ active, disabled, value, onChange }: P
     void fetchFeishuChatMembers(chatId)
       .then((res) => {
         if (!res.ok) {
-          showToast(`获取群成员列表失败：${res.error}`, 'error')
+          showToast(t('accounts.pushFetchMembersFailed', { error: res.error }), 'error')
           return
         }
         setChatMembers(res.members)
       })
       .finally(() => setChatMembersLoading(false))
-  }, [active, value.chatId])
+  }, [active, value.chatId, t])
 
   const hasChatId = Boolean(value.chatId.trim())
 
@@ -65,13 +68,13 @@ export function AccountPushNotifyFields({ active, disabled, value, onChange }: P
     <div className="space-y-3">
       <div className="grid gap-x-4 gap-y-3 sm:grid-cols-2">
         <label className="flex flex-col gap-1.5">
-          <span className="text-sm text-slate-700">飞书群</span>
+          <span className="text-sm text-slate-700">{t('accounts.pushFeishuGroup')}</span>
           <Select
             showSearch
             allowClear
             disabled={disabled}
             loading={botChatsLoading}
-            placeholder="选择机器人所在的群"
+            placeholder={t('accounts.pushSelectGroup')}
             value={value.chatId || undefined}
             onChange={(chatId?: string) => onChange({ ...value, chatId: chatId ?? '', mentions: [] })}
             filterOption={(input, opt) =>
@@ -82,15 +85,15 @@ export function AccountPushNotifyFields({ active, disabled, value, onChange }: P
         </label>
 
         <label className="flex flex-col gap-1.5">
-          <span className="text-sm text-slate-700">接收人</span>
+          <span className="text-sm text-slate-700">{t('accounts.pushRecipients')}</span>
           <Select
             mode="multiple"
             showSearch
             allowClear
             disabled={disabled || !hasChatId}
             loading={chatMembersLoading}
-            placeholder={hasChatId ? '从群成员中选择' : '请先选择飞书群'}
-            notFoundContent={chatMembersLoading ? '加载中…' : '群内暂无成员'}
+            placeholder={hasChatId ? t('accounts.pushSelectMembers') : t('accounts.pushSelectGroupFirst')}
+            notFoundContent={chatMembersLoading ? tc('loading') : t('accounts.pushNoMembers')}
             value={value.mentions.map((item) => item.openId)}
             onChange={(openIds: string[]) =>
               onChange({
@@ -114,10 +117,10 @@ export function AccountPushNotifyFields({ active, disabled, value, onChange }: P
 
       <p className="m-0 text-xs text-slate-500">
         {!value.enabled
-          ? '通知已关闭，该站点的流转变更不会推送。'
+          ? t('accounts.pushHintDisabled')
           : value.mentions.length > 0
-            ? `新建流转、差异 / 拒收申报、确认收货、认可实收时私聊 ${value.mentions.length} 人。编辑与删除不推送。`
-            : '尚未选择接收人，开启后也不会推送。'}
+            ? t('accounts.pushHintActive', { count: value.mentions.length })
+            : t('accounts.pushHintNoRecipients')}
       </p>
     </div>
   )

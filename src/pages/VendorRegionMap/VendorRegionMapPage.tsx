@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { MapPinned, TrendingUp } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
 import { PageSectionTabs } from '../../components/PageSectionTabs'
 import { useVendorRegionMapPage } from './useVendorRegionMapPage'
 import { useVendorVolumeTrend } from './useVendorVolumeTrend'
@@ -10,8 +11,8 @@ import './vendorRegionMap.css'
 type TabId = 'map' | 'trend'
 
 export default function VendorRegionMapPage() {
+  const { t } = useTranslation('vendorRegionMap')
   const [activeTab, setActiveTab] = useState<TabId>('map')
-  // 两个 Tab 的状态都提到这里：切 Tab 时子组件卸载，已查到的数据不能跟着丢
   const page = useVendorRegionMapPage()
   const trend = useVendorVolumeTrend()
 
@@ -19,14 +20,14 @@ export default function VendorRegionMapPage() {
     <div className="admin-page vrm-page space-y-5">
       <section className="admin-panel overflow-hidden">
         <div className="px-5 pt-4">
-          <h1 className="vrm-head__title">供应商区域地图</h1>
+          <h1 className="vrm-head__title">{t('title')}</h1>
         </div>
         <PageSectionTabs
           activeId={activeTab}
           onChange={(id) => setActiveTab(id as TabId)}
           items={[
-            { id: 'map', label: '区域地图', icon: MapPinned },
-            { id: 'trend', label: '供应商货量趋势', icon: TrendingUp },
+            { id: 'map', label: t('tabMap'), icon: MapPinned },
+            { id: 'trend', label: t('tabTrend'), icon: TrendingUp },
           ]}
         />
       </section>

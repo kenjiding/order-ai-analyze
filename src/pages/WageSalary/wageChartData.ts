@@ -1,6 +1,7 @@
 /** 工资可视化聚合：优先按「昵称」合并为一名员工；无昵称时按人员编号。 */
 
 import { pickEmployeeChartLabel } from './employeeDisplayName'
+import { i18n } from '../../i18n'
 
 export type WageRecordLike = {
   employeeId: string | number
@@ -48,7 +49,7 @@ function displayLabelForRecord(r: WageRecordLike): string {
   if (label) return label
   const id = String(r.employeeId ?? '').trim()
   if (id) return id
-  return '未知'
+  return i18n.t('charts.unknownEmployee', { ns: 'wageSalary' })
 }
 
 export type EmployeeWageRow = {

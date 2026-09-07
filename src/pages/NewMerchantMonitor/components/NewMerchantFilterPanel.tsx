@@ -1,6 +1,7 @@
 import { Button, DatePicker, Input } from 'antd'
 import { Search } from 'lucide-react'
 import type { Dayjs } from 'dayjs'
+import { useTranslation } from 'react-i18next'
 
 type Props = {
   clientCodesText: string
@@ -21,27 +22,28 @@ export default function NewMerchantFilterPanel({
   canSubmit,
   onSubmit,
 }: Props) {
+  const { t } = useTranslation('newMerchant')
+  const { t: tc } = useTranslation('common')
+
   return (
     <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
       <div className="grid gap-4 md:grid-cols-[minmax(0,1fr)_360px_auto] md:items-end">
         <div className="min-w-0">
           <label className="mb-1.5 block text-sm font-medium text-slate-700">
-            新商家代码
-            <span className="ml-1 text-xs font-normal text-slate-400">
-              支持逗号 / 空格 / 换行分隔
-            </span>
+            {t('clientCodes')}
+            <span className="ml-1 text-xs font-normal text-slate-400">{t('clientCodesHint')}</span>
           </label>
           <Input.TextArea
             value={clientCodesText}
             onChange={(e) => onChangeClientCodes(e.target.value)}
-            placeholder="示例：C2104188501, C2104188502"
+            placeholder={t('clientCodesPlaceholder')}
             rows={2}
             autoSize={{ minRows: 2, maxRows: 4 }}
           />
         </div>
         <div className="min-w-0">
           <label className="mb-1.5 block text-sm font-medium text-slate-700">
-            首次到国时间范围
+            {t('firstCountryRange')}
           </label>
           <DatePicker.RangePicker
             value={dateRange}
@@ -60,7 +62,7 @@ export default function NewMerchantFilterPanel({
             icon={<Search className="h-4 w-4" aria-hidden />}
             onClick={onSubmit}
           >
-            查询
+            {tc('search')}
           </Button>
         </div>
       </div>

@@ -2,6 +2,7 @@ import type { Dayjs } from 'dayjs'
 import { useCallback, useMemo, useState } from 'react'
 import { useAppSettings } from '../../context/AppSettingsContext'
 import { showToast } from '../../utils/toast'
+import { i18n } from '../../i18n'
 import { fetchNewMerchantWaybills, type FetchNewMerchantWaybillsResult } from './newMerchantApi'
 import {
   computeKpis,
@@ -70,16 +71,16 @@ export function useNewMerchantMonitorPage(): UseNewMerchantMonitorPage {
   const handleQuery = useCallback(async () => {
     const clientCodes = parseClientCodes(clientCodesText)
     if (!clientCodes.length) {
-      showToast('请输入至少一个商家代码', 'warning')
+      showToast(String(i18n.t('enterClientCodes', { ns: 'newMerchant' })), 'warning')
       return
     }
     if (!dateRange) {
-      showToast('请选择查询时间范围', 'warning')
+      showToast(String(i18n.t('selectDateRange', { ns: 'newMerchant' })), 'warning')
       return
     }
     const token = imileToken.trim()
     if (!token) {
-      showToast('请先在全局设置中配置 imileToken', 'warning')
+      showToast(String(i18n.t('imileTokenRequired', { ns: 'common' })), 'warning')
       return
     }
 
@@ -96,9 +97,9 @@ export function useNewMerchantMonitorPage(): UseNewMerchantMonitorPage {
       })
       setRecords(result.records as WaybillRecord[])
       setLastQueryMeta(result.meta)
-      showToast(`查询完成，共 ${result.records.length} 条记录`, 'success')
+      showToast(String(i18n.t('queryDone', { ns: 'newMerchant', count: result.records.length })), 'success')
     } catch (err) {
-      const msg = err instanceof Error ? err.message : '查询失败'
+      const msg = err instanceof Error ? err.message : String(i18n.t('queryFailed', { ns: 'newMerchant' }))
       setError(msg)
       showToast(msg, 'error')
     } finally {

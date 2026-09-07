@@ -24,6 +24,7 @@ const POSTCODE_COLUMNS = [
   'postal_code',
   'ZIP',
   'zip',
+  'ZipCode',
 ] as const
 
 const CITY_COLUMNS = ['收件人城市', '收件城市', '城市', '市', 'City', 'city', 'RecipientCity'] as const
@@ -40,15 +41,12 @@ const ORDER_KEY_COLUMNS = [
   'WaybillNo',
 ] as const
 
-const normalizeHeader = (value: unknown): string => {
-  let s = String(value ?? '')
+// 英文版模板列名大小写/分隔符与中文版不一致（Post Code / POSTAL_CODE …），统一压平后再比对
+const normalizeHeader = (value: unknown): string =>
+  String(value ?? '')
     .replace(/\uFEFF/g, '')
-    .replace(/\s+/g, '')
-    .trim()
-  // 导出表头常见「路由编码.」等尾部点号/冒号，去掉后才能命中候选项
-  s = s.replace(/[.:：．。]+$/u, '')
-  return s
-}
+    .replace(/[\s._:：．。\-/\\()（）]+/gu, '')
+    .toLowerCase()
 
 const normalizeRow = (rawRow: Record<string, unknown>): Record<string, unknown> => {
   const normalized: Record<string, unknown> = {}
@@ -63,17 +61,19 @@ const sanitizeText = (value: unknown): string => {
   return String(value).trim()
 }
 
+const hasValue = (value: unknown): boolean =>
+  value !== null && value !== undefined && String(value).trim() !== ''
+
 const getValueByCandidates = (row: Record<string, unknown>, candidates: readonly string[]): unknown => {
-  for (const key of candidates) {
-    const normalizedKey = normalizeHeader(key)
-    if (Object.prototype.hasOwnProperty.call(row, normalizedKey)) {
-      const value = row[normalizedKey]
-      if (value !== null && value !== undefined && String(value).trim() !== '') {
-        return value
-      }
-    }
+  const normalizedCandidates = candidates.map(normalizeHeader)
+  for (const normalizedKey of normalizedCandidates) {
+    if (hasValue(row[normalizedKey])) return row[normalizedKey]
   }
-  return null
+  // 兜底：列名带前后缀（RecipientPostCode、DestinationZipCode…）时按包含关系命中
+  const key = Object.keys(row).find(
+    (k) => hasValue(row[k]) && normalizedCandidates.some((c) => k.includes(c)),
+  )
+  return key ? row[key] : null
 }
 
 export type FleetScanParseResult = {

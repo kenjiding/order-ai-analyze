@@ -1,5 +1,7 @@
 import { Empty, Table, Tag } from 'antd'
 import type { ColumnsType } from 'antd/es/table'
+import { useMemo } from 'react'
+import { useTranslation } from 'react-i18next'
 import { groupRowsByLabel, type DateGroup, type LabelGroup } from '../pushEngagementGrouping'
 import { clickActionLabel, PUSH_LABEL_COLOR, type DetailState, type PushClickEvent, type PushReadStatus } from '../pushEngagementTypes'
 import { PushLabelBreakdown } from './PushLabelBreakdown'
@@ -39,38 +41,43 @@ export function PushEngagementTable({
   onExpandGroup: (expanded: boolean, date: string, labelGroup: LabelGroup) => void
   onRefreshGroup: (date: string, labelGroup: LabelGroup) => void
 }) {
-  const columns: ColumnsType<DateGroup> = [
-    {
-      title: '日期',
-      dataIndex: 'date',
-      width: 130,
-      render: (date: string) => <span className="font-medium text-slate-800">{date}</span>,
-    },
-    {
-      title: '推送条数',
-      dataIndex: 'messageCount',
-      width: 100,
-    },
-    {
-      title: '推送类型',
-      dataIndex: 'labels',
-      render: (labels: string[]) => (
-        <div className="flex flex-wrap gap-1">
-          {labels.map((label) => (
-            <Tag key={label} color={PUSH_LABEL_COLOR[label] ?? 'default'}>
-              {label}
-            </Tag>
-          ))}
-        </div>
-      ),
-    },
-    {
-      title: '累计点击',
-      dataIndex: 'clicksByAction',
-      width: 200,
-      render: (clicks: Record<string, number>) => <ClicksCell clicks={clicks} />,
-    },
-  ]
+  const { t } = useTranslation('pushEngagement')
+
+  const columns: ColumnsType<DateGroup> = useMemo(
+    () => [
+      {
+        title: t('colDate'),
+        dataIndex: 'date',
+        width: 130,
+        render: (date: string) => <span className="font-medium text-slate-800">{date}</span>,
+      },
+      {
+        title: t('colMessageCount'),
+        dataIndex: 'messageCount',
+        width: 100,
+      },
+      {
+        title: t('colPushTypes'),
+        dataIndex: 'labels',
+        render: (labels: string[]) => (
+          <div className="flex flex-wrap gap-1">
+            {labels.map((label) => (
+              <Tag key={label} color={PUSH_LABEL_COLOR[label] ?? 'default'}>
+                {t(`pushLabels.${label}`, { defaultValue: label })}
+              </Tag>
+            ))}
+          </div>
+        ),
+      },
+      {
+        title: t('colTotalClicks'),
+        dataIndex: 'clicksByAction',
+        width: 200,
+        render: (clicks: Record<string, number>) => <ClicksCell clicks={clicks} />,
+      },
+    ],
+    [t],
+  )
 
   return (
     <Table<DateGroup>
@@ -78,7 +85,7 @@ export function PushEngagementTable({
       columns={columns}
       dataSource={dateGroups}
       loading={loading}
-      locale={{ emptyText: <Empty description="所选条件下暂无推送记录" /> }}
+      locale={{ emptyText: <Empty description={t('emptyRows')} /> }}
       expandable={{
         expandedRowKeys: expandedDates,
         onExpand: (expanded, record) => onExpandDate(expanded, record.date),
@@ -94,7 +101,7 @@ export function PushEngagementTable({
           />
         ),
       }}
-      pagination={{ pageSize: 20, showTotal: (total) => `共 ${total} 天` }}
+      pagination={{ pageSize: 20, showTotal: (total) => t('tableDaysTotal', { total }) }}
       scroll={{ x: 760 }}
     />
   )

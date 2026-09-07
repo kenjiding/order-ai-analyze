@@ -8,6 +8,7 @@ import type {
   ContainerAccount,
   ContainerBalance,
   ContainerType,
+  ContainerTypeItem,
   Paged,
   ReconciliationSummary,
   Transfer,
@@ -44,6 +45,32 @@ function toQuery(params: Record<string, string | number | undefined | null>): st
   }
   const qs = query.toString()
   return qs ? `?${qs}` : ''
+}
+
+// ------------------------------------------------------------ 容器品类
+
+export function fetchContainerTypes(): Promise<ApiResult<ContainerTypeItem[]>> {
+  return apiFetch<ContainerTypeItem[]>('/types')
+}
+
+/** 编码由后端自动生成，前端只提交名称 */
+export function createContainerType(body: { name: string }): Promise<ApiResult<ContainerTypeItem>> {
+  return apiFetch<ContainerTypeItem>('/types', { method: 'POST', body: JSON.stringify(body) })
+}
+
+/** code 不可改：后端只接受名称与启停 */
+export function updateContainerType(
+  code: string,
+  body: { name?: string; active?: boolean },
+): Promise<ApiResult<ContainerTypeItem>> {
+  return apiFetch<ContainerTypeItem>(`/types/${encodeURIComponent(code)}`, {
+    method: 'PATCH',
+    body: JSON.stringify(body),
+  })
+}
+
+export function deleteContainerType(code: string): Promise<ApiResult<null>> {
+  return apiFetch<null>(`/types/${encodeURIComponent(code)}`, { method: 'DELETE' })
 }
 
 // ------------------------------------------------------------ 站点账户

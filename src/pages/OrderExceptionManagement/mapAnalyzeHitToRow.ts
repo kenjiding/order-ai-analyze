@@ -6,6 +6,11 @@ import type {
 } from './orderExceptionApi'
 import type { TrackEvent } from './types'
 import type { AnalysisRow } from './analysisTypes'
+import { i18n } from '../../i18n'
+
+function rowMessage(key: string): string {
+  return i18n.t(key, { ns: 'orderException' })
+}
 
 const TRACK_DRIVER_ID_RE = /\bID\s*[:：]\s*(D[0-9A-Za-z-]+)/i
 
@@ -15,7 +20,7 @@ export function createPendingAnalysisRow(orderNo: string): AnalysisRow {
     lossScope: '—',
     categoryName: '—',
     currentResponsibilityParty: '—',
-    reason: '待分析',
+    reason: rowMessage('rowStatus.pending'),
     confidence: '—',
     trackEvents: [],
     interceptLogs: [],
@@ -76,7 +81,7 @@ export function mapAnalyzeHitToRow(
       lossScope: '—',
       categoryName: '—',
       currentResponsibilityParty: '—',
-      reason: hasTrack ? '模型未返回该单行，请重试或缩小批量' : '无轨迹数据',
+      reason: hasTrack ? rowMessage('rowStatus.noModelResult') : rowMessage('rowStatus.noTrackData'),
       confidence: '—',
       trackEvents,
       interceptLogs,

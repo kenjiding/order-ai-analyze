@@ -1,6 +1,7 @@
 import { useEffect } from 'react'
 import { Button, Form, Input, InputNumber, Modal, Select } from 'antd'
-import { CONTAINER_TYPES, containerTypeLabel } from '../../../containerManagement/constants'
+import { useTranslation } from 'react-i18next'
+import { useActiveContainerTypes } from '../../../containerManagement/containerTypeStore'
 import type {
   BalanceReasonType,
   ContainerAccount,
@@ -34,8 +35,12 @@ export function BalanceFormModal({
   onCreate,
   onEdit,
 }: Props) {
+  const { t } = useTranslation('container')
+  const { t: tc } = useTranslation('common')
   const [form] = Form.useForm<CreateValues & EditValues>()
   const isEdit = mode === 'edit'
+  // 停用的品类不出现在新建下拉里：停用意味着不再产生新记录，历史数据照常展示
+  const activeTypes = useActiveContainerTypes()
 
   useEffect(() => {
     if (!open) return
@@ -73,7 +78,7 @@ export function BalanceFormModal({
 
   return (
     <Modal
-      title={isEdit ? '编辑台账数量' : '新增台账记录'}
+      title={isEdit ? t('ledger.modalEditTitle') : t('ledger.modalCreateTitle')}
       open={open}
       onCancel={onCancel}
       destroyOnHidden
@@ -81,73 +86,74 @@ export function BalanceFormModal({
       footer={
         <div className="flex justify-end gap-2">
           <Button onClick={onCancel} disabled={submitting}>
-            取消
+            {tc('cancel')}
           </Button>
           <Button type="primary" loading={submitting} onClick={() => void handleOk()}>
-            {isEdit ? '保存' : '创建'}
+            {isEdit ? tc('save') : t('ledger.create')}
           </Button>
         </div>
       }
     >
       {isEdit && editing ? (
         <p className="mt-4 text-sm text-slate-500">
-          {editing.accountName} · {containerTypeLabel[editing.containerType]}（当前 {editing.quantity}）
+          {editing.accountName} · {t(`containerType.${editing.containerType}`)}
+          {t('currentQuantity', { quantity: editing.quantity })}
         </p>
       ) : null}
       <Form form={form} layout="vertical" className="mt-4">
         {!isEdit ? (
           <>
             <Form.Item
-              label="站点账户"
+              label={t('ledger.colAccount')}
               name="accountId"
-              rules={[{ required: true, message: '请选择站点账户' }]}
+              rules={[{ required: true, message: t('ledger.selectAccount') }]}
             >
               <Select
-                placeholder="选择…"
+                placeholder={t('selectPlaceholder')}
                 showSearch
                 optionFilterProp="label"
                 options={accounts.map((account) => ({ value: account.id, label: account.name }))}
               />
             </Form.Item>
             <Form.Item
-              label="品类"
+              label={t('ledger.colType')}
               name="containerType"
-              rules={[{ required: true, message: '请选择品类' }]}
+              rules={[{ required: true, message: t('ledger.selectType') }]}
             >
               <Select
-                options={CONTAINER_TYPES.map((type) => ({
-                  value: type,
-                  label: containerTypeLabel[type],
+                options={activeTypes.map((type) => ({
+                  value: type.code,
+                  label: t(`containerType.${type.code}`),
                 }))}
               />
             </Form.Item>
           </>
         ) : null}
         <Form.Item
-          label="数量"
+          label={t('ledger.colQuantity')}
           name="quantity"
-          rules={[{ required: true, message: '请填写数量' }]}
+          rules={[{ required: true, message: t('ledger.enterQuantity') }]}
         >
           <InputNumber className="w-full" min={0} step={1} precision={0} />
         </Form.Item>
         {isEdit ? (
           <>
             <Form.Item
-              label="原因类型"
+              label={t('ledger.reasonType')}
               name="reasonType"
-              rules={[{ required: true, message: '请选择原因类型' }]}
+              rules={[{ required: true, message: t('ledger.selectReasonType') }]}
             >
               <ReasonTypeSelect />
             </Form.Item>
             <Form.Item
-              label="变更原因"
+              label={t('ledger.changeReason')}
               name="reason"
               rules={[
-                { required: true, message: '请填写变更原因' },
-                { max: 500, message: '变更原因最长 500 字' },
+                { required: true, message: t('ledger.enterChangeReason') },
+                { max: 500, message: t('ledger.changeReasonMax') },
               ]}
             >
-              <Input placeholder="必填" allowClear />
+              <Input placeholder={t('requiredPlaceholder')} allowClear />
             </Form.Item>
           </>
         ) : null}

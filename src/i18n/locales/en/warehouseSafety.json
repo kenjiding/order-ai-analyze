@@ -1,0 +1,272 @@
+{
+  "page": {
+    "title": "Hub daily safety inspection",
+    "description": "Self-check each item against the key points. Defaults to no risk to reduce data entry. Evidence photos stay in your browser and are embedded when you export to Excel.",
+    "tabDaily": "Daily checklist (1)"
+  },
+  "checklist": {
+    "title": "Hub daily safety checklist",
+    "rows": {
+      "1": {
+        "category": "Personnel conduct",
+        "item": "Are staff wearing hi-vis vests when entering or leaving?",
+        "keyPoint": "Hi-vis vests required in operational areas"
+      },
+      "2": {
+        "category": "Personnel conduct",
+        "item": "Are staff wearing hi-vis vests when entering or leaving?",
+        "keyPoint": "Forklift operators must wear seat belts"
+      },
+      "3": {
+        "category": "Personnel conduct",
+        "item": "Are there unsafe work practices?",
+        "keyPoint": "e.g. riding on forks"
+      },
+      "4": {
+        "category": "Personnel conduct",
+        "item": "Are there unsafe work practices?",
+        "keyPoint": "Standing under raised forks"
+      },
+      "5": {
+        "category": "Personnel conduct",
+        "item": "Are there unsafe work practices?",
+        "keyPoint": "Reversing without looking"
+      },
+      "6": {
+        "category": "Personnel conduct",
+        "item": "Are there unsafe work practices?",
+        "keyPoint": "Excessive speed"
+      },
+      "7": {
+        "category": "Personnel conduct",
+        "item": "Are there unsafe work practices?",
+        "keyPoint": "Overheight or overwidth load stacking"
+      },
+      "8": {
+        "category": "Personnel conduct",
+        "item": "Have new hires completed pre-job safety training?",
+        "keyPoint": "Spot-check training records and sign-off; new hires must have training records before starting work"
+      },
+      "9": {
+        "category": "Forklift & equipment safety",
+        "item": "Is the daily forklift inspection actually performed?",
+        "keyPoint": "Verify checklist signatures; check for backdating or missed sign-offs"
+      },
+      "10": {
+        "category": "Forklift & equipment safety",
+        "item": "Is the daily forklift inspection actually performed?",
+        "keyPoint": "Equipment operating with known defects"
+      },
+      "11": {
+        "category": "Forklift & equipment safety",
+        "item": "Forklift operator certification and training",
+        "keyPoint": "Operators hold valid licenses or internal training certificates"
+      },
+      "12": {
+        "category": "Forklift & equipment safety",
+        "item": "Forklift operator certification and training",
+        "keyPoint": "Pre-start safety training completed"
+      },
+      "13": {
+        "category": "Forklift & equipment safety",
+        "item": "Forklift charging area",
+        "keyPoint": "Adequate ventilation; no smoking or open flames"
+      },
+      "14": {
+        "category": "Forklift & equipment safety",
+        "item": "Forklift charging area",
+        "keyPoint": "Fire extinguisher provided"
+      },
+      "15": {
+        "category": "Forklift & equipment safety",
+        "item": "Compressors, sorters and other equipment",
+        "keyPoint": "Emergency stop buttons functional"
+      },
+      "16": {
+        "category": "Forklift & equipment safety",
+        "item": "Compressors, sorters and other equipment",
+        "keyPoint": "Guard covers in place"
+      },
+      "17": {
+        "category": "Forklift & equipment safety",
+        "item": "Compressors, sorters and other equipment",
+        "keyPoint": "No abnormal noise during operation"
+      },
+      "18": {
+        "category": "Fire safety",
+        "item": "Fire equipment effectiveness",
+        "keyPoint": "Extinguisher pressure normal and within expiry"
+      },
+      "19": {
+        "category": "Fire safety",
+        "item": "Fire equipment effectiveness",
+        "keyPoint": "Hydrant pressure normal; hoses complete"
+      },
+      "20": {
+        "category": "Fire safety",
+        "item": "Fire equipment effectiveness",
+        "keyPoint": "Monthly inspection tags present and filled in"
+      },
+      "21": {
+        "category": "Fire safety",
+        "item": "Evacuation routes and exits",
+        "keyPoint": "Routes clear and unlocked"
+      },
+      "22": {
+        "category": "Fire safety",
+        "item": "Evacuation routes and exits",
+        "keyPoint": "Emergency and exit lighting operational"
+      },
+      "23": {
+        "category": "Fire safety",
+        "item": "Flammable materials management",
+        "keyPoint": "Cardboard, plastic wrap, etc. cleared promptly"
+      },
+      "24": {
+        "category": "Fire safety",
+        "item": "Flammable materials management",
+        "keyPoint": "No unauthorized storage of flammable liquids"
+      },
+      "25": {
+        "category": "Electrical safety",
+        "item": "Distribution boards and switch boxes",
+        "keyPoint": "Doors closed; no obstructions"
+      },
+      "26": {
+        "category": "Electrical safety",
+        "item": "Distribution boards and switch boxes",
+        "keyPoint": "No unauthorized wiring or daisy-chaining"
+      },
+      "27": {
+        "category": "Site & cargo safety",
+        "item": "Stack stability",
+        "keyPoint": "Height within limits (typically max 2 m)"
+      },
+      "28": {
+        "category": "Site & cargo safety",
+        "item": "Stack stability",
+        "keyPoint": "No inverted or leaning stacks"
+      },
+      "29": {
+        "category": "Site & cargo safety",
+        "item": "Stack stability",
+        "keyPoint": "Stacks along aisles pose no tipping hazard"
+      },
+      "30": {
+        "category": "Site & cargo safety",
+        "item": "Floor and work surfaces",
+        "keyPoint": "No oil spills or standing water"
+      },
+      "31": {
+        "category": "Site & cargo safety",
+        "item": "Floor and work surfaces",
+        "keyPoint": "Damaged flooring repaired or marked with warnings"
+      },
+      "32": {
+        "category": "Site & cargo safety",
+        "item": "Are main aisles kept clear?",
+        "keyPoint": "Main traffic aisles free of cargo, equipment, and clutter"
+      },
+      "33": {
+        "category": "Emergency & hygiene supplies",
+        "item": "First aid kit stocked and complete",
+        "keyPoint": "First aid kit available"
+      },
+      "34": {
+        "category": "Emergency & hygiene supplies",
+        "item": "First aid kit stocked and complete",
+        "keyPoint": "Contents (plasters, disinfectant, gauze, etc.) complete and within expiry"
+      },
+      "35": {
+        "category": "Safety signage & emergency",
+        "item": "Safety warning signs",
+        "keyPoint": "Speed limits, no riders on forks, beware vehicles — signs clear and prominently placed"
+      }
+    }
+  },
+  "meta": {
+    "warehouseLabel": "Hub / station",
+    "warehousePlaceholder": "e.g. Sydney hub",
+    "inspectorLabel": "Inspector",
+    "inspectorPlaceholder": "Enter name",
+    "inspectionDateLabel": "Inspection date",
+    "itemCount": "{{total}} items · <1>{{riskCount}}</1> at risk"
+  },
+  "table": {
+    "hint": "All items default to no risk — only flag exceptions. Add notes and photos for evidence; at-risk items require corrective action and a due date (photos stay local and export with Excel).",
+    "colSerialNo": "#",
+    "colCategory": "Category",
+    "colItem": "Check item",
+    "colKeyPoint": "Self-check key point",
+    "colResult": "Result",
+    "colResultHint": "No risk / At risk",
+    "colEvidence": "Evidence / corrective action",
+    "colEvidenceHint": "Notes; optional photos when no risk; corrective action and due date required when at risk",
+    "emptyRiskFilter": "No at-risk items. Switch to show all or continue inspecting."
+  },
+  "result": {
+    "noRisk": "No risk",
+    "risk": "At risk"
+  },
+  "evidence": {
+    "measurePlaceholder": "Corrective action (required)",
+    "dueDateLabel": "Due date",
+    "dueDatePlaceholder": "Select date",
+    "notePlaceholder": "Notes (optional)",
+    "uploadPhotos": "Upload photos (multiple)",
+    "reading": "Reading…",
+    "selectedCount": "{{count}} selected",
+    "previewAriaLabel": "Evidence photo preview",
+    "removePhoto": "Remove {{name}}",
+    "measurePrefix": "Corrective action: ",
+    "dueDatePrefix": "Due date: "
+  },
+  "actions": {
+    "showAll": "Show all",
+    "onlyRisk": "At risk only",
+    "markAllNoRisk": "Mark all no risk",
+    "clear": "Clear",
+    "exportExcel": "Export Excel",
+    "exporting": "Exporting…",
+    "noPermission": "No permission"
+  },
+  "confirm": {
+    "clearTitle": "Clear form",
+    "clearContent": "Clear all entered data?",
+    "clearOk": "Clear"
+  },
+  "toast": {
+    "exportSuccess": "Checklist exported",
+    "exportFailed": "Export failed",
+    "photosAdded": "Added {{count}} evidence photo(s)",
+    "fileReadFailed": "Failed to read \"{{name}}\""
+  },
+  "validation": {
+    "warehouseRequired": "Enter hub/station name",
+    "inspectorRequired": "Enter inspector name",
+    "dateRequired": "Select inspection date",
+    "measureRequired": "Item {{serialNo}}: enter corrective action",
+    "dueDateRequired": "Item {{serialNo}}: select due date"
+  },
+  "export": {
+    "creator": "Hub daily safety inspection",
+    "sheetName": "Daily checklist",
+    "metaWarehouse": "Hub/station: {{name}}",
+    "metaInspector": "Inspector: {{name}}",
+    "metaDate": "Inspection date: {{date}}",
+    "headerSerialNo": "#",
+    "headerCategory": "Category",
+    "headerItem": "Check item",
+    "headerKeyPoint": "Self-check key point",
+    "headerResult": "Result\n(No risk / At risk)",
+    "headerEvidence": "Evidence / corrective action",
+    "unnamedWarehouse": "Unnamed hub",
+    "fileName": "{{title}}_{{warehouse}}_{{date}}.xlsx"
+  },
+  "image": {
+    "notImage": "\"{{name}}\" is not an image file.",
+    "tooLarge": "\"{{name}}\" exceeds 8 MB — compress and retry.",
+    "readFailed": "Unable to read \"{{name}}\".",
+    "unsupportedFormat": "Unsupported image format"
+  }
+}

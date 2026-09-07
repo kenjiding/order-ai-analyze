@@ -1,3 +1,4 @@
+import { i18n } from '../../i18n/index'
 import type { AttendancePayrollResult } from '../../payroll/attendancePayrollFromUpload'
 import type {
   AttendanceEfficiencyResult,
@@ -353,7 +354,7 @@ function personDayRowsToAttendanceRows(personDayRows: EfficiencyAttendancePerson
     clockOutTime: null,
     workday: undefined,
     surname: undefined,
-    sourceFileName: '效率考勤记录',
+    sourceFileName: String(i18n.t('snapshot.sourceFileName', { ns: 'scannerEfficiency' })),
     sourceSheetName: '',
     sourceRowNumber: 0,
   }))
@@ -530,8 +531,23 @@ function formatRestoredDateLabel(dates: string[]): string {
   if (isContiguousDateKeys(sorted)) {
     return `${sorted[0]} ~ ${sorted[sorted.length - 1]}`
   }
-  if (sorted.length <= 4) return `${sorted.length} 天（${sorted.join('、')}）`
-  return `${sorted.length} 天（${sorted[0]}、…、${sorted[sorted.length - 1]}）`
+  if (sorted.length <= 4) {
+    return String(
+      i18n.t('snapshot.dateRangeShort', {
+        ns: 'scannerEfficiency',
+        count: sorted.length,
+        dates: sorted.join(String(i18n.t('common.listSeparator', { ns: 'scannerEfficiency' })).trim() || '、'),
+      }),
+    )
+  }
+  return String(
+    i18n.t('snapshot.dateRangeEllipsis', {
+      ns: 'scannerEfficiency',
+      count: sorted.length,
+      first: sorted[0],
+      last: sorted[sorted.length - 1],
+    }),
+  )
 }
 
 function readSourceInfo(raw: unknown): SourceInfo | null {
@@ -759,7 +775,7 @@ export function restoreEfficiencyAttendancePage(
   records: EfficiencyAttendanceDayRecord[],
 ): EfficiencyAttendancePageRestore {
   if (!records.length) {
-    throw new Error('没有可还原的效率考勤记录')
+    throw new Error(String(i18n.t('snapshot.noRecords', { ns: 'scannerEfficiency' })))
   }
 
   const sorted = [...records].sort((a, b) => a.date.localeCompare(b.date))
@@ -831,7 +847,7 @@ export function restoreEfficiencyAttendancePage(
     },
   }
 
-  const archiveLabel = `效率考勤记录（${dates.length} 天）`
+  const archiveLabel = String(i18n.t('snapshot.archiveLabel', { ns: 'scannerEfficiency', count: dates.length }))
 
   return {
     settings,

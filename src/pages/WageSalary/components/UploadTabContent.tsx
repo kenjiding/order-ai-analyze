@@ -3,6 +3,7 @@ import { Button, DatePicker, Radio } from 'antd'
 import { CloudDownload, FileSpreadsheet, Save } from 'lucide-react'
 import dayjs from 'dayjs'
 import { useMemo, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { WageFileUploadBar } from './WageFileUploadBar'
 import { UploadPreviewTable } from './UploadPreviewTable'
 
@@ -18,7 +19,6 @@ export function UploadTabContent({
   handleSubmitUpload,
   isUploading,
   handleClearUploadedData,
-  roleMap,
   roles,
   handleUpdateUploadedRole,
   handleDayOptionChange,
@@ -26,6 +26,7 @@ export function UploadTabContent({
   formatDate,
   formatWorkday,
 }) {
+  const { t } = useTranslation('wageSalary')
   const [mode, setMode] = useState<IntakeMode>('api')
 
   const range = useMemo(() => {
@@ -57,10 +58,8 @@ export function UploadTabContent({
       <div className="admin-section-title py-3">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
-            <h3 className="text-base font-semibold text-slate-950">考勤数据</h3>
-            <p className="admin-description mt-0.5 text-xs leading-5">
-              支持 Excel/CSV 上传或 ZKT API 拉取，预览后计算薪资
-            </p>
+            <h3 className="text-base font-semibold text-slate-950">{t('upload.attendanceTitle')}</h3>
+            <p className="admin-description mt-0.5 text-xs leading-5">{t('upload.attendanceDesc')}</p>
           </div>
           <Radio.Group
             value={mode}
@@ -72,13 +71,13 @@ export function UploadTabContent({
             <Radio.Button value="upload">
               <span className="inline-flex items-center gap-1.5">
                 <FileSpreadsheet className="h-4 w-4" aria-hidden />
-                文件
+                {t('upload.modeFile')}
               </span>
             </Radio.Button>
             <Radio.Button value="api">
               <span className="inline-flex items-center gap-1.5">
                 <CloudDownload className="h-4 w-4" aria-hidden />
-                API
+                {t('upload.modeApi')}
               </span>
             </Radio.Button>
           </Radio.Group>
@@ -89,14 +88,14 @@ export function UploadTabContent({
         {mode === 'upload' ? (
           <WageFileUploadBar
             variant="attendance"
-            title="考勤数据"
-            description="支持 .xlsx / .xls / .csv"
+            title={t('upload.attendanceTitle')}
+            description={t('upload.fileFormats')}
             recordCount={uploadedData.length}
             onFileSelect={handleFileUpload}
             onClear={handleClearUploadedData}
             primaryAction={{
-              label: '计算薪资',
-              loadingLabel: '计算中…',
+              label: t('upload.calculatePayroll'),
+              loadingLabel: t('upload.calculating'),
               onClick: handleSubmitUpload,
               disabled: intakeBusy,
               loading: isUploading,
@@ -118,8 +117,8 @@ export function UploadTabContent({
             </div>
 
             <div className="min-w-0 flex-1 basis-[12rem]">
-              <p className="text-sm font-medium text-slate-900">ZKT 考勤 API</p>
-              <p className="text-xs text-slate-500">账号与部门 ID 见系统设置</p>
+              <p className="text-sm font-medium text-slate-900">{t('upload.zktApiTitle')}</p>
+              <p className="text-xs text-slate-500">{t('upload.zktApiDesc')}</p>
             </div>
 
             <div className="flex shrink-0 flex-wrap items-center gap-2">
@@ -138,7 +137,7 @@ export function UploadTabContent({
                 disabled={!wageApiDateRange || intakeBusy}
                 onClick={handleFetch}
               >
-                获取考勤
+                {t('upload.fetchAttendance')}
               </Button>
               {uploadedData.length > 0 && (
                 <Button
@@ -148,20 +147,20 @@ export function UploadTabContent({
                   disabled={intakeBusy}
                   onClick={handleSubmitUpload}
                 >
-                  计算薪资
+                  {t('upload.calculatePayroll')}
                 </Button>
               )}
             </div>
 
             {uploadedData.length > 0 && (
               <span className="shrink-0 rounded-md border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs font-semibold text-slate-500 tabular-nums ring-1 ring-slate-200">
-                {uploadedData.length} 条
+                {t('upload.recordCount', { count: uploadedData.length })}
               </span>
             )}
 
             {uploadedData.length > 0 && (
               <Button type="link" onClick={handleClearUploadedData} disabled={intakeBusy} className="shrink-0 px-0">
-                清空
+                {t('upload.clear')}
               </Button>
             )}
           </div>
@@ -172,15 +171,16 @@ export function UploadTabContent({
         <div className="px-5 py-4">
           <div className="mb-3 flex items-center justify-between gap-2">
             <h4 className="text-sm font-semibold text-slate-800">
-              数据预览
-              <span className="ml-2 font-normal text-slate-500">{uploadedData.length} 条</span>
+              {t('upload.previewTitle')}
+              <span className="ml-2 font-normal text-slate-500">
+                {t('upload.recordCount', { count: uploadedData.length })}
+              </span>
             </h4>
           </div>
 
           <UploadPreviewTable
             uploadedData={uploadedData}
             roles={roles}
-            roleMap={roleMap}
             handleUpdateUploadedRole={handleUpdateUploadedRole}
             handleDayOptionChange={handleDayOptionChange}
             handleDeleteUploadedRow={handleDeleteUploadedRow}

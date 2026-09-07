@@ -1,0 +1,18 @@
+{
+  "title": "Sign in",
+  "subtitle": "Use your username and password",
+  "username": "Username",
+  "password": "Password",
+  "usernamePlaceholder": "Username",
+  "passwordPlaceholder": "Password",
+  "togglePassword": "Toggle password visibility",
+  "remember": "Remember me for 30 days",
+  "forgotPassword": "Forgot password? Contact admin",
+  "submit": "Enter console",
+  "submitting": "Signing in…",
+  "footer": "Online session · Permission controlled",
+  "usernameRequired": "Enter username",
+  "passwordRequired": "Enter password",
+  "loginFailed": "Sign-in failed",
+  "noPagesAssigned": "No pages assigned — contact admin"
+}

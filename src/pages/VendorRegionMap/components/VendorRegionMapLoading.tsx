@@ -1,14 +1,9 @@
-import { useEffect, useState, type CSSProperties } from 'react'
+import { useEffect, useMemo, useState, type CSSProperties } from 'react'
 import { MapPinned } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
 
-const STEPS = [
-  { key: 'fetch', label: '拉取到件扫描' },
-  { key: 'match', label: '匹配供应商路由' },
-  { key: 'aggregate', label: '邮编聚合票量' },
-  { key: 'render', label: '生成区域柱体' },
-] as const
+const STEP_KEYS = ['fetch', 'match', 'aggregate', 'render'] as const
 
-/** 柱体高度比例 + 色相偏移，模拟多供应商柱体落图 */
 const COLUMNS = [
   { h: 42, delay: 0, hue: 174 },
   { h: 68, delay: 0.12, hue: 198 },
@@ -31,6 +26,11 @@ function formatElapsed(seconds: number): string {
 }
 
 export function VendorRegionMapLoading() {
+  const { t } = useTranslation('vendorRegionMap')
+  const steps = useMemo(
+    () => STEP_KEYS.map((key) => ({ key, label: t(`loadingSteps.${key}`) })),
+    [t],
+  )
   const [stepIndex, setStepIndex] = useState(0)
   const [elapsed, setElapsed] = useState(0)
 
@@ -44,13 +44,13 @@ export function VendorRegionMapLoading() {
 
   useEffect(() => {
     const id = window.setInterval(() => {
-      setStepIndex((i) => Math.min(i + 1, STEPS.length - 1))
+      setStepIndex((i) => Math.min(i + 1, steps.length - 1))
     }, STEP_MS)
     return () => window.clearInterval(id)
-  }, [])
+  }, [steps.length])
 
-  const active = STEPS[stepIndex]!
-  const lingering = stepIndex === STEPS.length - 1 && elapsed >= Math.ceil((STEP_MS * STEPS.length) / 1000)
+  const active = steps[stepIndex]!
+  const lingering = stepIndex === steps.length - 1 && elapsed >= Math.ceil((STEP_MS * steps.length) / 1000)
 
   return (
     <div className="vrm-map-loading" role="status" aria-live="polite" aria-busy="true">
@@ -81,16 +81,15 @@ export function VendorRegionMapLoading() {
 
         <div className="vrm-map-loading__copy">
           <div className="vrm-map-loading__title">
-            {lingering ? '数据量较大，仍在处理' : active.label}
+            {lingering ? t('loadingLarge') : active.label}
           </div>
           <p className="vrm-map-loading__hint">
-            匹配路由码并按邮编聚合成柱体，通常需要几十秒。已等待{' '}
-            <span className="vrm-map-loading__elapsed">{formatElapsed(elapsed)}</span>
+            {t('loadingWait', { seconds: formatElapsed(elapsed) })}
           </p>
         </div>
 
         <ol className="vrm-map-loading__steps" aria-hidden>
-          {STEPS.map((step, index) => {
+          {steps.map((step, index) => {
             const state =
               index < stepIndex ? 'done' : index === stepIndex ? 'active' : 'pending'
             return (

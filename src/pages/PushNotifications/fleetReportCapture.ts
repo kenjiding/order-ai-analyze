@@ -2,6 +2,7 @@ import { createElement } from 'react'
 import { flushSync } from 'react-dom'
 import { createRoot, type Root } from 'react-dom/client'
 import { toJpeg } from 'html-to-image'
+import { i18n } from '../../i18n/index'
 import { FEISHU_PUSH_CAPTURE_PIXEL_RATIO, FEISHU_PUSH_JPEG_QUALITY } from '../../utils/feishuScreenshotImageSettings'
 import { FleetPivotReportView } from './components/FleetPivotReportView'
 import type { FleetRouteBucket } from './fleetSupplierPushTypes'
@@ -52,7 +53,7 @@ export async function captureFleetRouteReportPng(params: {
     await waitFrames(2)
     const el = host.querySelector<HTMLElement>('.fleet-pivot-report-view')
     if (!el) {
-      throw new Error('报表组件未挂载')
+      throw new Error(String(i18n.t('fleetTab.reportNotMounted', { ns: 'pushNotifications' })))
     }
     const width = Math.max(el.scrollWidth, el.clientWidth, 1)
     const height = Math.max(el.scrollHeight, el.clientHeight, 1)

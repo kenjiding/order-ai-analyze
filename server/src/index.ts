@@ -14,6 +14,9 @@ const WORKER_COUNT = (() => {
 
 async function startWorker(): Promise<void> {
   const { app } = await import('./app')
+  // 品类字典的同步快照要在第一个请求前热起来：冷快照只认内置品类，新建的品类会被判成不合法
+  const { warmContainerTypeCache } = await import('./containerManagement/containerTypeService')
+  await warmContainerTypeCache()
   app.listen(PORT, HOST, () => {
     console.log(`[server] worker pid=${process.pid} http://${HOST}:${PORT}`)
   })

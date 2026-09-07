@@ -1,4 +1,5 @@
 import { Timer } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
 import { useIsMobile } from '../../hooks/useIsMobile'
 import { useAttendanceWorkTimePage } from './useAttendanceWorkTimePage'
 import { AttendanceRecordListMobile } from './components/mobile/AttendanceRecordListMobile'
@@ -11,6 +12,7 @@ import { AddAttendanceRecordDialog } from './components/pc/AddAttendanceRecordDi
 import './attendanceWorkTime.css'
 
 export default function AttendanceWorkTimePage() {
+  const { t } = useTranslation('attendanceWorkTime')
   const isMobile = useIsMobile()
   const page = useAttendanceWorkTimePage(isMobile)
 
@@ -48,10 +50,8 @@ export default function AttendanceWorkTimePage() {
               <Timer className="h-5 w-5" aria-hidden />
             </div>
             <div>
-              <h1 className="text-lg font-semibold text-slate-950">出勤工作时间记录</h1>
-              <p className="mt-1 max-w-2xl text-sm text-slate-600">
-                按工序 / 班次记录员工出勤工作时长，用于计算各工序人效。
-              </p>
+              <h1 className="text-lg font-semibold text-slate-950">{t('page.title')}</h1>
+              <p className="mt-1 max-w-2xl text-sm text-slate-600">{t('page.description')}</p>
             </div>
           </div>
           <AddAttendanceButtonPc onClick={page.openCreate} />

@@ -1,7 +1,10 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import type { TransferDetail } from '../../../containerManagement/types'
+import { i18n } from '../../../i18n'
 import { buildNegotiationTimelineEvents } from './negotiationTimeline'
+
+const t = i18n.getFixedT('zh-CN', 'container')
 
 function detail(overrides: Partial<TransferDetail> = {}): TransferDetail {
   return {
@@ -39,7 +42,7 @@ function detail(overrides: Partial<TransferDetail> = {}): TransferDetail {
   }
 }
 
-const keys = (d: TransferDetail) => buildNegotiationTimelineEvents(d).map((ev) => ev.key)
+const keys = (d: TransferDetail) => buildNegotiationTimelineEvents(d, t).map((ev) => ev.key)
 
 test('作废不抹掉确认那一段历史，只在末尾追加作废节点', () => {
   const voided = detail({
@@ -51,10 +54,9 @@ test('作废不抹掉确认那一段历史，只在末尾追加作废节点', ()
 
   assert.deepEqual(keys(voided), ['create', 'simple-confirm', 'voided'])
 
-  const last = buildNegotiationTimelineEvents(voided).at(-1)
-  assert.equal(last?.statusLabel, '已作废')
-  // 冲回的是已入账数量，不是转出方最初申报的数量
-  assert.deepEqual(last?.quantityLines, ['大蓝筐 · 20 件'])
+  const last = buildNegotiationTimelineEvents(voided, t).at(-1)
+  assert.equal(last?.statusLabel, t('timeline.voidedStatus'))
+  assert.deepEqual(last?.quantityLines, [t('quantityLine', { type: t('containerType.BIG_BASKET'), count: 20 })])
   assert.match(last?.description ?? '', /carol/)
   assert.match(last?.description ?? '', /录错了接收方/)
 })
@@ -77,7 +79,6 @@ test('协商后作废：认可与入账仍合并成一节，不会多出一个�
     'report',
     'booked',
   ])
-  // 作废后走的是同一条路径，accept 不该因为状态变了就冒出来
   assert.deepEqual(
     keys(
       detail({

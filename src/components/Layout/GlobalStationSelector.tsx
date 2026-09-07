@@ -1,9 +1,11 @@
 import { Select } from 'antd'
 import { MapPin } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
 import { useGlobalFilterStore } from '../../stores/globalFilterStore'
 import { GLOBAL_SELECTED_STATIONS_KEY } from './useGlobalStationBootstrap'
 
 export function GlobalStationSelector() {
+  const { t } = useTranslation('common')
   const { selectedStations, stations, stationsLoading, setSelectedStations } = useGlobalFilterStore()
 
   const handleChange = (value: string | undefined) => {
@@ -22,7 +24,7 @@ export function GlobalStationSelector() {
         onChange={handleChange}
         options={stations.map((s) => ({ label: s.label, value: s.value }))}
         loading={stationsLoading}
-        placeholder="责任站点"
+        placeholder={t('station')}
         suffixIcon={null}
         popupMatchSelectWidth={false}
       />

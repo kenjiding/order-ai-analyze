@@ -1,6 +1,7 @@
 import { backendFetch } from '../../api/httpClient'
 import type { AttendanceEfficiencyResult, ScannerEfficiencyResult } from './aggregates'
 import { selectTopPerformers, type ScannerTotalEfficiencyRow } from './sortingLookup'
+import { i18n } from '../../i18n/index'
 
 export type EfficiencyInsightAiProvider = 'openai' | 'deepseek'
 
@@ -59,7 +60,7 @@ export async function generateWarehouseInsight(
     topPerformers: [],
   }
   if (!parsed.findings.length && !parsed.suggestions.length) {
-    throw new Error('AI 返回内容为空')
+    throw new Error(String(i18n.t('ai.emptyResponse', { ns: 'scannerEfficiency' })))
   }
   return parsed
 }
@@ -133,7 +134,7 @@ export async function generateScannerInsight(
     topPerformers,
   }
   if (!parsed.findings.length && !parsed.suggestions.length) {
-    throw new Error('AI 返回内容为空')
+    throw new Error(String(i18n.t('ai.emptyResponse', { ns: 'scannerEfficiency' })))
   }
   return parsed
 }
@@ -171,7 +172,7 @@ export async function generateCompareInsight(
     topPerformers: [],
   }
   if (!parsed.findings.length && !parsed.suggestions.length) {
-    throw new Error('AI 返回内容为空')
+    throw new Error(String(i18n.t('ai.emptyResponse', { ns: 'scannerEfficiency' })))
   }
   return parsed
 }
@@ -180,4 +181,3 @@ function asStringArray(v: unknown): string[] {
   if (!Array.isArray(v)) return []
   return v.map((x) => String(x ?? '').trim()).filter(Boolean)
 }
-

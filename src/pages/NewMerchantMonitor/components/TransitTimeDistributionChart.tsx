@@ -1,5 +1,6 @@
 import { Chart } from '@antv/g2'
 import { useEffect, useMemo, useRef } from 'react'
+import { useTranslation } from 'react-i18next'
 import type { TransitBucket } from '../metrics'
 
 type Props = {
@@ -10,6 +11,7 @@ const ACCENT = '#1f6f68'
 const ACCENT_LIGHT = '#7BB8B1'
 
 export default function TransitTimeDistributionChart({ buckets }: Props) {
+  const { t } = useTranslation('newMerchant')
   const containerRef = useRef<HTMLDivElement>(null)
 
   const totalCount = useMemo(() => buckets.reduce((sum, b) => sum + b.count, 0), [buckets])
@@ -45,12 +47,12 @@ export default function TransitTimeDistributionChart({ buckets }: Props) {
     })
 
     chart.axis('y', {
-      title: '占比 (%)',
+      title: t('transit.axisPercent'),
       grid: true,
       gridLineDash: [4, 4],
       gridStroke: '#e2e8f0',
     })
-    chart.axis('x', { title: '转运耗时（firstDsArriveDate − firstCountryDate）' })
+    chart.axis('x', { title: t('transit.axisDuration') })
 
     chart.interaction('tooltip', true)
 
@@ -66,8 +68,8 @@ export default function TransitTimeDistributionChart({ buckets }: Props) {
       .tooltip({
         title: (d: (typeof data)[number]) => d.label,
         items: [
-          { name: '占比', field: 'percent', valueFormatter: (v: number) => `${v.toFixed(2)}%` },
-          { name: '数量', field: 'count' },
+          { name: t('transit.tooltipPercent'), field: 'percent', valueFormatter: (v: number) => `${v.toFixed(2)}%` },
+          { name: t('transit.tooltipCount'), field: 'count' },
         ],
       })
 
@@ -88,21 +90,21 @@ export default function TransitTimeDistributionChart({ buckets }: Props) {
     return () => {
       chart.destroy()
     }
-  }, [buckets, dataKey, totalCount])
+  }, [buckets, dataKey, totalCount, t])
 
   return (
     <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
       <div className="mb-3 flex items-baseline justify-between">
         <div>
-          <div className="text-sm font-semibold text-slate-700">转运时间分布</div>
-          <div className="text-xs text-slate-500">
-            按 firstDsArriveDate − firstCountryDate 天数分桶
-          </div>
+          <div className="text-sm font-semibold text-slate-700">{t('transit.title')}</div>
+          <div className="text-xs text-slate-500">{t('transit.subtitle')}</div>
         </div>
-        <div className="text-xs text-slate-500">有效样本 {totalCount.toLocaleString('en-US')}</div>
+        <div className="text-xs text-slate-500">
+          {t('transit.validSamples', { count: totalCount.toLocaleString('en-US') })}
+        </div>
       </div>
       {totalCount === 0 ? (
-        <div className="py-16 text-center text-sm text-slate-400">暂无可计算的转运时间数据</div>
+        <div className="py-16 text-center text-sm text-slate-400">{t('transit.empty')}</div>
       ) : (
         <div ref={containerRef} className="w-full" />
       )}

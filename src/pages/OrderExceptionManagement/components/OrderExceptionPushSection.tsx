@@ -1,6 +1,7 @@
 import { Select } from 'antd'
 import { Bell, Send } from 'lucide-react'
 import { useCallback, useEffect, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { PERMISSION_KEYS, usePermission } from '../../../hooks/usePermission'
 import { loadFeishuPushStore } from '../../PushNotifications/feishuPushRepository.idb'
 import type { FeishuPushEntry } from '../../PushNotifications/feishuPushTypes'
@@ -23,6 +24,7 @@ type Props = {
 }
 
 export function OrderExceptionPushSection({ doneRows, analysisDate }: Props) {
+  const { t } = useTranslation('orderException')
   const canPush = usePermission(PERMISSION_KEYS.btnPushNotificationsOrderException)
   const [entries, setEntries] = useState<FeishuPushEntry[]>([])
   const [aiProvider, setAiProvider] = useState<AiProvider>('deepseek')
@@ -66,20 +68,20 @@ export function OrderExceptionPushSection({ doneRows, analysisDate }: Props) {
             [entry.id]: {
               loading: false,
               success: false,
-              error: result.error ?? '推送失败',
+              error: result.error ?? t('push.pushFailed'),
               aiGenerated: false,
             },
           }))
         }
       } catch (err) {
-        const msg = err instanceof Error ? err.message : '推送失败'
+        const msg = err instanceof Error ? err.message : t('push.pushFailed')
         setPushStates((prev) => ({
           ...prev,
           [entry.id]: { loading: false, success: false, error: msg, aiGenerated: false },
         }))
       }
     },
-    [canPush, doneRows, analysisDate, aiProvider],
+    [canPush, doneRows, analysisDate, aiProvider, t],
   )
 
   if (!canPush) return null
@@ -90,11 +92,11 @@ export function OrderExceptionPushSection({ doneRows, analysisDate }: Props) {
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-2">
           <Bell className="h-4 w-4 text-[var(--admin-accent)]" />
-          <h3 className="text-sm font-semibold text-slate-950">飞书推送</h3>
-          <span className="text-xs text-slate-400">将分析结果通过 AI 总结后推送到飞书群</span>
+          <h3 className="text-sm font-semibold text-slate-950">{t('push.title')}</h3>
+          <span className="text-xs text-slate-400">{t('push.description')}</span>
         </div>
         <div className="flex items-center gap-2">
-          <span className="text-xs text-slate-500">AI 模型</span>
+          <span className="text-xs text-slate-500">{t('push.aiModel')}</span>
           <Select<AiProvider>
             value={aiProvider}
             onChange={setAiProvider}
@@ -108,9 +110,7 @@ export function OrderExceptionPushSection({ doneRows, analysisDate }: Props) {
       </div>
 
       {entries.length === 0 ? (
-        <p className="mt-3 text-xs text-slate-400">
-          暂无推送配置。请到「推送功能」→「订单异常分析推送」页面添加飞书群 Webhook。
-        </p>
+        <p className="mt-3 text-xs text-slate-400">{t('push.noConfigHint')}</p>
       ) : (
         <div className="mt-3 flex flex-wrap gap-3">
           {entries
@@ -137,11 +137,12 @@ export function OrderExceptionPushSection({ doneRows, analysisDate }: Props) {
                     ].join(' ')}
                   >
                     <Send className="h-3 w-3" />
-                    {state?.loading ? '推送中…' : '推送'}
+                    {state?.loading ? t('push.pushing') : t('push.push')}
                   </button>
                   {state?.success && (
                     <span className="text-xs text-green-600">
-                      已推送{state.aiGenerated ? '（含 AI 总结）' : ''}
+                      {t('push.pushed')}
+                      {state.aiGenerated ? t('push.pushedWithAi') : ''}
                     </span>
                   )}
                   {state?.error && (

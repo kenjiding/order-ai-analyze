@@ -2,7 +2,8 @@ import { Button, Checkbox, DatePicker, Drawer, InputNumber, TimePicker } from 'a
 import dayjs from 'dayjs'
 import { AlarmClock, Clock, Plus, Save, Settings, Truck, X } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
-import { useEffect, useState, type ReactNode } from 'react'
+import { useEffect, useMemo, useState, type ReactNode } from 'react'
+import { useTranslation } from 'react-i18next'
 import { StationSelect } from '../../../components/Layout/StationSelect'
 import {
   SupplierMentionToggle,
@@ -17,16 +18,6 @@ import type {
   PushTimeSlot,
   WeekdayNum,
 } from '../exitAlarmTypes'
-
-const WEEKDAYS: { value: WeekdayNum; label: string }[] = [
-  { value: 1, label: '周一' },
-  { value: 2, label: '周二' },
-  { value: 3, label: '周三' },
-  { value: 4, label: '周四' },
-  { value: 5, label: '周五' },
-  { value: 6, label: '周六' },
-  { value: 7, label: '周日' },
-]
 
 function generateId(): string {
   return `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`
@@ -99,8 +90,20 @@ export function ExitAlarmScheduleDrawer({
   saving,
   onSubmit,
 }: Props) {
+  const { t } = useTranslation('exitAlarm')
+  const { t: tc } = useTranslation('common')
+
+  const weekdays = useMemo(
+    () =>
+      ([1, 2, 3, 4, 5, 6, 7] as WeekdayNum[]).map((value) => ({
+        value,
+        label: t(`weekday.${value}`),
+      })),
+    [t],
+  )
+
   const [stationCode, setStationCode] = useState('')
-  const [weekdays, setWeekdays] = useState<WeekdayNum[]>([])
+  const [selectedWeekdays, setSelectedWeekdays] = useState<WeekdayNum[]>([])
   const [pushTimes, setPushTimes] = useState<PushTimeSlot[]>([])
   const [pushConfigIds, setPushConfigIds] = useState<string[]>([])
   const [mentionEnabled, setMentionEnabled] = useState(false)
@@ -111,7 +114,7 @@ export function ExitAlarmScheduleDrawer({
   useEffect(() => {
     if (!open) return
     setStationCode(editingSchedule?.stationCode ?? '')
-    setWeekdays(editingSchedule?.weekdays ?? [])
+    setSelectedWeekdays(editingSchedule?.weekdays ?? [])
     setPushTimes(editingSchedule?.pushTimes ?? [])
     setPushConfigIds(editingSchedule?.pushConfigIds ?? [])
     setMentionEnabled(editingSchedule?.mentionEnabled ?? false)
@@ -135,24 +138,24 @@ export function ExitAlarmScheduleDrawer({
 
   const handleConfirm = async () => {
     if (!stationCode) {
-      showToast('请选择站点', 'error')
+      showToast(t('validation.selectStation'), 'error')
       return
     }
-    if (weekdays.length === 0) {
-      showToast('请至少选择一个推送星期', 'error')
+    if (selectedWeekdays.length === 0) {
+      showToast(t('validation.selectWeekday'), 'error')
       return
     }
     if (pushTimes.length === 0) {
-      showToast('请至少添加一个推送时间', 'error')
+      showToast(t('validation.addPushTime'), 'error')
       return
     }
     const scopedPushConfigIds = pushConfigIds.filter((id) => catalogIdSet.has(id))
     if (scopedPushConfigIds.length === 0) {
-      showToast('请至少选择一个供应商', 'error')
+      showToast(t('validation.selectVendor'), 'error')
       return
     }
     const draft: ExitAlarmScheduleDraft = {
-      weekdays,
+      weekdays: selectedWeekdays,
       pushTimes,
       isEnabled: true,
       stationCode,
@@ -176,30 +179,30 @@ export function ExitAlarmScheduleDrawer({
       title={
         <div className="flex items-center gap-2">
           <AlarmClock className="h-4 w-4 text-[var(--admin-accent)]" aria-hidden />
-          <span>{editingSchedule ? '编辑滞留数据告警' : '添加滞留数据告警'}</span>
+          <span>{editingSchedule ? t('drawer.editTitle') : t('drawer.addTitle')}</span>
         </div>
       }
       footer={
         <div className="flex items-center justify-end gap-2">
           <Button onClick={onClose} disabled={saving}>
-            取消
+            {tc('cancel')}
           </Button>
           <Button type="primary" icon={<Save className="h-3.5 w-3.5" />} loading={saving} onClick={() => void handleConfirm()}>
-            确定
+            {tc('confirm')}
           </Button>
         </div>
       }
     >
       <div className="space-y-5">
-        <FormSection icon={AlarmClock} title="基础配置">
+        <FormSection icon={AlarmClock} title={t('drawer.basicConfig')}>
           <div className="space-y-1">
             <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
               <div className="flex shrink-0 items-center gap-2">
-                <span className="text-xs font-medium text-slate-500">站点</span>
+                <span className="text-xs font-medium text-slate-500">{t('drawer.station')}</span>
                 <StationSelect value={stationCode} onChange={setStationCode} disabled={saving} className="w-[150px]" />
               </div>
               <div className="flex min-w-0 flex-1 items-center justify-end gap-2">
-                <span className="shrink-0 text-xs font-medium text-slate-500">到件扫描时间</span>
+                <span className="shrink-0 text-xs font-medium text-slate-500">{t('drawer.arrivalScanTime')}</span>
                 <DatePicker.RangePicker
                   className="w-full min-w-0"
                   value={[dayjs(arrivalScanRange[0], 'YYYY-MM-DD'), dayjs(arrivalScanRange[1], 'YYYY-MM-DD')]}
@@ -209,7 +212,6 @@ export function ExitAlarmScheduleDrawer({
                   disabled={saving}
                   disabledDate={(current, info) => {
                     if (current.isAfter(dayjs().endOf('day'))) return true
-                    // 与后端上限对齐，别等请求打出去才报错
                     if (info?.from) return Math.abs(current.diff(info.from, 'day')) >= MAX_ARRIVAL_SCAN_DAYS
                     return false
                   }}
@@ -221,19 +223,21 @@ export function ExitAlarmScheduleDrawer({
                 />
               </div>
             </div>
-            <p className="text-right text-xs text-slate-400">
-              到件扫描时间只影响立即推送
-            </p>
+            <p className="text-right text-xs text-slate-400">{t('drawer.arrivalScanHint')}</p>
           </div>
         </FormSection>
 
-        <FormSection icon={Clock} title="定时推送配置" description="推送星期 / 推送时间点">
+        <FormSection icon={Clock} title={t('drawer.scheduleConfig')} description={t('drawer.scheduleConfigDesc')}>
           <div className="divide-y divide-[var(--admin-line)]">
             <div className="flex items-center gap-4 py-3 first:pt-0">
-              <span className="w-16 shrink-0 text-xs font-medium text-slate-500">推送星期</span>
-              <Checkbox.Group value={weekdays} disabled={saving} onChange={(vals) => setWeekdays(vals as WeekdayNum[])}>
+              <span className="w-16 shrink-0 text-xs font-medium text-slate-500">{t('drawer.pushWeekdays')}</span>
+              <Checkbox.Group
+                value={selectedWeekdays}
+                disabled={saving}
+                onChange={(vals) => setSelectedWeekdays(vals as WeekdayNum[])}
+              >
                 <div className="flex flex-wrap gap-x-4 gap-y-1">
-                  {WEEKDAYS.map((day) => (
+                  {weekdays.map((day) => (
                     <Checkbox key={day.value} value={day.value}>
                       <span className="text-sm">{day.label}</span>
                     </Checkbox>
@@ -243,7 +247,7 @@ export function ExitAlarmScheduleDrawer({
             </div>
 
             <div className="flex items-start gap-4 py-3 last:pb-0">
-              <span className="mt-1 w-16 shrink-0 text-xs font-medium text-slate-500">推送时间</span>
+              <span className="mt-1 w-16 shrink-0 text-xs font-medium text-slate-500">{t('drawer.pushTimes')}</span>
               <div className="flex flex-wrap items-center gap-2">
                 {pushTimes.map((slot) => (
                   <div
@@ -279,16 +283,16 @@ export function ExitAlarmScheduleDrawer({
                     onClick={handleAddTime}
                     className="!border-[var(--admin-accent)]/40 !text-xs !text-[var(--admin-accent)] hover:!border-[var(--admin-accent)] hover:!bg-[var(--admin-accent-soft)]"
                   >
-                    添加
+                    {tc('add')}
                   </Button>
                 )}
-                {pushTimes.length === 0 && <span className="text-xs text-slate-400">暂无推送时间</span>}
+                {pushTimes.length === 0 && <span className="text-xs text-slate-400">{t('drawer.noPushTimes')}</span>}
               </div>
             </div>
           </div>
         </FormSection>
 
-        <FormSection icon={Settings} title="其他配置">
+        <FormSection icon={Settings} title={t('drawer.otherConfig')}>
           <div className="flex flex-wrap items-center gap-x-6 gap-y-2">
             <SupplierMentionToggle value={mentionEnabled} onChange={setMentionEnabled} disabled={saving} />
             <Checkbox
@@ -296,17 +300,17 @@ export function ExitAlarmScheduleDrawer({
               disabled={saving}
               onChange={(e) => setRouteCodeWhitelistPushEnabled(e.target.checked)}
             >
-              <span className="text-sm">路由码白名单数据推送</span>
+              <span className="text-sm">{t('drawer.routeWhitelistPush')}</span>
             </Checkbox>
             <div className="flex items-center gap-2">
-              <span className="shrink-0 text-sm text-slate-600">滞留清货价</span>
+              <span className="shrink-0 text-sm text-slate-600">{t('drawer.clearancePrice')}</span>
               <InputNumber
                 value={clearancePrice}
                 min={0}
                 step={0.05}
                 precision={2}
                 prefix="$"
-                placeholder="不填则不推送清货费用"
+                placeholder={t('drawer.clearancePricePlaceholder')}
                 disabled={saving}
                 className="!w-44"
                 onChange={(val) => setClearancePrice(typeof val === 'number' ? val : null)}
@@ -317,7 +321,7 @@ export function ExitAlarmScheduleDrawer({
 
         <FormSection
           icon={Truck}
-          title="供应商配置"
+          title={t('drawer.vendorConfig')}
           action={
             <div className="flex items-center gap-3">
               <SupplierPushSelectAllButtons

@@ -1,4 +1,5 @@
 import dayjs from 'dayjs'
+import type { TFunction } from 'i18next'
 import { AU_REGIONS } from '../ExitAlarm/exitAlarmTypes'
 
 export { AU_REGIONS }
@@ -19,52 +20,58 @@ export function formatAttendanceDurationHours(startTime: string, endTime: string
   return hours == null ? '—' : hours.toFixed(2)
 }
 
-export const ATTENDANCE_PROCESS_CATEGORIES = [
-  { code: 'coarse_sort', label: '粗分' },
-  { code: 'fine_sort', label: '细分' },
-  { code: 'forklift', label: '叉车' },
-  { code: 'front_desk', label: '前台' },
-  { code: 'loading', label: '上料' },
-  { code: 'supply', label: '供货' },
-  { code: 'grid_slot', label: '格口' },
+export const ATTENDANCE_PROCESS_CATEGORY_CODES = [
+  'coarse_sort',
+  'fine_sort',
+  'forklift',
+  'front_desk',
+  'loading',
+  'supply',
+  'grid_slot',
 ] as const
 
-export const ATTENDANCE_SHIFTS = [
-  { code: 'morning', label: '早班' },
-  { code: 'noon', label: '午班' },
-  { code: 'evening', label: '晚班' },
-] as const
+export const ATTENDANCE_SHIFT_CODES = ['morning', 'noon', 'evening'] as const
 
-export type AttendanceProcessCategoryCode = (typeof ATTENDANCE_PROCESS_CATEGORIES)[number]['code']
-export type AttendanceShiftCode = (typeof ATTENDANCE_SHIFTS)[number]['code']
+export type AttendanceProcessCategoryCode = (typeof ATTENDANCE_PROCESS_CATEGORY_CODES)[number]
+export type AttendanceShiftCode = (typeof ATTENDANCE_SHIFT_CODES)[number]
 
-export function attendanceProcessCategoryLabel(code: string): string {
-  return ATTENDANCE_PROCESS_CATEGORIES.find((c) => c.code === code)?.label ?? code
+export function attendanceProcessCategoryLabel(code: string, t: TFunction<'attendanceWorkTime'>): string {
+  return t(`processCategory.${code as AttendanceProcessCategoryCode}`, { defaultValue: code })
 }
 
-export function attendanceShiftLabel(code: string): string {
-  return ATTENDANCE_SHIFTS.find((s) => s.code === code)?.label ?? code
+export function attendanceShiftLabel(code: string, t: TFunction<'attendanceWorkTime'>): string {
+  return t(`shift.${code as AttendanceShiftCode}`, { defaultValue: code })
 }
 
 /** 工序级联选择器 options：一级=工序类别，二级=班次，叶子 label 拼接为「粗分早班」等复合展示名 */
-export const ATTENDANCE_PROCESS_CASCADER_OPTIONS = ATTENDANCE_PROCESS_CATEGORIES.map((category) => ({
-  value: category.code,
-  label: category.label,
-  children: ATTENDANCE_SHIFTS.map((shift) => ({
-    value: shift.code,
-    label: `${category.label}${shift.label}`,
-  })),
-}))
+export function buildAttendanceProcessCascaderOptions(t: TFunction<'attendanceWorkTime'>) {
+  return ATTENDANCE_PROCESS_CATEGORY_CODES.map((categoryCode) => {
+    const categoryLabel = attendanceProcessCategoryLabel(categoryCode, t)
+    return {
+      value: categoryCode,
+      label: categoryLabel,
+      children: ATTENDANCE_SHIFT_CODES.map((shiftCode) => ({
+        value: shiftCode,
+        label: `${categoryLabel}${attendanceShiftLabel(shiftCode, t)}`,
+      })),
+    }
+  })
+}
 
 /** react-vant Cascader 用字段名为 text（而非 antd 的 label），单独维护一份同源 options */
-export const ATTENDANCE_PROCESS_VANT_CASCADER_OPTIONS = ATTENDANCE_PROCESS_CATEGORIES.map((category) => ({
-  value: category.code,
-  text: category.label,
-  children: ATTENDANCE_SHIFTS.map((shift) => ({
-    value: shift.code,
-    text: `${category.label}${shift.label}`,
-  })),
-}))
+export function buildAttendanceProcessVantCascaderOptions(t: TFunction<'attendanceWorkTime'>) {
+  return ATTENDANCE_PROCESS_CATEGORY_CODES.map((categoryCode) => {
+    const categoryLabel = attendanceProcessCategoryLabel(categoryCode, t)
+    return {
+      value: categoryCode,
+      text: categoryLabel,
+      children: ATTENDANCE_SHIFT_CODES.map((shiftCode) => ({
+        value: shiftCode,
+        text: `${categoryLabel}${attendanceShiftLabel(shiftCode, t)}`,
+      })),
+    }
+  })
+}
 
 export type AttendanceWorkRecord = {
   id: string

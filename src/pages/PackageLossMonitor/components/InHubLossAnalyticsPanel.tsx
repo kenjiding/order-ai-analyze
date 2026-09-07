@@ -1,15 +1,16 @@
 import { InputNumber, Select, Tag, Tooltip } from 'antd'
 import { useMemo, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import {
   DEFAULT_SANKEY_DIMS,
   EMPTY_SCOPE_DRILL,
   EMPTY_VENDOR_DRILL,
-  SANKEY_DIM_OPTIONS,
   buildSankeyGraph,
   buildInHubLossFlowTableRows,
   canonicalizeExcludedRouteCodes,
   filterChartAnalytics,
   filterFlowsBySubtypes,
+  getSankeyDimOptions,
   nextScopeDrillPath,
   nextVendorDrillPath,
   resolveSankeyColumns,
@@ -33,13 +34,15 @@ type Props = {
 }
 
 export function InHubLossAnalyticsPanel({ analytics }: Props) {
+  const { t } = useTranslation('packageLoss')
   const [minRouteCount, setMinRouteCount] = useState(DEFAULT_MIN_ROUTE_COUNT)
   const [excludedRouteCodes, setExcludedRouteCodes] = useState<string[]>([])
   const [selectedDims, setSelectedDims] = useState<SankeyDimKey[]>([...DEFAULT_SANKEY_DIMS])
   const [selectedSubtypes, setSelectedSubtypes] = useState<string[] | null>(null)
   const [scopeDrill, setScopeDrill] = useState<ScopeDrillPath>(EMPTY_SCOPE_DRILL)
   const [vendorDrill, setVendorDrill] = useState<VendorDrillPath>(EMPTY_VENDOR_DRILL)
-  const columns = useMemo(() => resolveSankeyColumns(selectedDims), [selectedDims])
+  const sankeyDimOptions = useMemo(() => getSankeyDimOptions(), [t])
+  const columns = useMemo(() => resolveSankeyColumns(selectedDims), [selectedDims, t])
   const chartAnalytics = useMemo(
     () => filterChartAnalytics(analytics, excludedRouteCodes, minRouteCount),
     [analytics, excludedRouteCodes, minRouteCount],
@@ -67,11 +70,11 @@ export function InHubLossAnalyticsPanel({ analytics }: Props) {
   )
   const scopeDrillView = useMemo(
     () => resolveScopeDrillView(chartAnalytics, scopeDrill),
-    [chartAnalytics, scopeDrill],
+    [chartAnalytics, scopeDrill, t],
   )
   const vendorDrillView = useMemo(
     () => resolveVendorDrillView(chartAnalytics, vendorDrill),
-    [chartAnalytics, vendorDrill],
+    [chartAnalytics, vendorDrill, t],
   )
 
   if (analytics.doneCount === 0) return null
@@ -83,14 +86,14 @@ export function InHubLossAnalyticsPanel({ analytics }: Props) {
       <div className="package-loss-viz-block">
         <div className="package-loss-viz-head">
           <div className="min-w-0">
-            <h3 className="package-loss-viz-title">库内丢失流向</h3>
-            <p className="package-loss-viz-caption">按路由、派件员与责任人看丢失集中在哪一段。</p>
+            <h3 className="package-loss-viz-title">{t('panel.sankeyTitle')}</h3>
+            <p className="package-loss-viz-caption">{t('panel.sankeyCaption')}</p>
           </div>
           <div className="package-loss-viz-filters">
             <div className="package-loss-field">
               <label className="package-loss-field-label" htmlFor="in-hub-min-route-count">
-                <Tooltip title="例如 AA091 有 1 单、BB087 有 2 单。填 2 只显示 BB087。">
-                  <span className="cursor-help">路由码丢失 ≥</span>
+                <Tooltip title={t('panel.minRouteTooltip')}>
+                  <span className="cursor-help">{t('panel.minRouteLabel')}</span>
                 </Tooltip>
               </label>
               <InputNumber
@@ -103,12 +106,12 @@ export function InHubLossAnalyticsPanel({ analytics }: Props) {
                   setMinRouteCount(Number(value))
                 }}
                 className="w-full"
-                aria-label="路由码丢失数量下限"
+                aria-label={t('panel.minRouteCount')}
               />
             </div>
             <div className="package-loss-field">
               <label className="package-loss-field-label" htmlFor="in-hub-exclude-routes">
-                剔除路由码
+                {t('panel.excludeRoutes')}
               </label>
               <Select
                 id="in-hub-exclude-routes"
@@ -120,9 +123,9 @@ export function InHubLossAnalyticsPanel({ analytics }: Props) {
                   setExcludedRouteCodes(canonicalizeExcludedRouteCodes(values, routeCodeOptions))
                 }}
                 tokenSeparators={[',', '，', ' ']}
-                placeholder="输入或选择"
+                placeholder={t('panel.excludeRoutesPlaceholder')}
                 className="w-full"
-                aria-label="剔除路由码"
+                aria-label={t('panel.excludeRoutes')}
               />
             </div>
           </div>
@@ -130,7 +133,7 @@ export function InHubLossAnalyticsPanel({ analytics }: Props) {
 
         {subtypeOptions.length > 0 ? (
           <div className="package-loss-chip-row">
-            <span className="package-loss-chip-label">子类型</span>
+            <span className="package-loss-chip-label">{t('panel.subtypeLabel')}</span>
             {subtypeOptions.map((name) => (
               <Tag.CheckableTag
                 key={name}
@@ -148,8 +151,8 @@ export function InHubLossAnalyticsPanel({ analytics }: Props) {
         ) : null}
 
         <div className="package-loss-chip-row">
-          <span className="package-loss-chip-label">展示维度</span>
-          {SANKEY_DIM_OPTIONS.map((option) => (
+          <span className="package-loss-chip-label">{t('panel.displayDims')}</span>
+          {sankeyDimOptions.map((option) => (
             <Tag.CheckableTag
               key={option.value}
               checked={selectedDims.includes(option.value)}
@@ -166,11 +169,11 @@ export function InHubLossAnalyticsPanel({ analytics }: Props) {
         </div>
 
         {effectiveSubtypes.length === 0 && subtypeOptions.length > 0 ? (
-          <p className="package-loss-viz-empty">请至少选择一个子类型</p>
+          <p className="package-loss-viz-empty">{t('panel.selectSubtype')}</p>
         ) : selectedDims.length === 0 ? (
-          <p className="package-loss-viz-empty">请至少选择一个维度</p>
+          <p className="package-loss-viz-empty">{t('panel.selectDim')}</p>
         ) : noMatchingRoutes ? (
-          <p className="package-loss-viz-empty">当前筛选下没有可展示的流向</p>
+          <p className="package-loss-viz-empty">{t('panel.noFlowsUnderFilter')}</p>
         ) : (
           <InHubLossSankeyChart graph={graph} columns={columns} />
         )}
@@ -182,10 +185,10 @@ export function InHubLossAnalyticsPanel({ analytics }: Props) {
 
       <div className="package-loss-viz-dims">
         <InHubLossBarChart
-          title="判定构成"
+          title={t('panel.scopeChart')}
           caption={scopeDrillView.caption}
           data={scopeDrillView.data}
-          emptyText="暂无判定分布"
+          emptyText={t('panel.emptyScopeDistribution')}
           ariaLabel={scopeDrillView.ariaLabel}
           crumbs={scopeDrillView.crumbs}
           onBarClick={
@@ -196,10 +199,10 @@ export function InHubLossAnalyticsPanel({ analytics }: Props) {
           onCrumbClick={setScopeDrill}
         />
         <InHubLossBarChart
-          title="供应商丢包"
+          title={t('panel.vendorLossTitle')}
           caption={vendorDrillView.caption}
           data={vendorDrillView.data}
-          emptyText="暂无库内丢失供应商分布"
+          emptyText={t('panel.emptyVendorDistribution')}
           ariaLabel={vendorDrillView.ariaLabel}
           crumbs={vendorDrillView.crumbs}
           vertical

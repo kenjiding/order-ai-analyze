@@ -1,4 +1,5 @@
 import { useMemo } from 'react'
+import { useTranslation } from 'react-i18next'
 import { Button } from 'antd'
 import { CloudDownload } from 'lucide-react'
 import { formatInteger } from '../formatAndParse'
@@ -16,6 +17,7 @@ type Props = {
 
 
 export function CancelScanAnalysisSection({ analysis, loading, onFetch, zoneInboundScanTotals }: Props) {
+  const { t } = useTranslation('scannerEfficiency')
   const totalWaybills = analysis?.meta.waybillFetched ?? 0
 
   const zoneCount = useMemo(
@@ -26,19 +28,19 @@ export function CancelScanAnalysisSection({ analysis, loading, onFetch, zoneInbo
   const statusItems = useMemo((): any[] => {
     if (!analysis) return []
     return [
-      { label: '细分错误', value: formatInteger(analysis.meta.cancelScanFetched) },
-      { label: '运单号', value: formatInteger(analysis.meta.waybillCount) },
-      { label: '运单命中', value: formatInteger(analysis.meta.waybillFetched) },
+      { label: t('cancelScan.cancelScan'), value: formatInteger(analysis.meta.cancelScanFetched) },
+      { label: t('cancelScan.waybillCount'), value: formatInteger(analysis.meta.waybillCount) },
+      { label: t('cancelScan.waybillHit'), value: formatInteger(analysis.meta.waybillFetched) },
       {
-        label: '大区 / 路由码',
+        label: t('cancelScan.zoneRoute'),
         value: `${formatInteger(zoneCount)} / ${formatInteger(analysis.routeCodeDistribution.length)}`,
       },
       {
-        label: '区间',
+        label: t('cancelScan.range'),
         value: `${analysis.meta.startDate} ~ ${analysis.meta.endDate}`,
       },
     ]
-  }, [analysis, zoneCount])
+  }, [analysis, zoneCount, t])
 
   return (
     <section className="cancel-scan-panel">
@@ -64,7 +66,7 @@ export function CancelScanAnalysisSection({ analysis, loading, onFetch, zoneInbo
                 disabled={loading}
                 onClick={onFetch}
               >
-                获取细分错误率
+                {t('cancelScan.fetch')}
               </Button>
             </span>
           )}
@@ -74,25 +76,25 @@ export function CancelScanAnalysisSection({ analysis, loading, onFetch, zoneInbo
       {loading && (
         <div className="cancel-scan-panel__loading">
           <span className="cancel-scan-panel__loading-dot" aria-hidden />
-          正在拉取细分错误率数据…
+          {t('cancelScan.loading')}
         </div>
       )}
 
       {!loading && !analysis && !onFetch && (
         <div className="cancel-scan-panel__state">
-          尚未载入数据。请先在上方选择日期区间，再点击「获取细分错误率」。
+          {t('cancelScan.emptyHintPrefix', { action: t('cancelScan.fetch') })}
         </div>
       )}
 
       {!loading && analysis && analysis.meta.cancelScanFetched === 0 && (
         <div className="cancel-scan-panel__state">
-          所选区间内无细分错误记录（{analysis.meta.startDate} ~ {analysis.meta.endDate}）。
+          {t('cancelScan.noRecords', { start: analysis.meta.startDate, end: analysis.meta.endDate })}
         </div>
       )}
 
       {!loading && analysis && analysis.meta.cancelScanFetched > 0 && analysis.meta.waybillCount === 0 && (
         <div className="cancel-scan-panel__state cancel-scan-panel__state--warn">
-          已拉取 {formatInteger(analysis.meta.cancelScanFetched)} 条细分错误记录，但未识别到有效运单号。
+          {t('cancelScan.noWaybill', { count: formatInteger(analysis.meta.cancelScanFetched) })}
         </div>
       )}
 
@@ -111,7 +113,7 @@ export function CancelScanAnalysisSection({ analysis, loading, onFetch, zoneInbo
         !analysis.dailyRouteCodeCounts?.length &&
         !loading && (
         <div className="cancel-scan-panel__state cancel-scan-panel__state--warn">
-          已查询 {formatInteger(analysis.meta.waybillCount)} 个运单号，运单信息未返回可统计的路由码。
+          {t('cancelScan.noRouteCodes', { count: formatInteger(analysis.meta.waybillCount) })}
         </div>
       )}
     </section>

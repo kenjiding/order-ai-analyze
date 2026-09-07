@@ -1,3 +1,4 @@
+import { useTranslation } from 'react-i18next'
 import { Chart } from '@antv/g2'
 import { useEffect, useMemo, useRef } from 'react'
 import {
@@ -17,6 +18,7 @@ const FILL_NORMAL = SCANNER_EFFICIENCY_CHART_FILL_NORMAL
 const FILL_LOW = SCANNER_EFFICIENCY_CHART_FILL_LOW
 
 export default function ScannerTotalEfficiencyBarChart({ rows, className }: Props) {
+  const { t } = useTranslation('scannerEfficiency')
   const containerRef = useRef<HTMLDivElement>(null)
 
   const chartRows = useMemo(
@@ -62,7 +64,7 @@ export default function ScannerTotalEfficiencyBarChart({ rows, className }: Prop
     })
 
     chart.axis('y', {
-      title: '总效率（票/小时，含菜鸟修正）',
+      title: t('chart.scannerTotalBarTitle'),
       grid: true,
       gridLineDash: [4, 4],
       gridStroke: '#e2e8f0',
@@ -86,7 +88,7 @@ export default function ScannerTotalEfficiencyBarChart({ rows, className }: Prop
     return () => {
       chart.destroy()
     }
-  }, [chartRows, rowsKey])
+  }, [chartRows, rowsKey, t])
 
   if (!chartRows.length) {
     return (
@@ -96,7 +98,7 @@ export default function ScannerTotalEfficiencyBarChart({ rows, className }: Prop
           className ?? '',
         ].join(' ')}
       >
-        暂无可匹配考勤的分拣员总效率数据。
+        {t('empty.noScannerTotalEff')}
       </div>
     )
   }
@@ -104,7 +106,7 @@ export default function ScannerTotalEfficiencyBarChart({ rows, className }: Prop
   return (
     <div className={className ?? ''}>
       <div className="mb-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs font-medium text-slate-600">
-        <span className="font-medium text-slate-700">各分拣员总效率（票/小时）</span>
+        <span className="font-medium text-slate-700">{t('chart.scannerTotalChartTitle')}</span>
         <span className="inline-flex items-center gap-2">
           <span className="h-2.5 w-6 rounded-full" style={{ backgroundColor: FILL_NORMAL }} />
           ≥{SCANNER_TOTAL_EFFICIENCY_RED_LT}
@@ -118,7 +120,7 @@ export default function ScannerTotalEfficiencyBarChart({ rows, className }: Prop
         ref={containerRef}
         className="g2-scanner-total-efficiency min-h-[220px] w-full"
         role="img"
-        aria-label="分拣员总效率条形对比图"
+        aria-label={t('chart.scannerTotalChartAria')}
       />
     </div>
   )

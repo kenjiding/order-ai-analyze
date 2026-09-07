@@ -1,5 +1,6 @@
 import { Chart } from '@antv/g2'
 import { useEffect, useMemo, useRef } from 'react'
+import { useTranslation } from 'react-i18next'
 import { adminColors } from '../../../theme/adminColors'
 import { colorFromMap } from '../vendorColors'
 import type { VendorTrendDailyPoint, VendorTrendSupplier } from '../vendorRegionMapTypes'
@@ -26,6 +27,7 @@ export function VendorDailyVolumeLineChart({
   colorMap,
   mode,
 }: Props) {
+  const { t } = useTranslation('vendorRegionMap')
   const containerRef = useRef<HTMLDivElement>(null)
 
   const { rows, domain, range } = useMemo(() => {
@@ -94,7 +96,7 @@ export function VendorDailyVolumeLineChart({
       labelFormatter: (v: string) => (v.length >= 10 ? v.slice(5) : v),
     })
     chart.axis('y', {
-      title: '货量（票）',
+      title: t('trend.chartVolume'),
       grid: true,
       gridLineDash: [4, 4],
       gridStroke: adminColors.line,
@@ -135,12 +137,12 @@ export function VendorDailyVolumeLineChart({
     return () => {
       chart.destroy()
     }
-  }, [domain, mode, range, rows, rowsKey])
+  }, [domain, mode, range, rows, rowsKey, t])
 
   if (dates.length === 0 || rows.length === 0) {
     return (
       <div className="vrm-chart-empty">
-        {dates.length === 0 ? '点「查询」后显示按日货量趋势。' : '至少勾选一家供应商。'}
+        {dates.length === 0 ? t('trend.chartEmptyQuery') : t('trend.chartEmptySelection')}
       </div>
     )
   }
@@ -150,7 +152,7 @@ export function VendorDailyVolumeLineChart({
       ref={containerRef}
       className="vrm-chart"
       role="img"
-      aria-label="各供应商按日货量趋势图"
+      aria-label={t('trend.chartAria')}
     />
   )
 }

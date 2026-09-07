@@ -2,8 +2,8 @@
 import { and, asc, count, desc, eq, gte, inArray, lte, sql } from 'drizzle-orm'
 import { getDb, schema } from '../db'
 import { ContainerBusinessError } from './accountService'
+import { labelOf } from './containerTypeService'
 import {
-  containerTypeLabel,
   PENDING_OUTBOUND_STATUSES,
   type BalanceAuditAction,
   type BalanceReasonType,
@@ -226,7 +226,7 @@ export async function updateBalance(
       )
       if (input.quantity < pending) {
         throw new ContainerBusinessError(
-          `「${containerTypeLabel[existing.containerType as ContainerType] ?? existing.containerType}」有 ${pending} 个已被待确认的流转占用，数量不能调低到 ${pending} 以下`,
+          `「${labelOf(existing.containerType)}」有 ${pending} 个已被待确认的流转占用，数量不能调低到 ${pending} 以下`,
         )
       }
     }
@@ -280,7 +280,7 @@ export async function deleteBalance(
     )
     if (pending > 0) {
       throw new ContainerBusinessError(
-        `「${containerTypeLabel[existing.containerType as ContainerType] ?? existing.containerType}」有 ${pending} 个已被待确认的流转占用，不能删除台账`,
+        `「${labelOf(existing.containerType)}」有 ${pending} 个已被待确认的流转占用，不能删除台账`,
       )
     }
 

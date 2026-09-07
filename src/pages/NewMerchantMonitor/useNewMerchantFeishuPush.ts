@@ -4,10 +4,13 @@ import {
   summarizeFeishuTestFailure,
 } from '../PushNotifications/feishuWebhookTestApi'
 import { showToast } from '../../utils/toast'
+import { i18n } from '../../i18n'
 import { buildNewMerchantCard, type BuildNewMerchantCardInput } from './buildNewMerchantCard'
 
 const STORAGE_KEY = 'new-merchant-feishu-push-config-v1'
 const WEBHOOK_PREFIX = 'https://open.feishu.cn/open-apis/bot/v2/hook/'
+
+const nmT = (key: string) => String(i18n.t(key, { ns: 'newMerchant' }))
 
 export type NewMerchantPushConfig = {
   webhookUrl: string
@@ -18,7 +21,12 @@ export type NewMerchantPushConfig = {
 const DEFAULT_CONFIG: NewMerchantPushConfig = {
   webhookUrl: '',
   signingSecret: '',
-  pushName: '新商家数据监控',
+  pushName: '',
+}
+
+function resolvedPushName(name: string): string {
+  const trimmed = name.trim()
+  return trimmed || nmT('push.defaultPushName')
 }
 
 function readStoredConfig(): NewMerchantPushConfig {
@@ -33,7 +41,7 @@ function readStoredConfig(): NewMerchantPushConfig {
       pushName:
         typeof parsed.pushName === 'string' && parsed.pushName.trim()
           ? parsed.pushName
-          : DEFAULT_CONFIG.pushName,
+          : '',
     }
   } catch {
     return DEFAULT_CONFIG
@@ -69,17 +77,17 @@ export function useNewMerchantFeishuPush({ buildPayload }: UseNewMerchantFeishuP
   const handlePush = useCallback(async () => {
     const webhookUrl = config.webhookUrl.trim()
     if (!webhookUrl) {
-      showToast('请填写飞书 webhook 地址', 'warning')
+      showToast(nmT('push.enterWebhook'), 'warning')
       return
     }
     if (!webhookUrl.startsWith(WEBHOOK_PREFIX)) {
-      showToast('webhook 地址需以 open.feishu.cn/open-apis/bot/v2/hook/ 开头', 'warning')
+      showToast(nmT('push.invalidWebhook'), 'warning')
       return
     }
 
     const payload = buildPayload()
     if (!payload) {
-      showToast('请先查询数据后再推送', 'warning')
+      showToast(nmT('push.queryFirst'), 'warning')
       return
     }
 
@@ -87,7 +95,7 @@ export function useNewMerchantFeishuPush({ buildPayload }: UseNewMerchantFeishuP
     try {
       const card = buildNewMerchantCard({
         ...payload,
-        title: config.pushName.trim() || DEFAULT_CONFIG.pushName,
+        title: resolvedPushName(config.pushName),
       })
       const result = await postFeishuPushCard({
         pushScope: 'warehouse-efficiency',
@@ -96,12 +104,12 @@ export function useNewMerchantFeishuPush({ buildPayload }: UseNewMerchantFeishuP
         card,
       })
       if (result.ok) {
-        showToast('已推送到飞书群', 'success')
+        showToast(nmT('push.success'), 'success')
       } else {
         showToast(summarizeFeishuTestFailure(result), 'error', 8)
       }
     } catch (err) {
-      const msg = err instanceof Error ? err.message : '推送失败'
+      const msg = err instanceof Error ? err.message : nmT('push.failed')
       showToast(msg, 'error', 6)
     } finally {
       setPushing(false)

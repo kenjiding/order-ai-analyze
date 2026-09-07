@@ -1,5 +1,6 @@
 import { Checkbox, Col, Collapse, Row } from 'antd'
 import { useMemo } from 'react'
+import { useTranslation } from 'react-i18next'
 import type { PermissionDefinition } from '../../../api/adminUsersApi'
 import { getMenuGroupDefs } from '../../../components/Layout/sidebarMenu'
 
@@ -29,13 +30,15 @@ const BUTTON_GROUP_BY_MENU: Record<string, string> = {
   'container-transfers': 'container',
 }
 
-const BUTTON_GROUP_META: Record<string, { title: string; sortOrder: number }> = {
-  container: { title: '容器管理', sortOrder: 62 },
+const BUTTON_GROUP_META: Record<string, { sortOrder: number }> = {
+  container: { sortOrder: 62 },
 }
 
 function groupButtonPermissionsByMenu(
   menuPermissions: PermissionDefinition[],
   buttonPermissions: PermissionDefinition[],
+  groupTitle: (menuKey: string, fallback: string) => string,
+  otherLabel: string,
 ): ButtonPermissionGroup[] {
   const menuLabelById = new Map(menuPermissions.map((item) => [menuIdFromKey(item.key), item.label]))
   const menuSortOrderById = new Map(menuPermissions.map((item) => [menuIdFromKey(item.key), item.sortOrder]))
@@ -57,7 +60,7 @@ function groupButtonPermissionsByMenu(
   const groups = Array.from(grouped.entries())
     .map(([menuKey, items]) => ({
       menuKey,
-      title: BUTTON_GROUP_META[menuKey]?.title ?? menuLabelById.get(menuKey) ?? menuKey,
+      title: groupTitle(menuKey, menuLabelById.get(menuKey) ?? menuKey),
       sortOrder: BUTTON_GROUP_META[menuKey]?.sortOrder ?? menuSortOrderById.get(menuKey) ?? 9999,
       items: [...items].sort((a, b) => a.sortOrder - b.sortOrder),
     }))
@@ -66,7 +69,7 @@ function groupButtonPermissionsByMenu(
   if (ungrouped.length > 0) {
     groups.push({
       menuKey: '__other__',
-      title: '其他',
+      title: otherLabel,
       sortOrder: 99999,
       items: [...ungrouped].sort((a, b) => a.sortOrder - b.sortOrder),
     })
@@ -80,11 +83,13 @@ function PermissionCheckboxGrid({
   value,
   onChange,
   disabled,
+  labelFor,
 }: {
   items: PermissionDefinition[]
   value: string[]
   onChange?: (keys: string[]) => void
   disabled?: boolean
+  labelFor: (item: PermissionDefinition) => string
 }) {
   const toggle = (key: string, checked: boolean) => {
     if (!onChange) return
@@ -119,7 +124,7 @@ function PermissionCheckboxGrid({
                 className="mt-0.5"
               />
               <span className="min-w-0 flex-1">
-                <span className="block text-sm font-medium leading-snug text-slate-900">{item.label}</span>
+                <span className="block text-sm font-medium leading-snug text-slate-900">{labelFor(item)}</span>
                 {item.description ? (
                   <span className="mt-0.5 block text-[11px] leading-snug text-slate-500">{item.description}</span>
                 ) : null}
@@ -143,6 +148,11 @@ function MenuPermissionsGroupedSection({
   onChange?: (keys: string[]) => void
   disabled?: boolean
 }) {
+  const { t: tp } = useTranslation('permission')
+  const { t: tm } = useTranslation('menu')
+  const { t } = useTranslation('systemUsers')
+  const labelFor = (item: PermissionDefinition) => tp(item.key, { defaultValue: item.label })
+
   const groups = useMemo(() => {
     const groupDefs = getMenuGroupDefs()
     const permByKey = new Map(menuPermissions.map((p) => [p.key, p]))
@@ -185,12 +195,12 @@ function MenuPermissionsGroupedSection({
     <section className="rounded-xl border border-slate-200/90 bg-slate-50/40">
       <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200/80 px-4 py-3">
         <div>
-          <div className="text-sm font-semibold text-slate-900">菜单权限</div>
-          <div className="mt-0.5 text-xs text-slate-500">控制侧边栏可见模块，按一级分类展示</div>
+          <div className="text-sm font-semibold text-slate-900">{t('menuPermissions')}</div>
+          <div className="mt-0.5 text-xs text-slate-500">{t('menuPermissionsHint')}</div>
         </div>
         <div className="flex items-center gap-2 text-xs">
           <span className="rounded-full bg-white px-2.5 py-1 font-medium text-slate-600 ring-1 ring-slate-200">
-            已选 {selectedCount}/{menuPermissions.length}
+            {t('selectedCount', { selected: selectedCount, total: menuPermissions.length })}
           </span>
           <button
             type="button"
@@ -198,7 +208,7 @@ function MenuPermissionsGroupedSection({
             onClick={selectAll}
             className="rounded-md px-2 py-1 font-medium text-[#1f6f68] transition hover:bg-[var(--admin-accent-soft)] disabled:opacity-40"
           >
-            全选
+            {t('selectAll')}
           </button>
           <button
             type="button"
@@ -206,7 +216,7 @@ function MenuPermissionsGroupedSection({
             onClick={clearAll}
             className="rounded-md px-2 py-1 font-medium text-slate-500 transition hover:bg-white hover:text-slate-700 disabled:opacity-40"
           >
-            清空
+            {t('clearAll')}
           </button>
         </div>
       </div>
@@ -218,11 +228,11 @@ function MenuPermissionsGroupedSection({
             <div key={group.id}>
               <div className="mb-2.5 flex items-center gap-2">
                 <span className="shrink-0 text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-500">
-                  {group.label}
+                  {tm(`groups.${group.id}`, { defaultValue: group.label })}
                 </span>
                 <div className="flex-1 border-t border-slate-200" />
                 <span className="shrink-0 text-[11px] text-slate-400">
-                  {groupSelectedCount}/{group.items.length}
+                  {t('selectedCount', { selected: groupSelectedCount, total: group.items.length })}
                 </span>
                 <button
                   type="button"
@@ -230,7 +240,7 @@ function MenuPermissionsGroupedSection({
                   onClick={() => selectGroup(group.items)}
                   className="shrink-0 rounded px-1.5 py-0.5 text-[11px] font-medium text-[#1f6f68] transition hover:bg-[var(--admin-accent-soft)] disabled:opacity-40"
                 >
-                  全选
+                  {t('selectAll')}
                 </button>
                 <button
                   type="button"
@@ -238,10 +248,16 @@ function MenuPermissionsGroupedSection({
                   onClick={() => clearGroup(group.items)}
                   className="shrink-0 rounded px-1.5 py-0.5 text-[11px] font-medium text-slate-500 transition hover:bg-white hover:text-slate-700 disabled:opacity-40"
                 >
-                  清空
+                  {t('clearAll')}
                 </button>
               </div>
-              <PermissionCheckboxGrid items={group.items} value={value} onChange={onChange} disabled={disabled} />
+              <PermissionCheckboxGrid
+                items={group.items}
+                value={value}
+                onChange={onChange}
+                disabled={disabled}
+                labelFor={labelFor}
+              />
             </div>
           )
         })}
@@ -263,9 +279,21 @@ function ButtonPermissionsGroupedSection({
   onChange?: (keys: string[]) => void
   disabled?: boolean
 }) {
+  const { t: tp } = useTranslation('permission')
+  const { t: tm } = useTranslation('menu')
+  const { t: tc } = useTranslation('common')
+  const { t } = useTranslation('systemUsers')
+  const labelFor = (item: PermissionDefinition) => tp(item.key, { defaultValue: item.label })
+
+  const groupTitle = (menuKey: string, fallback: string) => {
+    if (menuKey === 'container') return tp('groups.container')
+    if (menuKey === '__other__') return tc('other')
+    return tm(`items.${menuKey}`, { defaultValue: fallback })
+  }
+
   const groups = useMemo(
-    () => groupButtonPermissionsByMenu(menuPermissions, buttonPermissions),
-    [buttonPermissions, menuPermissions],
+    () => groupButtonPermissionsByMenu(menuPermissions, buttonPermissions, groupTitle, tc('other')),
+    [buttonPermissions, menuPermissions, tp, tm, tc],
   )
 
   const selectedCount = buttonPermissions.filter((item) => value.includes(item.key)).length
@@ -296,12 +324,12 @@ function ButtonPermissionsGroupedSection({
     <section className="rounded-xl border border-slate-200/90 bg-slate-50/40">
       <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200/80 px-4 py-3">
         <div>
-          <div className="text-sm font-semibold text-slate-900">按钮权限</div>
-          <div className="mt-0.5 text-xs text-slate-500">按所属页面分组，控制各模块内的导出、编辑、推送等操作</div>
+          <div className="text-sm font-semibold text-slate-900">{t('buttonPermissions')}</div>
+          <div className="mt-0.5 text-xs text-slate-500">{t('buttonPermissionsHint')}</div>
         </div>
         <div className="flex items-center gap-2 text-xs">
           <span className="rounded-full bg-white px-2.5 py-1 font-medium text-slate-600 ring-1 ring-slate-200">
-            已选 {selectedCount}/{buttonPermissions.length}
+            {t('selectedCount', { selected: selectedCount, total: buttonPermissions.length })}
           </span>
           <button
             type="button"
@@ -309,15 +337,15 @@ function ButtonPermissionsGroupedSection({
             onClick={selectAll}
             className="rounded-md px-2 py-1 font-medium text-[#1f6f68] transition hover:bg-[var(--admin-accent-soft)] disabled:opacity-40"
           >
-            全选
+            {t('selectAll')}
           </button>
           <button
             type="button"
             disabled={disabled}
-            onClick={clearAll}
+            onClick={() => clearAll()}
             className="rounded-md px-2 py-1 font-medium text-slate-500 transition hover:bg-white hover:text-slate-700 disabled:opacity-40"
           >
-            清空
+            {t('clearAll')}
           </button>
         </div>
       </div>
@@ -340,7 +368,7 @@ function ButtonPermissionsGroupedSection({
                     onKeyDown={(e) => e.stopPropagation()}
                   >
                     <span className="rounded-full bg-white px-2 py-0.5 font-medium text-slate-600 ring-1 ring-slate-200">
-                      已选 {groupSelectedCount}/{group.items.length}
+                      {t('selectedCount', { selected: groupSelectedCount, total: group.items.length })}
                     </span>
                     <button
                       type="button"
@@ -348,7 +376,7 @@ function ButtonPermissionsGroupedSection({
                       onClick={() => selectGroup(group.items)}
                       className="rounded-md px-2 py-1 font-medium text-[#1f6f68] transition hover:bg-[var(--admin-accent-soft)] disabled:opacity-40"
                     >
-                      全选
+                      {t('selectAll')}
                     </button>
                     <button
                       type="button"
@@ -356,7 +384,7 @@ function ButtonPermissionsGroupedSection({
                       onClick={() => clearGroup(group.items)}
                       className="rounded-md px-2 py-1 font-medium text-slate-500 transition hover:bg-white hover:text-slate-700 disabled:opacity-40"
                     >
-                      清空
+                      {t('clearAll')}
                     </button>
                   </div>
                 </div>
@@ -368,6 +396,7 @@ function ButtonPermissionsGroupedSection({
                     value={value}
                     onChange={onChange}
                     disabled={disabled}
+                    labelFor={labelFor}
                   />
                 </div>
               ),

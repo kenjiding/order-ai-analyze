@@ -11,6 +11,7 @@ import {
 } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import { useEffect, useMemo, useRef, type ReactNode } from 'react'
+import { useTranslation } from 'react-i18next'
 import { Link } from 'react-router-dom'
 import {
   isSupplierPushEligible,
@@ -114,6 +115,8 @@ export function NewAnalysisDrawer({
   dataFetching,
   onStart,
 }: Props) {
+  const { t } = useTranslation('vendorAnalysis')
+  const { t: tc } = useTranslation('common')
   const hasStations = selectedStations.length > 0
   const filtersReady = !!referenceDate && !!complaintDateRange
   const canStart = filtersReady && hasStations && !dataFetching
@@ -160,27 +163,27 @@ export function NewAnalysisDrawer({
       title={
         <div className="flex items-center gap-2">
           <DatabaseZap className="h-4 w-4 text-[var(--admin-accent)]" aria-hidden />
-          <span>新建分析任务</span>
+          <span>{t('drawerTitle')}</span>
         </div>
       }
       footer={
         <div className="flex items-center justify-between gap-3">
           <span className="text-xs text-slate-400">
-            将统计 {selectedStations.length} 个责任站点 · 推送 {enabledPushCount} 个供应商
+            {t('drawerFooter', { stations: selectedStations.length, vendors: enabledPushCount })}
           </span>
           <div className="flex items-center gap-2">
-            <Button size="small" onClick={onClose} disabled={dataFetching}>
-              取消
+            <Button onClick={onClose} disabled={dataFetching}>
+              {tc('cancel')}
             </Button>
-            <Tooltip title={!hasStations ? '请先在顶部选择责任站点' : !filtersReady ? '请先选择日期' : ''}>
-              <Button size="small"
+            <Tooltip title={!hasStations ? t('selectStationTop') : !filtersReady ? t('selectDates') : ''}>
+              <Button
                 type="primary"
                 icon={<DatabaseZap className="h-4 w-4" />}
                 loading={dataFetching}
                 disabled={!canStart}
                 onClick={onStart}
               >
-                {dataFetching ? '分析中…' : '开始分析'}
+                {dataFetching ? tc('analyzingEllipsis') : t('startAnalysis')}
               </Button>
             </Tooltip>
           </div>
@@ -192,7 +195,7 @@ export function NewAnalysisDrawer({
           <div className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3.5 py-2.5">
             <MapPin className="mt-0.5 h-4 w-4 shrink-0 text-amber-500" aria-hidden />
             <Typography.Text type="warning" className="text-xs leading-relaxed">
-              尚未选择责任站点。请先在页面顶部的全局筛选中选择站点，否则无法开始分析。
+              {t('noStationDrawer')}
             </Typography.Text>
           </div>
         )}
@@ -200,8 +203,8 @@ export function NewAnalysisDrawer({
         <div className="grid gap-5 sm:grid-cols-2">
           <FormSection
             icon={CalendarDays}
-            title="数据参考日期"
-            description="作为「今天」推导昨天/前天，用于实时指标。"
+            title={t('referenceDateTitle')}
+            description={t('referenceDateDesc')}
           >
             <DatePicker
               value={referenceDate}
@@ -209,14 +212,14 @@ export function NewAnalysisDrawer({
               format="YYYY-MM-DD"
               allowClear
               className="w-full"
-              placeholder="选择参考日期"
+              placeholder={t('referenceDatePlaceholder')}
             />
           </FormSection>
 
           <FormSection
             icon={CalendarDays}
-            title="客诉成立量时间"
-            description="统计客诉率、应揽量的时间区间。"
+            title={t('complaintRangeTitle')}
+            description={t('complaintRangeDesc')}
           >
             <DatePicker.RangePicker
               value={complaintDateRange}
@@ -224,25 +227,25 @@ export function NewAnalysisDrawer({
               format="YYYY-MM-DD"
               allowClear
               className="w-full"
-              placeholder={['客诉开始日期', '客诉结束日期']}
+              placeholder={[t('complaintStart'), t('complaintEnd')]}
             />
           </FormSection>
         </div>
 
         <FormSection
           icon={SlidersHorizontal}
-          title="指标配置"
-          description="勾选本次分析要抓取并展示的指标，默认全选。"
+          title={t('metricConfigTitle')}
+          description={t('metricConfigDesc')}
           action={
             <div className="flex items-center gap-2">
-              <Button size="small"
+              <Button
                 disabled={allMetricsSelected}
                 onClick={() => onMetricSelectionChange([...ALL_METRIC_KEYS])}
               >
-                全选
+                {tc('selectAll')}
               </Button>
-              <Button size="small" disabled={metricSelection.length === 0} onClick={() => onMetricSelectionChange([])}>
-                清空
+              <Button disabled={metricSelection.length === 0} onClick={() => onMetricSelectionChange([])}>
+                {tc('clearAll')}
               </Button>
             </div>
           }
@@ -251,7 +254,7 @@ export function NewAnalysisDrawer({
             <div className="mb-4 flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3.5 py-2.5">
               <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-500" aria-hidden />
               <Typography.Text type="warning" className="text-xs leading-relaxed">
-                你所选的数据参考日期是以往日期，因此{dateSensitiveLabels.join('、')}会存在归班等数据, 从而会导致不准确的情况
+                {t('dateSensitiveWarning', { labels: dateSensitiveLabels.join('、') })}
               </Typography.Text>
             </div>
           )}
@@ -265,21 +268,21 @@ export function NewAnalysisDrawer({
 
         <FormSection
           icon={Truck}
-          title="推送供应商配置"
+          title={t('pushVendorTitle')}
           description=""
           action={
             <div className="flex items-center gap-2">
-              <Button size="small"
+              <Button
                 disabled={scopeBinding.saving || allEligibleSelected || eligibleConfigs.length === 0}
                 onClick={() => void scopeBinding.persist(eligibleConfigs.map((c) => c.id))}
               >
-                全选
+                {tc('selectAll')}
               </Button>
-              <Button size="small"
+              <Button
                 disabled={scopeBinding.saving || selectedPushCount === 0}
                 onClick={() => void scopeBinding.persist([])}
               >
-                清空
+                {tc('clearAll')}
               </Button>
             </div>
           }
@@ -292,11 +295,11 @@ export function NewAnalysisDrawer({
             onToggle={(id, next) => void scopeBinding.toggle(id, next)}
           />
           <div className="mt-3 flex flex-wrap items-center justify-between gap-2 border-t border-[var(--admin-line)] pt-3 text-[11px] text-slate-400">
-            <span>已选 {selectedPushCount} / {eligibleConfigs.length} 个可推送供应商</span>
+            <span>{t('selectedPushable', { selected: selectedPushCount, total: eligibleConfigs.length })}</span>
             <span className="flex items-center gap-3">
-              {ineligibleCount > 0 && <span>{ineligibleCount} 个未配置 Webhook</span>}
+              {ineligibleCount > 0 && <span>{t('noWebhookCount', { count: ineligibleCount })}</span>}
               <Link to={SUPPLIER_PUSH_CONFIG_MAINTAIN_PATH} className="inline-flex items-center gap-1 text-[var(--admin-accent)] hover:underline">
-                <ExternalLink className="h-3 w-3" />维护配置
+                <ExternalLink className="h-3 w-3" />{tc('maintainConfig')}
               </Link>
             </span>
           </div>

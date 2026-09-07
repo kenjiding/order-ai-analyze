@@ -1,8 +1,15 @@
 import { endOfWeek, format, startOfWeek } from 'date-fns'
+import { i18n } from '../../i18n'
 import type { RateSettings } from '../../payroll/wageRateCalculation'
 import { calculateDecimalHours } from './calculations'
 import { summarizeBillingVsActualPayout } from './calculations'
 import { parseDate } from './dateUtils'
+
+const NS = 'wageSalary'
+
+function wt(key: string, options?: Record<string, unknown>): string {
+  return i18n.t(key, { ns: NS, ...options })
+}
 
 /** 从当前批次工资记录推导考勤表日期区间（yyyy-MM-dd 或 start_end） */
 export function deriveAttendanceDateRangeLabel(
@@ -22,7 +29,7 @@ export function deriveAttendanceDateRangeLabel(
 
 export function buildWageExportFileName(dateRangeLabel: string | null): string {
   const period = dateRangeLabel ?? new Date().toISOString().slice(0, 10)
-  return `工资数据_${period}.xlsx`
+  return wt('export.fileName', { period })
 }
 
 /** API 载入的有效考勤行 →「每日原始考勤记录」工作表（列名与考勤上传表一致） */
@@ -30,19 +37,19 @@ export function buildDailyRawAttendanceExportRows(
   uploadedData: Record<string, unknown>[],
 ): Record<string, string>[] {
   return uploadedData.map((record) => ({
-    人员编号: String(record.employeeId ?? ''),
-    姓名: String(record.name ?? ''),
-    姓氏: String(record.surname ?? ''),
-    昵称: String(record.nickname ?? ''),
-    职位名称: String(record.positionTitle ?? ''),
-    日期: String(record.date ?? ''),
-    工作日: String(record.workday ?? ''),
-    实际签到时间: String(record.firstClockIn ?? ''),
-    实际签退时间: String(record.lastClockOut ?? ''),
-    总时长: String(record.totalHours ?? ''),
-    工作时长: String(record.workHours ?? record.effectiveHours ?? ''),
-    扣减: String(record.deduction ?? ''),
-    奖励: String(record.reward ?? ''),
+    [wt('export.colEmployeeId')]: String(record.employeeId ?? ''),
+    [wt('export.colName')]: String(record.name ?? ''),
+    [wt('export.colSurname')]: String(record.surname ?? ''),
+    [wt('export.colNickname')]: String(record.nickname ?? ''),
+    [wt('export.colPositionTitle')]: String(record.positionTitle ?? ''),
+    [wt('export.colDate')]: String(record.date ?? ''),
+    [wt('export.colWorkday')]: String(record.workday ?? ''),
+    [wt('export.colFirstClockIn')]: String(record.firstClockIn ?? ''),
+    [wt('export.colLastClockOut')]: String(record.lastClockOut ?? ''),
+    [wt('export.colTotalHours')]: String(record.totalHours ?? ''),
+    [wt('export.colWorkHours')]: String(record.workHours ?? record.effectiveHours ?? ''),
+    [wt('export.colDeduction')]: String(record.deduction ?? ''),
+    [wt('export.colReward')]: String(record.reward ?? ''),
   }))
 }
 
@@ -115,6 +122,14 @@ export function buildEmployeeAttendanceDetailExportRows(
   )
 
   const exportRows: Record<string, string | number>[] = []
+  const colName = wt('export.colName')
+  const colNickname = wt('export.colNickname')
+  const colDate = wt('export.colDate')
+  const colFirstClockIn = wt('export.colFirstClockIn')
+  const colLastClockOut = wt('export.colLastClockOut')
+  const colReward = wt('export.colReward')
+  const colWorkHours = wt('export.colWorkHours')
+  const colTotal = wt('export.colTotal')
 
   for (const [, dailyRows] of sortedGroups) {
     dailyRows.sort((a, b) => a.date.localeCompare(b.date))
@@ -123,25 +138,25 @@ export function buildEmployeeAttendanceDetailExportRows(
     for (const row of dailyRows) {
       totalHours += row.workHoursDecimal
       exportRows.push({
-        姓名: row.name,
-        昵称: row.nickname,
-        日期: row.date,
-        实际签到时间: row.firstClockIn,
-        实际签退时间: row.lastClockOut,
-        奖励: row.reward,
-        工作时长: Number(row.workHoursDecimal.toFixed(2)),
+        [colName]: row.name,
+        [colNickname]: row.nickname,
+        [colDate]: row.date,
+        [colFirstClockIn]: row.firstClockIn,
+        [colLastClockOut]: row.lastClockOut,
+        [colReward]: row.reward,
+        [colWorkHours]: Number(row.workHoursDecimal.toFixed(2)),
       })
     }
 
     const head = dailyRows[0]
     exportRows.push({
-      姓名: head.name,
-      昵称: head.nickname,
-      日期: '合计',
-      实际签到时间: '',
-      实际签退时间: '',
-      奖励: '',
-      工作时长: Number(totalHours.toFixed(2)),
+      [colName]: head.name,
+      [colNickname]: head.nickname,
+      [colDate]: colTotal,
+      [colFirstClockIn]: '',
+      [colLastClockOut]: '',
+      [colReward]: '',
+      [colWorkHours]: Number(totalHours.toFixed(2)),
     })
   }
 
@@ -151,16 +166,20 @@ export function buildEmployeeAttendanceDetailExportRows(
 /** 与「时薪标准设置」弹窗一致，供导出「时薪标准」工作表 */
 export function buildRateSettingsExportRows(
   rateSettings: RateSettings,
-  roleMap: Record<string, string>,
   roleOrder: readonly string[],
 ): Record<string, string | number>[] {
+  const colRole = wt('export.colRole')
+  const colWorkdayRate = wt('export.colWorkdayRate')
+  const colSortingWeekendRate = wt('export.colSortingWeekendRate')
+  const colPublicHolidayRate = wt('export.colPublicHolidayRate')
+
   return roleOrder
     .filter((role) => rateSettings[role])
     .map((role) => ({
-      角色: roleMap[role] ?? role,
-      工作日时薪: Number(rateSettings[role].workday),
-      分拣周末时薪: Number(rateSettings[role].sortingWeekend),
-      公共节假日时薪: Number(rateSettings[role].publicHoliday),
+      [colRole]: wt(`role.${role}`),
+      [colWorkdayRate]: Number(rateSettings[role].workday),
+      [colSortingWeekendRate]: Number(rateSettings[role].sortingWeekend),
+      [colPublicHolidayRate]: Number(rateSettings[role].publicHoliday),
     }))
 }
 
@@ -203,35 +222,77 @@ export function buildWeeklyBillingSummaryRows(
     }
   }
 
+  const colWeek = wt('export.colWeekDimension')
+  const colBilling = wt('export.colBillingTotal')
+  const colActual = wt('export.colActualPayoutTotal')
+  const colMargin = wt('export.colSupplierMargin')
+  const colTotal = wt('export.colTotal')
+
   const rows = Array.from(weekMap.entries())
     .sort(([leftLabel], [rightLabel]) => leftLabel.localeCompare(rightLabel))
     .map(([weekLabel, weekRecords]) => {
       const summary = summarizeBillingVsActualPayout(weekRecords, actualWorkerRateSettings)
       return {
-        周维度: weekLabel,
-        '对账 / 导出总额': Number(summary.totalBilling.toFixed(2)),
-        '小工实际到手合计': Number(summary.totalActualPayout.toFixed(2)),
-        '供应商赚取差额（对账 − 实际）': Number(summary.supplierMargin.toFixed(2)),
+        [colWeek]: weekLabel,
+        [colBilling]: Number(summary.totalBilling.toFixed(2)),
+        [colActual]: Number(summary.totalActualPayout.toFixed(2)),
+        [colMargin]: Number(summary.supplierMargin.toFixed(2)),
       }
     })
 
   if (invalidDateRecords.length > 0) {
     const summary = summarizeBillingVsActualPayout(invalidDateRecords, actualWorkerRateSettings)
     rows.push({
-      周维度: '日期无效/缺失',
-      '对账 / 导出总额': Number(summary.totalBilling.toFixed(2)),
-      '小工实际到手合计': Number(summary.totalActualPayout.toFixed(2)),
-      '供应商赚取差额（对账 − 实际）': Number(summary.supplierMargin.toFixed(2)),
+      [colWeek]: wt('export.invalidDateWeek'),
+      [colBilling]: Number(summary.totalBilling.toFixed(2)),
+      [colActual]: Number(summary.totalActualPayout.toFixed(2)),
+      [colMargin]: Number(summary.supplierMargin.toFixed(2)),
     })
   }
 
   const grandSummary = summarizeBillingVsActualPayout(records, actualWorkerRateSettings)
   rows.push({
-    周维度: '合计',
-    '对账 / 导出总额': Number(grandSummary.totalBilling.toFixed(2)),
-    '小工实际到手合计': Number(grandSummary.totalActualPayout.toFixed(2)),
-    '供应商赚取差额（对账 − 实际）': Number(grandSummary.supplierMargin.toFixed(2)),
+    [colWeek]: colTotal,
+    [colBilling]: Number(grandSummary.totalBilling.toFixed(2)),
+    [colActual]: Number(grandSummary.totalActualPayout.toFixed(2)),
+    [colMargin]: Number(grandSummary.supplierMargin.toFixed(2)),
   })
 
   return rows
+}
+
+export function buildMergedNicknameExportRows(
+  mergedRows: Array<{
+    name: string
+    nickname: string
+    surname: string
+    totalHoursDecimal: number
+    totalWage: number
+  }>,
+  totals: { totalHours: number; totalWage: number },
+): Record<string, string | number>[] {
+  const colName = wt('export.colName')
+  const colNickname = wt('export.colNickname')
+  const colSurname = wt('export.colSurname')
+  const colTotalHours = wt('export.colTotalHours')
+  const colTotalPrice = wt('export.colTotalPrice')
+  const colTotal = wt('export.colTotal')
+
+  const exportData = mergedRows.map((row) => ({
+    [colName]: row.name || '',
+    [colNickname]: row.nickname || '',
+    [colSurname]: row.surname || '',
+    [colTotalHours]: Number(row.totalHoursDecimal.toFixed(2)),
+    [colTotalPrice]: Number(row.totalWage.toFixed(2)),
+  }))
+
+  exportData.push({
+    [colName]: colTotal,
+    [colNickname]: '',
+    [colSurname]: '',
+    [colTotalHours]: Number(totals.totalHours.toFixed(2)),
+    [colTotalPrice]: Number(totals.totalWage.toFixed(2)),
+  })
+
+  return exportData
 }

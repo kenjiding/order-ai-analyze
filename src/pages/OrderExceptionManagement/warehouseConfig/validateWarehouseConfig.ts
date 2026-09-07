@@ -1,8 +1,13 @@
+import { i18n } from '../../../i18n'
 import type { WarehouseConfigDto, WarehouseProfileDto } from './types'
 
 export type WarehouseConfigValidationIssue = {
   field: string
   message: string
+}
+
+function t(key: string, options?: Record<string, unknown>): string {
+  return i18n.t(key, { ns: 'orderException', ...options })
 }
 
 function normalizeTrackName(raw: string): string {
@@ -18,10 +23,10 @@ export function validateWarehouseConfig(config: WarehouseConfigDto): WarehouseCo
   const { global, profiles } = config
 
   if (!Number.isFinite(global.defaultLossTimeoutDays) || global.defaultLossTimeoutDays < 1) {
-    issues.push({ field: 'global.defaultLossTimeoutDays', message: '默认丢失超时须 ≥ 1 天' })
+    issues.push({ field: 'global.defaultLossTimeoutDays', message: t('validation.defaultTimeoutMin') })
   }
   if (!Number.isFinite(global.externalCarrierLossTimeoutDays) || global.externalCarrierLossTimeoutDays < 1) {
-    issues.push({ field: 'global.externalCarrierLossTimeoutDays', message: '3PL 超时须 ≥ 1 天' })
+    issues.push({ field: 'global.externalCarrierLossTimeoutDays', message: t('validation.thirdPartyTimeoutMin') })
   }
 
   for (const pattern of global.commonNonRealOperatorPatterns) {
@@ -29,7 +34,10 @@ export function validateWarehouseConfig(config: WarehouseConfigDto): WarehouseCo
       // eslint-disable-next-line no-new
       new RegExp(pattern)
     } catch {
-      issues.push({ field: 'global.commonNonRealOperatorPatterns', message: `无效全局正则: ${pattern}` })
+      issues.push({
+        field: 'global.commonNonRealOperatorPatterns',
+        message: t('validation.invalidGlobalPattern', { pattern }),
+      })
     }
   }
 
@@ -39,15 +47,18 @@ export function validateWarehouseConfig(config: WarehouseConfigDto): WarehouseCo
   profiles.forEach((profile, index) => {
     const prefix = `profiles[${index}]`
     if (!profile.hubId.trim()) {
-      issues.push({ field: `${prefix}.hubId`, message: 'Hub ID 不能为空' })
+      issues.push({ field: `${prefix}.hubId`, message: t('validation.hubIdRequired') })
     } else if (hubIds.has(profile.hubId.trim())) {
-      issues.push({ field: `${prefix}.hubId`, message: `Hub ID 重复: ${profile.hubId}` })
+      issues.push({
+        field: `${prefix}.hubId`,
+        message: t('validation.hubIdDuplicate', { hubId: profile.hubId }),
+      })
     } else {
       hubIds.add(profile.hubId.trim())
     }
 
     if (!profile.name.trim()) {
-      issues.push({ field: `${prefix}.name`, message: '仓库名不能为空' })
+      issues.push({ field: `${prefix}.name`, message: t('validation.hubNameRequired') })
     }
 
     for (const trackName of profileTrackNames(profile)) {
@@ -57,7 +68,7 @@ export function validateWarehouseConfig(config: WarehouseConfigDto): WarehouseCo
       if (owner && owner !== profile.hubId) {
         issues.push({
           field: `${prefix}.name`,
-          message: `轨迹名「${trackName}」已被 ${owner} 使用`,
+          message: t('validation.trackNameTaken', { name: trackName, owner }),
         })
       } else {
         trackNameOwners.set(key, profile.hubId)
@@ -66,7 +77,7 @@ export function validateWarehouseConfig(config: WarehouseConfigDto): WarehouseCo
 
     if (profile.lossTimeoutDays !== undefined) {
       if (!Number.isFinite(profile.lossTimeoutDays) || profile.lossTimeoutDays < 1) {
-        issues.push({ field: `${prefix}.lossTimeoutDays`, message: '仓库丢失超时须 ≥ 1 或留空' })
+        issues.push({ field: `${prefix}.lossTimeoutDays`, message: t('validation.hubTimeoutMin') })
       }
     }
 
@@ -75,7 +86,10 @@ export function validateWarehouseConfig(config: WarehouseConfigDto): WarehouseCo
         // eslint-disable-next-line no-new
         new RegExp(pattern)
       } catch {
-        issues.push({ field: `${prefix}.nonRealOperatorPatterns`, message: `无效正则: ${pattern}` })
+        issues.push({
+          field: `${prefix}.nonRealOperatorPatterns`,
+          message: t('validation.invalidPattern', { pattern }),
+        })
       }
     }
   })

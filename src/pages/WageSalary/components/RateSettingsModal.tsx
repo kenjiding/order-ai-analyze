@@ -1,5 +1,7 @@
 import Modal from '../../../components/Modal'
 import type { Dispatch, SetStateAction } from 'react'
+import { useTranslation } from 'react-i18next'
+import { ROLES } from '../constants'
 
 type RateBand = { workday: number; sortingWeekend: number; publicHoliday: number }
 type RateSettings = Record<string, RateBand>
@@ -9,7 +11,6 @@ type Props = {
   onClose: () => void
   rateSettings: RateSettings
   setRateSettings: Dispatch<SetStateAction<RateSettings>>
-  roleMap: Record<string, string>
   persistRateSettings: (settings: RateSettings) => void | Promise<void>
   resetRateSettings: () => void | Promise<void>
 }
@@ -19,19 +20,20 @@ export function RateSettingsModal({
   onClose,
   rateSettings,
   setRateSettings,
-  roleMap,
   persistRateSettings,
   resetRateSettings,
 }: Props) {
+  const { t } = useTranslation('wageSalary')
+
   return (
-    <Modal isOpen={isOpen} onClose={onClose} title="时薪标准设置" maxWidth="max-w-2xl">
+    <Modal isOpen={isOpen} onClose={onClose} title={t('rateSettings.title')} maxWidth="max-w-2xl">
       <div className="p-6 space-y-6">
-        {Object.keys(rateSettings).map((role) => (
+        {ROLES.filter((role) => rateSettings[role]).map((role) => (
           <div key={role} className="border-b pb-4 last:border-b-0">
-            <h4 className="font-medium text-gray-900 mb-3">{roleMap[role]}</h4>
+            <h4 className="font-medium text-gray-900 mb-3">{t(`role.${role}`)}</h4>
             <div className="grid grid-cols-3 gap-4">
               <div>
-                <label className="block text-sm text-gray-600 mb-1">工作日时薪</label>
+                <label className="block text-sm text-gray-600 mb-1">{t('rateSettings.workdayRate')}</label>
                 <input
                   type="number"
                   step="0.01"
@@ -46,7 +48,7 @@ export function RateSettingsModal({
                 />
               </div>
               <div>
-                <label className="block text-sm text-gray-600 mb-1">分拣周末时薪</label>
+                <label className="block text-sm text-gray-600 mb-1">{t('rateSettings.sortingWeekendRate')}</label>
                 <input
                   type="number"
                   step="0.01"
@@ -61,7 +63,7 @@ export function RateSettingsModal({
                 />
               </div>
               <div>
-                <label className="block text-sm text-gray-600 mb-1">公共节假日时薪</label>
+                <label className="block text-sm text-gray-600 mb-1">{t('rateSettings.publicHolidayRate')}</label>
                 <input
                   type="number"
                   step="0.01"
@@ -85,7 +87,7 @@ export function RateSettingsModal({
           onClick={resetRateSettings}
           className="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-100 transition-colors"
         >
-          恢复默认
+          {t('rateSettings.resetDefault')}
         </button>
         <div className="flex gap-3">
           <button
@@ -96,14 +98,14 @@ export function RateSettingsModal({
             }}
             className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors"
           >
-            保存设置
+            {t('rateSettings.saveSettings')}
           </button>
           <button
             type="button"
             onClick={onClose}
             className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
           >
-            关闭
+            {t('rateSettings.close')}
           </button>
         </div>
       </div>

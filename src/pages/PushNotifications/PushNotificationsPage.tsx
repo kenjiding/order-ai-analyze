@@ -2,12 +2,13 @@ import { Button, Empty, Popconfirm, Table, Tabs, Tooltip, Typography } from 'ant
 import type { ColumnsType } from 'antd/es/table'
 import { Megaphone, PencilLine, Plus, Send, Trash2 } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { useSearchParams } from 'react-router-dom'
 import { useAuthStore } from '../../stores/authStore'
 import { AttendanceSchedulingPushTab } from './components/AttendanceSchedulingPushTab'
 import { PushEntryEditModal } from './components/PushEntryEditModal'
 import { FleetSupplierPushTab } from './components/FleetSupplierPushTab'
-import { FEISHU_PUSH_KIND_LABELS, type FeishuPushEntryWithKind, type FeishuPushKind } from './feishuPushTypes'
+import { feishuPushKindLabel, type FeishuPushEntryWithKind, type FeishuPushKind } from './feishuPushTypes'
 import { postFeishuPushTest, summarizeFeishuTestFailure, type FeishuPushTestFail } from './feishuWebhookTestApi'
 import { usePushNotificationsPage } from './usePushNotificationsPage'
 import { showToast } from '../../utils/toast'
@@ -40,6 +41,7 @@ function isWarehousePushTabKey(key: PushPageTabKey): key is WarehousePushTabKey 
 }
 
 export default function PushNotificationsPage() {
+  const { t } = useTranslation('pushNotifications')
   const v = usePushNotificationsPage()
   const { hasPermission } = useAuthStore()
   const [searchParams, setSearchParams] = useSearchParams()
@@ -103,28 +105,28 @@ export default function PushNotificationsPage() {
     (tabKey: WarehousePushTabKey) => {
       const feature = getPushFeatureByTabKey(tabKey)
       if (!feature || !hasPermission(feature.permissionKey)) {
-        showToast('无操作权限', 'error')
+        showToast(t('toast.noPermission'), 'error')
         return
       }
       setActiveTab(tabKey)
       setEditingRecord(null)
       setModalOpen(true)
     },
-    [hasPermission, setActiveTab],
+    [hasPermission, setActiveTab, t],
   )
 
   const openEditModal = useCallback(
     (record: FeishuPushEntryWithKind) => {
       const feature = getPushFeatureByFeishuKind(record.kind)
       if (!feature || !hasPermission(feature.permissionKey)) {
-        showToast('无操作权限', 'error')
+        showToast(t('toast.noPermission'), 'error')
         return
       }
       if (feature.tabKey) setActiveTab(feature.tabKey)
       setEditingRecord(record)
       setModalOpen(true)
     },
-    [hasPermission, setActiveTab],
+    [hasPermission, setActiveTab, t],
   )
 
   const closeModal = () => {
@@ -135,38 +137,38 @@ export default function PushNotificationsPage() {
   const handleCommitted = (entry: PushEntryDraft) => {
     const feature = getPushFeatureByFeishuKind(entry.kind)
     if (!feature || !hasPermission(feature.permissionKey)) {
-      showToast('无操作权限', 'error')
+      showToast(t('toast.noPermission'), 'error')
       return
     }
-    const verb = editingRecord ? '更新' : '添加'
+    const verb = editingRecord ? t('toast.verbUpdated') : t('toast.verbAdded')
     v.upsertEntry(entry, editingRecord ? editingRecord.kind : undefined)
-    showToast(`已${verb}「${entry.pushName}」并写入本地。`, 'success')
+    showToast(t('toast.entrySaved', { verb, name: entry.pushName }), 'success')
     closeModal()
   }
 
   const handleDelete = (record: FeishuPushEntryWithKind) => {
     const feature = getPushFeatureByFeishuKind(record.kind)
     if (!feature || !hasPermission(feature.permissionKey)) {
-      showToast('无操作权限', 'error')
+      showToast(t('toast.noPermission'), 'error')
       return
     }
     v.deleteEntryById(record.id)
-    showToast(`已删除「${record.pushName}」。`, 'success')
+    showToast(t('toast.entryDeleted', { name: record.pushName }), 'success')
   }
 
   const handlePushTest = useCallback(
     async (record: FeishuPushEntryWithKind) => {
       const feature = getPushFeatureByFeishuKind(record.kind)
       if (!feature || !hasPermission(feature.permissionKey)) {
-        showToast('无操作权限', 'error')
+        showToast(t('toast.noPermission'), 'error')
         return
       }
       if (record.isDisabled) {
-        showToast(`「${record.pushName}」已禁用，请先启用后再测试。`, 'error')
+        showToast(t('toast.entryDisabledBeforeTest', { name: record.pushName }), 'error')
         return
       }
       if (!record.webhookUrl.trim()) {
-        showToast('请先填写有效的群 webhook 地址后再测试。', 'error')
+        showToast(t('toast.webhookRequiredForTest'), 'error')
         return
       }
       setTestingId(record.id)
@@ -175,10 +177,10 @@ export default function PushNotificationsPage() {
           pushScope: feature.apiScope,
           webhookUrl: record.webhookUrl.trim(),
           signingSecret: record.signingSecret,
-          pushName: record.pushName.trim() || '未命名推送',
+          pushName: record.pushName.trim() || t('common.unnamedPush'),
         })
         if (res.ok) {
-          showToast(`「${record.pushName}」测试消息已发送至飞书，请到群内确认是否收到。`, 'success')
+          showToast(t('toast.testSent', { name: record.pushName }), 'success')
         } else if (!res.ok) {
           showToast(summarizeFeishuTestFailure(res as FeishuPushTestFail), 'error')
         }
@@ -186,7 +188,7 @@ export default function PushNotificationsPage() {
         setTestingId(null)
       }
     },
-    [hasPermission],
+    [hasPermission, t],
   )
 
   const buildColumns = useCallback(
@@ -194,29 +196,29 @@ export default function PushNotificationsPage() {
       ...(showKindColumn
         ? [
             {
-              title: '推送类型',
+              title: t('table.kind'),
               key: 'kind',
               width: 150,
               ellipsis: true,
-              render: (_: unknown, row: FeishuPushEntryWithKind) => FEISHU_PUSH_KIND_LABELS[row.kind],
+              render: (_: unknown, row: FeishuPushEntryWithKind) => feishuPushKindLabel(row.kind),
             } satisfies ColumnsType<FeishuPushEntryWithKind>[number],
           ]
         : []),
       {
-        title: '推送名称',
+        title: t('table.pushName'),
         dataIndex: 'pushName',
         key: 'pushName',
         width: 160,
         ellipsis: true,
       },
       {
-        title: '推送时间',
+        title: t('table.pushTime'),
         dataIndex: 'pushTimeHm',
         key: 'pushTimeHm',
         width: 100,
       },
       {
-        title: '群 webhook',
+        title: t('table.webhook'),
         dataIndex: 'webhookUrl',
         key: 'webhookUrl',
         render: (url: string) => (
@@ -228,36 +230,36 @@ export default function PushNotificationsPage() {
         ),
       },
       {
-        title: '密钥',
+        title: t('table.signingSecret'),
         key: 'signingSecret',
         width: 88,
         render: (_, row) =>
           row.signingSecret ? (
-            <span className="text-[var(--admin-accent)]">已配置</span>
+            <span className="text-[var(--admin-accent)]">{t('common.configured')}</span>
           ) : (
             <span className="text-slate-400">—</span>
           ),
       },
       {
-        title: '推送描述',
+        title: t('table.description'),
         dataIndex: 'pushDescription',
         key: 'pushDescription',
         ellipsis: true,
         render: (text: string | undefined) => (text ? text : <span className="text-slate-400">—</span>),
       },
       {
-        title: '状态',
+        title: t('table.status'),
         key: 'status',
         width: 88,
         render: (_, row) =>
           row.isDisabled ? (
-            <span className="text-amber-600">已禁用</span>
+            <span className="text-amber-600">{t('common.disabled')}</span>
           ) : (
-            <span className="text-emerald-600">已启用</span>
+            <span className="text-emerald-600">{t('common.enabled')}</span>
           ),
       },
       {
-        title: '操作',
+        title: t('table.actions'),
         key: 'actions',
         width: 290,
         fixed: 'right',
@@ -270,10 +272,11 @@ export default function PushNotificationsPage() {
               onClick={() => {
                 const nextDisabled = !(record.isDisabled === true)
                 v.toggleEntryDisabled(record.id, nextDisabled)
-                showToast(`已${nextDisabled ? '禁用' : '启用'}「${record.pushName}」。`, 'success')
+                const verb = nextDisabled ? t('toast.toggleDisabled') : t('toast.toggleEnabled')
+                showToast(t('toast.entryToggled', { verb, name: record.pushName }), 'success')
               }}
             >
-              {record.isDisabled ? '启用' : '禁用'}
+              {record.isDisabled ? t('table.enable') : t('table.disable')}
             </Button>
             <Button
               type="link"
@@ -287,7 +290,7 @@ export default function PushNotificationsPage() {
               }
               onClick={() => void handlePushTest(record)}
             >
-              推送测试
+              {t('table.pushTest')}
             </Button>
             <Button
               type="link"
@@ -295,25 +298,25 @@ export default function PushNotificationsPage() {
               icon={<PencilLine className="h-3.5 w-3.5" />}
               onClick={() => openEditModal(record)}
             >
-              编辑
+              {t('common.edit')}
             </Button>
             <Popconfirm
-              title="确认删除这条推送配置？"
-              description="将从本机移除并不可恢复。"
-              okText="删除"
-              cancelText="取消"
+              title={t('table.deleteConfirmTitle')}
+              description={t('table.deleteConfirmDesc')}
+              okText={t('common.delete')}
+              cancelText={t('common.cancel')}
               okButtonProps={{ danger: true }}
               onConfirm={() => handleDelete(record)}
             >
               <Button type="link" className="!px-1" danger icon={<Trash2 className="h-3.5 w-3.5" />}>
-                删除
+                {t('common.delete')}
               </Button>
             </Popconfirm>
           </div>
         ),
       },
     ],
-    [handleDelete, handlePushTest, openEditModal, testingId, v],
+    [handleDelete, handlePushTest, openEditModal, t, testingId, v],
   )
 
   const renderWarehousePushTab = useCallback(
@@ -331,7 +334,7 @@ export default function PushNotificationsPage() {
               {hint}
             </Typography.Text>
             <Button type="primary" icon={<Plus className="h-4 w-4" />} onClick={() => openCreateModal(tabKey)}>
-              添加推送
+              {t('addPush')}
             </Button>
           </div>
 
@@ -341,14 +344,14 @@ export default function PushNotificationsPage() {
             dataSource={dataSource}
             pagination={false}
             locale={{
-              emptyText: <Empty className="py-12" description="暂无推送条目，点击右上角「添加推送」开始配置。" />,
+              emptyText: <Empty className="py-12" description={t('table.empty')} />,
             }}
             scroll={{ x: showKindColumn ? 1140 : 990 }}
           />
         </div>
       )
     },
-    [buildColumns, hasPermission, openCreateModal, v.entriesWithKind],
+    [buildColumns, hasPermission, openCreateModal, t, v.entriesWithKind],
   )
 
   const tabItems = useMemo(() => {
@@ -356,17 +359,14 @@ export default function PushNotificationsPage() {
       if (feature.tabKey === 'warehouse_efficiency') {
         return {
           key: feature.tabKey,
-          label: feature.label,
-          children: renderWarehousePushTab(
-            'warehouse_efficiency',
-            '管理物流运营相关推送；列表与编辑弹窗中可维护推送类型。',
-          ),
+          label: t(`tabs.${feature.tabKey}`),
+          children: renderWarehousePushTab('warehouse_efficiency', t('tabHint.warehouseEfficiency')),
         }
       }
       if (feature.tabKey === 'attendance_scheduling') {
         return {
           key: feature.tabKey,
-          label: feature.label,
+          label: t(`tabs.${feature.tabKey}`),
           children: (
             <AttendanceSchedulingPushTab
               entries={v.entriesWithKind.filter((entry) => entry.kind === 'attendance_scheduling')}
@@ -379,34 +379,31 @@ export default function PushNotificationsPage() {
       if (feature.tabKey === 'order_exception') {
         return {
           key: feature.tabKey,
-          label: feature.label,
-          children: renderWarehousePushTab(
-            'order_exception',
-            '配置订单异常分析结果推送目标；在「AI订单异常管理」完成分析后，可一键推送 AI 总结卡片到此处配置的飞书群。',
-          ),
+          label: t(`tabs.${feature.tabKey}`),
+          children: renderWarehousePushTab('order_exception', t('tabHint.orderException')),
         }
       }
       return {
         key: feature.tabKey,
-        label: feature.label,
+        label: t(`tabs.${feature.tabKey}`),
         children: <FleetSupplierPushTab />,
       }
     })
-  }, [accessibleFeatures, buildColumns, hasPermission, openCreateModal, renderWarehousePushTab, v.entriesWithKind])
+  }, [accessibleFeatures, buildColumns, hasPermission, openCreateModal, renderWarehousePushTab, t, v.entriesWithKind])
 
   return (
     <div className="push-notifications-page admin-page space-y-5">
       <div className="admin-panel overflow-hidden">
         <div className="admin-section-title flex flex-wrap items-start justify-between gap-4 bg-[var(--admin-surface-soft)]">
           <div>
-            <div className="admin-eyebrow">Messaging</div>
+            <div className="admin-eyebrow">{t('eyebrow')}</div>
             <h2 className="admin-title mt-1 flex items-center gap-2">
               <Megaphone className="h-5 w-5 text-[var(--admin-accent)]" aria-hidden />
-              飞书推送
+              {t('title')}
             </h2>
           </div>
           <div className="text-right">
-            <div className="text-xs text-slate-500">推送条目总数</div>
+            <div className="text-xs text-slate-500">{t('entryTotal')}</div>
             <div className="mt-1 text-xl font-semibold tabular-nums text-slate-950">{v.storedTotalCount}</div>
           </div>
         </div>
@@ -415,7 +412,7 @@ export default function PushNotificationsPage() {
           {tabItems.length === 0 ? (
             <Empty
               className="py-16"
-              description="当前账号未分配任何推送子功能权限，请联系管理员在「按钮权限」中勾选对应推送类型。"
+              description={t('noPermission')}
             />
           ) : (
             <Tabs activeKey={activeTabKey} onChange={(key) => setActiveTab(key as PushPageTabKey)} items={tabItems} />

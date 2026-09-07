@@ -1,12 +1,12 @@
 import { useState } from 'react'
 import { Alert, Button, Input, Modal } from 'antd'
+import { useTranslation } from 'react-i18next'
 import type { Transfer, TransferLineDraft } from '../../../containerManagement/types'
 import { TransferImageUpload } from './TransferImageUpload'
 import { TransferLineItemsInput } from './TransferLineItemsInput'
 
 type Props = {
   target: Transfer | null
-  /** 协商中修改已提交的实收申报 */
   isUpdate?: boolean
   submitting: boolean
   onCancel: () => void
@@ -20,7 +20,8 @@ type Props = {
 }
 
 export function DisputeReportModal({ target, isUpdate = false, submitting, onCancel, onSubmit }: Props) {
-  // 由父级用 key 按流转重挂载，初始值直接取当前申报
+  const { t } = useTranslation('container')
+  const { t: tc } = useTranslation('common')
   const [lines, setLines] = useState<TransferLineDraft[]>(() =>
     (target?.items ?? []).map((item) => ({
       containerType: item.containerType,
@@ -40,18 +41,18 @@ export function DisputeReportModal({ target, isUpdate = false, submitting, onCan
   const handleOk = async () => {
     for (const line of lines) {
       if (!line.quantity.trim()) {
-        setError('请填写全部品类的实收数量')
+        setError(t('transfers.errAllReceivedQty'))
         return
       }
       const quantity = Number(line.quantity)
       const max = maxByType[line.containerType]
       if (!Number.isInteger(quantity) || quantity < 0 || quantity > max) {
-        setError(`实收数量须为 0～${max} 之间的整数`)
+        setError(t('transfers.errReceivedRange', { max }))
         return
       }
     }
     if (!reason.trim()) {
-      setError('请填写原因')
+      setError(t('transfers.errEnterReason'))
       return
     }
     setError(null)
@@ -60,7 +61,7 @@ export function DisputeReportModal({ target, isUpdate = false, submitting, onCan
 
   return (
     <Modal
-      title={isUpdate ? '修改实收申报' : '差异 / 拒收申报'}
+      title={isUpdate ? t('transfers.disputeUpdateTitle') : t('transfers.disputeCreateTitle')}
       open
       onCancel={onCancel}
       destroyOnHidden
@@ -68,51 +69,45 @@ export function DisputeReportModal({ target, isUpdate = false, submitting, onCan
       footer={
         <div className="flex justify-end gap-2">
           <Button onClick={onCancel} disabled={submitting}>
-            取消
+            {tc('cancel')}
           </Button>
           <Button type="primary" loading={submitting} onClick={() => void handleOk()}>
-            提交申报
+            {t('transfers.disputeSubmit')}
           </Button>
         </div>
       }
     >
-      <Alert
-        className="mt-4"
-        type="warning"
-        showIcon
-        message="申报后进入协商，库存暂不变动；待转出方认可你的实收数量后才会入账。"
-      />
+      <Alert className="mt-4" type="warning" showIcon message={t('transfers.disputeWarning')} />
 
       <div className="mt-4 flex flex-col gap-1.5">
         <span className="text-sm text-slate-700">
-          实际收到数量 <span className="text-rose-500">*</span>
+          {t('transfers.receivedQty')} <span className="text-rose-500">*</span>
         </span>
-        <p className="text-xs text-slate-500">
-          品类固定为转出方申报的明细，每项可填 0 ~ 申报数；全部填 0 表示整批未收到。
-        </p>
+        <p className="text-xs text-slate-500">{t('transfers.receivedQtyHint')}</p>
         <TransferLineItemsInput
           lines={lines}
-          onChange={setLines}          maxByType={maxByType}
+          onChange={setLines}
+          maxByType={maxByType}
           minQuantity={0}
         />
       </div>
 
       <label className="mt-4 flex flex-col gap-1.5">
         <span className="text-sm text-slate-700">
-          原因 <span className="text-rose-500">*</span>
+          {t('transfers.reason')} <span className="text-rose-500">*</span>
         </span>
         <Input.TextArea
           rows={3}
           value={reason}
           maxLength={2000}
-          placeholder="例如：清点后少 3 个大蓝筐"
+          placeholder={t('transfers.disputeReasonPlaceholder')}
           onChange={(e) => setReason(e.target.value)}
           allowClear
         />
       </label>
 
       <label className="mt-4 flex flex-col gap-1.5">
-        <span className="text-sm text-slate-700">申报证据（选填）</span>
+        <span className="text-sm text-slate-700">{t('transfers.evidenceOptional')}</span>
         <TransferImageUpload value={imageUrl} onChange={setImageUrl} />
       </label>
 

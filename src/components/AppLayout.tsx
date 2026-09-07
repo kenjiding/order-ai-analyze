@@ -1,13 +1,16 @@
 import { useState } from 'react'
 import { Outlet } from 'react-router-dom'
 import { Menu } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
 import Sidebar from './Layout/Sidebar'
 import UserAccountMenu from './Layout/UserAccountMenu'
 import { GlobalStationSelector } from './Layout/GlobalStationSelector'
 import { GlobalCountrySelector } from './Layout/GlobalCountrySelector'
 import { useGlobalStationBootstrap } from './Layout/useGlobalStationBootstrap'
+import { LocaleSwitcher } from './I18n/LocaleSwitcher'
 
 export default function AppLayout() {
+  const { t } = useTranslation('menu')
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
   // 国家选择器变化时立刻重拉责任站点列表（countries 与所选国家联动）
@@ -33,7 +36,7 @@ export default function AppLayout() {
               {/* 移动端汉堡按钮 */}
               <button
                 type="button"
-                aria-label="打开导航菜单"
+                aria-label={t('openNav')}
                 aria-expanded={mobileMenuOpen}
                 onClick={() => setMobileMenuOpen(true)}
                 className="flex h-9 w-9 items-center justify-center rounded-lg border border-[var(--admin-line)] bg-white text-slate-600 shadow-sm transition hover:bg-slate-50 hover:text-slate-900 lg:hidden"
@@ -41,17 +44,19 @@ export default function AppLayout() {
                 <Menu className="h-4.5 w-4.5" aria-hidden />
               </button>
               <div>
-                <div className="text-xs font-medium uppercase tracking-[0.18em] text-slate-500">Operations Console</div>
-                <div className="mt-0.5 text-sm font-semibold text-slate-950">企业级物流运营管理后台</div>
+                <div className="text-xs font-medium uppercase tracking-[0.18em] text-slate-500">{t('topbarEyebrow')}</div>
+                <div className="mt-0.5 text-sm font-semibold text-slate-950">{t('topbarTitle')}</div>
               </div>
             </div>
 
             <div className="hidden flex-1 items-center justify-end pr-2 md:flex">
               <GlobalStationSelector />
               <GlobalCountrySelector />
+              <LocaleSwitcher toolbar />
             </div>
 
-            <div className="flex shrink-0 items-center">
+            <div className="flex shrink-0 items-center gap-2">
+              <LocaleSwitcher toolbar className="md:hidden" />
               <UserAccountMenu />
             </div>
           </div>

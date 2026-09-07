@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import {
   createAdminUser,
   deleteAdminUser,
@@ -16,6 +17,7 @@ import { confirmDialog } from '../../utils/confirmDialog'
 import { type UserFormValues } from './components/UserFormModal'
 
 export function useSystemUsersPage() {
+  const { t } = useTranslation('systemUsers')
   const [users, setUsers] = useState<AdminUser[]>([])
   const [regions, setRegions] = useState<RegionOption[]>([])
   const [permissions, setPermissions] = useState<PermissionDefinition[]>([])
@@ -36,11 +38,11 @@ export function useSystemUsersPage() {
       setRegions(regionRows)
       setPermissions(permissionRows)
     } catch (e) {
-      showToast(e instanceof Error ? e.message : '加载失败', 'error')
+      showToast(e instanceof Error ? e.message : t('loadFailed'), 'error')
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [t])
 
   useEffect(() => {
     void reload()
@@ -88,34 +90,37 @@ export function useSystemUsersPage() {
         }
         closeModal()
         await reload()
-        showToast(editingUser ? '用户已更新' : '用户已创建', 'success')
+        showToast(editingUser ? t('userUpdated') : t('userCreated'), 'success')
       } catch (e) {
-        showToast(e instanceof Error ? e.message : '保存失败', 'error')
+        showToast(e instanceof Error ? e.message : t('saveFailed'), 'error')
       } finally {
         setSaving(false)
       }
     },
-    [closeModal, editingUser, reload],
+    [closeModal, editingUser, reload, t],
   )
 
   const handleDisable = useCallback(
     async (user: AdminUser) => {
       const confirmed = await confirmDialog({
-        title: '禁用用户',
-        content: `确定禁用用户 ${user.username}（${user.regionName ?? '系统'}）？`,
-        okText: '禁用',
+        title: t('disableUserTitle'),
+        content: t('disableUserContent', {
+          username: user.username,
+          region: user.regionName ?? t('systemAdmin'),
+        }),
+        okText: t('disable'),
         danger: true,
       })
       if (!confirmed) return
       try {
         await deleteAdminUser(user.id)
         await reload()
-        showToast('用户已禁用', 'success')
+        showToast(t('userDisabled'), 'success')
       } catch (e) {
-        showToast(e instanceof Error ? e.message : '操作失败', 'error')
+        showToast(e instanceof Error ? e.message : t('operationFailed'), 'error')
       }
     },
-    [reload],
+    [reload, t],
   )
 
   const menuPermissions = useMemo(

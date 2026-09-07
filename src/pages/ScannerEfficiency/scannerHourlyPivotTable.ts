@@ -1,3 +1,4 @@
+import { i18n } from '../../i18n/index'
 import {
   buildScannerHourlyPivotByDate,
   scannerHourSlotLabel,
@@ -7,9 +8,12 @@ import {
 import type { DataTableColumn, DataTableRow } from './components/ui'
 import { formatInteger } from './formatAndParse'
 
+const t = (key: string, options?: Record<string, unknown>) =>
+  String(i18n.t(key, { ns: 'scannerEfficiency', ...options }))
+
 export function buildScannerHourlyPivotColumns(hours: number[]): DataTableColumn[] {
   return [
-    { key: 'scanner', title: '扫描员' },
+    { key: 'scanner', title: t('columns.scanner') },
     ...hours.map((h) => ({
       key: `h${h}`,
       title: scannerHourSlotLabel(h),
@@ -21,7 +25,7 @@ export function buildScannerHourlyPivotColumns(hours: number[]): DataTableColumn
     })),
     {
       key: 'dayTotal',
-      title: '当日合计',
+      title: t('columns.dailyTotal'),
       render: (row: DataTableRow) => formatInteger(Number(row.dayTotal)),
     },
   ]
@@ -36,7 +40,7 @@ export function scannerHourlyPivotToDataTableRows(pivot: ScannerHourlyPivotDay):
     return row
   })
   const footer: DataTableRow = {
-    scanner: '时段合计',
+    scanner: t('columns.hourlyTotal'),
     isScannerHourlyPivotFooter: true,
     dayTotal: pivot.grandTotal,
   }

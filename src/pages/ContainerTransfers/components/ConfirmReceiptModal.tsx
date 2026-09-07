@@ -1,27 +1,19 @@
 import { useState } from 'react'
-import { Button, Input, Modal } from 'antd'
+import { Button, Input, Modal, Tooltip } from 'antd'
 import { ArrowRight } from 'lucide-react'
-import {
-  containerTypeLabel,
-  formatTransferNo,
-  transferKindLabel,
-} from '../../../containerManagement/constants'
+import { useTranslation } from 'react-i18next'
+import { formatTransferNo } from '../../../containerManagement/constants'
 import type { Transfer } from '../../../containerManagement/types'
 import { TransferImageUpload } from './TransferImageUpload'
 
 type Props = {
   target: Transfer | null
   submitting: boolean
-  /**
-   * 代确认：接收方在本系统没有账号，由转出方凭线下回单单方面确认。
-   * 账务口径与接收方本人确认完全一致，差别是这一单没有对方的确认动作，所以要求留凭证。
-   */
   proxy?: boolean
   onCancel: () => void
   onSubmit: (note: string, evidenceUrl: string | null) => Promise<boolean>
 }
 
-/** 数量磁贴：确认收货时最该被一眼看清的就是数字，所以放大加粗 */
 function QuantityTile({ label, value, accent }: { label: string; value: number; accent?: boolean }) {
   return (
     <div
@@ -46,13 +38,16 @@ function QuantityTile({ label, value, accent }: { label: string; value: number; 
 }
 
 export function ConfirmReceiptModal({ target, submitting, proxy = false, onCancel, onSubmit }: Props) {
-  // 由父级用 key 按流转重挂载，无需 effect 重置
+  const { t } = useTranslation('container')
+  const { t: tc } = useTranslation('common')
   const [note, setNote] = useState('')
   const [evidenceUrl, setEvidenceUrl] = useState<string | null>(null)
+  // 代确认是替对方签字，没有回单后端也会拒绝，这里先把提交按钮按住，省一次失败往返
+  const missingProxyEvidence = proxy && !evidenceUrl
 
   return (
     <Modal
-      title={proxy ? '按回单确认收货' : '确认收货'}
+      title={proxy ? t('transfers.proxyConfirmTitle') : t('transfers.confirmTitle')}
       open={target !== null}
       onCancel={onCancel}
       destroyOnHidden
@@ -60,15 +55,24 @@ export function ConfirmReceiptModal({ target, submitting, proxy = false, onCance
       footer={
         <div className="flex items-center justify-between gap-3">
           <span className="text-left text-xs text-slate-500">
-            {proxy ? '按申报数量整单入账，不可撤销。' : '数量不一致请改用「差异申报」。'}
+            {proxy ? t('transfers.confirmFooterProxy') : t('transfers.confirmFooterNormal')}
           </span>
           <div className="flex shrink-0 gap-2">
             <Button onClick={onCancel} disabled={submitting}>
-              取消
+              {tc('cancel')}
             </Button>
-            <Button type="primary" loading={submitting} onClick={() => void onSubmit(note, evidenceUrl)}>
-              {proxy ? '确认并入账' : '确认收货'}
-            </Button>
+            <Tooltip title={missingProxyEvidence ? t('transfers.proxyEvidenceRequired') : ''}>
+              <span className="inline-block">
+                <Button
+                  type="primary"
+                  loading={submitting}
+                  disabled={missingProxyEvidence}
+                  onClick={() => void onSubmit(note, evidenceUrl)}
+                >
+                  {proxy ? t('transfers.proxyConfirmSubmit') : t('transfers.confirmSubmit')}
+                </Button>
+              </span>
+            </Tooltip>
           </div>
         </div>
       }
@@ -78,11 +82,11 @@ export function ConfirmReceiptModal({ target, submitting, proxy = false, onCance
           <div className="rounded-lg bg-[var(--admin-sky-soft)] px-4 py-3">
             <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-500">
               <span className="tabular-nums">{formatTransferNo(target.id)}</span>
-              <span>{transferKindLabel[target.kind]}</span>
+              <span>{t(`transferKind.${target.kind}`)}</span>
               <span className="tabular-nums">{target.occurredAt}</span>
               {proxy ? (
                 <span className="rounded bg-amber-100 px-1.5 py-0.5 font-medium text-amber-800">
-                  代确认
+                  {t('transfers.proxyConfirmedTag')}
                 </span>
               ) : null}
             </div>
@@ -97,27 +101,31 @@ export function ConfirmReceiptModal({ target, submitting, proxy = false, onCance
             {target.items.map((item) => (
               <QuantityTile
                 key={item.containerType}
-                label={containerTypeLabel[item.containerType] ?? item.containerType}
+                label={t(`containerType.${item.containerType}`)}
                 value={item.declaredQuantity}
               />
             ))}
-            <QuantityTile label="合计入账" value={target.declaredTotal} accent />
+            <QuantityTile label={t('transfers.settleTotal')} value={target.declaredTotal} accent />
           </div>
 
           {proxy ? (
             <label className="flex flex-col gap-1.5">
-              <span className="text-sm text-slate-700">回单凭证（选填）</span>
+              <span className="text-sm text-slate-700">
+                <span className="text-rose-500">*</span> {t('transfers.proxyEvidence')}
+              </span>
               <TransferImageUpload value={evidenceUrl} onChange={setEvidenceUrl} disabled={submitting} />
             </label>
           ) : null}
 
           <label className="flex flex-col gap-1.5">
-            <span className="text-sm text-slate-700">{proxy ? '说明（选填）' : '备注（选填）'}</span>
+            <span className="text-sm text-slate-700">
+              {proxy ? t('transfers.noteProxyOptional') : t('transfers.noteOptional')}
+            </span>
             <Input.TextArea
               rows={2}
               value={note}
               maxLength={2000}
-              placeholder={proxy ? '例如：清关行微信回单，已核对数量' : undefined}
+              placeholder={proxy ? t('transfers.noteProxyPlaceholder') : undefined}
               onChange={(e) => setNote(e.target.value)}
               allowClear
             />

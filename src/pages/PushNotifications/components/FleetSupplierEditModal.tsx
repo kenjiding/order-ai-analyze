@@ -1,7 +1,8 @@
 import type { ModalProps } from 'antd'
 import { Button, Col, Form, Input, Modal, Row, Select } from 'antd'
 import { ChevronDown, ChevronUp } from 'lucide-react'
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { webhookFieldRules } from '../pushEntryFormValidators'
 import { parseFleetRouteCodes } from '../fleetRouteCodeParse'
 import type { FleetSupplierConfig, FleetSupplierConfigDraft } from '../fleetSupplierPushTypes'
@@ -56,6 +57,7 @@ export function FleetSupplierEditModal({
   secretsVisibility = 'full',
   ...rest
 }: Props) {
+  const { t } = useTranslation('pushNotifications')
   const [form] = Form.useForm<FormValues>()
   const stations = useGlobalFilterStore((s) => s.stations)
   const stationsLoading = useGlobalFilterStore((s) => s.stationsLoading)
@@ -68,19 +70,35 @@ export function FleetSupplierEditModal({
   /** hidden 模式不展示/不编辑 chatId 表单项，但已保存的 chatId 仍可用来拉群成员供「@ 相关人员」选择 */
   const effectiveChatId = secretsVisibility === 'full' ? watchedChatId : (editing?.chatId ?? '')
 
+  const webhookRules = useMemo(() => webhookFieldRules(false), [t])
+  const routeCodeRules = useMemo(
+    () => [
+      { required: true, message: t('fleetEdit.routeCodeRequired') },
+      {
+        validator: async (_: unknown, value: unknown) => {
+          const raw = typeof value === 'string' ? value : ''
+          if (!parseFleetRouteCodes(raw).length) {
+            throw new Error(t('fleetEdit.routeCodeInvalid'))
+          }
+        },
+      },
+    ],
+    [t],
+  )
+
   useEffect(() => {
     if (!open || secretsVisibility !== 'full') return
     setBotChatsLoading(true)
     void fetchFeishuAppBotChats()
       .then((res) => {
         if (!res.ok) {
-          showToast(`获取机器人所在群列表失败：${res.error}`, 'error')
+          showToast(t('fleetEdit.botChatsFailed', { error: res.error }), 'error')
           return
         }
         setBotChats(res.chats)
       })
       .finally(() => setBotChatsLoading(false))
-  }, [open, secretsVisibility])
+  }, [open, secretsVisibility, t])
 
   useEffect(() => {
     const chatId = typeof effectiveChatId === 'string' ? effectiveChatId.trim() : ''
@@ -92,13 +110,13 @@ export function FleetSupplierEditModal({
     void fetchFeishuChatMembers(chatId)
       .then((res) => {
         if (!res.ok) {
-          showToast(`获取群成员列表失败：${res.error}`, 'error')
+          showToast(t('fleetEdit.chatMembersFailed', { error: res.error }), 'error')
           return
         }
         setChatMembers(res.members)
       })
       .finally(() => setChatMembersLoading(false))
-  }, [open, effectiveChatId])
+  }, [open, effectiveChatId, t])
 
   useEffect(() => {
     if (!open) return
@@ -166,7 +184,7 @@ export function FleetSupplierEditModal({
       const chatIdValue = typeof values.chatId === 'string' ? values.chatId.trim() : ''
       if (secretsVisibility === 'full' && !chatIdValue && !webhookUrlValue) {
         setMoreOpen(true)
-        showToast('请至少填写「飞书群 Chat ID」或「飞书 webhook」中的一项。', 'error')
+        showToast(t('fleetEdit.webhookOrChatRequired'), 'error')
         return
       }
 
@@ -213,20 +231,19 @@ export function FleetSupplierEditModal({
         setMoreOpen(true)
       }
       const firstMsg = errorFields[0]?.errors?.[0]
-      showToast(firstMsg ? `保存失败：${firstMsg}` : '保存失败，请检查表单必填项。', 'error')
+      showToast(
+        firstMsg ? t('toast.saveFailedWithReason', { reason: firstMsg }) : t('toast.saveFailedCheckForm'),
+        'error',
+      )
     }
   }
 
   const hasChatId = Boolean(typeof effectiveChatId === 'string' && effectiveChatId.trim())
   const mentionField = (
     <Form.Item
-      label="@ 相关人员"
+      label={t('fleetEdit.mentionLabel')}
       name="mentionOpenIds"
-      tooltip={
-        hasChatId
-          ? '从群成员中选择需要 @ 的人，可多选；各推送是否实际 @ 由该推送「是否 @ 相关人员」开关决定，命中时取第 1 位'
-          : '需先选择「飞书群 Chat ID」才能拉取群成员列表'
-      }
+      tooltip={hasChatId ? t('fleetEdit.mentionTooltipWithChat') : t('fleetEdit.mentionTooltipNoChat')}
       getValueProps={(value: SupplierMentionContact[] | undefined) => ({
         value: (value ?? []).map((c) => c.openId),
       })}
@@ -243,8 +260,8 @@ export function FleetSupplierEditModal({
         allowClear
         disabled={!hasChatId}
         loading={chatMembersLoading}
-        placeholder={hasChatId ? '从群成员中选择' : '请先选择飞书群 Chat ID'}
-        notFoundContent={chatMembersLoading ? '加载中…' : '群内暂无成员'}
+        placeholder={hasChatId ? t('fleetEdit.mentionPlaceholder') : t('fleetEdit.mentionPlaceholderNoChat')}
+        notFoundContent={chatMembersLoading ? t('common.loading') : t('fleetEdit.mentionNotFound')}
         filterOption={(input, opt) => (opt?.label ? String(opt.label) : '').toLowerCase().includes(input.toLowerCase())}
         options={chatMembers.map((m) => ({ label: m.name || m.userId, value: m.userId }))}
       />
@@ -253,29 +270,25 @@ export function FleetSupplierEditModal({
 
   return (
     <Modal
-      title={editing ? '编辑供应商' : '添加供应商'}
+      title={editing ? t('fleetEdit.editTitle') : t('fleetEdit.addTitle')}
       open={open}
       onCancel={onCancel}
       onOk={() => void handleOk()}
       width={640}
       destroyOnHidden
-      okText={editing ? '保存' : '添加'}
-      cancelText="取消"
+      okText={editing ? t('common.save') : t('common.add')}
+      cancelText={t('common.cancel')}
       {...rest}
     >
       <Form form={form} layout="vertical" className="pt-2">
         <Row gutter={16}>
           <Col xs={24} sm={12}>
-            <Form.Item
-              label="供应商"
-              name="vendorCode"
-              tooltip="可不选：不选时该配置只按路由编码匹配运单，不看运单上的承运商"
-            >
+            <Form.Item label={t('fleetEdit.vendor')} name="vendorCode" tooltip={t('fleetEdit.vendorTooltip')}>
               <Select
                 showSearch
                 allowClear
                 loading={vendorsLoading}
-                placeholder="不选则只按路由编码匹配"
+                placeholder={t('fleetEdit.vendorPlaceholder')}
                 filterOption={(input, opt) =>
                   (opt?.label ?? '').toLowerCase().includes(input.toLowerCase())
                 }
@@ -288,12 +301,12 @@ export function FleetSupplierEditModal({
           </Col>
           <Col xs={24} sm={12}>
             <Form.Item
-              label="供应商昵称"
+              label={t('fleetEdit.nickname')}
               name="supplierNickname"
-              rules={[{ required: true, message: '请填写供应商昵称' }]}
-              tooltip="推送消息中展示的称呼，可与 iMile 供应商名称不同"
+              rules={[{ required: true, message: t('fleetEdit.nicknameRequired') }]}
+              tooltip={t('fleetEdit.nicknameTooltip')}
             >
-              <Input placeholder="例如：华南承运商 A" allowClear />
+              <Input placeholder={t('fleetEdit.nicknamePlaceholder')} allowClear />
             </Form.Item>
           </Col>
         </Row>
@@ -301,39 +314,17 @@ export function FleetSupplierEditModal({
         <Row gutter={16}>
           <Col xs={24} sm={12}>
             <Form.Item
-              label="路由编码"
+              label={t('fleetEdit.routeCode')}
               name="routeCode"
-              rules={[
-                { required: true, message: '请填写路由编码' },
-                {
-                  validator: async (_, value: unknown) => {
-                    const raw = typeof value === 'string' ? value : ''
-                    if (!parseFleetRouteCodes(raw).length) {
-                      throw new Error('请至少填写一个有效路由编码（多个请用空格或逗号分隔）')
-                    }
-                  },
-                },
-              ]}
-              extra="多个编码可用空格、换行、英文逗号或中文逗号分隔。"
+              rules={routeCodeRules}
+              extra={t('fleetEdit.routeCodeExtra')}
             >
-              <Input.TextArea
-                rows={4}
-                placeholder={'例如：RC001 RC002\n或 RC001，RC002'}
-                allowClear
-              />
+              <Input.TextArea rows={4} placeholder={t('fleetEdit.routeCodePlaceholder')} allowClear />
             </Form.Item>
           </Col>
           <Col xs={24} sm={12}>
-            <Form.Item
-              label="路由码白名单"
-              name="routeCodeWhitelist"
-              extra=""
-            >
-              <Input.TextArea
-                rows={4}
-                placeholder={'例如：RC001 RC002\n或 RC001，RC002'}
-                allowClear
-              />
+            <Form.Item label={t('fleetEdit.routeWhitelist')} name="routeCodeWhitelist" extra="">
+              <Input.TextArea rows={4} placeholder={t('fleetEdit.routeCodePlaceholder')} allowClear />
             </Form.Item>
           </Col>
         </Row>
@@ -343,21 +334,21 @@ export function FleetSupplierEditModal({
             <Row gutter={16}>
               <Col xs={24} sm={12}>
                 <Form.Item
-                  label="飞书群 Chat ID"
+                  label={t('fleetEdit.feishuChatId')}
                   name="chatId"
-                  tooltip="配置后该供应商推送走自建应用机器人发送，支持查看已读情况；前提是该应用机器人已被拉进目标群。与「飞书 webhook」（更多里）至少填写一项"
+                  tooltip={t('fleetEdit.feishuChatIdTooltip')}
                 >
                   <Select
                     showSearch
                     allowClear
                     loading={botChatsLoading}
-                    placeholder="选择机器人所在的群"
-                    notFoundContent={botChatsLoading ? '加载中…' : '机器人尚未加入任何群'}
+                    placeholder={t('fleetEdit.selectBotGroup')}
+                    notFoundContent={botChatsLoading ? t('common.loading') : t('fleetEdit.botNotInAnyGroup')}
                     filterOption={(input, opt) =>
                       (opt?.label ? String(opt.label) : '').toLowerCase().includes(input.toLowerCase())
                     }
                     options={botChats.map((c) => ({
-                      label: c.name || `未命名群（${c.chatId}）`,
+                      label: c.name || t('fleetEdit.unnamedGroup', { chatId: c.chatId }),
                       value: c.chatId,
                     }))}
                   />
@@ -379,7 +370,7 @@ export function FleetSupplierEditModal({
           icon={moreOpen ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
           onClick={() => setMoreOpen((v) => !v)}
         >
-          更多
+          {t('common.more')}
         </Button>
 
         {moreOpen ? (
@@ -387,28 +378,28 @@ export function FleetSupplierEditModal({
             {secretsVisibility === 'full' ? (
               <Row gutter={16}>
                 <Col xs={24} sm={12}>
-                  <Form.Item label="飞书 webhook" name="webhookUrl" rules={webhookFieldRules(false)}>
+                  <Form.Item label={t('fleetEdit.feishuWebhook')} name="webhookUrl" rules={webhookRules}>
                     <Input placeholder={FEISHU_WEBHOOK_PREFIX} allowClear />
                   </Form.Item>
                 </Col>
                 <Col xs={24} sm={12}>
-                  <Form.Item label="飞书 webhook 密钥" name="signingSecret">
-                    <Input.Password placeholder="可选；若群机器人开启签名校验则必填" autoComplete="new-password" />
+                  <Form.Item label={t('fleetEdit.feishuWebhookSecret')} name="signingSecret">
+                    <Input.Password placeholder={t('fleetEdit.webhookSecretPlaceholder')} autoComplete="new-password" />
                   </Form.Item>
                 </Col>
               </Row>
             ) : null}
 
             <Form.Item
-              label="所属站点编码"
+              label={t('fleetEdit.stationCode')}
               name="stationCode"
-              tooltip="该供应商固定归属的站点，供司机地图等按站点轮询的功能使用；可选"
+              tooltip={t('fleetEdit.stationCodeTooltip')}
             >
               <Select
                 allowClear
                 showSearch
                 loading={stationsLoading}
-                placeholder="选择站点"
+                placeholder={t('fleetEdit.selectStation')}
                 filterOption={(input, opt) =>
                   (opt?.label ?? '').toLowerCase().includes(input.toLowerCase())
                 }
@@ -416,12 +407,8 @@ export function FleetSupplierEditModal({
               />
             </Form.Item>
 
-            <Form.Item
-              label="供应商推送内容"
-              name="pushContent"
-              extra=""
-            >
-              <FeishuLarkMdEditor rows={5} placeholder="例如：【货量日报】以下为按邮编/城市汇总单量。" />
+            <Form.Item label={t('fleetEdit.supplierPushContent')} name="pushContent" extra="">
+              <FeishuLarkMdEditor rows={5} placeholder={t('fleetEdit.supplierPushContentPlaceholder')} />
             </Form.Item>
           </div>
         ) : null}

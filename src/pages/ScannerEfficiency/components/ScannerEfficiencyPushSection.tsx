@@ -1,3 +1,4 @@
+import { useTranslation } from 'react-i18next'
 import type { ScannerEfficiencyViewModel } from '../useScannerEfficiencyPage'
 import type { ScannerLevel1FeishuPush } from '../useScannerLevel1FeishuPush'
 import SortEfficiencyPushTab from './SortEfficiencyPushTab'
@@ -9,10 +10,11 @@ type Props = {
 }
 
 export default function ScannerEfficiencyPushSection({ vm, level1Push }: Props) {
+  const { t } = useTranslation('scannerEfficiency')
   return (
     <section className="admin-panel overflow-hidden">
       <SectionTitle
-        title="推送"
+        title={t('section.pushTitle')}
         description=""
       />
 

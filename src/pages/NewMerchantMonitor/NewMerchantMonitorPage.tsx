@@ -2,6 +2,7 @@ import { Alert, Collapse, Table, Tag } from 'antd'
 import type { ColumnsType } from 'antd/es/table'
 import { Store } from 'lucide-react'
 import { useCallback, useMemo } from 'react'
+import { useTranslation } from 'react-i18next'
 import KpiHeroGrid from './components/KpiHeroGrid'
 import NewMerchantFilterPanel from './components/NewMerchantFilterPanel'
 import NewMerchantPushBar from './components/NewMerchantPushBar'
@@ -20,15 +21,6 @@ type RawRow = {
   firstDsArriveDate: string
   signDate: string
 }
-
-const RAW_COLUMNS: ColumnsType<RawRow> = [
-  { title: '运单号', dataIndex: 'waybillNo', key: 'waybillNo', width: 180, ellipsis: true },
-  { title: '商家代码', dataIndex: 'clientCode', key: 'clientCode', width: 130 },
-  { title: '收件站点', dataIndex: 'actualReceiveStation', key: 'actualReceiveStation', width: 160 },
-  { title: '首次到国时间', dataIndex: 'firstCountryDate', key: 'firstCountryDate', width: 170 },
-  { title: '首次到件时间', dataIndex: 'firstDsArriveDate', key: 'firstDsArriveDate', width: 170 },
-  { title: '签收时间', dataIndex: 'signDate', key: 'signDate', width: 170 },
-]
 
 function toRawRow(rec: WaybillRecord, index: number): RawRow {
   const v = (k: string) => String(rec[k] ?? '').trim()
@@ -55,8 +47,21 @@ function formatGeneratedAt(): string {
 }
 
 export default function NewMerchantMonitorPage() {
+  const { t } = useTranslation('newMerchant')
   const state = useNewMerchantMonitorPage()
   const hasData = state.records.length > 0
+
+  const rawColumns: ColumnsType<RawRow> = useMemo(
+    () => [
+      { title: t('colWaybillNo'), dataIndex: 'waybillNo', key: 'waybillNo', width: 180, ellipsis: true },
+      { title: t('colClientCode'), dataIndex: 'clientCode', key: 'clientCode', width: 130 },
+      { title: t('colReceiveStation'), dataIndex: 'actualReceiveStation', key: 'actualReceiveStation', width: 160 },
+      { title: t('colFirstCountry'), dataIndex: 'firstCountryDate', key: 'firstCountryDate', width: 170 },
+      { title: t('colFirstDsArrive'), dataIndex: 'firstDsArriveDate', key: 'firstDsArriveDate', width: 170 },
+      { title: t('colSignDate'), dataIndex: 'signDate', key: 'signDate', width: 170 },
+    ],
+    [t],
+  )
 
   const rawRows = useMemo<RawRow[]>(
     () => state.records.slice(0, 200).map((rec, i) => toRawRow(rec, i)),
@@ -92,11 +97,9 @@ export default function NewMerchantMonitorPage() {
         <div>
           <div className="flex items-center gap-2">
             <Store className="h-5 w-5 text-[#1f6f68]" aria-hidden />
-            <h1 className="text-xl font-semibold text-slate-900">新商家数据监控</h1>
+            <h1 className="text-xl font-semibold text-slate-900">{t('title')}</h1>
           </div>
-          <p className="mt-1 text-sm text-slate-500">
-            按新商家代码与首次到国时间窗口拉取运单，监控总货量、签收效率与转运耗时。
-          </p>
+          <p className="mt-1 text-sm text-slate-500">{t('description')}</p>
         </div>
         {state.lastQueryMeta ? (
           <div className="flex flex-wrap items-center gap-1 text-xs text-slate-500">
@@ -126,7 +129,7 @@ export default function NewMerchantMonitorPage() {
       />
 
       {state.error ? (
-        <Alert type="error" showIcon message="查询失败" description={state.error} />
+        <Alert type="error" showIcon message={t('queryFailed')} description={state.error} />
       ) : null}
 
       <KpiHeroGrid metrics={state.metrics} hasData={hasData} />
@@ -159,10 +162,10 @@ export default function NewMerchantMonitorPage() {
           items={[
             {
               key: 'raw',
-              label: `原始记录预览（前 ${rawRows.length} 条 / 共 ${state.records.length} 条）`,
+              label: t('rawPreview', { shown: rawRows.length, total: state.records.length }),
               children: (
                 <Table<RawRow>
-                  columns={RAW_COLUMNS}
+                  columns={rawColumns}
                   dataSource={rawRows}
                   pagination={{ pageSize: 20, showSizeChanger: false }}
                   scroll={{ x: 980 }}

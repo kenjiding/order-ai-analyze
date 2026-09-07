@@ -1,0 +1,38 @@
+{
+  "title": "系统设置",
+  "subtitle": "接口凭据与考勤对接，按登录账号保存",
+  "footerHint": "保存到服务器并绑定当前账号，换电脑登录同一账号自动生效。",
+  "navLabel": "设置分类",
+  "sections": {
+    "imile": "iMile 接口",
+    "zkt": "ZKT 考勤",
+    "about": "关于"
+  },
+  "imile": {
+    "title": "iMile Bearer Token",
+    "description": "控制台所有 iMile 接口共用这一个 Token，失效后在此更新即可全局生效。",
+    "tokenLabel": "Token",
+    "tokenHint": "粘贴 Authorization 请求头中 Bearer 之后的那一段。",
+    "tokenPlaceholder": "粘贴 Authorization 中的 token 段",
+    "alertTitle": "Token 失效通知",
+    "alertDescription": "选群只用于拉取成员名单，失效时按人私聊提醒，不在群里发。"
+  },
+  "zkt": {
+    "title": "ZKT 考勤 API",
+    "description": "物流运营工作台以 API 模式拉取考勤时使用，会话过期后由服务端自动重新登录。",
+    "username": "账号",
+    "password": "密码",
+    "usernamePlaceholder": "如 AUS_ADL",
+    "passwordPlaceholder": "考勤系统密码",
+    "departments": "部门（departments）",
+    "departmentsHint": "多选后以逗号分隔的部门 ID 传给考勤接口。"
+  },
+  "about": {
+    "title": "应用说明",
+    "description": "数据落地位置与凭据保管方式。",
+    "body": "本控制台以本地计算优先：工资与扫码等数据默认保存在浏览器本机；订单异常样本使用 IndexedDB 持久化。网络请求仅在经过后端代理时使用，敏感凭据请妥善保管。",
+    "offlineNote": "顶部栏显示的「离线计算 · 本机存储」表示核心数据不落远端业务库，仍以您在当前浏览器中的存储为准。"
+  },
+  "saveFailed": "设置保存失败",
+  "saved": "设置已保存"
+}

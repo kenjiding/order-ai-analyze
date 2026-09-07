@@ -1,3 +1,4 @@
+import { i18n } from '../../i18n/index'
 import { TAB_KEYS } from './constants'
 import {
   computeAttendanceDailyMatchAverages,
@@ -15,6 +16,11 @@ import {
   type WeeklyReportSnapshot,
 } from './weeklyReportSnapshot'
 import type { WeeklyAiAnalysis } from './openaiWeeklyReport'
+
+const wt = (key: string, options?: Record<string, unknown>) =>
+  String(i18n.t(key, { ns: 'scannerEfficiency', ...options }))
+
+const listSep = () => String(i18n.t('common.listSeparator', { ns: 'scannerEfficiency' })).trim() || '、'
 
 export const escapeHtml = (value: unknown): string =>
   String(value ?? '')
@@ -69,25 +75,52 @@ export const buildWeeklySummaryText = ({
       attendanceDailyTotalLaborCost,
     })
     const unmatchedText = summary.unmatchedDayCount
-      ? `未匹配 ${summary.unmatchedDayCount} 天（${summary.unmatchedDates.join('、')}）。`
-      : '到件日期全部完成考勤匹配。'
+      ? wt('weekly.analysis.unmatchedDays', {
+          count: summary.unmatchedDayCount,
+          dates: summary.unmatchedDates.join(listSep()),
+        })
+      : wt('weekly.analysis.allMatched')
     return [
-      `本期上传总货量 ${formatInteger(summary.uploadedVolume)} 票，匹配货量 ${formatInteger(summary.matchedVolume)} 票。`,
-      `开仓效率 ${formatNumber(summary.openEfficiency, 2)} 票/小时（统计窗口内开仓日工时 ${formatNumber(summary.openHours, 2)} 小时）。`,
-      `总体效率 ${formatNumber(summary.overallEfficiency, 2)} 票/小时（统计窗口内全部考勤工时 ${formatNumber(summary.allHours, 2)} 小时，窗口 ${summary.efficiencyRangeStart}～${summary.efficiencyRangeEnd}）。`,
+      wt('weekly.analysis.warehouseModeSummary', {
+        uploaded: formatInteger(summary.uploadedVolume),
+        matched: formatInteger(summary.matchedVolume),
+      }),
+      wt('weekly.analysis.warehouseOpenEff', {
+        eff: formatNumber(summary.openEfficiency, 2),
+        hours: formatNumber(summary.openHours, 2),
+      }),
+      wt('weekly.analysis.warehouseOverallEff', {
+        eff: formatNumber(summary.overallEfficiency, 2),
+        hours: formatNumber(summary.allHours, 2),
+        start: summary.efficiencyRangeStart,
+        end: summary.efficiencyRangeEnd,
+      }),
       weeklyCostSummary
-        ? `周人工总成本 $${formatNumber(weeklyCostSummary.totalLaborCost, 2)}，单位成本 $${formatNumber(weeklyCostSummary.averageCostPerTicket, 2)}/票。`
+        ? wt('weekly.analysis.warehouseCost', {
+            cost: formatNumber(weeklyCostSummary.totalLaborCost, 2),
+            unit: formatNumber(weeklyCostSummary.averageCostPerTicket, 2),
+          })
         : '',
-      `开仓日 ${formatInteger(summary.openDayCount)} 天，${unmatchedText}`,
+      wt('weekly.analysis.warehouseOpenDays', {
+        days: formatInteger(summary.openDayCount),
+        unmatched: unmatchedText,
+      }),
     ].join(' ')
   }
 
   if (effectiveMode === TAB_KEYS.SCANNER && scannerResult) {
     const { summary } = scannerResult
-    return `小工效率 ${formatNumber(summary.totalEfficiency, 2)} 票/小时，覆盖 ${summary.totalDays} 天、${summary.totalScanners} 位扫描员。`
+    return wt('weekly.analysis.sortingModeSummary', {
+      eff: formatNumber(summary.totalEfficiency, 2),
+      days: summary.totalDays,
+      scanners: summary.totalScanners,
+    })
   }
 
-  return `当前仅统计到件货量：${formatInteger(scanAggregate.summary.totalVolume)} 票，覆盖 ${scanAggregate.summary.totalDays} 天。`
+  return wt('weekly.analysis.volumeOnlySummary', {
+    volume: formatInteger(scanAggregate.summary.totalVolume),
+    days: scanAggregate.summary.totalDays,
+  })
 }
 
 export const resolveWeeklyReportPeriod = (
@@ -113,8 +146,8 @@ export const buildWeeklyReportTitle = (
   attendanceResult: AttendanceEfficiencyResult | null = null,
 ): string => {
   const period = resolveWeeklyReportPeriod(scanAggregate, attendanceResult)
-  if (!period) return '物流运营周报'
-  return `物流运营周报（${formatWeeklyReportPeriodText(period.startDate, period.endDate)}）`
+  if (!period) return String(i18n.t('weekly.defaultTitle', { ns: 'scannerEfficiency' }))
+  return String(i18n.t('weekly.titleWithPeriod', { ns: 'scannerEfficiency', period: formatWeeklyReportPeriodText(period.startDate, period.endDate) }))
 }
 
 export const getExtremeRow = <T>(
@@ -228,8 +261,13 @@ export const buildWeeklyReportAnalysis = ({
 
   conclusions.push(
     peakVolumeDay
-      ? `本期总货量 ${formatInteger(totalVolume)} 票，日均 ${formatInteger(avgDailyVolume)} 票，峰值日为 ${peakVolumeDay.date}（${formatInteger(peakVolumeDay.volume)} 票）。`
-      : `本期总货量 ${formatInteger(totalVolume)} 票。`,
+      ? wt('weekly.analysis.volumeSummaryWithPeak', {
+          total: formatInteger(totalVolume),
+          avg: formatInteger(avgDailyVolume),
+          date: peakVolumeDay.date,
+          peak: formatInteger(peakVolumeDay.volume),
+        })
+      : wt('weekly.analysis.volumeSummary', { total: formatInteger(totalVolume) }),
   )
 
   if (attendanceResult) {
@@ -243,35 +281,46 @@ export const buildWeeklyReportAnalysis = ({
     const openVsOverallRatio = summary.overallEfficiency > 0 ? summary.openEfficiency / summary.overallEfficiency : null
 
     conclusions.push(
-      `开仓 ${formatInteger(summary.openDayCount)} 天，开仓效率 ${formatNumber(summary.openEfficiency, 2)} 票/小时，总体效率 ${formatNumber(summary.overallEfficiency, 2)} 票/小时。`,
+      wt('weekly.analysis.warehouseSummary', {
+        openDays: formatInteger(summary.openDayCount),
+        openEff: formatNumber(summary.openEfficiency, 2),
+        overallEff: formatNumber(summary.overallEfficiency, 2),
+      }),
     )
 
     diagnostics.push({
-      label: '数据匹配',
+      label: wt('weekly.analysis.matchLabel'),
       value: `${formatNumber(matchedRate, 1)}%`,
       text: summary.unmatchedDayCount
-        ? `仍有 ${formatInteger(summary.unmatchedDayCount)} 天到件未匹配考勤，效率口径需要优先补齐。`
-        : '到件与考勤日期匹配完整，周效率口径可信度较高。',
+        ? wt('weekly.analysis.matchIncomplete', { days: formatInteger(summary.unmatchedDayCount) })
+        : wt('weekly.analysis.matchComplete'),
     })
 
     diagnostics.push({
-      label: '开仓效率',
-      value: `${formatNumber(summary.openEfficiency, 2)} 票/小时`,
+      label: wt('weekly.analysis.openEffLabel'),
+      value: `${formatNumber(summary.openEfficiency, 2)} ${wt('weekly.metric.unitTicketsPerHour')}`,
       text:
         openVsOverallRatio == null
-          ? '暂无总体效率对照。'
+          ? wt('weekly.analysis.noOverallCompare')
           : openVsOverallRatio >= 1
-            ? `高于总体效率 ${formatNumber((openVsOverallRatio - 1) * 100, 1)}%，开仓日资源利用相对更集中。`
-            : `低于总体效率 ${formatNumber((1 - openVsOverallRatio) * 100, 1)}%，建议复核开仓日定义、排班与货量匹配。`,
+            ? wt('weekly.analysis.openAboveOverall', { pct: formatNumber((openVsOverallRatio - 1) * 100, 1) })
+            : wt('weekly.analysis.openBelowOverall', { pct: formatNumber((1 - openVsOverallRatio) * 100, 1) }),
     })
 
     if (lowestWarehouseDay) {
       actions.push(
-        `复盘 ${lowestWarehouseDay.date} 的周效率：当天效率 ${formatNumber(lowestWarehouseDay.dayEfficiency!, 2)} 票/小时，优先核对工时、货量结构和人员配置。`,
+        wt('weekly.analysis.reviewLowDay', {
+          date: lowestWarehouseDay.date,
+          eff: formatNumber(lowestWarehouseDay.dayEfficiency!, 2),
+        }),
       )
     }
     if (summary.unmatchedDayCount) {
-      actions.push(`补齐 ${summary.unmatchedDates.slice(0, 3).join('、')} 等未匹配日期的数据，避免周报结论被缺口拉偏。`)
+      actions.push(
+        wt('weekly.analysis.fillUnmatched', {
+          dates: summary.unmatchedDates.slice(0, 3).join(listSep()),
+        }),
+      )
     }
 
     const weeklyCostSummary = summarizeWeeklyCost({
@@ -281,15 +330,23 @@ export const buildWeeklyReportAnalysis = ({
     })
     if (weeklyCostSummary) {
       conclusions.push(
-        `人工总成本 $${formatNumber(weeklyCostSummary.totalLaborCost, 2)}，单位成本 $${formatNumber(weeklyCostSummary.averageCostPerTicket, 2)}/票（总成本÷总货量）。`,
+        wt('weekly.analysis.laborCostSummary', {
+          cost: formatNumber(weeklyCostSummary.totalLaborCost, 2),
+          unit: formatNumber(weeklyCostSummary.averageCostPerTicket, 2),
+        }),
       )
       const spread =
         weeklyCostSummary.highestDay && weeklyCostSummary.lowestDay
-          ? `最高 ${weeklyCostSummary.highestDay.date}（$${formatNumber(weeklyCostSummary.highestDay.costPerTicket, 2)}/票），最低 ${weeklyCostSummary.lowestDay.date}（$${formatNumber(weeklyCostSummary.lowestDay.costPerTicket, 2)}/票）。`
-          : '样本不足，暂不评价日间波动。'
+          ? wt('weekly.analysis.costSpread', {
+              highDate: weeklyCostSummary.highestDay.date,
+              high: formatNumber(weeklyCostSummary.highestDay.costPerTicket, 2),
+              lowDate: weeklyCostSummary.lowestDay.date,
+              low: formatNumber(weeklyCostSummary.lowestDay.costPerTicket, 2),
+            })
+          : wt('weekly.analysis.costInsufficient')
       diagnostics.push({
-        label: '每票成本',
-        value: `$${formatNumber(weeklyCostSummary.averageCostPerTicket, 2)}/票`,
+        label: wt('weekly.metric.averageCostPerTicket'),
+        value: `$${formatNumber(weeklyCostSummary.averageCostPerTicket, 2)}/${wt('weekly.metric.unitTickets')}`,
         text: spread,
       })
       if (
@@ -301,24 +358,27 @@ export const buildWeeklyReportAnalysis = ({
           weeklyCostSummary.highestDay.costPerTicket / weeklyCostSummary.lowestDay.costPerTicket
         if (ratio >= 1.25) {
           actions.push(
-            `复盘 ${weeklyCostSummary.highestDay.date} 的成本峰值日：每票成本较低位日高 ${formatNumber((ratio - 1) * 100, 1)}%，重点检查异常工时和低货量错配。`,
+            wt('weekly.email.reviewCostPeak', {
+              date: weeklyCostSummary.highestDay.date,
+              pct: formatNumber((ratio - 1) * 100, 1),
+            }),
           )
         }
       }
     } else {
       diagnostics.push({
-        label: '每票成本',
-        value: '样本不足',
-        text: '缺少有效的“有考勤且有货量”样本日，暂不输出周成本结论。',
+        label: wt('weekly.metric.averageCostPerTicket'),
+        value: wt('weekly.analysis.costInsufficientLabel'),
+        text: wt('weekly.analysis.costInsufficientText'),
       })
     }
   } else {
     diagnostics.push({
-      label: '考勤口径',
-      value: '未启用',
-      text: '缺少考勤数据，暂时无法判断开仓效率、总体效率和排班投入产出。',
+      label: wt('weekly.analysis.attendanceDisabledLabel'),
+      value: wt('weekly.analysis.attendanceDisabledValue'),
+      text: wt('weekly.analysis.attendanceDisabledText'),
     })
-    actions.push('补充考勤文件后再生成周报，管理结论会从货量统计升级为效率复盘。')
+    actions.push(wt('weekly.analysis.addAttendanceAction'))
   }
 
   if (scannerResult) {
@@ -328,51 +388,66 @@ export const buildWeeklyReportAnalysis = ({
     const bestSortingDay = getExtremeRow(sortingRows, (row) => row.efficiency, 'max')
     const spreadText =
       lowestSortingDay && bestSortingDay && lowestSortingDay.date !== bestSortingDay.date
-        ? `最高日 ${bestSortingDay.date}（${formatNumber(bestSortingDay.efficiency, 2)}），最低日 ${lowestSortingDay.date}（${formatNumber(lowestSortingDay.efficiency, 2)}）。`
-        : '日间波动较小或样本不足。'
+        ? wt('weekly.analysis.sortingSpread', {
+            highDate: bestSortingDay.date,
+            high: formatNumber(bestSortingDay.efficiency, 2),
+            lowDate: lowestSortingDay.date,
+            low: formatNumber(lowestSortingDay.efficiency, 2),
+          })
+        : wt('weekly.analysis.sortingFlat')
 
     conclusions.push(
-      `小工平均效率 ${formatNumber(summary.totalEfficiency, 2)} 票/小时，覆盖 ${formatInteger(summary.totalDays)} 天、${formatInteger(summary.totalScanners)} 位扫描员。`,
+      wt('weekly.analysis.sortingSummary', {
+        eff: formatNumber(summary.totalEfficiency, 2),
+        days: formatInteger(summary.totalDays),
+        scanners: formatInteger(summary.totalScanners),
+      }),
     )
     diagnostics.push({
-      label: '小工',
-      value: `${formatNumber(summary.totalEfficiency, 2)} 票/小时`,
+      label: wt('weekly.analysis.sortingLabel'),
+      value: `${formatNumber(summary.totalEfficiency, 2)} ${wt('weekly.metric.unitTicketsPerHour')}`,
       text: spreadText,
     })
 
     if (lowestSortingDay) {
       actions.push(
-        `对照 ${lowestSortingDay.date} 的小工效率（${formatNumber(lowestSortingDay.efficiency, 2)} 票/小时），检查扫描间隔、任务分配和人员熟练度。`,
+        wt('weekly.analysis.reviewSortingLow', {
+          date: lowestSortingDay.date,
+          eff: formatNumber(lowestSortingDay.efficiency, 2),
+        }),
       )
     }
   } else {
     diagnostics.push({
-      label: '小工',
-      value: '未启用',
-      text: '当前文件没有形成小工效率，无法做分拣端对照分析。',
+      label: wt('weekly.analysis.sortingLabel'),
+      value: wt('weekly.analysis.sortingDisabledValue'),
+      text: wt('weekly.analysis.sortingDisabledText'),
     })
-    actions.push('确认到件文件包含小工效率所需的扫描时间、运单号、扫描员字段。')
+    actions.push(wt('weekly.analysis.sortingColumnsAction'))
   }
 
   if (peakVolumeDay && avgDailyVolume > 0 && peakVolumeDay.volume >= avgDailyVolume * 1.3) {
     diagnostics.push({
-      label: '货量波动',
+      label: wt('weekly.analysis.volumeSpikeLabel'),
       value: `${formatNumber(peakVolumeDay.volume / avgDailyVolume, 1)}x`,
-      text: `${peakVolumeDay.date} 货量高于日均较多，建议与当天工时和效率联动判断是否需要临时增援。`,
+      text: wt('weekly.analysis.volumeSpikeText', { date: peakVolumeDay.date }),
     })
   }
 
   if (sourceInfo.duplicateWaybillRows > 0) {
     diagnostics.push({
-      label: '到件重复运单剔除',
+      label: wt('weekly.analysis.dedupeLabel'),
       value: formatInteger(sourceInfo.duplicateWaybillRows),
-      text: `已按全局「运单号」去重合并，较晚出现的重复扫描记录未纳入货量与个人效率口径。`,
+      text: wt('weekly.analysis.dedupeText'),
     })
   }
 
   if (sourceInfo.droppedRows || attendanceSourceInfo.droppedRows) {
     actions.push(
-      `检查原始文件无效行：到件 ${formatInteger(sourceInfo.droppedRows)} 行，考勤 ${formatInteger(attendanceSourceInfo.droppedRows)} 行。`,
+      wt('weekly.analysis.checkInvalidRows', {
+        scanDropped: formatInteger(sourceInfo.droppedRows),
+        attendanceDropped: formatInteger(attendanceSourceInfo.droppedRows),
+      }),
     )
   }
 
@@ -386,7 +461,7 @@ export const buildWeeklyReportAnalysis = ({
   }
 
   if (!actions.length) {
-    actions.push('延续当前口径，下周重点比较货量峰值日、开仓效率和小工效率是否同向改善。')
+    actions.push(wt('weekly.actionDefault'))
   }
 
   return { conclusions, diagnostics, actions, comparisons, comparisonPeriodText }
@@ -510,7 +585,7 @@ export function buildWeeklyReportEmailHtml({
   const analysisHtmlFallback = `
           <tr>
             <td style="padding:22px 32px 4px;">
-              <div style="font-size:17px;font-weight:800;color:#184a7a;">本周结论</div>
+              <div style="font-size:17px;font-weight:800;color:#184a7a;">${escapeHtml(wt('weekly.email.conclusionsTitle'))}</div>
               <ul style="margin:10px 0 0 18px;padding:0;color:#29435f;font-size:14px;">
                 ${conclusionHtml}
               </ul>
@@ -519,12 +594,12 @@ export function buildWeeklyReportEmailHtml({
 
           <tr>
             <td style="padding:18px 32px 4px;">
-              <div style="font-size:17px;font-weight:800;color:#184a7a;">效率诊断</div>
+              <div style="font-size:17px;font-weight:800;color:#184a7a;">${escapeHtml(wt('weekly.email.diagnosticsTitle'))}</div>
               <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin-top:10px;border:1px solid #d9eaff;border-radius:12px;overflow:hidden;">
                 <tr style="background:#f4f9ff;color:#184a7a;">
-                  <th style="padding:10px 12px;text-align:left;font-size:12px;font-weight:800;">指标</th>
-                  <th style="padding:10px 12px;text-align:right;font-size:12px;font-weight:800;">结果</th>
-                  <th style="padding:10px 12px;text-align:left;font-size:12px;font-weight:800;">判断</th>
+                  <th style="padding:10px 12px;text-align:left;font-size:12px;font-weight:800;">${escapeHtml(wt('weekly.email.colMetric'))}</th>
+                  <th style="padding:10px 12px;text-align:right;font-size:12px;font-weight:800;">${escapeHtml(wt('weekly.email.colResult'))}</th>
+                  <th style="padding:10px 12px;text-align:left;font-size:12px;font-weight:800;">${escapeHtml(wt('weekly.email.colJudgment'))}</th>
                 </tr>
                 ${diagnosticsHtml}
               </table>
@@ -533,7 +608,7 @@ export function buildWeeklyReportEmailHtml({
 
           <tr>
             <td style="padding:18px 32px 4px;">
-              <div style="font-size:17px;font-weight:800;color:#184a7a;">下周动作</div>
+              <div style="font-size:17px;font-weight:800;color:#184a7a;">${escapeHtml(wt('weekly.email.actionsTitle'))}</div>
               <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin-top:8px;">
                 ${actionsHtml}
               </table>
@@ -571,27 +646,27 @@ export function buildWeeklyReportEmailHtml({
   const analysisHtmlAi = `
           <tr>
             <td style="padding:22px 32px 4px;">
-              <div style="font-size:17px;font-weight:800;color:#184a7a;">本周要点</div>
+              <div style="font-size:17px;font-weight:800;color:#184a7a;">${escapeHtml(wt('weekly.email.aiSummaryTitle'))}</div>
               <ul style="margin:10px 0 0 18px;padding:0;color:#29435f;font-size:14px;">
-                ${aiSummaryHtml || '<li style="line-height:1.75;color:#64748b;">本期暂无补充要点。</li>'}
+                ${aiSummaryHtml || `<li style="line-height:1.75;color:#64748b;">${escapeHtml(wt('weekly.email.aiSummaryEmpty'))}</li>`}
               </ul>
             </td>
           </tr>
 
           <tr>
             <td style="padding:18px 32px 4px;">
-              <div style="font-size:17px;font-weight:800;color:#184a7a;">下周研判</div>
+              <div style="font-size:17px;font-weight:800;color:#184a7a;">${escapeHtml(wt('weekly.email.aiPredictionTitle'))}</div>
               <ul style="margin:10px 0 0 18px;padding:0;color:#29435f;font-size:14px;">
-                ${aiPredictionHtml || '<li style="line-height:1.75;color:#64748b;">暂无研判内容。</li>'}
+                ${aiPredictionHtml || `<li style="line-height:1.75;color:#64748b;">${escapeHtml(wt('weekly.email.aiPredictionEmpty'))}</li>`}
               </ul>
             </td>
           </tr>
 
           <tr>
             <td style="padding:18px 32px 4px;">
-              <div style="font-size:17px;font-weight:800;color:#184a7a;">预防与动作</div>
+              <div style="font-size:17px;font-weight:800;color:#184a7a;">${escapeHtml(wt('weekly.email.aiPreventionTitle'))}</div>
               <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin-top:8px;">
-                ${aiPreventionHtml || '<tr><td style="color:#64748b;font-size:13px;line-height:1.75;">暂无预防与动作清单。</td></tr>'}
+                ${aiPreventionHtml || `<tr><td style="color:#64748b;font-size:13px;line-height:1.75;">${escapeHtml(wt('weekly.email.aiPreventionEmpty'))}</td></tr>`}
               </table>
             </td>
           </tr>
@@ -635,17 +710,15 @@ export function buildWeeklyReportEmailHtml({
     ? `
             <tr>
               <td style="padding:18px 32px 4px;">
-                <div style="font-size:17px;font-weight:800;color:#184a7a;">环比上周</div>
-                <div style="margin-top:4px;color:#58708b;font-size:12px;">对比周期：${escapeHtml(
-                  reportAnalysis.comparisonPeriodText,
-                )}</div>
+                <div style="font-size:17px;font-weight:800;color:#184a7a;">${escapeHtml(wt('weekly.email.comparisonTitle'))}</div>
+                <div style="margin-top:4px;color:#58708b;font-size:12px;">${escapeHtml(wt('weekly.email.comparisonPeriod', { period: reportAnalysis.comparisonPeriodText }))}</div>
                 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin-top:10px;border:1px solid #d9eaff;border-radius:12px;overflow:hidden;">
                   <tr style="background:#f4f9ff;color:#184a7a;">
-                    <th style="padding:10px 12px;text-align:left;font-size:12px;font-weight:800;">指标</th>
-                    <th style="padding:10px 12px;text-align:right;font-size:12px;font-weight:800;">本周</th>
-                    <th style="padding:10px 12px;text-align:right;font-size:12px;font-weight:800;">上周</th>
-                    <th style="padding:10px 12px;text-align:right;font-size:12px;font-weight:800;">差值</th>
-                    <th style="padding:10px 12px;text-align:right;font-size:12px;font-weight:800;">变化</th>
+                    <th style="padding:10px 12px;text-align:left;font-size:12px;font-weight:800;">${escapeHtml(wt('weekly.email.colMetric'))}</th>
+                    <th style="padding:10px 12px;text-align:right;font-size:12px;font-weight:800;">${escapeHtml(wt('weekly.email.colThisWeek'))}</th>
+                    <th style="padding:10px 12px;text-align:right;font-size:12px;font-weight:800;">${escapeHtml(wt('weekly.email.colLastWeek'))}</th>
+                    <th style="padding:10px 12px;text-align:right;font-size:12px;font-weight:800;">${escapeHtml(wt('weekly.email.colDelta'))}</th>
+                    <th style="padding:10px 12px;text-align:right;font-size:12px;font-weight:800;">${escapeHtml(wt('weekly.email.colChange'))}</th>
                   </tr>
                   ${comparisonRowsHtml}
                 </table>
@@ -675,14 +748,14 @@ export function buildWeeklyReportEmailHtml({
     : scanAggregate.summary.totalDays
   metricRows.push(
     `<tr>${metricCard(
-      '总货量',
+      wt('weekly.metric.totalVolume'),
       formatInteger(scanAggregate.summary.totalVolume),
       '#b9dcff',
       '#eaf5ff',
       '#3f5f80',
       '#0068d6',
     )}${gap}${metricCard(
-      '开仓天数',
+      wt('weekly.metric.openDayCount'),
       formatInteger(openDayCountValue),
       '#b6ecd8',
       '#e9fbf3',
@@ -694,15 +767,15 @@ export function buildWeeklyReportEmailHtml({
   if (attendanceResult) {
     metricRows.push(
       `<tr><td colspan="${metricRowColSpan}" style="height:14px;font-size:0;line-height:0;">&nbsp;</td></tr><tr>${metricCard(
-        '开仓效率',
-        `${formatNumber(attendanceResult.summary.openEfficiency, 2)} 票/小时`,
+        wt('weekly.metric.openEfficiency'),
+        `${formatNumber(attendanceResult.summary.openEfficiency, 2)} ${wt('weekly.metric.unitTicketsPerHour')}`,
         '#b9dcff',
         '#eaf5ff',
         '#3f5f80',
         '#0068d6',
       )}${gap}${metricCard(
-        '总体效率',
-        `${formatNumber(attendanceResult.summary.overallEfficiency, 2)} 票/小时`,
+        wt('weekly.metric.overallEfficiency'),
+        `${formatNumber(attendanceResult.summary.overallEfficiency, 2)} ${wt('weekly.metric.unitTicketsPerHour')}`,
         '#b6ecd8',
         '#e9fbf3',
         '#3f6c63',
@@ -719,15 +792,15 @@ export function buildWeeklyReportEmailHtml({
   if (weeklyCostSummary) {
     metricRows.push(
       `<tr><td colspan="${metricRowColSpan}" style="height:14px;font-size:0;line-height:0;">&nbsp;</td></tr><tr>${metricCard(
-        '人工总成本',
+        wt('weekly.email.laborCostLabel'),
         `$${formatNumber(weeklyCostSummary.totalLaborCost, 2)}`,
         '#b9dcff',
         '#eaf5ff',
         '#3f5f80',
         '#0068d6',
       )}${gap}${metricCard(
-        '单位成本',
-        `$${formatNumber(weeklyCostSummary.averageCostPerTicket, 2)}/票`,
+        wt('weekly.email.unitCostLabel'),
+        `$${formatNumber(weeklyCostSummary.averageCostPerTicket, 2)}/${wt('weekly.metric.unitTickets')}`,
         '#b6ecd8',
         '#e9fbf3',
         '#3f6c63',
@@ -739,15 +812,15 @@ export function buildWeeklyReportEmailHtml({
   if (scannerResult) {
     metricRows.push(
       `<tr><td colspan="${metricRowColSpan}" style="height:14px;font-size:0;line-height:0;">&nbsp;</td></tr><tr>${metricCard(
-        '小工效率',
-        `${formatNumber(scannerResult.summary.totalEfficiency, 2)} 票/小时`,
+        wt('weekly.metric.sortingEfficiency'),
+        `${formatNumber(scannerResult.summary.totalEfficiency, 2)} ${wt('weekly.metric.unitTicketsPerHour')}`,
         '#b9dcff',
         '#eaf5ff',
         '#3f5f80',
         '#0068d6',
       )}${gap}${metricCard(
-        '扫描员人数',
-        `${formatInteger(scannerResult.summary.totalScanners)} 人`,
+        wt('weekly.metric.sortingScannerCount'),
+        wt('weekly.email.scannerPeople', { count: formatInteger(scannerResult.summary.totalScanners) }),
         '#b6ecd8',
         '#e9fbf3',
         '#3f6c63',
@@ -768,13 +841,13 @@ export function buildWeeklyReportEmailHtml({
     )
     const weekRows = attendanceResult.dailyRows
     const matchAvgs = computeAttendanceDailyMatchAverages(weekRows)
-    const footerVol = `总计 ${formatInteger(matchAvgs.totalVolume)}<br/><span style="color:#64748b;font-weight:600;">平均 ${formatNumber(matchAvgs.avgVolume, 2)}</span>`
-    const footerHours = `总计 ${formatNumber(matchAvgs.totalHoursSum, 2)}<br/><span style="color:#64748b;font-weight:600;">平均 ${formatNumber(matchAvgs.avgTotalHours, 2)}</span>`
+    const footerVol = `${wt('weekly.email.footerTotalLine', { value: formatInteger(matchAvgs.totalVolume) })}<br/><span style="color:#64748b;font-weight:600;">${wt('weekly.email.footerAverageLine', { value: formatNumber(matchAvgs.avgVolume, 2) })}</span>`
+    const footerHours = `${wt('weekly.email.footerTotalLine', { value: formatNumber(matchAvgs.totalHoursSum, 2) })}<br/><span style="color:#64748b;font-weight:600;">${wt('weekly.email.footerAverageLine', { value: formatNumber(matchAvgs.avgTotalHours, 2) })}</span>`
     const footerEffTotal =
       matchAvgs.efficiencyFromTotals == null ? '—' : formatNumber(matchAvgs.efficiencyFromTotals, 2)
     const footerEffAvg =
       matchAvgs.avgDayEfficiency == null ? '—' : formatNumber(matchAvgs.avgDayEfficiency, 2)
-    const footerEff = `总计 ${footerEffTotal}<br/><span style="color:#64748b;font-weight:600;">平均 ${footerEffAvg}</span>`
+    const footerEff = `${wt('weekly.email.footerTotalLine', { value: footerEffTotal })}<br/><span style="color:#64748b;font-weight:600;">${wt('weekly.email.footerAverageLine', { value: footerEffAvg })}</span>`
     const costByDate = attendanceDailyCostPerTicket
     const costSamples = weekRows
       .map((row) => costByDate?.[row.date])
@@ -783,7 +856,7 @@ export function buildWeeklyReportEmailHtml({
       costSamples.length > 0
         ? formatNumber(costSamples.reduce((a, b) => a + b, 0) / costSamples.length, 2)
         : '—'
-    const footerCost = `总计 —<br/><span style="color:#64748b;font-weight:600;">平均 ${footerCostAvg}</span>`
+    const footerCost = `${wt('weekly.email.footerTotalLine', { value: '—' })}<br/><span style="color:#64748b;font-weight:600;">${wt('weekly.email.footerAverageLine', { value: footerCostAvg })}</span>`
     const matchRowsHtml = weekRows
       .map(
         (row) => {
@@ -819,7 +892,7 @@ export function buildWeeklyReportEmailHtml({
       )
       .concat(
         `<tr style="font-weight:700;background:#f0f6ff;">
-                  <td style="padding:10px 12px;border-bottom:1px solid #e8edf3;">${escapeHtml('平均 / 总计')}</td>
+                  <td style="padding:10px 12px;border-bottom:1px solid #e8edf3;">${escapeHtml(wt('weekly.email.footerAvgTotal'))}</td>
                   <td style="padding:10px 12px;border-bottom:1px solid #e8edf3;text-align:right;line-height:1.35;">${footerVol}</td>
                   <td style="padding:10px 12px;border-bottom:1px solid #e8edf3;text-align:right;">—</td>
                   <td style="padding:10px 12px;border-bottom:1px solid #e8edf3;text-align:right;line-height:1.35;">${footerHours}</td>
@@ -833,16 +906,16 @@ export function buildWeeklyReportEmailHtml({
     extraBlockHtml = `
             <tr>
               <td style="padding:18px 32px 8px;">
-                <div style="font-size:16px;font-weight:800;color:#184a7a;">周效率</div>
+                <div style="font-size:16px;font-weight:800;color:#184a7a;">${escapeHtml(wt('weekly.email.weeklyEfficiencyTitle'))}</div>
                 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin-top:10px;border:1px solid #d9eaff;border-radius:12px;overflow:hidden;">
                   <tr style="background:#2f84df;color:#ffffff;">
-                    <th style="padding:10px 12px;text-align:left;font-size:12px;font-weight:700;">日期</th>
-                    <th style="padding:10px 12px;text-align:right;font-size:12px;font-weight:700;">货量</th>
-                    <th style="padding:10px 12px;text-align:right;font-size:12px;font-weight:700;">分拣人数</th>
-                    <th style="padding:10px 12px;text-align:right;font-size:12px;font-weight:700;">总工时</th>
-                    <th style="padding:10px 12px;text-align:right;font-size:12px;font-weight:700;">当天效率</th>
-                    <th style="padding:10px 12px;text-align:right;font-size:12px;font-weight:700;">每票成本</th>
-                    <th style="padding:10px 12px;text-align:right;font-size:12px;font-weight:700;">小工效率</th>
+                    <th style="padding:10px 12px;text-align:left;font-size:12px;font-weight:700;">${escapeHtml(wt('weekly.email.colDate'))}</th>
+                    <th style="padding:10px 12px;text-align:right;font-size:12px;font-weight:700;">${escapeHtml(wt('weekly.email.colVolume'))}</th>
+                    <th style="padding:10px 12px;text-align:right;font-size:12px;font-weight:700;">${escapeHtml(wt('weekly.email.colSorterCount'))}</th>
+                    <th style="padding:10px 12px;text-align:right;font-size:12px;font-weight:700;">${escapeHtml(wt('weekly.email.colTotalHours'))}</th>
+                    <th style="padding:10px 12px;text-align:right;font-size:12px;font-weight:700;">${escapeHtml(wt('weekly.email.colDayEfficiency'))}</th>
+                    <th style="padding:10px 12px;text-align:right;font-size:12px;font-weight:700;">${escapeHtml(wt('weekly.email.colCostPerTicket'))}</th>
+                    <th style="padding:10px 12px;text-align:right;font-size:12px;font-weight:700;">${escapeHtml(wt('weekly.email.colSortingEff'))}</th>
                   </tr>
                   ${matchRowsHtml}
                 </table>
@@ -872,15 +945,12 @@ export function buildWeeklyReportEmailHtml({
     scannerBlockHtml = `
             <tr>
               <td style="padding:18px 32px 8px;">
-                <div style="font-size:16px;font-weight:800;color:#184a7a;">小工个人效率（Top ${Math.min(
-                  topScannerRows.length,
-                  10,
-                )}）</div>
+                <div style="font-size:16px;font-weight:800;color:#184a7a;">${escapeHtml(wt('weekly.email.scannerTopTitle', { count: Math.min(topScannerRows.length, 10) }))}</div>
                 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin-top:10px;border:1px solid #d9eaff;border-radius:12px;overflow:hidden;">
                   <tr style="background:#2f84df;color:#ffffff;">
-                    <th style="padding:10px 12px;text-align:center;font-size:12px;font-weight:700;">排名</th>
-                    <th style="padding:10px 12px;text-align:left;font-size:12px;font-weight:700;">扫描员</th>
-                    <th style="padding:10px 12px;text-align:right;font-size:12px;font-weight:700;">综合效率</th>
+                    <th style="padding:10px 12px;text-align:center;font-size:12px;font-weight:700;">${escapeHtml(wt('weekly.email.colRank'))}</th>
+                    <th style="padding:10px 12px;text-align:left;font-size:12px;font-weight:700;">${escapeHtml(wt('weekly.email.colScanner'))}</th>
+                    <th style="padding:10px 12px;text-align:right;font-size:12px;font-weight:700;">${escapeHtml(wt('weekly.email.colCombinedEff'))}</th>
                   </tr>
                   ${scannerRowsHtml}
                 </table>
@@ -889,14 +959,17 @@ export function buildWeeklyReportEmailHtml({
           `
   }
 
-  const modeTitle = '全口径综合（到件 + 开仓/总体 + 小工）'
+  const modeTitle = wt('weekly.email.modeTitle')
+  const reportTitle = wt('weekly.email.reportHeader')
+  const periodLabel = wt('weekly.email.periodLabel')
+  const statsModeLabel = wt('weekly.email.summaryNarrative')
 
   return `<!doctype html>
-<html lang="zh-CN">
+<html lang="${i18n.language.startsWith('en') ? 'en' : 'zh-CN'}">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>物流运营周报</title>
+    <title>${escapeHtml(reportTitle)}</title>
   </head>
   <body style="margin:0;padding:0;background:#f2f8ff;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif;color:#243447;">
     <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f2f8ff;padding:24px 12px;">
@@ -906,9 +979,9 @@ export function buildWeeklyReportEmailHtml({
             <tr>
               <td style="padding:30px 32px;background:linear-gradient(120deg,#1e88ff,#48c5ff,#7ee4c4);color:#ffffff;">
                 <div style="font-size:12px;letter-spacing:0.22em;text-transform:uppercase;font-weight:600;opacity:0.95;">Logistics Operations Weekly</div>
-                <div style="margin-top:10px;font-size:30px;font-weight:800;line-height:1.25;">物流运营周报</div>
-                <div style="margin-top:8px;font-size:15px;font-weight:500;opacity:0.95;">统计周期：${escapeHtml(periodText)}</div>
-                <div style="margin-top:8px;font-size:13px;font-weight:500;opacity:0.95;">统计模式：${escapeHtml(modeTitle)}</div>
+                <div style="margin-top:10px;font-size:30px;font-weight:800;line-height:1.25;">${escapeHtml(reportTitle)}</div>
+                <div style="margin-top:8px;font-size:15px;font-weight:500;opacity:0.95;">${escapeHtml(periodLabel)}：${escapeHtml(periodText)}</div>
+                <div style="margin-top:8px;font-size:13px;font-weight:500;opacity:0.95;">${escapeHtml(statsModeLabel)}：${escapeHtml(modeTitle)}</div>
               </td>
             </tr>
 

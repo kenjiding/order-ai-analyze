@@ -26,7 +26,6 @@ export default function WageSalaryPage() {
         onClose={() => v.setShowRateSettings(false)}
         rateSettings={v.rateSettings}
         setRateSettings={v.setRateSettings}
-        roleMap={v.roleMap}
         persistRateSettings={v.persistRateSettings}
         resetRateSettings={v.resetRateSettings}
       />
@@ -36,7 +35,6 @@ export default function WageSalaryPage() {
         onClose={() => v.setShowActualWorkerRates(false)}
         actualWorkerRateSettings={v.actualWorkerRateSettings}
         setActualWorkerRateSettings={v.setActualWorkerRateSettings}
-        roleMap={v.roleMap}
         persistActualWorkerRateSettings={v.persistActualWorkerRateSettings}
         resetActualWorkerRateSettings={v.resetActualWorkerRateSettings}
       />
@@ -53,7 +51,6 @@ export default function WageSalaryPage() {
             handleSubmitUpload={v.handleSubmitUpload}
             isUploading={v.isUploading}
             handleClearUploadedData={v.handleClearUploadedData}
-            roleMap={v.roleMap}
             roles={v.roles}
             handleUpdateUploadedRole={v.handleUpdateUploadedRole}
             handleDayOptionChange={v.handleDayOptionChange}
@@ -73,7 +70,6 @@ export default function WageSalaryPage() {
             searchEndDate={v.searchEndDate}
             setSearchEndDate={v.setSearchEndDate}
             roles={v.roles}
-            roleMap={v.roleMap}
             handleExport={v.handleExport}
             billingVsActualSummary={v.billingVsActualSummary}
             onOpenActualWorkerRates={() => v.setShowActualWorkerRates(true)}
@@ -113,7 +109,6 @@ export default function WageSalaryPage() {
           tempRole={v.tempRole}
           setTempRole={v.setTempRole}
           roles={v.roles}
-          roleMap={v.roleMap}
           handleUpdateEmployeeRole={v.handleUpdateEmployeeRole}
           handleDeleteEmployee={v.handleDeleteEmployee}
         />

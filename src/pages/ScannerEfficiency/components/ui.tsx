@@ -1,3 +1,4 @@
+import { useTranslation } from 'react-i18next'
 import { Fragment, type ReactNode } from 'react'
 import { Tooltip } from 'antd'
 import { usePermission } from '../../../hooks/usePermission'
@@ -13,10 +14,11 @@ type ExportButtonProps = {
 export function ExportButton({
   onClick,
   disabled,
-  label = '导出 Excel',
+  label,
   className,
   permission,
 }: ExportButtonProps) {
+  const { t } = useTranslation('scannerEfficiency')
   const allowed = permission ? usePermission(permission) : true
   const isDisabled = disabled || !allowed
 
@@ -27,12 +29,12 @@ export function ExportButton({
       disabled={isDisabled}
       className={['admin-btn', 'admin-btn-primary', className].filter(Boolean).join(' ')}
     >
-      {label}
+      {label ?? t('common.exportExcel')}
     </button>
   )
 
   if (permission && !allowed) {
-    return <Tooltip title="无操作权限">{button}</Tooltip>
+    return <Tooltip title={t('common.noPermission')}>{button}</Tooltip>
   }
 
   return button
@@ -90,8 +92,9 @@ export function Metric({ label, value, hint, featured = false }: MetricProps) {
 }
 
 export function LoadingPanel() {
+  const { t } = useTranslation('scannerEfficiency')
   return (
-    <section className="se-loading-panel" aria-busy="true" aria-label="正在加载">
+    <section className="se-loading-panel" aria-busy="true" aria-label={t('common.loading')}>
       <div className="flex flex-col gap-3">
         <div className="se-skeleton h-4 w-40" />
         <div className="se-skeleton h-3 w-full max-w-md" />
@@ -105,7 +108,7 @@ export function LoadingPanel() {
           </div>
         ))}
       </div>
-      <p className="mt-4 text-sm text-[var(--admin-muted)]">正在读取并计算，请稍候…</p>
+      <p className="mt-4 text-sm text-[var(--admin-muted)]">{t('common.loadingPanel')}</p>
     </section>
   )
 }

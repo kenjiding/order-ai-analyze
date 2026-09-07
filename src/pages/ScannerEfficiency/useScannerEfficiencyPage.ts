@@ -61,6 +61,7 @@ import {
 import type { SourceInfo } from './sourceInfo'
 import { buildScannerTotalEfficiencyRows, sortingScanCountForPerson } from './sortingLookup'
 import type { DataTableRow } from './components/ui'
+import { i18n } from '../../i18n/index'
 import { showToast } from '../../utils/toast'
 import {
   buildAttendanceMatchColumns,
@@ -397,54 +398,45 @@ export function useScannerEfficiencyPage() {
     if (!scanAggregate || !attendanceResult) return null
     return [
       {
-        label: '开仓效率',
-        value: `${formatNumber(attendanceResult.summary.openEfficiency, 2)} 票/小时`,
-        hint: `上传总货量 ${formatInteger(attendanceResult.summary.uploadedVolume)} / 窗口内开仓日工时 ${formatNumber(
-          attendanceResult.summary.openHours,
-          2,
-        )} 小时；菜鸟占比 ${formatCainiaoSharePercent(attendanceResult.summary.cainiaoShareOpenDays)}（开仓日）`,
+        label: String(i18n.t('metrics.openEfficiency', { ns: 'scannerEfficiency' })),
+        value: String(i18n.t('metrics.ticketsPerHour', { ns: 'scannerEfficiency', value: formatNumber(attendanceResult.summary.openEfficiency, 2) })),
+        hint: String(i18n.t('metrics.openEffHint', { ns: 'scannerEfficiency', volume: formatInteger(attendanceResult.summary.uploadedVolume), hours: formatNumber(attendanceResult.summary.openHours, 2), share: formatCainiaoSharePercent(attendanceResult.summary.cainiaoShareOpenDays) })),
         tone: 'dark' as const,
       },
       {
-        label: '总体效率',
-        value: `${formatNumber(attendanceResult.summary.overallEfficiency, 2)} 票/小时`,
-        hint: `上传总货量 ${formatInteger(attendanceResult.summary.uploadedVolume)} / 窗口内全部考勤工时 ${formatNumber(
-          attendanceResult.summary.allHours,
-          2,
-        )} 小时；菜鸟占比 ${formatCainiaoSharePercent(attendanceResult.summary.cainiaoShareWindow)}（全窗口）`,
+        label: String(i18n.t('metrics.overallEfficiency', { ns: 'scannerEfficiency' })),
+        value: String(i18n.t('metrics.ticketsPerHour', { ns: 'scannerEfficiency', value: formatNumber(attendanceResult.summary.overallEfficiency, 2) })),
+        hint: String(i18n.t('metrics.overallEffHint', { ns: 'scannerEfficiency', volume: formatInteger(attendanceResult.summary.uploadedVolume), hours: formatNumber(attendanceResult.summary.allHours, 2), share: formatCainiaoSharePercent(attendanceResult.summary.cainiaoShareWindow) })),
       },
     ]
-  }, [scanAggregate, attendanceResult])
+  }, [scanAggregate, attendanceResult, i18n.language])
 
   const scannerMetrics = useMemo(() => {
     if (!scanAggregate || !scannerResult) return null
     return [
       {
-        label: '一级分拣效率',
-        value: `${formatNumber(scannerResult.summary.totalEfficiency, 2)} 票/小时`,
-        hint: `总扫描量 ${formatInteger(scannerResult.summary.totalScanCount)} / 一级分拣有效工时 ${formatNumber(
-          scannerResult.summary.totalEffectiveHours,
-          2,
-        )}`,
+        label: String(i18n.t('metrics.sortingEfficiency', { ns: 'scannerEfficiency' })),
+        value: String(i18n.t('metrics.ticketsPerHour', { ns: 'scannerEfficiency', value: formatNumber(scannerResult.summary.totalEfficiency, 2) })),
+        hint: String(i18n.t('metrics.sortingEffHint', { ns: 'scannerEfficiency', scans: formatInteger(scannerResult.summary.totalScanCount), hours: formatNumber(scannerResult.summary.totalEffectiveHours, 2) })),
         tone: 'dark' as const,
       },
       {
-        label: '扫描员人数',
+        label: String(i18n.t('metrics.scannerCount', { ns: 'scannerEfficiency' })),
         value: formatInteger(scannerResult.summary.totalScanners),
-        hint: '基于同源列“扫描时间/运单号/扫描员”识别',
+        hint: String(i18n.t('metrics.scannerCountHint', { ns: 'scannerEfficiency' })),
       },
       {
-        label: '统计天数',
+        label: String(i18n.t('metrics.statDays', { ns: 'scannerEfficiency' })),
         value: formatInteger(scannerResult.summary.totalDays),
-        hint: '按“扫描员 + 日期”计算',
+        hint: String(i18n.t('metrics.statDaysHint', { ns: 'scannerEfficiency' })),
       },
       {
-        label: '总扫描量',
+        label: String(i18n.t('metrics.totalScanCount', { ns: 'scannerEfficiency' })),
         value: formatInteger(scannerResult.summary.totalScanCount),
-        hint: '来自一级分拣同源口径',
+        hint: String(i18n.t('metrics.totalScanHint', { ns: 'scannerEfficiency' })),
       },
     ]
-  }, [scanAggregate, scannerResult])
+  }, [scanAggregate, scannerResult, i18n.language])
 
   const summaryMetrics = useMemo(() => {
     if (activeTab === TAB_KEYS.WAREHOUSE) return warehouseMetrics ?? []
@@ -452,18 +444,18 @@ export function useScannerEfficiencyPage() {
     return []
   }, [activeTab, warehouseMetrics, scannerMetrics])
 
-  const dailyVolumeColumns = useMemo(() => buildDailyVolumeColumns(), [])
+  const dailyVolumeColumns = useMemo(() => buildDailyVolumeColumns(), [i18n.language])
   const attendanceMatchColumns = useMemo(
     () => buildAttendanceMatchColumns({ onDailyTotalHoursCommit: handleDailyTotalHoursCommit }),
-    [handleDailyTotalHoursCommit],
+    [handleDailyTotalHoursCommit, i18n.language],
   )
   const attendancePersonColumns = useMemo(
     () => buildAttendancePersonColumns(scannerResult),
-    [scannerResult],
+    [scannerResult, i18n.language],
   )
-  const scannerDailyColumns = useMemo(() => buildScannerDailyColumns(), [])
-  const scannerPersonColumns = useMemo(() => buildScannerPersonColumns(), [])
-  const scannerTotalEfficiencyColumns = useMemo(() => buildScannerTotalEfficiencyColumns(), [])
+  const scannerDailyColumns = useMemo(() => buildScannerDailyColumns(), [i18n.language])
+  const scannerPersonColumns = useMemo(() => buildScannerPersonColumns(), [i18n.language])
+  const scannerTotalEfficiencyColumns = useMemo(() => buildScannerTotalEfficiencyColumns(), [i18n.language])
 
   const clearSnapshotRestore = useCallback(() => {
     setSnapshotRestore(null)
@@ -491,7 +483,7 @@ export function useScannerEfficiencyPage() {
       .map((item) => normalizeEfficiencyAttendanceDayRecord(item))
       .filter((item): item is EfficiencyAttendanceDayRecord => item != null)
     if (!records.length) {
-      showToast('记录数据不可用，请刷新后重试', 'error')
+      showToast(String(i18n.t('toast.recordUnavailable', { ns: 'scannerEfficiency' })), 'error')
       return
     }
     const restore = restoreEfficiencyAttendancePage(records)
@@ -550,12 +542,12 @@ export function useScannerEfficiencyPage() {
         allocationSourceInfo,
       })
       if (!records.length) {
-        throw new Error('当前没有可保存的按日效率记录')
+        throw new Error(String(i18n.t('toast.noDailyRecords', { ns: 'scannerEfficiency' })))
       }
       const { savedCount } = await saveDailyEfficiencyRecords(records)
-      showToast(`已保存 ${savedCount} 天到效率考勤记录`, 'success')
+      showToast(String(i18n.t('toast.savedDailyRecords', { ns: 'scannerEfficiency', count: savedCount })), 'success')
     } catch (currentError: unknown) {
-      const message = currentError instanceof Error ? currentError.message : '保存效率考勤记录失败'
+      const message = currentError instanceof Error ? currentError.message : String(i18n.t('toast.saveDailyFailed', { ns: 'scannerEfficiency' }))
       showToast(message, 'error')
     } finally {
       setSavingDailyRecords(false)
@@ -602,15 +594,15 @@ export function useScannerEfficiencyPage() {
       if (!parsed.rows.length) {
         throw new Error(
           prevRows.length
-            ? '本次追加的到件扫描文件没有识别到有效日期。请确认包含“扫描时间/日期”列；已有数据未改动。'
-            : '到件扫描文件没有识别到有效日期。请确认包含“扫描时间/日期”列。',
+            ? String(i18n.t('toast.inboundNoDatesAppend', { ns: 'scannerEfficiency' }))
+            : String(i18n.t('toast.inboundNoDates', { ns: 'scannerEfficiency' })),
         )
       }
 
       const combinedRawRows = prevRows.length ? [...prevRows, ...parsed.rows] : parsed.rows
       const { rows: deduped, duplicateDropped } = dedupeParsedScanRowsByWaybill(combinedRawRows)
       if (!deduped.length) {
-        throw new Error('到件扫描经运单号去重后没有可统计记录。')
+        throw new Error(String(i18n.t('toast.inboundNoRecordsAfterDedupe', { ns: 'scannerEfficiency' })))
       }
 
       setScanRows(deduped)
@@ -628,7 +620,7 @@ export function useScannerEfficiencyPage() {
         fileNames: mergedNames,
       })
     } catch (currentError: unknown) {
-      setError(currentError instanceof Error ? currentError.message : '读取到件扫描文件失败。请检查文件格式。')
+      setError(currentError instanceof Error ? currentError.message : String(i18n.t('toast.inboundReadFailed', { ns: 'scannerEfficiency' })))
     } finally {
       setLoadingScan(false)
     }
@@ -664,8 +656,8 @@ export function useScannerEfficiencyPage() {
       if (!mapped.rows.length) {
         showToast(
           prevRows.length
-            ? '本次前台分配 API 没有可统计记录，已有分配数据未改动。'
-            : '所选日期区间内没有可统计的前台分配记录。',
+            ? String(i18n.t('toast.allocationApiNoRecordsAppend', { ns: 'scannerEfficiency' }))
+            : String(i18n.t('toast.allocationApiNoRecords', { ns: 'scannerEfficiency' })),
           'warning',
         )
         return
@@ -674,7 +666,7 @@ export function useScannerEfficiencyPage() {
       const combinedRawRows = prevRows.length ? [...prevRows, ...mapped.rows] : mapped.rows
       const { rows: deduped, duplicateDropped } = dedupeParsedAllocationRows(combinedRawRows)
       if (!deduped.length) {
-        showToast('前台分配经去重后没有可统计记录。', 'warning')
+        showToast(String(i18n.t('toast.allocationNoRecordsAfterDedupe', { ns: 'scannerEfficiency' })), 'warning')
         return
       }
 
@@ -694,12 +686,19 @@ export function useScannerEfficiencyPage() {
       })
 
       showToast(
-        `前台分配 API 已载入 ${formatInteger(deduped.length)} 条（${startDate} ~ ${endDate}）`,
+        String(
+          i18n.t('toast.allocationApiLoaded', {
+            ns: 'scannerEfficiency',
+            count: formatInteger(deduped.length),
+            start: startDate,
+            end: endDate,
+          }),
+        ),
         'success',
       )
     } catch (currentError: unknown) {
       const message =
-        currentError instanceof Error ? currentError.message : 'iMile 前台分配 API 拉取失败'
+        currentError instanceof Error ? currentError.message : String(i18n.t('toast.allocationApiFailed', { ns: 'scannerEfficiency' }))
       showToast(message, 'error')
     } finally {
       setLoadingAllocationApi(false)
@@ -709,11 +708,11 @@ export function useScannerEfficiencyPage() {
   const handleAllocationApiFetch = async () => {
     const token = imileToken.trim()
     if (!token) {
-      showToast('请先在全局设置中配置 iMile Token', 'error')
+      showToast(String(i18n.t('toast.missingImileToken', { ns: 'scannerEfficiency' })), 'error')
       return
     }
     if (!apiDateRange) {
-      showToast('请先在"载入扫描记录"中选择日期区间', 'error')
+      showToast(String(i18n.t('toast.selectDateRange', { ns: 'scannerEfficiency' })), 'error')
       return
     }
     void performAllocationFetch(token, apiDateRange[0], apiDateRange[1])
@@ -743,17 +742,23 @@ export function useScannerEfficiencyPage() {
       })
 
       if (result.meta.cancelScanFetched === 0) {
-        showToast('所选日期区间内没有细分错误记录。', 'warning')
+        showToast(String(i18n.t('toast.cancelScanNoRecords', { ns: 'scannerEfficiency' })), 'warning')
         return
       }
 
       showToast(
-        `细分错误率分析完成：${formatInteger(result.meta.cancelScanFetched)} 条记录，${formatInteger(result.routeCodeDistribution.length)} 种路由码`,
+        String(
+          i18n.t('toast.cancelScanComplete', {
+            ns: 'scannerEfficiency',
+            records: formatInteger(result.meta.cancelScanFetched),
+            routes: formatInteger(result.routeCodeDistribution.length),
+          }),
+        ),
         'success',
       )
     } catch (currentError: unknown) {
       const message =
-        currentError instanceof Error ? currentError.message : '细分错误率分析拉取失败'
+        currentError instanceof Error ? currentError.message : String(i18n.t('toast.cancelScanFailed', { ns: 'scannerEfficiency' }))
       showToast(message, 'error')
     } finally {
       setLoadingCancelScanAnalysis(false)
@@ -763,11 +768,11 @@ export function useScannerEfficiencyPage() {
   const handleCancelScanApiFetch = async () => {
     const token = imileToken.trim()
     if (!token) {
-      showToast('请先在全局设置中配置 iMile Token', 'error')
+      showToast(String(i18n.t('toast.missingImileToken', { ns: 'scannerEfficiency' })), 'error')
       return
     }
     if (!apiDateRange) {
-      showToast('请先在"载入扫描记录"中选择日期区间', 'error')
+      showToast(String(i18n.t('toast.selectDateRange', { ns: 'scannerEfficiency' })), 'error')
       return
     }
     void performCancelScanFetch(token, apiDateRange[0], apiDateRange[1])
@@ -780,7 +785,7 @@ export function useScannerEfficiencyPage() {
   ) => {
     const settings = zktAttendance
     if (!settings.username.trim() || !settings.password) {
-      showToast('请先在系统设置中配置 ZKT 考勤 API 账号与密码', 'warning')
+      showToast(String(i18n.t('toast.zktCredentialsMissing', { ns: 'scannerEfficiency' })), 'warning')
       return
     }
 
@@ -793,7 +798,7 @@ export function useScannerEfficiencyPage() {
       })
 
       if (result.count > 0 && result.meta.fetched < result.count) {
-        throw new Error(`ZKT 考勤数据不完整：count=${result.count}，实际拉取 ${result.meta.fetched} 条`)
+        throw new Error(String(i18n.t('toast.zktIncomplete', { ns: 'scannerEfficiency', count: result.count, fetched: result.meta.fetched })))
       }
 
       const sourceLabel = `ZKT 考勤 API（${startDate} ~ ${endDate}）`
@@ -821,8 +826,8 @@ export function useScannerEfficiencyPage() {
       if (!mapped.rows.length) {
         showToast(
           !replaceExisting && attendanceRowsRef.current.length
-            ? `ZKT 考勤 API 返回 ${result.count} 条，但没有可解析的有效工作时长（worked_hrs），已有考勤数据未改动。`
-            : `ZKT 考勤 API 返回 ${result.count} 条，但没有可解析的有效工作时长（worked_hrs）。`,
+            ? String(i18n.t('toast.zktNoWorkedHrsAppend', { ns: 'scannerEfficiency', count: result.count }))
+            : String(i18n.t('toast.zktNoWorkedHrs', { ns: 'scannerEfficiency', count: result.count })),
           'warning',
         )
         return
@@ -830,7 +835,14 @@ export function useScannerEfficiencyPage() {
 
       if (mapped.droppedRows > 0) {
         showToast(
-          `ZKT 考勤已载入 ${mapped.rows.length} 条（count=${result.count}，${mapped.droppedRows} 条无有效 worked_hrs 已跳过）`,
+          String(
+            i18n.t('toast.zktLoaded', {
+              ns: 'scannerEfficiency',
+              rows: mapped.rows.length,
+              count: result.count,
+              dropped: mapped.droppedRows,
+            }),
+          ),
           mapped.droppedRows > mapped.rows.length ? 'warning' : 'success',
         )
       }
@@ -838,7 +850,7 @@ export function useScannerEfficiencyPage() {
       const combinedRawRows = prevRows.length ? [...prevRows, ...mapped.rows] : mapped.rows
       const { rows: deduped, duplicateDropped } = dedupeParsedAttendanceRowsByPersonDay(combinedRawRows)
       if (!deduped.length) {
-        showToast('考勤经同人同日去重后没有可统计记录。', 'warning')
+        showToast(String(i18n.t('toast.attendanceNoRecordsAfterDedupe', { ns: 'scannerEfficiency' })), 'warning')
         return
       }
 
@@ -876,12 +888,18 @@ export function useScannerEfficiencyPage() {
       setAttendancePayroll(payroll)
       if (payroll.validationErrors.length > 0) {
         setError(
-          `考勤工资：${payroll.wageRows.length} 条有效记录已计入总成本；${payroll.validationErrors.length} 条未通过工资页同款校验（与工资结算上传提示一致）。`,
+          String(
+            i18n.t('toast.payrollValidation', {
+              ns: 'scannerEfficiency',
+              valid: payroll.wageRows.length,
+              invalid: payroll.validationErrors.length,
+            }),
+          ),
         )
       }
     } catch (currentError: unknown) {
       const message =
-        currentError instanceof Error ? currentError.message : 'ZKT 考勤 API 拉取失败'
+        currentError instanceof Error ? currentError.message : String(i18n.t('toast.zktFailed', { ns: 'scannerEfficiency' }))
       showToast(message, 'error')
     } finally {
       setLoadingAttendance(false)
@@ -891,11 +909,11 @@ export function useScannerEfficiencyPage() {
   const handleScanApiFetch = async (startDate: string, endDate: string) => {
     const token = imileToken.trim()
     if (!token) {
-      setError('请先在全局设置中配置 iMile Token')
+      setError(String(i18n.t('toast.missingImileToken', { ns: 'scannerEfficiency' })))
       return
     }
     if (!startDate || !endDate) {
-      setError('请选择有效的日期区间')
+      setError(String(i18n.t('toast.invalidDateRange', { ns: 'scannerEfficiency' })))
       return
     }
 
@@ -932,12 +950,12 @@ export function useScannerEfficiencyPage() {
       })
 
       if (!mapped.rows.length) {
-        throw new Error('所选日期区间内没有可统计的到件记录。')
+        throw new Error(String(i18n.t('toast.inboundApiNoRecords', { ns: 'scannerEfficiency' })))
       }
 
       const { rows: deduped, duplicateDropped } = dedupeParsedScanRowsByWaybill(mapped.rows)
       if (!deduped.length) {
-        throw new Error('到件扫描经运单号去重后没有可统计记录。')
+        throw new Error(String(i18n.t('toast.inboundNoRecordsAfterDedupe', { ns: 'scannerEfficiency' })))
       }
 
       console.info('[ScannerEfficiency] iMile 到件计入统计', {
@@ -963,7 +981,7 @@ export function useScannerEfficiencyPage() {
         fileNames: [sourceLabel],
       })
     } catch (currentError: unknown) {
-      setError(currentError instanceof Error ? currentError.message : 'iMile 到件 API 拉取失败')
+      setError(currentError instanceof Error ? currentError.message : String(i18n.t('toast.inboundApiFailed', { ns: 'scannerEfficiency' })))
     } finally {
       setLoadingScan(false)
       await attendancePromise
@@ -988,15 +1006,15 @@ export function useScannerEfficiencyPage() {
       if (!parsed.rows.length) {
         throw new Error(
           prevRows.length
-            ? '本次追加的考勤文件没有识别到有效工时。请确认包含“日期、人员”，以及“工作时长”或“总时长”列；已有数据未改动。'
-            : '考勤文件没有识别到有效工时。请确认包含“日期、人员”，以及“工作时长”或“总时长”列。',
+            ? String(i18n.t('toast.attendanceNoHoursAppend', { ns: 'scannerEfficiency' }))
+            : String(i18n.t('toast.attendanceNoHours', { ns: 'scannerEfficiency' })),
         )
       }
 
       const combinedRawRows = prevRows.length ? [...prevRows, ...parsed.rows] : parsed.rows
       const { rows: deduped, duplicateDropped } = dedupeParsedAttendanceRowsByPersonDay(combinedRawRows)
       if (!deduped.length) {
-        throw new Error('考勤经同人同日去重后没有可统计记录。')
+        throw new Error(String(i18n.t('toast.attendanceNoRecordsAfterDedupe', { ns: 'scannerEfficiency' })))
       }
 
       const mergedFiles = prevFiles.length ? mergeOrderedUniqueFiles(prevFiles, files) : files
@@ -1025,11 +1043,17 @@ export function useScannerEfficiencyPage() {
       setAttendancePayroll(payroll)
       if (payroll.validationErrors.length > 0) {
         setError(
-          `考勤工资：${payroll.wageRows.length} 条有效记录已计入总成本；${payroll.validationErrors.length} 条未通过工资页同款校验（与工资结算上传提示一致）。`,
+          String(
+            i18n.t('toast.payrollValidation', {
+              ns: 'scannerEfficiency',
+              valid: payroll.wageRows.length,
+              invalid: payroll.validationErrors.length,
+            }),
+          ),
         )
       }
     } catch (currentError: unknown) {
-      setError(currentError instanceof Error ? currentError.message : '读取考勤文件失败。请检查文件格式。')
+      setError(currentError instanceof Error ? currentError.message : String(i18n.t('toast.attendanceReadFailed', { ns: 'scannerEfficiency' })))
     } finally {
       setLoadingAttendance(false)
     }
@@ -1053,7 +1077,7 @@ export function useScannerEfficiencyPage() {
     try {
       const parsed = await parseAllocationFiles(files)
       if (!parsed.rows.length) {
-        throw new Error('前台分配表没有识别到有效“分配时间”。请确认文件包含分配时间列。')
+        throw new Error(String(i18n.t('toast.allocationNoTime', { ns: 'scannerEfficiency' })))
       }
 
       setAllocationRows(parsed.rows)
@@ -1067,7 +1091,7 @@ export function useScannerEfficiencyPage() {
     } catch (currentError: unknown) {
       setAllocationRows([])
       setAllocationSourceInfo(EMPTY_SOURCE)
-      setError(currentError instanceof Error ? currentError.message : '读取前台分配表失败。请检查文件格式。')
+      setError(currentError instanceof Error ? currentError.message : String(i18n.t('toast.allocationReadFailed', { ns: 'scannerEfficiency' })))
     } finally {
       setLoadingAllocation(false)
     }
@@ -1169,7 +1193,7 @@ export function useScannerEfficiencyPage() {
     return [
       ...bodyRows,
       {
-        date: '总计',
+        date: String(i18n.t('tableFooter.grandTotal', { ns: 'scannerEfficiency' })),
         isAttendanceMatchFooter: true,
         isAttendanceOnly: false,
         sorterCount: 0,
@@ -1255,7 +1279,7 @@ export function useScannerEfficiencyPage() {
     return rows.map((r) => ({ date: r.date, value: r.efficiency }))
   }, [scannerResult?.dailySummaryRows])
 
-  const openDayRuleTooltipText = `当前规则：分拣人数 > ${settings.openDayThreshold} 计入开仓日；分拣人数 ≤ ${settings.openDayThreshold} 计入不开仓日。`
+  const openDayRuleTooltipText = String(i18n.t('common.openDayRuleTooltip', { ns: 'scannerEfficiency', threshold: settings.openDayThreshold }))
 
   const effectiveCancelScanAnalysis = useMemo(
     () => snapshotRestore?.cancelScanAnalysis ?? cancelScanAnalysis,

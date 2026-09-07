@@ -1,6 +1,7 @@
 import { Button, DatePicker, Radio, Tooltip } from 'antd'
 import { CloudDownload, FileSpreadsheet, Save, Upload, Users } from 'lucide-react'
 import { useMemo, useRef, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import type { Dayjs } from 'dayjs'
 import { dayjs } from '../dayjsSetup'
 import { formatInteger } from '../formatAndParse'
@@ -13,6 +14,7 @@ type Props = {
 }
 
 export function ScanDataIntakePanel({ vm }: Props) {
+  const { t } = useTranslation('scannerEfficiency')
   const {
     loading,
     handleScanFileChange,
@@ -57,18 +59,18 @@ export function ScanDataIntakePanel({ vm }: Props) {
   }
 
   const statusLine = useMemo(() => {
-    if (readOnly) return '记录查看模式，重新载入或退出查看后可操作'
+    if (readOnly) return t('intake.statusReadonly')
     const parts: string[] = []
     if (scanSourceInfo.rowCount > 0) {
-      parts.push(`到件 ${formatInteger(scanSourceInfo.rowCount)} 条`)
+      parts.push(t('intake.statusInbound', { count: formatInteger(scanSourceInfo.rowCount) }))
     }
     if (attendanceSourceInfo.rowCount > 0) {
-      parts.push(`考勤 ${formatInteger(attendanceSourceInfo.rowCount)} 条`)
+      parts.push(t('intake.statusAttendance', { count: formatInteger(attendanceSourceInfo.rowCount) }))
     }
-    if (!parts.length) return '尚未载入数据'
-    if (canSaveDailyRecords) return `${parts.join('，')}，可保存`
-    return parts.join('，')
-  }, [attendanceSourceInfo.rowCount, canSaveDailyRecords, readOnly, scanSourceInfo.rowCount])
+    if (!parts.length) return t('intake.statusEmpty')
+    if (canSaveDailyRecords) return t('intake.statusSavable', { parts: parts.join(t('common.listSeparator')) })
+    return parts.join(t('common.listSeparator'))
+  }, [attendanceSourceInfo.rowCount, canSaveDailyRecords, readOnly, scanSourceInfo.rowCount, t])
 
   const actionsDisabled = readOnly || loading
 
@@ -76,8 +78,8 @@ export function ScanDataIntakePanel({ vm }: Props) {
     <div className="flex flex-col gap-4">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">
-          <h2 className="text-sm font-semibold text-[var(--admin-text)]">载入扫描记录</h2>
-          <p className="mt-0.5 text-xs text-[var(--admin-muted)]">支持 Excel 上传或按日期范围 API 拉取</p>
+          <h2 className="text-sm font-semibold text-[var(--admin-text)]">{t('intake.title')}</h2>
+          <p className="mt-0.5 text-xs text-[var(--admin-muted)]">{t('intake.subtitle')}</p>
         </div>
 
         <Radio.Group
@@ -91,13 +93,13 @@ export function ScanDataIntakePanel({ vm }: Props) {
           <Radio.Button value="upload">
             <span className="inline-flex items-center gap-1.5">
               <FileSpreadsheet className="h-4 w-4" aria-hidden />
-              文件
+              {t('intake.modeFile')}
             </span>
           </Radio.Button>
           <Radio.Button value="api">
             <span className="inline-flex items-center gap-1.5">
               <CloudDownload className="h-4 w-4" aria-hidden />
-              API
+              {t('intake.modeApi')}
             </span>
           </Radio.Button>
         </Radio.Group>
@@ -124,7 +126,7 @@ export function ScanDataIntakePanel({ vm }: Props) {
               disabled={actionsDisabled}
               onClick={() => scanFileInputRef.current?.click()}
             >
-              上传到件扫描
+              {t('intake.uploadInbound')}
             </Button>
           </>
         ) : (
@@ -143,7 +145,7 @@ export function ScanDataIntakePanel({ vm }: Props) {
               disabled={!apiDateRange || readOnly}
               onClick={handleFetch}
             >
-              获取数据
+              {t('intake.fetchData')}
             </Button>
           </>
         )}
@@ -168,7 +170,7 @@ export function ScanDataIntakePanel({ vm }: Props) {
               disabled={actionsDisabled}
               onClick={() => attendanceFileInputRef.current?.click()}
             >
-              上传考勤
+              {t('intake.uploadAttendance')}
             </Button>
           </>
         ) : null}
@@ -176,9 +178,7 @@ export function ScanDataIntakePanel({ vm }: Props) {
         <div className="flex items-center gap-1.5">
           <Tooltip
             title={
-              canSaveDailyRecords
-                ? '按日写入效率考勤记录，同日覆盖；统计窗口内每一天都会存档（含无到件补录日），以保证回填口径与当前一致'
-                : '需同时载入到件与考勤'
+              canSaveDailyRecords ? t('intake.saveTooltipReady') : t('intake.saveTooltipNeedBoth')
             }
           >
             <Button
@@ -188,11 +188,11 @@ export function ScanDataIntakePanel({ vm }: Props) {
               disabled={!canSaveDailyRecords || actionsDisabled}
               onClick={() => void handleSaveDailyRecords()}
             >
-              保存
+              {t('intake.save')}
             </Button>
           </Tooltip>
           <Button type="default" danger disabled={actionsDisabled} onClick={clearAll}>
-            清空全部
+            {t('intake.clearAll')}
           </Button>
         </div>
       </div>

@@ -1,12 +1,15 @@
 import ExcelJS from 'exceljs'
 import { saveAs } from 'file-saver'
-import {
-  DAILY_CHECKLIST_TEMPLATE,
-  DAILY_CHECKLIST_TITLE,
-  type DailyChecklistTemplateRow,
-} from './dailyChecklistTemplate'
+import { i18n } from '../../i18n'
+import { getDailyChecklistTemplate, type DailyChecklistTemplateRow } from './dailyChecklistTemplate'
 import { parseDataUrlForExcel } from './localEvidenceImage'
 import type { DailyChecklistFormState, DailyChecklistRowState } from './types'
+
+const NS = 'warehouseSafety'
+
+function wt(key: string, options?: Record<string, unknown>): string {
+  return i18n.t(key, { ns: NS, ...options })
+}
 
 const BORDER_THIN: Partial<ExcelJS.Borders> = {
   top: { style: 'thin', color: { argb: 'FF000000' } },
@@ -46,16 +49,16 @@ function formatEvidenceText(row: DailyChecklistRowState): string {
     return parts.join('\n')
   }
   if (row.rectificationMeasure.trim()) {
-    parts.push(`改善措施：${row.rectificationMeasure.trim()}`)
+    parts.push(`${wt('evidence.measurePrefix')}${row.rectificationMeasure.trim()}`)
   }
   if (row.rectificationDueDate) {
-    parts.push(`完成时间：${row.rectificationDueDate}`)
+    parts.push(`${wt('evidence.dueDatePrefix')}${row.rectificationDueDate}`)
   }
   return parts.join('\n')
 }
 
 function formatResultLabel(result: DailyChecklistRowState['result']): string {
-  return result === 'risk' ? '有风险' : '无风险'
+  return result === 'risk' ? wt('result.risk') : wt('result.noRisk')
 }
 
 type MergeSpan = { start: number; end: number }
@@ -85,34 +88,38 @@ export function validateDailyChecklistForExport(
   const issues: ExportValidationIssue[] = []
   const { meta } = form
   if (!meta.warehouseName.trim()) {
-    issues.push({ message: '请填写仓库/站点名称' })
+    issues.push({ message: wt('validation.warehouseRequired') })
   }
   if (!meta.inspectorName.trim()) {
-    issues.push({ message: '请填写检查人' })
+    issues.push({ message: wt('validation.inspectorRequired') })
   }
   if (!meta.inspectionDate.trim()) {
-    issues.push({ message: '请选择检查日期' })
+    issues.push({ message: wt('validation.dateRequired') })
   }
 
-  for (const tpl of DAILY_CHECKLIST_TEMPLATE) {
+  const template = getDailyChecklistTemplate(wt)
+  for (const tpl of template) {
     const row = form.rows[tpl.serialNo]
     if (!row || row.result !== 'risk') continue
     if (!row.rectificationMeasure.trim()) {
-      issues.push({ serialNo: tpl.serialNo, message: `第 ${tpl.serialNo} 项：请填写改善措施` })
+      issues.push({ serialNo: tpl.serialNo, message: wt('validation.measureRequired', { serialNo: tpl.serialNo }) })
     }
     if (!row.rectificationDueDate.trim()) {
-      issues.push({ serialNo: tpl.serialNo, message: `第 ${tpl.serialNo} 项：请选择整改完成时间` })
+      issues.push({ serialNo: tpl.serialNo, message: wt('validation.dueDateRequired', { serialNo: tpl.serialNo }) })
     }
   }
   return issues
 }
 
 export async function exportDailyChecklistExcel(form: DailyChecklistFormState): Promise<void> {
+  const template = getDailyChecklistTemplate(wt)
+  const checklistTitle = wt('checklist.title')
+
   const workbook = new ExcelJS.Workbook()
-  workbook.creator = '仓库安全日常检查'
+  workbook.creator = wt('export.creator')
   workbook.created = new Date()
 
-  const sheet = workbook.addWorksheet('日常检查', {
+  const sheet = workbook.addWorksheet(wt('export.sheetName'), {
     views: [{ state: 'frozen', ySplit: 3 }],
   })
 
@@ -129,7 +136,7 @@ export async function exportDailyChecklistExcel(form: DailyChecklistFormState): 
   titleRow.height = 36
   sheet.mergeCells(1, 1, 1, 6)
   const titleCell = sheet.getCell(1, 1)
-  titleCell.value = DAILY_CHECKLIST_TITLE
+  titleCell.value = checklistTitle
   titleCell.font = { bold: true, size: 16, color: { argb: 'FFFFFFFF' } }
   titleCell.fill = TITLE_FILL
   titleCell.alignment = { horizontal: 'center', vertical: 'middle' }
@@ -141,20 +148,27 @@ export async function exportDailyChecklistExcel(form: DailyChecklistFormState): 
   sheet.mergeCells(2, 3, 2, 4)
   sheet.mergeCells(2, 5, 2, 6)
   const m1 = sheet.getCell(2, 1)
-  m1.value = `仓库/站点：${meta.warehouseName.trim()}`
+  m1.value = wt('export.metaWarehouse', { name: meta.warehouseName.trim() })
   m1.alignment = { vertical: 'middle', wrapText: true }
   applyBorder(m1)
   const m2 = sheet.getCell(2, 3)
-  m2.value = `检查人：${meta.inspectorName.trim()}`
+  m2.value = wt('export.metaInspector', { name: meta.inspectorName.trim() })
   m2.alignment = { vertical: 'middle', wrapText: true }
   applyBorder(m2)
   const m3 = sheet.getCell(2, 5)
-  m3.value = `检查日期：${meta.inspectionDate}`
+  m3.value = wt('export.metaDate', { date: meta.inspectionDate })
   m3.alignment = { vertical: 'middle', wrapText: true }
   applyBorder(m3)
 
   const headerRowIndex = 3
-  const headers = ['序号', '检查大类', '检查项', '自查要点说明', '自查结果\n（无风险/有风险）', '佐证/整改']
+  const headers = [
+    wt('export.headerSerialNo'),
+    wt('export.headerCategory'),
+    wt('export.headerItem'),
+    wt('export.headerKeyPoint'),
+    wt('export.headerResult'),
+    wt('export.headerEvidence'),
+  ]
   const headerRow = sheet.getRow(headerRowIndex)
   headerRow.height = 32
   headers.forEach((text, idx) => {
@@ -162,12 +176,12 @@ export async function exportDailyChecklistExcel(form: DailyChecklistFormState): 
   })
 
   const dataStartRow = headerRowIndex + 1
-  const categorySpans = buildMergeSpans(DAILY_CHECKLIST_TEMPLATE, 'category')
-  const itemSpans = buildMergeSpans(DAILY_CHECKLIST_TEMPLATE, 'item')
+  const categorySpans = buildMergeSpans(template, 'category')
+  const itemSpans = buildMergeSpans(template, 'item')
 
   const imageJobs: { rowIndex: number; colIndex: number; dataUrl: string }[] = []
 
-  DAILY_CHECKLIST_TEMPLATE.forEach((tpl, idx) => {
+  template.forEach((tpl, idx) => {
     const excelRowIndex = dataStartRow + idx
     const rowState = form.rows[tpl.serialNo]
     const sheetRow = sheet.getRow(excelRowIndex)
@@ -255,7 +269,15 @@ export async function exportDailyChecklistExcel(form: DailyChecklistFormState): 
   const blob = new Blob([buffer], {
     type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
   })
-  const safeWarehouse = meta.warehouseName.trim().replace(/[/\\?%*:|"<>]/g, '_') || '未命名仓库'
+  const safeWarehouse =
+    meta.warehouseName.trim().replace(/[/\\?%*:|"<>]/g, '_') || wt('export.unnamedWarehouse')
   const datePart = meta.inspectionDate.replace(/-/g, '')
-  saveAs(blob, `${DAILY_CHECKLIST_TITLE}_${safeWarehouse}_${datePart}.xlsx`)
+  saveAs(
+    blob,
+    wt('export.fileName', {
+      title: checklistTitle,
+      warehouse: safeWarehouse,
+      date: datePart,
+    }),
+  )
 }

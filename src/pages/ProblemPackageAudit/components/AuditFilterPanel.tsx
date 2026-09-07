@@ -1,6 +1,7 @@
 import { Button, DatePicker, Form, Input } from 'antd'
 import { Search } from 'lucide-react'
 import dayjs from 'dayjs'
+import { useTranslation } from 'react-i18next'
 import type { FilterState } from '../types'
 
 type Props = {
@@ -12,6 +13,8 @@ type Props = {
 const TODAY = dayjs()
 
 export default function AuditFilterPanel({ loading, total, onSearch }: Props) {
+  const { t } = useTranslation('problemPackage')
+  const { t: tc } = useTranslation('common')
   const [form] = Form.useForm()
 
   function handleSearch() {
@@ -37,19 +40,27 @@ export default function AuditFilterPanel({ loading, total, onSearch }: Props) {
         className="flex flex-1 flex-wrap items-center gap-y-2"
         initialValues={{ dateRange: [TODAY, TODAY] }}
       >
-        <Form.Item label={<span className="text-[12px] text-slate-500">站点代码</span>} name="stationCode" className="mb-0">
-          <Input placeholder="如 S210431701" style={{ width: 148 }} />
+        <Form.Item
+          label={<span className="text-[12px] text-slate-500">{t('stationCode')}</span>}
+          name="stationCode"
+          className="mb-0"
+        >
+          <Input placeholder={t('stationPlaceholder')} style={{ width: 148 }} />
         </Form.Item>
 
         <div className="mx-1 h-5 w-px bg-slate-200" />
 
-        <Form.Item label={<span className="text-[12px] text-slate-500">日期范围</span>} name="dateRange" className="mb-0">
+        <Form.Item
+          label={<span className="text-[12px] text-slate-500">{t('dateRange')}</span>}
+          name="dateRange"
+          className="mb-0"
+        >
           <DatePicker.RangePicker allowClear={false} format="YYYY-MM-DD" style={{ width: 232 }} />
         </Form.Item>
       </Form>
 
       {total !== undefined && total > 0 && (
-        <span className="text-[12px] text-slate-400">共 {total} 条</span>
+        <span className="text-[12px] text-slate-400">{t('totalRows', { count: total })}</span>
       )}
 
       <Button
@@ -59,7 +70,7 @@ export default function AuditFilterPanel({ loading, total, onSearch }: Props) {
         onClick={handleSearch}
         style={{ backgroundColor: '#2f8f87', borderColor: '#2f8f87' }}
       >
-        查询
+        {tc('search')}
       </Button>
     </div>
   )

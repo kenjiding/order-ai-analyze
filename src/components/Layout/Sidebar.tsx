@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { NavLink, useLocation } from 'react-router-dom'
 import { ChevronDown, ChevronLeft, Warehouse, X } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
 import { useAuthStore } from '../../stores/authStore'
 import { buildSidebarMenuGroups, matchesSidebarActive, type SidebarMenuGroup } from './sidebarMenu'
 
@@ -12,6 +13,7 @@ export type SidebarProps = {
 }
 
 export default function Sidebar({ collapsed, onCollapsedChange, mobileOpen = false, onMobileOpenChange }: SidebarProps) {
+  const { t } = useTranslation('menu')
   const location = useLocation()
   const { hasPermission, isSuperAdmin } = useAuthStore()
 
@@ -72,7 +74,7 @@ export default function Sidebar({ collapsed, onCollapsedChange, mobileOpen = fal
             <div className={`flex min-w-0 items-center ${isCollapsedDesktop ? 'w-full justify-center' : 'gap-3'}`}>
               <button
                 type="button"
-                title={isCollapsedDesktop ? '展开菜单' : undefined}
+                title={isCollapsedDesktop ? t('expandMenu') : undefined}
                 onClick={() => isCollapsedDesktop && onCollapsedChange(false)}
                 className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-lg bg-[var(--admin-accent-soft)] text-[var(--admin-accent)] transition hover:brightness-[0.98]"
               >
@@ -85,17 +87,17 @@ export default function Sidebar({ collapsed, onCollapsedChange, mobileOpen = fal
                 style={{ transitionDelay: isCollapsedDesktop ? '0ms' : '140ms' }}
               >
                 <h1 className="truncate whitespace-nowrap text-[15px] font-semibold leading-tight tracking-tight text-slate-900">
-                  物流运营管理
+                  {t('brandTitle')}
                 </h1>
                 <p className="mt-1 truncate whitespace-nowrap text-[11px] font-medium uppercase tracking-[0.22em] text-slate-500">
-                  Logistics Operations
+                  {t('brandSubtitle')}
                 </p>
               </div>
             </div>
             {isMobile ? (
               <button
                 type="button"
-                aria-label="关闭菜单"
+                aria-label={t('closeNav')}
                 onClick={() => onMobileOpenChange?.(false)}
                 className="rounded-lg p-2 text-slate-500 transition hover:bg-[#eef7fb] hover:text-slate-800"
               >
@@ -110,7 +112,7 @@ export default function Sidebar({ collapsed, onCollapsedChange, mobileOpen = fal
               >
                 <button
                   type="button"
-                  title="收起菜单"
+                  title={t('collapseMenu')}
                   onClick={() => onCollapsedChange(true)}
                   className="rounded-lg p-2 text-slate-500 transition hover:bg-[#eef7fb] hover:text-slate-800"
                 >
@@ -126,7 +128,7 @@ export default function Sidebar({ collapsed, onCollapsedChange, mobileOpen = fal
           className={`sidebar-nav flex-1 overflow-y-auto transition-all duration-300 ${
             isCollapsedDesktop ? 'px-2 py-4' : 'px-3 py-4'
           }`}
-          aria-label="主导航"
+          aria-label={t('mainNav')}
         >
           {isCollapsedDesktop ? (
             /* Collapsed mode: flat icon list */
@@ -138,7 +140,7 @@ export default function Sidebar({ collapsed, onCollapsedChange, mobileOpen = fal
                   <NavLink
                     key={item.id}
                     to={item.path}
-                    title={item.label}
+                    title={t(`items.${item.id}`)}
                     className={() =>
                       [
                         'flex justify-center rounded-xl px-2 py-2.5 transition-all duration-200',
@@ -200,11 +202,11 @@ export default function Sidebar({ collapsed, onCollapsedChange, mobileOpen = fal
                             : 'text-slate-700 group-hover:text-slate-900',
                         ].join(' ')}
                       >
-                        {group.label}
+                        {t(`groups.${group.id}`)}
                       </span>
                       {isEmpty ? (
                         <span className="rounded border border-amber-200/70 bg-amber-50 px-1.5 py-[2px] text-[9px] font-semibold leading-tight text-amber-500">
-                          即将推出
+                          {t('comingSoon')}
                         </span>
                       ) : (
                         <ChevronDown
@@ -259,7 +261,7 @@ export default function Sidebar({ collapsed, onCollapsedChange, mobileOpen = fal
                                     ].join(' ')}
                                     aria-hidden
                                   />
-                                  <span className="truncate">{item.label}</span>
+                                  <span className="truncate">{t(`items.${item.id}`)}</span>
                                   {active && (
                                     <span
                                       className="ml-auto h-1.5 w-1.5 shrink-0 rounded-full bg-[var(--admin-accent)]"
@@ -331,7 +333,7 @@ export default function Sidebar({ collapsed, onCollapsedChange, mobileOpen = fal
           className="fixed inset-0 z-50 lg:hidden"
           role="dialog"
           aria-modal="true"
-          aria-label="导航菜单"
+          aria-label={t('navDialog')}
         >
           <div
             className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm"

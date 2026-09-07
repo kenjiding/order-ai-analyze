@@ -1,3 +1,4 @@
+import { i18n } from '../../i18n/index'
 import type { DailyEfficiencyBubbleDatum } from './DailyEfficiencyBubbleChart'
 import {
   computeAttendanceDailyMatchAverages,
@@ -219,7 +220,7 @@ function buildWeekSummaryFooterRow(
     weekLaborSum > 0 && weekVolumeForUnitCost > 0 ? weekLaborSum / weekVolumeForUnitCost : null
 
   return {
-    date: options?.label ?? `第 ${weekIndex + 1} 周 · ${bounds.weekLabel}`,
+    date: options?.label ?? String(i18n.t('tableFooter.weekLabel', { ns: 'scannerEfficiency', index: weekIndex + 1, label: bounds.weekLabel })),
     isWeekGroupFooter: true,
     weekKey: bounds.weekKey,
     weekColor: bounds.weekColor,
@@ -267,7 +268,7 @@ function buildAttendanceWindowFooterRow({
       : null
 
   return {
-    date: '总计',
+    date: String(i18n.t('tableFooter.grandTotal', { ns: 'scannerEfficiency' })),
     isAttendanceMatchFooter: true,
     isAttendanceOnly: false,
     sorterCount: 0,
@@ -327,7 +328,7 @@ export function buildAttendanceWeeklyGroupedTableRows(params: BuildWeeklyTablePa
 
     out.push({
       isWeekGroupHeader: true,
-      date: `第 ${weekIndex + 1} 周 · ${bounds.weekLabel}`,
+      date: String(i18n.t('tableFooter.weekLabel', { ns: 'scannerEfficiency', index: weekIndex + 1, label: bounds.weekLabel })),
       weekLabel: bounds.weekLabel,
       weekColor: bounds.weekColor,
       weekKey: bounds.weekKey,
@@ -344,7 +345,7 @@ export function buildAttendanceWeeklyGroupedTableRows(params: BuildWeeklyTablePa
         weekIndex,
         dailyCostPerTicketByDate,
         dailyTotalLaborCostByDate,
-        { label: '本周小计' },
+        { label: String(i18n.t('tableFooter.weekSubtotal', { ns: 'scannerEfficiency' })) },
       ),
     )
   })

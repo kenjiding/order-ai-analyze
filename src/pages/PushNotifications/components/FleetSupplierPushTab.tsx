@@ -13,6 +13,7 @@ import {
   X,
 } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState, type ChangeEvent, type Key } from 'react'
+import { useTranslation } from 'react-i18next'
 import { aggregateFleetRowsForRoute } from '../fleetSupplierAggregate'
 import { captureFleetRouteReportPng } from '../fleetReportCapture'
 import { parseFleetRouteCodes } from '../fleetRouteCodeParse'
@@ -47,6 +48,7 @@ import './fleetSupplierPushTab.css'
  * 配置的新增/编辑/删除/导入导出统一在「系统管理 → 供应商配置」维护。
  */
 export function FleetSupplierPushTab() {
+  const { t } = useTranslation('pushNotifications')
   const canSend = usePermission(PERMISSION_KEYS.btnPushNotificationsFleetSupplier)
   const canMaintainConfig = usePermission(PERMISSION_KEYS.menuSupplierConfigs)
   const [globalPushText, setGlobalPushText] = useState('')
@@ -79,6 +81,9 @@ export function FleetSupplierPushTab() {
   const scanFileInputRef = useRef<HTMLInputElement>(null)
   const pushImageInputRef = useRef<HTMLInputElement>(null)
 
+  const listSep = t('common.listSeparator')
+  const errorSep = t('fleetTab.errorSeparator')
+
   const hasScanData = scanRows.length > 0
   const hasPushImages = pushImages.length > 0
 
@@ -89,12 +94,12 @@ export function FleetSupplierPushTab() {
       const res = await apiLoadFleetSuppliers()
       if (!cancelled) {
         if (res.ok) setSuppliers(res.data)
-        else showToast(`加载供应商配置失败：${res.error}`, 'error')
+        else showToast(t('fleetTab.loadFailed', { error: res.error }), 'error')
         setConfigsLoading(false)
       }
     })()
     return () => { cancelled = true }
-  }, [])
+  }, [t])
 
   useEffect(() => {
     let cancelled = false
@@ -139,6 +144,14 @@ export function FleetSupplierPushTab() {
     [effectiveSelectedKeys],
   )
 
+  const emptyText = useMemo(
+    () =>
+      supplierKeyword.trim()
+        ? t('fleetTab.emptySearch', { keyword: supplierKeyword.trim() })
+        : t('fleetTab.emptyList'),
+    [supplierKeyword, t],
+  )
+
   const toggleSupplierSelected = (configId: string) => {
     setSelectedSupplierKeys((prev) =>
       prev.includes(configId) ? prev.filter((id) => id !== configId) : [...prev, configId],
@@ -170,24 +183,28 @@ export function FleetSupplierPushTab() {
     try {
       const parsed = await parseFleetScanFiles(files)
       if (!parsed.rows.length) {
-        showToast('扫描文件未解析到含「路由编码」的有效行，请检查表头与内容。', 'error')
+        showToast(t('fleetTab.scanNoValidRows'), 'error')
         setScanRows([])
         setScanRowCount(0)
         setScanDropped(parsed.droppedRows)
-        setScanFileLabel(parsed.fileNames.join('、'))
+        setScanFileLabel(parsed.fileNames.join(listSep))
         return
       }
       setScanRows(parsed.rows)
       setScanRowCount(parsed.rows.length)
       setScanDropped(parsed.droppedRows)
-      setScanFileLabel(parsed.fileNames.join('、'))
+      setScanFileLabel(parsed.fileNames.join(listSep))
       showToast(
-        `已读取扫描文件 ${parsed.fileNames.length} 个，有效行 ${parsed.rows.length}（跳过 ${parsed.droppedRows} 行缺路由编码）。`,
-        'success'
+        t('fleetTab.scanReadSuccess', {
+          fileCount: parsed.fileNames.length,
+          rowCount: parsed.rows.length,
+          dropped: parsed.droppedRows,
+        }),
+        'success',
       )
     } catch (e) {
-      const msg = e instanceof Error ? e.message : '解析失败'
-      showToast(`扫描文件解析失败：${msg}`, 'error')
+      const msg = e instanceof Error ? e.message : t('fleetTab.parseFailed')
+      showToast(t('fleetTab.scanParseFailed', { error: msg }), 'error')
       setScanRows([])
       setScanRowCount(0)
       setScanDropped(0)
@@ -206,7 +223,7 @@ export function FleetSupplierPushTab() {
     e.target.value = ''
     if (!list.length) return
     void (async () => {
-            setPushImagesLoading(true)
+      setPushImagesLoading(true)
       const added: LocalPushImage[] = []
       const errs: string[] = []
       try {
@@ -214,7 +231,9 @@ export function FleetSupplierPushTab() {
           try {
             added.push(await readLocalPushImage(file))
           } catch (err) {
-            errs.push(err instanceof Error ? err.message : `「${file.name}」读取失败`)
+            errs.push(
+              err instanceof Error ? err.message : t('fleetTab.fileReadFailed', { name: file.name }),
+            )
           }
         }
         if (added.length) {
@@ -223,7 +242,7 @@ export function FleetSupplierPushTab() {
         if (errs.length === 1) {
           showToast(errs[0]!, 'error')
         } else if (errs.length > 1) {
-          showToast(errs.join('；'), 'error')
+          showToast(errs.join(errorSep), 'error')
         }
       } finally {
         setPushImagesLoading(false)
@@ -247,7 +266,7 @@ export function FleetSupplierPushTab() {
         signingSecret: s.signingSecret,
         chatId: s.chatId,
         supplierConfigId: s.id,
-        pushLabel: '供应商推送内容',
+        pushLabel: t('fleetTab.pushLabelSupplierContent'),
         content,
         images,
         mentionOpenIds: mentionEnabled ? s.mentionOpenIds.map((c) => c.openId).filter(Boolean) : undefined,
@@ -255,7 +274,7 @@ export function FleetSupplierPushTab() {
     )
   }
 
-  const pushSupplierSingleImage = async (s: FleetSupplierConfig, imageDataUrl: string) => {
+  const pushSupplierSingleImage = async (s: FleetSupplierConfig, imageDataUrl: string, pushLabel: string) => {
     return withRetry(() =>
       pushFleetRichMessage({
         pushScope: 'fleet-supplier',
@@ -263,7 +282,7 @@ export function FleetSupplierPushTab() {
         signingSecret: s.signingSecret,
         chatId: s.chatId,
         supplierConfigId: s.id,
-        pushLabel: '推送图片',
+        pushLabel,
         content: '',
         images: [imageDataUrl],
       }),
@@ -276,7 +295,7 @@ export function FleetSupplierPushTab() {
     weatherLarkMd: string,
   ): Promise<string[]> => {
     const supplierErrors: string[] = []
-    if (!s.webhookUrl.trim() && !s.chatId?.trim()) return ['未配置 webhook 或飞书群 Chat ID。']
+    if (!s.webhookUrl.trim() && !s.chatId?.trim()) return [t('fleetTab.errorNoTarget')]
 
     // 天气块置于推送内容末尾（供应商专属文案 + 顶栏推送内容之后）
     const mergedHtml = mergeEditorHtmlParts([s.pushContent.trim(), globalText, weatherLarkMd])
@@ -285,43 +304,56 @@ export function FleetSupplierPushTab() {
     const hasManualImages = pushCustomImageDataUrls.length > 0
 
     if (!hasScan && !hasRichText && !hasManualImages) {
-      return ['未填写可推送文案，也未添加推送图片。']
+      return [t('fleetTab.errorNoContent')]
     }
 
     if (hasRichText) {
       const res = await pushSupplierRichText(s, mergedHtml)
-      if (res.ok !== true) supplierErrors.push(`文案：${summarizeFeishuTestFailure(res)}`)
+      if (res.ok !== true) {
+        supplierErrors.push(`${t('fleetTab.errorCopyPrefix')}：${summarizeFeishuTestFailure(res)}`)
+      }
     }
 
     if (hasScan) {
       const routeCodes = parseFleetRouteCodes(s.routeCode)
       if (!routeCodes.length) {
-        supplierErrors.push('未配置有效路由编码。')
+        supplierErrors.push(t('fleetTab.errorNoRouteCode'))
       } else {
         const buckets = aggregateFleetRowsForRoute(scanRows, s.routeCode)
         const total = buckets.reduce((sum, b) => sum + b.total, 0)
         if (!total) {
-          supplierErrors.push(`路由「${routeCodes.join('、')}」无匹配数据，已跳过货量截图。`)
+          supplierErrors.push(
+            t('fleetTab.errorNoRouteData', { routes: routeCodes.join(listSep) }),
+          )
         } else {
           try {
             const png = await captureFleetRouteReportPng({
-              title: `${supplierDisplayName(s)} · 货量汇总`,
+              title: t('fleetTab.volumeSummaryTitle', { name: supplierDisplayName(s), lng: 'en' }),
               subtitle: '',
               buckets,
             })
-            const res = await pushSupplierSingleImage(s, png)
-            if (res.ok !== true) supplierErrors.push(`货量截图：${summarizeFeishuTestFailure(res)}`)
+            const res = await pushSupplierSingleImage(s, png, t('fleetTab.pushLabelImage'))
+            if (res.ok !== true) {
+              supplierErrors.push(
+                `${t('fleetTab.errorVolumeScreenshotPrefix')}：${summarizeFeishuTestFailure(res)}`,
+              )
+            }
           } catch (e) {
-            supplierErrors.push(`货量截图：${e instanceof Error ? e.message : '截图失败'}`)
+            supplierErrors.push(
+              `${t('fleetTab.errorVolumeScreenshotPrefix')}：${e instanceof Error ? e.message : t('fleetTab.screenshotFailed')}`,
+            )
           }
         }
       }
     }
 
     for (let i = 0; i < pushCustomImageDataUrls.length; i++) {
-      const res = await pushSupplierSingleImage(s, pushCustomImageDataUrls[i]!)
+      const label =
+        pushCustomImageDataUrls.length > 1
+          ? t('fleetTab.pushLabelImageN', { n: i + 1 })
+          : t('fleetTab.pushLabelImage')
+      const res = await pushSupplierSingleImage(s, pushCustomImageDataUrls[i]!, label)
       if (res.ok !== true) {
-        const label = pushCustomImageDataUrls.length > 1 ? `推送图片 ${i + 1}` : '推送图片'
         supplierErrors.push(`${label}：${summarizeFeishuTestFailure(res)}`)
       }
     }
@@ -336,7 +368,7 @@ export function FleetSupplierPushTab() {
     if (!loc) return ''
     const res = await fetchDeliveryWeatherLarkMd({ lat: loc.lat, lng: loc.lng, label: loc.label })
     if (!res.ok) {
-      showToast(`天气预报获取失败，本次推送不含天气：${res.error}`, 'error')
+      showToast(t('fleetTab.weatherFetchFailed', { error: res.error }), 'error')
       return ''
     }
     return res.larkMd
@@ -359,28 +391,28 @@ export function FleetSupplierPushTab() {
     }
     setLastPushFails(fails)
     if (fails.length === 0) {
-      showToast(`已向 ${oks.length} 家供应商完成推送。`, 'success')
+      showToast(t('fleetTab.pushAllSuccess', { count: oks.length }), 'success')
     } else if (oks.length === 0) {
-      showToast(`全部 ${fails.length} 家推送失败，请查看下方提示并重推。`, 'error')
+      showToast(t('fleetTab.pushAllFailed', { count: fails.length }), 'error')
     } else {
-      showToast(`已推送 ${oks.length} 家，${fails.length} 家失败，请查看下方提示并重推。`, 'success')
+      showToast(t('fleetTab.pushPartialSuccess', { ok: oks.length, fail: fails.length }), 'success')
     }
   }
 
   const handlePushAll = async () => {
-    if (!canSend) { showToast('无操作权限', 'error'); return }
+    if (!canSend) { showToast(t('common.noPermission'), 'error'); return }
     if (scanParsing) return
-    if (!suppliers.length) { showToast('请先添加至少一个供应商。', 'error'); return }
+    if (!suppliers.length) { showToast(t('fleetTab.addSupplierFirst'), 'error'); return }
 
     const targets = suppliers.filter((s) => effectiveSelectedKeys.includes(s.id))
-    if (!targets.length) { showToast('请至少勾选一家需要推送的供应商。', 'error'); return }
+    if (!targets.length) { showToast(t('fleetTab.selectSupplierFirst'), 'error'); return }
 
     const weatherOn = weatherEnabled && WEATHER_LOCATION_PRESETS.some((l) => l.label === weatherCity)
     const hasScan = scanRows.length > 0
     if (!hasScan && !hasPushImages && !weatherOn) {
       const canText = hasEditorContent(globalPushText) || targets.some((s) => hasEditorContent(s.pushContent))
       if (!canText) {
-        showToast('未上传扫描文件时，请先填写「推送内容」、所选供应商的「供应商推送内容」，或添加推送图片。', 'error')
+        showToast(t('fleetTab.contentRequiredWithoutScan'), 'error')
         return
       }
     }
@@ -423,22 +455,26 @@ export function FleetSupplierPushTab() {
     scanFileInputRef.current?.click()
   }
 
+  const scanSkippedSuffix = scanDropped
+    ? t('fleetTab.scanSkipped', { count: scanDropped })
+    : ''
+
   return (
     <div className="fleet-supplier-push-tab space-y-5">
       <div className="fs-card">
         <div className="fs-card-head">
           <div>
-            <div className="fs-card-head-title">推送文案与扫描文件</div>
+            <div className="fs-card-head-title">{t('fleetTab.copyAndScanTitle')}</div>
           </div>
         </div>
         <div className="fs-card-body space-y-4">
           <div>
-            <div className="mb-1.5 text-xs font-semibold text-[var(--admin-muted)]">推送内容</div>
+            <div className="mb-1.5 text-xs font-semibold text-[var(--admin-muted)]">{t('fleetTab.pushContent')}</div>
             <FeishuLarkMdEditor
               rows={4}
               value={globalPushText}
               onChange={setGlobalPushText}
-              placeholder="与各供应商「供应商推送内容」合并为一条富文本推送（含段落与编辑器内图片）。货量截图与「选择推送图片」各单独一条消息。"
+              placeholder={t('fleetTab.pushContentPlaceholder')}
             />
           </div>
           <div className="fs-toolbar">
@@ -463,7 +499,7 @@ export function FleetSupplierPushTab() {
               onChange={onPushImagesInputChange}
             />
             <Button type="default" icon={<UploadCloud className="h-4 w-4" />} loading={scanParsing} onClick={openScanFilePicker}>
-              {scanParsing ? '正在解析…' : '选择扫描文件'}
+              {scanParsing ? t('fleetTab.parsingScan') : t('fleetTab.selectScanFiles')}
             </Button>
             <Button
               type="default"
@@ -471,9 +507,9 @@ export function FleetSupplierPushTab() {
               loading={pushImagesLoading}
               onClick={openPushImagePicker}
             >
-              {pushImagesLoading ? '正在读取…' : '选择推送图片'}
+              {pushImagesLoading ? t('fleetTab.readingImages') : t('fleetTab.selectPushImages')}
             </Button>
-            <Tooltip title={!canSend ? '无操作权限' : undefined}>
+            <Tooltip title={!canSend ? t('common.noPermission') : undefined}>
               <Button
                 type="primary"
                 icon={<Send className="h-4 w-4" />}
@@ -487,43 +523,47 @@ export function FleetSupplierPushTab() {
                 }
                 onClick={() => void handlePushAll()}
               >
-                推送所选供应商
+                {t('fleetTab.pushSelected')}
               </Button>
             </Tooltip>
             <SupplierMentionToggle value={mentionEnabled} onChange={setMentionEnabled} />
             <div className="fs-toolbar-weather">
               <span className="flex items-center gap-1.5 text-xs font-semibold text-[var(--admin-muted)]">
                 <CloudRain className="h-3.5 w-3.5 text-[var(--admin-accent)]" aria-hidden />
-                天气预报
+                {t('fleetTab.weatherForecast')}
               </span>
               <Switch
                 checked={weatherEnabled}
                 onChange={setWeatherEnabled}
-                checkedChildren="开"
-                unCheckedChildren="关"
+                checkedChildren={t('common.on')}
+                unCheckedChildren={t('common.off')}
               />
               <Select
                 value={weatherCity || undefined}
                 onChange={setWeatherCity}
                 disabled={!weatherEnabled}
-                placeholder="选择城市"
+                placeholder={t('fleetTab.selectCity')}
                 className="!w-44"
                 options={WEATHER_LOCATION_PRESETS.map((l) => ({ label: l.label, value: l.label }))}
               />
             </div>
             {scanParsing ? (
-              <span className="text-xs text-[var(--admin-muted)]">正在读取并解析表格…</span>
+              <span className="text-xs text-[var(--admin-muted)]">{t('fleetTab.parsingTable')}</span>
             ) : null}
             {scanFileLabel ? (
               <div className="fs-file-pill">
                 <span className="truncate">
-                  {scanFileLabel} · {scanRowCount} 行{scanDropped ? ` · 跳过 ${scanDropped}` : ''}
+                  {t('fleetTab.scanFileSummary', {
+                    files: scanFileLabel,
+                    rows: scanRowCount,
+                    skipped: scanSkippedSuffix,
+                  })}
                 </span>
               </div>
             ) : null}
             {pushImages.length > 0 ? (
               <div className="fs-file-pill">
-                <span>推送图片 {pushImages.length} 张</span>
+                <span>{t('fleetTab.pushImageCount', { count: pushImages.length })}</span>
               </div>
             ) : null}
           </div>
@@ -532,7 +572,7 @@ export function FleetSupplierPushTab() {
             <div className="fs-push-fail-panel">
               <div className="fs-push-fail-header">
                 <AlertTriangle className="h-4 w-4 shrink-0" />
-                <span>{lastPushFails.length} 家推送失败</span>
+                <span>{t('fleetTab.pushFailedCount', { count: lastPushFails.length })}</span>
                 <Button
                   type="primary"
                   danger
@@ -540,14 +580,14 @@ export function FleetSupplierPushTab() {
                   loading={pushing}
                   onClick={() => void handleRetryFailed()}
                 >
-                  重推失败项
+                  {t('fleetTab.retryFailed')}
                 </Button>
               </div>
               <ul className="fs-push-fail-list">
                 {lastPushFails.map((f) => (
                   <li key={f.supplierId} className="fs-push-fail-item">
                     <span className="fs-push-fail-name">「{f.supplierLabel}」</span>
-                    <span className="fs-push-fail-errors">{f.errors.join('；')}</span>
+                    <span className="fs-push-fail-errors">{f.errors.join(errorSep)}</span>
                   </li>
                 ))}
               </ul>
@@ -556,7 +596,7 @@ export function FleetSupplierPushTab() {
 
           {pushImages.length > 0 ? (
             <Image.PreviewGroup>
-              <ul className="fs-push-images" aria-label="待推送图片预览">
+              <ul className="fs-push-images" aria-label={t('fleetTab.pushImagesPreview')}>
                 {pushImages.map((img) => (
                   <li key={img.id} className="fs-push-image-item">
                     <div className="fs-push-image-thumb-wrap">
@@ -566,12 +606,12 @@ export function FleetSupplierPushTab() {
                         width={96}
                         height={96}
                         className="fs-push-image-thumb !rounded-md"
-                        preview={{ mask: '预览' }}
+                        preview={{ mask: t('common.preview') }}
                       />
                       <button
                         type="button"
                         className="fs-push-image-remove"
-                        aria-label={`移除 ${img.name}`}
+                        aria-label={t('fleetTab.removeImage', { name: img.name })}
                         onClick={() => removePushImage(img.id)}
                       >
                         <X className="h-3.5 w-3.5" />
@@ -591,10 +631,8 @@ export function FleetSupplierPushTab() {
       <div className="fs-card">
         <div className="fs-card-head">
           <div>
-            <div className="fs-card-head-title">推送对象</div>
-            <div className="fs-card-head-sub">
-              点选磁贴决定本次推送给谁；配置内容只读，需修改请到「系统管理 → 供应商配置」。
-            </div>
+            <div className="fs-card-head-title">{t('fleetTab.targetsTitle')}</div>
+            <div className="fs-card-head-sub">{t('fleetTab.targetsSub')}</div>
           </div>
           <div className="flex flex-wrap items-center gap-2">
             <Input
@@ -602,29 +640,32 @@ export function FleetSupplierPushTab() {
               onChange={(e) => setSupplierKeyword(e.target.value)}
               allowClear
               prefix={<Search className="h-3.5 w-3.5 text-slate-400" aria-hidden />}
-              placeholder="搜索供应商 / 编码 / 路由 / 站点 / 群名"
+              placeholder={t('fleetTab.searchPlaceholder')}
               className="!w-64"
             />
-            <Tooltip title="选中当前列表里全部可推送的供应商">
+            <Tooltip title={t('fleetTab.selectAllTooltip')}>
               <Button
                 icon={<CheckCheck className="h-4 w-4" />}
                 disabled={configsLoading || eligibleFilteredIds.length === 0 || allFilteredSelected}
                 onClick={selectAllFiltered}
               >
-                全选
+                {t('fleetTab.selectAll')}
               </Button>
             </Tooltip>
-            <Tooltip title="在当前列表内反转勾选状态">
+            <Tooltip title={t('fleetTab.invertTooltip')}>
               <Button
                 icon={<FlipHorizontal2 className="h-4 w-4" />}
                 disabled={configsLoading || eligibleFilteredIds.length === 0}
                 onClick={invertFiltered}
               >
-                反选
+                {t('fleetTab.invert')}
               </Button>
             </Tooltip>
             <span className="fs-badge-count">
-              已选 {effectiveSelectedKeys.length} / {suppliers.length} 家
+              {t('fleetTab.selectedCount', {
+                selected: effectiveSelectedKeys.length,
+                total: suppliers.length,
+              })}
             </span>
             {canMaintainConfig ? (
               <a
@@ -632,10 +673,10 @@ export function FleetSupplierPushTab() {
                 href={SUPPLIER_PUSH_CONFIG_MAINTAIN_PATH}
                 target="_blank"
                 rel="noreferrer"
-                title="新标签页打开，避免丢失已填写的推送内容"
+                title={t('fleetTab.maintainConfigTooltip')}
               >
                 <ExternalLink className="h-3.5 w-3.5" aria-hidden />
-                维护供应商配置
+                {t('fleetTab.maintainConfig')}
               </a>
             ) : null}
           </div>
@@ -647,11 +688,7 @@ export function FleetSupplierPushTab() {
             chatNameById={chatNameById}
             loading={configsLoading}
             onToggle={toggleSupplierSelected}
-            emptyText={
-              supplierKeyword.trim()
-                ? `没有匹配「${supplierKeyword.trim()}」的供应商，换个关键字试试。`
-                : '暂无供应商，请到「系统管理 → 供应商配置」添加或导入后再来推送。'
-            }
+            emptyText={emptyText}
           />
         </div>
       </div>

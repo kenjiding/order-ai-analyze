@@ -7,6 +7,7 @@ import {
   ShieldAlert,
 } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
+import { useTranslation } from 'react-i18next'
 import { DrawerCloseButton } from '../../../components/Drawer/DrawerCloseButton'
 import { useAppSettings } from '../../../context/AppSettingsContext'
 import { useGlobalFilterStore } from '../../../stores/globalFilterStore'
@@ -27,20 +28,6 @@ import type { AnalysisRow } from '../useOrderExceptionManagementPage'
 type Row = AnalysisRow
 type ClosureExceptionTypeKey = ClosureExceptionTypeOption['key']
 
-const CLOSURE_EXCEPTION_TYPE_OPTIONS: ClosureExceptionTypeOption[] = [
-  { key: 'aus_Packet_loss_in_the_station', value: '库内丢包', label: null },
-  { key: 'aus_packet_loss_out_the_station', value: '库外丢包', label: null },
-  { key: 'aus_Theft_and_robbery', value: '盗抢', label: null },
-  { key: 'aus_Damaged_before_entering_the_station', value: '入站前破损', label: null },
-  { key: 'aus_Empty_package_before_entering_the_station', value: '入站前空包', label: null },
-  { key: 'aus_3PL_lost_items', value: '3PL丢件', label: null },
-]
-
-const VIOLENCE_OPTIONS: { value: '0' | '1'; label: string }[] = [
-  { value: '0', label: '否' },
-  { value: '1', label: '是' },
-]
-
 const STAGE_DOT_COLOR: Record<string, string> = {
   订单提交: 'blue',
   已揽件: 'cyan',
@@ -48,10 +35,10 @@ const STAGE_DOT_COLOR: Record<string, string> = {
   派送: 'green',
 }
 
-const TRACK_TYPE_TAG: Record<string, { color: string; label: string }> = {
-  Schedule: { color: 'processing', label: '预约派送' },
-  Problem: { color: 'error', label: '问题件' },
-  Delivery: { color: 'success', label: '派送中' },
+const TRACK_TYPE_COLORS: Record<string, string> = {
+  Schedule: 'processing',
+  Problem: 'error',
+  Delivery: 'success',
 }
 
 let closureVendorMemoryCache: ClosureVendorOption[] | null = null
@@ -97,7 +84,8 @@ function inferClosureExceptionTypeKey(row: Row): ClosureExceptionTypeKey | null 
 
 function renderTrackContentWithDriverIdClickable(
   content: string,
-  onPickDriverId: (driverId: string) => void
+  onPickDriverId: (driverId: string) => void,
+  fillCourierTitle: (id: string) => string,
 ): ReactNode {
   const nodes: ReactNode[] = []
   let lastIndex = 0
@@ -118,7 +106,7 @@ function renderTrackContentWithDriverIdClickable(
         type="button"
         onClick={() => onPickDriverId(driverId)}
         className="mx-0.5 inline-flex items-center rounded px-1 py-0.5 font-mono text-[12px] font-semibold text-[#1f6f68] underline decoration-dotted underline-offset-2 hover:bg-emerald-50 hover:text-[#2f8f87] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#2f8f87]/30"
-        title={`点击回填派送员 ID：${driverId}`}
+        title={fillCourierTitle(driverId)}
       >
         {fullText}
       </button>
@@ -148,15 +136,21 @@ function hasOrderInfoContent(orderInfo: OrderQueryInfo | null | undefined): bool
   ].some((v) => String(v ?? '').trim() !== '')
 }
 
-function OrderInfoMetaLine({ orderInfo }: { orderInfo: OrderQueryInfo | null | undefined }) {
+function OrderInfoMetaLine({
+  orderInfo,
+  t,
+}: {
+  orderInfo: OrderQueryInfo | null | undefined
+  t: (key: string) => string
+}) {
   if (!hasOrderInfoContent(orderInfo)) return null
 
   const items: { label: string; value: string }[] = [
-    { label: '商家', value: formatOrderInfoField(orderInfo?.merchantName) },
-    { label: '编码', value: formatOrderInfoField(orderInfo?.merchantCode) },
-    { label: '重量kg', value: formatOrderInfoField(orderInfo?.totalWeight) },
-    { label: '上传申报AUD', value: formatOrderInfoField(orderInfo?.customerDeclaredValueAud) },
-    { label: '系统申报USD', value: formatOrderInfoField(orderInfo?.declaredValueUsd) },
+    { label: t('drawer.merchant'), value: formatOrderInfoField(orderInfo?.merchantName) },
+    { label: t('drawer.merchantCode'), value: formatOrderInfoField(orderInfo?.merchantCode) },
+    { label: t('drawer.weightKg'), value: formatOrderInfoField(orderInfo?.totalWeight) },
+    { label: t('drawer.declaredAud'), value: formatOrderInfoField(orderInfo?.customerDeclaredValueAud) },
+    { label: t('drawer.declaredUsd'), value: formatOrderInfoField(orderInfo?.declaredValueUsd) },
   ].filter((item) => item.value !== '—')
 
   if (!items.length) return null
@@ -182,12 +176,14 @@ function DrawerSectionHeader({
   title,
   count,
   countTone = 'default',
+  entryCountLabel = (count: number) => String(count),
 }: {
   icon: ReactNode
   eyebrow: string
   title: string
   count?: number
   countTone?: 'default' | 'muted'
+  entryCountLabel?: (count: number) => string
 }) {
   return (
     <div className="flex items-start justify-between gap-3 border-b border-[var(--admin-line)] px-5 py-4">
@@ -208,7 +204,7 @@ function DrawerSectionHeader({
               : 'border border-[#b8ddd7] bg-[var(--admin-accent-soft)] text-[#1f6f68]'
           }`}
         >
-          {count} 条
+          {entryCountLabel(count)}
         </span>
       ) : null}
     </div>
@@ -221,6 +217,8 @@ type Props = {
 }
 
 export function OrderAnalysisDetailDrawer({ row, onClose }: Props) {
+  const { t } = useTranslation('orderException')
+  const { t: tc } = useTranslation('common')
   const { imileToken } = useAppSettings()
   const stationCode = useGlobalFilterStore((state) => state.selectedStations[0] ?? '')
   const canSubmitClosure = usePermission(PERMISSION_KEYS.btnOrderExceptionClosureAdd)
@@ -236,6 +234,53 @@ export function OrderAnalysisDetailDrawer({ row, onClose }: Props) {
   const [isLoadingVendors, setIsLoadingVendors] = useState(false)
   const [isResolvingVendor, setIsResolvingVendor] = useState(false)
   const [isSubmittingClosure, setIsSubmittingClosure] = useState(false)
+
+  const closureExceptionTypeOptions = useMemo(
+    () => [
+      { key: 'aus_Packet_loss_in_the_station' as const, value: t('drawer.closureTypeInHubLoss'), label: null },
+      { key: 'aus_packet_loss_out_the_station' as const, value: t('drawer.closureTypeLastMileLoss'), label: null },
+      { key: 'aus_Theft_and_robbery' as const, value: t('drawer.closureTypeTheft'), label: null },
+      {
+        key: 'aus_Damaged_before_entering_the_station' as const,
+        value: t('drawer.closureTypeDamagedBeforeHub'),
+        label: null,
+      },
+      {
+        key: 'aus_Empty_package_before_entering_the_station' as const,
+        value: t('drawer.closureTypeEmptyBeforeHub'),
+        label: null,
+      },
+      { key: 'aus_3PL_lost_items' as const, value: t('drawer.closureType3plLoss'), label: null },
+    ],
+    [t],
+  )
+
+  const violenceOptions = useMemo(
+    () => [
+      { value: '0' as const, label: tc('no') },
+      { value: '1' as const, label: tc('yes') },
+    ],
+    [tc],
+  )
+
+  const trackTypeLabels = useMemo(
+    () => ({
+      Schedule: t('drawer.trackTypeSchedule'),
+      Problem: t('drawer.trackTypeProblem'),
+      Delivery: t('drawer.trackTypeDelivery'),
+    }),
+    [t],
+  )
+
+  const fillCourierTitle = useCallback(
+    (id: string) => t('drawer.fillCourierIdTitle', { id }),
+    [t],
+  )
+
+  const entryCountLabel = useCallback(
+    (count: number) => t('drawer.entryCount', { count }),
+    [t],
+  )
 
   useEffect(() => {
     if (!row) return
@@ -284,11 +329,11 @@ export function OrderAnalysisDetailDrawer({ row, onClose }: Props) {
       closureVendorMemoryCache = vendors
       setVendorOptions(vendors)
     } catch (e) {
-      showToast((e as Error).message || '供应商列表加载失败', 'error')
+      showToast((e as Error).message || t('toast.vendorListLoadFailed'), 'error')
     } finally {
       setIsLoadingVendors(false)
     }
-  }, [row, imileToken])
+  }, [row, imileToken, t])
 
   useEffect(() => {
     if (!row) return
@@ -307,7 +352,7 @@ export function OrderAnalysisDetailDrawer({ row, onClose }: Props) {
           stationCode: nextStationCode,
         })
         if (!result) {
-          setVendorAutoFillTip('未查询到司机供应商，请手动选择。')
+          setVendorAutoFillTip(t('toast.vendorNotFoundForDriver'))
           return
         }
 
@@ -323,13 +368,13 @@ export function OrderAnalysisDetailDrawer({ row, onClose }: Props) {
         })
         setSelectedVendorKey(result.vendorCode)
       } catch (e) {
-        setVendorAutoFillTip('供应商自动识别失败，请手动选择。')
-        showToast((e as Error).message || '司机供应商识别失败', 'error')
+        setVendorAutoFillTip(t('toast.vendorAutoResolveFailed'))
+        showToast((e as Error).message || t('toast.driverVendorResolveFailed'), 'error')
       } finally {
         setIsResolvingVendor(false)
       }
     },
-    [imileToken]
+    [imileToken, t],
   )
 
   const handleTrackDriverIdPick = useCallback(
@@ -377,20 +422,20 @@ export function OrderAnalysisDetailDrawer({ row, onClose }: Props) {
 
     const selectedTypeKey = closureTypeKey.trim() as ClosureExceptionTypeKey | ''
     if (!selectedTypeKey) {
-      showToast('请先选择异常类型', 'error')
+      showToast(t('toast.selectClosureType'), 'error')
       return
     }
 
     const vendor = vendorOptions.find((x) => x.key === selectedVendorKey)
     const vendorRequired = outResponsibility || selectedTypeKey === 'aus_packet_loss_out_the_station'
     if (vendorRequired && !vendor) {
-      showToast('库外丢包必须选择派件员供应商', 'error')
+      showToast(t('toast.vendorRequiredForLastMile'), 'error')
       return
     }
 
     const token = imileToken.trim()
     if (!token) {
-      showToast('缺少 imileToken，请先在系统设置中配置', 'error')
+      showToast(t('toast.missingImileTokenClosure'), 'error')
       return
     }
 
@@ -404,9 +449,9 @@ export function OrderAnalysisDetailDrawer({ row, onClose }: Props) {
         vendorCode: vendor?.key ?? '',
         violence,
       })
-      showToast('异常完结已新增', 'success')
+      showToast(t('toast.closureAdded'), 'success')
     } catch (e) {
-      showToast((e as Error).message || '异常完结新增失败', 'error')
+      showToast((e as Error).message || t('toast.closureAddFailed'), 'error')
     } finally {
       setIsSubmittingClosure(false)
     }
@@ -419,6 +464,7 @@ export function OrderAnalysisDetailDrawer({ row, onClose }: Props) {
     selectedVendorKey,
     vendorOptions,
     violence,
+    t,
   ])
 
   return (
@@ -454,13 +500,13 @@ export function OrderAnalysisDetailDrawer({ row, onClose }: Props) {
                   {row.needsReview ? (
                     <span className="inline-flex items-center gap-1 rounded-full border border-amber-200/40 bg-amber-400/20 px-2.5 py-1 text-[11px] font-semibold text-amber-50">
                       <AlertTriangle className="h-3 w-3" aria-hidden />
-                      需人工复核
+                      {t('drawer.needsReview')}
                     </span>
                   ) : null}
                   {outResponsibility ? (
                     <span className="inline-flex items-center gap-1 rounded-full border border-orange-200/35 bg-orange-400/20 px-2.5 py-1 text-[11px] font-semibold text-orange-50">
                       <ShieldAlert className="h-3 w-3" aria-hidden />
-                      库外责任
+                      {t('drawer.outOfHubResponsibility')}
                     </span>
                   ) : null}
                 </div>
@@ -471,13 +517,13 @@ export function OrderAnalysisDetailDrawer({ row, onClose }: Props) {
                       <Package className="h-5 w-5 text-white" aria-hidden />
                     </div>
                     <div>
-                      <p className="text-[11px] font-medium uppercase tracking-[0.12em] text-white/70">订单号</p>
+                      <p className="text-[11px] font-medium uppercase tracking-[0.12em] text-white/70">{t('drawer.orderNo')}</p>
                       <p className="font-mono text-xl font-semibold tracking-wide text-white sm:text-2xl">{row.orderNo}</p>
                     </div>
                   </div>
                   <div className="hidden h-8 w-px bg-white/20 sm:block" aria-hidden />
                   <div className="min-w-0">
-                    <p className="text-[11px] font-medium uppercase tracking-[0.12em] text-white/70">异常分类</p>
+                    <p className="text-[11px] font-medium uppercase tracking-[0.12em] text-white/70">{t('drawer.exceptionCategory')}</p>
                     <p className="truncate text-sm font-medium text-white/95">
                       {row.lossScope}
                       <span className="mx-2 text-white/40">/</span>
@@ -486,20 +532,20 @@ export function OrderAnalysisDetailDrawer({ row, onClose }: Props) {
                   </div>
                   <div className="hidden h-8 w-px bg-white/20 sm:block" aria-hidden />
                   <div className="min-w-0">
-                    <p className="text-[11px] font-medium uppercase tracking-[0.12em] text-white/70">当前责任站点</p>
+                    <p className="text-[11px] font-medium uppercase tracking-[0.12em] text-white/70">{t('drawer.currentHub')}</p>
                     <p className="truncate text-sm font-semibold text-white/95">{row.currentResponsibilityParty || '—'}</p>
                   </div>
                   <div className="hidden h-8 w-px bg-white/20 sm:block" aria-hidden />
                   <div className="min-w-0">
-                    <p className="text-[11px] font-medium uppercase tracking-[0.12em] text-white/70">置信度</p>
+                    <p className="text-[11px] font-medium uppercase tracking-[0.12em] text-white/70">{t('drawer.confidence')}</p>
                     <p className="truncate text-sm font-medium text-white/95">{String(row.confidence ?? '—')}</p>
                   </div>
                 </div>
 
-                <OrderInfoMetaLine orderInfo={row.orderInfo} />
+                <OrderInfoMetaLine orderInfo={row.orderInfo} t={t} />
               </div>
 
-              <DrawerCloseButton onClick={onClose} variant="onDark" aria-label="关闭订单详情" />
+              <DrawerCloseButton onClick={onClose} variant="onDark" aria-label={t('drawer.closeAria')} />
             </div>
           </header>
 
@@ -508,17 +554,17 @@ export function OrderAnalysisDetailDrawer({ row, onClose }: Props) {
             <section className="admin-panel overflow-hidden">
               <DrawerSectionHeader
                 icon={<ClipboardCheck className="h-4 w-4" aria-hidden />}
-                eyebrow="Exception Closure"
-                title="异常完结"
+                eyebrow={t('drawer.closureEyebrow')}
+                title={t('drawer.closureTitle')}
               />
               <div className="px-5 py-4">
                 <Form layout="vertical" colon={false}>
                   <div className="grid gap-x-4 sm:grid-cols-2">
-                    <Form.Item label="异常类型" required className="mb-3">
+                    <Form.Item label={t('drawer.closureType')} required className="mb-3">
                       <Select<ClosureExceptionTypeKey>
                         value={closureTypeKey || undefined}
-                        placeholder="请选择异常类型"
-                        options={CLOSURE_EXCEPTION_TYPE_OPTIONS.map((x) => ({
+                        placeholder={t('drawer.closureTypePlaceholder')}
+                        options={closureExceptionTypeOptions.map((x) => ({
                           value: x.key,
                           label: x.value,
                         }))}
@@ -527,14 +573,14 @@ export function OrderAnalysisDetailDrawer({ row, onClose }: Props) {
                     </Form.Item>
 
                     <Form.Item
-                      label="派件员供应商"
+                      label={t('drawer.courierVendor')}
                       required={outResponsibility || closureTypeKey === 'aus_packet_loss_out_the_station'}
                       className="mb-3"
                       extra={vendorAutoFillTip || undefined}
                     >
                       <Select<string>
                         value={selectedVendorKey || undefined}
-                        placeholder={isLoadingVendors ? '加载中...' : '请选择供应商'}
+                        placeholder={isLoadingVendors ? t('drawer.vendorLoading') : t('drawer.vendorPlaceholder')}
                         showSearch
                         allowClear
                         loading={isLoadingVendors || isResolvingVendor}
@@ -545,15 +591,15 @@ export function OrderAnalysisDetailDrawer({ row, onClose }: Props) {
                       />
                     </Form.Item>
 
-                    <Form.Item label="是否暴力" required className="mb-3">
+                    <Form.Item label={t('drawer.violence')} required className="mb-3">
                       <Select<'0' | '1'>
                         value={violence}
-                        options={VIOLENCE_OPTIONS}
+                        options={violenceOptions}
                         onChange={(v) => setViolence(v)}
                       />
                     </Form.Item>
 
-                    <Form.Item label="派送员 ID" className="mb-3">
+                    <Form.Item label={t('drawer.courierId')} className="mb-3">
                       <Input
                         value={detectedDriverId}
                         onChange={(e) => {
@@ -562,18 +608,18 @@ export function OrderAnalysisDetailDrawer({ row, onClose }: Props) {
                           setVendorAutoFillTip('')
                           setPendingAutoResolveDriverId('')
                         }}
-                        placeholder="可手动输入或从轨迹点选"
+                        placeholder={t('drawer.courierIdPlaceholder')}
                         className="font-mono"
                       />
                     </Form.Item>
                   </div>
 
-                  <Form.Item label="备注" className="mb-3">
+                  <Form.Item label={t('drawer.remark')} className="mb-3">
                     <Input.TextArea
                       rows={3}
                       value={closureRemark}
                       onChange={(e) => setClosureRemark(e.target.value)}
-                      placeholder="默认回填 AI 判定依据"
+                      placeholder={t('drawer.remarkPlaceholder')}
                     />
                   </Form.Item>
 
@@ -586,7 +632,7 @@ export function OrderAnalysisDetailDrawer({ row, onClose }: Props) {
                         disabled={isSubmittingClosure}
                         className="min-w-[120px]"
                       >
-                        新增异常完结
+                        {t('drawer.addClosure')}
                       </Button>
                     </Form.Item>
                   ) : null}
@@ -599,14 +645,15 @@ export function OrderAnalysisDetailDrawer({ row, onClose }: Props) {
               <section className="admin-panel flex min-h-[280px] flex-col overflow-hidden">
                 <DrawerSectionHeader
                   icon={<Route className="h-4 w-4" aria-hidden />}
-                  eyebrow="Track Intelligence"
-                  title="Query 完整轨迹"
+                  eyebrow={t('drawer.trackEyebrow')}
+                  title={t('drawer.trackTitle')}
                   count={sortedTrackEvents.length}
+                  entryCountLabel={entryCountLabel}
                 />
 
                 {sortedTrackEvents.length === 0 ? (
                   <div className="flex flex-1 items-center justify-center px-6 py-12 text-sm text-slate-400">
-                    暂无轨迹数据
+                    {t('drawer.noTrackData')}
                   </div>
                 ) : (
                   <div className="min-h-0 flex-1 overflow-auto bg-[linear-gradient(180deg,rgba(240,247,251,0.55),rgba(255,255,255,0.9))] px-4 py-2">
@@ -618,7 +665,10 @@ export function OrderAnalysisDetailDrawer({ row, onClose }: Props) {
                           latestResponsibilityMarker.time === evt.time
                         const stageColor = STAGE_DOT_COLOR[evt.trackStageTx ?? ''] ?? 'gray'
                         const dotColor = isLatestResponsibilityTrack ? 'red' : stageColor
-                        const typeTag = evt.trackType ? TRACK_TYPE_TAG[evt.trackType] : null
+                        const typeTagColor = evt.trackType ? TRACK_TYPE_COLORS[evt.trackType] : null
+                        const typeTagLabel = evt.trackType
+                          ? trackTypeLabels[evt.trackType as keyof typeof trackTypeLabels]
+                          : null
                         return {
                           color: dotColor,
                           children: (
@@ -645,17 +695,17 @@ export function OrderAnalysisDetailDrawer({ row, onClose }: Props) {
                                     {evt.trackStageTx}
                                   </Tag>
                                 ) : null}
-                                {typeTag ? (
+                                {typeTagLabel ? (
                                   <Tag
-                                    color={isLatestResponsibilityTrack ? 'red' : typeTag.color}
+                                    color={isLatestResponsibilityTrack ? 'red' : typeTagColor ?? 'default'}
                                     className="m-0 border-0 text-[11px] leading-tight"
                                   >
-                                    {typeTag.label}
+                                    {typeTagLabel}
                                   </Tag>
                                 ) : null}
                                 {isLatestResponsibilityTrack ? (
                                   <Tag color="red" className="m-0 border-0 text-[11px] leading-tight">
-                                    最新责任方
+                                    {t('drawer.latestResponsibleParty')}
                                   </Tag>
                                 ) : null}
                               </div>
@@ -664,7 +714,11 @@ export function OrderAnalysisDetailDrawer({ row, onClose }: Props) {
                                   isLatestResponsibilityTrack ? 'text-red-800' : 'text-slate-800'
                                 }`}
                               >
-                                {renderTrackContentWithDriverIdClickable(evt.content, handleTrackDriverIdPick)}
+                                {renderTrackContentWithDriverIdClickable(
+                                  evt.content,
+                                  handleTrackDriverIdPick,
+                                  fillCourierTitle,
+                                )}
                               </p>
                             </div>
                           ),
@@ -679,10 +733,11 @@ export function OrderAnalysisDetailDrawer({ row, onClose }: Props) {
                 <section className="admin-panel flex min-h-[280px] flex-col overflow-hidden">
                   <DrawerSectionHeader
                     icon={<ShieldAlert className="h-4 w-4" aria-hidden />}
-                    eyebrow="Intercept Audit"
-                    title="完整阻断日志"
+                    eyebrow={t('drawer.interceptEyebrow')}
+                    title={t('drawer.interceptTitle')}
                     count={sortedInterceptLogs.length}
                     countTone="muted"
+                    entryCountLabel={entryCountLabel}
                   />
 
                   <div className="min-h-0 flex-1 overflow-auto px-4 py-4">
@@ -717,15 +772,15 @@ export function OrderAnalysisDetailDrawer({ row, onClose }: Props) {
                                 }`}
                               >
                                 <p>
-                                  <span className="text-slate-500">扫描网点：</span>
+                                  <span className="text-slate-500">{t('drawer.scanHub')}</span>
                                   <span>{log.scanOcName || '—'}</span>
                                 </p>
                                 <p>
-                                  <span className="text-slate-500">阻断原因：</span>
+                                  <span className="text-slate-500">{t('drawer.interceptReason')}</span>
                                   <span>{log.interceptReasonDesc || '—'}</span>
                                 </p>
                                 <p>
-                                  <span className="text-slate-500">操作人：</span>
+                                  <span className="text-slate-500">{t('drawer.operator')}</span>
                                   <span className="font-medium">{log.scanUserName || '-'}</span>
                                   <button
                                     type="button"
@@ -738,7 +793,11 @@ export function OrderAnalysisDetailDrawer({ row, onClose }: Props) {
                                         ? 'text-red-500 hover:bg-red-100/70 hover:text-red-600 disabled:text-red-300'
                                         : 'text-[#1f6f68] hover:bg-emerald-50 hover:text-[#2f8f87] disabled:text-slate-400'
                                     }`}
-                                    title={scanUserCode ? `点击回填派送员 ID：${scanUserCode}` : '无派送员 ID'}
+                                    title={
+                                      scanUserCode
+                                        ? fillCourierTitle(scanUserCode)
+                                        : t('drawer.noCourierId')
+                                    }
                                   >
                                     ({scanUserCode || '-'})
                                   </button>

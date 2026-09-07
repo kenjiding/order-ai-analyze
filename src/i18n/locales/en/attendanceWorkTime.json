@@ -1,0 +1,88 @@
+{
+  "page": {
+    "title": "Work hours records",
+    "description": "Log attendance work hours by process and shift to calculate hub process efficiency."
+  },
+  "actions": {
+    "addProcess": "Add work session",
+    "finish": "Finish",
+    "edit": "Edit",
+    "delete": "Delete",
+    "cancel": "Cancel",
+    "save": "Save",
+    "add": "Add"
+  },
+  "table": {
+    "empty": "No work hours records yet",
+    "worker": "Worker",
+    "process": "Process",
+    "shift": "Shift",
+    "startTime": "Start time",
+    "endTime": "End time",
+    "totalDuration": "Total hours",
+    "zoneCode": "Zone",
+    "notes": "Notes",
+    "actions": "Actions",
+    "inProgress": "In progress",
+    "totalDurationInline": "Total {{hours}}"
+  },
+  "filter": {
+    "allRegions": "All states / regions",
+    "today": "Today",
+    "last7Days": "Last 7 days"
+  },
+  "dialog": {
+    "editTitle": "Edit work session",
+    "addTitle": "Add work session",
+    "region": "State / region",
+    "regionRequired": "Select a state or region",
+    "regionPlaceholder": "Select the state or region for this record",
+    "process": "Process",
+    "processRequired": "Select a process",
+    "processPlaceholder": "Select process / shift",
+    "worker": "Worker",
+    "workerRequired": "Enter worker name",
+    "workerPlaceholder": "Type or pick a worker name; you can create a new one",
+    "searching": "Searching…",
+    "startTime": "Start time",
+    "startTimeRequired": "Select start time",
+    "endTime": "End time",
+    "endTimeRequired": "Select end time",
+    "endTimeAfterStart": "End time must be after start time",
+    "zoneCode": "Assigned zone",
+    "zoneCodePlaceholder": "e.g. A1, B3",
+    "notes": "Notes",
+    "notesOptional": "Optional",
+    "endTimeOptionalPlaceholder": "Leave blank to fill in later",
+    "selectProcessCascader": "Select process / shift",
+    "selectStartTime": "Select start time",
+    "selectEndTime": "Select end time"
+  },
+  "processCategory": {
+    "coarse_sort": "Coarse sort",
+    "fine_sort": "Fine sort",
+    "forklift": "Forklift",
+    "front_desk": "Front desk",
+    "loading": "Inbound loading",
+    "supply": "Supply",
+    "grid_slot": "Grid slot"
+  },
+  "shift": {
+    "morning": "Morning",
+    "noon": "Midday",
+    "evening": "Evening"
+  },
+  "toast": {
+    "updated": "Work hours record updated",
+    "added": "Work hours record added",
+    "deleted": "Work hours record deleted",
+    "finished": "End time recorded",
+    "endTimeAfterStart": "End time must be after start time",
+    "selectProcess": "Select a process",
+    "enterWorkerName": "Enter worker name"
+  },
+  "confirm": {
+    "deleteTitle": "Delete this work hours record?",
+    "deleteContent": "This will delete the work session for \"{{workerName}}\". This cannot be undone."
+  }
+}

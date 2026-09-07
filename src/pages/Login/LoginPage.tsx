@@ -1,18 +1,22 @@
 import { type FormEvent, useEffect, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { Warehouse } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
 import { useAuthStore } from '../../stores/authStore'
 import { useAppSettings } from '../../context/AppSettingsContext'
 import { getDefaultRouteForPermissions, getDefaultRouteFromPermissionKeys } from '../../components/Layout/sidebarMenu'
 import { showToast } from '../../utils/toast'
 import { useLoginRive } from './useLoginRive'
 import { leaveLoginTo, readSafeLoginReturnTo } from './loginReturnTo'
+import { LocaleSwitcher } from '../../components/I18n/LocaleSwitcher'
 import './login.css'
 
 const REMEMBER_KEY = 'rememberMe'
 const USERNAME_KEY = 'username'
 
 export default function LoginPage() {
+  const { t } = useTranslation('login')
+  const { t: tm } = useTranslation('menu')
   const navigate = useNavigate()
   const location = useLocation()
   const { login, isAuthenticated, loading, hasPermission, isSuperAdmin } = useAuthStore()
@@ -76,12 +80,12 @@ export default function LoginPage() {
     const password = passwordRef.current?.value ?? ''
 
     if (!username) {
-      triggerPasswordError('请输入用户名')
+      triggerPasswordError(t('usernameRequired'))
       return
     }
 
     if (!password) {
-      triggerPasswordError('请输入密码')
+      triggerPasswordError(t('passwordRequired'))
       return
     }
 
@@ -107,13 +111,13 @@ export default function LoginPage() {
         )
         const target = from || defaultRoute
         if (target === '/login') {
-          triggerPasswordError('账号未分配任何可访问页面，请联系管理员')
+          triggerPasswordError(t('noPagesAssigned'))
           return
         }
         leaveLoginTo(target, navigate)
       })
       .catch((e: unknown) => {
-        const message = e instanceof Error ? e.message : '登录失败'
+        const message = e instanceof Error ? e.message : t('loginFailed')
         triggerPasswordError(message)
       })
       .finally(() => {
@@ -175,15 +179,18 @@ export default function LoginPage() {
           </div>
 
           <div className="login-form-card relative z-[1]">
+            <div className="mb-4 flex justify-end">
+              <LocaleSwitcher toolbar />
+            </div>
             <header className="mb-8">
               <div className="mb-5 flex items-center gap-3">
                 <div className="flex h-11 w-11 items-center justify-center rounded-lg bg-[var(--admin-accent-soft)] text-[var(--admin-accent)]">
                   <Warehouse className="h-6 w-6" aria-hidden />
                 </div>
                 <div>
-                  <h1 className="text-[15px] font-semibold tracking-tight text-slate-900">物流运营管理</h1>
+                  <h1 className="text-[15px] font-semibold tracking-tight text-slate-900">{tm('brandTitle')}</h1>
                   <p className="mt-0.5 text-[11px] font-medium uppercase tracking-[0.22em] text-slate-500">
-                    Logistics Operations
+                    {tm('brandSubtitle')}
                   </p>
                 </div>
               </div>
@@ -191,21 +198,21 @@ export default function LoginPage() {
 
             <div className="admin-panel overflow-hidden">
               <div className="border-b px-5 py-4" style={{ borderColor: 'var(--admin-line)' }}>
-                <p className="text-sm font-medium text-slate-800">账号验证</p>
-                <p className="mt-0.5 text-xs text-slate-500">使用用户名与密码登录</p>
+                <p className="text-sm font-medium text-slate-800">{t('title')}</p>
+                <p className="mt-0.5 text-xs text-slate-500">{t('subtitle')}</p>
               </div>
 
               <form className="space-y-4 px-5 py-5" onSubmit={handleSubmit}>
                 <div>
                   <label htmlFor="username" className="login-field-label mb-1.5 block text-xs font-semibold text-slate-600">
-                    用户名
+                    {t('username')}
                   </label>
                   <input
                     ref={usernameRef}
                     id="username"
                     type="text"
                     autoComplete="username"
-                    placeholder="请输入用户名"
+                    placeholder={t('usernamePlaceholder')}
                     required
                     className="login-field-input"
                     onFocus={handleUsernameFocus}
@@ -216,7 +223,7 @@ export default function LoginPage() {
 
                 <div>
                   <label htmlFor="password" className="login-field-label mb-1.5 block text-xs font-semibold text-slate-600">
-                    密码
+                    {t('password')}
                   </label>
                   <div
                     className={['login-password-wrap', passwordError ? 'error' : '', passwordShake ? 'login-shake' : '']
@@ -228,7 +235,7 @@ export default function LoginPage() {
                       id="password"
                       type="password"
                       autoComplete="current-password"
-                      placeholder="请输入密码"
+                      placeholder={t('passwordPlaceholder')}
                       required
                       className="login-field-input"
                       onFocus={handlePasswordFocus}
@@ -238,7 +245,7 @@ export default function LoginPage() {
                     <button
                       type="button"
                       className="login-toggle-password"
-                      aria-label="切换密码可见性"
+                      aria-label={t('togglePassword')}
                       onMouseDown={handleTogglePasswordMouseDown}
                       onClick={togglePasswordVisibility}
                     >
@@ -255,14 +262,14 @@ export default function LoginPage() {
                       checked={remember}
                       onChange={(e) => setRemember(e.target.checked)}
                     />
-                    记住登录 30 天
+                    {t('remember')}
                   </label>
                   <a
                     href="#"
                     className="text-xs font-medium text-[#1f6f68] transition hover:text-[var(--admin-accent)]"
                     onClick={(e) => e.preventDefault()}
                   >
-                    忘记密码, 请联系管理员
+                    {t('forgotPassword')}
                   </a>
                 </div>
 
@@ -271,14 +278,14 @@ export default function LoginPage() {
                   disabled={submitting}
                   className="admin-btn admin-btn-primary mt-2 w-full py-2.5 disabled:opacity-60"
                 >
-                  {submitting ? '登录中…' : '进入控制台'}
+                  {submitting ? t('submitting') : t('submit')}
                 </button>
               </form>
             </div>
 
             <div className="mt-6 flex items-center justify-center gap-2 text-xs text-slate-500">
               <span className="h-2 w-2 rounded-full bg-[var(--admin-accent)]" aria-hidden />
-              在线会话 · 权限受控
+              {t('footer')}
             </div>
           </div>
         </section>

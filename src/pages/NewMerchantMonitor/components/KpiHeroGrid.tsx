@@ -1,6 +1,7 @@
 import { Tooltip } from 'antd'
 import { Info } from 'lucide-react'
 import type { ReactNode } from 'react'
+import { useTranslation } from 'react-i18next'
 import { formatCount, formatPercent, type KpiSummary } from '../metrics'
 
 type Props = {
@@ -54,13 +55,16 @@ function SubCard({
   matched,
   subsetTotal,
   emptyHint,
+  noSiteDataLabel,
 }: {
   title: string
   rate: number | null
   matched: number
   subsetTotal: number
   emptyHint: string
+  noSiteDataLabel: string
 }) {
+  const { t } = useTranslation('newMerchant')
   const empty = subsetTotal === 0
   return (
     <div className="flex h-full flex-col justify-between rounded-xl border border-slate-200 bg-white p-4">
@@ -76,17 +80,19 @@ function SubCard({
         {formatPercent(rate)}
       </div>
       <div className="mt-1 text-[11px] text-slate-500">
-        {empty ? '无该站点数据' : `${formatCount(matched)} / ${formatCount(subsetTotal)}`}
+        {empty ? noSiteDataLabel : t('matchedOverTotal', { matched: formatCount(matched), total: formatCount(subsetTotal) })}
       </div>
     </div>
   )
 }
 
 export default function KpiHeroGrid({ metrics, hasData }: Props) {
+  const { t } = useTranslation('newMerchant')
+
   if (!hasData) {
     return (
       <div className="rounded-2xl border border-dashed border-slate-300 bg-white py-12 text-center text-sm text-slate-400">
-        请输入新商家代码与时间范围后点击「查询」
+        {t('emptyHint')}
       </div>
     )
   }
@@ -95,33 +101,34 @@ export default function KpiHeroGrid({ metrics, hasData }: Props) {
     <div className="grid gap-4 lg:grid-cols-12">
       <div className="lg:col-span-3">
         <HeroCard
-          title="总货量"
+          title={t('totalVolume')}
           primary={formatCount(metrics.totalCount)}
-          secondary={`已签收 ${formatCount(metrics.signedCount)} 单`}
+          secondary={t('signedCount', { count: formatCount(metrics.signedCount) })}
           accent
         />
       </div>
       <div className="lg:col-span-3">
         <HeroCard
-          title="签收率"
+          title={t('signRate')}
           primary={formatPercent(metrics.signRate)}
-          secondary={`已签收 / 总货量`}
-          tooltip="已签收单数（含 signDate）/ 总货量"
+          secondary={t('signedOverTotal')}
+          tooltip={t('signRateTooltip')}
         />
       </div>
       <div className="lg:col-span-3">
         <HeroCard
-          title="24h派签率"
+          title={t('within24hRate')}
           primary={formatPercent(metrics.within24hRate)}
-          secondary={`24h 内 ${formatCount(metrics.within24hCount)} / 已派送 ${formatCount(
-            metrics.dispatchedCount,
-          )}`}
-          tooltip="signDate − deliveryTime ≤ 24h 的单数 / 有 deliveryTime 的记录数（signDate 为空视为未达标）"
+          secondary={t('within24hDetail', {
+            matched: formatCount(metrics.within24hCount),
+            total: formatCount(metrics.dispatchedCount),
+          })}
+          tooltip={t('within24hTooltip')}
         />
       </div>
       <div className="lg:col-span-3">
         <HeroCard
-          title="到达DS货量"
+          title={t('dsArriveVolume')}
           primary={
             <span>
               {formatCount(metrics.dsArriveCount)}
@@ -130,27 +137,29 @@ export default function KpiHeroGrid({ metrics, hasData }: Props) {
               </span>
             </span>
           }
-          secondary="已到达DS / 总货量"
-          tooltip="firstDsArriveDate 有值的单数 / 总货量"
+          secondary={t('dsArriveOverTotal')}
+          tooltip={t('dsArriveTooltip')}
         />
       </div>
 
       <div className="lg:col-span-6">
         <SubCard
-          title="Melbourne Center · 2D 签收率"
+          title={t('melbourne2D')}
           rate={metrics.melbourne2D.rate}
           matched={metrics.melbourne2D.matched}
           subsetTotal={metrics.melbourne2D.subsetTotal}
-          emptyHint="该窗口无 Melbourne Center 数据"
+          emptyHint={t('noMelbourneData')}
+          noSiteDataLabel={t('noSiteData')}
         />
       </div>
       <div className="lg:col-span-6">
         <SubCard
-          title="Sydney Center · 3D 签收率"
+          title={t('sydney3D')}
           rate={metrics.sydney3D.rate}
           matched={metrics.sydney3D.matched}
           subsetTotal={metrics.sydney3D.subsetTotal}
-          emptyHint="该窗口无 Sydney Center 数据"
+          emptyHint={t('noSydneyData')}
+          noSiteDataLabel={t('noSiteData')}
         />
       </div>
     </div>

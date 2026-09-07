@@ -29,6 +29,7 @@ import {
   Warehouse,
 } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useState, type Key } from 'react'
+import { useTranslation } from 'react-i18next'
 import { showToast } from '../../../utils/toast'
 import { PERMISSION_KEYS, usePermission } from '../../../hooks/usePermission'
 import type { WarehouseCityId, WarehouseConfigDto, WarehouseProfileDto } from '../warehouseConfig/types'
@@ -41,18 +42,22 @@ function WarehouseTreeLeafTitle({
   profile: WarehouseProfileDto
   onDelete: (hubId: string) => void
 }) {
+  const { t } = useTranslation('orderException')
+  const { t: tc } = useTranslation('common')
   return (
     <Flex align="center" justify="space-between" gap="small">
       <Flex align="center" gap="small" style={{ minWidth: 0, flex: 1 }}>
         <Typography.Text ellipsis>{profile.name}</Typography.Text>
-        {profile.lossTimeoutDays ? <Tag color="warning">{profile.lossTimeoutDays}天</Tag> : null}
+        {profile.lossTimeoutDays ? (
+          <Tag color="warning">{t('warehouseConfig.timeoutDaysTag', { days: profile.lossTimeoutDays })}</Tag>
+        ) : null}
       </Flex>
       <span className="warehouse-delete-btn shrink-0 opacity-0 transition-opacity duration-150">
         <Popconfirm
-          title={`删除「${profile.name}」？`}
-          description="删除后需保存配置才会在分析中生效。"
-          okText="删除"
-          cancelText="取消"
+          title={t('warehouseConfig.deleteHubTitle', { name: profile.name })}
+          description={t('warehouseConfig.deleteHubDescription')}
+          okText={tc('delete')}
+          cancelText={tc('cancel')}
           okButtonProps={{ danger: true }}
           onConfirm={() => onDelete(profile.hubId)}
         >
@@ -61,7 +66,7 @@ function WarehouseTreeLeafTitle({
             danger
             className="!px-1"
             icon={<Trash2 className="h-3.5 w-3.5" aria-hidden />}
-            aria-label={`删除 ${profile.name}`}
+            aria-label={t('warehouseConfig.deleteHubAria', { name: profile.name })}
             onClick={(e) => e.stopPropagation()}
             onMouseDown={(e) => e.stopPropagation()}
           />
@@ -103,6 +108,7 @@ function TagListEditor({
   onChange: (next: string[]) => void
   placeholder?: string
 }) {
+  const { t } = useTranslation('orderException')
   return (
     <Form.Item
       label={
@@ -116,7 +122,7 @@ function TagListEditor({
       <Select
         mode="tags"
         value={values}
-        placeholder={placeholder ?? '输入后回车添加'}
+        placeholder={placeholder ?? t('warehouseConfig.tagPlaceholder')}
         tokenSeparators={[',']}
         open={false}
         suffixIcon={null}
@@ -137,6 +143,7 @@ function GlobalRulesSection({
   onToggle: () => void
   onChange: (next: WarehouseConfigDto['global']) => void
 }) {
+  const { t } = useTranslation('orderException')
   return (
     <section className="border-b" style={{ borderColor: 'var(--admin-line)' }}>
       <button
@@ -149,10 +156,13 @@ function GlobalRulesSection({
             <Globe2 className="h-4 w-4" aria-hidden />
           </span>
           <div className="min-w-0">
-            <div className="text-sm font-semibold text-slate-900">全局规则</div>
+            <div className="text-sm font-semibold text-slate-900">{t('warehouseConfig.globalRules')}</div>
             <div className="mt-0.5 truncate text-xs text-slate-500">
-              默认超时 {global.defaultLossTimeoutDays} 天 · 3PL {global.externalCarrierLossTimeoutDays}{' '}
-              天 · 操作员 {global.commonSystemOperators.length} 项
+              {t('warehouseConfig.globalSummary', {
+                defaultDays: global.defaultLossTimeoutDays,
+                thirdPartyDays: global.externalCarrierLossTimeoutDays,
+                operatorCount: global.commonSystemOperators.length,
+              })}
             </div>
           </div>
         </div>
@@ -181,10 +191,10 @@ function GlobalRulesSection({
               <Form.Item
                 label={
                   <span className="text-xs font-semibold uppercase tracking-[0.06em] text-slate-500">
-                    默认超时（天）
+                    {t('warehouseConfig.defaultTimeoutDays')}
                   </span>
                 }
-                tooltip="库内/库外丢失超时，未配置仓库超时时使用此值"
+                tooltip={t('warehouseConfig.defaultTimeoutTooltip')}
                 className="mb-0"
               >
                 <InputNumber
@@ -202,7 +212,7 @@ function GlobalRulesSection({
               <Form.Item
                 label={
                   <span className="text-xs font-semibold uppercase tracking-[0.06em] text-slate-500">
-                    3PL 丢件超时（天）
+                    {t('warehouseConfig.thirdPartyTimeoutDays')}
                   </span>
                 }
                 className="mb-0"
@@ -221,24 +231,24 @@ function GlobalRulesSection({
               </Form.Item>
               <div className="min-w-[160px] flex-1">
                 <TagListEditor
-                  label="全局系统操作员"
+                  label={t('warehouseConfig.globalSystemOperators')}
                   values={global.commonSystemOperators}
                   onChange={(commonSystemOperators) => onChange({ ...global, commonSystemOperators })}
                 />
               </div>
               <div className="min-w-[160px] flex-1">
                 <TagListEditor
-                  label="全局非真实操作员"
+                  label={t('warehouseConfig.globalNonRealOperators')}
                   values={global.commonNonRealOperators}
                   onChange={(commonNonRealOperators) => onChange({ ...global, commonNonRealOperators })}
                 />
               </div>
               <div className="min-w-[160px] flex-1">
                 <TagListEditor
-                  label="全局非真实操作员正则"
-                  hint="用于批量识别系统/虚拟操作员"
+                  label={t('warehouseConfig.globalNonRealPatterns')}
+                  hint={t('warehouseConfig.globalNonRealPatternsHint')}
                   values={global.commonNonRealOperatorPatterns}
-                  placeholder="例如 ^[A-Z]{2,5}\\s+OPS\\d+$"
+                  placeholder={t('warehouseConfig.patternPlaceholder')}
                   onChange={(commonNonRealOperatorPatterns) =>
                     onChange({ ...global, commonNonRealOperatorPatterns })
                   }
@@ -262,6 +272,7 @@ function ProfileEditor({
   defaultLossTimeoutDays: number
   onChange: (next: WarehouseProfileDto) => void
 }) {
+  const { t } = useTranslation('orderException')
   const cityLabel =
     WAREHOUSE_CITY_OPTIONS.find((item) => item.value === profile.cityId)?.label ?? profile.cityId
 
@@ -276,21 +287,21 @@ function ProfileEditor({
               {cityLabel}
             </span>
           </div>
-          <p className="mt-1 text-xs text-slate-500">仓库名须与轨迹【】内一致。</p>
+          <p className="mt-1 text-xs text-slate-500">{t('warehouseConfig.hubNameHint')}</p>
         </div>
         <span className="font-mono text-[11px] text-slate-400">{profile.hubId}</span>
       </header>
 
       <section className="space-y-4">
         <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-400">
-          匹配信息
+          {t('warehouseConfig.matchingInfo')}
         </div>
         <Form layout="vertical" className="[&_.ant-form-item]:mb-0">
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
             <Form.Item
               label={
                 <span className="text-xs font-semibold uppercase tracking-[0.06em] text-slate-500">
-                  城市
+                  {t('warehouseConfig.city')}
                 </span>
               }
             >
@@ -303,14 +314,14 @@ function ProfileEditor({
             <Form.Item
               label={
                 <span className="text-xs font-semibold uppercase tracking-[0.06em] text-slate-500">
-                  仓库名（⚠️必须与轨迹内仓库名一致，用于区分是仓内,3PL承运商)
+                  {t('warehouseConfig.hubName')}
                 </span>
               }
-              tooltip="须与轨迹【】内仓库名一致，分析据此匹配"
+              tooltip={t('warehouseConfig.hubNameTooltip')}
             >
               <Input
                 value={profile.name}
-                placeholder="如 MEL CSP 1"
+                placeholder={t('warehouseConfig.hubNamePlaceholder')}
                 onChange={(e) => onChange({ ...profile, name: e.target.value })}
               />
             </Form.Item>
@@ -320,24 +331,26 @@ function ProfileEditor({
 
       <section className="space-y-4 border-t pt-6" style={{ borderColor: 'var(--admin-line)' }}>
         <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-400">
-          超时与操作员
+          {t('warehouseConfig.timeoutAndOperators')}
         </div>
         <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
           <Form.Item
             label={
               <span className="text-xs font-semibold uppercase tracking-[0.06em] text-slate-500">
-                仓库丢失超时（天）
+                {t('warehouseConfig.hubLossTimeoutDays')}
               </span>
             }
             extra={
-              <span className="text-xs text-slate-500">留空则使用全局 {defaultLossTimeoutDays} 天</span>
+              <span className="text-xs text-slate-500">
+                {t('warehouseConfig.hubLossTimeoutExtra', { days: defaultLossTimeoutDays })}
+              </span>
             }
             className="mb-0"
           >
             <InputNumber
               min={1}
               className="w-full"
-              placeholder={`默认 ${defaultLossTimeoutDays}`}
+              placeholder={t('warehouseConfig.hubLossTimeoutPlaceholder', { days: defaultLossTimeoutDays })}
               value={profile.lossTimeoutDays}
               onChange={(value) =>
                 onChange({
@@ -348,7 +361,7 @@ function ProfileEditor({
             />
           </Form.Item>
           <TagListEditor
-            label="仓库非真实操作员"
+            label={t('warehouseConfig.hubNonRealOperators')}
             values={profile.nonRealOperators ?? []}
             onChange={(nonRealOperators) =>
               onChange({
@@ -373,6 +386,8 @@ export function WarehouseConfigTabContent({
   onResetDefaults,
   isSaving,
 }: Props) {
+  const { t } = useTranslation('orderException')
+  const { t: tc } = useTranslation('common')
   const canEditConfig = usePermission(PERMISSION_KEYS.btnOrderExceptionConfigEdit)
   const [search, setSearch] = useState('')
   const [cityFilter, setCityFilter] = useState<WarehouseCityId | 'ALL'>('ALL')
@@ -416,7 +431,7 @@ export function WarehouseConfigTabContent({
         const cityLabel = WAREHOUSE_CITY_OPTIONS.find((item) => item.value === cityId)?.label ?? cityId
         return {
           key: `city:${cityId}`,
-          title: `${cityLabel}（${profiles.length}）`,
+          title: t('warehouseConfig.cityGroupCount', { city: cityLabel, count: profiles.length }),
           selectable: false,
           children: profiles.map((profile) => ({
             key: profile.hubId,
@@ -425,7 +440,7 @@ export function WarehouseConfigTabContent({
           })),
         }
       })
-  }, [cityFilter, filteredProfiles])
+  }, [cityFilter, filteredProfiles, t])
 
   useEffect(() => {
     const cityKeys = warehouseTreeData.map((node) => String(node.key))
@@ -469,7 +484,7 @@ export function WarehouseConfigTabContent({
         try {
           const parsed = JSON.parse(text) as WarehouseConfigDto
           if (!parsed.global || !Array.isArray(parsed.profiles)) {
-            throw new Error('格式不正确')
+            throw new Error(t('warehouseConfig.invalidFormat'))
           }
           const issues = validateWarehouseConfig(parsed)
           if (issues.length) {
@@ -478,14 +493,14 @@ export function WarehouseConfigTabContent({
           }
           onDraftConfigChange(parsed)
           onSelectedHubIdChange(parsed.profiles[0]?.hubId ?? null)
-          showToast('已导入配置（尚未保存）', 'success')
+          showToast(t('warehouseConfig.importedNotSaved'), 'success')
         } catch (e) {
-          showToast((e as Error).message || '导入失败', 'error')
+          showToast((e as Error).message || tc('loadFailed'), 'error')
         }
       })
       return false
     },
-    [onDraftConfigChange, onSelectedHubIdChange]
+    [onDraftConfigChange, onSelectedHubIdChange, t, tc],
   )
 
   const uploadProps: UploadProps = {
@@ -495,7 +510,7 @@ export function WarehouseConfigTabContent({
   }
 
   const handleAddProfile = useCallback(() => {
-    const name = '新仓库'
+    const name = t('warehouseConfig.newHubName')
     const hubId = `${slugifyHubId(name)}_${Date.now()}`
     const profile: WarehouseProfileDto = {
       cityId: 'SYD',
@@ -507,7 +522,7 @@ export function WarehouseConfigTabContent({
       profiles: [...draftConfig.profiles, profile],
     })
     onSelectedHubIdChange(hubId)
-  }, [draftConfig, onDraftConfigChange, onSelectedHubIdChange])
+  }, [draftConfig, onDraftConfigChange, onSelectedHubIdChange, t])
 
   const handleSave = useCallback(() => {
     if (validationIssues.length) {
@@ -520,7 +535,7 @@ export function WarehouseConfigTabContent({
   const handleDeleteProfile = useCallback(
     (hubId: string) => {
       if (draftConfig.profiles.length <= 1) {
-        showToast('至少保留一个仓库配置', 'error')
+        showToast(t('warehouseConfig.keepAtLeastOneHub'), 'error')
         return
       }
       const nextProfiles = draftConfig.profiles.filter((profile) => profile.hubId !== hubId)
@@ -528,9 +543,9 @@ export function WarehouseConfigTabContent({
       if (selectedHubId === hubId) {
         onSelectedHubIdChange(nextProfiles[0]?.hubId ?? null)
       }
-      showToast('已删除（尚未保存）', 'success')
+      showToast(t('warehouseConfig.deletedNotSaved'), 'success')
     },
-    [draftConfig, onDraftConfigChange, onSelectedHubIdChange, selectedHubId]
+    [draftConfig, onDraftConfigChange, onSelectedHubIdChange, selectedHubId, t],
   )
 
   const handleTreeSelect = useCallback(
@@ -550,26 +565,24 @@ export function WarehouseConfigTabContent({
           style={{ borderColor: 'var(--admin-line)' }}
         >
           <div className="min-w-0">
-            <div className="admin-eyebrow">Analysis Config</div>
+            <div className="admin-eyebrow">{t('warehouseConfig.eyebrow')}</div>
             <h3 className="mt-1 flex items-center gap-2 text-lg font-semibold tracking-tight text-slate-950">
               <Settings2 className="h-5 w-5 text-[#2f8f87]" aria-hidden />
-              分析配置
+              {t('warehouseConfig.title')}
             </h3>
-            <p className="admin-description mt-1 max-w-2xl">
-              维护仓库匹配规则与全局超时；保存后下次异常分析将使用当前版本。
-            </p>
+            <p className="admin-description mt-1 max-w-2xl">{t('warehouseConfig.description')}</p>
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
             <Upload {...uploadProps} disabled={!canEditConfig}>
               <button type="button" className="admin-btn" disabled={!canEditConfig}>
                 <UploadIcon className="h-4 w-4" aria-hidden />
-                导入
+                {t('warehouseConfig.import')}
               </button>
             </Upload>
             <button type="button" className="admin-btn" onClick={handleExport}>
               <Download className="h-4 w-4" aria-hidden />
-              导出
+              {t('warehouseConfig.export')}
             </button>
             <button
               type="button"
@@ -578,7 +591,7 @@ export function WarehouseConfigTabContent({
               disabled={!canEditConfig}
             >
               <RotateCcw className="h-4 w-4" aria-hidden />
-              恢复默认
+              {t('warehouseConfig.resetDefaults')}
             </button>
             <button
               type="button"
@@ -591,7 +604,7 @@ export function WarehouseConfigTabContent({
               ) : (
                 <Save className="h-4 w-4" aria-hidden />
               )}
-              保存配置
+              {t('warehouseConfig.saveConfig')}
             </button>
           </div>
         </header>
@@ -611,12 +624,14 @@ export function WarehouseConfigTabContent({
           >
             <Flex vertical gap="middle" style={{ padding: 12 }}>
               <Flex justify="space-between" align="center">
-                <Typography.Text strong>仓库列表</Typography.Text>
-                <Typography.Text type="secondary">{filteredProfiles.length} 项</Typography.Text>
+                <Typography.Text strong>{t('warehouseConfig.warehouseList')}</Typography.Text>
+                <Typography.Text type="secondary">
+                  {t('warehouseConfig.itemCount', { count: filteredProfiles.length })}
+                </Typography.Text>
               </Flex>
               <Input.Search
                 allowClear
-                placeholder="搜索仓库名"
+                placeholder={t('warehouseConfig.searchPlaceholder')}
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
               />
@@ -624,11 +639,11 @@ export function WarehouseConfigTabContent({
                 <Select<WarehouseCityId | 'ALL'>
                   style={{ flex: 1, minWidth: 0 }}
                   value={cityFilter}
-                  options={[{ value: 'ALL', label: '全部城市' }, ...WAREHOUSE_CITY_OPTIONS]}
+                  options={[{ value: 'ALL', label: t('warehouseConfig.allCities') }, ...WAREHOUSE_CITY_OPTIONS]}
                   onChange={setCityFilter}
                 />
                 <Button icon={<Plus />} onClick={handleAddProfile} disabled={!canEditConfig}>
-                  新建
+                  {t('warehouseConfig.createNew')}
                 </Button>
               </Flex>
               {warehouseTreeData.length ? (
@@ -651,7 +666,7 @@ export function WarehouseConfigTabContent({
                   }}
                 />
               ) : (
-                <Empty description="无匹配仓库" image={Empty.PRESENTED_IMAGE_SIMPLE} />
+                <Empty description={t('warehouseConfig.noMatchingHub')} image={Empty.PRESENTED_IMAGE_SIMPLE} />
               )}
             </Flex>
           </Layout.Sider>
@@ -671,8 +686,8 @@ export function WarehouseConfigTabContent({
                   <Warehouse className="h-6 w-6" aria-hidden />
                 </span>
                 <div>
-                  <p className="text-sm font-medium text-slate-700">选择仓库以编辑</p>
-                  <p className="mt-1 text-xs text-slate-500">从左侧列表选择，或新建仓库配置</p>
+                  <p className="text-sm font-medium text-slate-700">{t('warehouseConfig.selectHubToEdit')}</p>
+                  <p className="mt-1 text-xs text-slate-500">{t('warehouseConfig.selectHubHint')}</p>
                 </div>
               </div>
             )}

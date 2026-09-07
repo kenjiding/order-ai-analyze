@@ -1,5 +1,6 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { App } from 'antd'
+import { useTranslation } from 'react-i18next'
 import { useSupplierPushCatalog } from '../../shared/supplierPushConfig'
 import {
   createDispatchPerformanceConfig,
@@ -17,9 +18,22 @@ import type {
  * 统计本身完全由定时任务产出，这里不触发任何拉数。
  */
 export function useDispatchPerformancePage() {
+  const { t } = useTranslation(['dispatchPerformance', 'common'])
   const { message, modal } = App.useApp()
-  // 配置抽屉勾选供应商用的目录，与派签告警同一份数据源
   const catalog = useSupplierPushCatalog()
+
+  const toast = useMemo(
+    () => ({
+      loadError: t('toast.loadError', { ns: 'dispatchPerformance' }),
+      updateSuccess: t('toast.updateSuccess', { ns: 'dispatchPerformance' }),
+      createSuccess: t('toast.createSuccess', { ns: 'dispatchPerformance' }),
+      saveError: t('toast.saveError', { ns: 'dispatchPerformance' }),
+      toggleError: t('toast.toggleError', { ns: 'dispatchPerformance' }),
+      deleteSuccess: t('toast.deleteSuccess', { ns: 'dispatchPerformance' }),
+      deleteError: t('toast.deleteError', { ns: 'dispatchPerformance' }),
+    }),
+    [t],
+  )
 
   const [configs, setConfigs] = useState<DispatchPerformanceConfig[]>([])
   const [loading, setLoading] = useState(false)
@@ -40,14 +54,13 @@ export function useDispatchPerformancePage() {
       if (!controller.signal.aborted) setConfigs(data)
     } catch (err) {
       if (controller.signal.aborted || (err instanceof Error && err.name === 'AbortError')) return
-      message.error(err instanceof Error ? err.message : '加载失败')
+      message.error(err instanceof Error ? err.message : toast.loadError)
     } finally {
       if (!controller.signal.aborted) setLoading(false)
     }
-  }, [message])
+  }, [message, toast.loadError])
 
   useEffect(() => {
-    // 进入页面即加载配置列表；只读已存的统计结果，不触发任何拉数
     // eslint-disable-next-line react-hooks/set-state-in-effect
     void load()
   }, [load])
@@ -72,20 +85,20 @@ export function useDispatchPerformancePage() {
       try {
         if (editing) {
           await updateDispatchPerformanceConfig(editing.id, draft)
-          message.success('已更新')
+          message.success(toast.updateSuccess)
         } else {
           await createDispatchPerformanceConfig(draft)
-          message.success('已添加，次日起自动统计该站点')
+          message.success(toast.createSuccess)
         }
         setDrawerOpen(false)
         await load()
       } catch (err) {
-        message.error(err instanceof Error ? err.message : '保存失败')
+        message.error(err instanceof Error ? err.message : toast.saveError)
       } finally {
         setSaving(false)
       }
     },
-    [editing, load, message],
+    [editing, load, message, toast.createSuccess, toast.saveError, toast.updateSuccess],
   )
 
   const toggleEnabled = useCallback(
@@ -95,35 +108,37 @@ export function useDispatchPerformancePage() {
         await updateDispatchPerformanceConfig(config.id, { isEnabled })
         await load()
       } catch (err) {
-        message.error(err instanceof Error ? err.message : '操作失败')
+        message.error(err instanceof Error ? err.message : toast.toggleError)
       } finally {
         setTogglingIds((ids) => ids.filter((id) => id !== config.id))
       }
     },
-    [load, message],
+    [load, message, toast.toggleError],
   )
 
   const removeConfig = useCallback(
     (config: DispatchPerformanceConfig) => {
       modal.confirm({
-        title: `删除「${config.stationName || config.stationCode}」的统计配置？`,
-        // 说清楚删除的边界：停的是今后的统计，历史数据仍在
-        content: '删除后该站点不再参与每日结算。已统计出的历史数据会保留，重新添加即可继续查看。',
-        okText: '删除',
+        title: t('toast.deleteConfirmTitle', {
+          ns: 'dispatchPerformance',
+          name: config.stationName || config.stationCode,
+        }),
+        content: t('toast.deleteConfirmContent', { ns: 'dispatchPerformance' }),
+        okText: t('delete', { ns: 'common' }),
         okButtonProps: { danger: true },
-        cancelText: '取消',
+        cancelText: t('cancel', { ns: 'common' }),
         onOk: async () => {
           try {
             await deleteDispatchPerformanceConfig(config.id)
-            message.success('已删除')
+            message.success(toast.deleteSuccess)
             await load()
           } catch (err) {
-            message.error(err instanceof Error ? err.message : '删除失败')
+            message.error(err instanceof Error ? err.message : toast.deleteError)
           }
         },
       })
     },
-    [load, message, modal],
+    [load, message, modal, t, toast.deleteError, toast.deleteSuccess],
   )
 
   return {

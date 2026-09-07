@@ -4,6 +4,7 @@ import { PERMISSION_KEYS } from '../../hooks/usePermission'
 import { useAppSettings } from '../../context/AppSettingsContext'
 import { useGlobalFilterStore } from '../../stores/globalFilterStore'
 import { showToast } from '../../utils/toast'
+import { plT } from './packageLossI18n'
 import { DEFAULT_POST_FILTER_CONFIG } from '../OrderExceptionManagement/postFilter/defaults'
 import { applyPostFilter } from '../OrderExceptionManagement/postFilter/applyPostFilter'
 import type { PostFilterConfig } from '../OrderExceptionManagement/postFilter/types'
@@ -116,35 +117,35 @@ export function usePackageLossMonitorPage() {
     setAnalyzeProgress(null)
     setPostFilterDraft(DEFAULT_POST_FILTER_CONFIG)
     setAppliedPostFilter(DEFAULT_POST_FILTER_CONFIG)
-    showToast(`已导入 ${parsed.rows.length} 单分析结果`, 'success')
+    showToast(plT('toast.imported', { count: parsed.rows.length }), 'success')
   }, [clearPause])
 
   const onAnalyzeInHub = useCallback(async () => {
     const token = imileToken.trim()
     if (!token) {
-      showToast('请在右上角系统设置中填写 iMile Bearer Token', 'error')
+      showToast(plT('toast.imileToken'), 'error')
       return
     }
     if (!stationCode) {
-      showToast('请先在右上角选择责任站点', 'error')
+      showToast(plT('toast.selectStation'), 'error')
       return
     }
     if (!Number.isFinite(lossTimeoutDays) || lossTimeoutDays < 1) {
-      showToast('请填写有效的超时天数', 'error')
+      showToast(plT('toast.invalidIdleDays'), 'error')
       return
     }
     const [startAt, endAt] = dateRange
     if (!startAt || !endAt || !startAt.isValid() || !endAt.isValid()) {
-      showToast('请选择有效的时间范围', 'error')
+      showToast(plT('toast.invalidTimeRange'), 'error')
       return
     }
     if (endAt.isBefore(startAt)) {
-      showToast('结束时间不能早于开始时间', 'error')
+      showToast(plT('toast.endBeforeStart'), 'error')
       return
     }
     const diffDays = endAt.diff(startAt, 'day', true)
     if (diffDays > MAX_QUERY_RANGE_DAYS) {
-      showToast('异常完结查询时间范围不能超过 1 个月', 'error')
+      showToast(plT('toast.rangeTooLong'), 'error')
       return
     }
     const timeoutDays = Math.floor(lossTimeoutDays)
@@ -165,13 +166,13 @@ export function usePackageLossMonitorPage() {
       if (isStaleRun()) return
       setQueryMeta(fetched)
       if (fetched.waybillNos.length === 0) {
-        showToast('当前站点没有库内丢包运单', 'error')
+        showToast(plT('toast.noOrders'), 'error')
         return
       }
       waybillNos = fetched.waybillNos
     } catch (e) {
       if (isStaleRun()) return
-      showToast((e as Error).message || '库内丢包运单查询失败', 'error')
+      showToast((e as Error).message || plT('toast.queryFailed'), 'error')
       return
     } finally {
       if (!isStaleRun()) setIsQuerying(false)
@@ -189,7 +190,7 @@ export function usePackageLossMonitorPage() {
       if (isStaleRun()) return
       setAnalysisRows((prev) =>
         prev.map((row) =>
-          row.orderNo === orderNo ? { ...row, status: 'analyzing' as const, reason: '分析中…' } : row,
+          row.orderNo === orderNo ? { ...row, status: 'analyzing' as const, reason: plT('toast.analyzing') } : row,
         ),
       )
       try {
@@ -211,7 +212,7 @@ export function usePackageLossMonitorPage() {
         succeeded += 1
       } catch (e) {
         if (isStaleRun()) return
-        const message = (e as Error).message || '分析失败'
+        const message = (e as Error).message || plT('toast.analysisFailed')
         setAnalysisRows((prev) =>
           prev.map((item) =>
             item.orderNo === orderNo
@@ -241,11 +242,11 @@ export function usePackageLossMonitorPage() {
     clearPause()
     setIsAnalyzing(false)
     if (failed === 0) {
-      showToast('分析完成', 'success')
+      showToast(plT('toast.analysisComplete'), 'success')
     } else if (succeeded === 0) {
-      showToast('全部分析失败，请检查网络或 Token 后重试', 'error')
+      showToast(plT('toast.allFailed'), 'error')
     } else {
-      showToast(`分析结束：${succeeded} 单成功，${failed} 单失败`, 'error')
+      showToast(plT('toast.partialFailed', { succeeded, failed }), 'error')
     }
   }, [clearPause, dateRange, imileToken, lossTimeoutDays, resetResultView, stationCode, waitWhilePaused])
 

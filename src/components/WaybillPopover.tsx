@@ -1,6 +1,7 @@
 import { App as AntdApp, Button, Popover } from 'antd'
 import { Copy } from 'lucide-react'
 import type React from 'react'
+import { useTranslation } from 'react-i18next'
 import { copyTextToClipboard } from '../utils/clipboard'
 
 const MAX_NOS = 50
@@ -9,21 +10,21 @@ type Placement = 'bottom' | 'bottomLeft' | 'bottomRight' | 'top' | 'topLeft' | '
 
 function PopoverContent({ nos, title }: { nos: string[]; title: string }) {
   const { message } = AntdApp.useApp()
+  const { t } = useTranslation('common')
   const displayed = nos.slice(0, MAX_NOS)
 
   const handleCopyAll = async (event: React.MouseEvent) => {
     event.stopPropagation()
     const ok = await copyTextToClipboard(nos.join('\n'))
     if (ok) {
-      message.success(`已复制 ${nos.length} 条单号`)
+      message.success(t('copiedWaybills', { count: nos.length }))
     } else {
-      message.error('复制失败，请手动复制')
+      message.error(t('copyFailed'))
     }
   }
 
   return (
     <div style={{ width: 240 }}>
-      {/* 标题行 */}
       <div style={{
         display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8,
         background: '#fafafa', margin: '-12px -12px 0',
@@ -43,16 +44,15 @@ function PopoverContent({ nos, title }: { nos: string[]; title: string }) {
             icon={<Copy className="h-3 w-3" />}
             onClick={(event) => void handleCopyAll(event)}
           >
-            复制所有
+            {t('copyAll')}
           </Button>
           <span style={{
             fontSize: 10.5, fontWeight: 600,
             background: '#fff7ed', color: '#c2410c',
             padding: '1px 8px', borderRadius: 20, whiteSpace: 'nowrap',
-          }}>共 {nos.length} 件</span>
+          }}>{t('totalParcels', { count: nos.length })}</span>
         </div>
       </div>
-      {/* 单号列表 */}
       <div style={{ maxHeight: 200, overflowY: 'auto', padding: '5px 0 3px', margin: '0 -12px' }}>
         {displayed.map((no) => (
           <div key={no} style={{
@@ -66,20 +66,16 @@ function PopoverContent({ nos, title }: { nos: string[]; title: string }) {
             fontSize: 10.5, color: '#94a3b8', textAlign: 'center',
             padding: '4px 12px 2px',
             borderTop: '1px solid #f5f5f5', marginTop: 2,
-          }}>…仅显示前 {MAX_NOS} 件，共 {nos.length} 件</div>
+          }}>{t('showFirstNOfTotal', { max: MAX_NOS, total: nos.length })}</div>
         )}
       </div>
     </div>
   )
 }
 
-/**
- * 通用运单号列表 Popover：hover 子节点时弹出单号面板。
- * nos 为空时直接透传 children，不渲染 Popover 逻辑。
- */
 export function WaybillListPopover({
   nos,
-  title = '单号列表',
+  title,
   placement = 'bottomLeft',
   children,
 }: {
@@ -88,10 +84,12 @@ export function WaybillListPopover({
   placement?: Placement
   children: React.ReactElement
 }) {
+  const { t } = useTranslation('common')
+  const resolvedTitle = title ?? t('waybillList')
   if (nos.length === 0) return children
   return (
     <Popover
-      content={<PopoverContent nos={nos} title={title} />}
+      content={<PopoverContent nos={nos} title={resolvedTitle} />}
       trigger="hover"
       placement={placement}
       overlayInnerStyle={{ padding: 12, borderRadius: 8 }}
@@ -102,24 +100,20 @@ export function WaybillListPopover({
   )
 }
 
-/**
- * 未达标数量触发器：渲染一个红色带虚线下划线的计数文本，hover 展示单号列表。
- * - nos 有数据时带 Popover
- * - nos 为空时仍显示计数，但无 Popover 效果
- * - count === 0 时返回 null
- */
 export function UnmetTrigger({
   count,
   nos,
   title,
-  unit = '件未达标',
+  unit,
 }: {
   count: number
   nos: string[]
   title: string
   unit?: string
 }) {
+  const { t } = useTranslation('vendorAnalysis')
   if (count === 0) return null
+  const label = unit ?? t('kpi.unmetTickets', { count })
   const hasNos = nos.length > 0
   const trigger = (
     <span style={{
@@ -128,7 +122,7 @@ export function UnmetTrigger({
       borderBottom: hasNos ? '1px dashed #fca5a5' : 'none',
       display: 'inline-block',
     }}>
-      {count} {unit}
+      {label}
     </span>
   )
   if (!hasNos) return trigger

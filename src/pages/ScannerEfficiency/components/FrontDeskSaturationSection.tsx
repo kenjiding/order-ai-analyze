@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import Collapse from '@mui/material/Collapse'
 import { Button, Popover } from 'antd'
 import { ChevronDown, CloudDownload } from 'lucide-react'
@@ -49,9 +50,9 @@ function offDutyIdleClass(minutes: number | null): string {
   return 'bg-rose-100 text-rose-700 ring-rose-200'
 }
 
-function idleMinutesLabel(value: unknown): string {
+function idleMinutesLabel(value: unknown, t: (key: string, options?: Record<string, unknown>) => string): string {
   if (typeof value !== 'number' || !Number.isFinite(value)) return '—'
-  return `${formatNumber(value, 0)} 分钟`
+  return t('common.minutesValue', { value: formatNumber(value, 0) })
 }
 
 function adjustOffDutyIdleMinutes(raw: number | null, offsetMinutes: number): number | null {
@@ -94,6 +95,7 @@ function DensityHeatmapCell({
   }
   frontDeskOffDuty?: DensityHeatmapClockOutDetail
 }) {
+  const { t } = useTranslation('scannerEfficiency')
   const hasDetail = detail.count > 0 || detail.allocations.length > 0 || detail.clockOut
 
   const cellBody = (
@@ -108,7 +110,7 @@ function DensityHeatmapCell({
         <span
           className={`mt-1 inline-flex rounded-full px-1.5 py-0.5 text-[10px] font-semibold leading-none ring-1 ${offDutyIdleClass(frontDeskOffDuty.idleMinutes)}`}
         >
-          前台下班 {idleMinutesLabel(frontDeskOffDuty.idleMinutes)}
+          {t('frontDesk.clockOutBadge', { minutes: idleMinutesLabel(frontDeskOffDuty.idleMinutes, t) })}
         </span>
       )}
     </span>
@@ -141,10 +143,12 @@ function AllocationDensityHeatmap({
   clockOutRows: DataTableRow[]
   offDutyIdleOffsetMinutes: number
 }) {
+  const { t } = useTranslation('scannerEfficiency')
+
   if (!rows.length && !clockOutRows.length) {
     return (
       <div className="rounded-lg border border-dashed border-slate-300 bg-white px-6 py-12 text-center text-sm text-slate-500">
-        暂无箱号分配密度数据。
+        {t('frontDesk.heatmapEmpty')}
       </div>
     )
   }
@@ -192,17 +196,17 @@ function AllocationDensityHeatmap({
   return (
     <div className="admin-panel overflow-hidden">
       <div className="flex flex-wrap items-center gap-3 border-b border-slate-100 px-4 py-3 text-xs text-slate-500">
-        <span>颜色越深，箱号分配越集中</span>
-        <span>悬停格子可查看司机所属公司、Route Code 与分配时间</span>
-        <span>红色“前台下班”越深，表示最后分配到下班的空档越长</span>
+        <span>{t('frontDesk.heatmapLegendDensity')}</span>
+        <span>{t('frontDesk.heatmapLegendHover')}</span>
+        <span>{t('frontDesk.heatmapLegendClockOut')}</span>
         <span className="inline-flex items-center gap-1">
-          <span className="h-3 w-5 rounded bg-[#d9f2ef]" />低
+          <span className="h-3 w-5 rounded bg-[#d9f2ef]" />{t('frontDesk.heatmapLow')}
         </span>
         <span className="inline-flex items-center gap-1">
-          <span className="h-3 w-5 rounded bg-[#8bd8cf]" />中
+          <span className="h-3 w-5 rounded bg-[#8bd8cf]" />{t('frontDesk.heatmapMid')}
         </span>
         <span className="inline-flex items-center gap-1">
-          <span className="h-3 w-5 rounded bg-[#166f68]" />高
+          <span className="h-3 w-5 rounded bg-[#166f68]" />{t('frontDesk.heatmapHigh')}
         </span>
       </div>
       <div className="overflow-x-auto">
@@ -210,7 +214,7 @@ function AllocationDensityHeatmap({
           <thead>
             <tr>
               <th className="sticky left-0 z-10 bg-white px-2 py-2 text-left font-semibold text-slate-600">
-                日期
+                {t('frontDesk.dateColumn')}
               </th>
               {slots.map((slot) => (
                 <th key={slot} className="min-w-[5.5rem] px-2 py-2 text-center font-semibold text-slate-500">
@@ -275,22 +279,28 @@ export function FrontDeskSaturationSection({
   onApiFetch,
   readOnly = false,
 }: Props) {
+  const { t } = useTranslation('scannerEfficiency')
   const [offDutyIdleOffsetMinutes, setOffDutyIdleOffsetMinutes] = useState(30)
   const [allocationPanelExpanded, setAllocationPanelExpanded] = useState(false)
 
   const allocationPanelSummary = readOnly
-    ? '记录查看模式下不可修改分配表，请退出查看后重新载入'
+    ? t('frontDesk.readOnlyHint')
     : loadingAllocationApi
-    ? '正在从 iMile API 拉取前台分配数据…'
+    ? t('frontDesk.loadingApi')
     : allocationSourceInfo.rowCount > 0
-      ? `已载入 ${formatInteger(allocationSourceInfo.rowCount)} 行${allocationSourceInfo.fileNames.length ? `（${allocationSourceInfo.fileNames.join('、')}）` : ''}`
-      : '点击展开上传文件或查看载入状态'
+      ? t('frontDesk.loadedRows', {
+          count: formatInteger(allocationSourceInfo.rowCount),
+          files: allocationSourceInfo.fileNames.length
+            ? `（${allocationSourceInfo.fileNames.join(t('common.listSeparator').trim() || '、')}）`
+            : '',
+        })
+      : t('frontDesk.expandHint')
 
   return (
     <section className="space-y-4">
       <SectionTitle
         eyebrow="Allocation Density"
-        title="包裹分配密度热力图"
+        title={t('section.frontDeskHeatmapTitle')}
         description=""
         right={
           <div className="flex items-center gap-3">
@@ -302,7 +312,7 @@ export function FrontDeskSaturationSection({
                 disabled={loadingAllocationApi}
                 onClick={onApiFetch}
               >
-                API 获取
+                {t('frontDesk.apiFetch')}
               </Button>
             )}
             <label className="inline-flex items-center gap-2 text-sm text-slate-600">
@@ -316,9 +326,9 @@ export function FrontDeskSaturationSection({
                   if (Number.isFinite(next) && next >= 0) setOffDutyIdleOffsetMinutes(next)
                 }}
                 className="w-20 rounded-md border border-slate-300 bg-white px-2 py-1 text-center text-sm font-semibold tabular-nums text-slate-900 outline-none focus:ring-2 focus:ring-[#2f8f87] focus:ring-offset-0"
-                aria-label="前台下班空档扣减分钟"
+                aria-label={t('frontDesk.clockOutDeductionAria')}
               />
-              <span className="text-xs text-slate-500">分钟</span>
+              <span className="text-xs text-slate-500">{t('common.minutes')}</span>
             </label>
           </div>
         }
@@ -332,11 +342,11 @@ export function FrontDeskSaturationSection({
             allocationPanelExpanded ? 'border-b border-cyan-200' : '',
           ].join(' ')}
           aria-expanded={allocationPanelExpanded}
-          aria-label={allocationPanelExpanded ? '收起前台分配包裹表' : '展开前台分配包裹表'}
+          aria-label={allocationPanelExpanded ? t('frontDesk.collapsePanel') : t('frontDesk.expandPanel')}
           onClick={() => setAllocationPanelExpanded((prev) => !prev)}
         >
           <div className="min-w-0">
-            <div className="text-sm font-semibold text-cyan-900">前台分配包裹表</div>
+            <div className="text-sm font-semibold text-cyan-900">{t('section.frontDeskTableTitle')}</div>
             {!allocationPanelExpanded && (
               <div className="mt-0.5 truncate text-xs text-cyan-800/80">{allocationPanelSummary}</div>
             )}
@@ -353,16 +363,14 @@ export function FrontDeskSaturationSection({
           <div className="space-y-3 px-5 py-4">
             {readOnly ? (
               <div className="rounded-lg border border-cyan-200 bg-white px-3 py-2 text-xs leading-relaxed text-cyan-900">
-                当前为效率考勤记录查看模式，分配表数据来自已保存快照。
+                {t('frontDesk.snapshotReadonlyDetail')}
               </div>
             ) : (
               <>
             <label className="group flex cursor-pointer flex-col rounded-lg border border-dashed border-cyan-300 bg-white px-4 py-4 text-left transition hover:border-cyan-500 hover:bg-cyan-50/30">
-              <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-cyan-700">可选</div>
-              <div className="mt-1 text-base font-semibold text-slate-900">上传前台分配包裹表</div>
-              <div className="mt-1 text-xs text-slate-500">
-                按“分配时间”统计箱号/派送员交接批次；可上传文件或点击上方「API 获取」
-              </div>
+              <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-cyan-700">{t('section.frontDeskOptional')}</div>
+              <div className="mt-1 text-base font-semibold text-slate-900">{t('section.frontDeskUploadTitle')}</div>
+              <div className="mt-1 text-xs text-slate-500">{t('frontDesk.uploadHint')}</div>
               <input
                 type="file"
                 accept=".csv,.xlsx,.xls"
@@ -374,18 +382,20 @@ export function FrontDeskSaturationSection({
 
             {loadingAllocationApi && (
               <div className="rounded-lg border border-cyan-200 bg-cyan-50 px-3 py-2 text-xs leading-relaxed text-cyan-900">
-                正在从 iMile API 拉取前台分配数据…
+                {t('frontDesk.loadingApi')}
               </div>
             )}
 
             {allocationSourceInfo.fileNames.length > 0 && (
               <div className="rounded-lg border border-cyan-200 bg-white px-3 py-2 text-xs leading-relaxed text-cyan-900">
-                前台分配表已载入 {allocationSourceInfo.fileNames.join('、')}：识别箱号分配{' '}
-                {formatInteger(allocationSourceInfo.rowCount)} 行
-                {allocationSourceInfo.droppedRows > 0 && (
-                  <>，未识别分配时间 {formatInteger(allocationSourceInfo.droppedRows)} 行</>
-                )}
-                。
+                {t('frontDesk.loadedFileDetailFull', {
+                  files: allocationSourceInfo.fileNames.join(t('common.listSeparator').trim() || '、'),
+                  rows: `${t('frontDesk.loadedAllocationRows', { count: formatInteger(allocationSourceInfo.rowCount) })}${
+                    allocationSourceInfo.droppedRows > 0
+                      ? t('frontDesk.unrecognizedTime', { count: formatInteger(allocationSourceInfo.droppedRows) })
+                      : ''
+                  }`,
+                })}
               </div>
             )}
 
@@ -394,7 +404,7 @@ export function FrontDeskSaturationSection({
               onClick={onClearAllocation}
               className="inline-flex items-center rounded-lg border border-cyan-300 bg-white px-4 py-2 text-sm font-medium text-cyan-700 transition hover:border-cyan-400 hover:bg-cyan-50"
             >
-              清空分配表
+              {t('frontDesk.clearAllocation')}
             </button>
               </>
             )}

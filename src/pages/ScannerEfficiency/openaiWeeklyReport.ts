@@ -1,4 +1,5 @@
 import { backendFetch } from '../../api/httpClient'
+import { i18n } from '../../i18n/index'
 import type { WeeklyReportSnapshot } from './weeklyReportSnapshot'
 
 export type WeeklyAiAnalysis = {
@@ -49,7 +50,7 @@ export async function generateWeeklyAiAnalysis(payload: WeeklyAiRequestPayload):
   }
 
   if (!parsed.summary.length && !parsed.prediction.length && !parsed.prevention.length) {
-    throw new Error('研判段落返回为空')
+    throw new Error(String(i18n.t('weekly.aiEmptyResponse', { ns: 'scannerEfficiency' })))
   }
 
   return parsed

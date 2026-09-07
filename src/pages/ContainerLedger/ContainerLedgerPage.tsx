@@ -1,88 +1,94 @@
-import { History, PackageSearch, Pencil, Plus, Scale, Trash2, Warehouse } from 'lucide-react'
+import { useMemo } from 'react'
+import { Boxes, History, PackageSearch, Pencil, Plus, Scale, Trash2, Warehouse } from 'lucide-react'
 import { Button, Table, Tag, Tooltip } from 'antd'
 import type { ColumnsType } from 'antd/es/table'
+import { useTranslation } from 'react-i18next'
 import { PageSectionTabs } from '../../components/PageSectionTabs'
-import { accountKindLabel, containerTypeLabel } from '../../containerManagement/constants'
 import type { ContainerBalance } from '../../containerManagement/types'
 import { BalanceAuditPanel } from './components/BalanceAuditPanel'
 import { BalanceDeleteModal } from './components/BalanceDeleteModal'
 import { BalanceFormModal } from './components/BalanceFormModal'
+import { ContainerTypePanel } from './components/ContainerTypePanel'
 import { ReconciliationPanel } from './components/ReconciliationPanel'
 import { useContainerLedgerPage } from './useContainerLedgerPage'
 
 export default function ContainerLedgerPage() {
+  const { t } = useTranslation('container')
+  const { t: tc } = useTranslation('common')
   const page = useContainerLedgerPage()
 
-  const columns: ColumnsType<ContainerBalance> = [
-    {
-      title: '站点账户',
-      dataIndex: 'accountName',
-      key: 'accountName',
-      render: (value: string) => <span className="font-medium text-slate-900">{value}</span>,
-    },
-    {
-      title: '站点类型',
-      dataIndex: 'accountKind',
-      key: 'accountKind',
-      width: 130,
-      render: (value: ContainerBalance['accountKind']) => (
-        <span className="text-slate-600">{accountKindLabel[value]}</span>
-      ),
-    },
-    {
-      title: '品类',
-      dataIndex: 'containerType',
-      key: 'containerType',
-      width: 120,
-      render: (value: ContainerBalance['containerType']) => (
-        <Tag color={value === 'BIG_BASKET' ? 'geekblue' : 'cyan'}>{containerTypeLabel[value]}</Tag>
-      ),
-    },
-    {
-      title: '数量',
-      dataIndex: 'quantity',
-      key: 'quantity',
-      width: 110,
-      align: 'right',
-      // 负数只可能出现在外部方：他们作为转出方不做可用量校验，扣成负数说明有借出没进系统
-      render: (value: number) =>
-        value < 0 ? (
-          <Tooltip title="该站点还回来的比系统记录的借出还多，说明有借出记录没进系统，请补录或盘点">
-            <span className="tabular-nums font-medium text-rose-600">{value}</span>
-          </Tooltip>
-        ) : (
-          <span className="tabular-nums font-medium">{value}</span>
+  const columns: ColumnsType<ContainerBalance> = useMemo(
+    () => [
+      {
+        title: t('ledger.colAccount'),
+        dataIndex: 'accountName',
+        key: 'accountName',
+        render: (value: string) => <span className="font-medium text-slate-900">{value}</span>,
+      },
+      {
+        title: t('ledger.colAccountKind'),
+        dataIndex: 'accountKind',
+        key: 'accountKind',
+        width: 130,
+        render: (value: ContainerBalance['accountKind']) => (
+          <span className="text-slate-600">{t(`accountKind.${value}`)}</span>
         ),
-    },
-    {
-      title: '操作',
-      key: 'actions',
-      width: 120,
-      fixed: 'right',
-      render: (_, record) => (
-        <div className="flex items-center gap-1">
-          <Tooltip title="编辑数量">
-            <Button
-              type="text"
-              icon={<Pencil className="h-4 w-4" aria-hidden />}
-              onClick={() => page.openEdit(record)}
-              aria-label="编辑"
-            />
-          </Tooltip>
-          <Tooltip title={page.canDelete ? '删除' : '无删除台账的权限'}>
-            <Button
-              type="text"
-              danger
-              disabled={!page.canDelete}
-              icon={<Trash2 className="h-4 w-4" aria-hidden />}
-              onClick={() => page.openDelete(record)}
-              aria-label="删除"
-            />
-          </Tooltip>
-        </div>
-      ),
-    },
-  ]
+      },
+      {
+        title: t('ledger.colType'),
+        dataIndex: 'containerType',
+        key: 'containerType',
+        width: 120,
+        render: (value: ContainerBalance['containerType']) => (
+          <Tag color={value === 'BIG_BASKET' ? 'geekblue' : 'cyan'}>{t(`containerType.${value}`)}</Tag>
+        ),
+      },
+      {
+        title: t('ledger.colQuantity'),
+        dataIndex: 'quantity',
+        key: 'quantity',
+        width: 110,
+        align: 'right',
+        render: (value: number) =>
+          value < 0 ? (
+            <Tooltip title={t('ledger.negativeTooltip')}>
+              <span className="tabular-nums font-medium text-rose-600">{value}</span>
+            </Tooltip>
+          ) : (
+            <span className="tabular-nums font-medium">{value}</span>
+          ),
+      },
+      {
+        title: tc('actions'),
+        key: 'actions',
+        width: 120,
+        fixed: 'right',
+        render: (_, record) => (
+          <div className="flex items-center gap-1">
+            <Tooltip title={t('ledger.editQuantity')}>
+              <Button
+                type="text"
+                icon={<Pencil className="h-4 w-4" aria-hidden />}
+                onClick={() => page.openEdit(record)}
+                aria-label={tc('edit')}
+              />
+            </Tooltip>
+            <Tooltip title={page.canDelete ? tc('delete') : t('ledger.noDeletePermission')}>
+              <Button
+                type="text"
+                danger
+                disabled={!page.canDelete}
+                icon={<Trash2 className="h-4 w-4" aria-hidden />}
+                onClick={() => page.openDelete(record)}
+                aria-label={tc('delete')}
+              />
+            </Tooltip>
+          </div>
+        ),
+      },
+    ],
+    [page, t, tc],
+  )
 
   const totalQuantity = page.balances.reduce((sum, row) => sum + row.quantity, 0)
 
@@ -95,10 +101,8 @@ export default function ContainerLedgerPage() {
               <Warehouse className="h-5 w-5" aria-hidden />
             </div>
             <div>
-              <h1 className="text-lg font-semibold text-slate-950">容器台账</h1>
-              <p className="mt-1 max-w-2xl text-sm text-slate-600">
-                按站点 × 品类维护容器库存基线，手工调账与流转确认都会留下变更记录。
-              </p>
+              <h1 className="text-lg font-semibold text-slate-950">{t('ledger.title')}</h1>
+              <p className="mt-1 max-w-2xl text-sm text-slate-600">{t('ledger.subtitle')}</p>
             </div>
           </div>
           {page.tab === 'balances' ? (
@@ -107,16 +111,16 @@ export default function ContainerLedgerPage() {
               icon={<Plus className="h-4 w-4" aria-hidden />}
               onClick={page.openCreate}
             >
-              新增记录
+              {t('ledger.addRecord')}
             </Button>
           ) : null}
         </div>
         <div className="mt-4 flex flex-wrap gap-2 text-xs text-slate-600">
           <span className="inline-flex items-center rounded-md bg-slate-100 px-3 py-1">
-            台账条目：{page.balances.length}
+            {t('ledger.entryCount', { count: page.balances.length })}
           </span>
           <span className="inline-flex items-center rounded-md bg-slate-100 px-3 py-1">
-            在库合计：{totalQuantity}
+            {t('ledger.totalInStock', { total: totalQuantity })}
           </span>
         </div>
       </header>
@@ -124,11 +128,12 @@ export default function ContainerLedgerPage() {
       <section className="admin-panel overflow-hidden">
         <PageSectionTabs
           activeId={page.tab}
-          onChange={(id) => page.setTab(id as 'balances' | 'audits' | 'reconciliation')}
+          onChange={(id) => page.setTab(id as 'balances' | 'audits' | 'reconciliation' | 'types')}
           items={[
-            { id: 'balances', label: '容器台账', icon: PackageSearch },
-            { id: 'audits', label: '变更记录', icon: History },
-            { id: 'reconciliation', label: '对账', icon: Scale },
+            { id: 'balances', label: t('ledger.tabBalances'), icon: PackageSearch },
+            { id: 'audits', label: t('ledger.tabAudits'), icon: History },
+            { id: 'reconciliation', label: t('ledger.tabReconciliation'), icon: Scale },
+            { id: 'types', label: t('ledger.tabTypes'), icon: Boxes },
           ]}
         />
         <div className="p-4 sm:p-5">
@@ -141,10 +146,10 @@ export default function ContainerLedgerPage() {
               pagination={{
                 pageSize: 10,
                 showSizeChanger: false,
-                showTotal: (t) => `共 ${t} 条`,
+                showTotal: (total) => t('tableTotal', { total }),
               }}
               scroll={{ x: 780 }}
-              locale={{ emptyText: '暂无台账记录，请先在「站点账户」建立站点后新增。' }}
+              locale={{ emptyText: t('ledger.emptyBalances') }}
             />
           ) : page.tab === 'audits' ? (
             <BalanceAuditPanel
@@ -158,8 +163,10 @@ export default function ContainerLedgerPage() {
               onPageChange={page.setAuditPage}
               onApply={page.applyAuditFilters}
             />
-          ) : (
+          ) : page.tab === 'reconciliation' ? (
             <ReconciliationPanel accounts={page.accounts} />
+          ) : (
+            <ContainerTypePanel />
           )}
         </div>
       </section>

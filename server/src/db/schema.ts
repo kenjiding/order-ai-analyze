@@ -661,6 +661,23 @@ export const containerAccounts = pgTable(
   (table) => [index('container_accounts_kind_idx').on(table.kind)],
 )
 
+/**
+ * 容器管理：容器品类字典。
+ *
+ * code 是流转、台账、审计里存的那个裸字符串（container_type 没有外键约束），
+ * 所以建成之后不可改 —— 改了历史数据全部对不上号。要改只改 name。
+ * 同理不开放物理删除：有任何引用的品类只能 active=false 停用，
+ * 停用后不出现在新建流转/台账的下拉里，历史数据照常显示、照常参与对账结算。
+ */
+export const containerTypes = pgTable('container_types', {
+  /** 内部标识，新增时后端自动生成，不暴露给用户 */
+  code: varchar('code', { length: 32 }).primaryKey(),
+  name: varchar('name', { length: 64 }).notNull(),
+  active: boolean('active').notNull().default(true),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+})
+
 /** 容器管理：用户与站点账户的绑定关系，决定该用户可见与可操作的数据范围 */
 export const containerAccountUsers = pgTable(
   'container_account_users',
@@ -759,7 +776,14 @@ export const containerTransferItems = pgTable(
     declaredQuantity: integer('declared_quantity').notNull(),
     /** 接收方差异申报的实收数量；未申报时为 null */
     receivedQuantity: integer('received_quantity'),
-    /** 最终入账数量；未入账时为 null */
+    /**
+     * 最终入账数量；未入账时为 null。
+     *
+     * 作废（VOIDED）的单这里仍保留作废前的数量 —— 那是审计事实，不能抹。
+     * 所以任何按 declared_quantity - settled_quantity 统计运输差异/损耗的查询，
+     * 都必须先过滤 status = 'CONFIRMED'：否则作废单会被算成损耗，
+     * 整单拒收（CANCELLED，settled 为 null）的发出量还会混进分母，损耗率能虚增一倍。
+     */
     settledQuantity: integer('settled_quantity'),
   },
   (table) => [
@@ -821,6 +845,8 @@ export const containerTransferChanges = pgTable(
   ],
 )
 
+export type ContainerTypeRow = typeof containerTypes.$inferSelect
+export type NewContainerTypeRow = typeof containerTypes.$inferInsert
 export type ContainerAccount = typeof containerAccounts.$inferSelect
 export type NewContainerAccount = typeof containerAccounts.$inferInsert
 export type ContainerAccountUser = typeof containerAccountUsers.$inferSelect

@@ -1,5 +1,6 @@
 import { Button, Checkbox, Tooltip } from 'antd'
 import { useMemo, type ReactNode } from 'react'
+import { useTranslation } from 'react-i18next'
 import { isSupplierPushEligible } from '../selection'
 import type { SupplierPushConfig } from '../types'
 
@@ -7,18 +8,11 @@ type Props = {
   configs: SupplierPushConfig[]
   enabledIdSet: ReadonlySet<string>
   onToggle: (configId: string, next: boolean) => void
-  /** 只读展示（不可勾选），但仍反映 enabledIdSet 的选中态 */
   disabled?: boolean
   togglingId?: string | null
   saving?: boolean
   emptyText?: ReactNode
-  /** 大屏下每行展示的卡片数，默认 4（抽屉等较窄容器） */
   columns?: 4 | 5
-  /**
-   * 是否要求供应商「可推送」（配了 Webhook 或飞书群 Chat ID）才允许勾选，默认 true。
-   * 纯统计类表单（出仓派签达成分析）不推送任何消息，必须传 false —— 否则没配推送渠道的
-   * 供应商永远勾不上，那家的单会被静默排除在统计范围外、历史数据永久缺失。
-   */
   requirePushable?: boolean
 }
 
@@ -27,10 +21,6 @@ const COLUMNS_CLASS: Record<4 | 5, string> = {
   5: 'sm:grid-cols-5',
 }
 
-/**
- * 供应商推送多选：卡片网格样式，重点展示供应商昵称与供应商名。
- * 选中即代表会被推送；未配置 Webhook 也未配置飞书群 Chat ID 的供应商禁用（无法推送），并给出提示。
- */
 export function SupplierPushSelectionGrid({
   configs,
   enabledIdSet,
@@ -38,10 +28,12 @@ export function SupplierPushSelectionGrid({
   disabled = false,
   togglingId = null,
   saving = false,
-  emptyText = '暂无供应商配置，请前往「系统管理 → 供应商配置」维护。',
+  emptyText,
   columns = 4,
   requirePushable = true,
 }: Props) {
+  const { t } = useTranslation('common')
+  const resolvedEmpty = emptyText ?? t('supplierConfigEmpty')
   const duplicateVendorCodeSet = useMemo(() => {
     const counts = new Map<string, number>()
     for (const config of configs) {
@@ -55,7 +47,7 @@ export function SupplierPushSelectionGrid({
   }, [configs])
 
   if (configs.length === 0) {
-    return <p className="text-xs text-slate-400">{emptyText}</p>
+    return <p className="text-xs text-slate-400">{resolvedEmpty}</p>
   }
 
   return (
@@ -63,16 +55,14 @@ export function SupplierPushSelectionGrid({
       {configs.map((c) => {
         const checked = enabledIdSet.has(c.id)
         const eligible = !requirePushable || isSupplierPushEligible(c)
-        // 保存期间禁用其余卡片，避免并发切换丢失点击（scope 一次只处理一个）
         const busy = saving && togglingId !== c.id
         const itemDisabled = disabled || !eligible || busy
         const nickname = c.supplierNickname?.trim()
-        const primary = nickname || c.vendorName || '未知供应商'
+        const primary = nickname || c.vendorName || t('unknownSupplier')
         const showVendorLine = !!nickname && c.vendorName.trim().length > 0
         const isDuplicateVendor = duplicateVendorCodeSet.has(c.vendorCode.trim())
         const routeCode = c.routeCode.trim()
         const stationCode = c.stationCode?.trim() ?? ''
-        // 同编码多条时展示路由/站点，避免勾错后推送被服务端按站点过滤掉
         const showRouteLine = isDuplicateVendor && routeCode.length > 0
         const showStationLine = isDuplicateVendor && stationCode.length > 0
 
@@ -99,14 +89,14 @@ export function SupplierPushSelectionGrid({
               {showStationLine && (
                 <Tooltip title={stationCode}>
                   <span className={`truncate text-[10px] ${eligible ? 'text-slate-500' : 'text-slate-400'}`}>
-                    站点 {stationCode}
+                    {t('stationCode', { code: stationCode })}
                   </span>
                 </Tooltip>
               )}
               {showRouteLine && (
                 <Tooltip title={routeCode}>
                   <span className={`truncate text-[10px] ${eligible ? 'text-slate-500' : 'text-slate-400'}`}>
-                    路由 {routeCode}
+                    {t('routeCode', { code: routeCode })}
                   </span>
                 </Tooltip>
               )}
@@ -128,7 +118,7 @@ export function SupplierPushSelectionGrid({
             {eligible ? (
               checkboxNode
             ) : (
-              <Tooltip title="该供应商未配置 Webhook 或飞书群 Chat ID，无法推送">
+              <Tooltip title={t('noWebhookChatPush')}>
                 <span className="flex w-full min-w-0">{checkboxNode}</span>
               </Tooltip>
             )}
@@ -145,20 +135,10 @@ type SelectAllButtonsProps = {
   onToggle: (configId: string, next: boolean) => void
   disabled?: boolean
   saving?: boolean
-  /** 同 SupplierPushSelectionGrid.requirePushable，两者必须传一致的值 */
   requirePushable?: boolean
-  /**
-   * 一次性替换整份选择。**受控父组件（onChange 直接读 props.value）必须传它** ——
-   * 逐条调 onToggle 时每次回调读到的都是同一份 stale value，只有最后一次生效，
-   * 全选/清空看起来「没反应」。用函数式 setState 的调用方可以不传。
-   */
   onBulkChange?: (ids: string[]) => void
 }
 
-/**
- * 配合 SupplierPushSelectionGrid 使用的「全选/清空」按钮，放在 FormSection 标题右侧（action 插槽）。
- * 全选只勾选已配置 Webhook 或飞书群 Chat ID（可推送）的供应商；清空会取消当前所有已勾选项。
- */
 export function SupplierPushSelectAllButtons({
   configs,
   enabledIdSet,
@@ -168,6 +148,7 @@ export function SupplierPushSelectAllButtons({
   requirePushable = true,
   onBulkChange,
 }: SelectAllButtonsProps) {
+  const { t } = useTranslation('common')
   const eligibleConfigs = useMemo(
     () => (requirePushable ? configs.filter(isSupplierPushEligible) : configs),
     [configs, requirePushable],
@@ -187,7 +168,6 @@ export function SupplierPushSelectAllButtons({
   }
   const handleClear = () => {
     if (onBulkChange) {
-      // 只清掉本目录里的 id，目录外的历史 id 交给提交时统一过滤，与逐条清空的语义一致
       const catalogIds = new Set(configs.map((c) => c.id))
       onBulkChange([...enabledIdSet].filter((id) => !catalogIds.has(id)))
       return
@@ -203,10 +183,10 @@ export function SupplierPushSelectAllButtons({
         onClick={handleSelectAll}
         disabled={controlsDisabled || allEligibleSelected || eligibleConfigs.length === 0}
       >
-        全选
+        {t('selectAll')}
       </Button>
       <Button onClick={handleClear} disabled={controlsDisabled || enabledIdSet.size === 0}>
-        清空
+        {t('clearAll')}
       </Button>
     </div>
   )

@@ -1,0 +1,65 @@
+{
+  "page": {
+    "eyebrow": "Unprocessed Work Order Push",
+    "title": "工单推送",
+    "enabledRatio": "已启用 / 总数",
+    "add": "添加工单推送"
+  },
+  "list": {
+    "empty": "暂无工单推送配置，点击右上角「添加工单推送」新建",
+    "enabled": "已启用",
+    "disabled": "已停用",
+    "missingImileToken": "缺少 iMile token",
+    "scheduleSummary": "每{{weekdays}}，在 {{times}} 各检查一次未处理工单，有则推送 · 已选 {{vendorCount}} 家供应商",
+    "switchOn": "启用",
+    "switchOff": "停用",
+    "pushNowConfirmTitle": "确认立刻推送？",
+    "pushNowConfirmDesc": "将按该配置直接拉数推送，不参考推送时间。",
+    "pushNow": "立刻推送",
+    "deleteConfirm": "确认删除该工单推送配置？"
+  },
+  "drawer": {
+    "editTitle": "编辑工单推送",
+    "addTitle": "添加工单推送",
+    "station": "站点",
+    "scheduleConfig": "定时推送配置",
+    "scheduleConfigDesc": "工单出现时间不可预测，在推送星期内的下方时间点各检查一次未处理工单，有未处理工单才会推送对应供应商，没有则跳过",
+    "pushWeekdays": "推送星期",
+    "pushTimes": "推送时间",
+    "noPushTimes": "暂无推送时间",
+    "vendorConfig": "供应商配置",
+    "vendorConfigDesc": "勾选参与该条工单推送的供应商"
+  },
+  "weekday": {
+    "1": "周一",
+    "2": "周二",
+    "3": "周三",
+    "4": "周四",
+    "5": "周五",
+    "6": "周六",
+    "7": "周日"
+  },
+  "notSet": "未设置",
+  "listSeparator": "、",
+  "validation": {
+    "selectStation": "请选择站点",
+    "selectWeekday": "请至少选择一个推送星期",
+    "addPushTime": "请至少添加一个推送时间",
+    "selectVendor": "请至少选择一个供应商"
+  },
+  "toast": {
+    "missingImileTokenBeforeSave": "请先在全局设置中配置 iMile token，再保存工单推送",
+    "loadError": "工单推送配置加载失败",
+    "createSuccess": "工单推送已添加",
+    "updateSuccess": "工单推送已更新",
+    "saveError": "保存失败",
+    "deleteSuccess": "已删除",
+    "deleteError": "删除失败",
+    "toggleError": "更新失败",
+    "missingImileTokenResave": "缺少 iMile token，请编辑该配置并重新保存",
+    "selectVendorFirst": "请先为该配置选择供应商",
+    "pushFailed": "推送失败: {{error}}",
+    "pushPartial": "已推送 {{pushed}}/{{total}}，部分失败: {{errors}}",
+    "pushComplete": "推送完成 {{pushed}}/{{total}}"
+  }
+}

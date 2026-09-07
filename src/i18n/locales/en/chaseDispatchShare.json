@@ -1,0 +1,29 @@
+{
+  "brand": {
+    "chaseDispatch": "Long time - No return warehouse or Overdue Deliveries",
+    "dispatchAlarm": "24H Delivery Alert"
+  },
+  "loading": "Loading waybills…",
+  "linkUnavailable": "Link unavailable",
+  "linkExpiredHint": "This share link is invalid or has expired (links stay open for 1 day). Ask the warehouse team to push again.",
+  "chaseSubtitle": "{{baseDate}} {{pushTime}} · Stagnant parcels pending delivery",
+  "dispatchSubtitle": "Station {{stationCode}} · {{date}} {{pushTime}} · 24H rate {{rate}} (threshold {{threshold}}%)",
+  "metricTotalStagnant": "Total stagnant",
+  "metricNotMet24h": "Not met within 24H",
+  "copyAll": "Copy all",
+  "copy": "Copy",
+  "emptyChase": "No stagnant parcels — nothing to chase.",
+  "emptyDispatch": "All waybills signed within 24H, no problem parcels.",
+  "groupDays": "{{days}} days",
+  "groupNotSigned": "Not signed",
+  "groupSignedLate": "Signed late (over 24H)",
+  "groupProblem": "Problem parcels",
+  "unassignedDriver": "Not dispatched (no driver assigned)",
+  "unknownRoute": "Unknown route",
+  "priorityParcel": "Priority customer parcel - not delivered yet",
+  "noWaybillsInGroup": "No waybill numbers in this group",
+  "noWaybillsToCopy": "No waybills to copy",
+  "copied": "Copied {{count}} · {{label}}",
+  "copyFailed": "Copy failed",
+  "footer": "Snapshot from the {{brand}} push. Copy waybills into your TMS or clipboard as needed. Link expires after 1 day."
+}

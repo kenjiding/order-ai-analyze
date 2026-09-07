@@ -1,3 +1,4 @@
+import { useTranslation } from 'react-i18next'
 import { useGlobalFilterStore } from '../../stores/globalFilterStore'
 
 type Props = {
@@ -6,13 +7,14 @@ type Props = {
   emptyText?: string
 }
 
-/** 站点名 + 编码（如 S210791801），名称来自全局站点列表，缺失时仅展示编码 */
-export function StationDisplayLabel({ stationCode, className, emptyText = '未选择站点' }: Props) {
+export function StationDisplayLabel({ stationCode, className, emptyText }: Props) {
+  const { t } = useTranslation('common')
   const stations = useGlobalFilterStore((s) => s.stations)
   const code = stationCode.trim()
+  const empty = emptyText ?? t('stationNotSelected')
 
   if (!code) {
-    return <span className={`text-base font-semibold text-slate-800 ${className ?? ''}`.trim()}>{emptyText}</span>
+    return <span className={`text-base font-semibold text-slate-800 ${className ?? ''}`.trim()}>{empty}</span>
   }
 
   const name = stations.find((s) => s.value === code)?.label?.trim()

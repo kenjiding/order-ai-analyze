@@ -1,5 +1,6 @@
 import { Eye } from 'lucide-react'
 import { Alert } from 'antd'
+import { useTranslation } from 'react-i18next'
 import { usePushEngagementMonitorPage } from './usePushEngagementMonitorPage'
 import { PushEngagementFilterBar } from './components/PushEngagementFilterBar'
 import { PushEngagementTable } from './components/PushEngagementTable'
@@ -14,6 +15,7 @@ function StatCard({ label, value, tone }: { label: string; value: string | numbe
 }
 
 export default function PushEngagementMonitorPage() {
+  const { t } = useTranslation('pushEngagement')
   const page = usePushEngagementMonitorPage()
 
   return (
@@ -24,18 +26,16 @@ export default function PushEngagementMonitorPage() {
             <Eye className="h-5 w-5" aria-hidden />
           </div>
           <div>
-            <h1 className="text-lg font-semibold text-slate-950">推送数据监控</h1>
-            <p className="mt-1 max-w-2xl text-sm text-slate-600">
-              监控 滞留数据告警、24H派签告警、催派推送、工单推送 的已读与按钮点击情况，观察供应商对推送数据的关注度。
-            </p>
+            <h1 className="text-lg font-semibold text-slate-950">{t('title')}</h1>
+            <p className="mt-1 max-w-2xl text-sm text-slate-600">{t('description')}</p>
           </div>
         </div>
       </header>
 
       <section className="flex flex-wrap gap-3">
-        <StatCard label="所选条件内推送条数" value={page.summary.total} />
-        <StatCard label="累计点击次数" value={page.summary.totalClicks} />
-        <StatCard label="零点击条数" value={page.summary.noClickCount} tone={page.summary.noClickCount > 0 ? 'warn' : 'default'} />
+        <StatCard label={t('statTotal')} value={page.summary.total} />
+        <StatCard label={t('statClicks')} value={page.summary.totalClicks} />
+        <StatCard label={t('statNoClick')} value={page.summary.noClickCount} tone={page.summary.noClickCount > 0 ? 'warn' : 'default'} />
       </section>
 
       <section className="admin-panel p-4 sm:p-5">

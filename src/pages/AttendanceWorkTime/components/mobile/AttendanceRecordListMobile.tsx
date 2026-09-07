@@ -3,6 +3,7 @@ import { Button as VantButton, Empty as VantEmpty, Tag as VantTag } from 'react-
 import 'react-vant/es/empty/style/index.css'
 import dayjs from 'dayjs'
 import { CircleCheckBig, Pencil, Trash2 } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
 import {
   attendanceProcessCategoryLabel,
   attendanceShiftLabel,
@@ -19,13 +20,14 @@ type Props = {
   onQuickFinish: (record: AttendanceWorkRecord) => void
 }
 
-function formatTime(iso: string | null): string {
-  return iso ? dayjs(iso).format('MM-DD HH:mm') : '进行中'
-}
-
 export function AttendanceRecordListMobile({ records, loading, onEdit, onDelete, onQuickFinish }: Props) {
+  const { t } = useTranslation('attendanceWorkTime')
+
+  const formatTime = (iso: string | null): string =>
+    iso ? dayjs(iso).format('MM-DD HH:mm') : t('table.inProgress')
+
   if (!loading && records.length === 0) {
-    return <VantEmpty description="暂无出勤记录" className="py-12" />
+    return <VantEmpty description={t('table.empty')} className="py-12" />
   }
   return (
     <div className="space-y-3 pb-4">
@@ -36,10 +38,10 @@ export function AttendanceRecordListMobile({ records, loading, onEdit, onDelete,
               <div className="text-base font-semibold text-slate-900">{record.workerName}</div>
               <div className="mt-1 flex flex-wrap gap-1.5">
                 <VantTag color="#e1f5f1" textColor="#1f6f68">
-                  {attendanceProcessCategoryLabel(record.processCategory)}
+                  {attendanceProcessCategoryLabel(record.processCategory, t)}
                 </VantTag>
                 <VantTag color="#eaf4ff" textColor="#25526e">
-                  {attendanceShiftLabel(record.shift)}
+                  {attendanceShiftLabel(record.shift, t)}
                 </VantTag>
                 {record.zoneCode ? <VantTag plain>{record.zoneCode}</VantTag> : null}
               </div>
@@ -51,14 +53,14 @@ export function AttendanceRecordListMobile({ records, loading, onEdit, onDelete,
                 icon={<CircleCheckBig size={14} aria-hidden />}
                 onClick={() => onQuickFinish(record)}
               >
-                结束
+                {t('actions.finish')}
               </VantButton>
               <VantButton
                 plain
                 size="small"
                 icon={<Pencil size={14} aria-hidden />}
                 onClick={() => onEdit(record)}
-                aria-label="编辑"
+                aria-label={t('actions.edit')}
               />
               <VantButton
                 plain
@@ -66,14 +68,16 @@ export function AttendanceRecordListMobile({ records, loading, onEdit, onDelete,
                 size="small"
                 icon={<Trash2 size={14} aria-hidden />}
                 onClick={() => onDelete(record)}
-                aria-label="删除"
+                aria-label={t('actions.delete')}
               />
             </div>
           </div>
           <div className="mt-2 text-sm text-slate-500">
             {formatTime(record.startTime)} ~ {formatTime(record.endTime)}
             <span className="ml-2 text-slate-700">
-              总时长 {formatAttendanceDurationHours(record.startTime, record.endTime)}
+              {t('table.totalDurationInline', {
+                hours: formatAttendanceDurationHours(record.startTime, record.endTime),
+              })}
             </span>
           </div>
           {record.notes ? <div className="mt-1 text-sm text-slate-400">{record.notes}</div> : null}

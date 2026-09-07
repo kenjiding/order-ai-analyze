@@ -3,6 +3,8 @@ import { saveAs } from 'file-saver'
 import { CheckSquare, ChevronDown, Loader2, X } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
+import { useTranslation } from 'react-i18next'
+import type { TFunction } from 'i18next'
 import * as XLSX from 'xlsx-js-style'
 import { applySheetCenterAlignment } from '../../../utils/xlsxCenteredSheet'
 import { DataTable, ExportButton, type DataTableColumn } from '../../ScannerEfficiency/components/ui'
@@ -14,7 +16,8 @@ import { OrderExceptionPushSection } from './OrderExceptionPushSection'
 import { PostFilterConfigSection } from './PostFilterConfigSection'
 import {
   ANALYSIS_EXPORT_COLUMN_WIDTHS,
-  ANALYSIS_EXPORT_SHEET_NAME,
+  getAnalysisExportLabels,
+  getAnalysisExportSheetName,
   toAnalysisExportRow,
 } from '../analysisExport'
 
@@ -35,11 +38,19 @@ function FilterableHeader({
   options,
   selected,
   onChange,
+  selectAllLabel,
+  clearLabel,
+  emptyLabel,
+  emptyValueLabel,
 }: {
   title: string
   options: string[]
   selected: string[]
   onChange: (next: string[]) => void
+  selectAllLabel: string
+  clearLabel: string
+  emptyLabel: string
+  emptyValueLabel: string
 }) {
   const [open, setOpen] = useState(false)
   const [menuPos, setMenuPos] = useState<{ left: number; top: number } | null>(null)
@@ -114,7 +125,7 @@ function FilterableHeader({
                 onClick={() => onChange(options)}
                 className="text-[11px] text-slate-500 hover:text-slate-800"
               >
-                全选
+                {selectAllLabel}
               </button>
               <button
                 type="button"
@@ -124,12 +135,12 @@ function FilterableHeader({
                   isActive ? 'text-[#1f6f68] hover:text-[#2f8f87]' : 'text-slate-400',
                 ].join(' ')}
               >
-                清除
+                {clearLabel}
               </button>
             </div>
             <div className="max-h-52 overflow-y-auto py-1">
               {options.length === 0 ? (
-                <p className="px-3 py-2 text-[11px] text-slate-400">暂无数据</p>
+                <p className="px-3 py-2 text-[11px] text-slate-400">{emptyLabel}</p>
               ) : (
                 options.map((opt) => (
                   <label
@@ -142,7 +153,7 @@ function FilterableHeader({
                       onChange={() => toggleOption(opt)}
                       className="h-3.5 w-3.5 shrink-0 rounded border-slate-300 accent-[#1f6f68]"
                     />
-                    <span className="truncate">{opt || '(空)'}</span>
+                    <span className="truncate">{opt || emptyValueLabel}</span>
                   </label>
                 ))
               )}
@@ -154,35 +165,37 @@ function FilterableHeader({
   )
 }
 
-function renderReasonCell(r: Row): ReactNode {
+function renderReasonCell(r: Row, t: TFunction): ReactNode {
   const reason = String(r.reason ?? '')
   if (r.status === 'pending') {
-    return <span className="text-slate-400">待分析</span>
+    return <span className="text-slate-400">{t('results.pendingAnalyze')}</span>
   }
   if (r.status === 'analyzing') {
     return (
       <span className="inline-flex items-center gap-1.5 text-[#1f6f68]">
         <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin" aria-hidden />
-        {reason || '分析中…'}
+        {reason || t('results.analyzing')}
       </span>
     )
   }
   if (r.status === 'error') {
     return <span className="text-red-600">{reason}</span>
   }
-  if (reason.startsWith('[事实校验纠正]')) {
+  const factPrefix = '[事实校验纠正]'
+  const cancelPrefix = '[取消扫描核验纠正]'
+  if (reason.startsWith(factPrefix)) {
     return (
       <span>
-        <span className="font-semibold text-amber-600">[事实校验纠正]</span>
-        <span className="text-slate-700">{reason.slice('[事实校验纠正]'.length)}</span>
+        <span className="font-semibold text-amber-600">{t('results.factCheckPrefix')}</span>
+        <span className="text-slate-700">{reason.slice(factPrefix.length)}</span>
       </span>
     )
   }
-  if (reason.startsWith('[取消扫描核验纠正]')) {
+  if (reason.startsWith(cancelPrefix)) {
     return (
       <span>
-        <span className="font-semibold text-amber-600">[取消扫描核验纠正]</span>
-        <span className="text-slate-700">{reason.slice('[取消扫描核验纠正]'.length)}</span>
+        <span className="font-semibold text-amber-600">{t('results.cancelScanPrefix')}</span>
+        <span className="text-slate-700">{reason.slice(cancelPrefix.length)}</span>
       </span>
     )
   }
@@ -193,23 +206,25 @@ function SubmittedBanner({
   banner,
   onDismiss,
   onGoToJobs,
+  t,
 }: {
   banner: SubmittedJobBanner
   onDismiss: () => void
   onGoToJobs: () => void
+  t: TFunction
 }) {
   return (
     <div className="mt-4 flex items-center gap-3 rounded-md border border-blue-200 bg-blue-50 px-4 py-3">
       <CheckSquare className="h-4 w-4 shrink-0 text-blue-500" aria-hidden />
       <p className="min-w-0 flex-1 text-xs text-slate-700">
-        批量任务已提交（<span className="font-semibold">{banner.orderCount} 单</span>），后台 Worker 正在处理，分析页面不会被阻塞
+        {t('results.batchJobBanner', { count: banner.orderCount })}
       </p>
       <button
         type="button"
         onClick={onGoToJobs}
         className="shrink-0 rounded-md bg-blue-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-blue-700"
       >
-        查看任务队列 →
+        {t('results.viewJobQueue')}
       </button>
       <button type="button" onClick={onDismiss} className="shrink-0 text-slate-400 hover:text-slate-600">
         <X className="h-4 w-4" />
@@ -230,6 +245,13 @@ function routeCodeLabel(r: Row): string {
 }
 
 function buildColumns(
+  t: TFunction,
+  filterLabels: {
+    selectAll: string
+    clear: string
+    empty: string
+    emptyValue: string
+  },
   onOpenOrderDetail: (row: Row) => void,
   visitedOrders: Set<string>,
   columnFilters: ColumnFilters,
@@ -245,7 +267,7 @@ function buildColumns(
   return [
     {
       key: 'orderNo',
-      title: '订单号',
+      title: t('results.colOrderNo'),
       render: (row) => {
         const r = row as unknown as Row
         const disabled = r.status === 'pending' || r.status === 'analyzing'
@@ -258,7 +280,7 @@ function buildColumns(
             className={`font-mono underline decoration-dashed underline-offset-2 disabled:cursor-not-allowed disabled:text-slate-400 disabled:no-underline ${
               visited ? 'text-slate-400 hover:text-slate-500' : 'text-[#1f6f68] hover:text-[#2f8f87]'
             }`}
-            aria-label={`查看订单 ${r.orderNo} 的轨迹与阻断日志`}
+            aria-label={t('results.viewOrderDetailAria', { orderNo: r.orderNo })}
           >
             {r.orderNo}
           </button>
@@ -267,13 +289,17 @@ function buildColumns(
     },
     {
       key: 'lossScope',
-      title: '异常类型',
+      title: t('results.colExceptionType'),
       renderTitle: () => (
         <FilterableHeader
-          title="异常类型"
+          title={t('results.colExceptionType')}
           options={lossScopeOptions}
           selected={columnFilters.lossScope}
           onChange={(next) => onColumnFilterChange('lossScope', next)}
+          selectAllLabel={filterLabels.selectAll}
+          clearLabel={filterLabels.clear}
+          emptyLabel={filterLabels.empty}
+          emptyValueLabel={filterLabels.emptyValue}
         />
       ),
       render: (row) => {
@@ -286,13 +312,17 @@ function buildColumns(
     },
     {
       key: 'categoryName',
-      title: '子类型',
+      title: t('results.colSubType'),
       renderTitle: () => (
         <FilterableHeader
-          title="子类型"
+          title={t('results.colSubType')}
           options={categoryNameOptions}
           selected={columnFilters.categoryName}
           onChange={(next) => onColumnFilterChange('categoryName', next)}
+          selectAllLabel={filterLabels.selectAll}
+          clearLabel={filterLabels.clear}
+          emptyLabel={filterLabels.empty}
+          emptyValueLabel={filterLabels.emptyValue}
         />
       ),
       render: (row) => {
@@ -305,13 +335,17 @@ function buildColumns(
     },
     {
       key: 'noOperationDays',
-      title: '无操作天数',
+      title: t('results.colNoOperationDays'),
       renderTitle: () => (
         <FilterableHeader
-          title="无操作天数"
+          title={t('results.colNoOperationDays')}
           options={noOperationDaysOptions}
           selected={columnFilters.noOperationDays}
           onChange={(next) => onColumnFilterChange('noOperationDays', next)}
+          selectAllLabel={filterLabels.selectAll}
+          clearLabel={filterLabels.clear}
+          emptyLabel={filterLabels.empty}
+          emptyValueLabel={filterLabels.emptyValue}
         />
       ),
       render: (row) => {
@@ -324,13 +358,17 @@ function buildColumns(
     },
     {
       key: 'consigneeRouteCode',
-      title: '路由码',
+      title: t('results.colRouteCode'),
       renderTitle: () => (
         <FilterableHeader
-          title="路由码"
+          title={t('results.colRouteCode')}
           options={consigneeRouteCodeOptions}
           selected={columnFilters.consigneeRouteCode}
           onChange={(next) => onColumnFilterChange('consigneeRouteCode', next)}
+          selectAllLabel={filterLabels.selectAll}
+          clearLabel={filterLabels.clear}
+          emptyLabel={filterLabels.empty}
+          emptyValueLabel={filterLabels.emptyValue}
         />
       ),
       render: (row) => {
@@ -343,13 +381,17 @@ function buildColumns(
     },
     {
       key: 'latestResponsibilityPerson',
-      title: '最新责任人',
+      title: t('results.colLatestPerson'),
       renderTitle: () => (
         <FilterableHeader
-          title="最新责任人"
+          title={t('results.colLatestPerson')}
           options={latestResponsibilityPersonOptions}
           selected={columnFilters.latestResponsibilityPerson}
           onChange={(next) => onColumnFilterChange('latestResponsibilityPerson', next)}
+          selectAllLabel={filterLabels.selectAll}
+          clearLabel={filterLabels.clear}
+          emptyLabel={filterLabels.empty}
+          emptyValueLabel={filterLabels.emptyValue}
         />
       ),
       render: (row) => {
@@ -362,13 +404,17 @@ function buildColumns(
     },
     {
       key: 'latestResponsibilityAction',
-      title: '最新责任操作',
+      title: t('results.colLatestAction'),
       renderTitle: () => (
         <FilterableHeader
-          title="最新责任操作"
+          title={t('results.colLatestAction')}
           options={latestResponsibilityActionOptions}
           selected={columnFilters.latestResponsibilityAction}
           onChange={(next) => onColumnFilterChange('latestResponsibilityAction', next)}
+          selectAllLabel={filterLabels.selectAll}
+          clearLabel={filterLabels.clear}
+          emptyLabel={filterLabels.empty}
+          emptyValueLabel={filterLabels.emptyValue}
         />
       ),
       render: (row) => {
@@ -381,7 +427,7 @@ function buildColumns(
     },
     {
       key: 'latestResponsibilityTime',
-      title: '最新责任时间',
+      title: t('results.colLatestTime'),
       render: (row) => {
         const r = row as unknown as Row
         if (r.status === 'pending' || r.status === 'analyzing') {
@@ -392,13 +438,17 @@ function buildColumns(
     },
     {
       key: 'currentResponsibilityParty',
-      title: '当前责任站点',
+      title: t('results.colCurrentHub'),
       renderTitle: () => (
         <FilterableHeader
-          title="当前责任站点"
+          title={t('results.colCurrentHub')}
           options={responsibilityOptions}
           selected={columnFilters.currentResponsibilityParty}
           onChange={(next) => onColumnFilterChange('currentResponsibilityParty', next)}
+          selectAllLabel={filterLabels.selectAll}
+          clearLabel={filterLabels.clear}
+          emptyLabel={filterLabels.empty}
+          emptyValueLabel={filterLabels.emptyValue}
         />
       ),
       render: (row) => {
@@ -411,7 +461,7 @@ function buildColumns(
     },
     {
       key: 'confidence',
-      title: '置信度',
+      title: t('results.colConfidence'),
       render: (row) => {
         const r = row as unknown as Row
         if (r.status === 'pending' || r.status === 'analyzing') {
@@ -425,12 +475,12 @@ function buildColumns(
             <span>{String(r.confidence ?? '')}</span>
             {r.needsReview && (
               <Tag color="warning" className="m-0 text-xs leading-tight">
-                需复核
+                {t('results.needsReview')}
               </Tag>
             )}
             {r.crossCheckedBy && !r.needsReview && (
               <Tag color="processing" className="m-0 text-xs leading-tight">
-                已交叉验证
+                {t('results.crossChecked')}
               </Tag>
             )}
           </span>
@@ -439,7 +489,7 @@ function buildColumns(
     },
     {
       key: 'extraData',
-      title: '额外数据',
+      title: t('results.colExtraData'),
       render: (row) => {
         const r = row as unknown as Row
         if (!r.extraData) return <span className="text-slate-400">—</span>
@@ -452,8 +502,8 @@ function buildColumns(
     },
     {
       key: 'reason',
-      title: '判定依据',
-      render: (row) => renderReasonCell(row as unknown as Row),
+      title: t('results.colReason'),
+      render: (row) => renderReasonCell(row as unknown as Row, t),
     },
   ]
 }
@@ -491,12 +541,23 @@ export function OrderExceptionAnalysisResults({
   appliedPostFilter,
   onRunPostFilter,
   exportPermission,
-  emptyText = '暂无结果。',
+  emptyText,
   submittedJobBanner = null,
   onDismissSubmittedJobBanner,
   onGoToJobsTab,
   showPushSection = true,
 }: OrderExceptionAnalysisResultsProps) {
+  const { t } = useTranslation('orderException')
+  const filterLabels = useMemo(
+    () => ({
+      selectAll: t('results.selectAll'),
+      clear: t('results.clearFilter'),
+      empty: t('results.emptyFilterOptions'),
+      emptyValue: t('results.emptyValue'),
+    }),
+    [t],
+  )
+  const resolvedEmptyText = emptyText ?? t('results.emptyDefault')
   const [detailRow, setDetailRow] = useState<Row | null>(null)
   const [visitedOrders, setVisitedOrders] = useState<Set<string>>(() => new Set())
   const [columnFilters, setColumnFilters] = useState<ColumnFilters>({
@@ -609,6 +670,8 @@ export function OrderExceptionAnalysisResults({
   const columns = useMemo(
     () =>
       buildColumns(
+        t,
+        filterLabels,
         handleOpenOrderDetail,
         visitedOrders,
         columnFilters,
@@ -622,6 +685,8 @@ export function OrderExceptionAnalysisResults({
         latestResponsibilityActionOptions,
       ),
     [
+      t,
+      filterLabels,
       handleOpenOrderDetail,
       visitedOrders,
       columnFilters,
@@ -642,19 +707,20 @@ export function OrderExceptionAnalysisResults({
 
   const onExportResults = useCallback(() => {
     if (exportableRows.length === 0) return
-    const data = exportableRows.map(toAnalysisExportRow)
+    const labels = getAnalysisExportLabels(t)
+    const data = exportableRows.map((row) => toAnalysisExportRow(row, labels, t))
     const ws = XLSX.utils.json_to_sheet(data)
     applySheetCenterAlignment(ws)
     ws['!cols'] = ANALYSIS_EXPORT_COLUMN_WIDTHS.map((wch) => ({ wch }))
     const wb = XLSX.utils.book_new()
-    XLSX.utils.book_append_sheet(wb, ws, ANALYSIS_EXPORT_SHEET_NAME)
+    XLSX.utils.book_append_sheet(wb, ws, getAnalysisExportSheetName(t))
     const buf = XLSX.write(wb, { bookType: 'xlsx', type: 'array', cellStyles: true }) as ArrayBuffer
     const blob = new Blob([buf], {
       type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
     })
     const stamp = new Date().toISOString().slice(0, 19).replace(/-/g, '').replace(/:/g, '').replace(/T/g, '')
-    saveAs(blob, `异常订单分析结果-${stamp}.xlsx`)
-  }, [exportableRows])
+    saveAs(blob, `${t('results.exportFileNamePrefix')}${stamp}.xlsx`)
+  }, [exportableRows, t])
 
   if (!showResultsSection) return null
 
@@ -663,15 +729,18 @@ export function OrderExceptionAnalysisResults({
       <section className="admin-panel p-5 pr-0">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="flex items-center gap-3">
-            <h3 className="text-sm font-semibold text-slate-950">分析结果</h3>
+            <h3 className="text-sm font-semibold text-slate-950">{t('results.title')}</h3>
             {isFiltered && (
               <span className="text-xs text-slate-500" aria-live="polite">
-                共 {totalDoneRowCount} 条，已过滤至 {filteredDoneRowCount} 条
+                {t('results.filteredCount', {
+                  total: totalDoneRowCount,
+                  filtered: filteredDoneRowCount,
+                })}
               </span>
             )}
           </div>
           <ExportButton
-            label="导出 Excel"
+            label={t('results.exportExcel')}
             permission={exportPermission}
             disabled={exportableRows.length === 0 || isAnalyzing}
             onClick={onExportResults}
@@ -683,6 +752,7 @@ export function OrderExceptionAnalysisResults({
             banner={submittedJobBanner}
             onDismiss={onDismissSubmittedJobBanner}
             onGoToJobs={onGoToJobsTab}
+            t={t}
           />
         ) : null}
         {analyzeProgress ? (
@@ -700,7 +770,7 @@ export function OrderExceptionAnalysisResults({
             <DataTable
               columns={columns}
               rows={tableRows}
-              emptyText={emptyText}
+              emptyText={resolvedEmptyText}
               boundedScroll
               boundedScrollMaxHeight={ANALYSIS_RESULTS_MAX_HEIGHT_PX}
             />

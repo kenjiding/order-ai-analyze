@@ -1,0 +1,65 @@
+{
+  "page": {
+    "eyebrow": "Unprocessed Work Order Push",
+    "title": "Ticket push",
+    "enabledRatio": "Enabled / total",
+    "add": "Add ticket push"
+  },
+  "list": {
+    "empty": "No ticket push schedules yet. Click \"Add ticket push\" above to create one.",
+    "enabled": "Enabled",
+    "disabled": "Disabled",
+    "missingImileToken": "Missing iMile token",
+    "scheduleSummary": "Every {{weekdays}} at {{times}}, check open tickets once per slot and push when found · {{vendorCount}} vendor(s) selected",
+    "switchOn": "On",
+    "switchOff": "Off",
+    "pushNowConfirmTitle": "Push now?",
+    "pushNowConfirmDesc": "Pulls data and pushes immediately, ignoring scheduled push times.",
+    "pushNow": "Push now",
+    "deleteConfirm": "Delete this ticket push schedule?"
+  },
+  "drawer": {
+    "editTitle": "Edit ticket push",
+    "addTitle": "Add ticket push",
+    "station": "Station",
+    "scheduleConfig": "Scheduled push",
+    "scheduleConfigDesc": "Open tickets arrive unpredictably. At each time below on selected weekdays, check for open tickets and push to matching vendors only when tickets exist.",
+    "pushWeekdays": "Push weekdays",
+    "pushTimes": "Push times",
+    "noPushTimes": "No push times yet",
+    "vendorConfig": "Vendor settings",
+    "vendorConfigDesc": "Select vendors included in this ticket push"
+  },
+  "weekday": {
+    "1": "Mon",
+    "2": "Tue",
+    "3": "Wed",
+    "4": "Thu",
+    "5": "Fri",
+    "6": "Sat",
+    "7": "Sun"
+  },
+  "notSet": "Not set",
+  "listSeparator": ", ",
+  "validation": {
+    "selectStation": "Select a station",
+    "selectWeekday": "Select at least one push weekday",
+    "addPushTime": "Add at least one push time",
+    "selectVendor": "Select at least one vendor"
+  },
+  "toast": {
+    "missingImileTokenBeforeSave": "Configure iMile token in global settings before saving ticket push",
+    "loadError": "Failed to load ticket push schedules",
+    "createSuccess": "Ticket push added",
+    "updateSuccess": "Ticket push updated",
+    "saveError": "Save failed",
+    "deleteSuccess": "Deleted",
+    "deleteError": "Delete failed",
+    "toggleError": "Update failed",
+    "missingImileTokenResave": "Missing iMile token — edit this schedule and save again",
+    "selectVendorFirst": "Select vendors for this schedule first",
+    "pushFailed": "Push failed: {{error}}",
+    "pushPartial": "Pushed {{pushed}}/{{total}}; partial failures: {{errors}}",
+    "pushComplete": "Push complete {{pushed}}/{{total}}"
+  }
+}

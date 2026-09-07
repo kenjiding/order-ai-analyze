@@ -1,4 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { useTranslation } from 'react-i18next'
+import type { TFunction } from 'i18next'
 import { useLocation, useParams } from 'react-router-dom'
 import { copyTextToClipboard } from '../../utils/clipboard'
 import {
@@ -61,9 +63,9 @@ type ShareViewModel = {
   showDriverMap: boolean
 }
 
-const BRAND_BY_KIND: Record<ShareKind, string> = {
-  'chase-dispatch': 'Long time - No return warehouse or Overdue Deliveries',
-  'dispatch-alarm': '24H Delivery Alert',
+
+function brandLabel(kind: ShareKind, t: TFunction<'chaseDispatchShare'>): string {
+  return kind === 'chase-dispatch' ? t('brand.chaseDispatch') : t('brand.dispatchAlarm')
 }
 
 function resolveKind(pathname: string): ShareKind {
@@ -78,11 +80,12 @@ function resolveKind(pathname: string): ShareKind {
 function groupByRoute(
   waybills: { waybillNo: string; routeCode: string; isPriority?: boolean }[],
   markPriority = false,
+  unknownRouteLabel = 'Unknown route',
 ): ShareRouteGroup[] {
   const order: string[] = []
   const nosByRoute = new Map<string, ShareWaybill[]>()
   for (const { waybillNo, routeCode, isPriority } of waybills) {
-    const code = routeCode.trim() || 'Unknown route'
+    const code = routeCode.trim() || unknownRouteLabel
     if (!nosByRoute.has(code)) {
       nosByRoute.set(code, [])
       order.push(code)
@@ -94,19 +97,19 @@ function groupByRoute(
     .sort((a, b) => b.waybills.length - a.waybills.length)
 }
 
-function toChaseDispatchViewModel(data: ChaseDispatchShareView): ShareViewModel {
+function toChaseDispatchViewModel(data: ChaseDispatchShareView, t: TFunction<'chaseDispatchShare'>): ShareViewModel {
   return {
     kind: 'chase-dispatch',
-    brand: BRAND_BY_KIND['chase-dispatch'],
+    brand: t('brand.chaseDispatch'),
     vendorName: data.vendorName,
-    subtitle: `${data.baseDate} ${data.pushTime} · Stagnant parcels pending delivery`,
-    metricLabel: 'Total stagnant',
+    subtitle: t('chaseSubtitle', { baseDate: data.baseDate, pushTime: data.pushTime }),
+    metricLabel: t('metricTotalStagnant'),
     metricValue: data.totalStagnant,
     groups: data.buckets
       .filter((b) => b.count > 0 && b.drivers.length > 0)
       .map((b) => ({
         key: b.bucket,
-        title: `${b.bucket} days`,
+        title: t('groupDays', { days: b.bucket }),
         count: b.count,
         drivers: b.drivers.map((d) => ({
           key: d.driverCode,
@@ -114,20 +117,19 @@ function toChaseDispatchViewModel(data: ChaseDispatchShareView): ShareViewModel 
           code: d.driverCode,
           count: d.count,
           waybillNos: d.waybills.map((w) => w.waybillNo),
-          routes: groupByRoute(d.waybills),
+          routes: groupByRoute(d.waybills, false, t('unknownRoute')),
         })),
       })),
-    emptyMessage: 'No stagnant parcels — nothing to chase.',
+    emptyMessage: t('emptyChase'),
     showDriverMap: false,
   }
 }
 
-/** 未分配司机（尚未派件）的桶 courierCode/courierName 为空，落地页按普通司机行展示，只是换个名字 */
-const UNASSIGNED_DRIVER_LABEL = 'Not dispatched (no driver assigned)'
 const driverRowKey = (d: DispatchAlarmShareDriver): string => d.courierCode || 'unassigned'
-const driverRowName = (d: DispatchAlarmShareDriver): string => d.courierName || UNASSIGNED_DRIVER_LABEL
+const driverRowName = (d: DispatchAlarmShareDriver, t: TFunction<'chaseDispatchShare'>): string =>
+  d.courierName || t('unassignedDriver')
 
-function toDispatchAlarmViewModel(data: DispatchAlarmShareView): ShareViewModel {
+function toDispatchAlarmViewModel(data: DispatchAlarmShareView, t: TFunction<'chaseDispatchShare'>): ShareViewModel {
   // 未派件的单没有 courierCode，不在 drivers 里；不并进来落地页就少了这部分未达标运单号
   const allDrivers = data.unassigned ? [...data.drivers, data.unassigned] : data.drivers
   const neverSignedDrivers = allDrivers.filter((d) => d.neverSignedWaybills.length > 0)
@@ -141,59 +143,65 @@ function toDispatchAlarmViewModel(data: DispatchAlarmShareView): ShareViewModel 
   if (neverSignedDrivers.length > 0) {
     groups.push({
       key: 'never-signed',
-      title: 'Not signed',
+      title: t('groupNotSigned'),
       count: neverSignedDrivers.reduce((sum, d) => sum + d.neverSignedWaybills.length, 0),
       drivers: neverSignedDrivers.map((d) => ({
         key: driverRowKey(d),
-        name: driverRowName(d),
+        name: driverRowName(d, t),
         code: d.courierCode,
         count: d.neverSignedWaybills.length,
         waybillNos: d.neverSignedWaybills.map((w) => w.waybillNo),
-        routes: groupByRoute(d.neverSignedWaybills, true),
+          routes: groupByRoute(d.neverSignedWaybills, true, t('unknownRoute')),
       })),
     })
   }
   if (lateSignedDrivers.length > 0) {
     groups.push({
       key: 'late-signed',
-      title: 'Signed late (over 24H)',
+      title: t('groupSignedLate'),
       count: lateSignedDrivers.reduce((sum, d) => sum + d.lateSignedWaybills.length, 0),
       drivers: lateSignedDrivers.map((d) => ({
         key: driverRowKey(d),
-        name: driverRowName(d),
+        name: driverRowName(d, t),
         code: d.courierCode,
         count: d.lateSignedWaybills.length,
         waybillNos: d.lateSignedWaybills.map((w) => w.waybillNo),
-        routes: groupByRoute(d.lateSignedWaybills),
+          routes: groupByRoute(d.lateSignedWaybills, false, t('unknownRoute')),
       })),
     })
   }
   if (problemDrivers.length > 0) {
     groups.push({
       key: 'problem',
-      title: 'Problem parcels',
+      title: t('groupProblem'),
       count: data.problemCount,
       tone: 'alert',
       drivers: problemDrivers.map((d) => ({
         key: driverRowKey(d),
-        name: driverRowName(d),
+        name: driverRowName(d, t),
         code: d.courierCode,
         count: d.problemCount,
         waybillNos: d.problemWaybills.map((w) => w.waybillNo),
-        routes: groupByRoute(d.problemWaybills),
+          routes: groupByRoute(d.problemWaybills, false, t('unknownRoute')),
       })),
     })
   }
 
   return {
     kind: 'dispatch-alarm',
-    brand: BRAND_BY_KIND['dispatch-alarm'],
+    brand: t('brand.dispatchAlarm'),
     vendorName: data.vendorName,
-    subtitle: `Station ${data.stationCode} · ${data.date} ${data.pushTime} · 24H rate ${rateText} (threshold ${data.alertThresholdPct}%)`,
-    metricLabel: 'Not met within 24H',
+    subtitle: t('dispatchSubtitle', {
+      stationCode: data.stationCode,
+      date: data.date,
+      pushTime: data.pushTime,
+      rate: rateText,
+      threshold: data.alertThresholdPct,
+    }),
+    metricLabel: t('metricNotMet24h'),
     metricValue: unmetTotal,
     groups,
-    emptyMessage: 'All waybills signed within 24H, no problem parcels.',
+    emptyMessage: t('emptyDispatch'),
     showDriverMap: data.showDriverMap,
   }
 }
@@ -234,6 +242,7 @@ function useCopyToast() {
 }
 
 export default function ChaseDispatchSharePage() {
+  const { t } = useTranslation('chaseDispatchShare')
   const { token } = useParams<{ token: string }>()
   const location = useLocation()
   const kind = useMemo(() => resolveKind(location.pathname), [location.pathname])
@@ -249,8 +258,8 @@ export default function ChaseDispatchSharePage() {
     let cancelled = false
     const load =
       kind === 'dispatch-alarm'
-        ? fetchDispatchAlarmShare(token).then((r) => (r.ok ? toDispatchAlarmViewModel(r.data) : null))
-        : fetchChaseDispatchShare(token).then((r) => (r.ok ? toChaseDispatchViewModel(r.data) : null))
+        ? fetchDispatchAlarmShare(token).then((r) => (r.ok ? toDispatchAlarmViewModel(r.data, t) : null))
+        : fetchChaseDispatchShare(token).then((r) => (r.ok ? toChaseDispatchViewModel(r.data, t) : null))
     void load
       .then((vm) => {
         if (cancelled) return
@@ -273,7 +282,7 @@ export default function ChaseDispatchSharePage() {
     return () => {
       cancelled = true
     }
-  }, [token, kind])
+  }, [token, kind, t])
 
   // 外部分享页关闭全局后台网格，避免浅色纹理压在明亮画布上
   useEffect(() => {
@@ -296,11 +305,11 @@ export default function ChaseDispatchSharePage() {
 
   const copyNos = async (nos: string[], label: string) => {
     if (nos.length === 0) {
-      show('No waybills to copy')
+      show(t('noWaybillsToCopy'))
       return
     }
     const ok = await copyTextToClipboard(nos.join('\n'))
-    show(ok ? `Copied ${nos.length} · ${label}` : 'Copy failed')
+    show(ok ? t('copied', { count: nos.length, label }) : t('copyFailed'))
   }
 
   if (status === 'loading') {
@@ -308,7 +317,7 @@ export default function ChaseDispatchSharePage() {
       <div className="wbs-share">
         <div className="wbs-share__state" role="status">
           <div className="wbs-share__spinner" aria-hidden />
-          <p className="wbs-share__state-hint">Loading waybills…</p>
+          <p className="wbs-share__state-hint">{t('loading')}</p>
         </div>
       </div>
     )
@@ -318,11 +327,9 @@ export default function ChaseDispatchSharePage() {
     return (
       <div className="wbs-share">
         <div className="wbs-share__state">
-          <p className="wbs-share__brand">{BRAND_BY_KIND[kind]}</p>
-          <h1 className="wbs-share__state-title">Link unavailable</h1>
-          <p className="wbs-share__state-hint">
-            This share link is invalid or has expired (links stay open for 1 day). Ask the warehouse team to push again.
-          </p>
+          <p className="wbs-share__brand">{brandLabel(kind, t)}</p>
+          <h1 className="wbs-share__state-title">{t('linkUnavailable')}</h1>
+          <p className="wbs-share__state-hint">{t('linkExpiredHint')}</p>
         </div>
       </div>
     )
@@ -352,7 +359,7 @@ export default function ChaseDispatchSharePage() {
               disabled={allNos.length === 0}
               onClick={() => void copyNos(allNos, 'all')}
             >
-              Copy all
+              {t('copyAll')}
             </button>
           </div>
         </header>
@@ -408,7 +415,7 @@ export default function ChaseDispatchSharePage() {
                                 void copyNos(driver.waybillNos, driver.name)
                               }}
                             >
-                              Copy
+                              {t('copy')}
                             </button>
                           </div>
                         </div>
@@ -427,7 +434,7 @@ export default function ChaseDispatchSharePage() {
                                       <li
                                         key={no}
                                         className={`wbs-share__no${priority ? ' wbs-share__no--priority' : ''}`}
-                                        title={priority ? 'Priority customer parcel - not delivered yet' : undefined}
+                                        title={priority ? t('priorityParcel') : undefined}
                                       >
                                         {no}
                                       </li>
@@ -436,7 +443,7 @@ export default function ChaseDispatchSharePage() {
                                 </div>
                               ))
                             ) : (
-                              <p className="wbs-share__empty-nos">No waybill numbers in this group</p>
+                              <p className="wbs-share__empty-nos">{t('noWaybillsInGroup')}</p>
                             )}
                           </div>
                         ) : null}
@@ -454,8 +461,7 @@ export default function ChaseDispatchSharePage() {
         )}
 
         <p className="wbs-share__foot">
-          Snapshot from the {view.brand.toLowerCase()} push. Copy waybills into your TMS or clipboard as needed. Link
-          expires after 1 day.
+          {t('footer', { brand: view.brand.toLowerCase() })}
         </p>
       </div>
 

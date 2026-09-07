@@ -4,6 +4,7 @@ import { loadSupplierPushCatalog } from '../../shared/supplierPushConfig/catalog
 import { supplierDisplayName } from '../../shared/supplierPushConfig/display'
 import type { SupplierPushConfig } from '../../shared/supplierPushConfig/types'
 import { showToast } from '../../utils/toast'
+import { peT } from './pushEngagementI18n'
 import { groupKey, groupRowsByDate, mergeReadStatuses, type LabelGroup } from './pushEngagementGrouping'
 import {
   fetchPushEngagementList,
@@ -39,7 +40,7 @@ export function usePushEngagementMonitorPage() {
       const res = await loadSupplierPushCatalog()
       setSuppliersLoading(false)
       if (!res.ok) {
-        showToast(`获取供应商列表失败：${res.error}`, 'error')
+        showToast(peT('loadSuppliersFailed', { error: res.error }), 'error')
         return
       }
       setSuppliers(res.data)
@@ -120,7 +121,7 @@ export function usePushEngagementMonitorPage() {
     const ok = nonExpiredRows.map((r) => res.data[r.id]).filter((d): d is PushReadStatus => Boolean(d))
     if (ok.length === 0) {
       const firstError = nonExpiredRows.map((r) => res.errors[r.id]).find(Boolean)
-      setReadStatusByGroup((prev) => ({ ...prev, [key]: { status: 'error', error: firstError ?? '查询已读状态失败。' } }))
+      setReadStatusByGroup((prev) => ({ ...prev, [key]: { status: 'error', error: firstError ?? peT('readStatusFailed') } }))
       return
     }
     const failedCount = nonExpiredRows.length - ok.length
@@ -130,7 +131,7 @@ export function usePushEngagementMonitorPage() {
       [key]: {
         status: 'ready',
         data: mergeReadStatuses(ok),
-        partialError: failedCount > 0 ? `${failedCount} / ${nonExpiredRows.length} 条未查到：${firstError ?? '未知原因'}` : undefined,
+        partialError: failedCount > 0 ? peT('readPartialFailed', { failed: failedCount, total: nonExpiredRows.length, reason: firstError ?? peT('unknownReason') }) : undefined,
       },
     }))
   }, [])

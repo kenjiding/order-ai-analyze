@@ -1,4 +1,5 @@
 import { PackageMinus, Warehouse, Truck } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
 import { PageSectionTabs } from '../../components/PageSectionTabs'
 import { InHubPackageLossTab } from './components/InHubPackageLossTab'
 import { OutHubPackageLossTab } from './components/OutHubPackageLossTab'
@@ -6,6 +7,7 @@ import { usePackageLossMonitorPage, type PackageLossTabId } from './usePackageLo
 import './packageLossMonitor.css'
 
 export default function PackageLossMonitorPage() {
+  const { t } = useTranslation('packageLoss')
   const v = usePackageLossMonitorPage()
 
   return (
@@ -14,20 +16,18 @@ export default function PackageLossMonitorPage() {
         <div className="package-loss-pagehead">
           <h1 className="package-loss-title">
             <PackageMinus className="h-5 w-5 shrink-0 text-[#2f8f87]" aria-hidden />
-            丢包监控
+            {t('title')}
           </h1>
           <p className="package-loss-lead">
-            {v.activeTab === 'in-hub'
-              ? '责任在仓内。轨迹可辅助定位最后接触包裹的司机。'
-              : '责任明确，归属司机。'}
+            {v.activeTab === 'in-hub' ? t('leadInHub') : t('leadOutHub')}
           </p>
         </div>
         <PageSectionTabs
           activeId={v.activeTab}
           onChange={(id) => v.setActiveTab(id as PackageLossTabId)}
           items={[
-            { id: 'in-hub', label: '库内丢包', icon: Warehouse },
-            { id: 'out-hub', label: '库外丢包', icon: Truck },
+            { id: 'in-hub', label: t('tabInHub'), icon: Warehouse },
+            { id: 'out-hub', label: t('tabOutHub'), icon: Truck },
           ]}
         />
       </section>

@@ -1,5 +1,6 @@
 import { Chart } from '@antv/g2'
 import { useEffect, useMemo, useRef } from 'react'
+import { useTranslation } from 'react-i18next'
 
 type Point = { date: string; value: number }
 
@@ -20,6 +21,7 @@ export function WageDailyMetricLineChart({
   ariaLabel,
   className,
 }: Props) {
+  const { t } = useTranslation('wageSalary')
   const containerRef = useRef<HTMLDivElement>(null)
   const skipChart = !points.length
   const pointsKey = useMemo(
@@ -94,7 +96,7 @@ export function WageDailyMetricLineChart({
           className ?? '',
         ].join(' ')}
       >
-        暂无按日数据。
+        {t('charts.noDailyData')}
       </div>
     )
   }

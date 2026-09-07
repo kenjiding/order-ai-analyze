@@ -9,11 +9,10 @@
  * 所以这里不复用，改为按站点线路聚合的明细行。
  */
 import {
-  containerTypeLabel,
   formatTransferNo,
-  type ContainerType,
   type TransferStatus,
 } from '../containerManagement/constants'
+import { labelOf as typeLabelOf } from '../containerManagement/containerTypeService'
 import type { TransferSide } from '../containerManagement/transferNotify'
 import type { TransferView } from '../containerManagement/transferService'
 import { buildContainerTransferListUrl } from './publicWebOrigin'
@@ -69,7 +68,7 @@ function footerCaption(content: string): CardEl {
 }
 
 function labelOf(containerType: string): string {
-  return containerTypeLabel[containerType as ContainerType] ?? containerType
+  return typeLabelOf(containerType)
 }
 
 /**

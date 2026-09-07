@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { Select } from 'antd'
 import { copyTextToClipboard } from '../../utils/clipboard'
 import type { ScanAggregate, AttendanceEfficiencyResult, ScannerEfficiencyResult } from './aggregates'
@@ -47,6 +48,7 @@ export default function WeeklyReportPanel({
   dailyCostPerTicketByDate,
   dailyTotalLaborCostByDate,
 }: WeeklyReportPanelProps) {
+  const { t } = useTranslation('scannerEfficiency')
   const [weeklyReportHtml, setWeeklyReportHtml] = useState('')
   const [weeklyReportGeneratedAt, setWeeklyReportGeneratedAt] = useState('')
   const [weeklyReportHint, setWeeklyReportHint] = useState('')
@@ -79,7 +81,7 @@ export default function WeeklyReportPanel({
     if (!repository) {
       return {
         previousSnapshot: null,
-        storageMessage: '当前浏览器不支持 IndexedDB，本次无法保存或读取上周对比数据。',
+        storageMessage: t('weekly.idbUnsupported'),
       }
     }
 
@@ -90,7 +92,7 @@ export default function WeeklyReportPanel({
     } catch {
       return {
         previousSnapshot: null,
-        storageMessage: '读取 IndexedDB 历史周报失败，本次仅生成当前周分析。',
+        storageMessage: t('weekly.idbReadFailed'),
       }
     }
   }
@@ -104,7 +106,7 @@ export default function WeeklyReportPanel({
       await repository.pruneExpired()
       return ''
     } catch {
-      return '保存本周快照失败，下次可能无法进行上周对比。'
+      return t('weekly.snapshotSaveFailed')
     }
   }
 
@@ -159,7 +161,7 @@ export default function WeeklyReportPanel({
           },
         })
       } catch {
-        aiHint = '研判段落生成失败，已回退为系统内置结论与建议。'
+        aiHint = t('weekly.aiFallback')
       }
       const html = buildWeeklyReportEmailHtml({
         scanAggregate,
@@ -175,10 +177,10 @@ export default function WeeklyReportPanel({
       })
       const saveMessage = await saveCurrentSnapshot(currentSnapshot)
       const baseMessage = previousSnapshot
-        ? '周报已加入上周同口径对比。'
+        ? t('weekly.withComparison')
         : storageMessage || saveMessage
-          ? '未读取到上周快照，本次仅生成当前周分析。'
-          : '未找到上周快照，本周快照已保存供下次对比。'
+          ? t('weekly.noPreviousSnapshot')
+          : t('weekly.snapshotSaved')
 
       setWeeklyReportHtml(html)
       setWeeklyReportGeneratedAt(formatDateTime(new Date()))
@@ -203,7 +205,7 @@ export default function WeeklyReportPanel({
     if (!weeklyReportHtml) return
     const previewWindow = window.open('', '_blank')
     if (!previewWindow) {
-      setWeeklyReportHint('浏览器拦截了新窗口，请允许弹窗后重试。')
+      setWeeklyReportHint(t('weekly.popupBlocked'))
       return
     }
     previewWindow.document.open()
@@ -214,7 +216,7 @@ export default function WeeklyReportPanel({
   const handleCopyWeeklyReport = async () => {
     if (!weeklyReportHtml) return
     const ok = await copyTextToClipboard(weeklyReportHtml)
-    setWeeklyReportHint(ok ? '周报 HTML 已复制到剪贴板。' : '复制失败，请改用下载功能。')
+    setWeeklyReportHint(ok ? t('weekly.copySuccess') : t('weekly.copyFailed'))
   }
 
   const handleDownloadWeeklyReport = () => {
@@ -223,19 +225,19 @@ export default function WeeklyReportPanel({
     const url = URL.createObjectURL(blob)
     const link = document.createElement('a')
     link.href = url
-    link.download = '物流运营周报邮件.html'
+    link.download = t('weekly.downloadFilename')
     document.body.appendChild(link)
     link.click()
     document.body.removeChild(link)
     URL.revokeObjectURL(url)
-    setWeeklyReportHint('周报 HTML 已下载。')
+    setWeeklyReportHint(t('weekly.downloadSuccess'))
   }
 
   const handleOpenWeeklyReportMail = () => {
     if (!weeklyReportHtml) return
     const defaultTitle = buildWeeklyReportTitle(scanAggregate, attendanceResult)
     const subject = (weeklyReportTitle || defaultTitle).trim() || defaultTitle
-    const body = '周报正文请粘贴“周报 HTML 源码”内容，建议使用支持 HTML 的邮件编辑器发送。'
+    const body = t('weekly.mailBodyHint')
     const cc = normalizeMailtoCc(weeklyMailCc)
     const params = new URLSearchParams()
     params.set('subject', subject)
@@ -244,7 +246,7 @@ export default function WeeklyReportPanel({
     if (cc) params.set('cc', cc)
     const mailtoUrl = `mailto:?${params.toString()}`
     window.location.href = mailtoUrl
-    setWeeklyReportHint(cc ? '已打开默认邮件客户端，并填充标题与抄送人。' : '已打开默认邮件客户端，并自动填充邮件标题。')
+    setWeeklyReportHint(cc ? t('weekly.mailOpenedWithCc') : t('weekly.mailOpened'))
   }
 
   return (
@@ -252,7 +254,7 @@ export default function WeeklyReportPanel({
       <div className="mb-5 grid grid-cols-1 gap-4 md:grid-cols-2 md:items-start md:gap-6">
         <div className="min-w-0">
           <label htmlFor="weekly-mail-title" className="mb-2 block text-sm font-medium text-slate-700">
-            周报邮件标题
+            {t('weekly.mailTitleLabel')}
           </label>
           <input
             id="weekly-mail-title"
@@ -260,13 +262,13 @@ export default function WeeklyReportPanel({
             value={weeklyReportTitle}
             onChange={(event) => setWeeklyReportTitle(event.target.value)}
             className="admin-input w-full"
-            placeholder="物流运营周报"
+            placeholder={t('weekly.mailTitlePlaceholder')}
           />
         </div>
 
         <div className="min-w-0">
           <label htmlFor="weekly-mail-cc" className="mb-2 block text-sm font-medium text-slate-700">
-            邮件抄送人
+            {t('weekly.mailCcLabel')}
           </label>
           <input
             id="weekly-mail-cc"
@@ -275,7 +277,7 @@ export default function WeeklyReportPanel({
             value={weeklyMailCc}
             onChange={(event) => setWeeklyMailCc(event.target.value)}
             className="admin-input w-full"
-            placeholder="多个邮箱请用逗号分隔，示例：zhang@corp.com, li@corp.com"
+            placeholder={t('weekly.mailCcPlaceholder')}
             autoComplete="off"
           />
           <datalist id="weekly-mail-cc-history">
@@ -294,7 +296,7 @@ export default function WeeklyReportPanel({
             disabled={generatingWeeklyReport}
             className="admin-btn admin-btn-primary"
           >
-            {generatingWeeklyReport ? '生成中…' : '生成周报 HTML'}
+            {generatingWeeklyReport ? t('weekly.generating') : t('weekly.generate')}
           </button>
           <button
             type="button"
@@ -302,7 +304,7 @@ export default function WeeklyReportPanel({
             disabled={!weeklyReportHtml}
             className="admin-btn"
           >
-            新窗口预览
+            {t('weekly.preview')}
           </button>
           <button
             type="button"
@@ -310,7 +312,7 @@ export default function WeeklyReportPanel({
             disabled={!weeklyReportHtml}
             className="admin-btn"
           >
-            打开邮件
+            {t('weekly.openMail')}
           </button>
           <button
             type="button"
@@ -318,7 +320,7 @@ export default function WeeklyReportPanel({
             disabled={!weeklyReportHtml}
             className="admin-btn"
           >
-            复制 HTML
+            {t('weekly.copyHtml')}
           </button>
           <button
             type="button"
@@ -326,40 +328,40 @@ export default function WeeklyReportPanel({
             disabled={!weeklyReportHtml}
             className="admin-btn"
           >
-            下载 HTML
+            {t('weekly.downloadHtml')}
           </button>
         </div>
         <div className="flex flex-wrap items-center gap-2 text-xs font-medium text-slate-600">
-          <span className="shrink-0">研判模型</span>
+          <span className="shrink-0">{t('weekly.modelLabel')}</span>
           <Select<WeeklyReportAiProvider>
             className="min-w-[140px]"
             value={weeklyAiProvider}
             options={WEEKLY_REPORT_MODEL_OPTIONS}
             disabled={generatingWeeklyReport}
             onChange={(value) => setWeeklyAiProvider(value)}
-            aria-label="选择周报研判模型"
+            aria-label={t('weekly.modelAria')}
           />
         </div>
       </div>
 
       <div className="mt-4 rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
         {weeklyReportGeneratedAt
-          ? `最近生成时间：${weeklyReportGeneratedAt}`
-          : '尚未生成周报，请点击“生成周报 HTML”。'}
+          ? t('weekly.lastGenerated', { time: weeklyReportGeneratedAt })
+          : t('weekly.notGenerated')}
         <br />
-        {weeklyReportHint || '周报会按当前页面口径自动重构。'}
+        {weeklyReportHint || t('weekly.defaultHint')}
       </div>
 
       <div className="rounded-lg border border-slate-200 bg-slate-50 p-4">
         {weeklyReportHtml ? (
           <iframe
-            title="周报预览"
+            title={t('weekly.previewIframeTitle')}
             srcDoc={weeklyReportHtml}
             className="h-[560px] w-full rounded-lg border border-slate-200 bg-white"
           />
         ) : (
           <div className="flex h-[560px] items-center justify-center rounded-lg border border-dashed border-slate-300 bg-white text-sm text-slate-500">
-            生成后将显示周报预览。
+            {t('weekly.previewEmpty')}
           </div>
         )}
       </div>

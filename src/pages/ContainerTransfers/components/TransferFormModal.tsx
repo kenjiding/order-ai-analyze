@@ -4,15 +4,14 @@
  * 新增时可以一次录入多组（每组是独立的一条流转），整批一个事务提交，
  * 任何一组不合法就整批失败，错误信息带组序号。编辑时固定单组。
  */
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Alert, Button, DatePicker, Input, Modal, Select, Tooltip } from 'antd'
 import dayjs, { type Dayjs } from 'dayjs'
 import { Copy, Plus, Trash2 } from 'lucide-react'
-import {
-  CONTAINER_TYPES,
-  SELECTABLE_TRANSFER_KINDS,
-  transferKindLabel,
-} from '../../../containerManagement/constants'
+import { useTranslation } from 'react-i18next'
+import type { TFunction } from 'i18next'
+import { SELECTABLE_TRANSFER_KINDS } from '../../../containerManagement/constants'
+import { useActiveContainerTypes } from '../../../containerManagement/containerTypeStore'
 import type {
   ContainerAccount,
   Transfer,
@@ -40,17 +39,17 @@ function todayIso(): string {
   return dayjs().format('YYYY-MM-DD')
 }
 
-/** 品类固定两种，两行都摆出来，填哪个算哪个 */
-function emptyLines(): TransferDraft['lines'] {
-  return CONTAINER_TYPES.map((containerType) => ({ containerType, quantity: '' }))
+/** 启用中的品类各摆一行，填哪个算哪个 */
+function emptyLines(codes: string[]): TransferDraft['lines'] {
+  return codes.map((containerType) => ({ containerType, quantity: '' }))
 }
 
-function emptyDraft(fromAccountId: string): TransferDraft {
+function emptyDraft(fromAccountId: string, codes: string[]): TransferDraft {
   return {
     kind: 'LEND',
     fromAccountId,
     toAccountId: '',
-    lines: emptyLines(),
+    lines: emptyLines(codes),
     occurredAt: todayIso(),
     note: '',
   }
@@ -62,16 +61,16 @@ function filledLines(draft: TransferDraft): TransferDraft['lines'] {
 }
 
 /** 单组校验，返回第一条错误；组序号由调用方补 */
-function validateDraft(draft: TransferDraft): string | null {
-  if (!draft.occurredAt) return '请选择日期'
-  if (!draft.fromAccountId) return '请选择转出方'
-  if (!draft.toAccountId) return '请选择接收方'
-  if (draft.fromAccountId === draft.toAccountId) return '转出方与接收方不能相同'
+function validateDraft(draft: TransferDraft, t: TFunction<'container'>): string | null {
+  if (!draft.occurredAt) return t('transfers.errSelectDate')
+  if (!draft.fromAccountId) return t('transfers.errSelectFrom')
+  if (!draft.toAccountId) return t('transfers.errSelectTo')
+  if (draft.fromAccountId === draft.toAccountId) return t('transfers.errSameAccount')
   const lines = filledLines(draft)
-  if (lines.length === 0) return '至少填写一个品类的数量'
+  if (lines.length === 0) return t('transfers.errMinOneLine')
   for (const line of lines) {
     const quantity = Number(line.quantity)
-    if (!Number.isInteger(quantity) || quantity < 1) return '数量必须为大于 0 的整数'
+    if (!Number.isInteger(quantity) || quantity < 1) return t('transfers.errQuantityInt')
   }
   return null
 }
@@ -86,11 +85,15 @@ export function TransferFormModal({
   onCancel,
   onSubmit,
 }: Props) {
+  const { t } = useTranslation('container')
+  const { t: tc } = useTranslation('common')
   const [drafts, setDrafts] = useState<TransferDraft[]>([])
   const [error, setError] = useState<string | null>(null)
 
   const isEditing = editing !== null
   const editable = editing === null || editing.status === 'PENDING_RECEIVER'
+  const activeTypes = useActiveContainerTypes()
+  const activeCodes = useMemo(() => activeTypes.map((type) => type.code), [activeTypes])
 
   useEffect(() => {
     if (!open) return
@@ -101,7 +104,13 @@ export function TransferFormModal({
           kind: editing.kind,
           fromAccountId: editing.fromAccountId,
           toAccountId: editing.toAccountId,
-          lines: CONTAINER_TYPES.map((containerType) => {
+          // 该单已有的品类必须保留 —— 编辑一笔含已停用品类的单时，漏掉它等于把那行数量清零
+          lines: [
+            ...activeCodes,
+            ...editing.items
+              .map((entry) => entry.containerType)
+              .filter((code) => !activeCodes.includes(code)),
+          ].map((containerType) => {
             const item = editing.items.find((entry) => entry.containerType === containerType)
             return { containerType, quantity: item ? String(item.declaredQuantity) : '' }
           }),
@@ -111,8 +120,8 @@ export function TransferFormModal({
       ])
       return
     }
-    setDrafts([emptyDraft(ownAccounts.length === 1 ? ownAccounts[0].id : '')])
-  }, [open, editing, ownAccounts])
+    setDrafts([emptyDraft(ownAccounts.length === 1 ? ownAccounts[0].id : '', activeCodes)])
+  }, [open, editing, ownAccounts, activeCodes])
 
   const update = (index: number, patch: Partial<TransferDraft>) => {
     setDrafts((prev) => prev.map((item, i) => (i === index ? { ...item, ...patch } : item)))
@@ -120,7 +129,7 @@ export function TransferFormModal({
   }
 
   const addGroup = () => {
-    setDrafts((prev) => [...prev, emptyDraft(prev.at(-1)?.fromAccountId ?? '')])
+    setDrafts((prev) => [...prev, emptyDraft(prev.at(-1)?.fromAccountId ?? '', activeCodes)])
     setError(null)
   }
 
@@ -141,9 +150,9 @@ export function TransferFormModal({
 
   const handleOk = async () => {
     for (const [index, draft] of drafts.entries()) {
-      const message = validateDraft(draft)
+      const message = validateDraft(draft, t)
       if (message) {
-        setError(drafts.length > 1 ? `第 ${index + 1} 组：${message}` : message)
+        setError(drafts.length > 1 ? t('transfers.errGroupPrefix', { n: index + 1, message }) : message)
         return
       }
     }
@@ -160,7 +169,7 @@ export function TransferFormModal({
 
   return (
     <Modal
-      title={isEditing ? '编辑流转记录' : '新增流转记录'}
+      title={isEditing ? t('transfers.modalEditTitle') : t('transfers.modalCreateTitle')}
       open={open}
       onCancel={onCancel}
       destroyOnHidden
@@ -169,16 +178,14 @@ export function TransferFormModal({
       footer={
         <div className="flex items-center justify-between gap-2">
           <span className="text-xs text-slate-500">
-            {isEditing
-              ? '待接收方确认的记录可调整日期与明细；业务类型与双方站点不可修改。'
-              : `共 ${drafts.length} 组，一起提交；任何一组不合法则整批不创建。`}
+            {isEditing ? t('transfers.footerEditHint') : t('transfers.footerCreateHint', { count: drafts.length })}
           </span>
           <div className="flex gap-2">
             <Button onClick={onCancel} disabled={submitting}>
-              取消
+              {tc('cancel')}
             </Button>
             <Button type="primary" loading={submitting} onClick={() => void handleOk()}>
-              {isEditing ? '保存' : `提交 ${drafts.length} 条`}
+              {isEditing ? tc('save') : t('transfers.submitCount', { count: drafts.length })}
             </Button>
           </div>
         </div>
@@ -192,25 +199,25 @@ export function TransferFormModal({
           >
             {!isEditing ? (
               <header className="flex items-center justify-between gap-3 border-b border-[var(--admin-line)] bg-[var(--admin-surface-soft)] px-4 py-2">
-                <span className="text-sm font-semibold text-slate-800">第 {index + 1} 组</span>
+                <span className="text-sm font-semibold text-slate-800">{t('transfers.groupN', { n: index + 1 })}</span>
                 <div className="flex items-center gap-1">
-                  <Tooltip title={drafts.length >= MAX_GROUPS ? `最多 ${MAX_GROUPS} 组` : '复制这一组'}>
+                  <Tooltip title={drafts.length >= MAX_GROUPS ? t('transfers.maxGroups', { max: MAX_GROUPS }) : t('transfers.copyGroup')}>
                     <Button
                       type="text"
                       disabled={drafts.length >= MAX_GROUPS}
                       icon={<Copy className="h-4 w-4" aria-hidden />}
                       onClick={() => duplicateGroup(index)}
-                      aria-label="复制这一组"
+                      aria-label={t('transfers.copyGroup')}
                     />
                   </Tooltip>
-                  <Tooltip title={drafts.length === 1 ? '至少保留一组' : '删除这一组'}>
+                  <Tooltip title={drafts.length === 1 ? t('transfers.keepOneGroup') : t('transfers.removeGroup')}>
                     <Button
                       type="text"
                       danger
                       disabled={drafts.length === 1}
                       icon={<Trash2 className="h-4 w-4" aria-hidden />}
                       onClick={() => removeGroup(index)}
-                      aria-label="删除这一组"
+                      aria-label={t('transfers.removeGroup')}
                     />
                   </Tooltip>
                 </div>
@@ -220,7 +227,7 @@ export function TransferFormModal({
             <div className="grid gap-x-4 gap-y-3 px-4 py-4 sm:grid-cols-2">
               <label className="flex flex-col gap-1.5">
                 <span className="text-sm text-slate-700">
-                  时间 <span className="text-rose-500">*</span>
+                  {t('transfers.fieldTime')} <span className="text-rose-500">*</span>
                 </span>
                 <DatePicker
                   className="w-full"
@@ -234,7 +241,7 @@ export function TransferFormModal({
               </label>
               <label className="flex flex-col gap-1.5">
                 <span className="text-sm text-slate-700">
-                  业务类型 <span className="text-rose-500">*</span>
+                  {t('transfers.fieldKind')} <span className="text-rose-500">*</span>
                 </span>
                 <Select
                   value={draft.kind}
@@ -242,16 +249,16 @@ export function TransferFormModal({
                   onChange={(value) => update(index, { kind: value as TransferKind })}
                   options={SELECTABLE_TRANSFER_KINDS.map((item) => ({
                     value: item,
-                    label: transferKindLabel[item],
+                    label: t(`transferKind.${item}`),
                   }))}
                 />
               </label>
               <label className="flex flex-col gap-1.5">
                 <span className="text-sm text-slate-700">
-                  转出方 <span className="text-rose-500">*</span>
+                  {t('transfers.fieldFrom')} <span className="text-rose-500">*</span>
                 </span>
                 <Select
-                  placeholder="选择…"
+                  placeholder={t('selectPlaceholder')}
                   showSearch
                   optionFilterProp="label"
                   value={draft.fromAccountId || undefined}
@@ -268,10 +275,10 @@ export function TransferFormModal({
               </label>
               <label className="flex flex-col gap-1.5">
                 <span className="text-sm text-slate-700">
-                  接收方 <span className="text-rose-500">*</span>
+                  {t('transfers.fieldTo')} <span className="text-rose-500">*</span>
                 </span>
                 <Select
-                  placeholder="选择…"
+                  placeholder={t('selectPlaceholder')}
                   showSearch
                   optionFilterProp="label"
                   value={draft.toAccountId || undefined}
@@ -284,7 +291,7 @@ export function TransferFormModal({
               </label>
               <div className="flex flex-col gap-1.5 sm:col-span-2">
                 <span className="text-sm text-slate-700">
-                  流转明细 <span className="text-rose-500">*</span>
+                  {t('transfers.fieldLines')} <span className="text-rose-500">*</span>
                 </span>
                 <TransferLineItemsInput
                   lines={draft.lines}
@@ -294,7 +301,7 @@ export function TransferFormModal({
               </div>
               {!isEditing ? (
                 <label className="flex flex-col gap-1.5 sm:col-span-2">
-                  <span className="text-sm text-slate-700">备注（可填写车牌、运单号等）</span>
+                  <span className="text-sm text-slate-700">{t('transfers.fieldNote')}</span>
                   <Input.TextArea
                     rows={2}
                     value={draft.note}
@@ -316,7 +323,7 @@ export function TransferFormModal({
             icon={<Plus className="h-4 w-4" aria-hidden />}
             onClick={addGroup}
           >
-            {drafts.length >= MAX_GROUPS ? `最多 ${MAX_GROUPS} 组` : '再加一组'}
+            {drafts.length >= MAX_GROUPS ? t('transfers.maxGroups', { max: MAX_GROUPS }) : t('transfers.addAnotherGroup')}
           </Button>
         ) : null}
 

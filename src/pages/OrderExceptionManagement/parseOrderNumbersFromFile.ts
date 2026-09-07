@@ -1,4 +1,5 @@
 import * as XLSX from 'xlsx'
+import { i18n } from '../../i18n'
 import { parseOrderNumbersUnique } from '../../utils/orderNoInput'
 
 const ORDER_NO_COLUMNS = [
@@ -7,13 +8,18 @@ const ORDER_NO_COLUMNS = [
   '运单',
   '跟踪号',
   '单号',
+  'Waybill No.',
+  'WaybillNo',
   'TrackingNumber',
   'tracking_number',
   'waybill',
-  'WaybillNo',
   'waybillNo',
   'WAYBILLNO',
 ] as const
+
+function te(key: string): string {
+  return i18n.t(key, { ns: 'orderException' })
+}
 
 export type ParseOrderNumbersFromFileResult =
   | { ok: true; orderNos: string[]; sourceLabel: string }
@@ -87,7 +93,7 @@ function extractOrderNosFromMatrix(matrix: unknown[][]): string[] {
 function parseWorkbook(buf: ArrayBuffer): ParseOrderNumbersFromFileResult {
   const wb = XLSX.read(buf, { type: 'array', cellDates: false, raw: true })
   const sheetName = wb.SheetNames[0]
-  if (!sheetName) return { ok: false, error: '表格为空' }
+  if (!sheetName) return { ok: false, error: te('parseOrderFile.emptySheet') }
 
   const sheet = wb.Sheets[sheetName]
   const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet, { defval: '' })
@@ -98,14 +104,14 @@ function parseWorkbook(buf: ArrayBuffer): ParseOrderNumbersFromFileResult {
     orderNos = extractOrderNosFromMatrix(matrix)
   }
 
-  if (!orderNos.length) return { ok: false, error: '未识别到订单号，请确认文件包含「订单号」列或首列为订单号' }
+  if (!orderNos.length) return { ok: false, error: te('parseOrderFile.noOrderNoInSheet') }
   return { ok: true, orderNos, sourceLabel: sheetName }
 }
 
 function parseCsvText(text: string, sourceLabel: string): ParseOrderNumbersFromFileResult {
   const wb = XLSX.read(text, { type: 'string', cellDates: false, raw: true })
   const sheetName = wb.SheetNames[0]
-  if (!sheetName) return { ok: false, error: 'CSV 无内容' }
+  if (!sheetName) return { ok: false, error: te('parseOrderFile.emptyCsv') }
 
   const sheet = wb.Sheets[sheetName]
   const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet, { defval: '' })
@@ -116,7 +122,7 @@ function parseCsvText(text: string, sourceLabel: string): ParseOrderNumbersFromF
     orderNos = extractOrderNosFromMatrix(matrix)
   }
 
-  if (!orderNos.length) return { ok: false, error: '未识别到订单号，请确认文件包含「订单号」列或首列为订单号' }
+  if (!orderNos.length) return { ok: false, error: te('parseOrderFile.noOrderNoInSheet') }
   return { ok: true, orderNos, sourceLabel }
 }
 
@@ -126,7 +132,7 @@ export async function parseOrderNumbersFromFile(file: File): Promise<ParseOrderN
   if (name.endsWith('.txt') || file.type === 'text/plain') {
     const text = await file.text()
     const orderNos = parseOrderNumbersUnique(text)
-    if (!orderNos.length) return { ok: false, error: '未识别到订单号' }
+    if (!orderNos.length) return { ok: false, error: te('parseOrderFile.noOrderNoInText') }
     return { ok: true, orderNos, sourceLabel: file.name }
   }
 
@@ -142,5 +148,5 @@ export async function parseOrderNumbersFromFile(file: File): Promise<ParseOrderN
     return { ...result, sourceLabel: file.name }
   }
 
-  return { ok: false, error: '不支持该文件类型，请使用 .xlsx / .xls / .csv / .txt' }
+  return { ok: false, error: te('parseOrderFile.unsupportedFile') }
 }

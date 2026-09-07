@@ -1,3 +1,7 @@
+import { i18n } from '../../i18n/index'
+
+const t = (key: string) => String(i18n.t(key, { ns: 'scannerEfficiency' }))
+
 import type { DataTableRow } from './components/ui'
 import type { ScannerSummaryChartRow } from './ScannerSummaryBarChart'
 import type { ScannerTotalEfficiencyRow } from './sortingLookup'
@@ -13,7 +17,7 @@ export function buildScannerPersonSummaryAverageRow(
   if (!rows.length) return null
   return {
     isTableAverageRow: true,
-    scanner: '平均',
+    scanner: t('tableFooter.average'),
     scanCount: avg(rows.map((r) => r.scanCount)),
     cainiaoShare: avg(rows.map((r) => r.cainiaoShare)),
     activeDays: avg(rows.map((r) => r.activeDays)),
@@ -33,7 +37,7 @@ export function buildScannerTotalEfficiencyAverageRow(
     .map((r) => r.cainiaoAdjustedTotalEfficiency!)
   return {
     isTableAverageRow: true,
-    scanner: '平均',
+    scanner: t('tableFooter.average'),
     scanCount: avg(rows.map((r) => r.scanCount)),
     cainiaoShare: avg(rows.filter((r) => r.cainiaoShare != null).map((r) => r.cainiaoShare!)),
     totalHours: avg(matchedHours),

@@ -1,11 +1,12 @@
 import { Button, Checkbox, Empty, Tooltip, Typography } from 'antd'
 import { Send } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
 import { PERMISSION_KEYS, usePermission } from '../../../hooks/usePermission'
 import { SKIP_FEISHU_CAPTURE_ATTR } from '../feishuLevel1ScreenshotCapture'
 import type { ScannerEfficiencyViewModel } from '../useScannerEfficiencyPage'
 import {
   PUSH_CHART_ALL_KEYS,
-  PUSH_CHART_LABELS,
+  pushChartLabel,
   getAvailableChartKeys,
   type PushChartKey,
   type ScannerLevel1FeishuPush,
@@ -17,6 +18,7 @@ type Props = {
 }
 
 export default function SortEfficiencyPushTab({ vm, level1Push }: Props) {
+  const { t } = useTranslation('scannerEfficiency')
   const canSend = usePermission(PERMISSION_KEYS.btnPushNotificationsWarehouseEfficiency)
   const { attendanceResult, scannerResult } = vm
 
@@ -32,7 +34,7 @@ export default function SortEfficiencyPushTab({ vm, level1Push }: Props) {
 
   const chartCheckboxOptions = PUSH_CHART_ALL_KEYS.map((key) => ({
     value: key,
-    label: PUSH_CHART_LABELS[key],
+    label: pushChartLabel(key),
     disabled: !availableChartKeys.includes(key),
   }))
 
@@ -42,7 +44,7 @@ export default function SortEfficiencyPushTab({ vm, level1Push }: Props) {
     return (
       <Empty
         className="py-12"
-        description="请先上传到件扫描文件（含扫描员列）或考勤数据后再配置效率图表推送。"
+        description={t('push.emptyNeedData')}
       />
     )
   }
@@ -51,7 +53,7 @@ export default function SortEfficiencyPushTab({ vm, level1Push }: Props) {
     return (
       <Empty
         className="py-12"
-        description="当前数据不足以生成任何可推送图表，请确认到件含扫描员列或已上传考勤。"
+        description={t('push.emptyNoCharts')}
       />
     )
   }
@@ -60,8 +62,7 @@ export default function SortEfficiencyPushTab({ vm, level1Push }: Props) {
     <div className="sort-efficiency-push-tab space-y-4">
       <div className="space-y-3 rounded-[10px] border border-[var(--admin-line)] bg-gradient-to-br from-violet-50 via-[var(--admin-surface-soft)] to-[var(--admin-accent-soft)] px-3.5 py-3">
         <Typography.Text type="secondary" className="block text-xs leading-relaxed">
-          选择要推送的图表；推送时按当前数据截图，发送至「推送通知 → 物流运营推送」中已启用的
-          webhook。含扫描员汇总时将附带 AI 数据点评。
+          {t('push.desc')}
         </Typography.Text>
         <div className="flex flex-wrap items-center justify-between gap-3 border-t border-violet-200/60 pt-3">
           <div {...{ [SKIP_FEISHU_CAPTURE_ATTR]: '' }}>
@@ -74,7 +75,7 @@ export default function SortEfficiencyPushTab({ vm, level1Push }: Props) {
             />
           </div>
           <div {...{ [SKIP_FEISHU_CAPTURE_ATTR]: '' }}>
-            <Tooltip title={!canSend ? '无操作权限' : undefined}>
+            <Tooltip title={!canSend ? t('common.noPermission') : undefined}>
               <Button
                 type="primary"
                 icon={<Send className="h-4 w-4" />}
@@ -87,7 +88,7 @@ export default function SortEfficiencyPushTab({ vm, level1Push }: Props) {
                   void pushLevel1EfficiencyScreenshots()
                 }}
               >
-                {level1PushWorking ? '正在推送…' : '推送到飞书'}
+                {level1PushWorking ? t('push.pushing') : t('push.pushToFeishu')}
               </Button>
             </Tooltip>
           </div>

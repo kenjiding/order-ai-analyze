@@ -1,14 +1,14 @@
-import { containerTypeLabel } from '../../../containerManagement/constants'
+import { useTranslation } from 'react-i18next'
 import type { Transfer, TransferItem } from '../../../containerManagement/types'
 
-/** 单行「品类: 数量」，入账/实收数与发出数不一致时显示 发出 → 实际 */
 function LineQuantity({ item, status }: { item: TransferItem; status: Transfer['status'] }) {
-  const label = containerTypeLabel[item.containerType] ?? item.containerType
+  const { t } = useTranslation('container')
+  const label = t(`containerType.${item.containerType}`)
 
   if (status === 'CONFIRMED' && item.settledQuantity !== null && item.settledQuantity !== item.declaredQuantity) {
     return (
-      <span title="转出方发出 → 已入账">
-        <span className="text-slate-500">{label}: </span>
+      <span title={t('transfers.declaredToSettled')}>
+        <span className="text-slate-500">{t('transfers.quantityLabel', { type: label })}</span>
         <span className="text-amber-700">{item.declaredQuantity}</span>
         <span className="mx-1 text-slate-400">→</span>
         <span className="font-semibold text-emerald-700">{item.settledQuantity}</span>
@@ -18,8 +18,8 @@ function LineQuantity({ item, status }: { item: TransferItem; status: Transfer['
 
   if (status === 'DISPUTED' && item.receivedQuantity !== null && item.receivedQuantity !== item.declaredQuantity) {
     return (
-      <span title="转出方发出 → 接收方实收">
-        <span className="text-slate-500">{label}: </span>
+      <span title={t('transfers.declaredToReceived')}>
+        <span className="text-slate-500">{t('transfers.quantityLabel', { type: label })}</span>
         <span className="text-amber-700">{item.declaredQuantity}</span>
         <span className="mx-1 text-slate-400">→</span>
         <span className="font-semibold text-violet-700">{item.receivedQuantity}</span>
@@ -29,7 +29,7 @@ function LineQuantity({ item, status }: { item: TransferItem; status: Transfer['
 
   return (
     <span>
-      <span className="text-slate-500">{label}: </span>
+      <span className="text-slate-500">{t('transfers.quantityLabel', { type: label })}</span>
       <span className="font-medium">{item.declaredQuantity}</span>
     </span>
   )

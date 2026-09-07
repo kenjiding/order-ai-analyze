@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import dayjs, { type Dayjs } from 'dayjs'
+import { useTranslation } from 'react-i18next'
 import { fetchDispatchPerformanceData } from './dispatchPerformanceApi'
 import type { DispatchPerformanceResult } from './dispatchPerformanceTypes'
 import { useSettleNow } from './useSettleNow'
@@ -13,6 +14,9 @@ const DEFAULT_RANGE_DAYS = 7
  * 派签只试算（原因见后端 dispatchPerformanceSettleHandler 的文件头）。
  */
 export function useDispatchPerformanceDetailPage(configId: string | undefined) {
+  const { t } = useTranslation('dispatchPerformance')
+  const queryError = t('toast.queryError')
+
   const [range, setRange] = useState<[Dayjs, Dayjs]>(() => [
     dayjs().subtract(DEFAULT_RANGE_DAYS, 'day'),
     dayjs().subtract(1, 'day'),
@@ -43,12 +47,12 @@ export function useDispatchPerformanceDetailPage(configId: string | undefined) {
       if (!controller.signal.aborted) setResult(data)
     } catch (err) {
       if (controller.signal.aborted || (err instanceof Error && err.name === 'AbortError')) return
-      setError(err instanceof Error ? err.message : '查询失败')
+      setError(err instanceof Error ? err.message : queryError)
       setResult(null)
     } finally {
       if (!controller.signal.aborted) setLoading(false)
     }
-  }, [configId, startDate, endDate, supplierKeys])
+  }, [configId, startDate, endDate, supplierKeys, queryError])
 
   useEffect(() => {
     // 筛选条件变化即重查已存的统计结果（不拉 iMile）

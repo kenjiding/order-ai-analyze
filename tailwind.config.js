@@ -8,7 +8,9 @@ export default {
         steel: '#243449',
         cloud: '#e8edf3',
         brass: '#c6a46a',
-        teal: '#52b9b1',
+        // 这里不要再加 teal —— 与 Tailwind 默认调色板同名的键会整个覆盖掉它的色阶，
+        // 曾经的 teal: '#52b9b1' 让全站 teal-50 ~ teal-900 全部失效（图标、色条、标签变白）。
+        // 自定义色请用不会撞名的键名。
         cobalt: '#0f4c81',
       },
       boxShadow: {

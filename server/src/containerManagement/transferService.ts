@@ -10,10 +10,10 @@
 import { and, asc, count, desc, eq, gte, inArray, lte, ne, or, sql } from 'drizzle-orm'
 import { alias } from 'drizzle-orm/pg-core'
 import { getDb, schema } from '../db'
+import { labelOf as typeLabelOf } from './containerTypeService'
 import { ContainerBusinessError } from './accountService'
 import { sumPendingOutbound, writeBalanceAudit } from './balanceService'
 import {
-  containerTypeLabel,
   formatTransferNo,
   transferKindNeedsReceiverConfirmation,
   type BalanceReasonType,
@@ -95,7 +95,7 @@ export function normalizeOccurredAt(raw: unknown): string {
 }
 
 function labelOf(containerType: string): string {
-  return containerTypeLabel[containerType as ContainerType] ?? containerType
+  return typeLabelOf(containerType)
 }
 
 function normalizeLineItems(lineItems: TransferLineInput[]): TransferLineInput[] {
@@ -166,7 +166,10 @@ async function applyBalances(
     fromAccountId: string
     toAccountId: string
     containerType: string
-    quantity: number
+    /** 转出方扣减量：按实际发出量扣，不是按对方实收量 */
+    fromQuantity: number
+    /** 接收方增加量：按实收量加。与 fromQuantity 的差额就是这一趟丢掉的量 */
+    toQuantity: number
     transferId: number
     actorUserId: string | null
     /** 转出方是外部方：余额是推算量，扣成负数也要放行，见 isExternalAccount */
@@ -175,8 +178,18 @@ async function applyBalances(
     voiding?: boolean
   },
 ): Promise<void> {
-  const { fromAccountId, toAccountId, containerType, quantity, transferId, actorUserId } = params
-  if (quantity <= 0) return
+  const { fromAccountId, toAccountId, containerType, fromQuantity, toQuantity, transferId, actorUserId } =
+    params
+  if (fromQuantity <= 0 && toQuantity <= 0) return
+
+  /**
+   * 两端数量不等时，差额就是这一趟丢掉的量：多出的部分单独记一条 TRANSIT_LOSS。
+   * 不这么拆的话，发货方发出 50 实收 45，账上只会减 45 —— 那 5 个静默留在发货方账面上，
+   * 等下次盘点才发现少了，而那时已经查不出是哪一趟丢的。
+   */
+  const base = Math.min(fromQuantity, toQuantity)
+  const lossOnFrom = fromQuantity - base
+  const lossOnTo = toQuantity - base
 
   const reasonType: BalanceReasonType = params.voiding ? 'TRANSFER_VOID' : 'TRANSFER_SETTLEMENT'
   const reasonPrefix = `流转 ${formatTransferNo(transferId)}${params.voiding ? ' 作废冲回' : ''}`
@@ -189,14 +202,14 @@ async function applyBalances(
   const fromRow = firstId === fromAccountId ? firstRow : secondRow
   const toRow = firstId === fromAccountId ? secondRow : firstRow
 
-  if (!params.allowNegativeFrom && fromRow.quantity < quantity) {
+  if (!params.allowNegativeFrom && fromRow.quantity < fromQuantity) {
     throw new ContainerBusinessError(
-      `转出方「${labelOf(containerType)}」余额不足：当前 ${fromRow.quantity}，需要 ${quantity}`,
+      `转出方「${labelOf(containerType)}」余额不足：当前 ${fromRow.quantity}，需要 ${fromQuantity}`,
     )
   }
 
-  const fromNext = fromRow.quantity - quantity
-  const toNext = toRow.quantity + quantity
+  const fromNext = fromRow.quantity - fromQuantity
+  const toNext = toRow.quantity + toQuantity
 
   await tx
     .update(schema.containerBalances)
@@ -207,30 +220,66 @@ async function applyBalances(
     .set({ quantity: toNext, updatedAt: new Date() })
     .where(eq(schema.containerBalances.id, toRow.id))
 
-  await writeBalanceAudit(tx, {
-    action: 'TRANSFER',
-    accountId: fromAccountId,
-    containerType,
-    prevQuantity: fromRow.quantity,
-    newQuantity: fromNext,
-    delta: -quantity,
-    reasonType,
-    reason: `${reasonPrefix} 转出`,
-    transferId,
-    actorUserId,
-  })
-  await writeBalanceAudit(tx, {
-    action: 'TRANSFER',
-    accountId: toAccountId,
-    containerType,
-    prevQuantity: toRow.quantity,
-    newQuantity: toNext,
-    delta: quantity,
-    reasonType,
-    reason: `${reasonPrefix} 转入`,
-    transferId,
-    actorUserId,
-  })
+  // 流水拆成「主条 + 差异条」，prev/new 首尾相连，台账时间线读起来仍是连续的一条线
+  const fromMid = fromRow.quantity - base
+  if (base > 0) {
+    await writeBalanceAudit(tx, {
+      action: 'TRANSFER',
+      accountId: fromAccountId,
+      containerType,
+      prevQuantity: fromRow.quantity,
+      newQuantity: fromMid,
+      delta: -base,
+      reasonType,
+      reason: `${reasonPrefix} 转出`,
+      transferId,
+      actorUserId,
+    })
+  }
+  if (lossOnFrom > 0) {
+    await writeBalanceAudit(tx, {
+      action: 'TRANSFER',
+      accountId: fromAccountId,
+      containerType,
+      prevQuantity: fromMid,
+      newQuantity: fromNext,
+      delta: -lossOnFrom,
+      reasonType: 'TRANSIT_LOSS',
+      reason: `${reasonPrefix} 运输差异`,
+      transferId,
+      actorUserId,
+    })
+  }
+
+  const toMid = toRow.quantity + base
+  if (base > 0) {
+    await writeBalanceAudit(tx, {
+      action: 'TRANSFER',
+      accountId: toAccountId,
+      containerType,
+      prevQuantity: toRow.quantity,
+      newQuantity: toMid,
+      delta: base,
+      reasonType,
+      reason: `${reasonPrefix} 转入`,
+      transferId,
+      actorUserId,
+    })
+  }
+  if (lossOnTo > 0) {
+    await writeBalanceAudit(tx, {
+      action: 'TRANSFER',
+      accountId: toAccountId,
+      containerType,
+      prevQuantity: toMid,
+      newQuantity: toNext,
+      delta: lossOnTo,
+      reasonType: 'TRANSIT_LOSS',
+      reason: `${reasonPrefix} 运输差异冲回`,
+      transferId,
+      actorUserId,
+    })
+  }
 }
 
 /**
@@ -341,7 +390,8 @@ async function createTransferInTx(
         fromAccountId: input.fromAccountId,
         toAccountId: input.toAccountId,
         containerType: item.containerType,
-        quantity: item.quantity,
+        fromQuantity: item.quantity,
+        toQuantity: item.quantity,
         transferId,
         actorUserId,
         allowNegativeFrom: fromIsExternal,
@@ -411,6 +461,10 @@ export async function confirmTransfer(input: {
   proxy?: boolean
   proxyEvidenceUrl?: string | null
 }): Promise<void> {
+  // 代确认等于替对方签字，没有回单就只是我方一面之词，事后争议无从追溯
+  if (input.proxy === true && !input.proxyEvidenceUrl?.trim()) {
+    throw new ContainerBusinessError('代确认必须上传回单或签收单作为依据')
+  }
   await getDb().transaction(async (tx) => {
     const { transfer, items } = await loadTransferForUpdate(tx, input.transferId)
     if (transfer.status !== 'PENDING_RECEIVER') {
@@ -422,7 +476,8 @@ export async function confirmTransfer(input: {
         fromAccountId: transfer.fromAccountId,
         toAccountId: transfer.toAccountId,
         containerType: item.containerType,
-        quantity: item.declaredQuantity,
+        fromQuantity: item.declaredQuantity,
+        toQuantity: item.declaredQuantity,
         transferId: transfer.id,
         actorUserId: input.actorUserId,
         allowNegativeFrom,
@@ -528,6 +583,13 @@ export async function acceptSettlement(input: {
     const total = items.reduce((sum, item) => sum + (item.receivedQuantity ?? 0), 0)
     const now = new Date()
 
+    /**
+     * 全部实收 0 一律按「拒收退回」处理：整单取消，不过账，转出方余额不动。
+     *
+     * 这里没有区分「退回来了」和「整车丢了」—— 后者本该像部分差异那样把发出量记成 TRANSIT_LOSS，
+     * 但要区分就得让接收方在申报时多选一次，为一个极少见的场景加一道所有人都要走的选择题不划算。
+     * 真出现整车丢失，走台账手工调账的「丢失申报」登记，账仍然平得了。
+     */
     if (total === 0) {
       await tx
         .update(schema.containerTransfers)
@@ -544,19 +606,21 @@ export async function acceptSettlement(input: {
 
     const allowNegativeFrom = await isExternalAccount(tx, transfer.fromAccountId)
     for (const item of items) {
-      const quantity = item.receivedQuantity ?? 0
+      const received = item.receivedQuantity ?? 0
       await applyBalances(tx, {
         fromAccountId: transfer.fromAccountId,
         toAccountId: transfer.toAccountId,
         containerType: item.containerType,
-        quantity,
+        // 发出多少就扣多少，差额落成 TRANSIT_LOSS 挂在转出方名下
+        fromQuantity: item.declaredQuantity,
+        toQuantity: received,
         transferId: transfer.id,
         actorUserId: input.actorUserId,
         allowNegativeFrom,
       })
       await tx
         .update(schema.containerTransferItems)
-        .set({ settledQuantity: quantity })
+        .set({ settledQuantity: received })
         .where(eq(schema.containerTransferItems.id, item.id))
     }
 
@@ -714,7 +778,15 @@ export async function voidTransfer(input: {
         fromAccountId: transfer.toAccountId,
         toAccountId: transfer.fromAccountId,
         containerType: item.containerType,
-        quantity: item.settledQuantity ?? 0,
+        /**
+         * 原接收方吐回实收量，原发货方收回发出量：差额那部分同时把 TRANSIT_LOSS 冲平。
+         *
+         * 前提是入账时也按 declaredQuantity 扣的转出方 —— 与 acceptSettlement 成对。
+         * 谁要再改记账语义，这里必须同步改，否则会冲回一个从没扣过的量：
+         * 按旧语义（只扣实收 45）入账的单，用这套冲回会让转出方凭空多出 5 个。
+         */
+        fromQuantity: item.settledQuantity ?? 0,
+        toQuantity: item.declaredQuantity,
         transferId: transfer.id,
         actorUserId: input.actorUserId,
         allowNegativeFrom: true,

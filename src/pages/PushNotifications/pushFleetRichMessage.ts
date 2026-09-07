@@ -1,3 +1,4 @@
+import { i18n } from '../../i18n/index'
 import type { PushApiScope } from '../../permissions/pushNotificationAccess'
 import type { FeishuPushTestFail, FeishuPushTestOk } from './feishuWebhookTestApi'
 import { postFeishuPushRichMessage, postFeishuPushRichMessageViaAppBot } from './feishuWebhookTestApi'
@@ -18,7 +19,10 @@ export async function pushFleetRichMessage(payload: {
   const content = payload.content.trim()
   const images = payload.images.filter((u) => u.trim().length > 0)
   if (!content && images.length === 0) {
-    return { ok: false, error: '文案与图片均为空' }
+    return {
+      ok: false,
+      error: String(i18n.t('api.emptyContentAndImages', { ns: 'pushNotifications' })),
+    }
   }
 
   if (payload.chatId?.trim()) {

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { loadFeishuPushStore, persistFeishuPushStore } from './feishuPushRepository.idb'
 import { emptyFeishuPushStore } from './feishuPushStorage'
 import {
@@ -11,6 +12,7 @@ import type { PushEntryDraft } from './pushEntryFormTransforms'
 import { showToast } from '../../utils/toast'
 
 export function usePushNotificationsPage() {
+  const { t } = useTranslation('pushNotifications')
   const [configs, setConfigs] = useState(emptyFeishuPushStore)
 
   useEffect(() => {
@@ -26,6 +28,11 @@ export function usePushNotificationsPage() {
     }
     return out
   }, [configs])
+
+  const onPersistFailed = useCallback(async () => {
+    showToast(t('toast.saveFailed'), 'error')
+    setConfigs(await loadFeishuPushStore())
+  }, [t])
 
   const upsertEntry = useCallback((entry: PushEntryDraft, previousKind?: FeishuPushKind) => {
     setConfigs((prev) => {
@@ -59,13 +66,10 @@ export function usePushNotificationsPage() {
           ? { ...prev, [sourceKind]: targetList }
           : { ...prev, [sourceKind]: sourceList, [targetKind]: targetList }
 
-      void persistFeishuPushStore(nextConfigs).catch(async () => {
-        showToast('飞书推送配置保存失败，请重试。', 'error')
-        setConfigs(await loadFeishuPushStore())
-      })
+      void persistFeishuPushStore(nextConfigs).catch(() => void onPersistFailed())
       return nextConfigs
     })
-  }, [])
+  }, [onPersistFailed])
 
   const deleteEntryById = useCallback((id: string) => {
     setConfigs((prev) => {
@@ -82,13 +86,10 @@ export function usePushNotificationsPage() {
         ...prev,
         [foundKind]: prev[foundKind].filter((x) => x.id !== id),
       }
-      void persistFeishuPushStore(nextConfigs).catch(async () => {
-        showToast('飞书推送配置保存失败，请重试。', 'error')
-        setConfigs(await loadFeishuPushStore())
-      })
+      void persistFeishuPushStore(nextConfigs).catch(() => void onPersistFailed())
       return nextConfigs
     })
-  }, [])
+  }, [onPersistFailed])
 
   const toggleEntryDisabled = useCallback((id: string, disabled: boolean) => {
     setConfigs((prev) => {
@@ -107,13 +108,10 @@ export function usePushNotificationsPage() {
         break
       }
       if (!changed) return prev
-      void persistFeishuPushStore(next).catch(async () => {
-        showToast('飞书推送配置保存失败，请重试。', 'error')
-        setConfigs(await loadFeishuPushStore())
-      })
+      void persistFeishuPushStore(next).catch(() => void onPersistFailed())
       return next
     })
-  }, [])
+  }, [onPersistFailed])
 
   return {
     entriesWithKind,

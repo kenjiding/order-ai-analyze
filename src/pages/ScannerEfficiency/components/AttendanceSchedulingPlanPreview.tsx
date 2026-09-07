@@ -1,8 +1,9 @@
 import type { AttendanceSchedulingPlanPreview } from '../attendanceSchedulingPlanPreviewModel'
 import {
-  SCHEDULING_PLAN_HOURS_STRUCTURE,
-  SCHEDULING_PLAN_PROCESSES,
+  getSchedulingPlanHoursStructure,
+  getSchedulingPlanProcesses,
 } from '../attendanceSchedulingPlanPreviewModel'
+import { useTranslation } from 'react-i18next'
 import '../attendanceSchedulingPlanPreview.css'
 
 type Props = {
@@ -12,11 +13,13 @@ type Props = {
 }
 
 export default function AttendanceSchedulingPlanPreviewView({ preview, cellTexts, onCellChange }: Props) {
+  const { t } = useTranslation('scannerEfficiency')
   const { planDate } = preview
+  const schedulingProcesses = getSchedulingPlanProcesses()
+  const hoursStructure = getSchedulingPlanHoursStructure()
   const k = (suffix: string) => `${planDate}:${suffix}`
   const v = (suffix: string) => cellTexts[k(suffix)] ?? ''
 
-  // Editable cell – user types into this
   const Ed = ({
     suffix,
     className = 'sp-cell',
@@ -34,7 +37,6 @@ export default function AttendanceSchedulingPlanPreviewView({ preview, cellTexts
     </td>
   )
 
-  // Read-only computed cell
   const Ro = ({
     suffix,
     className = 'sp-cell sp-cell--computed',
@@ -47,7 +49,6 @@ export default function AttendanceSchedulingPlanPreviewView({ preview, cellTexts
 
   return (
     <div className="sp-plan">
-      {/* ── Title bar ── */}
       <div className="sp-title-bar">
         <div
           className="sp-title-text"
@@ -59,18 +60,17 @@ export default function AttendanceSchedulingPlanPreviewView({ preview, cellTexts
         </div>
       </div>
 
-      {/* ── Section 1: 总体情况 ── */}
       <div className="sp-section">
-        <div className="sp-section-hd sp-section-hd--s1">1. 总体情况</div>
+        <div className="sp-section-hd sp-section-hd--s1">{t('scheduling.section1')}</div>
         <table className="sp-table">
           <thead>
             <tr>
-              <th>入站件量</th>
-              <th>粗分件量</th>
-              <th>细分件量</th>
-              <th>总工时</th>
-              <th>总人数</th>
-              <th>总效率（件/时）</th>
+              <th>{t('scheduling.columns.inboundVolume')}</th>
+              <th>{t('scheduling.columns.coarseVolume')}</th>
+              <th>{t('scheduling.columns.fineVolume')}</th>
+              <th>{t('scheduling.columns.totalHours')}</th>
+              <th>{t('scheduling.columns.totalHeadcount')}</th>
+              <th>{t('scheduling.columns.totalEfficiency')}</th>
             </tr>
           </thead>
           <tbody>
@@ -86,9 +86,8 @@ export default function AttendanceSchedulingPlanPreviewView({ preview, cellTexts
         </table>
       </div>
 
-      {/* ── Section 2: 上一日人效达成复盘及建议 ── */}
       <div className="sp-section">
-        <div className="sp-section-hd sp-section-hd--s2">2. 上一日人效达成复盘及建议</div>
+        <div className="sp-section-hd sp-section-hd--s2">{t('scheduling.section2')}</div>
         <table className="sp-table">
           <colgroup>
             <col style={{ width: '7%' }} />
@@ -105,21 +104,21 @@ export default function AttendanceSchedulingPlanPreviewView({ preview, cellTexts
           </colgroup>
           <thead>
             <tr>
-              <th>工序</th>
-              <th>上一日件量</th>
-              <th>上一日投入工时</th>
-              <th>实际人效</th>
-              <th>目标人效</th>
-              <th>达成率</th>
-              <th>偏差</th>
-              <th>判断</th>
-              <th>原因说明</th>
-              <th>次日调整建议</th>
-              <th>调整岗位/时段</th>
+              <th>{t('scheduling.columns.process')}</th>
+              <th>{t('scheduling.columns.prevDayQty')}</th>
+              <th>{t('scheduling.columns.prevDayHours')}</th>
+              <th>{t('scheduling.columns.actualEff')}</th>
+              <th>{t('scheduling.columns.targetEff')}</th>
+              <th>{t('scheduling.columns.achievementRate')}</th>
+              <th>{t('scheduling.columns.gap')}</th>
+              <th>{t('scheduling.columns.verdict')}</th>
+              <th>{t('scheduling.columns.reason')}</th>
+              <th>{t('scheduling.columns.nextDaySuggest')}</th>
+              <th>{t('scheduling.columns.adjustSlot')}</th>
             </tr>
           </thead>
           <tbody>
-            {SCHEDULING_PLAN_PROCESSES.map((proc, idx) => (
+            {schedulingProcesses.map((proc, idx) => (
               <tr key={proc.id}>
                 <td className="sp-cell sp-cell--label">{proc.label}</td>
                 <Ed suffix={`s2-${idx}-qty`}       className="sp-cell sp-cell--num" />
@@ -138,11 +137,9 @@ export default function AttendanceSchedulingPlanPreviewView({ preview, cellTexts
         </table>
       </div>
 
-      {/* ── Sections 3A / 3B side by side ── */}
       <div className="sp-row-3">
-        {/* 3A: 工时结构分析 */}
         <div className="sp-section sp-section--3a">
-          <div className="sp-section-hd sp-section-hd--s3a">3A. 工时结构分析</div>
+          <div className="sp-section-hd sp-section-hd--s3a">{t('scheduling.section3a')}</div>
           <table className="sp-table">
             <colgroup>
               <col style={{ width: '18%' }} />
@@ -154,16 +151,16 @@ export default function AttendanceSchedulingPlanPreviewView({ preview, cellTexts
             </colgroup>
             <thead>
               <tr>
-                <th>工时类型</th>
-                <th>口径说明</th>
-                <th>预计工时</th>
-                <th>占比</th>
-                <th>数据来源</th>
-                <th>备注</th>
+                <th>{t('scheduling.columns.hourType')}</th>
+                <th>{t('scheduling.columns.hourTypeDesc')}</th>
+                <th>{t('scheduling.columns.plannedHours')}</th>
+                <th>{t('scheduling.columns.ratio')}</th>
+                <th>{t('scheduling.columns.dataSource')}</th>
+                <th>{t('scheduling.columns.note')}</th>
               </tr>
             </thead>
             <tbody>
-              {SCHEDULING_PLAN_HOURS_STRUCTURE.map(({ type, label, desc, source }) => {
+              {hoursStructure.map(({ type, label, desc, source }) => {
                 const isAutoComputed = type === 'direct' || type === 'indirect'
                 return (
                   <tr key={type}>
@@ -188,9 +185,8 @@ export default function AttendanceSchedulingPlanPreviewView({ preview, cellTexts
           </table>
         </div>
 
-        {/* 3B: 按工序小计 */}
         <div className="sp-section sp-section--3b">
-          <div className="sp-section-hd sp-section-hd--s3b">3B. 按工序小计</div>
+          <div className="sp-section-hd sp-section-hd--s3b">{t('scheduling.section3b')}</div>
           <table className="sp-table">
             <colgroup>
               <col style={{ width: '28%' }} />
@@ -200,14 +196,14 @@ export default function AttendanceSchedulingPlanPreviewView({ preview, cellTexts
             </colgroup>
             <thead>
               <tr>
-                <th>工序</th>
-                <th>预计工时</th>
-                <th>工时占比</th>
-                <th>需求人数</th>
+                <th>{t('scheduling.columns.process')}</th>
+                <th>{t('scheduling.columns.plannedHours')}</th>
+                <th>{t('scheduling.columns.hourRatio')}</th>
+                <th>{t('scheduling.columns.requiredHeadcount')}</th>
               </tr>
             </thead>
             <tbody>
-              {SCHEDULING_PLAN_PROCESSES.map((proc, idx) => (
+              {schedulingProcesses.map((proc, idx) => (
                 <tr key={proc.id}>
                   <td className="sp-cell sp-cell--label">{proc.label}</td>
                   <Ro suffix={`s3b-${idx}-hours`} className="sp-cell sp-cell--num sp-cell--computed" />
@@ -216,7 +212,7 @@ export default function AttendanceSchedulingPlanPreviewView({ preview, cellTexts
                 </tr>
               ))}
               <tr className="sp-row--total">
-                <td className="sp-cell sp-cell--total-label">合计</td>
+                <td className="sp-cell sp-cell--total-label">{t('scheduling.total')}</td>
                 <Ro suffix="s3b-total-hours" className="sp-cell sp-cell--total-num sp-cell--computed" />
                 <Ro suffix="s3b-total-ratio" className="sp-cell sp-cell--total-num sp-cell--computed" />
                 <Ro suffix="s3b-total-count" className="sp-cell sp-cell--total-num sp-cell--computed" />
@@ -226,9 +222,8 @@ export default function AttendanceSchedulingPlanPreviewView({ preview, cellTexts
         </div>
       </div>
 
-      {/* ── Section 4: 次日岗位出勤明细 ── */}
       <div className="sp-section">
-        <div className="sp-section-hd sp-section-hd--s4">4. 次日岗位出勤明细</div>
+        <div className="sp-section-hd sp-section-hd--s4">{t('scheduling.section4')}</div>
         <table className="sp-table">
           <colgroup>
             <col style={{ width: '6%' }} />
@@ -245,21 +240,21 @@ export default function AttendanceSchedulingPlanPreviewView({ preview, cellTexts
           </colgroup>
           <thead>
             <tr>
-              <th>工序</th>
-              <th>岗位</th>
-              <th>预计件量</th>
-              <th>岗位效率</th>
-              <th>需求出勤人数</th>
-              <th>计划上班时间</th>
-              <th>计划下班时间</th>
-              <th>预计出勤工时</th>
-              <th>工时占比</th>
-              <th>备注</th>
-              <th>数据口径</th>
+              <th>{t('scheduling.columns.process')}</th>
+              <th>{t('scheduling.columns.position')}</th>
+              <th>{t('scheduling.columns.plannedQty')}</th>
+              <th>{t('scheduling.columns.positionEff')}</th>
+              <th>{t('scheduling.columns.requiredAttendance')}</th>
+              <th>{t('scheduling.columns.plannedStart')}</th>
+              <th>{t('scheduling.columns.plannedEnd')}</th>
+              <th>{t('scheduling.columns.plannedWorkHours')}</th>
+              <th>{t('scheduling.columns.hourShare')}</th>
+              <th>{t('scheduling.columns.note')}</th>
+              <th>{t('scheduling.columns.dataBasis')}</th>
             </tr>
           </thead>
           <tbody>
-            {SCHEDULING_PLAN_PROCESSES.map((proc, idx) => (
+            {schedulingProcesses.map((proc, idx) => (
               <tr key={proc.id}>
                 <td className="sp-cell sp-cell--label">{proc.label}</td>
                 <Ed suffix={`s4-${idx}-position`} className="sp-cell sp-cell--num" />
@@ -275,7 +270,7 @@ export default function AttendanceSchedulingPlanPreviewView({ preview, cellTexts
               </tr>
             ))}
             <tr className="sp-row--total">
-              <td className="sp-cell sp-cell--total-label">合计</td>
+              <td className="sp-cell sp-cell--total-label">{t('scheduling.total')}</td>
               <td className="sp-cell" />
               <td className="sp-cell" />
               <td className="sp-cell" />

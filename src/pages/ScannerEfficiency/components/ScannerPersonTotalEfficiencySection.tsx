@@ -1,4 +1,5 @@
 import ScannerTotalEfficiencyBarChart from '../ScannerTotalEfficiencyBarChart'
+import { useTranslation } from 'react-i18next'
 import { buildScannerTotalEfficiencyAverageRow } from '../scannerSummaryTableFooter'
 import type { ScannerTotalEfficiencyRow } from '../sortingLookup'
 import { ScannerEfficiencyAntdTable } from './ScannerEfficiencyAntdTable'
@@ -19,16 +20,17 @@ export function ScannerPersonTotalEfficiencySection({
   columns,
   rows,
   boundedScroll = true,
-  emptyTableText = '暂无分拣员总效率数据。',
+  emptyTableText,
 }: ScannerPersonTotalEfficiencySectionProps) {
+  const { t } = useTranslation('scannerEfficiency')
   const bodyRows = rows as unknown as DataTableRow[]
   const averageRow = buildScannerTotalEfficiencyAverageRow(rows)
 
   return (
     <section className="admin-panel overflow-hidden">
       <SectionTitle
-        title="分拣员总效率"
-        description="不同角色分拣员总效率计算口径不同"
+        title={t('section.scannerTotalEffTitle')}
+        description={t('section.scannerTotalEffDesc')}
       />
       <div className="grid gap-4 p-4 pt-0 xl:grid-cols-[minmax(0,1.05fr)_minmax(320px,0.95fr)] xl:items-start">
         <div className="min-w-0">
@@ -37,7 +39,7 @@ export function ScannerPersonTotalEfficiencySection({
             columns={columns}
             rows={bodyRows}
             averageRow={averageRow}
-            emptyText={emptyTableText}
+            emptyText={emptyTableText ?? t('empty.noScannerTotalEff')}
           />
         </div>
         <div className="admin-panel min-w-0 overflow-hidden p-4 sm:p-5">

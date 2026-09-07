@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Compass, Radar, Warehouse } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
+import { i18n } from '../../../i18n'
 import { VendorRegionMapLoading } from './VendorRegionMapLoading'
 import maplibregl from 'maplibre-gl/dist/maplibre-gl-csp'
 import maplibreWorkerUrl from 'maplibre-gl/dist/maplibre-gl-csp-worker.js?url'
@@ -118,6 +120,8 @@ function flyToWarehouse(map: maplibregl.Map) {
 }
 
 function buildPopupHtml(stat: ZipStat, colorMap: Map<string, string>, distanceLabel: string) {
+  const t = (key: string, opts?: Record<string, unknown>) =>
+    String(i18n.t(key, { ns: 'vendorRegionMap', ...opts }))
   const top = stat.rows[0]?.count ?? 0
   const items = stat.rows
     .map((row) => {
@@ -136,16 +140,18 @@ function buildPopupHtml(stat: ZipStat, colorMap: Map<string, string>, distanceLa
     ? `${escapeHtml(stat.zipCode)} · ${escapeHtml(stat.suburb)}`
     : escapeHtml(stat.zipCode)
   const facts: string[] = []
-  if (distanceLabel) facts.push(`距仓库 ${escapeHtml(distanceLabel)}`)
-  if (stat.areaKm2 != null) facts.push(`面积 ${formatAreaKm2(stat.areaKm2)} km²`)
+  if (distanceLabel) facts.push(t('popupDistance', { distance: escapeHtml(distanceLabel) }))
+  if (stat.areaKm2 != null) facts.push(t('popupArea', { area: formatAreaKm2(stat.areaKm2) }))
   facts.push(
-    stat.density != null ? `密度 ${formatDensity(stat.density)} 票/km²` : '密度 — <em>缺邮区边界</em>',
+    stat.density != null
+      ? t('popupDensity', { density: formatDensity(stat.density) })
+      : t('popupDensityMissing'),
   )
   return `
     <div class="vrm-iw">
       <div class="vrm-iw__head">
         <div class="vrm-iw__zip">${place}</div>
-        <div class="vrm-iw__total">${stat.total.toLocaleString('en-AU')} 票</div>
+        <div class="vrm-iw__total">${t('popupTotal', { count: stat.total.toLocaleString('en-AU') })}</div>
       </div>
       <div class="vrm-iw__dist">${facts.join(' · ')}</div>
       <ul class="vrm-iw__list">${items}</ul>
@@ -153,6 +159,7 @@ function buildPopupHtml(stat: ZipStat, colorMap: Map<string, string>, distanceLa
 }
 
 export function VendorRegionMapCanvas({ data, loading, selectedSupplierKeys, colorMap }: Props) {
+  const { t } = useTranslation('vendorRegionMap')
   const containerRef = useRef<HTMLDivElement | null>(null)
   const mapRef = useRef<maplibregl.Map | null>(null)
   const popupRef = useRef<maplibregl.Popup | null>(null)
@@ -452,7 +459,7 @@ export function VendorRegionMapCanvas({ data, loading, selectedSupplierKeys, col
           onClick={() => mapRef.current && resetCamera(mapRef.current)}
         >
           <Compass className="h-4 w-4" aria-hidden />
-          复位 3D 视角
+          {t('reset3d')}
         </button>
         <button
           type="button"
@@ -460,7 +467,7 @@ export function VendorRegionMapCanvas({ data, loading, selectedSupplierKeys, col
           onClick={() => mapRef.current && flyToWarehouse(mapRef.current)}
         >
           <Warehouse className="h-4 w-4" aria-hidden />
-          定位仓库
+          {t('locateWarehouse')}
         </button>
         <button
           type="button"
@@ -469,26 +476,26 @@ export function VendorRegionMapCanvas({ data, loading, selectedSupplierKeys, col
           onClick={() => setRingsVisible((current) => !current)}
         >
           <Radar className="h-4 w-4" aria-hidden />
-          距离圈
+          {t('distanceRings')}
         </button>
       </div>
 
       {allHidden ? (
         <div className="vrm-map-notice vrm-glass" role="status">
-          供应商已全部取消勾选，<strong>地图上暂不显示柱体</strong>
+          <span dangerouslySetInnerHTML={{ __html: t('noVendorsSelected') }} />
         </div>
       ) : null}
 
       {data && !hasData && !loading ? (
         <div className="vrm-map-notice vrm-glass" role="status">
-          当前日期区间<strong>没有可上图的到件扫描</strong>，换个日期再查询
+          <span dangerouslySetInnerHTML={{ __html: t('noScanData') }} />
         </div>
       ) : null}
 
       <div className="vrm-map-legend vrm-glass">
         {heightTicks.length > 0 ? (
           <div className="vrm-map-legend__block">
-            <div className="vrm-map-legend__title">柱高 = 该邮区票量</div>
+            <div className="vrm-map-legend__title">{t('legendHeight')}</div>
             <div className="vrm-map-legend__bars">
               {heightTicks.map((tick) => (
                 <div key={tick} className="vrm-map-legend__bar-row">
@@ -506,13 +513,13 @@ export function VendorRegionMapCanvas({ data, loading, selectedSupplierKeys, col
                 </div>
               ))}
             </div>
-            <div className="vrm-map-legend__hint">平方根标度；等底柱，跨邮区可直接比高矮</div>
+            <div className="vrm-map-legend__hint">{t('legendHeightHint')}</div>
           </div>
         ) : null}
 
         {densityLabels.length > 0 ? (
           <div className="vrm-map-legend__block">
-            <div className="vrm-map-legend__title">底图深浅 = 配送密度</div>
+            <div className="vrm-map-legend__title">{t('legendDensity')}</div>
             <div className="vrm-map-legend__swatches">
               {densityScale.colors.map((color, index) => (
                 <div key={color} className="vrm-map-legend__swatch-row">
@@ -521,7 +528,7 @@ export function VendorRegionMapCanvas({ data, loading, selectedSupplierKeys, col
                 </div>
               ))}
             </div>
-            <div className="vrm-map-legend__hint">单位 票/km²，按当次查询结果分位分级</div>
+            <div className="vrm-map-legend__hint">{t('legendDensityHint')}</div>
           </div>
         ) : null}
 
@@ -531,12 +538,12 @@ export function VendorRegionMapCanvas({ data, loading, selectedSupplierKeys, col
               <Warehouse className="h-3.5 w-3.5" />
             </span>
             <div>
-              <div className="vrm-map-legend__title">本仓库</div>
+              <div className="vrm-map-legend__title">{t('legendWarehouse')}</div>
               <div className="vrm-map-legend__addr">{WAREHOUSE.address}</div>
             </div>
           </div>
           <div className="vrm-map-legend__rings">
-            虚线同心圆：距仓库 {warehouseRingScaleLabel()}
+            {t('legendRings', { scale: warehouseRingScaleLabel() })}
           </div>
         </div>
       </div>

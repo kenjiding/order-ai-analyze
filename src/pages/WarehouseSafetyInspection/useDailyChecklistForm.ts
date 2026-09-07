@@ -1,6 +1,7 @@
 import dayjs from 'dayjs'
 import { useCallback, useMemo, useState } from 'react'
-import { DAILY_CHECKLIST_TEMPLATE } from './dailyChecklistTemplate'
+import { useTranslation } from 'react-i18next'
+import { DAILY_CHECKLIST_SERIAL_NOS, getDailyChecklistTemplate } from './dailyChecklistTemplate'
 import type { LocalEvidenceImage } from './localEvidenceImage'
 import type { DailyChecklistFormState, DailyChecklistRowState, InspectionResult } from './types'
 
@@ -16,13 +17,16 @@ function createDefaultRowState(): DailyChecklistRowState {
 
 function buildInitialRows(): Record<number, DailyChecklistRowState> {
   const rows: Record<number, DailyChecklistRowState> = {}
-  for (const tpl of DAILY_CHECKLIST_TEMPLATE) {
-    rows[tpl.serialNo] = createDefaultRowState()
+  for (const serialNo of DAILY_CHECKLIST_SERIAL_NOS) {
+    rows[serialNo] = createDefaultRowState()
   }
   return rows
 }
 
 export function useDailyChecklistForm() {
+  const { t } = useTranslation('warehouseSafety')
+  const template = useMemo(() => getDailyChecklistTemplate(t), [t])
+
   const [form, setForm] = useState<DailyChecklistFormState>(() => ({
     meta: {
       warehouseName: '',
@@ -34,14 +38,14 @@ export function useDailyChecklistForm() {
   const [onlyRiskRows, setOnlyRiskRows] = useState(false)
 
   const riskCount = useMemo(
-    () => DAILY_CHECKLIST_TEMPLATE.filter((t) => form.rows[t.serialNo]?.result === 'risk').length,
-    [form.rows],
+    () => template.filter((row) => form.rows[row.serialNo]?.result === 'risk').length,
+    [form.rows, template],
   )
 
   const visibleTemplate = useMemo(() => {
-    if (!onlyRiskRows) return DAILY_CHECKLIST_TEMPLATE
-    return DAILY_CHECKLIST_TEMPLATE.filter((t) => form.rows[t.serialNo]?.result === 'risk')
-  }, [onlyRiskRows, form.rows])
+    if (!onlyRiskRows) return template
+    return template.filter((row) => form.rows[row.serialNo]?.result === 'risk')
+  }, [onlyRiskRows, form.rows, template])
 
   const setMetaField = useCallback(
     <K extends keyof DailyChecklistFormState['meta']>(key: K, value: DailyChecklistFormState['meta'][K]) => {
@@ -114,8 +118,8 @@ export function useDailyChecklistForm() {
   const markAllNoRisk = useCallback(() => {
     setForm((prev) => {
       const rows: Record<number, DailyChecklistRowState> = {}
-      for (const tpl of DAILY_CHECKLIST_TEMPLATE) {
-        rows[tpl.serialNo] = createDefaultRowState()
+      for (const serialNo of DAILY_CHECKLIST_SERIAL_NOS) {
+        rows[serialNo] = createDefaultRowState()
       }
       return { ...prev, rows }
     })

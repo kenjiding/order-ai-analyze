@@ -1,5 +1,6 @@
 import { Chart } from '@antv/g2'
 import { useEffect, useMemo, useRef } from 'react'
+import { useTranslation } from 'react-i18next'
 import type { EmployeeWageRow } from '../wageChartData'
 
 type Props = {
@@ -10,11 +11,13 @@ type Props = {
 const FILL = '#0d9488'
 
 export function WageEmployeeTotalBarChart({ rows, className }: Props) {
+  const { t } = useTranslation('wageSalary')
   const containerRef = useRef<HTMLDivElement>(null)
   const rowsKey = useMemo(
     () => rows.map((r) => `${r.label}\t${r.totalWage}\t${r.totalHours}`).join('|'),
     [rows],
   )
+  const yTitle = t('charts.employeeBarYTitle')
 
   useEffect(() => {
     if (!rows.length) return
@@ -38,7 +41,6 @@ export function WageEmployeeTotalBarChart({ rows, className }: Props) {
       paddingLeft: 100,
     })
 
-    // 与 ScannerSummaryBarChart 一致：x=分类、y=数值，再 transpose 得到横向条形图
     chart.scale('x', { type: 'band', paddingInner: 0.16 })
     chart.scale('y', {
       type: 'linear',
@@ -47,7 +49,7 @@ export function WageEmployeeTotalBarChart({ rows, className }: Props) {
     })
 
     chart.axis('y', {
-      title: '总工资（对账，$）',
+      title: yTitle,
       grid: true,
       gridLineDash: [4, 4],
       gridStroke: '#e2e8f0',
@@ -76,7 +78,7 @@ export function WageEmployeeTotalBarChart({ rows, className }: Props) {
     return () => {
       chart.destroy()
     }
-  }, [rows, rowsKey])
+  }, [rows, rowsKey, yTitle])
 
   if (!rows.length) {
     return (
@@ -86,7 +88,7 @@ export function WageEmployeeTotalBarChart({ rows, className }: Props) {
           className ?? '',
         ].join(' ')}
       >
-        暂无员工汇总数据。
+        {t('charts.noEmployeeData')}
       </div>
     )
   }
@@ -96,14 +98,14 @@ export function WageEmployeeTotalBarChart({ rows, className }: Props) {
       <div className="mb-2 text-xs font-medium text-slate-600">
         <span className="inline-flex items-center gap-2">
           <span className="h-2.5 w-6 rounded-full" style={{ backgroundColor: FILL }} />
-          员工总工资排名（按姓名/姓氏/昵称展示，第 1 名为最高，当前筛选，最多 30 人）
+          {t('charts.employeeBarLegend')}
         </span>
       </div>
       <div
         ref={containerRef}
         className="g2-wage-employee-totals min-h-[220px] w-full"
         role="img"
-        aria-label="员工总工资排名横向条形图"
+        aria-label={t('charts.employeeBarAria')}
       />
     </div>
   )

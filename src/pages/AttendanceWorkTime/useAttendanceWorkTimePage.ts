@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import dayjs, { type Dayjs } from 'dayjs'
+import { useTranslation } from 'react-i18next'
 import { useAuthStore } from '../../stores/authStore'
 import { showToast } from '../../utils/toast'
 import { confirmDialog } from '../../utils/confirmDialog'
@@ -23,6 +24,7 @@ export type AttendanceFilters = {
 }
 
 export function useAttendanceWorkTimePage(isMobile: boolean) {
+  const { t } = useTranslation('attendanceWorkTime')
   const { user, isSuperAdmin } = useAuthStore()
   // 超管账号的 regionCode 是 'system' 哨兵值，不对应真实州/区域；仅当命中真实州/区域列表时才作为“本人所属州”使用，
   // 否则移动端「现场记录」筛选/创建会把 'system' 当作真实州传给后端，被 isAssignableRegionCode 拒绝为“无效的州/区域”
@@ -97,17 +99,17 @@ export function useAttendanceWorkTimePage(isMobile: boolean) {
       setRecords((prev) =>
         editingRecord ? prev.map((r) => (r.id === res.data.id ? res.data : r)) : [res.data, ...prev],
       )
-      showToast(editingRecord ? '已更新出勤记录' : '已添加出勤记录', 'success')
+      showToast(editingRecord ? t('toast.updated') : t('toast.added'), 'success')
       closeDialog()
       return true
     },
-    [editingRecord, closeDialog],
+    [editingRecord, closeDialog, t],
   )
 
   const removeRecord = useCallback(async (record: AttendanceWorkRecord) => {
     const confirmed = await confirmDialog({
-      title: '确认删除该出勤记录？',
-      content: `将删除「${record.workerName}」的出勤工序记录，删除后不可恢复。`,
+      title: t('confirm.deleteTitle'),
+      content: t('confirm.deleteContent', { workerName: record.workerName }),
       danger: true,
     })
     if (!confirmed) return
@@ -117,14 +119,14 @@ export function useAttendanceWorkTimePage(isMobile: boolean) {
       return
     }
     setRecords((prev) => prev.filter((r) => r.id !== record.id))
-    showToast('已删除出勤记录', 'success')
-  }, [])
+    showToast(t('toast.deleted'), 'success')
+  }, [t])
 
   /** 快速记录结束时间：把当前时间写入该记录的结束时间，用于现场"下班/收工"一键打卡 */
   const quickFinishRecord = useCallback(async (record: AttendanceWorkRecord) => {
     const now = new Date()
     if (now.getTime() <= new Date(record.startTime).getTime()) {
-      showToast('结束时间必须晚于开始时间', 'error')
+      showToast(t('toast.endTimeAfterStart'), 'error')
       return
     }
     const draft: AttendanceWorkRecordDraft = {
@@ -143,8 +145,8 @@ export function useAttendanceWorkTimePage(isMobile: boolean) {
       return
     }
     setRecords((prev) => prev.map((r) => (r.id === res.data.id ? res.data : r)))
-    showToast('已记录结束时间', 'success')
-  }, [])
+    showToast(t('toast.finished'), 'success')
+  }, [t])
 
   const searchWorkers = useCallback(
     (query: string, regionCodeForSearch: string | null) => {

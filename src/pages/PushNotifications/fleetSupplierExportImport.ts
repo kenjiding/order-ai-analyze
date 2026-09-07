@@ -1,9 +1,13 @@
 import * as XLSX from 'xlsx'
+import { i18n } from '../../i18n/index'
 import type { FleetSupplierConfig, FleetSupplierImportRow } from './fleetSupplierPushTypes'
 import { createFleetSupplierId, sanitizeFleetSupplier } from './fleetSupplierStorage'
 import type { SupplierMentionContact } from '../../shared/supplierPushConfig'
 
 export const FLEET_SUPPLIER_EXPORT_SHEET_NAME = '供应商配置'
+
+const pt = (key: string, options?: Record<string, unknown>) =>
+  String(i18n.t(key, { ns: 'pushNotifications', ...options }))
 
 function cellToStr(v: unknown): string {
   if (v == null) return ''
@@ -183,15 +187,15 @@ function finalizeFleetSupplierImportParse(
   parsed: FleetSupplierImportRow[],
   options?: FleetSupplierImportOptions,
 ): FleetSupplierImportParseResult {
-  if (!parsed.length) return { ok: false, error: '未解析到有效供应商记录' }
+  if (!parsed.length) return { ok: false, error: pt('fleetImport.noValidRecords') }
   const { importable, skipped } = partitionFleetSupplierImports(parsed, options?.vendors)
   if (!importable.length) {
     return {
       ok: false,
       error:
         skipped > 0
-          ? `共解析 ${parsed.length} 条，均缺少供应商昵称，或 vendorCode（供应商编码）与路由编码都为空，请补列后重试`
-          : '未解析到有效供应商记录',
+          ? pt('fleetImport.allRowsInvalid', { count: parsed.length })
+          : pt('fleetImport.noValidRecords'),
     }
   }
   return { ok: true, suppliers: importable, parsedCount: parsed.length, skipped }
@@ -202,10 +206,10 @@ function parseJsonArray(text: string, options?: FleetSupplierImportOptions): Fle
   try {
     parsed = JSON.parse(text) as unknown
   } catch {
-    return { ok: false, error: 'JSON 解析失败' }
+    return { ok: false, error: pt('fleetImport.jsonParseFailed') }
   }
   if (!Array.isArray(parsed)) {
-    return { ok: false, error: 'JSON 根节点须为数组' }
+    return { ok: false, error: pt('fleetImport.jsonRootMustBeArray') }
   }
   const out: FleetSupplierImportRow[] = []
   const gen = () => createFleetSupplierId()
@@ -220,7 +224,7 @@ function parseSheetRows(
   rows: Record<string, unknown>[],
   options?: FleetSupplierImportOptions,
 ): FleetSupplierImportParseResult {
-  if (!rows.length) return { ok: false, error: '表格无数据行' }
+  if (!rows.length) return { ok: false, error: pt('fleetImport.noDataRows') }
 
   const out: FleetSupplierImportRow[] = []
   const gen = () => createFleetSupplierId()
@@ -266,7 +270,7 @@ function parseSheetRows(
 function parseWorkbook(buf: ArrayBuffer, options?: FleetSupplierImportOptions): FleetSupplierImportParseResult {
   const wb = XLSX.read(buf, { type: 'array' })
   const name = wb.SheetNames[0]
-  if (!name) return { ok: false, error: '表格为空' }
+  if (!name) return { ok: false, error: pt('fleetImport.emptySpreadsheet') }
   const sheet = wb.Sheets[name]
   const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet, { defval: '' })
   return parseSheetRows(rows, options)
@@ -291,13 +295,13 @@ export async function parseFleetSuppliersImportFile(
     const text = await file.text()
     const wb = XLSX.read(text, { type: 'string' })
     const sheetName = wb.SheetNames[0]
-    if (!sheetName) return { ok: false, error: 'CSV 无内容' }
+    if (!sheetName) return { ok: false, error: pt('fleetImport.emptyCsv') }
     const sheet = wb.Sheets[sheetName]
     const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet, { defval: '' })
     return parseSheetRows(rows, options)
   }
 
-  return { ok: false, error: '不支持该文件类型，请使用 .xlsx / .xls / .csv / .json' }
+  return { ok: false, error: pt('fleetImport.unsupportedFileType') }
 }
 
 export function mergeFleetSupplierImports(

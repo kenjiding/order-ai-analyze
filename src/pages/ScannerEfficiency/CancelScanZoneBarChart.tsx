@@ -1,3 +1,4 @@
+import { useTranslation } from 'react-i18next'
 import { Chart } from '@antv/g2'
 import { useEffect, useMemo, useRef } from 'react'
 import type { RouteZoneGroup } from './cancelScanRouteZoneTable'
@@ -43,6 +44,7 @@ export default function CancelScanZoneBarChart({
   onZoneSelect,
   className,
 }: Props) {
+  const { t } = useTranslation('scannerEfficiency')
   const containerRef = useRef<HTMLDivElement>(null)
   const onZoneSelectRef = useRef(onZoneSelect)
 
@@ -84,7 +86,7 @@ export default function CancelScanZoneBarChart({
     })
 
     chart.axis('y', {
-      title: '运单数（票）',
+      title: t('chart.cancelScanWaybillTitle'),
       titleFill: '#64748b',
       titleFontSize: 13,
       grid: true,
@@ -140,7 +142,7 @@ export default function CancelScanZoneBarChart({
           className ?? '',
         ].join(' ')}
       >
-        暂无大区分布数据。
+        {t('cancelScan.zoneChartEmpty')}
       </div>
     )
   }
@@ -148,17 +150,17 @@ export default function CancelScanZoneBarChart({
   return (
     <div className={['cancel-scan-zone-chart', className ?? ''].join(' ')}>
       <div className="cancel-scan-zone-chart__caption">
-        <span className="cancel-scan-zone-chart__title">大区运单数分布</span>
+        <span className="cancel-scan-zone-chart__title">{t('chart.cancelScanZoneTitle')}</span>
         <span className="cancel-scan-zone-chart__hint">
-          点击柱形切换下方大区明细
-          {rows.some((row) => row.errorRateLabel) ? ' · 柱顶第二行为占比' : ''}
+          {t('cancelScan.zoneChartClickHint')}
+          {rows.some((row) => row.errorRateLabel) ? t('chart.cancelScanZoneShareHint') : ''}
         </span>
       </div>
       <div
         ref={containerRef}
         className="cancel-scan-zone-chart__canvas min-h-[260px] w-full cursor-pointer"
         role="img"
-        aria-label="细分错误率大区分布柱状图"
+        aria-label={t('chart.cancelScanZoneAria')}
       />
     </div>
   )

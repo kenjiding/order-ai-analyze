@@ -1,9 +1,10 @@
 import { AutoComplete, Button, Cascader, DatePicker, Form, Input, Modal, Select } from 'antd'
-import { useEffect } from 'react'
+import { useEffect, useMemo } from 'react'
 import dayjs, { type Dayjs } from 'dayjs'
+import { useTranslation } from 'react-i18next'
 import {
-  ATTENDANCE_PROCESS_CASCADER_OPTIONS,
   AU_REGIONS,
+  buildAttendanceProcessCascaderOptions,
   type AttendanceWorkRecord,
   type AttendanceWorkRecordDraft,
   type AttendanceWorkerSuggestion,
@@ -42,7 +43,9 @@ export function AddAttendanceRecordDialog({
   onCancel,
   onSubmit,
 }: Props) {
+  const { t } = useTranslation('attendanceWorkTime')
   const [form] = Form.useForm<FormValues>()
+  const processOptions = useMemo(() => buildAttendanceProcessCascaderOptions(t), [t])
 
   useEffect(() => {
     if (!open) return
@@ -96,65 +99,65 @@ export function AddAttendanceRecordDialog({
 
   return (
     <Modal
-      title={editing ? '编辑出勤工序' : '添加出勤工序'}
+      title={editing ? t('dialog.editTitle') : t('dialog.addTitle')}
       open={open}
       onCancel={onCancel}
       destroyOnHidden
       width={560}
       footer={
         <div className="flex justify-end gap-2">
-          <Button onClick={onCancel}>取消</Button>
+          <Button onClick={onCancel}>{t('actions.cancel')}</Button>
           <Button type="primary" onClick={() => void handleOk()}>
-            {editing ? '保存' : '添加'}
+            {editing ? t('actions.save') : t('actions.add')}
           </Button>
         </div>
       }
     >
       <Form form={form} layout="vertical" className="mt-4">
         {isSuperAdmin ? (
-          <Form.Item label="州 / 区域" name="regionCode" rules={[{ required: true, message: '请选择州/区域' }]}>
+          <Form.Item label={t('dialog.region')} name="regionCode" rules={[{ required: true, message: t('dialog.regionRequired') }]}>
             <Select
-              placeholder="请选择记录所属州/区域"
+              placeholder={t('dialog.regionPlaceholder')}
               options={AU_REGIONS.map((r) => ({ label: r.name, value: r.code }))}
             />
           </Form.Item>
         ) : null}
 
-        <Form.Item label="工序" name="process" rules={[{ required: true, message: '请选择工序' }]}>
+        <Form.Item label={t('dialog.process')} name="process" rules={[{ required: true, message: t('dialog.processRequired') }]}>
           <Cascader
-            options={ATTENDANCE_PROCESS_CASCADER_OPTIONS}
+            options={processOptions}
             expandTrigger="click"
-            placeholder="请选择工序 / 班次"
+            placeholder={t('dialog.processPlaceholder')}
             displayRender={(labels) => labels[labels.length - 1] ?? ''}
           />
         </Form.Item>
 
-        <Form.Item label="人员" name="workerName" rules={[{ required: true, message: '请输入人员姓名' }]}>
+        <Form.Item label={t('dialog.worker')} name="workerName" rules={[{ required: true, message: t('dialog.workerRequired') }]}>
           <AutoComplete
             options={workerSuggestions.map((w) => ({ value: w.name }))}
             onSearch={(q) => onSearchWorker(q, currentRegionForSearch)}
             filterOption={false}
-            notFoundContent={workerSearchLoading ? '搜索中…' : null}
+            notFoundContent={workerSearchLoading ? t('dialog.searching') : null}
           >
-            <Input placeholder="输入或选择人员姓名，可直接创建新人员" allowClear />
+            <Input placeholder={t('dialog.workerPlaceholder')} allowClear />
           </AutoComplete>
         </Form.Item>
 
         <div className="grid grid-cols-2 gap-x-4">
-          <Form.Item label="开始时间" name="startTime" rules={[{ required: true, message: '请选择开始时间' }]}>
+          <Form.Item label={t('dialog.startTime')} name="startTime" rules={[{ required: true, message: t('dialog.startTimeRequired') }]}>
             <DatePicker showTime className="w-full" format="YYYY-MM-DD HH:mm" />
           </Form.Item>
           <Form.Item
-            label="结束时间"
+            label={t('dialog.endTime')}
             name="endTime"
             dependencies={['startTime']}
             rules={[
-              { required: true, message: '请选择结束时间' },
+              { required: true, message: t('dialog.endTimeRequired') },
               {
                 validator: async (_, value: Dayjs | undefined) => {
                   const startTime = form.getFieldValue('startTime') as Dayjs | undefined
                   if (value && startTime && !value.isAfter(startTime)) {
-                    throw new Error('结束时间必须晚于开始时间')
+                    throw new Error(t('dialog.endTimeAfterStart'))
                   }
                 },
               },
@@ -164,12 +167,12 @@ export function AddAttendanceRecordDialog({
           </Form.Item>
         </div>
 
-        <Form.Item label="负责的区号" name="zoneCode">
-          <Input placeholder="例如：A1、B3" allowClear />
+        <Form.Item label={t('dialog.zoneCode')} name="zoneCode">
+          <Input placeholder={t('dialog.zoneCodePlaceholder')} allowClear />
         </Form.Item>
 
-        <Form.Item label="备注" name="notes">
-          <Input.TextArea rows={3} placeholder="选填" allowClear />
+        <Form.Item label={t('dialog.notes')} name="notes">
+          <Input.TextArea rows={3} placeholder={t('dialog.notesOptional')} allowClear />
         </Form.Item>
       </Form>
     </Modal>

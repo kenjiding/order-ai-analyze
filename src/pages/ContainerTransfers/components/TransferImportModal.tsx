@@ -8,7 +8,7 @@ import { useState } from 'react'
 import { Button, Modal, Table, Upload } from 'antd'
 import type { UploadFile } from 'antd/es/upload/interface'
 import { CircleAlert, CircleCheck, Download, FileSpreadsheet, Loader2, Upload as UploadIcon } from 'lucide-react'
-import { transferKindLabel } from '../../../containerManagement/constants'
+import { useTranslation } from 'react-i18next'
 import type { TransferCreateItem } from '../../../containerManagement/api'
 import type { ContainerAccount } from '../../../containerManagement/types'
 import { TRANSFER_IMPORT_MAX_ROWS } from '../transferImportTemplate'
@@ -40,6 +40,8 @@ export function TransferImportModal({
   onCancel,
   onSubmit,
 }: Props) {
+  const { t } = useTranslation('container')
+  const { t: tc } = useTranslation('common')
   const [fileList, setFileList] = useState<UploadFile[]>([])
   const [rows, setRows] = useState<TransferImportRow[] | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -111,19 +113,19 @@ export function TransferImportModal({
     : []
 
   const footerHint = parsing
-    ? '正在解析并校验文件…'
+    ? t('transfers.importParsing')
     : !rows
-      ? '整批一个事务：任何一行不合法都不会写入。'
+      ? t('transfers.importFooterDefault')
       : errorCount > 0
-        ? `有 ${errorCount} 行需要修正，改完后重新上传。`
+        ? t('transfers.importFooterErrors', { count: errorCount })
         : validCount === 0
-          ? '没有可导入的记录。'
-          : `共 ${validCount} 条全部通过，确认后一次性写入，并向双方联系人各推送一条汇总通知。`
+          ? t('transfers.importFooterNoRows')
+          : t('transfers.importFooterReady', { count: validCount })
 
   return (
     <Modal
       className="transfer-import-modal"
-      title="批量上传流转记录"
+      title={t('transfers.importTitle')}
       open={open}
       onCancel={handleCancel}
       destroyOnHidden
@@ -134,7 +136,7 @@ export function TransferImportModal({
           <span className="max-w-[36rem] text-sm text-slate-500">{footerHint}</span>
           <div className="flex gap-2">
             <Button onClick={handleCancel} disabled={submitting}>
-              取消
+              {tc('cancel')}
             </Button>
             <Button
               type="primary"
@@ -142,7 +144,7 @@ export function TransferImportModal({
               disabled={!canSubmit}
               onClick={() => void handleOk()}
             >
-              {validCount > 0 ? `确认导入 ${validCount} 条` : '确认导入'}
+              {validCount > 0 ? t('transfers.importConfirmCount', { count: validCount }) : t('transfers.importConfirm')}
             </Button>
           </div>
         </div>
@@ -164,22 +166,22 @@ export function TransferImportModal({
               <div className="truncate text-sm font-medium text-slate-900">{fileName}</div>
               <div className="mt-0.5 text-xs text-slate-500">
                 {parsing
-                  ? '正在校验每一行'
+                  ? t('transfers.importValidating')
                   : error
-                    ? '无法解析，请更换文件'
+                    ? t('transfers.importParseFailed')
                     : rows
-                      ? `已读取 ${rows.length} 行`
-                      : '等待校验'}
+                      ? t('transfers.importRowsRead', { count: rows.length })
+                      : t('transfers.importWaiting')}
               </div>
             </div>
             <div className="flex shrink-0 gap-2">
               <Upload {...uploadProps}>
-                <Button size="small" disabled={parsing || submitting}>
-                  更换文件
+                <Button disabled={parsing || submitting}>
+                  {t('transfers.importReplaceFile')}
                 </Button>
               </Upload>
-              <Button size="small" disabled={parsing || submitting} onClick={reset}>
-                移除
+              <Button disabled={parsing || submitting} onClick={reset}>
+                {t('transfers.importRemoveFile')}
               </Button>
             </div>
           </div>
@@ -194,31 +196,30 @@ export function TransferImportModal({
             <section className="transfer-import-preview overflow-hidden rounded-xl border border-[var(--admin-line)] bg-white">
               <header className="flex flex-wrap items-center justify-between gap-2 border-b border-[var(--admin-line)] bg-[var(--admin-surface-soft)] px-4 py-2.5">
                 <div className="flex items-baseline gap-2">
-                  <span className="text-sm font-semibold text-slate-800">校验预览</span>
-                  <span className="text-xs text-slate-500">共 {rows.length} 行</span>
+                  <span className="text-sm font-semibold text-slate-800">{t('transfers.importPreviewTitle')}</span>
+                  <span className="text-xs text-slate-500">{t('transfers.importPreviewTotal', { count: rows.length })}</span>
                 </div>
                 {errorCount > 0 ? (
                   <span className="inline-flex items-center gap-1.5 text-xs font-medium text-rose-600">
                     <CircleAlert className="h-3.5 w-3.5" aria-hidden />
-                    {errorCount} 行需修正，已置顶
+                    {t('transfers.importErrorsPinned', { count: errorCount })}
                   </span>
                 ) : (
                   <span className="inline-flex items-center gap-1.5 text-xs font-medium text-[#1f6f68]">
                     <CircleCheck className="h-3.5 w-3.5" aria-hidden />
-                    全部通过
+                    {t('transfers.importAllPassed')}
                   </span>
                 )}
               </header>
               <Table<TransferImportRow>
                 rowKey={(row) => row.rowNo}
                 dataSource={sortedRows}
-                size="small"
                 pagination={rows.length > 10 ? { pageSize: 10, showSizeChanger: false } : false}
                 scroll={{ x: 880 }}
                 rowClassName={(row) => (row.errors.length > 0 ? 'bg-rose-50/60' : '')}
                 columns={[
                   {
-                    title: '表格行',
+                    title: t('transfers.importColRow'),
                     dataIndex: 'rowNo',
                     width: 74,
                     render: (value: number) => (
@@ -226,44 +227,45 @@ export function TransferImportModal({
                     ),
                   },
                   {
-                    title: '日期',
+                    title: t('transfers.importColDate'),
                     width: 108,
-                    render: (_, row) => row.raw.occurredAt || '(当天)',
+                    render: (_, row) => row.raw.occurredAt || t('transfers.importTodayDefault'),
                   },
                   {
-                    title: '业务类型',
+                    title: t('transfers.importColKind'),
                     width: 88,
-                    render: (_, row) => (row.item ? transferKindLabel[row.item.kind] : row.raw.kind),
+                    render: (_, row) =>
+                      row.item ? t(`transferKind.${row.item.kind}`) : row.raw.kind,
                   },
-                  { title: '转出方', width: 132, render: (_, row) => row.raw.from },
-                  { title: '接收方', width: 132, render: (_, row) => row.raw.to },
+                  { title: t('transfers.importColFrom'), width: 132, render: (_, row) => row.raw.from },
+                  { title: t('transfers.importColTo'), width: 132, render: (_, row) => row.raw.to },
                   {
-                    title: '大蓝筐',
+                    title: t('transfers.importColBigBasket'),
                     width: 76,
                     render: (_, row) => (
                       <span className="tabular-nums">{row.raw.bigBasket || '-'}</span>
                     ),
                   },
                   {
-                    title: '银筐',
+                    title: t('transfers.importColSilverBox'),
                     width: 76,
                     render: (_, row) => (
                       <span className="tabular-nums">{row.raw.silverBox || '-'}</span>
                     ),
                   },
                   {
-                    title: '备注',
+                    title: t('transfers.importColNote'),
                     width: 148,
                     render: (_, row) => (
                       <span className="line-clamp-2 text-slate-600">{row.raw.note || '-'}</span>
                     ),
                   },
                   {
-                    title: '校验结果',
+                    title: t('transfers.importColResult'),
                     width: 248,
                     render: (_, row) =>
                       row.errors.length === 0 ? (
-                        <span className="text-[#1f6f68]">通过</span>
+                        <span className="text-[#1f6f68]">{t('transfers.importPassed')}</span>
                       ) : (
                         <div className="space-y-1">
                           {row.errors.map((message) => (
@@ -283,17 +285,15 @@ export function TransferImportModal({
         <div className="space-y-3">
           <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-[var(--admin-line)] bg-white px-4 py-3">
             <div className="min-w-0">
-              <div className="text-sm font-medium text-slate-900">先下载模板填写</div>
-              <p className="mt-0.5 text-xs leading-relaxed text-slate-500">
-                业务类型、转出方、接收方请用表内下拉选择，手打的站点名对不上系统账户。
-              </p>
+              <div className="text-sm font-medium text-slate-900">{t('transfers.importDownloadFirst')}</div>
+              <p className="mt-0.5 text-xs leading-relaxed text-slate-500">{t('transfers.importDownloadHint')}</p>
             </div>
             <Button
               icon={<Download className="h-4 w-4" aria-hidden />}
               loading={templateDownloading}
               onClick={onDownloadTemplate}
             >
-              下载模板
+              {t('transfers.importDownloadTemplate')}
             </Button>
           </div>
 
@@ -301,9 +301,9 @@ export function TransferImportModal({
             <div className="mx-auto flex h-10 w-10 items-center justify-center rounded-lg bg-[var(--admin-accent-soft)] text-[#1f6f68]">
               <UploadIcon className="h-5 w-5" aria-hidden />
             </div>
-            <p className="mt-4 text-sm font-semibold text-slate-900">将文件拖到此处，或点击选择</p>
+            <p className="mt-4 text-sm font-semibold text-slate-900">{t('transfers.importDropTitle')}</p>
             <p className="mt-1.5 text-xs leading-relaxed text-slate-500">
-              支持 .xlsx / .xls / .csv，单次最多 {TRANSFER_IMPORT_MAX_ROWS} 行
+              {t('transfers.importDropHint', { max: TRANSFER_IMPORT_MAX_ROWS })}
             </p>
           </Upload.Dragger>
         </div>

@@ -1,6 +1,9 @@
 import { Button, Table, Tooltip } from 'antd'
 import type { ColumnsType } from 'antd/es/table'
 import { CheckCircle2, Eye, Pause, Play, RefreshCw, User, XCircle } from 'lucide-react'
+import { useMemo } from 'react'
+import { useTranslation } from 'react-i18next'
+import type { TFunction } from 'i18next'
 import type { DaCodeAuditEntry, DaCodeItem } from '../types'
 
 type Props = {
@@ -19,32 +22,32 @@ type StatusConfig = {
   dotClass: string
 }
 
-function getStatusConfig(entry?: DaCodeAuditEntry): StatusConfig {
+function getStatusConfig(entry: DaCodeAuditEntry | undefined, t: TFunction<'problemPackage'>): StatusConfig {
   if (!entry || entry.analysisStatus === 'idle') {
-    return { color: '#9ca3af', label: '待分析', dotClass: 'bg-gray-300' }
+    return { color: '#9ca3af', label: t('statusPending'), dotClass: 'bg-gray-300' }
   }
   if (entry.loadStatus === 'loading') {
-    return { color: '#2f8f87', label: '载入中…', dotClass: 'bg-teal-500 animate-pulse' }
+    return { color: '#2f8f87', label: t('statusLoading'), dotClass: 'bg-teal-500 animate-pulse' }
   }
   if (entry.loadStatus === 'error') {
-    return { color: '#dc2626', label: '载入失败', dotClass: 'bg-red-500' }
+    return { color: '#dc2626', label: t('statusLoadError'), dotClass: 'bg-red-500' }
   }
   if (entry.analysisStatus === 'running') {
-    return { color: '#2f8f87', label: '分析中', dotClass: 'bg-teal-500 animate-pulse' }
+    return { color: '#2f8f87', label: t('statusAnalyzing'), dotClass: 'bg-teal-500 animate-pulse' }
   }
   if (entry.analysisStatus === 'paused') {
-    return { color: '#d97706', label: '已暂停', dotClass: 'bg-amber-500' }
+    return { color: '#d97706', label: t('statusPaused'), dotClass: 'bg-amber-500' }
   }
   if (entry.analysisStatus === 'completed') {
     const hasError = entry.packages.some((p) => p.status === 'error')
-    if (hasError) return { color: '#d97706', label: '完成(含失败)', dotClass: 'bg-amber-500' }
-    return { color: '#3B6D11', label: '已完成', dotClass: 'bg-green-700' }
+    if (hasError) return { color: '#d97706', label: t('statusCompletedWithErrors'), dotClass: 'bg-amber-500' }
+    return { color: '#3B6D11', label: t('statusCompleted'), dotClass: 'bg-green-700' }
   }
-  return { color: '#9ca3af', label: '待分析', dotClass: 'bg-gray-300' }
+  return { color: '#9ca3af', label: t('statusPending'), dotClass: 'bg-gray-300' }
 }
 
-function ProgressCell({ entry }: { entry?: DaCodeAuditEntry }) {
-  const { color, label, dotClass } = getStatusConfig(entry)
+function ProgressCell({ entry, t }: { entry?: DaCodeAuditEntry; t: TFunction<'problemPackage'> }) {
+  const { color, label, dotClass } = getStatusConfig(entry, t)
 
   const isLoaded = entry?.loadStatus === 'loaded'
   const total = isLoaded ? entry!.packages.length : 0
@@ -80,7 +83,7 @@ function ProgressCell({ entry }: { entry?: DaCodeAuditEntry }) {
   )
 }
 
-function VerdictCell({ entry }: { entry?: DaCodeAuditEntry }) {
+function VerdictCell({ entry, t }: { entry?: DaCodeAuditEntry; t: TFunction<'problemPackage'> }) {
   if (!entry || entry.loadStatus !== 'loaded') {
     return <span className="text-[12px] text-slate-300">—</span>
   }
@@ -98,13 +101,13 @@ function VerdictCell({ entry }: { entry?: DaCodeAuditEntry }) {
       {qualified > 0 && (
         <div className="flex items-center gap-1 text-[12px] text-green-700">
           <CheckCircle2 size={11} strokeWidth={2} />
-          <span>合格 {qualified}</span>
+          <span>{t('qualifiedCount', { count: qualified })}</span>
         </div>
       )}
       {unqualified > 0 && (
         <div className="flex items-center gap-1 text-[12px] text-red-700">
           <XCircle size={11} strokeWidth={2} />
-          <span>不合格 {unqualified}</span>
+          <span>{t('unqualifiedCount', { count: unqualified })}</span>
         </div>
       )}
     </div>
@@ -120,131 +123,136 @@ export default function ProblemPackageTable({
   onPause,
   onViewDetail,
 }: Props) {
-  const columns: ColumnsType<DaCodeItem> = [
-    {
-      title: 'DA 代码',
-      dataIndex: 'daCode',
-      key: 'daCode',
-      width: 180,
-      render: (val: string, row: DaCodeItem) => {
-        const entry = auditMap[row.daCode]
-        const isIdle = !entry || entry.analysisStatus === 'idle'
-        return (
-          <div className="flex items-center gap-2">
-            <div
-              className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg"
-              style={{
-                background: isIdle ? '#f1f5f9' : '#e0f2ef',
-              }}
-            >
-              <User size={13} style={{ color: isIdle ? '#94a3b8' : '#2f8f87' }} />
-            </div>
-            <span
-              className="font-mono text-[13px] font-medium"
-              style={{ color: isIdle ? '#94a3b8' : '#1e293b' }}
-            >
-              {val || '-'}
-            </span>
-          </div>
-        )
-      },
-    },
-    {
-      title: '派送日期',
-      dataIndex: 'ofdDate',
-      key: 'ofdDate',
-      width: 110,
-      render: (val: string) => (
-        <span className="text-[12px] text-slate-500">{val || '-'}</span>
-      ),
-    },
-    {
-      title: '分析进度',
-      key: 'progress',
-      render: (_: unknown, row: DaCodeItem) => (
-        <ProgressCell entry={auditMap[row.daCode]} />
-      ),
-    },
-    {
-      title: '审核结果',
-      key: 'verdict',
-      width: 120,
-      align: 'center',
-      render: (_: unknown, row: DaCodeItem) => (
-        <VerdictCell entry={auditMap[row.daCode]} />
-      ),
-    },
-    {
-      title: '操作',
-      key: 'action',
-      width: 160,
-      align: 'right',
-      render: (_: unknown, row: DaCodeItem) => {
-        const entry = auditMap[row.daCode]
-        const isRunning = activeDaCode === row.daCode && entry?.analysisStatus === 'running'
-        const isPaused = entry?.analysisStatus === 'paused'
-        const isCompleted = entry?.analysisStatus === 'completed'
-        const isOtherRunning = activeDaCode !== null && activeDaCode !== row.daCode
+  const { t } = useTranslation('problemPackage')
 
-        return (
-          <div className="flex items-center justify-end gap-2">
-            {isRunning ? (
-              <Button
-                icon={<Pause size={12} />}
-                onClick={onPause}
-                style={{ color: '#92400e', borderColor: '#fbbf24', background: '#fffbeb', height: 28, fontSize: 12, padding: '0 10px' }}
+  const columns: ColumnsType<DaCodeItem> = useMemo(
+    () => [
+      {
+        title: t('colDaCode'),
+        dataIndex: 'daCode',
+        key: 'daCode',
+        width: 180,
+        render: (val: string, row: DaCodeItem) => {
+          const entry = auditMap[row.daCode]
+          const isIdle = !entry || entry.analysisStatus === 'idle'
+          return (
+            <div className="flex items-center gap-2">
+              <div
+                className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg"
+                style={{
+                  background: isIdle ? '#f1f5f9' : '#e0f2ef',
+                }}
               >
-                暂停
-              </Button>
-            ) : isPaused ? (
-              <Button
-                icon={<Play size={12} />}
-                onClick={() => onStartAnalysis(row)}
-                style={{ backgroundColor: '#2f8f87', borderColor: '#2f8f87', color: '#fff', height: 28, fontSize: 12, padding: '0 10px' }}
+                <User size={13} style={{ color: isIdle ? '#94a3b8' : '#2f8f87' }} />
+              </div>
+              <span
+                className="font-mono text-[13px] font-medium"
+                style={{ color: isIdle ? '#94a3b8' : '#1e293b' }}
               >
-                继续
-              </Button>
-            ) : isCompleted ? (
-              <Button
-                icon={<RefreshCw size={12} />}
-                onClick={() => onStartAnalysis(row)}
-                style={{ height: 28, fontSize: 12, padding: '0 10px' }}
-              >
-                重新分析
-              </Button>
-            ) : (
-              <Tooltip title={isOtherRunning ? '当前有其他 DA 正在分析' : undefined}>
+                {val || '-'}
+              </span>
+            </div>
+          )
+        },
+      },
+      {
+        title: t('colOfdDate'),
+        dataIndex: 'ofdDate',
+        key: 'ofdDate',
+        width: 110,
+        render: (val: string) => (
+          <span className="text-[12px] text-slate-500">{val || '-'}</span>
+        ),
+      },
+      {
+        title: t('colProgress'),
+        key: 'progress',
+        render: (_: unknown, row: DaCodeItem) => (
+          <ProgressCell entry={auditMap[row.daCode]} t={t} />
+        ),
+      },
+      {
+        title: t('colVerdict'),
+        key: 'verdict',
+        width: 120,
+        align: 'center',
+        render: (_: unknown, row: DaCodeItem) => (
+          <VerdictCell entry={auditMap[row.daCode]} t={t} />
+        ),
+      },
+      {
+        title: t('colActions'),
+        key: 'action',
+        width: 160,
+        align: 'right',
+        render: (_: unknown, row: DaCodeItem) => {
+          const entry = auditMap[row.daCode]
+          const isRunning = activeDaCode === row.daCode && entry?.analysisStatus === 'running'
+          const isPaused = entry?.analysisStatus === 'paused'
+          const isCompleted = entry?.analysisStatus === 'completed'
+          const isOtherRunning = activeDaCode !== null && activeDaCode !== row.daCode
+
+          return (
+            <div className="flex items-center justify-end gap-2">
+              {isRunning ? (
+                <Button
+                  icon={<Pause size={12} />}
+                  onClick={onPause}
+                  style={{ color: '#92400e', borderColor: '#fbbf24', background: '#fffbeb', height: 28, fontSize: 12, padding: '0 10px' }}
+                >
+                  {t('pause')}
+                </Button>
+              ) : isPaused ? (
                 <Button
                   icon={<Play size={12} />}
-                  type="primary"
                   onClick={() => onStartAnalysis(row)}
-                  disabled={isOtherRunning}
-                  style={{
-                    backgroundColor: isOtherRunning ? undefined : '#2f8f87',
-                    borderColor: isOtherRunning ? undefined : '#2f8f87',
-                    height: 28,
-                    fontSize: 12,
-                    padding: '0 10px',
-                  }}
+                  style={{ backgroundColor: '#2f8f87', borderColor: '#2f8f87', color: '#fff', height: 28, fontSize: 12, padding: '0 10px' }}
                 >
-                  开始分析
+                  {t('resume')}
                 </Button>
-              </Tooltip>
-            )}
+              ) : isCompleted ? (
+                <Button
+                  icon={<RefreshCw size={12} />}
+                  onClick={() => onStartAnalysis(row)}
+                  style={{ height: 28, fontSize: 12, padding: '0 10px' }}
+                >
+                  {t('reanalyze')}
+                </Button>
+              ) : (
+                <Tooltip title={isOtherRunning ? t('otherDaAnalyzing') : undefined}>
+                  <Button
+                    icon={<Play size={12} />}
+                    type="primary"
+                    onClick={() => onStartAnalysis(row)}
+                    disabled={isOtherRunning}
+                    style={{
+                      backgroundColor: isOtherRunning ? undefined : '#2f8f87',
+                      borderColor: isOtherRunning ? undefined : '#2f8f87',
+                      height: 28,
+                      fontSize: 12,
+                      padding: '0 10px',
+                    }}
+                  >
+                    {t('startAnalysis')}
+                  </Button>
+                </Tooltip>
+              )}
 
-            <Button
-              type="link"
-              icon={<Eye size={12} />}
-              onClick={() => onViewDetail(row.daCode)}
-              style={{ color: '#2f8f87', padding: '0 4px', height: 28, fontSize: 12 }}
-            >
-              详情
-            </Button>
-          </div>
-        )
+              <Button
+                type="link"
+                icon={<Eye size={12} />}
+                onClick={() => onViewDetail(row.daCode)}
+                style={{ color: '#2f8f87', padding: '0 4px', height: 28, fontSize: 12 }}
+              >
+                {t('detail')}
+              </Button>
+            </div>
+          )
+        },
       },
-    },
-  ]
+    ],
+    [activeDaCode, auditMap, onPause, onStartAnalysis, onViewDetail, t],
+  )
 
   return (
     <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
@@ -253,9 +261,9 @@ export default function ProblemPackageTable({
         dataSource={daCodeItems}
         rowKey="daCode"
         loading={searchLoading}
-        pagination={daCodeItems.length > 20 ? { pageSize: 20, showTotal: (t) => `共 ${t} 条` } : false}
+        pagination={daCodeItems.length > 20 ? { pageSize: 20, showTotal: (total) => t('tableTotal', { total }) } : false}
         rowClassName={() => 'transition-colors'}
-        locale={{ emptyText: '暂无数据，请先查询' }}
+        locale={{ emptyText: t('emptyTable') }}
         size="middle"
       />
     </div>

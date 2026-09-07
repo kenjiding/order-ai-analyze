@@ -4,6 +4,8 @@ import { useAppSettings } from '../../context/AppSettingsContext'
 import { useAuthStore } from '../../stores/authStore'
 import { useGlobalFilterStore } from '../../stores/globalFilterStore'
 import { showToast } from '../../utils/toast'
+import { i18n } from '../../i18n'
+import { vaT } from './vendorAnalysisI18n'
 import type {
   DriverPerformanceRow,
   VendorMetricRow,
@@ -256,7 +258,7 @@ export function useVendorAnalysisPage() {
       if (hasActive) startJobsPolling()
       else stopJobsPolling()
     } catch (e) {
-      if (!silent) showToast((e as Error).message || '任务列表加载失败', 'error')
+      if (!silent) showToast((e as Error).message || vaT('toast.jobsLoadFailed'), 'error')
     } finally {
       setIsJobsLoading(false)
     }
@@ -286,7 +288,7 @@ export function useVendorAnalysisPage() {
           if (!snapshotRes.ok) {
             setDataFetching(false)
             setJobError(snapshotRes.error)
-            showToast(`数据获取失败: ${snapshotRes.error}`, 'error')
+            showToast(vaT('toast.fetchFailed', { error: snapshotRes.error }), 'error')
             return
           }
           applyArtifact(snapshotRes.data)
@@ -296,12 +298,12 @@ export function useVendorAnalysisPage() {
           void refreshJobs(true)
           setActiveTab('preview')
           setDataFetching(false)
-          showToast('数据获取成功', 'success')
+          showToast(vaT('toast.fetchSuccess'), 'success')
         } else if (job.status === 'failed' || job.status === 'cancelled') {
           stopPolling()
           setDataFetching(false)
-          setJobError(job.error ?? '任务失败')
-          showToast(`数据获取失败: ${job.error ?? '未知错误'}`, 'error')
+          setJobError(job.error ?? vaT('toast.jobFailed', { error: '' }))
+          showToast(vaT('toast.jobFailed', { error: job.error ?? 'unknown' }), 'error')
         }
         // pending / running：继续轮询
       } catch (err) {
@@ -312,9 +314,9 @@ export function useVendorAnalysisPage() {
   }, [stopPolling, applyArtifact, refreshJobs, applyJobOutputConfig])
 
   const enqueueAndAttach = useCallback(async () => {
-    if (!referenceDate) { showToast('请先选择数据参考日期', 'error'); return }
-    if (!complaintDateRange) { showToast('请先选择客诉成立量时间', 'error'); return }
-    if (selectedStations.length === 0) { showToast('请先选择责任站点', 'error'); return }
+    if (!referenceDate) { showToast(vaT('toast.selectReferenceDate'), 'error'); return }
+    if (!complaintDateRange) { showToast(vaT('toast.selectComplaintRange'), 'error'); return }
+    if (selectedStations.length === 0) { showToast(vaT('toast.selectStation'), 'error'); return }
 
     const params = buildEnqueueParams()
     if (!params) return
@@ -333,7 +335,7 @@ export function useVendorAnalysisPage() {
       let res = await postVendorAnalyzeAsync(imileToken, { ...requestParams, force: false })
       if (!res.ok) {
         setDataFetching(false)
-        showToast(`任务提交失败: ${res.error}`, 'error')
+        showToast(vaT('toast.submitFailed', { error: res.error }), 'error')
         return
       }
 
@@ -342,7 +344,7 @@ export function useVendorAnalysisPage() {
         res = await postVendorAnalyzeAsync(imileToken, { ...requestParams, force: true })
         if (!res.ok) {
           setDataFetching(false)
-          showToast(`任务提交失败: ${res.error}`, 'error')
+          showToast(vaT('toast.submitFailed', { error: res.error }), 'error')
           return
         }
       }
@@ -357,7 +359,7 @@ export function useVendorAnalysisPage() {
         const snapshotRes = await getVendorAnalyzeSnapshot(res.data.jobId)
         if (!snapshotRes.ok) {
           setDataFetching(false)
-          showToast(`数据获取失败: ${snapshotRes.error}`, 'error')
+          showToast(vaT('toast.fetchFailed', { error: snapshotRes.error }), 'error')
           return
         }
         applyArtifact(snapshotRes.data)
@@ -369,14 +371,14 @@ export function useVendorAnalysisPage() {
         } catch { /* 取不到任务不阻断展示，预览沿用上一份配置 */ }
         setActiveTab('preview')
         setDataFetching(false)
-        showToast('已获取此前完成的数据', 'success')
+        showToast(vaT('toast.priorDataLoaded'), 'success')
         return
       }
 
       pollJob(res.data.jobId, submittedKeys)
     } catch {
       setDataFetching(false)
-      showToast('任务提交失败，请重试', 'error')
+      showToast(vaT('toast.submitRetry'), 'error')
     }
   }, [referenceDate, complaintDateRange, selectedStations, imileToken, buildEnqueueParams, applyArtifact, pollJob, refreshJobs, applyJobOutputConfig])
 
@@ -404,7 +406,7 @@ export function useVendorAnalysisPage() {
     setLoadingJobId(jobId)
     try {
       const job = await getJobById(jobId)
-      if (job.status !== 'succeeded') throw new Error('任务尚未完成')
+      if (job.status !== 'succeeded') throw new Error(vaT('toast.jobNotDone'))
       const snapshotRes = await getVendorAnalyzeSnapshot(jobId)
       if (!snapshotRes.ok) throw new Error(snapshotRes.error)
       const artifact = snapshotRes.data
@@ -426,12 +428,12 @@ export function useVendorAnalysisPage() {
       const stationsMatch = jobStations.length === selectedStations.length
         && jobStations.every((s) => selectedStations.includes(s))
       if (!stationsMatch) {
-        showToast(`已加载该任务的分析数据（该任务基于站点「${jobStations.join('、') || '—'}」统计，与当前已选站点不同，指标会按当前站点重新过滤）`, 'info')
+        showToast(vaT('toast.loadedJobDifferentStations', { stations: jobStations.join('、') || '—' }), 'info')
       } else {
-        showToast('已加载该任务的分析数据', 'success')
+        showToast(vaT('toast.loadedJobData'), 'success')
       }
     } catch (e) {
-      showToast((e as Error).message || '加载结果失败', 'error')
+      showToast((e as Error).message || vaT('loadFailed', { ns: 'common' }), 'error')
     } finally {
       setLoadingJobId(null)
     }
@@ -444,14 +446,14 @@ export function useVendorAnalysisPage() {
       config: { pushEnabledIds: string[]; aiSummaryEnabled: boolean; metricKeys: string[] },
     ) => {
       const res = await updateVendorAnalyzeConfig(jobId, config)
-      if (!res.ok) { showToast(`保存失败: ${res.error}`, 'error'); return false }
+      if (!res.ok) { showToast(vaT('toast.saveFailed', { error: res.error }), 'error'); return false }
       if (jobId === viewedJobId) {
         setViewedPushEnabledIds(config.pushEnabledIds)
         setViewedAiSummaryEnabled(config.aiSummaryEnabled)
         setViewedMetricKeys(config.metricKeys)
       }
       await refreshJobs(true)
-      showToast('已保存', 'success')
+      showToast(String(i18n.t('saved', { ns: 'common' })), 'success')
       return true
     },
     [viewedJobId, refreshJobs],
@@ -461,9 +463,9 @@ export function useVendorAnalysisPage() {
     try {
       await cancelJobApi(jobId)
       await refreshJobs()
-      showToast('任务已取消', 'success')
+      showToast(vaT('toast.jobCancelled'), 'success')
     } catch (e) {
-      showToast((e as Error).message || '取消失败', 'error')
+      showToast((e as Error).message || vaT('toast.cancelFailed'), 'error')
     }
   }, [refreshJobs])
 
@@ -471,22 +473,22 @@ export function useVendorAnalysisPage() {
     try {
       await deleteJobApi(jobId)
       setJobsList((prev) => prev.filter((j) => j.id !== jobId))
-      showToast('已删除', 'success')
+      showToast(String(i18n.t('deleted', { ns: 'common' })), 'success')
     } catch (e) {
-      showToast((e as Error).message || '删除失败', 'error')
+      showToast((e as Error).message || String(i18n.t('deleteFailed', { ns: 'common' })), 'error')
     }
   }, [])
 
   const retryJob = useCallback(async (job: PublicJob) => {
     const params = deriveAnalyzeParamsFromPayload(job.payload)
-    if (!params) { showToast('任务参数不完整，无法重新提交', 'error'); return }
+    if (!params) { showToast(vaT('toast.incompleteParams'), 'error'); return }
     try {
       const res = await postVendorAnalyzeAsync(imileToken, { ...params, force: true })
-      if (!res.ok) { showToast(`重新提交失败: ${res.error}`, 'error'); return }
+      if (!res.ok) { showToast(vaT('toast.resubmitFailed', { error: res.error }), 'error'); return }
       await refreshJobs()
-      showToast('重新提交成功', 'success')
+      showToast(vaT('toast.resubmitSuccess'), 'success')
     } catch (e) {
-      showToast((e as Error).message || '重新提交失败', 'error')
+      showToast((e as Error).message || vaT('toast.resubmitFailed', { error: '' }), 'error')
     }
   }, [imileToken, refreshJobs])
 

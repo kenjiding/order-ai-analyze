@@ -1,5 +1,7 @@
 import { Chart } from '@antv/g2'
 import { useEffect, useMemo, useRef } from 'react'
+import { useTranslation } from 'react-i18next'
+import { i18n } from '../../i18n/index'
 import {
   buildWeeklyEfficiencyBubbleData,
   enrichDailyEfficiencyBubbleDataWithWeek,
@@ -27,7 +29,18 @@ export function isEfficiencyChartNonOpenDay(row: {
   )
 }
 
-export const EFFICIENCY_CHART_OPEN_DAY_FILTER_TOOLTIP = `开启后图表仅展示开仓日（隐藏分拣人数 ≤ ${EFFICIENCY_CHART_NON_OPEN_MAX_SORTERS} 或货量 ≤ ${EFFICIENCY_CHART_NON_OPEN_MAX_VOLUME} 的柱子）；总货量、总体效率仍按全量日期计算。`
+export function getEfficiencyChartOpenDayFilterTooltip(): string {
+  return String(
+    i18n.t('chart.openDayFilterTooltip', {
+      ns: 'scannerEfficiency',
+      maxSorters: EFFICIENCY_CHART_NON_OPEN_MAX_SORTERS,
+      maxVolume: EFFICIENCY_CHART_NON_OPEN_MAX_VOLUME,
+    }),
+  )
+}
+
+/** @deprecated use getEfficiencyChartOpenDayFilterTooltip() */
+export const EFFICIENCY_CHART_OPEN_DAY_FILTER_TOOLTIP = getEfficiencyChartOpenDayFilterTooltip()
 
 export type DailyEfficiencyBubbleDatum = {
   date: string
@@ -44,7 +57,7 @@ export type DailyEfficiencyBubbleDatum = {
 
 type VolumeStackRow = {
   date: string
-  segment: '菜鸟' | '其他'
+  segment: string
   value: number
   volume: number
   cainiaoVolume: number
@@ -52,6 +65,17 @@ type VolumeStackRow = {
   cainiaoShare: number | null
   totalHours: number
   costPerTicket: number | null
+}
+
+function chartT(key: string, options?: Record<string, unknown>): string {
+  return String(i18n.t(key, { ns: 'scannerEfficiency', ...options }))
+}
+
+function volumeSegmentKeys() {
+  return {
+    cainiao: chartT('common.cainiao'),
+    other: chartT('common.other'),
+  }
 }
 
 type Props = {
@@ -93,14 +117,14 @@ function buildDayTooltipHtml(date: string, day: DailyEfficiencyBubbleDatum | und
   const cainiao = Math.max(0, Math.round(day.cainiaoVolume))
   const other = Math.max(0, day.volume - cainiao)
   const lines = [
-    row('菜鸟', `${formatInteger(cainiao)} 票`),
-    row('其他', `${formatInteger(other)} 票`),
-    row('菜鸟占比', formatCainiaoSharePercent(day.cainiaoShare)),
-    row('分拣人数', `${formatInteger(day.sorterCount)} 人`),
-    row('当天效率', `${fmt1(day.efficiency)} 票/h`),
+    row(chartT('common.cainiao'), `${formatInteger(cainiao)} ${chartT('common.tickets')}`),
+    row(chartT('common.other'), `${formatInteger(other)} ${chartT('common.tickets')}`),
+    row(chartT('columns.cainiaoShare'), formatCainiaoSharePercent(day.cainiaoShare)),
+    row(chartT('columns.sorterCount'), `${formatInteger(day.sorterCount)} ${chartT('common.people')}`),
+    row(chartT('columns.dayEfficiency'), `${fmt1(day.efficiency)} ${chartT('common.ticketsPerHourShort')}`),
   ]
   if (day.costPerTicket != null && Number.isFinite(day.costPerTicket)) {
-    lines.push(row('单位成本', `$${day.costPerTicket.toFixed(2)}`))
+    lines.push(row(chartT('columns.costPerTicket'), `$${day.costPerTicket.toFixed(2)}`))
   }
 
   return `<div style="padding:8px 12px;min-width:148px;"><div style="font-weight:600;margin-bottom:6px;color:#0f172a;font-size:12px;">${date}</div>${lines.join('')}</div>`
@@ -111,7 +135,11 @@ function buildWeekTooltipHtml(
   totalVolume: number,
   overallEfficiency: number | null,
 ): string {
-  return `第 ${week.weekIndex + 1} 周 · 总货量 ${formatInteger(totalVolume)} 票 · 总体效率 ${fmt1(overallEfficiency)} 票/h`
+  return chartT('chart.comboWeekSummary', {
+    week: week.weekIndex + 1,
+    volume: formatInteger(totalVolume),
+    efficiency: fmt1(overallEfficiency),
+  })
 }
 
 function weekLabelSegmentsFromDaily(
@@ -131,6 +159,7 @@ function weekLabelSegmentsFromDaily(
 }
 
 function buildVolumeStackData(data: DailyEfficiencyBubbleDatum[]): VolumeStackRow[] {
+  const segments = volumeSegmentKeys()
   const rows: VolumeStackRow[] = []
   for (const d of data) {
     const cainiao = Math.max(0, Math.round(d.cainiaoVolume))
@@ -144,8 +173,8 @@ function buildVolumeStackData(data: DailyEfficiencyBubbleDatum[]): VolumeStackRo
       totalHours: d.totalHours,
       costPerTicket: d.costPerTicket,
     }
-    rows.push({ ...base, segment: '菜鸟', value: cainiao })
-    rows.push({ ...base, segment: '其他', value: other })
+    rows.push({ ...base, segment: segments.cainiao, value: cainiao })
+    rows.push({ ...base, segment: segments.other, value: other })
   }
   return rows
 }
@@ -164,6 +193,8 @@ function appendDailyComboLayers(
   data: DailyEfficiencyBubbleDatum[],
   volumeStackData: VolumeStackRow[],
   effData: DailyEfficiencyBubbleDatum[],
+  volumeAxisTitle: string,
+  efficiencyAxisTitle: string,
 ) {
   chart
     .interval()
@@ -179,7 +210,7 @@ function appendDailyComboLayers(
       labelFontSize: 11,
     })
     .axis('y', {
-      title: '总货量（票）',
+      title: volumeAxisTitle,
       titleFontSize: 11,
       grid: true,
       gridLineDash: [4, 4],
@@ -228,7 +259,7 @@ function appendDailyComboLayers(
     .scale('y', { independent: true, nice: true, domainMin: 0 })
     .axis('y', {
       position: 'right',
-      title: '当天效率（票/h）',
+      title: efficiencyAxisTitle,
       titleFontSize: 13,
       labelFontSize: 15,
       labelFormatter: (v: string | number) => fmt1(typeof v === 'number' ? v : Number(v)),
@@ -321,8 +352,10 @@ export default function DailyEfficiencyComboChart({
   attendanceDailyRows = [],
   className,
 }: Props) {
+  const { t } = useTranslation('scannerEfficiency')
   const containerRef = useRef<HTMLDivElement>(null)
   const isWeekMode = dimension === 'week'
+  const segments = useMemo(() => volumeSegmentKeys(), [t])
 
   const dailyWithWeek = useMemo(
     () => (isWeekMode ? enrichDailyEfficiencyBubbleDataWithWeek(data) : []),
@@ -395,7 +428,7 @@ export default function DailyEfficiencyComboChart({
 
     chart.scale('x', { type: 'band', paddingInner: 0.4, paddingOuter: 0.1 })
     chart.scale('color', {
-      domain: ['菜鸟', '其他'],
+      domain: [segments.cainiao, segments.other],
       range: [BAR_CAINIAO_COLOR, BAR_OTHER_COLOR],
     })
 
@@ -403,7 +436,14 @@ export default function DailyEfficiencyComboChart({
       appendWeekBackgroundLayers(chart, dailyWithWeek, maxVolume)
     }
 
-    appendDailyComboLayers(chart, data, volumeStackData, effData)
+    appendDailyComboLayers(
+      chart,
+      data,
+      volumeStackData,
+      effData,
+      t('chart.comboVolumeTitle'),
+      t('chart.comboEfficiencyTitle'),
+    )
 
     if (isWeekMode) {
       appendWeekDividerLayers(chart, dailyWithWeek)
@@ -414,7 +454,7 @@ export default function DailyEfficiencyComboChart({
     return () => {
       chart.destroy()
     }
-  }, [data, dataKey, skipChart, volumeStackData, isWeekMode, dailyWithWeek, weeklyData, maxVolume])
+  }, [data, dataKey, skipChart, volumeStackData, isWeekMode, dailyWithWeek, weeklyData, maxVolume, segments, t])
 
   if (!data.length) {
     return (
@@ -424,7 +464,7 @@ export default function DailyEfficiencyComboChart({
           className ?? '',
         ].join(' ')}
       >
-        暂无日期匹配数据。
+        {t('empty.noDateMatch')}
       </div>
     )
   }
@@ -437,7 +477,7 @@ export default function DailyEfficiencyComboChart({
           className ?? '',
         ].join(' ')}
       >
-        <span>暂无有效「当天效率」数据点（均为空或未匹配工时）。</span>
+        <span>{t('chart.emptyNoEfficiencyPoints')}</span>
       </div>
     )
   }
@@ -448,11 +488,11 @@ export default function DailyEfficiencyComboChart({
         <div className="inline-flex flex-wrap items-center gap-x-4 gap-y-1">
           <span className="inline-flex items-center gap-1.5">
             <span className="h-3 w-3 rounded-sm" style={{ background: BAR_CAINIAO_COLOR }} aria-hidden />
-            菜鸟货量
+            {t('chart.legendCainiaoVolume')}
           </span>
           <span className="inline-flex items-center gap-1.5">
             <span className="h-3 w-3 rounded-sm" style={{ background: BAR_OTHER_COLOR }} aria-hidden />
-            其他货量
+            {t('chart.legendOtherVolume')}
           </span>
           <span className="inline-flex items-center gap-1.5">
             <span
@@ -460,15 +500,15 @@ export default function DailyEfficiencyComboChart({
               style={{ background: AREA_HOURS_COLOR, borderBottom: `2px dashed ${AREA_HOURS_COLOR}` }}
               aria-hidden
             />
-            分拣人数
+            {t('chart.legendSorterCountLine')}
           </span>
           <span className="inline-flex items-center gap-1.5">
             <span className="h-0.5 w-5 rounded" style={{ background: LINE_EFF_COLOR }} aria-hidden />
-            当天效率（右轴，橙线）
+            {t('chart.legendDailyEffRight')}
           </span>
           {isWeekMode && (
             <span className="inline-flex items-center gap-1.5 text-slate-500">
-              图表上方为各周总货量与总体效率
+              {t('chart.weekModeHint')}
             </span>
           )}
         </div>
@@ -491,13 +531,13 @@ export default function DailyEfficiencyComboChart({
                   className="truncate text-[11px] font-bold leading-tight tabular-nums"
                   style={{ color: week.weekColor }}
                 >
-                  总货量 {formatInteger(week.totalVolume)}
+                  {t('chart.weekLabelTotalVolume', { value: formatInteger(week.totalVolume) })}
                 </span>
                 <span
                   className="truncate text-[11px] font-bold leading-tight tabular-nums"
                   style={{ color: week.weekColor }}
                 >
-                  总体效率 {fmt1(week.overallEfficiency)}
+                  {t('chart.weekLabelOverallEff', { value: fmt1(week.overallEfficiency) })}
                 </span>
               </div>
             ))}
@@ -507,11 +547,7 @@ export default function DailyEfficiencyComboChart({
           ref={containerRef}
           className="g2-daily-efficiency-combo min-h-[280px] w-full"
           role="img"
-          aria-label={
-            isWeekMode
-              ? '效率综合图：日维度货量、分拣人数与效率保持不变，背景色块区分自然周，上方标注各周总货量与总体效率'
-              : '按日效率综合图：左轴堆叠柱为菜鸟与其他货量，绿色面积分拣人数，橙线当天效率，悬停显示明细'
-          }
+          aria-label={isWeekMode ? t('chart.comboWeekDesc') : t('chart.comboDayDesc')}
         />
       </div>
     </div>

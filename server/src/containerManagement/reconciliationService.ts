@@ -12,7 +12,7 @@
  */
 import { and, asc, eq, inArray, or, sql } from 'drizzle-orm'
 import { getDb, schema } from '../db'
-import { CONTAINER_TYPES } from './constants'
+import { knownTypeCodes } from './containerTypeService'
 
 export type ReconciliationRow = {
   counterpartyId: string
@@ -43,15 +43,16 @@ export type ReconciliationSummary = {
 /**
  * 纯函数：算净额并按品类分别汇总。
  * 在途量不参与加减 —— 对方随时可能拒收或报差异，算进净额会让数字回退，反而成为扯皮源头。
+ *
+ * types 默认取全部已知品类（含停用）：停用的品类可能还有没结清的净额，漏掉它就等于把账藏起来。
  */
-export function summarizeReconciliation(rows: ReconciliationRow[]): ReconciliationSummary {
+export function summarizeReconciliation(
+  rows: ReconciliationRow[],
+  types: string[] = knownTypeCodes(),
+): ReconciliationSummary {
   // 两个方向都预置全品类，前端不用处理 undefined，也不会因为某品类没往来就少一列
-  const owedToMe: Record<string, number> = Object.fromEntries(
-    CONTAINER_TYPES.map((type) => [type, 0]),
-  )
-  const owedByMe: Record<string, number> = Object.fromEntries(
-    CONTAINER_TYPES.map((type) => [type, 0]),
-  )
+  const owedToMe: Record<string, number> = Object.fromEntries(types.map((type) => [type, 0]))
+  const owedByMe: Record<string, number> = Object.fromEntries(types.map((type) => [type, 0]))
 
   const withNet = rows.map((row) => {
     const net = row.outQty - row.inQty

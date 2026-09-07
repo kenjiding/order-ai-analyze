@@ -1,3 +1,4 @@
+import { i18n } from '../../i18n/index'
 import type { AttendanceEfficiencyResult, ScanAggregate, ScannerEfficiencyResult } from './aggregates'
 import type { ScanSettings } from './constants'
 import type { SourceInfo } from './sourceInfo'
@@ -74,24 +75,29 @@ type MetricDefinition = {
   higherIsBetter: boolean | null
 }
 
-const METRIC_DEFINITIONS: MetricDefinition[] = [
-  { key: 'totalVolume', label: '总货量', precision: 0, unit: '票', higherIsBetter: null },
-  { key: 'averageDailyVolume', label: '日均货量', precision: 0, unit: '票/天', higherIsBetter: null },
-  { key: 'peakDailyVolume', label: '峰值日货量', precision: 0, unit: '票', higherIsBetter: null },
-  { key: 'totalLaborCost', label: '人工总成本', precision: 2, unit: '$', higherIsBetter: false },
-  { key: 'averageCostPerTicket', label: '每票成本', precision: 2, unit: '$/票', higherIsBetter: false },
-  { key: 'openDayCount', label: '开仓天数', precision: 0, unit: '天', higherIsBetter: null },
-  { key: 'openEfficiency', label: '开仓效率', precision: 2, unit: '票/小时', higherIsBetter: true },
-  { key: 'overallEfficiency', label: '总体效率', precision: 2, unit: '票/小时', higherIsBetter: true },
-  { key: 'attendanceMatchRate', label: '考勤匹配率', precision: 1, unit: '%', higherIsBetter: true },
-  { key: 'unmatchedDayCount', label: '未匹配天数', precision: 0, unit: '天', higherIsBetter: false },
-  { key: 'sortingEfficiency', label: '小工效率', precision: 2, unit: '票/小时', higherIsBetter: true },
-  { key: 'sortingScanCount', label: '一级分拣扫描量', precision: 0, unit: '票', higherIsBetter: null },
-  { key: 'sortingEffectiveHours', label: '一级分拣有效工时', precision: 2, unit: '小时', higherIsBetter: null },
-  { key: 'sortingScannerCount', label: '扫描员人数', precision: 0, unit: '人', higherIsBetter: null },
-]
+function getMetricDefinitions(): MetricDefinition[] {
+  const t = (key: string) => String(i18n.t(key, { ns: 'scannerEfficiency' }))
+  return [
+  { key: 'totalVolume', label: t('weekly.metric.totalVolume'), precision: 0, unit: t('weekly.metric.unitTickets'), higherIsBetter: null },
+  { key: 'averageDailyVolume', label: t('weekly.metric.averageDailyVolume'), precision: 0, unit: t('weekly.metric.unitTicketsPerDay'), higherIsBetter: null },
+  { key: 'peakDailyVolume', label: t('weekly.metric.peakDailyVolume'), precision: 0, unit: t('weekly.metric.unitTickets'), higherIsBetter: null },
+  { key: 'totalLaborCost', label: t('weekly.metric.totalLaborCost'), precision: 2, unit: '$', higherIsBetter: false },
+  { key: 'averageCostPerTicket', label: t('weekly.metric.averageCostPerTicket'), precision: 2, unit: t('weekly.metric.unitCostPerTicket'), higherIsBetter: false },
+  { key: 'openDayCount', label: t('weekly.metric.openDayCount'), precision: 0, unit: t('weekly.metric.unitDays'), higherIsBetter: null },
+  { key: 'openEfficiency', label: t('weekly.metric.openEfficiency'), precision: 2, unit: t('weekly.metric.unitTicketsPerHour'), higherIsBetter: true },
+  { key: 'overallEfficiency', label: t('weekly.metric.overallEfficiency'), precision: 2, unit: t('weekly.metric.unitTicketsPerHour'), higherIsBetter: true },
+  { key: 'attendanceMatchRate', label: t('weekly.metric.attendanceMatchRate'), precision: 1, unit: '%', higherIsBetter: true },
+  { key: 'unmatchedDayCount', label: t('weekly.metric.unmatchedDayCount'), precision: 0, unit: t('weekly.metric.unitDays'), higherIsBetter: false },
+  { key: 'sortingEfficiency', label: t('weekly.metric.sortingEfficiency'), precision: 2, unit: t('weekly.metric.unitTicketsPerHour'), higherIsBetter: true },
+  { key: 'sortingScanCount', label: t('weekly.metric.sortingScanCount'), precision: 0, unit: t('weekly.metric.unitTickets'), higherIsBetter: null },
+  { key: 'sortingEffectiveHours', label: t('weekly.metric.sortingEffectiveHours'), precision: 2, unit: t('weekly.metric.unitHours'), higherIsBetter: null },
+  { key: 'sortingScannerCount', label: t('weekly.metric.sortingScannerCount'), precision: 0, unit: t('weekly.metric.unitPeople'), higherIsBetter: null },
+  ]
+}
 
-const metricDefinitionMap = new Map(METRIC_DEFINITIONS.map((definition) => [definition.key, definition]))
+function metricDefinitionFor(key: WeeklyMetricKey): MetricDefinition | undefined {
+  return getMetricDefinitions().find((definition) => definition.key === key)
+}
 
 /** 环比上周表格中不展示的指标（仍参与快照与结论推导） */
 const WEEK_OVER_WEEK_TABLE_EXCLUDED_KEYS = new Set<WeeklyMetricKey>([
@@ -131,18 +137,18 @@ const formatMetricValue = (definition: MetricDefinition, value: number): string 
 
 const formatMetricDeltaValue = (definition: MetricDefinition, value: number): string => {
   if (definition.unit === '%') {
-    return `${formatNumber(value, definition.precision)} 个百分点`
+    return `${formatNumber(value, definition.precision)} ${String(i18n.t('weekly.metric.unitPercentPoints', { ns: 'scannerEfficiency' }))}`
   }
   return formatMetricValue(definition, value)
 }
 
 export const formatWeeklyMetricValue = (key: WeeklyMetricKey, value: number): string => {
-  const definition = metricDefinitionMap.get(key)
+  const definition = metricDefinitionFor(key)
   return definition ? formatMetricValue(definition, value) : formatNumber(value, 2)
 }
 
 export const formatWeeklyMetricDeltaValue = (key: WeeklyMetricKey, value: number): string => {
-  const definition = metricDefinitionMap.get(key)
+  const definition = metricDefinitionFor(key)
   return definition ? formatMetricDeltaValue(definition, value) : formatNumber(value, 2)
 }
 
@@ -241,16 +247,13 @@ export function buildWeeklyReportSnapshot({
 const buildComparisonText = (definition: MetricDefinition, currentValue: number, previousValue: number): string => {
   const delta = currentValue - previousValue
   if (Math.abs(delta) < Number.EPSILON) {
-    return `与上周持平，均为 ${formatMetricValue(definition, currentValue)}。`
+    return String(i18n.t('weekly.comparisonFlat', { ns: 'scannerEfficiency', value: formatMetricValue(definition, currentValue) }))
   }
 
-  const directionText = delta > 0 ? '上升' : '下降'
+  const directionText = delta > 0 ? String(i18n.t('weekly.directionUp', { ns: 'scannerEfficiency' })) : String(i18n.t('weekly.directionDown', { ns: 'scannerEfficiency' }))
   const deltaPercent = previousValue === 0 ? null : (Math.abs(delta) / Math.abs(previousValue)) * 100
-  const percentText = deltaPercent == null ? '' : `，变化 ${formatNumber(deltaPercent, 1)}%`
-  return `本周 ${formatMetricValue(definition, currentValue)}，较上周 ${formatMetricValue(
-    definition,
-    previousValue,
-  )} ${directionText} ${formatMetricDeltaValue(definition, Math.abs(delta))}${percentText}。`
+  const percentText = deltaPercent == null ? '' : String(i18n.t('weekly.changePercent', { ns: 'scannerEfficiency', percent: formatNumber(deltaPercent, 1) }))
+  return String(i18n.t('weekly.comparisonChanged', { ns: 'scannerEfficiency', current: formatMetricValue(definition, currentValue), previous: formatMetricValue(definition, previousValue), direction: directionText, delta: formatMetricDeltaValue(definition, Math.abs(delta)), percent: percentText }))
 }
 
 const assessMetric = (definition: MetricDefinition, deltaValue: number): WeeklyMetricComparison['assessment'] => {
@@ -262,7 +265,7 @@ export function buildWeeklySnapshotComparison(
   currentSnapshot: WeeklyReportSnapshot,
   previousSnapshot: WeeklyReportSnapshot,
 ): WeeklySnapshotComparison {
-  const allRows = METRIC_DEFINITIONS.flatMap((definition) => {
+  const allRows = getMetricDefinitions().flatMap((definition) => {
     const currentValue = currentSnapshot.metrics[definition.key]
     const previousValue = previousSnapshot.metrics[definition.key]
     if (currentValue == null || previousValue == null) return []
@@ -315,37 +318,37 @@ export function buildWeeklySnapshotComparison(
   const attendanceMatchRate = byKey.get('attendanceMatchRate')
   if (attendanceMatchRate) {
     diagnostics.push({
-      label: '数据完整性',
+      label: String(i18n.t('weekly.dataIntegrity', { ns: 'scannerEfficiency' })),
       value:
         attendanceMatchRate.deltaValue >= 0
-          ? `+${formatNumber(attendanceMatchRate.deltaValue, 1)} 个百分点`
-          : `${formatNumber(attendanceMatchRate.deltaValue, 1)} 个百分点`,
+          ? `+${formatNumber(attendanceMatchRate.deltaValue, 1)} ${String(i18n.t('weekly.units.unitPercentPoints', { ns: 'scannerEfficiency' }))}`
+          : `${formatNumber(attendanceMatchRate.deltaValue, 1)} ${String(i18n.t('weekly.units.unitPercentPoints', { ns: 'scannerEfficiency' }))}`,
       text: attendanceMatchRate.text,
     })
   }
 
   if (totalVolume && totalVolume.deltaPercent != null && totalVolume.deltaPercent > 10 && openEfficiency?.assessment === 'negative') {
-    actions.push('货量较上周明显上升但开仓效率下降，优先复盘高峰日排班、任务分配和临时增援是否同步到位。')
+    actions.push(String(i18n.t('weekly.actionVolumeUpEffDown', { ns: 'scannerEfficiency' })))
   }
   if (openEfficiency?.assessment === 'negative') {
-    actions.push('开仓效率低于上周，建议对比低效日期的工时结构、分拣人数和货量峰值。')
+    actions.push(String(i18n.t('weekly.actionOpenEffDown', { ns: 'scannerEfficiency' })))
   }
   if (overallEfficiency?.assessment === 'negative') {
-    actions.push('总体效率低于上周，检查不开仓日工时、考勤补录和非生产性工时是否拉低分母。')
+    actions.push(String(i18n.t('weekly.actionOverallEffDown', { ns: 'scannerEfficiency' })))
   }
   if (sortingEfficiency?.assessment === 'negative') {
-    actions.push('小工效率低于上周，抽查扫描间隔、人员熟练度和任务拆分是否存在异常。')
+    actions.push(String(i18n.t('weekly.actionSortingEffDown', { ns: 'scannerEfficiency' })))
   }
   if (averageCostPerTicket?.assessment === 'negative') {
-    actions.push('每票成本高于上周，优先核对高成本日的低货量错配、异常工时与班次安排。')
+    actions.push(String(i18n.t('weekly.actionCostUp', { ns: 'scannerEfficiency' })))
   }
   if (attendanceMatchRate?.assessment === 'negative') {
-    actions.push('考勤匹配率低于上周，先补齐缺失考勤再下结论，避免效率判断被数据缺口放大。')
+    actions.push(String(i18n.t('weekly.actionMatchRateDown', { ns: 'scannerEfficiency' })))
   }
 
-  if (!conclusions.length && allRows.length) conclusions.push(`已完成与上周（${previousSnapshot.periodStart} ~ ${previousSnapshot.periodEnd}）的同口径对比。`)
+  if (!conclusions.length && allRows.length) conclusions.push(String(i18n.t('weekly.comparisonDone', { ns: 'scannerEfficiency', start: previousSnapshot.periodStart, end: previousSnapshot.periodEnd })))
   if (!actions.length && allRows.some((row) => row.assessment === 'positive')) {
-    actions.push('本周核心效率较上周改善，建议固化对应排班和作业节奏，下周继续观察是否稳定。')
+    actions.push(String(i18n.t('weekly.actionImproved', { ns: 'scannerEfficiency' })))
   }
 
   return {

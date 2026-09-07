@@ -1,7 +1,9 @@
 import { useCallback, useMemo, useState } from 'react'
 import dayjs, { type Dayjs } from 'dayjs'
 import { useAppSettings } from '../../context/AppSettingsContext'
+import { i18n } from '../../i18n'
 import { showToast } from '../../utils/toast'
+import { vrmT } from './vendorRegionMapI18n'
 import { fetchVendorRegionMap } from './vendorRegionMapApi'
 import { buildVendorColorMap } from './vendorColors'
 import { type VendorRegionMapResult } from './vendorRegionMapTypes'
@@ -21,8 +23,9 @@ export function useVendorRegionMapPage() {
   const query = useCallback(async () => {
     const token = imileToken.trim()
     if (!token) {
-      setError('请先在全局设置中配置 iMile Token')
-      showToast('请先在全局设置中配置 iMile Token', 'warning')
+      const msg = String(i18n.t('imileTokenRequired', { ns: 'common' }))
+      setError(msg)
+      showToast(msg, 'warning')
       return
     }
     setLoading(true)
@@ -36,10 +39,10 @@ export function useVendorRegionMapPage() {
       setData(result)
       setSelectedSupplierKeys(result.vendors.map((vendor) => vendor.supplierKey))
       if (result.meta.matchedPackages === 0) {
-        showToast('已拉取扫描数据，但没有匹配到供应商路由码的包裹', 'warning')
+        showToast(vrmT('trend.noVendorsMatched'), 'warning')
       }
     } catch (err) {
-      const message = err instanceof Error ? err.message : '查询失败'
+      const message = err instanceof Error ? err.message : vrmT('trend.queryFailed')
       setError(message)
       setData(null)
       showToast(message, 'error')

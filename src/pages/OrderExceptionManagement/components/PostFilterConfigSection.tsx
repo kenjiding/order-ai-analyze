@@ -1,7 +1,8 @@
 import { Button, Input, InputNumber, Select } from 'antd'
 import { ChevronLeft, ChevronRight, Clock, DollarSign, Filter, Scale, Store } from 'lucide-react'
 import type { ReactNode } from 'react'
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { countActivePostFilters } from '../postFilter/defaults'
 import type { PostFilterConfig } from '../postFilter/types'
 
@@ -55,9 +56,19 @@ type Props = {
 }
 
 export function PostFilterConfigSection({ draft, applied, onChange, onApply, maxHeight }: Props) {
+  const { t } = useTranslation('orderException')
   const [expanded, setExpanded] = useState(false)
   const { amountFilter, weightFilter, merchantFilter, timeoutFilter } = draft
   const appliedCount = countActivePostFilters(applied)
+  const postFilterTitle = t('postFilter.title')
+
+  const verticalTitle = useMemo(
+    () =>
+      postFilterTitle.split('').map((char, index) => (
+        <span key={`${char}-${index}`}>{char}</span>
+      )),
+    [postFilterTitle],
+  )
 
   function patchAmount(patch: Partial<typeof amountFilter>) {
     onChange({ ...draft, amountFilter: { ...amountFilter, ...patch } })
@@ -88,14 +99,14 @@ export function PostFilterConfigSection({ draft, applied, onChange, onApply, max
       <aside
         className="flex w-11 shrink-0 flex-col self-stretch border-l"
         style={panelStyle}
-        aria-label="后置过滤"
+        aria-label={postFilterTitle}
       >
         <button
           type="button"
           onClick={() => setExpanded(true)}
           className="flex h-full w-full flex-col items-center gap-2 py-4 text-slate-400 transition hover:bg-slate-50/80 hover:text-[#1f6f68]"
-          aria-label="展开后置过滤"
-          title="展开后置过滤"
+          aria-label={t('postFilter.expand')}
+          title={t('postFilter.expand')}
         >
           <ChevronLeft className="h-4 w-4 shrink-0" aria-hidden />
           <Filter className="h-4 w-4 shrink-0" aria-hidden />
@@ -105,9 +116,7 @@ export function PostFilterConfigSection({ draft, applied, onChange, onApply, max
             </span>
           ) : null}
           <span className="flex flex-col items-center gap-2 text-[10px] font-medium text-slate-500" aria-hidden>
-            {'后置过滤'.split('').map((char) => (
-              <span key={char}>{char}</span>
-            ))}
+            {verticalTitle}
           </span>
         </button>
       </aside>
@@ -118,167 +127,167 @@ export function PostFilterConfigSection({ draft, applied, onChange, onApply, max
     <aside
       className="flex w-[280px] shrink-0 flex-col self-stretch border-l"
       style={panelStyle}
-      aria-label="后置过滤"
+      aria-label={postFilterTitle}
     >
       <div className="mb-1 flex shrink-0 items-center gap-2 px-5">
         <button
           type="button"
           onClick={() => setExpanded(false)}
           className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded text-slate-400 transition hover:bg-slate-100 hover:text-slate-600"
-          aria-label="收起后置过滤"
-          title="收起"
+          aria-label={t('postFilter.collapse')}
+          title={t('postFilter.collapseShort')}
         >
           <ChevronRight className="h-4 w-4" aria-hidden />
         </button>
         <h4 className="min-w-0 flex-1 text-xs font-semibold uppercase tracking-[0.08em] text-slate-500">
-          后置过滤
+          {postFilterTitle}
         </h4>
         {appliedCount > 0 ? (
-          <span className="shrink-0 text-[11px] font-medium text-[#1f6f68]">{appliedCount} 项生效</span>
+          <span className="shrink-0 text-[11px] font-medium text-[#1f6f68]">
+            {t('postFilter.activeCount', { count: appliedCount })}
+          </span>
         ) : (
-          <span className="shrink-0 text-[11px] text-slate-400">留空即不过滤</span>
+          <span className="shrink-0 text-[11px] text-slate-400">{t('postFilter.emptyMeansNoFilter')}</span>
         )}
       </div>
 
       <div className="min-h-0 flex-1 overflow-y-auto">
         <div className="px-5">
-        <p className="mb-3 text-[11px] leading-relaxed text-slate-400">
-          仅过滤已完成分析的结果行，不影响 AI 分析过程。
-        </p>
+          <p className="mb-3 text-[11px] leading-relaxed text-slate-400">{t('postFilter.hint')}</p>
 
-        <div className="divide-y" style={{ borderColor: 'var(--admin-line)' }}>
-          <FilterGroup
-            icon={<DollarSign className="h-3.5 w-3.5" aria-hidden />}
-            label="包裹金额"
-            active={amountActive}
-          >
-            <div>
-              <FieldLabel>货币</FieldLabel>
-              <Select
-                className="w-full"
-                value={amountFilter.currency}
-                options={CURRENCY_OPTIONS}
-                onChange={(v) => patchAmount({ currency: v })}
-              />
-            </div>
-            <div className="grid grid-cols-2 gap-2">
+          <div className="divide-y" style={{ borderColor: 'var(--admin-line)' }}>
+            <FilterGroup
+              icon={<DollarSign className="h-3.5 w-3.5" aria-hidden />}
+              label={t('postFilter.parcelAmount')}
+              active={amountActive}
+            >
               <div>
-                <FieldLabel>大于</FieldLabel>
-                <InputNumber
+                <FieldLabel>{t('postFilter.currency')}</FieldLabel>
+                <Select
                   className="w-full"
-                  placeholder="不限"
-                  min={0}
-                  value={amountFilter.minValue ?? undefined}
-                  onChange={(v) => patchAmount({ minValue: v ?? null })}
+                  value={amountFilter.currency}
+                  options={CURRENCY_OPTIONS}
+                  onChange={(v) => patchAmount({ currency: v })}
                 />
               </div>
-              <div>
-                <FieldLabel>小于</FieldLabel>
-                <InputNumber
-                  className="w-full"
-                  placeholder="不限"
-                  min={0}
-                  value={amountFilter.maxValue ?? undefined}
-                  onChange={(v) => patchAmount({ maxValue: v ?? null })}
-                />
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <FieldLabel>{t('postFilter.greaterThan')}</FieldLabel>
+                  <InputNumber
+                    className="w-full"
+                    placeholder={t('postFilter.unlimited')}
+                    min={0}
+                    value={amountFilter.minValue ?? undefined}
+                    onChange={(v) => patchAmount({ minValue: v ?? null })}
+                  />
+                </div>
+                <div>
+                  <FieldLabel>{t('postFilter.lessThan')}</FieldLabel>
+                  <InputNumber
+                    className="w-full"
+                    placeholder={t('postFilter.unlimited')}
+                    min={0}
+                    value={amountFilter.maxValue ?? undefined}
+                    onChange={(v) => patchAmount({ maxValue: v ?? null })}
+                  />
+                </div>
               </div>
-            </div>
-          </FilterGroup>
+            </FilterGroup>
 
-          <FilterGroup
-            icon={<Scale className="h-3.5 w-3.5" aria-hidden />}
-            label="重量 kg"
-            active={weightActive}
-          >
-            <div className="grid grid-cols-2 gap-2">
-              <div>
-                <FieldLabel>大于</FieldLabel>
-                <InputNumber
-                  className="w-full"
-                  placeholder="不限"
-                  min={0}
-                  step={0.01}
-                  value={weightFilter.minKg ?? undefined}
-                  onChange={(v) => patchWeight({ minKg: v ?? null })}
-                />
+            <FilterGroup
+              icon={<Scale className="h-3.5 w-3.5" aria-hidden />}
+              label={t('postFilter.weightKg')}
+              active={weightActive}
+            >
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <FieldLabel>{t('postFilter.greaterThan')}</FieldLabel>
+                  <InputNumber
+                    className="w-full"
+                    placeholder={t('postFilter.unlimited')}
+                    min={0}
+                    step={0.01}
+                    value={weightFilter.minKg ?? undefined}
+                    onChange={(v) => patchWeight({ minKg: v ?? null })}
+                  />
+                </div>
+                <div>
+                  <FieldLabel>{t('postFilter.lessThan')}</FieldLabel>
+                  <InputNumber
+                    className="w-full"
+                    placeholder={t('postFilter.unlimited')}
+                    min={0}
+                    step={0.01}
+                    value={weightFilter.maxKg ?? undefined}
+                    onChange={(v) => patchWeight({ maxKg: v ?? null })}
+                  />
+                </div>
               </div>
-              <div>
-                <FieldLabel>小于</FieldLabel>
-                <InputNumber
-                  className="w-full"
-                  placeholder="不限"
-                  min={0}
-                  step={0.01}
-                  value={weightFilter.maxKg ?? undefined}
-                  onChange={(v) => patchWeight({ maxKg: v ?? null })}
-                />
-              </div>
-            </div>
-          </FilterGroup>
+            </FilterGroup>
 
-          <FilterGroup
-            icon={<Store className="h-3.5 w-3.5" aria-hidden />}
-            label="商家"
-            active={merchantActive}
-          >
-            <div>
-              <FieldLabel>商家编码（Enter 确认，多项 OR）</FieldLabel>
-              <Select
-                mode="tags"
-                className="w-full"
-                placeholder="输入编码"
-                value={merchantFilter.merchantCodes}
-                onChange={(v: string[]) => patchMerchant({ merchantCodes: v })}
-                tokenSeparators={[',', ' ']}
-                open={false}
-              />
-            </div>
-            <div>
-              <FieldLabel>名称关键词（模糊，与编码 OR）</FieldLabel>
-              <Input
-                placeholder="留空则不限"
-                value={merchantFilter.merchantNameKeyword}
-                onChange={(e) => patchMerchant({ merchantNameKeyword: e.target.value })}
-              />
-            </div>
-          </FilterGroup>
+            <FilterGroup
+              icon={<Store className="h-3.5 w-3.5" aria-hidden />}
+              label={t('postFilter.merchant')}
+              active={merchantActive}
+            >
+              <div>
+                <FieldLabel>{t('postFilter.merchantCodes')}</FieldLabel>
+                <Select
+                  mode="tags"
+                  className="w-full"
+                  placeholder={t('postFilter.merchantCodePlaceholder')}
+                  value={merchantFilter.merchantCodes}
+                  onChange={(v: string[]) => patchMerchant({ merchantCodes: v })}
+                  tokenSeparators={[',', ' ']}
+                  open={false}
+                />
+              </div>
+              <div>
+                <FieldLabel>{t('postFilter.merchantNameKeyword')}</FieldLabel>
+                <Input
+                  placeholder={t('postFilter.merchantNamePlaceholder')}
+                  value={merchantFilter.merchantNameKeyword}
+                  onChange={(e) => patchMerchant({ merchantNameKeyword: e.target.value })}
+                />
+              </div>
+            </FilterGroup>
 
-          <FilterGroup
-            icon={<Clock className="h-3.5 w-3.5" aria-hidden />}
-            label="超时天数"
-            active={timeoutActive}
-          >
-            <div className="grid grid-cols-2 gap-2">
-              <div>
-                <FieldLabel>最少</FieldLabel>
-                <InputNumber
-                  className="w-full"
-                  placeholder="不限"
-                  min={0}
-                  value={timeoutFilter.minDays ?? undefined}
-                  onChange={(v) => patchTimeout({ minDays: v ?? null })}
-                />
+            <FilterGroup
+              icon={<Clock className="h-3.5 w-3.5" aria-hidden />}
+              label={t('postFilter.timeoutDays')}
+              active={timeoutActive}
+            >
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <FieldLabel>{t('postFilter.minDays')}</FieldLabel>
+                  <InputNumber
+                    className="w-full"
+                    placeholder={t('postFilter.unlimited')}
+                    min={0}
+                    value={timeoutFilter.minDays ?? undefined}
+                    onChange={(v) => patchTimeout({ minDays: v ?? null })}
+                  />
+                </div>
+                <div>
+                  <FieldLabel>{t('postFilter.maxDays')}</FieldLabel>
+                  <InputNumber
+                    className="w-full"
+                    placeholder={t('postFilter.unlimited')}
+                    min={0}
+                    value={timeoutFilter.maxDays ?? undefined}
+                    onChange={(v) => patchTimeout({ maxDays: v ?? null })}
+                  />
+                </div>
               </div>
-              <div>
-                <FieldLabel>最多</FieldLabel>
-                <InputNumber
-                  className="w-full"
-                  placeholder="不限"
-                  min={0}
-                  value={timeoutFilter.maxDays ?? undefined}
-                  onChange={(v) => patchTimeout({ maxDays: v ?? null })}
-                />
-              </div>
-            </div>
-            <p className="text-[10px] leading-relaxed text-slate-400">基于最后一次轨迹事件距今天数</p>
-          </FilterGroup>
-        </div>
+              <p className="text-[10px] leading-relaxed text-slate-400">{t('postFilter.timeoutHint')}</p>
+            </FilterGroup>
+          </div>
         </div>
       </div>
 
       <div className="mt-4 shrink-0 px-5 pt-3" style={{ borderTop: '1px solid var(--admin-line)' }}>
         <Button type="primary" block icon={<Filter className="h-4 w-4" aria-hidden />} onClick={onApply}>
-          过滤
+          {t('postFilter.apply')}
         </Button>
       </div>
     </aside>

@@ -1,5 +1,6 @@
 import { ArrowLeftRight, History, Plus, Repeat, Upload } from 'lucide-react'
 import { Button, Space, Tooltip } from 'antd'
+import { useTranslation } from 'react-i18next'
 import { PageSectionTabs } from '../../components/PageSectionTabs'
 import { ConfirmReceiptModal } from './components/ConfirmReceiptModal'
 import { DisputeReportModal } from './components/DisputeReportModal'
@@ -13,11 +14,9 @@ import { TransferImportModal } from './components/TransferImportModal'
 import { TransferTable } from './components/TransferTable'
 import { useContainerTransfersPage } from './useContainerTransfersPage'
 
-const NO_ACCOUNT_HINT = '你尚未绑定任何站点，无法录入流转记录，请联系管理员在「站点账户」中绑定'
-
 export default function ContainerTransfersPage() {
+  const { t } = useTranslation('container')
   const page = useContainerTransfersPage()
-  // 转出方只能是自己绑定的站点，一个都没有时录不了单，禁用入口比让人填完再报错好
   const noActableAccount = page.ownAccounts.length === 0
 
   return (
@@ -29,31 +28,29 @@ export default function ContainerTransfersPage() {
               <ArrowLeftRight className="h-5 w-5" aria-hidden />
             </div>
             <div>
-              <h1 className="text-lg font-semibold text-slate-950">流转记录</h1>
-              <p className="mt-1 max-w-2xl text-sm text-slate-600">
-                每次容器移动都记为一笔流转。借出与归还需接收方确认后双方库存才变动；实收与申报不一致时进入协商。
-              </p>
+              <h1 className="text-lg font-semibold text-slate-950">{t('transfers.title')}</h1>
+              <p className="mt-1 max-w-2xl text-sm text-slate-600">{t('transfers.subtitle')}</p>
             </div>
           </div>
           {page.tab === 'transfers' ? (
             <Space>
-              <Tooltip title={noActableAccount ? NO_ACCOUNT_HINT : ''}>
+              <Tooltip title={noActableAccount ? t('transfers.noAccountHint') : ''}>
                 <Button
                   icon={<Upload className="h-4 w-4" aria-hidden />}
                   onClick={page.openImport}
                   disabled={noActableAccount}
                 >
-                  批量上传
+                  {t('transfers.batchUpload')}
                 </Button>
               </Tooltip>
-              <Tooltip title={noActableAccount ? NO_ACCOUNT_HINT : ''}>
+              <Tooltip title={noActableAccount ? t('transfers.noAccountHint') : ''}>
                 <Button
                   type="primary"
                   icon={<Plus className="h-4 w-4" aria-hidden />}
                   onClick={page.openCreate}
                   disabled={noActableAccount}
                 >
-                  新增流转记录
+                  {t('transfers.addTransfer')}
                 </Button>
               </Tooltip>
             </Space>
@@ -66,8 +63,8 @@ export default function ContainerTransfersPage() {
           activeId={page.tab}
           onChange={(id) => page.setTab(id as 'transfers' | 'changes')}
           items={[
-            { id: 'transfers', label: '流转记录', icon: Repeat },
-            { id: 'changes', label: '变更记录', icon: History },
+            { id: 'transfers', label: t('transfers.tabTransfers'), icon: Repeat },
+            { id: 'changes', label: t('transfers.tabChanges'), icon: History },
           ]}
         />
         <div className="space-y-4 p-4 sm:p-5">
@@ -86,7 +83,6 @@ export default function ContainerTransfersPage() {
                 page={page.page}
                 pageSize={page.pageSize}
                 onPageChange={(next, size) => {
-                  // 改每页条数时回到第一页，否则停留在越界页会拿到空列表
                   if (size !== page.pageSize) page.setPageSize(size)
                   page.setPage(size !== page.pageSize ? 1 : next)
                 }}

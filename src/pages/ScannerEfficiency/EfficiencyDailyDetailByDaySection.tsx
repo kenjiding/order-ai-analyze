@@ -1,10 +1,15 @@
+import { useTranslation } from 'react-i18next'
 import { useMemo } from 'react'
+import { i18n } from '../../i18n/index'
 import DailyEfficiencyComboChart, {
   type DailyEfficiencyBubbleDatum,
-  EFFICIENCY_CHART_OPEN_DAY_FILTER_TOOLTIP,
   type EfficiencyDetailDimension,
   isEfficiencyChartNonOpenDay,
 } from './DailyEfficiencyBubbleChart'
+import {
+  EFFICIENCY_CHART_NON_OPEN_MAX_SORTERS,
+  EFFICIENCY_CHART_NON_OPEN_MAX_VOLUME,
+} from './constants'
 import type { AttendanceDailyMatchRow } from './aggregates'
 import { DataTable, SectionTitle } from './components/ui'
 import type { DataTableColumn, DataTableRow } from './components/ui'
@@ -24,10 +29,7 @@ export type EfficiencyDailyDetailByDaySectionProps = {
   onChartOpenDaysOnlyChange: (next: boolean) => void
 }
 
-const DIMENSION_OPTIONS: { key: EfficiencyDetailDimension; label: string }[] = [
-  { key: 'day', label: '日维度' },
-  { key: 'week', label: '周维度' },
-]
+// dimension options built inside component
 
 function DimensionToggle({
   value,
@@ -36,9 +38,14 @@ function DimensionToggle({
   value: EfficiencyDetailDimension
   onChange: (next: EfficiencyDetailDimension) => void
 }) {
+  const { t } = useTranslation('scannerEfficiency')
+  const dimensionOptions = [
+    { key: 'day' as const, label: t('dimension.day') },
+    { key: 'week' as const, label: t('dimension.week') },
+  ]
   return (
-    <div className="se-segmented" role="tablist" aria-label="效率明细维度">
-      {DIMENSION_OPTIONS.map((option) => {
+    <div className="se-segmented" role="tablist" aria-label={t('dimension.toggleAria')}>
+      {dimensionOptions.map((option) => {
         const active = value === option.key
         return (
           <button
@@ -60,18 +67,21 @@ function DimensionToggle({
 function OpenDayChartToggle({
   checked,
   onChange,
+  tooltip,
 }: {
   checked: boolean
   onChange: (next: boolean) => void
+  tooltip: string
 }) {
+  const { t } = useTranslation('scannerEfficiency')
   return (
-    <div className="se-control-toggle" title={EFFICIENCY_CHART_OPEN_DAY_FILTER_TOOLTIP}>
-      <span>开仓</span>
+    <div className="se-control-toggle" title={tooltip}>
+      <span>{t('dimension.openDayToggle')}</span>
       <button
         type="button"
         role="switch"
         aria-checked={checked}
-        aria-label={EFFICIENCY_CHART_OPEN_DAY_FILTER_TOOLTIP}
+        aria-label={tooltip}
         className={['se-switch', checked ? 'se-switch--on' : ''].join(' ')}
         onClick={() => onChange(!checked)}
       >
@@ -87,18 +97,20 @@ function EfficiencyDetailDataTable({
   onWeekRowClick,
   attendanceMatchColumns,
   tableRows,
+  emptyText,
 }: {
   dimension: EfficiencyDetailDimension
   expandedWeekKeys: Set<string>
   onWeekRowClick: (row: DataTableRow) => void
   attendanceMatchColumns: DataTableColumn[]
   tableRows: DataTableRow[]
+  emptyText: string
 }) {
   return (
     <DataTable
       columns={attendanceMatchColumns}
       rows={tableRows}
-      emptyText="暂无日期匹配数据。"
+      emptyText={emptyText}
       isRowExpandable={(row) => Boolean(row.isWeekSummaryRow)}
       isRowExpanded={(row) => expandedWeekKeys.has(String(row.weekKey ?? ''))}
       getExpandedChildRows={(row) =>
@@ -123,6 +135,14 @@ export function EfficiencyDailyDetailByDaySection({
   chartOpenDaysOnly,
   onChartOpenDaysOnlyChange,
 }: EfficiencyDailyDetailByDaySectionProps) {
+  const { t } = useTranslation('scannerEfficiency')
+  const openDayFilterTooltip = String(
+    i18n.t('chart.openDayFilterTooltip', {
+      ns: 'scannerEfficiency',
+      maxSorters: EFFICIENCY_CHART_NON_OPEN_MAX_SORTERS,
+      maxVolume: EFFICIENCY_CHART_NON_OPEN_MAX_VOLUME,
+    }),
+  )
   const tableRows = useMemo(
     () => (dimension === 'week' ? attendanceWeeklyAsTable : attendanceDailyAsTable),
     [dimension, attendanceWeeklyAsTable, attendanceDailyAsTable],
@@ -137,19 +157,19 @@ export function EfficiencyDailyDetailByDaySection({
 
   const description =
     dimension === 'week'
-      ? '表格每行汇总一周关键指标，点击周行可展开查看逐日明细。组合图保留日曲线，背景色块区分各周。'
+      ? t('section.efficiencyDetailWeekDesc')
       : useStackedLayout
-        ? '按日展示到件与考勤匹配明细；下方组合图含货量、分拣人数与当天效率。'
-        : '按日展示到件与考勤匹配明细；右侧组合图含货量、分拣人数与当天效率。'
+        ? t('section.efficiencyDetailStackedDesc')
+        : t('section.efficiencyDetailSideDesc')
 
-  const dimensionLabel = dimension === 'week' ? '周维度' : '日维度'
+  const dimensionLabel = dimension === 'week' ? t('dimension.week') : t('dimension.day')
 
   if (variant === 'tableOnly') {
     return (
       <section className="space-y-4">
         <SectionTitle
           eyebrow="Attendance Matching"
-          title={`效率明细/天（${dimensionLabel}）`}
+          title={t('section.efficiencyDetailTitleWithDim', { dimension: dimensionLabel })}
           description=""
         />
         <div className="min-w-0 overflow-x-auto px-4">
@@ -159,6 +179,7 @@ export function EfficiencyDailyDetailByDaySection({
             onWeekRowClick={onWeekRowClick}
             attendanceMatchColumns={attendanceMatchColumns}
             tableRows={tableRows}
+            emptyText={t('empty.noDateMatch')}
           />
         </div>
       </section>
@@ -168,11 +189,11 @@ export function EfficiencyDailyDetailByDaySection({
   return (
     <section className="admin-panel overflow-hidden">
       <SectionTitle
-        title="效率明细/天"
+        title={t('section.efficiencyDetailTitle')}
         description={description}
         right={
           <div className="flex flex-wrap items-center gap-2">
-            <OpenDayChartToggle checked={chartOpenDaysOnly} onChange={onChartOpenDaysOnlyChange} />
+            <OpenDayChartToggle checked={chartOpenDaysOnly} onChange={onChartOpenDaysOnlyChange} tooltip={openDayFilterTooltip} />
             <DimensionToggle value={dimension} onChange={onDimensionChange} />
           </div>
         }
@@ -199,6 +220,7 @@ export function EfficiencyDailyDetailByDaySection({
             onWeekRowClick={onWeekRowClick}
             attendanceMatchColumns={attendanceMatchColumns}
             tableRows={tableRows}
+            emptyText={t('empty.noDateMatch')}
           />
         </div>
       </div>

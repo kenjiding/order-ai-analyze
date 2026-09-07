@@ -19,6 +19,7 @@ import {
   Zap,
 } from 'lucide-react'
 import { useCallback, useMemo, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { AdminDrawer } from '../../components/Drawer/AdminDrawer'
 import {
   type EfficiencyAiAnalysis,
@@ -77,23 +78,29 @@ function fmtEff(n: number | null): string {
 }
 
 // ─── 区块 A：效率总览（差距摘要 + 条形图）───────────────────────────────────
-const METRICS = [
-  { key: 'dayEfficiency' as const, label: '日效率' },
-  { key: 'openEfficiency' as const, label: '开仓效率' },
-  { key: 'overallEfficiency' as const, label: '总体效率' },
-]
-
 function EfficiencyChart({ result }: { result: CompareAnalysisResult }) {
+  const { t } = useTranslation('efficiencyRecords')
+  const metrics = useMemo(
+    () => [
+      { key: 'dayEfficiency' as const, label: t('compare.metrics.dayEfficiency') },
+      { key: 'openEfficiency' as const, label: t('compare.metrics.openEfficiency') },
+      { key: 'overallEfficiency' as const, label: t('compare.metrics.overallEfficiency') },
+    ],
+    [t],
+  )
+  const parcelsPerHour = t('format.parcelsPerHour')
+  const parcels = t('format.parcels')
+  const people = t('format.people')
   const maxEff = useMemo(() => {
     let max = 0
     for (const d of result.dayMetrics) {
-      for (const m of METRICS) {
+      for (const m of metrics) {
         const v = d[m.key]
         if (v != null && v > max) max = v
       }
     }
     return max || 1
-  }, [result])
+  }, [result, metrics])
 
   const worstDay = result.dayMetrics.find((d) => d.isWorst)
   const bestDay = result.dayMetrics.find((d) => d.isBest)
@@ -106,35 +113,35 @@ function EfficiencyChart({ result }: { result: CompareAnalysisResult }) {
       {worstDay && bestDay && (
         <div className="mb-5 grid grid-cols-3 divide-x divide-slate-100 overflow-hidden rounded-xl border border-slate-200 bg-white">
           <div className="bg-red-50/70 px-4 py-3 text-center">
-            <div className="text-[11px] font-medium text-red-400">▼ 最差日</div>
+            <div className="text-[11px] font-medium text-red-400">{t('compare.chart.worstDay')}</div>
             <div className="mt-0.5 text-[11px] font-semibold tabular-nums text-red-500">{result.worstDate}</div>
             <div className="mt-1 text-2xl font-bold tabular-nums text-red-600">{fmtEff(worstEff)}</div>
-            <div className="text-xs text-slate-400">票/h</div>
+            <div className="text-xs text-slate-400">{parcelsPerHour}</div>
             <div className="mt-1.5 flex flex-wrap justify-center gap-x-2 gap-y-0.5 text-[11px] tabular-nums text-slate-500">
-              <span>{worstDay.volume} 票</span>
-              <span>菜鸟 {formatNumber(worstDay.cainiaoShare * 100, 0)}%</span>
-              <span>{worstDay.sorterCount} 人</span>
+              <span>{worstDay.volume} {parcels}</span>
+              <span>{t('format.cainiaoShare', { pct: formatNumber(worstDay.cainiaoShare * 100, 0) })}</span>
+              <span>{worstDay.sorterCount} {people}</span>
             </div>
           </div>
           <div className="flex flex-col items-center justify-center px-3 py-3">
-            <div className="text-[11px] text-slate-400">效率差距</div>
+            <div className="text-[11px] text-slate-400">{t('compare.chart.efficiencyGap')}</div>
             <div className="mt-0.5 text-3xl font-black tabular-nums text-slate-800">
               {formatNumber(result.efficiencyGapAbs, 1)}
             </div>
-            <div className="text-xs text-slate-400">票/h</div>
+            <div className="text-xs text-slate-400">{parcelsPerHour}</div>
             <div className="mt-1 rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-semibold tabular-nums text-slate-600">
               {formatNumber(result.efficiencyGapPct, 1)}%
             </div>
           </div>
           <div className="bg-[#e1f5f1]/50 px-4 py-3 text-center">
-            <div className="text-[11px] font-medium" style={{ color: C_ACCENT }}>▲ 最优日</div>
+            <div className="text-[11px] font-medium" style={{ color: C_ACCENT }}>{t('compare.chart.bestDay')}</div>
             <div className="mt-0.5 text-[11px] font-semibold tabular-nums" style={{ color: C_ACCENT }}>{result.bestDate}</div>
             <div className="mt-1 text-2xl font-bold tabular-nums" style={{ color: C_ACCENT }}>{fmtEff(bestEff)}</div>
-            <div className="text-xs text-slate-400">票/h</div>
+            <div className="text-xs text-slate-400">{parcelsPerHour}</div>
             <div className="mt-1.5 flex flex-wrap justify-center gap-x-2 gap-y-0.5 text-[11px] tabular-nums text-slate-500">
-              <span>{bestDay.volume} 票</span>
-              <span>菜鸟 {formatNumber(bestDay.cainiaoShare * 100, 0)}%</span>
-              <span>{bestDay.sorterCount} 人</span>
+              <span>{bestDay.volume} {parcels}</span>
+              <span>{t('format.cainiaoShare', { pct: formatNumber(bestDay.cainiaoShare * 100, 0) })}</span>
+              <span>{bestDay.sorterCount} {people}</span>
             </div>
           </div>
         </div>
@@ -142,9 +149,9 @@ function EfficiencyChart({ result }: { result: CompareAnalysisResult }) {
 
       {/* 图例 */}
       <div className="mb-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] text-slate-400">
-        <span className="flex items-center gap-1"><span className="h-2 w-3 rounded-sm bg-red-400" />最差日（红色）</span>
-        <span className="flex items-center gap-1"><span className="h-2 w-3 rounded-sm" style={{ backgroundColor: C_ACCENT }} />最优日（绿色）</span>
-        <span className="flex items-center gap-1"><span className="h-2 w-3 rounded-sm bg-slate-300" />其他日期</span>
+        <span className="flex items-center gap-1"><span className="h-2 w-3 rounded-sm bg-red-400" />{t('compare.chart.legendWorst')}</span>
+        <span className="flex items-center gap-1"><span className="h-2 w-3 rounded-sm" style={{ backgroundColor: C_ACCENT }} />{t('compare.chart.legendBest')}</span>
+        <span className="flex items-center gap-1"><span className="h-2 w-3 rounded-sm bg-slate-300" />{t('compare.chart.legendOther')}</span>
       </div>
 
       {/* 每天一组条形 */}
@@ -161,18 +168,18 @@ function EfficiencyChart({ result }: { result: CompareAnalysisResult }) {
                   <span className={['text-sm font-semibold tabular-nums', isWorst ? 'text-red-600' : isBest ? 'text-[#1f6f68]' : 'text-slate-700'].join(' ')}>
                     {isWorst ? '▼ ' : isBest ? '▲ ' : ''}{d.date}
                   </span>
-                  {isBest && <span className="rounded-full bg-[#e1f5f1] px-1.5 text-[10px] font-medium text-[#1f6f68]">效率最高</span>}
-                  {isWorst && <span className="rounded-full bg-red-100 px-1.5 text-[10px] font-medium text-red-600">效率最低 ⚠</span>}
+                  {isBest && <span className="rounded-full bg-[#e1f5f1] px-1.5 text-[10px] font-medium text-[#1f6f68]">{t('compare.chart.highestEfficiency')}</span>}
+                  {isWorst && <span className="rounded-full bg-red-100 px-1.5 text-[10px] font-medium text-red-600">{t('compare.chart.lowestEfficiency')}</span>}
                 </div>
                 <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[11px] tabular-nums text-slate-400">
-                  <span>货量 <b className="text-slate-600">{d.volume}</b> 票</span>
-                  <span>菜鸟 <b className={d.cainiaoShare > 0.1 ? 'text-[#2f8f87]' : 'text-slate-600'}>{formatNumber(d.cainiaoShare * 100, 0)}%</b></span>
-                  <span>总工时 <b className="text-slate-600">{fmtHours(d.totalHours)}</b></span>
-                  <span><b className="text-slate-600">{d.sorterCount}</b> 人</span>
+                  <span>{t('compare.chart.volumeLabel')} <b className="text-slate-600">{d.volume}</b> {parcels}</span>
+                  <span><b className={d.cainiaoShare > 0.1 ? 'text-[#2f8f87]' : 'text-slate-600'}>{t('format.cainiaoShare', { pct: formatNumber(d.cainiaoShare * 100, 0) })}</b></span>
+                  <span>{t('compare.chart.totalHours')} <b className="text-slate-600">{fmtHours(d.totalHours)}</b></span>
+                  <span><b className="text-slate-600">{d.sorterCount}</b> {people}</span>
                 </div>
               </div>
               <div className="space-y-1.5">
-                {METRICS.map((m) => {
+                {metrics.map((m) => {
                   const val = d[m.key]
                   if (val == null || !Number.isFinite(val)) return null
                   const widthPct = (val / maxEff) * 100
@@ -185,7 +192,7 @@ function EfficiencyChart({ result }: { result: CompareAnalysisResult }) {
                           style={{ width: `${widthPct}%`, backgroundColor: barBaseColor, opacity: isWorst ? 0.75 : 0.82 }}
                         />
                         <span className="absolute inset-y-0 left-0 flex items-center pl-2 text-[11px] font-bold tabular-nums text-white" style={{ lineHeight: '20px' }}>
-                          {formatNumber(val, 1)} 票/h
+                          {formatNumber(val, 1)} {parcelsPerHour}
                         </span>
                       </div>
                     </div>
@@ -202,6 +209,8 @@ function EfficiencyChart({ result }: { result: CompareAnalysisResult }) {
 
 // ─── 区块 E：根因诊断 — 有向瀑布图 ───────────────────────────────────────────
 function RootCauseSection({ result }: { result: CompareAnalysisResult }) {
+  const { t } = useTranslation('efficiencyRecords')
+  const parcelsPerHour = t('format.parcelsPerHour')
   const { rootCauses, bestDate, worstDate, efficiencyGapAbs, bestNormalizedEff, worstNormalizedEff } = result
   const normalizedGap = bestNormalizedEff - worstNormalizedEff
 
@@ -218,10 +227,10 @@ function RootCauseSection({ result }: { result: CompareAnalysisResult }) {
       <div className="overflow-hidden rounded-xl border border-slate-200 bg-slate-50">
         <div className="grid grid-cols-2 divide-x divide-slate-200">
           <div className="px-4 py-3">
-            <div className="text-[11px] font-medium uppercase tracking-wide text-slate-400">可见效率差距</div>
+            <div className="text-[11px] font-medium uppercase tracking-wide text-slate-400">{t('compare.rootCause.visibleGap')}</div>
             <div className="mt-1 flex items-baseline gap-1.5">
               <span className="text-2xl font-black tabular-nums text-slate-800">{formatNumber(efficiencyGapAbs, 1)}</span>
-              <span className="text-sm text-slate-500">票/h</span>
+              <span className="text-sm text-slate-500">{parcelsPerHour}</span>
               <span className="text-xs text-slate-400">({formatNumber(result.efficiencyGapPct, 1)}%)</span>
             </div>
             <div className="mt-0.5 text-[11px] text-slate-400">
@@ -229,23 +238,23 @@ function RootCauseSection({ result }: { result: CompareAnalysisResult }) {
             </div>
           </div>
           <div className="bg-amber-50/80 px-4 py-3">
-            <div className="text-[11px] font-medium text-amber-700">剥离菜鸟结构后的纯运营差距</div>
+            <div className="text-[11px] font-medium text-amber-700">{t('compare.rootCause.normalizedGapTitle')}</div>
             <div className="mt-1 flex items-center gap-2 text-sm tabular-nums">
               <span className="font-bold" style={{ color: C_ACCENT }}>{formatNumber(bestNormalizedEff, 1)}</span>
               <ArrowRight className="h-3 w-3 text-slate-300" />
               <span className="font-bold text-red-600">{formatNumber(worstNormalizedEff, 1)}</span>
-              <span className="font-bold text-amber-800">= {formatNumber(normalizedGap, 1)} 票/h</span>
+              <span className="font-bold text-amber-800">= {formatNumber(normalizedGap, 1)} {parcelsPerHour}</span>
             </div>
             <div className="mt-0.5 text-[11px] text-amber-600">
               {normalizedGap > efficiencyGapAbs
-                ? `菜鸟结构掩盖了 ${formatNumber(normalizedGap - efficiencyGapAbs, 1)} 票/h 的运营问题`
-                : '菜鸟结构对差距影响较小'}
+                ? t('compare.rootCause.normalizedGapMasked', { amount: formatNumber(normalizedGap - efficiencyGapAbs, 1) })
+                : t('compare.rootCause.normalizedGapMinor')}
             </div>
           </div>
         </div>
         <div className="border-t border-slate-200 px-4 py-2 text-[11px] text-slate-400">
-          <span className="mr-3"><span className="font-medium text-red-500">红色条</span> = 加剧差距（伤害最差日）</span>
-          <span><span className="font-medium" style={{ color: C_ACCENT }}>绿色条</span> = 弥补差距（帮助最差日）</span>
+          <span className="mr-3"><span className="font-medium text-red-500">{t('compare.rootCause.legendHurts')}</span>{t('compare.rootCause.legendHurtsDesc')}</span>
+          <span><span className="font-medium" style={{ color: C_ACCENT }}>{t('compare.rootCause.legendHelps')}</span>{t('compare.rootCause.legendHelpsDesc')}</span>
         </div>
       </div>
 
@@ -253,7 +262,7 @@ function RootCauseSection({ result }: { result: CompareAnalysisResult }) {
       {hurtCauses.length > 0 && (
         <div>
           <div className="mb-2 flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wide text-red-500">
-            <ArrowDown className="h-3.5 w-3.5" />拖累因素（加剧了效率差距）
+            <ArrowDown className="h-3.5 w-3.5" />{t('compare.rootCause.hurtFactors')}
           </div>
           <div className="space-y-2">
             {hurtCauses.map((cause, i) => {
@@ -272,10 +281,10 @@ function RootCauseSection({ result }: { result: CompareAnalysisResult }) {
                       <div className="mb-1.5 flex items-center justify-between gap-2">
                         <div className="flex items-center gap-2">
                           <span className="text-sm font-semibold text-red-700">{cause.label}</span>
-                          {isTop && <Tag bordered={false} color="red" className="mr-0 py-0 text-[10px] leading-4">最大拖累</Tag>}
+                          {isTop && <Tag bordered={false} color="red" className="mr-0 py-0 text-[10px] leading-4">{t('compare.rootCause.topHurt')}</Tag>}
                         </div>
                         <span className="shrink-0 text-sm font-bold tabular-nums text-red-600">
-                          +{formatNumber(cause.contributionAbs, 1)} 票/h
+                          {t('compare.rootCause.contributionPositive', { amount: formatNumber(cause.contributionAbs, 1) })}
                         </span>
                       </div>
                       <div className="mb-1.5 h-2 w-full overflow-hidden rounded-full bg-red-100">
@@ -295,7 +304,7 @@ function RootCauseSection({ result }: { result: CompareAnalysisResult }) {
       {helpCauses.length > 0 && (
         <div>
           <div className="mb-2 flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wide" style={{ color: C_ACCENT }}>
-            <ArrowUp className="h-3.5 w-3.5" />弥补因素（部分抵消了差距）
+            <ArrowUp className="h-3.5 w-3.5" />{t('compare.rootCause.helpFactors')}
           </div>
           <div className="space-y-2">
             {helpCauses.map((cause) => {
@@ -310,10 +319,10 @@ function RootCauseSection({ result }: { result: CompareAnalysisResult }) {
                       <div className="mb-1.5 flex items-center justify-between gap-2">
                         <div className="flex items-center gap-2">
                           <span className="text-sm font-semibold" style={{ color: '#1f6f68' }}>{cause.label}</span>
-                          <Tag bordered={false} color="green" className="mr-0 py-0 text-[10px] leading-4">弥补差距</Tag>
+                          <Tag bordered={false} color="green" className="mr-0 py-0 text-[10px] leading-4">{t('compare.rootCause.helpsGap')}</Tag>
                         </div>
                         <span className="shrink-0 text-sm font-bold tabular-nums" style={{ color: C_ACCENT }}>
-                          −{formatNumber(Math.abs(cause.contributionAbs), 1)} 票/h
+                          {t('compare.rootCause.contributionNegative', { amount: formatNumber(Math.abs(cause.contributionAbs), 1) })}
                         </span>
                       </div>
                       <div className="mb-1.5 h-2 w-full overflow-hidden rounded-full" style={{ backgroundColor: `${C_ACCENT}20` }}>
@@ -333,18 +342,18 @@ function RootCauseSection({ result }: { result: CompareAnalysisResult }) {
       {rootCauses.filter((c) => !c.isSignificant).length > 0 && (
         <div className="rounded-lg border border-slate-100 bg-slate-50 px-3 py-2">
           <div className="text-[11px] text-slate-400">
-            无显著影响：{rootCauses.filter((c) => !c.isSignificant).map((c) => c.label).join(' · ')}
+            {t('compare.rootCause.noSignificant', { labels: rootCauses.filter((c) => !c.isSignificant).map((c) => c.label).join(' · ') })}
           </div>
         </div>
       )}
 
       {/* 合计校验 */}
       <div className="flex items-center justify-end gap-2 text-[11px] text-slate-400">
-        <span>各因素叠加</span>
+        <span>{t('compare.rootCause.factorsSum')}</span>
         <span className="font-semibold tabular-nums text-slate-600">
-          ≈ {formatNumber(rootCauses.reduce((s, c) => s + c.contributionAbs, 0), 1)} 票/h
+          ≈ {formatNumber(rootCauses.reduce((s, c) => s + c.contributionAbs, 0), 1)} {parcelsPerHour}
         </span>
-        <span>≈ 总差距 {formatNumber(efficiencyGapAbs, 1)} 票/h</span>
+        <span>{t('compare.rootCause.approxTotalGap', { amount: formatNumber(efficiencyGapAbs, 1) })}</span>
       </div>
     </div>
   )
@@ -367,44 +376,53 @@ function SuggestionsSection({ result }: { result: CompareAnalysisResult }) {
 
 // ─── 区块 B：工时结构分析 ─────────────────────────────────────────────────────
 function HoursStructureSection({ result }: { result: CompareAnalysisResult }) {
+  const { t } = useTranslation('efficiencyRecords')
+  const parcelsPerHour = t('format.parcelsPerHour')
+  const people = t('format.people')
+  const hoursSuffix = t('format.hoursSuffix')
   const worstDay = result.dayMetrics.find((d) => d.isWorst)
   const bestDay = result.dayMetrics.find((d) => d.isBest)
+
+  const compareItems = useMemo(
+    () => [
+      {
+        label: t('compare.hours.frontDeskShare'),
+        worst: worstDay?.frontDeskSharePct ?? null,
+        best: bestDay?.frontDeskSharePct ?? null,
+        fmt: (v: number) => `${formatNumber(v * 100, 1)}%`,
+        higherIsBad: true,
+      },
+      {
+        label: t('compare.hours.outputPerSorterHour'),
+        worst: worstDay && worstDay.sorterHours > 0 ? worstDay.volume / worstDay.sorterHours : null,
+        best: bestDay && bestDay.sorterHours > 0 ? bestDay.volume / bestDay.sorterHours : null,
+        fmt: (v: number) => `${formatNumber(v, 1)} ${parcelsPerHour}`,
+        higherIsBad: false,
+      },
+      {
+        label: t('compare.hours.hoursPerSorter'),
+        worst: worstDay?.hoursPerSorter ?? null,
+        best: bestDay?.hoursPerSorter ?? null,
+        fmt: (v: number) => `${formatNumber(v, 2)}${hoursSuffix}`,
+        higherIsBad: true,
+      },
+      {
+        label: t('compare.hours.sorterCount'),
+        worst: worstDay?.sorterCount ?? null,
+        best: bestDay?.sorterCount ?? null,
+        fmt: (v: number) => `${v} ${people}`,
+        higherIsBad: false,
+      },
+    ],
+    [bestDay, hoursSuffix, parcelsPerHour, people, t, worstDay],
+  )
 
   return (
     <div className="space-y-3">
       {/* 跨日关键对比行 */}
       {worstDay && bestDay && (worstDay.totalHours > 0 || bestDay.totalHours > 0) && (
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-          {[
-            {
-              label: '前台工时占比',
-              worst: worstDay.frontDeskSharePct,
-              best: bestDay.frontDeskSharePct,
-              fmt: (v: number) => `${formatNumber(v * 100, 1)}%`,
-              higherIsBad: true,
-            },
-            {
-              label: '每分拣工时产出',
-              worst: worstDay.sorterHours > 0 ? worstDay.volume / worstDay.sorterHours : null,
-              best: bestDay.sorterHours > 0 ? bestDay.volume / bestDay.sorterHours : null,
-              fmt: (v: number) => `${formatNumber(v, 1)} 票/h`,
-              higherIsBad: false,
-            },
-            {
-              label: '人均在仓工时',
-              worst: worstDay.hoursPerSorter,
-              best: bestDay.hoursPerSorter,
-              fmt: (v: number) => `${formatNumber(v, 2)}h`,
-              higherIsBad: true,
-            },
-            {
-              label: '分拣员人数',
-              worst: worstDay.sorterCount,
-              best: bestDay.sorterCount,
-              fmt: (v: number) => `${v} 人`,
-              higherIsBad: false,
-            },
-          ].map((item) => {
+          {compareItems.map((item) => {
             if (item.worst == null || item.best == null) return null
             const worstIsWorse = item.higherIsBad ? item.worst > item.best : item.worst < item.best
             const delta = item.worst - item.best
@@ -416,19 +434,19 @@ function HoursStructureSection({ result }: { result: CompareAnalysisResult }) {
                     <div className={['text-base font-bold tabular-nums', worstIsWorse ? 'text-red-600' : 'text-slate-700'].join(' ')}>
                       {item.fmt(item.worst)}
                     </div>
-                    <div className="text-[10px] text-red-400">最差日</div>
+                    <div className="text-[10px] text-red-400">{t('compare.hours.worstDay')}</div>
                   </div>
                   <div className="text-right">
                     <div className="text-base font-bold tabular-nums" style={{ color: C_ACCENT }}>
                       {item.fmt(item.best)}
                     </div>
-                    <div className="text-[10px]" style={{ color: C_ACCENT }}>最优日</div>
+                    <div className="text-[10px]" style={{ color: C_ACCENT }}>{t('compare.hours.bestDay')}</div>
                   </div>
                 </div>
                 {worstIsWorse && (
                   <div className="mt-1.5 flex items-center gap-1 text-[11px] font-medium text-red-500">
                     <ArrowDown className="h-3 w-3" />
-                    差 {item.fmt(Math.abs(delta))}，对最差日不利
+                    {t('compare.hours.deltaUnfavorable', { delta: item.fmt(Math.abs(delta)) })}
                   </div>
                 )}
               </div>
@@ -437,9 +455,7 @@ function HoursStructureSection({ result }: { result: CompareAnalysisResult }) {
         </div>
       )}
 
-      <p className="text-xs text-slate-400">
-        前台工时不产出扫描量，占比越高对总效率拖累越大。"每分拣工时产出"= 货量 ÷ 分拣员工时，直接反映有效产出密度。
-      </p>
+      <p className="text-xs text-slate-400">{t('compare.hours.footnote')}</p>
 
       {/* 每日堆叠条 */}
       {result.dayMetrics.map((d) => {
@@ -459,15 +475,15 @@ function HoursStructureSection({ result }: { result: CompareAnalysisResult }) {
                 <span className={['text-sm font-semibold', d.isBest ? 'text-[#1f6f68]' : d.isWorst ? 'text-red-600' : 'text-slate-700'].join(' ')}>
                   {d.isWorst ? '▼ ' : d.isBest ? '▲ ' : ''}{d.date}
                 </span>
-                {d.isWorst && <span className="text-[11px] font-medium text-red-400">⚠ 效率最低</span>}
-                {d.isBest && <span className="text-[11px] font-medium" style={{ color: C_ACCENT }}>效率最高</span>}
+                {d.isWorst && <span className="text-[11px] font-medium text-red-400">{t('compare.hours.lowestEfficiency')}</span>}
+                {d.isBest && <span className="text-[11px] font-medium" style={{ color: C_ACCENT }}>{t('compare.hours.highestEfficiency')}</span>}
               </div>
               <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[11px] tabular-nums text-slate-500">
-                <span>总工时 <b className="text-slate-700">{fmtHours(d.totalHours)}</b></span>
-                <span>{d.sorterCount} 人</span>
+                <span>{t('compare.chart.totalHours')} <b className="text-slate-700">{fmtHours(d.totalHours)}</b></span>
+                <span>{d.sorterCount} {people}</span>
                 {sorterOutput != null && (
                   <span className={['font-medium', d.isWorst ? 'text-red-500' : 'text-slate-600'].join(' ')}>
-                    产出密度 {formatNumber(sorterOutput, 1)} 票/h
+                    {t('compare.hours.outputDensity')} {formatNumber(sorterOutput, 1)} {parcelsPerHour}
                   </span>
                 )}
               </div>
@@ -478,7 +494,7 @@ function HoursStructureSection({ result }: { result: CompareAnalysisResult }) {
                 <div
                   className="flex items-center justify-center text-[10px] font-medium text-white"
                   style={{ width: `${sorterPct}%`, backgroundColor: d.isWorst ? '#d97706' : C_ACCENT }}
-                  title={`分拣员 ${fmtHours(d.sorterHours)}`}
+                  title={t('compare.hours.sorterTooltip', { hours: fmtHours(d.sorterHours) })}
                 >
                   {sorterPct > 10 ? `${formatNumber(sorterPct, 0)}%` : ''}
                 </div>
@@ -487,7 +503,7 @@ function HoursStructureSection({ result }: { result: CompareAnalysisResult }) {
                 <div
                   className="flex items-center justify-center text-[10px] font-medium text-white"
                   style={{ width: `${frontDeskPct}%`, backgroundColor: d.isWorst ? C_RED : C_BLUE }}
-                  title={`前台 ${fmtHours(d.frontDeskHours)}`}
+                  title={t('compare.hours.frontDeskTooltip', { hours: fmtHours(d.frontDeskHours) })}
                 >
                   {frontDeskPct > 8 ? `${formatNumber(frontDeskPct, 0)}%` : ''}
                 </div>
@@ -496,7 +512,7 @@ function HoursStructureSection({ result }: { result: CompareAnalysisResult }) {
                 <div
                   className="flex items-center justify-center text-[10px] font-medium text-slate-600"
                   style={{ width: `${otherPct}%`, backgroundColor: '#e2e8f0' }}
-                  title={`其他 ${fmtHours(d.otherHours)}`}
+                  title={t('compare.hours.otherTooltip', { hours: fmtHours(d.otherHours) })}
                 >
                   {otherPct > 8 ? `${formatNumber(otherPct, 0)}%` : ''}
                 </div>
@@ -506,19 +522,19 @@ function HoursStructureSection({ result }: { result: CompareAnalysisResult }) {
             <div className="mt-1.5 flex flex-wrap gap-x-4 gap-y-0.5 text-[11px] tabular-nums text-slate-500">
               <span className="flex items-center gap-1">
                 <span className="h-2 w-3 rounded-sm" style={{ backgroundColor: d.isWorst ? '#d97706' : C_ACCENT }} />
-                分拣员 {fmtHours(d.sorterHours)} ({formatNumber(sorterPct, 0)}%)
+                {t('compare.hours.sorterLegend', { hours: fmtHours(d.sorterHours), pct: formatNumber(sorterPct, 0) })}
               </span>
               {d.frontDeskHours > 0 && (
                 <span className="flex items-center gap-1">
                   <span className="h-2 w-3 rounded-sm" style={{ backgroundColor: d.isWorst ? C_RED : C_BLUE }} />
-                  前台 {fmtHours(d.frontDeskHours)} ({formatNumber(frontDeskPct, 0)}%)
-                  {d.isWorst && <span className="text-red-400">← 占用非产出工时</span>}
+                  {t('compare.hours.frontDeskLegend', { hours: fmtHours(d.frontDeskHours), pct: formatNumber(frontDeskPct, 0) })}
+                  {d.isWorst && <span className="text-red-400">{t('compare.hours.frontDeskNonProductive')}</span>}
                 </span>
               )}
               {d.otherHours > 0 && (
                 <span className="flex items-center gap-1">
                   <span className="h-2 w-3 rounded-sm bg-slate-200" />
-                  其他 {fmtHours(d.otherHours)} ({formatNumber(otherPct, 0)}%)
+                  {t('compare.hours.otherLegend', { hours: fmtHours(d.otherHours), pct: formatNumber(otherPct, 0) })}
                 </span>
               )}
             </div>
@@ -531,15 +547,10 @@ function HoursStructureSection({ result }: { result: CompareAnalysisResult }) {
 
 // ─── 区块 D：分拣员扫描效率对比（含跨日 delta）──────────────────────────────
 function ScannerCompareSection({ result }: { result: CompareAnalysisResult }) {
+  const { t } = useTranslation('efficiencyRecords')
+  const dash = t('format.dash')
+  const parcels = t('format.parcels')
   const hasScannerData = result.dayMetrics.some((d) => d.scanners.length > 0)
-
-  if (!hasScannerData) {
-    return (
-      <div className="rounded-lg border border-dashed border-slate-200 bg-slate-50 p-6 text-center text-sm text-slate-400">
-        暂无分拣员扫描效率数据
-      </div>
-    )
-  }
 
   const dates = result.dayMetrics.map((d) => d.date)
   const worstDate = result.worstDate
@@ -597,114 +608,124 @@ function ScannerCompareSection({ result }: { result: CompareAnalysisResult }) {
 
   const hasBestWorstComparison = dates.includes(bestDate) && dates.includes(worstDate)
 
-  const scannerColumns: ColumnsType<ScannerRow> = [
-    {
-      title: '扫描员',
-      dataIndex: 'scanner',
-      key: 'scanner',
-      width: 90,
-      fixed: 'left',
-      render: (name: string) => <span className="font-medium text-slate-800">{name}</span>,
-    },
-    ...dates.map((date) => {
-      const dm = result.dayMetrics.find((d) => d.date === date)!
-      const isWorst = date === worstDate
-      const isBest = date === bestDate
-      const dayAvgEff = dm.scannerEfficiency ?? (dm.dayEfficiency ?? 0)
+  const scannerColumns: ColumnsType<ScannerRow> = useMemo(
+    () => [
+      {
+        title: t('compare.scanner.colScanner'),
+        dataIndex: 'scanner',
+        key: 'scanner',
+        width: 90,
+        fixed: 'left',
+        render: (name: string) => <span className="font-medium text-slate-800">{name}</span>,
+      },
+      ...dates.map((date) => {
+        const dm = result.dayMetrics.find((d) => d.date === date)!
+        const isWorst = date === worstDate
+        const isBest = date === bestDate
+        const dayAvgEff = dm.scannerEfficiency ?? (dm.dayEfficiency ?? 0)
 
-      return {
-        title: (
-          <div className="text-center leading-tight">
-            <div className={[isWorst ? 'font-semibold text-red-600' : isBest ? 'font-semibold' : ''].join(' ')}>
-              {date}
-            </div>
-            {isBest && <div className="text-[10px]" style={{ color: C_ACCENT }}>▲最高效率日</div>}
-            {isWorst && <div className="text-[10px] text-red-500">▼最低效率日</div>}
-            <div className="text-[10px] tabular-nums text-slate-400">均 {formatNumber(dayAvgEff, 0)} 票/h</div>
-          </div>
-        ),
-        key: date,
-        width: 100,
-        align: 'center' as const,
-        render: (_: unknown, row: ScannerRow) => {
-          const data = scannerByDate.get(row.scanner)?.get(date)
-          if (!data) {
-            return (
-              <div className="text-center">
-                <span className={['text-[11px]', isWorst ? 'font-medium text-red-300' : 'text-slate-300'].join(' ')}>
-                  {isWorst ? '缺席' : '—'}
-                </span>
+        return {
+          title: (
+            <div className="text-center leading-tight">
+              <div className={[isWorst ? 'font-semibold text-red-600' : isBest ? 'font-semibold' : ''].join(' ')}>
+                {date}
               </div>
-            )
-          }
-
-          const isAboveAvg = data.eff >= dayAvgEff * 1.05
-          const isBelowAvg = data.eff < dayAvgEff * 0.9
-
-          return (
-            <div className="flex flex-col items-center gap-0.5">
-              <span
-                className={[
-                  'text-sm font-bold tabular-nums',
-                  isWorst
-                    ? isBelowAvg ? 'text-red-600' : 'text-slate-600'
-                    : isAboveAvg ? 'text-green-600' : isBelowAvg ? 'text-red-500' : 'text-slate-700',
-                ].join(' ')}
-              >
-                {formatNumber(data.eff, 0)}
-              </span>
-              <span className="text-[10px] tabular-nums text-slate-400">{fmtNum(data.scanCount)}票</span>
+              {isBest && <div className="text-[10px]" style={{ color: C_ACCENT }}>{t('compare.scanner.bestDayHeader')}</div>}
+              {isWorst && <div className="text-[10px] text-red-500">{t('compare.scanner.worstDayHeader')}</div>}
+              <div className="text-[10px] tabular-nums text-slate-400">{t('compare.scanner.colAvgEff', { avg: formatNumber(dayAvgEff, 0) })}</div>
             </div>
-          )
-        },
-      }
-    }),
-    // Delta 列（仅当有最优/最差两天时显示）
-    ...(hasBestWorstComparison
-      ? [
-          {
-            title: (
-              <div className="text-center leading-tight">
-                <div className="font-semibold text-slate-600">差值</div>
-                <div className="text-[10px] text-slate-400">最优−最差</div>
-              </div>
-            ),
-            key: 'delta',
-            width: 80,
-            align: 'center' as const,
-            render: (_: unknown, row: ScannerRow) => {
-              const delta = scannerDelta.get(row.scanner)
-              if (delta == null) return <span className="text-[11px] text-slate-300">—</span>
-              const isLarge = Math.abs(delta) >= 50
+          ),
+          key: date,
+          width: 100,
+          align: 'center' as const,
+          render: (_: unknown, row: ScannerRow) => {
+            const data = scannerByDate.get(row.scanner)?.get(date)
+            if (!data) {
               return (
-                <div className="flex flex-col items-center gap-0.5">
-                  <span
-                    className={[
-                      'text-sm font-bold tabular-nums',
-                      delta > 20 ? 'text-red-600' : delta > 0 ? 'text-orange-500' : 'text-green-600',
-                    ].join(' ')}
-                  >
-                    {delta > 0 ? '+' : ''}{formatNumber(delta, 0)}
+                <div className="text-center">
+                  <span className={['text-[11px]', isWorst ? 'font-medium text-red-300' : 'text-slate-300'].join(' ')}>
+                    {isWorst ? t('compare.scanner.absent') : dash}
                   </span>
-                  {isLarge && (
-                    <span className={['text-[10px]', delta > 0 ? 'text-red-400' : 'text-green-500'].join(' ')}>
-                      {delta > 0 ? '↓最差日低' : '↑最差日高'}
-                    </span>
-                  )}
                 </div>
               )
-            },
+            }
+
+            const isAboveAvg = data.eff >= dayAvgEff * 1.05
+            const isBelowAvg = data.eff < dayAvgEff * 0.9
+
+            return (
+              <div className="flex flex-col items-center gap-0.5">
+                <span
+                  className={[
+                    'text-sm font-bold tabular-nums',
+                    isWorst
+                      ? isBelowAvg ? 'text-red-600' : 'text-slate-600'
+                      : isAboveAvg ? 'text-green-600' : isBelowAvg ? 'text-red-500' : 'text-slate-700',
+                  ].join(' ')}
+                >
+                  {formatNumber(data.eff, 0)}
+                </span>
+                <span className="text-[10px] tabular-nums text-slate-400">{fmtNum(data.scanCount)}{parcels}</span>
+              </div>
+            )
           },
-        ]
-      : []),
-  ]
+        }
+      }),
+      ...(hasBestWorstComparison
+        ? [
+            {
+              title: (
+                <div className="text-center leading-tight">
+                  <div className="font-semibold text-slate-600">{t('compare.scanner.colDelta')}</div>
+                  <div className="text-[10px] text-slate-400">{t('compare.scanner.colDeltaSub')}</div>
+                </div>
+              ),
+              key: 'delta',
+              width: 80,
+              align: 'center' as const,
+              render: (_: unknown, row: ScannerRow) => {
+                const delta = scannerDelta.get(row.scanner)
+                if (delta == null) return <span className="text-[11px] text-slate-300">{dash}</span>
+                const isLarge = Math.abs(delta) >= 50
+                return (
+                  <div className="flex flex-col items-center gap-0.5">
+                    <span
+                      className={[
+                        'text-sm font-bold tabular-nums',
+                        delta > 20 ? 'text-red-600' : delta > 0 ? 'text-orange-500' : 'text-green-600',
+                      ].join(' ')}
+                    >
+                      {delta > 0 ? '+' : ''}{formatNumber(delta, 0)}
+                    </span>
+                    {isLarge && (
+                      <span className={['text-[10px]', delta > 0 ? 'text-red-400' : 'text-green-500'].join(' ')}>
+                        {delta > 0 ? t('compare.scanner.deltaWorstLower') : t('compare.scanner.deltaWorstHigher')}
+                      </span>
+                    )}
+                  </div>
+                )
+              },
+            },
+          ]
+        : []),
+    ],
+    [dash, dates, hasBestWorstComparison, parcels, result.dayMetrics, scannerByDate, scannerDelta, t, worstDate, bestDate],
+  )
+
+  if (!hasScannerData) {
+    return (
+      <div className="rounded-lg border border-dashed border-slate-200 bg-slate-50 p-6 text-center text-sm text-slate-400">
+        {t('compare.scanner.empty')}
+      </div>
+    )
+  }
 
   return (
     <div>
       <p className="mb-3 text-xs text-slate-500">
-        修正效率（票/h，菜鸟结构修正后）。
-        {hasBestWorstComparison && <span>「差值」列 = 最优日效率 − 最差日效率，正值越大说明该人在最差日表现下滑越严重，按此排序。</span>}
-        {' '}<span className="text-red-500 font-medium">缺席</span>表示该分拣员当天未工作。
+        {t('compare.scanner.footnote')}
+        {hasBestWorstComparison && <span>{t('compare.scanner.footnoteDelta')}</span>}
+        {' '}<span className="text-red-500 font-medium">{t('compare.scanner.footnoteAbsent')}</span>{t('compare.scanner.footnoteAbsentDesc')}
       </p>
       <Table<ScannerRow>
         rowKey="key"
@@ -724,6 +745,9 @@ function ScannerCompareSection({ result }: { result: CompareAnalysisResult }) {
 
 // ─── 区块 C：逐日人员效率对比表 ──────────────────────────────────────────────
 function PersonnelCompareSection({ result }: { result: CompareAnalysisResult }) {
+  const { t } = useTranslation('efficiencyRecords')
+  const dash = t('format.dash')
+  const parcelsPerHour = t('format.parcelsPerHour')
   const allPersonnel = useMemo(() => {
     const nameSet = new Set<string>()
     for (const d of result.dayMetrics) {
@@ -765,100 +789,109 @@ function PersonnelCompareSection({ result }: { result: CompareAnalysisResult }) 
     return { min: Math.min(...shares), max: Math.max(...shares) }
   }, [result])
 
+  type PersonRow = { name: string; key: string }
+
+  const personColumns: ColumnsType<PersonRow> = useMemo(
+    () => [
+      {
+        title: t('compare.personnel.colName'),
+        dataIndex: 'name',
+        key: 'name',
+        width: 90,
+        fixed: 'left',
+        render: (name: string) => <span className="font-medium text-slate-800">{name}</span>,
+      },
+      ...dates.map((date) => {
+        const dm = result.dayMetrics.find((d) => d.date === date)!
+        const { min: minCainiao, max: maxCainiao } = cainiaoShareRange
+        const cainiaoSpread = maxCainiao - minCainiao
+        const cainiaoPct = formatNumber(dm.cainiaoShare * 100, 0)
+        const cainiaoColor =
+          cainiaoSpread > 0.03 && dm.cainiaoShare === maxCainiao
+            ? C_ACCENT
+            : cainiaoSpread > 0.03 && dm.cainiaoShare === minCainiao
+              ? '#d97706'
+              : '#64748b'
+        const isWorst = dm.isWorst
+        const isBest = dm.isBest
+
+        return {
+          title: (
+            <div className="flex flex-col items-center gap-0.5 text-center leading-tight">
+              <span className={[isWorst ? 'font-semibold text-red-600' : isBest ? 'font-semibold' : ''].join(' ')}>
+                {date}
+              </span>
+              {isBest && <span className="text-[10px]" style={{ color: C_ACCENT }}>{t('compare.personnel.bestHeader')}</span>}
+              {isWorst && <span className="text-[10px] text-red-500">{t('compare.personnel.worstHeader')}</span>}
+              <span className="whitespace-nowrap text-[10px] tabular-nums text-slate-500">
+                {t('compare.personnel.headerVolume', { volume: fmtNum(dm.volume) })}
+                {' '}
+                <span style={{ color: cainiaoColor }}>{t('compare.personnel.headerCainiao', { pct: cainiaoPct })}</span>
+              </span>
+            </div>
+          ),
+          key: date,
+          width: 160,
+          align: 'center' as const,
+          render: (_: unknown, row: PersonRow) => {
+            const dayData = personnelByDate.get(row.name)?.get(date)
+            if (!dayData) {
+              return (
+                <span className={['text-xs', isWorst ? 'font-medium text-red-300' : 'text-slate-300'].join(' ')}>
+                  {isWorst ? t('compare.personnel.absentWorst') : dash}
+                </span>
+              )
+            }
+            const roleColor = dayData.isFrontDesk ? C_BLUE : C_ACCENT
+            const roleLabel = dayData.isFrontDesk
+              ? t('compare.personnel.roleFrontDesk')
+              : dayData.isSorterWorker
+                ? t('compare.personnel.roleSorter')
+                : t('compare.personnel.roleOther')
+
+            let scanEff: number | null = null
+            for (const [scannerKey, dateMap] of scannerEffByDate) {
+              if (scannerKey.includes(row.name) || row.name.includes(scannerKey)) {
+                scanEff = dateMap.get(date) ?? null
+                break
+              }
+            }
+
+            return (
+              <span className="inline-block whitespace-nowrap text-xs leading-snug">
+                <span className="tabular-nums text-slate-600">{fmtHours(dayData.hours)}</span>
+                {scanEff != null && (
+                  <>
+                    <span className="text-slate-300">·</span>
+                    <span className={['tabular-nums font-medium', isWorst ? 'text-red-500' : ''].join(' ')} style={!isWorst ? { color: C_ACCENT } : undefined}>
+                      {formatNumber(scanEff, 0)}{parcelsPerHour}
+                    </span>
+                  </>
+                )}
+                <span className="text-slate-300">·</span>
+                <span style={{ color: roleColor }}>{roleLabel}</span>
+              </span>
+            )
+          },
+        }
+      }),
+    ],
+    [cainiaoShareRange, dash, dates, parcelsPerHour, personnelByDate, result.dayMetrics, scannerEffByDate, t],
+  )
+
   if (allPersonnel.length === 0) {
     return (
       <div className="rounded-lg border border-dashed border-slate-200 bg-slate-50 p-6 text-center text-sm text-slate-400">
-        暂无人员考勤明细数据
+        {t('compare.personnel.empty')}
       </div>
     )
   }
 
-  type PersonRow = { name: string; key: string }
-
-  const personColumns: ColumnsType<PersonRow> = [
-    {
-      title: '姓名',
-      dataIndex: 'name',
-      key: 'name',
-      width: 90,
-      fixed: 'left',
-      render: (name: string) => <span className="font-medium text-slate-800">{name}</span>,
-    },
-    ...dates.map((date) => {
-      const dm = result.dayMetrics.find((d) => d.date === date)!
-      const { min: minCainiao, max: maxCainiao } = cainiaoShareRange
-      const cainiaoSpread = maxCainiao - minCainiao
-      const cainiaoPct = formatNumber(dm.cainiaoShare * 100, 0)
-      const cainiaoColor =
-        cainiaoSpread > 0.03 && dm.cainiaoShare === maxCainiao
-          ? C_ACCENT
-          : cainiaoSpread > 0.03 && dm.cainiaoShare === minCainiao
-            ? '#d97706'
-            : '#64748b'
-      const isWorst = dm.isWorst
-      const isBest = dm.isBest
-
-      return {
-        title: (
-          <div className="flex flex-col items-center gap-0.5 text-center leading-tight">
-            <span className={[isWorst ? 'font-semibold text-red-600' : isBest ? 'font-semibold' : ''].join(' ')}>
-              {date}
-            </span>
-            {isBest && <span className="text-[10px]" style={{ color: C_ACCENT }}>▲最高</span>}
-            {isWorst && <span className="text-[10px] text-red-500">▼最低</span>}
-            <span className="whitespace-nowrap text-[10px] tabular-nums text-slate-500">
-              {fmtNum(dm.volume)}票 <span style={{ color: cainiaoColor }}>菜鸟{cainiaoPct}%</span>
-            </span>
-          </div>
-        ),
-        key: date,
-        width: 160,
-        align: 'center' as const,
-        render: (_: unknown, row: PersonRow) => {
-          const dayData = personnelByDate.get(row.name)?.get(date)
-          if (!dayData) {
-            return (
-              <span className={['text-xs', isWorst ? 'font-medium text-red-300' : 'text-slate-300'].join(' ')}>
-                {isWorst ? '未出勤' : '—'}
-              </span>
-            )
-          }
-          const roleColor = dayData.isFrontDesk ? C_BLUE : C_ACCENT
-          const roleLabel = dayData.isFrontDesk ? '前台' : dayData.isSorterWorker ? '分拣' : '其他'
-
-          let scanEff: number | null = null
-          for (const [scannerKey, dateMap] of scannerEffByDate) {
-            if (scannerKey.includes(row.name) || row.name.includes(scannerKey)) {
-              scanEff = dateMap.get(date) ?? null
-              break
-            }
-          }
-
-          return (
-            <span className="inline-block whitespace-nowrap text-xs leading-snug">
-              <span className="tabular-nums text-slate-600">{fmtHours(dayData.hours)}</span>
-              {scanEff != null && (
-                <>
-                  <span className="text-slate-300">·</span>
-                  <span className={['tabular-nums font-medium', isWorst ? 'text-red-500' : ''].join(' ')} style={!isWorst ? { color: C_ACCENT } : undefined}>
-                    {formatNumber(scanEff, 0)}票/h
-                  </span>
-                </>
-              )}
-              <span className="text-slate-300">·</span>
-              <span style={{ color: roleColor }}>{roleLabel}</span>
-            </span>
-          )
-        },
-      }
-    }),
-  ]
-
   return (
     <div>
       <p className="mb-3 text-xs text-slate-500">
-        表头显示各日货量与菜鸟占比；单元格展示工时、扫描效率（如有）、角色。
-        <span className="text-red-400">最差日</span>未出勤人员以红色标注。
+        {t('compare.personnel.footnote')}
+        <span className="text-red-400">{t('compare.personnel.footnoteWorstAbsent')}</span>{t('compare.personnel.footnoteWorstAbsentDesc')}
       </p>
       <Table<PersonRow>
         rowKey="key"
@@ -877,6 +910,7 @@ function AiAnalysisSection({
 }: {
   result: CompareAnalysisResult
 }) {
+  const { t } = useTranslation('efficiencyRecords')
   const [aiProvider, setAiProvider] = useState<EfficiencyInsightAiProvider>('deepseek')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
@@ -897,11 +931,11 @@ function AiAnalysisSection({
       )
       setAnalysis(res)
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'AI 分析失败，请稍后重试。')
+      setError(err instanceof Error ? err.message : t('compare.ai.failed'))
     } finally {
       setLoading(false)
     }
-  }, [daySnapshots, result, aiProvider])
+  }, [daySnapshots, result, aiProvider, t])
 
   return (
     <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
@@ -911,8 +945,8 @@ function AiAnalysisSection({
             <Sparkles className="h-4 w-4 text-white" />
           </div>
           <div>
-            <div className="text-sm font-semibold text-slate-900">AI 深度分析</div>
-            <div className="text-[11px] text-slate-500">基于人员构成、扫描效率和工时结构的综合判断</div>
+            <div className="text-sm font-semibold text-slate-900">{t('compare.ai.title')}</div>
+            <div className="text-[11px] text-slate-500">{t('compare.ai.subtitle')}</div>
           </div>
         </div>
         <div className="flex items-center gap-2">
@@ -928,11 +962,11 @@ function AiAnalysisSection({
             style={loading ? undefined : { backgroundColor: C_ACCENT }}
           >
             {loading ? (
-              <><RefreshCw className="h-3.5 w-3.5 animate-spin" />分析中…</>
+              <><RefreshCw className="h-3.5 w-3.5 animate-spin" />{t('compare.ai.analyzing')}</>
             ) : analysis ? (
-              <><RefreshCw className="h-3.5 w-3.5" />重新分析</>
+              <><RefreshCw className="h-3.5 w-3.5" />{t('compare.ai.reanalyze')}</>
             ) : (
-              <><Cpu className="h-3.5 w-3.5" />开始分析</>
+              <><Cpu className="h-3.5 w-3.5" />{t('compare.ai.start')}</>
             )}
           </button>
         </div>
@@ -952,7 +986,7 @@ function AiAnalysisSection({
                 <span key={i} className="h-2 w-2 animate-bounce rounded-full" style={{ backgroundColor: C_ACCENT, animationDelay: `${i * 0.15}s` }} />
               ))}
             </div>
-            正在深度分析各日数据差异，请稍候…
+            {t('compare.ai.loading')}
           </div>
         )}
         {analysis && !loading && (
@@ -960,7 +994,7 @@ function AiAnalysisSection({
             {analysis.findings.length > 0 && (
               <div>
                 <div className="mb-2 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-slate-500">
-                  <TrendingDown className="h-3.5 w-3.5" />问题诊断
+                  <TrendingDown className="h-3.5 w-3.5" />{t('compare.ai.findings')}
                 </div>
                 <ul className="space-y-1.5">
                   {analysis.findings.map((item, i) => (
@@ -975,7 +1009,7 @@ function AiAnalysisSection({
             {analysis.suggestions.length > 0 && (
               <div>
                 <div className="mb-2 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-slate-500">
-                  <TrendingUp className="h-3.5 w-3.5" />改善建议
+                  <TrendingUp className="h-3.5 w-3.5" />{t('compare.ai.suggestions')}
                 </div>
                 <ul className="space-y-1.5">
                   {analysis.suggestions.map((item, i) => (
@@ -991,7 +1025,7 @@ function AiAnalysisSection({
         )}
         {!analysis && !loading && !error && (
           <div className="py-4 text-center text-sm text-slate-400">
-            点击「开始分析」，AI 将结合所有日期的人员明细、扫描员表现和工时结构给出专业诊断。
+            {t('compare.ai.placeholder')}
           </div>
         )}
       </div>
@@ -1014,6 +1048,7 @@ function SectionLabel({ icon, children }: { icon?: React.ReactNode; children: Re
 
 // ─── 主内容 ───────────────────────────────────────────────────────────────────
 function CompareAnalysisContent({ records }: { records: EfficiencyAttendanceDayRecord[] }) {
+  const { t } = useTranslation('efficiencyRecords')
   const comparableCount = useMemo(() => selectComparableRecords(records).length, [records])
   const result = useMemo(() => {
     if (records.length < 2) return null
@@ -1029,8 +1064,8 @@ function CompareAnalysisContent({ records }: { records: EfficiencyAttendanceDayR
     return (
       <div className="flex min-h-[200px] items-center justify-center px-6 text-center text-sm text-slate-500">
         {comparableCount < 2
-          ? '需至少 2 天「到件+考勤」齐全的记录才能对比；无到件补录日与缺考勤日不参与最优/最差日分析'
-          : '需至少选择 2 天不同日期进行对比分析'}
+          ? t('compare.empty.needFullRecords')
+          : t('compare.empty.needTwoDates')}
       </div>
     )
   }
@@ -1039,51 +1074,51 @@ function CompareAnalysisContent({ records }: { records: EfficiencyAttendanceDayR
     <div className="space-y-10 pb-10">
       {/* A 效率总览（含差距摘要） */}
       <section>
-        <SectionLabel icon={<BarChart2 className="h-3.5 w-3.5" />}>效率总览</SectionLabel>
+        <SectionLabel icon={<BarChart2 className="h-3.5 w-3.5" />}>{t('compare.section.overview')}</SectionLabel>
         <EfficiencyChart result={result} />
       </section>
 
       {/* E 根因诊断（提前到第二位，最重要的诊断）*/}
       <section>
-        <SectionLabel icon={<Lightbulb className="h-3.5 w-3.5" />}>根因诊断 — 效率差距来源</SectionLabel>
+        <SectionLabel icon={<Lightbulb className="h-3.5 w-3.5" />}>{t('compare.section.rootCause')}</SectionLabel>
         <RootCauseSection result={result} />
         {result.hasMissingPersonnel && (
-          <p className="mt-2 text-xs text-slate-400">部分日期无人员考勤数据，前台工时因素未纳入计算。</p>
+          <p className="mt-2 text-xs text-slate-400">{t('compare.missing.personnel')}</p>
         )}
         {result.hasMissingScanner && (
-          <p className="mt-1 text-xs text-slate-400">部分日期无扫描员数据，个人效率因素未纳入计算。</p>
+          <p className="mt-1 text-xs text-slate-400">{t('compare.missing.scanner')}</p>
         )}
       </section>
 
       {/* 改善建议（紧跟根因） */}
       {result.suggestions.length > 0 && (
         <section>
-          <SectionLabel icon={<AlertTriangle className="h-3.5 w-3.5" />}>改善建议</SectionLabel>
+          <SectionLabel icon={<AlertTriangle className="h-3.5 w-3.5" />}>{t('compare.section.suggestions')}</SectionLabel>
           <SuggestionsSection result={result} />
         </section>
       )}
 
       {/* B 工时结构 */}
       <section>
-        <SectionLabel icon={<Clock className="h-3.5 w-3.5" />}>工时结构分析</SectionLabel>
+        <SectionLabel icon={<Clock className="h-3.5 w-3.5" />}>{t('compare.section.hoursStructure')}</SectionLabel>
         <HoursStructureSection result={result} />
       </section>
 
       {/* D 分拣员效率对比 */}
       <section>
-        <SectionLabel icon={<TrendingUp className="h-3.5 w-3.5" />}>分拣员扫描效率对比</SectionLabel>
+        <SectionLabel icon={<TrendingUp className="h-3.5 w-3.5" />}>{t('compare.section.scannerCompare')}</SectionLabel>
         <ScannerCompareSection result={result} />
       </section>
 
       {/* C 人员出勤明细 */}
       <section>
-        <SectionLabel icon={<Users className="h-3.5 w-3.5" />}>人员出勤明细对比</SectionLabel>
+        <SectionLabel icon={<Users className="h-3.5 w-3.5" />}>{t('compare.section.personnelCompare')}</SectionLabel>
         <PersonnelCompareSection result={result} />
       </section>
 
       {/* F AI 深度分析 */}
       <section>
-        <SectionLabel icon={<Sparkles className="h-3.5 w-3.5" />}>AI 深度分析</SectionLabel>
+        <SectionLabel icon={<Sparkles className="h-3.5 w-3.5" />}>{t('compare.section.aiAnalysis')}</SectionLabel>
         <AiAnalysisSection result={result} />
       </section>
     </div>
@@ -1092,6 +1127,7 @@ function CompareAnalysisContent({ records }: { records: EfficiencyAttendanceDayR
 
 // ─── 入口组件 ─────────────────────────────────────────────────────────────────
 export function CompareAnalysisDrawer({ open, onClose, records }: Props) {
+  const { t } = useTranslation('efficiencyRecords')
   const sortedDates = useMemo(
     () => [...records].sort((a, b) => a.date.localeCompare(b.date)).map((r) => r.date),
     [records],
@@ -1102,14 +1138,18 @@ export function CompareAnalysisDrawer({ open, onClose, records }: Props) {
       ? undefined
       : sortedDates.length === 1
         ? sortedDates[0]
-        : `${sortedDates[0]} ~ ${sortedDates[sortedDates.length - 1]}（${sortedDates.length} 天）`
+        : t('compare.drawer.subtitleRange', {
+            start: sortedDates[0],
+            end: sortedDates[sortedDates.length - 1],
+            count: sortedDates.length,
+          })
 
   return (
     <AdminDrawer
       open={open}
       onClose={onClose}
-      eyebrow="Compare Analysis"
-      title={`效率对比分析（${records.length} 天）`}
+      eyebrow={t('compare.drawer.eyebrow')}
+      title={t('compare.drawer.title', { count: records.length })}
       subtitle={subtitle}
       width={Math.min(980, typeof window !== 'undefined' ? window.innerWidth - 48 : 980)}
       destroyOnClose

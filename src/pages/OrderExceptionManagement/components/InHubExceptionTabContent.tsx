@@ -1,5 +1,6 @@
 import { InputNumber, Tooltip } from 'antd'
 import { Loader2, Warehouse } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
 import { PERMISSION_KEYS, usePermission } from '../../../hooks/usePermission'
 import { useGlobalFilterStore } from '../../../stores/globalFilterStore'
 import type { InHubQueryMeta } from '../useOrderExceptionManagementPage'
@@ -23,6 +24,7 @@ export function InHubExceptionTabContent({
   queryMeta,
   onAnalyze,
 }: Props) {
+  const { t } = useTranslation('orderException')
   const canAnalyze = usePermission(PERMISSION_KEYS.btnOrderExceptionAnalyze)
   const stationCode = useGlobalFilterStore((state) => state.selectedStations[0])
 
@@ -30,36 +32,34 @@ export function InHubExceptionTabContent({
     <section className="admin-panel p-5">
       <div className="flex items-center gap-2">
         <Warehouse className="h-5 w-5 text-[#2f8f87]" aria-hidden />
-        <h3 className="text-sm font-semibold text-slate-950">库内异常订单分析</h3>
+        <h3 className="text-sm font-semibold text-slate-950">{t('inHub.title')}</h3>
       </div>
-      <p className="mt-1 text-xs text-slate-500">
-        按库内滞留天数区间查询在库运单，自动带入「AI异常订单分析」进行分析，结果显示在该标签的「分析结果」中。
-      </p>
+      <p className="mt-1 text-xs text-slate-500">{t('inHub.description')}</p>
 
       <div className="mt-4 flex flex-wrap items-end gap-4">
         <label className="flex flex-col gap-1 text-xs font-medium text-slate-600">
-          大于
+          {t('inHub.greaterThan')}
           <InputNumber
             min={0}
             value={greaterDays}
             onChange={(value) => onGreaterDaysChange(value == null ? null : Number(value))}
-            addonAfter="天"
+            addonAfter={t('inHub.daysUnit')}
             disabled={isQuerying}
             className="w-36"
           />
         </label>
         <label className="flex flex-col gap-1 text-xs font-medium text-slate-600">
-          小于
+          {t('inHub.lessThan')}
           <InputNumber
             min={0}
             value={lessDays}
             onChange={(value) => onLessDaysChange(value == null ? null : Number(value))}
-            addonAfter="天"
+            addonAfter={t('inHub.daysUnit')}
             disabled={isQuerying}
             className="w-36"
           />
         </label>
-        <Tooltip title={!canAnalyze ? '无操作权限' : undefined}>
+        <Tooltip title={!canAnalyze ? t('noPermission') : undefined}>
           <button
             type="button"
             disabled={isQuerying || !canAnalyze}
@@ -67,20 +67,23 @@ export function InHubExceptionTabContent({
             className="admin-btn admin-btn-primary inline-flex items-center gap-2 disabled:cursor-not-allowed disabled:opacity-50"
           >
             {isQuerying ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : null}
-            分析
+            {t('inHub.analyze')}
           </button>
         </Tooltip>
       </div>
 
       {!stationCode ? (
-        <p className="mt-3 text-xs text-amber-600">请先在右上角选择责任站点，再进行库内异常订单分析。</p>
+        <p className="mt-3 text-xs text-amber-600">{t('inHub.selectStationFirst')}</p>
       ) : null}
 
       {queryMeta ? (
         <p className="mt-3 text-xs text-slate-600" aria-live="polite">
-          入库区间 {queryMeta.start} ~ {queryMeta.end}，共{' '}
-          <span className="font-semibold text-slate-900">{queryMeta.totalResult}</span> 个订单号
-          {queryMeta.totalResult > 0 ? '，已跳转至「AI异常订单分析」查看结果' : null}
+          {t('inHub.queryResult', {
+            start: queryMeta.start,
+            end: queryMeta.end,
+            count: queryMeta.totalResult,
+          })}
+          {queryMeta.totalResult > 0 ? t('inHub.queryResultWithRedirect') : null}
         </p>
       ) : null}
     </section>

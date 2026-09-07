@@ -2,6 +2,7 @@ import { DatePicker, Image, Input, Radio, Tooltip } from 'antd'
 import dayjs from 'dayjs'
 import { Camera, Download, Filter, ImagePlus, Loader2, RotateCcw, X } from 'lucide-react'
 import { useCallback, useId, useState, type ChangeEvent } from 'react'
+import { Trans, useTranslation } from 'react-i18next'
 import { PERMISSION_KEYS, usePermission } from '../../../hooks/usePermission'
 import { showToast } from '../../../utils/toast'
 import { confirmDialog } from '../../../utils/confirmDialog'
@@ -9,6 +10,7 @@ import {
   exportDailyChecklistExcel,
   validateDailyChecklistForExport,
 } from '../exportDailyChecklistExcel'
+import { DAILY_CHECKLIST_SERIAL_NOS } from '../dailyChecklistTemplate'
 import { readLocalEvidenceImage, type LocalEvidenceImage } from '../localEvidenceImage'
 import type { DailyChecklistFormVm } from '../useDailyChecklistForm'
 import type { InspectionResult } from '../types'
@@ -18,6 +20,7 @@ type Props = {
 }
 
 export function DailyChecklistTable({ vm }: Props) {
+  const { t } = useTranslation('warehouseSafety')
   const canExport = usePermission(PERMISSION_KEYS.btnWarehouseSafetyExport)
   const {
     form,
@@ -45,14 +48,14 @@ export function DailyChecklistTable({ vm }: Props) {
     setExporting(true)
     try {
       await exportDailyChecklistExcel(form)
-      showToast('检查表已导出', 'success')
+      showToast(t('toast.exportSuccess'), 'success')
     } catch (e) {
-      const msg = e instanceof Error ? e.message : '导出失败'
+      const msg = e instanceof Error ? e.message : t('toast.exportFailed')
       showToast(msg, 'error')
     } finally {
       setExporting(false)
     }
-  }, [form])
+  }, [form, t])
 
   return (
     <div className="space-y-4">
@@ -60,25 +63,25 @@ export function DailyChecklistTable({ vm }: Props) {
         <div className="flex flex-wrap items-end justify-between gap-4">
           <div className="grid flex-1 gap-3 sm:grid-cols-3 sm:gap-4">
             <label className="block text-xs font-medium text-slate-600">
-              仓库 / 站点
+              {t('meta.warehouseLabel')}
               <Input
                 className="mt-1"
-                placeholder="如：悉尼仓"
+                placeholder={t('meta.warehousePlaceholder')}
                 value={form.meta.warehouseName}
                 onChange={(e) => setMetaField('warehouseName', e.target.value)}
               />
             </label>
             <label className="block text-xs font-medium text-slate-600">
-              检查人
+              {t('meta.inspectorLabel')}
               <Input
                 className="mt-1"
-                placeholder="填写姓名"
+                placeholder={t('meta.inspectorPlaceholder')}
                 value={form.meta.inspectorName}
                 onChange={(e) => setMetaField('inspectorName', e.target.value)}
               />
             </label>
             <label className="block text-xs font-medium text-slate-600">
-              检查日期
+              {t('meta.inspectionDateLabel')}
               <DatePicker
                 className="mt-1 w-full"
                 value={form.meta.inspectionDate ? dayjs(form.meta.inspectionDate) : null}
@@ -89,7 +92,12 @@ export function DailyChecklistTable({ vm }: Props) {
           </div>
           <div className="flex flex-wrap items-center gap-2 text-xs text-slate-600">
             <span className="rounded-md bg-slate-100 px-2.5 py-1">
-              共 35 项 · 有风险 <strong className="text-red-600">{riskCount}</strong> 项
+              <Trans
+                i18nKey="meta.itemCount"
+                t={t}
+                values={{ total: DAILY_CHECKLIST_SERIAL_NOS.length, riskCount }}
+                components={{ 1: <strong className="text-red-600" /> }}
+              />
             </span>
           </div>
         </div>
@@ -97,9 +105,7 @@ export function DailyChecklistTable({ vm }: Props) {
 
       <section className="admin-panel overflow-hidden">
         <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200 bg-slate-50/80 px-4 py-3">
-          <p className="text-xs text-slate-600">
-            默认全部为「无风险」，仅需处理异常项；佐证/整改可填写说明并上传照片（仅存于本机，导出时写入 Excel）。
-          </p>
+          <p className="text-xs text-slate-600">{t('table.hint')}</p>
           <div className="flex flex-wrap items-center gap-2">
             <button
               type="button"
@@ -112,7 +118,7 @@ export function DailyChecklistTable({ vm }: Props) {
               onClick={() => setOnlyRiskRows(!onlyRiskRows)}
             >
               <Filter className="h-3.5 w-3.5" aria-hidden />
-              {onlyRiskRows ? '显示全部' : '仅看有风险'}
+              {onlyRiskRows ? t('actions.showAll') : t('actions.onlyRisk')}
             </button>
             <button
               type="button"
@@ -120,25 +126,25 @@ export function DailyChecklistTable({ vm }: Props) {
               onClick={markAllNoRisk}
             >
               <RotateCcw className="h-3.5 w-3.5" aria-hidden />
-              全部标为无风险
+              {t('actions.markAllNoRisk')}
             </button>
             <button
               type="button"
               className="inline-flex items-center gap-1.5 rounded-md border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50"
               onClick={() => {
                 void confirmDialog({
-                  title: '清空填写内容',
-                  content: '确定清空当前填写内容？',
-                  okText: '清空',
+                  title: t('confirm.clearTitle'),
+                  content: t('confirm.clearContent'),
+                  okText: t('confirm.clearOk'),
                   danger: true,
                 }).then((confirmed) => {
                   if (confirmed) resetForm()
                 })
               }}
             >
-              清空
+              {t('actions.clear')}
             </button>
-            <Tooltip title={!canExport ? '无操作权限' : undefined}>
+            <Tooltip title={!canExport ? t('actions.noPermission') : undefined}>
               <button
                 type="button"
                 disabled={exporting || !canExport}
@@ -146,7 +152,7 @@ export function DailyChecklistTable({ vm }: Props) {
                 onClick={() => void onExport()}
               >
                 <Download className="h-3.5 w-3.5" aria-hidden />
-                {exporting ? '导出中…' : '导出 Excel'}
+                {exporting ? t('actions.exporting') : t('actions.exportExcel')}
               </button>
             </Tooltip>
           </div>
@@ -156,19 +162,17 @@ export function DailyChecklistTable({ vm }: Props) {
           <table className="w-full min-w-[960px] border-collapse text-sm">
             <thead>
               <tr className="bg-[#e8eef2] text-xs font-semibold text-slate-800">
-                <th className="w-12 border border-slate-300 px-2 py-2.5 text-center">序号</th>
-                <th className="w-[7%] border border-slate-300 px-2 py-2.5 text-center">检查大类</th>
-                <th className="w-[14%] border border-slate-300 px-2 py-2.5 text-center">检查项</th>
-                <th className="border border-slate-300 px-2 py-2.5 text-center">自查要点说明</th>
+                <th className="w-12 border border-slate-300 px-2 py-2.5 text-center">{t('table.colSerialNo')}</th>
+                <th className="w-[7%] border border-slate-300 px-2 py-2.5 text-center">{t('table.colCategory')}</th>
+                <th className="w-[14%] border border-slate-300 px-2 py-2.5 text-center">{t('table.colItem')}</th>
+                <th className="border border-slate-300 px-2 py-2.5 text-center">{t('table.colKeyPoint')}</th>
                 <th className="w-[11%] border border-slate-300 px-2 py-2.5 text-center">
-                  自查结果
-                  <div className="mt-0.5 font-normal text-slate-500">无风险 / 有风险</div>
+                  {t('table.colResult')}
+                  <div className="mt-0.5 font-normal text-slate-500">{t('table.colResultHint')}</div>
                 </th>
                 <th className="w-[26%] border border-slate-300 px-2 py-2.5 text-center">
-                  佐证 / 整改
-                  <div className="mt-0.5 font-normal text-slate-500">
-                    填写说明；无风险可附图，有风险须填措施与完成时间
-                  </div>
+                  {t('table.colEvidence')}
+                  <div className="mt-0.5 font-normal text-slate-500">{t('table.colEvidenceHint')}</div>
                 </th>
               </tr>
             </thead>
@@ -176,7 +180,7 @@ export function DailyChecklistTable({ vm }: Props) {
               {visibleTemplate.length === 0 ? (
                 <tr>
                   <td colSpan={6} className="border border-slate-200 px-4 py-10 text-center text-slate-500">
-                    当前无「有风险」项，可切换「显示全部」或继续检查。
+                    {t('table.emptyRiskFilter')}
                   </td>
                 </tr>
               ) : (
@@ -227,10 +231,10 @@ export function DailyChecklistTable({ vm }: Props) {
                           className="flex flex-col items-stretch gap-1"
                         >
                           <Radio value="no_risk" className="!m-0">
-                            无风险
+                            {t('result.noRisk')}
                           </Radio>
                           <Radio value="risk" className="!m-0">
-                            有风险
+                            {t('result.risk')}
                           </Radio>
                         </Radio.Group>
                       </td>
@@ -292,6 +296,7 @@ function EvidenceRectificationCell({
   onAddImages: (serialNo: number, images: LocalEvidenceImage[]) => void
   onRemove: (id: string) => void
 }) {
+  const { t } = useTranslation('warehouseSafety')
   const isRisk = result === 'risk'
 
   return (
@@ -300,25 +305,25 @@ function EvidenceRectificationCell({
         <>
           <Input.TextArea
             rows={2}
-            placeholder="改善措施（必填）"
+            placeholder={t('evidence.measurePlaceholder')}
             value={measure}
             onChange={(e) => onMeasureChange(e.target.value)}
             className="text-xs"
           />
           <label className="block text-[11px] font-medium text-slate-500">
-            完成时间
+            {t('evidence.dueDateLabel')}
             <DatePicker
               className="mt-1 w-full"
               value={dueDate ? dayjs(dueDate) : null}
               onChange={(d) => onDueDateChange(d ? d.format('YYYY-MM-DD') : '')}
-              placeholder="选择日期"
+              placeholder={t('evidence.dueDatePlaceholder')}
             />
           </label>
         </>
       ) : (
         <Input.TextArea
           rows={2}
-          placeholder="填写说明（可选）"
+          placeholder={t('evidence.notePlaceholder')}
           value={evidenceNote}
           onChange={(e) => onNoteChange(e.target.value)}
           className="text-xs"
@@ -345,6 +350,7 @@ function EvidencePhotoPicker({
   onAddImages: (serialNo: number, images: LocalEvidenceImage[]) => void
   onRemove: (id: string) => void
 }) {
+  const { t } = useTranslation('warehouseSafety')
   const inputId = useId()
   const [loading, setLoading] = useState(false)
 
@@ -361,12 +367,12 @@ function EvidencePhotoPicker({
         try {
           added.push(await readLocalEvidenceImage(file))
         } catch (err) {
-          errors.push(err instanceof Error ? err.message : `「${file.name}」读取失败`)
+          errors.push(err instanceof Error ? err.message : t('toast.fileReadFailed', { name: file.name }))
         }
       }
       if (added.length > 0) {
         onAddImages(serialNo, added)
-        showToast(`已添加 ${added.length} 张佐证照片`, 'success')
+        showToast(t('toast.photosAdded', { count: added.length }), 'success')
       }
       if (errors.length === 1) {
         showToast(errors[0]!, 'error')
@@ -392,12 +398,12 @@ function EvidencePhotoPicker({
         {loading ? (
           <>
             <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin" aria-hidden />
-            正在读取…
+            {t('evidence.reading')}
           </>
         ) : (
           <>
             <ImagePlus className="h-3.5 w-3.5 shrink-0" aria-hidden />
-            上传照片（可多选）
+            {t('evidence.uploadPhotos')}
           </>
         )}
       </label>
@@ -414,9 +420,11 @@ function EvidencePhotoPicker({
 
       {images.length > 0 ? (
         <div className="space-y-1.5">
-          <p className="text-[11px] font-medium text-[#1f6f68]">已选 {images.length} 张</p>
+          <p className="text-[11px] font-medium text-[#1f6f68]">
+            {t('evidence.selectedCount', { count: images.length })}
+          </p>
           <Image.PreviewGroup>
-            <ul className="flex flex-wrap gap-2" aria-label="佐证照片预览">
+            <ul className="flex flex-wrap gap-2" aria-label={t('evidence.previewAriaLabel')}>
               {images.map((img) => (
                 <li key={img.id} className="group relative">
                   <div className="h-16 w-16 overflow-hidden rounded border border-slate-200 bg-slate-100">
@@ -431,7 +439,7 @@ function EvidencePhotoPicker({
                   </div>
                   <button
                     type="button"
-                    aria-label={`移除 ${img.name}`}
+                    aria-label={t('evidence.removePhoto', { name: img.name })}
                     className="absolute -right-1.5 -top-1.5 z-10 flex h-5 w-5 items-center justify-center rounded-full bg-slate-800/90 text-white shadow-sm transition hover:bg-red-600"
                     onClick={() => onRemove(img.id)}
                   >

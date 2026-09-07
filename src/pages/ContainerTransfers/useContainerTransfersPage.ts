@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { Dayjs } from 'dayjs'
+import { useTranslation } from 'react-i18next'
 import { useSearchParams } from 'react-router-dom'
 import {
   acceptSettlement,
@@ -86,6 +87,7 @@ export function toLineItems(lines: TransferLineDraft[]) {
 }
 
 export function useContainerTransfersPage() {
+  const { t } = useTranslation('container')
   const [searchParams, setSearchParams] = useSearchParams()
   const isSuperAdmin = useAuthStore((s) => s.isSuperAdmin)
   const canProxyConfirm = usePermission('btn:container-transfers:proxy-confirm')
@@ -287,17 +289,17 @@ export function useContainerTransfersPage() {
 
     const target = transfers.find((item) => item.id === targetId)
     if (!target) {
-      showToast('没找到这笔流转，可能已被删除或你无权查看', 'error')
+      showToast(t('toast.deepLinkNotFound'), 'error')
       return
     }
     if (action === 'confirm') {
       if (target.status !== 'PENDING_RECEIVER') {
-        showToast('这笔流转已经不在待确认状态，为你打开记录', 'info')
+        showToast(t('toast.deepLinkNotPending'), 'info')
         void openDrawer(target, 'timeline')
         return
       }
       if (!canActAs(target.toAccountId)) {
-        showToast('只有接收方可以确认收货，为你打开记录', 'info')
+        showToast(t('toast.deepLinkNotReceiver'), 'info')
         void openDrawer(target, 'timeline')
         return
       }
@@ -306,7 +308,7 @@ export function useContainerTransfersPage() {
     }
     if (action === 'negotiate') {
       if (target.status !== 'DISPUTED') {
-        showToast('这笔流转已经不在协商中，为你打开记录', 'info')
+        showToast(t('toast.deepLinkNotDisputed'), 'info')
         void openDrawer(target, 'timeline')
         return
       }
@@ -314,7 +316,7 @@ export function useContainerTransfersPage() {
       return
     }
     void openDrawer(target, 'timeline')
-  }, [transfers, searchParams, setSearchParams, openDrawer, canActAs])
+  }, [transfers, searchParams, setSearchParams, openDrawer, canActAs, t])
 
   /** 新增走整批提交，编辑只改当前这一条 */
   const submitTransfer = useCallback(
@@ -344,7 +346,7 @@ export function useContainerTransfersPage() {
         return false
       }
       showToast(
-        editing ? '已更新流转记录' : `已创建 ${drafts.length} 条流转记录`,
+        editing ? t('toast.transferUpdated') : t('toast.transferCreated', { count: drafts.length }),
         'success',
       )
       setFormOpen(false)
@@ -352,7 +354,7 @@ export function useContainerTransfersPage() {
       await refresh()
       return true
     },
-    [editing, refresh],
+    [editing, refresh, t],
   )
 
   /** 模板里的转出方/接收方下拉取值就是这两份账户列表，所以在 hook 里出模板 */
@@ -362,11 +364,11 @@ export function useContainerTransfersPage() {
       await downloadTransferImportTemplate(ownAccounts, allAccounts)
     } catch (error) {
       console.error('[container-transfer-import] 模板生成失败', error)
-      showToast('模板生成失败，请重试', 'error')
+      showToast(t('toast.templateFailed'), 'error')
     } finally {
       setTemplateDownloading(false)
     }
-  }, [ownAccounts, allAccounts])
+  }, [ownAccounts, allAccounts, t])
 
   /** Excel 批量导入：整批一个事务，行已在前端逐条校验过，这里只处理后端返回 */
   const submitImport = useCallback(
@@ -379,12 +381,12 @@ export function useContainerTransfersPage() {
         showToast(mapImportErrorRowNo(res.error, rowNos), 'error')
         return false
       }
-      showToast(`已导入 ${res.data.created} 条流转记录`, 'success')
+      showToast(t('toast.importSuccess', { count: res.data.created }), 'success')
       setImportOpen(false)
       await refresh()
       return true
     },
-    [refresh],
+    [refresh, t],
   )
 
   const submitConfirm = useCallback(
@@ -397,12 +399,12 @@ export function useContainerTransfersPage() {
         showToast(res.error, 'error')
         return false
       }
-      showToast('已确认收货，库存已记账', 'success')
+      showToast(t('toast.confirmSuccess'), 'success')
       setConfirmTarget(null)
       await refresh()
       return true
     },
-    [confirmTarget, refresh],
+    [confirmTarget, refresh, t],
   )
 
   const submitProxyConfirm = useCallback(
@@ -415,12 +417,12 @@ export function useContainerTransfersPage() {
         showToast(res.error, 'error')
         return false
       }
-      showToast('已按回单确认，库存已记账', 'success')
+      showToast(t('toast.proxyConfirmSuccess'), 'success')
       setProxyConfirmTarget(null)
       await refresh()
       return true
     },
-    [proxyConfirmTarget, refresh],
+    [proxyConfirmTarget, refresh, t],
   )
 
   const submitDispute = useCallback(
@@ -444,13 +446,13 @@ export function useContainerTransfersPage() {
         showToast(res.error, 'error')
         return false
       }
-      showToast(isUpdate ? '已更新实收申报' : '已提交差异申报', 'success')
+      showToast(isUpdate ? t('toast.disputeUpdated') : t('toast.disputeSubmitted'), 'success')
       setDisputeTarget(null)
       await refresh()
       if (detail?.id === id) await reloadDetail(id)
       return true
     },
-    [disputeTarget, refresh, detail, reloadDetail],
+    [disputeTarget, refresh, detail, reloadDetail, t],
   )
 
   /** 二次确认由协商抽屉内联展示（与原系统一致），这里只负责提交 */
@@ -464,12 +466,12 @@ export function useContainerTransfersPage() {
         showToast(res.error, 'error')
         return false
       }
-      showToast(received === 0 ? '已取消该流转' : '已认可结算数量并完成记账', 'success')
+      showToast(received === 0 ? t('toast.transferCancelled') : t('toast.settlementAccepted'), 'success')
       await refresh()
       if (detail?.id === transfer.id) await reloadDetail(transfer.id)
       return true
     },
-    [refresh, detail, reloadDetail],
+    [refresh, detail, reloadDetail, t],
   )
 
   const submitDelete = useCallback(
@@ -482,12 +484,12 @@ export function useContainerTransfersPage() {
         showToast(res.error, 'error')
         return false
       }
-      showToast('已删除流转记录', 'success')
+      showToast(t('toast.transferDeleted'), 'success')
       setDeleteTarget(null)
       await refresh()
       return true
     },
-    [deleteTarget, refresh],
+    [deleteTarget, refresh, t],
   )
 
   /**
@@ -504,12 +506,12 @@ export function useContainerTransfersPage() {
         showToast(res.error, 'error')
         return false
       }
-      showToast('已作废，入账数量已反向冲回双方台账', 'success')
+      showToast(t('toast.transferVoided'), 'success')
       setVoidTarget(null)
       await refresh()
       return true
     },
-    [voidTarget, refresh],
+    [voidTarget, refresh, t],
   )
 
   return useMemo(

@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react'
 import { Alert, Button, DatePicker, Segmented, Select, Table } from 'antd'
 import type { ColumnsType } from 'antd/es/table'
 import dayjs, { type Dayjs } from 'dayjs'
+import { useTranslation } from 'react-i18next'
 import { colorFromMap } from '../vendorColors'
 import type { useVendorVolumeTrend } from '../useVendorVolumeTrend'
 import {
@@ -19,29 +20,31 @@ type Props = {
   trend: ReturnType<typeof useVendorVolumeTrend>
 }
 
-const RANGE_PRESETS = [
-  {
-    label: '近 7 天',
-    value: [dayjs().subtract(6, 'day').startOf('day'), dayjs().endOf('day')] as [Dayjs, Dayjs],
-  },
-  {
-    label: '近 14 天',
-    value: [dayjs().subtract(13, 'day').startOf('day'), dayjs().endOf('day')] as [Dayjs, Dayjs],
-  },
-  {
-    label: '近 30 天',
-    value: [dayjs().subtract(29, 'day').startOf('day'), dayjs().endOf('day')] as [Dayjs, Dayjs],
-  },
-]
-
-function formatChangeRate(rate: number | null): string {
-  if (rate == null) return '新增'
-  return `${rate >= 0 ? '+' : ''}${(rate * 100).toFixed(1)}%`
-}
+const RANGE_PRESET_KEYS = [
+  { key: 'last7Days', days: 6 },
+  { key: 'last14Days', days: 13 },
+  { key: 'last30Days', days: 29 },
+] as const
 
 export function VendorVolumeTrendTab({ trend }: Props) {
+  const { t } = useTranslation('vendorRegionMap')
+  const { t: tc } = useTranslation('common')
   const [chartMode, setChartMode] = useState<'line' | 'stack'>('line')
   const data = trend.data
+
+  const rangePresets = useMemo(
+    () =>
+      RANGE_PRESET_KEYS.map(({ key, days }) => ({
+        label: key === 'last7Days' ? tc('last7Days') : t(`presets.${key}`),
+        value: [dayjs().subtract(days, 'day').startOf('day'), dayjs().endOf('day')] as [Dayjs, Dayjs],
+      })),
+    [t, tc],
+  )
+
+  const formatChangeRate = (rate: number | null) => {
+    if (rate == null) return t('newBadge')
+    return `${rate >= 0 ? '+' : ''}${(rate * 100).toFixed(1)}%`
+  }
 
   const suppliers = useMemo(() => data?.suppliers ?? [], [data])
 
@@ -60,9 +63,10 @@ export function VendorVolumeTrendTab({ trend }: Props) {
     }
   }, [data, suppliers])
 
-  const columns: ColumnsType<VendorTrendSupplier> = [
+  const columns: ColumnsType<VendorTrendSupplier> = useMemo(
+    () => [
     {
-      title: '供应商',
+      title: t('trend.colVendor'),
       dataIndex: 'supplierName',
       render: (_: unknown, row) => (
         <span className="vrm-trend-cell-name">
@@ -76,39 +80,39 @@ export function VendorVolumeTrendTab({ trend }: Props) {
       ),
     },
     {
-      title: '总票量',
+      title: t('trend.colTotal'),
       dataIndex: 'totalCount',
       align: 'right',
       sorter: (a, b) => a.totalCount - b.totalCount,
       render: (value: number) => nf.format(value),
     },
     {
-      title: '日均',
+      title: t('trend.colDailyAvg'),
       dataIndex: 'dailyAvg',
       align: 'right',
       sorter: (a, b) => a.dailyAvg - b.dailyAvg,
       render: (value: number) => nf1.format(value),
     },
     {
-      title: '峰值',
+      title: t('trend.colPeak'),
       dataIndex: 'peakCount',
       align: 'right',
       render: (_: unknown, row) => `${nf.format(row.peakCount)}（${row.peakDate.slice(5)}）`,
     },
     {
-      title: '谷值',
+      title: t('trend.colTrough'),
       dataIndex: 'lowCount',
       align: 'right',
       render: (_: unknown, row) => `${nf.format(row.lowCount)}（${row.lowDate.slice(5)}）`,
     },
     {
-      title: '路由码数',
+      title: t('trend.colRouteCount'),
       dataIndex: 'routeCodeCount',
       align: 'right',
       sorter: (a, b) => a.routeCodeCount - b.routeCodeCount,
     },
     {
-      title: '环比',
+      title: t('trend.colMom'),
       dataIndex: 'changeRate',
       align: 'right',
       sorter: (a, b) => (a.changeRate ?? 0) - (b.changeRate ?? 0),
@@ -122,7 +126,9 @@ export function VendorVolumeTrendTab({ trend }: Props) {
         </span>
       ),
     },
-  ]
+  ],
+    [t, trend.vendorColorMap],
+  )
 
   const routeSupplierName =
     suppliers.find((supplier) => supplier.supplierKey === trend.routeSupplierKey)?.supplierName ?? ''
@@ -133,7 +139,7 @@ export function VendorVolumeTrendTab({ trend }: Props) {
         <div className="vrm-head__main">
           <div className="vrm-head__controls">
             <label className="vrm-field">
-              <span className="vrm-field__label">统计日期</span>
+              <span className="vrm-field__label">{t('trend.statDate')}</span>
               <DatePicker.RangePicker
                 value={trend.dateRange}
                 onChange={(values) => {
@@ -142,7 +148,7 @@ export function VendorVolumeTrendTab({ trend }: Props) {
                 format="YYYY-MM-DD"
                 inputReadOnly
                 allowClear={false}
-                presets={RANGE_PRESETS}
+                presets={rangePresets}
                 disabledDate={(current, info) => {
                   if (current.isAfter(dayjs().endOf('day'))) return true
                   // 与后端 MAX_RANGE_DAYS 对齐，别等请求打出去才报错
@@ -154,11 +160,9 @@ export function VendorVolumeTrendTab({ trend }: Props) {
               />
             </label>
             <Button type="primary" loading={trend.loading} onClick={() => void trend.query()}>
-              查询
+              {t('query')}
             </Button>
-            <span className="vrm-field__hint">
-              按天逐日拉取到件数据，区间越长越慢（14 天约 5~15 秒）
-            </span>
+            <span className="vrm-field__hint">{t('trend.queryHint')}</span>
           </div>
         </div>
       </section>
@@ -169,16 +173,16 @@ export function VendorVolumeTrendTab({ trend }: Props) {
         <Alert
           type="warning"
           showIcon
-          message={`有 ${data.meta.failedDates.length} 天到件数据拉取失败，已从所有统计中剔除（不按 0 票处理）`}
-          description={`失败日期：${data.meta.failedDates.join('、')}`}
+          message={t('trend.failedDates', { count: data.meta.failedDates.length })}
+          description={t('trend.failedDatesList', { dates: data.meta.failedDates.join('、') })}
         />
       ) : null}
 
       {!data ? (
         <section className="admin-panel">
           <div className="vrm-empty">
-            <div className="vrm-empty__title">还没有趋势数据</div>
-            <div className="vrm-empty__hint">选好统计日期区间后点「查询」。</div>
+            <div className="vrm-empty__title">{t('trend.emptyTitle')}</div>
+            <div className="vrm-empty__hint">{t('trend.emptyHint')}</div>
           </div>
         </section>
       ) : (
@@ -186,23 +190,23 @@ export function VendorVolumeTrendTab({ trend }: Props) {
           {kpi ? (
             <section className="admin-panel vrm-kpis">
               <div className="vrm-kpi">
-                <span className="vrm-kpi__label">区间总票量</span>
+                <span className="vrm-kpi__label">{t('trend.totalVolume')}</span>
                 <span className="vrm-kpi__value">{nf.format(kpi.totalCount)}</span>
               </div>
               <div className="vrm-kpi">
-                <span className="vrm-kpi__label">日均票量</span>
+                <span className="vrm-kpi__label">{t('trend.dailyAvg')}</span>
                 <span className="vrm-kpi__value">{nf1.format(kpi.dailyAvg)}</span>
               </div>
               <div className="vrm-kpi">
-                <span className="vrm-kpi__label">活跃供应商</span>
+                <span className="vrm-kpi__label">{t('trend.activeVendors')}</span>
                 <span className="vrm-kpi__value">{kpi.supplierCount}</span>
               </div>
               <div className="vrm-kpi">
-                <span className="vrm-kpi__label">活跃路由码</span>
+                <span className="vrm-kpi__label">{t('trend.activeRoutes')}</span>
                 <span className="vrm-kpi__value">{kpi.routeCodeCount}</span>
               </div>
               <div className="vrm-kpi">
-                <span className="vrm-kpi__label">整体环比</span>
+                <span className="vrm-kpi__label">{t('trend.overallMom')}</span>
                 <span
                   className={
                     kpi.overallChange == null
@@ -221,12 +225,13 @@ export function VendorVolumeTrendTab({ trend }: Props) {
           <section className="admin-panel vrm-vendors">
             <div className="vrm-vendors__head">
               <div>
-                <h2 className="vrm-vendors__title">按日货量趋势</h2>
+                <h2 className="vrm-vendors__title">{t('trend.dailyTrend')}</h2>
                 <p className="vrm-vendors__meta">
-                  已选 {trend.selectedSupplierKeys.length} / {suppliers.length} 家
-                  {data.meta.lastDayPartial
-                    ? ' · 当天数据尚未跑完，已排除出环比计算'
-                    : ''}
+                  {t('trend.selectedVendors', {
+                    selected: trend.selectedSupplierKeys.length,
+                    total: suppliers.length,
+                  })}
+                  {data.meta.lastDayPartial ? t('trend.todayExcluded') : ''}
                 </p>
               </div>
               <div className="vrm-vendors__actions">
@@ -234,15 +239,15 @@ export function VendorVolumeTrendTab({ trend }: Props) {
                   value={chartMode}
                   onChange={(value) => setChartMode(value as 'line' | 'stack')}
                   options={[
-                    { label: '折线', value: 'line' },
-                    { label: '堆叠面积', value: 'stack' },
+                    { label: t('trendChartMode.line'), value: 'line' },
+                    { label: t('trendChartMode.stack'), value: 'stack' },
                   ]}
                 />
                 <Button onClick={() => trend.selectAllSuppliers()} disabled={suppliers.length === 0}>
-                  全选
+                  {t('selectAll')}
                 </Button>
                 <Button onClick={() => trend.clearSuppliers()} disabled={suppliers.length === 0}>
-                  清空
+                  {t('clearSelection')}
                 </Button>
               </div>
             </div>
@@ -257,7 +262,11 @@ export function VendorVolumeTrendTab({ trend }: Props) {
                     className="vrm-vendor"
                     aria-pressed={checked}
                     onClick={() => trend.toggleSupplier(supplier.supplierKey, !checked)}
-                    title={`${supplier.supplierName}：${nf.format(supplier.totalCount)} 票 / ${supplier.routeCodeCount} 条路由码`}
+                    title={t('trend.vendorChip', {
+                      name: supplier.supplierName,
+                      count: nf.format(supplier.totalCount),
+                      routes: supplier.routeCodeCount,
+                    })}
                   >
                     <span
                       className="vrm-swatch"
@@ -284,10 +293,9 @@ export function VendorVolumeTrendTab({ trend }: Props) {
           <section className="admin-panel vrm-vendors">
             <div className="vrm-vendors__head">
               <div>
-                <h2 className="vrm-vendors__title">环比涨跌排行</h2>
+                <h2 className="vrm-vendors__title">{t('trend.momRanking')}</h2>
                 <p className="vrm-vendors__meta">
-                  区间对半切，后半段日均 vs 前半段日均（可比 {data.meta.comparableDates.length} 天）。
-                  掉量的排在最上 —— 这几家最可能先裁司机。点条形可切换下方的路由码视图。
+                  {t('trend.momHint', { days: data.meta.comparableDates.length })}
                 </p>
               </div>
             </div>
@@ -301,20 +309,21 @@ export function VendorVolumeTrendTab({ trend }: Props) {
           <section className="admin-panel vrm-vendors">
             <div className="vrm-vendors__head">
               <div>
-                <h2 className="vrm-vendors__title">路由码货量分布</h2>
-                <p className="vrm-vendors__meta">
-                  一个路由码≈一条司机线路。某行由深转浅直至断掉 = 这条线路没货了；新出现的行 = 扩容。
-                </p>
+                <h2 className="vrm-vendors__title">{t('trend.routeHeatmap')}</h2>
+                <p className="vrm-vendors__meta">{t('trend.routeHeatmapHint')}</p>
               </div>
               <div className="vrm-vendors__actions">
                 <Select
                   value={trend.routeSupplierKey || undefined}
                   onChange={(value) => trend.setRouteSupplierKey(value)}
-                  placeholder="选择供应商"
+                  placeholder={t('trend.selectVendor')}
                   style={{ minWidth: 220 }}
                   options={suppliers.map((supplier) => ({
                     value: supplier.supplierKey,
-                    label: `${supplier.supplierName}（${supplier.routeCodeCount} 条路由）`,
+                    label: t('trend.vendorOption', {
+                      name: supplier.supplierName,
+                      count: supplier.routeCodeCount,
+                    }),
                   }))}
                 />
               </div>
@@ -328,7 +337,7 @@ export function VendorVolumeTrendTab({ trend }: Props) {
           </section>
 
           <section className="admin-panel">
-            <h2 className="vrm-vendors__title">供应商明细</h2>
+            <h2 className="vrm-vendors__title">{t('trend.vendorDetail')}</h2>
             <Table<VendorTrendSupplier>
               className="mt-3"
               rowKey="supplierKey"

@@ -1,7 +1,8 @@
 import { Button, Checkbox, DatePicker, Drawer, InputNumber, TimePicker } from 'antd'
 import dayjs from 'dayjs'
 import { Clock, Gauge, Plus, Save, X } from 'lucide-react'
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { FormSection } from '../../../components/FormSection'
 import { StationSelect } from '../../../components/Layout/StationSelect'
 import {
@@ -15,16 +16,6 @@ import type {
   DispatchAlarmScheduleDraft,
 } from '../dispatchAlarmTypes'
 import type { PushTimeSlot, WeekdayNum } from '../../ExitAlarm/exitAlarmTypes'
-
-const WEEKDAYS: { value: WeekdayNum; label: string }[] = [
-  { value: 1, label: '周一' },
-  { value: 2, label: '周二' },
-  { value: 3, label: '周三' },
-  { value: 4, label: '周四' },
-  { value: 5, label: '周五' },
-  { value: 6, label: '周六' },
-  { value: 7, label: '周日' },
-]
 
 const DEFAULT_ALERT_THRESHOLD_PCT = 92
 
@@ -67,8 +58,20 @@ export function DispatchAlarmScheduleDrawer({
   saving,
   onSubmit,
 }: Props) {
+  const { t } = useTranslation('dispatchAlarm')
+  const { t: tc } = useTranslation('common')
+
+  const weekdays = useMemo(
+    () =>
+      ([1, 2, 3, 4, 5, 6, 7] as WeekdayNum[]).map((value) => ({
+        value,
+        label: t(`weekday.${value}`),
+      })),
+    [t],
+  )
+
   const [stationCode, setStationCode] = useState('')
-  const [weekdays, setWeekdays] = useState<WeekdayNum[]>([])
+  const [selectedWeekdays, setSelectedWeekdays] = useState<WeekdayNum[]>([])
   const [pushTimes, setPushTimes] = useState<PushTimeSlot[]>([])
   const [alertThresholdPct, setAlertThresholdPct] = useState<number | null>(DEFAULT_ALERT_THRESHOLD_PCT)
   const [pushConfigIds, setPushConfigIds] = useState<string[]>([])
@@ -79,7 +82,7 @@ export function DispatchAlarmScheduleDrawer({
   useEffect(() => {
     if (!open) return
     setStationCode(editingSchedule?.stationCode ?? '')
-    setWeekdays(editingSchedule?.weekdays ?? [])
+    setSelectedWeekdays(editingSchedule?.weekdays ?? [])
     setPushTimes(editingSchedule?.pushTimes ?? [])
     setAlertThresholdPct(editingSchedule?.alertThresholdPct ?? DEFAULT_ALERT_THRESHOLD_PCT)
     setPushConfigIds(editingSchedule?.pushConfigIds ?? [])
@@ -102,24 +105,24 @@ export function DispatchAlarmScheduleDrawer({
 
   const handleConfirm = async () => {
     if (!stationCode) {
-      showToast('请选择站点', 'error')
+      showToast(t('validation.selectStation'), 'error')
       return
     }
-    if (weekdays.length === 0) {
-      showToast('请至少选择一个推送星期', 'error')
+    if (selectedWeekdays.length === 0) {
+      showToast(t('validation.selectWeekday'), 'error')
       return
     }
     if (pushTimes.length === 0) {
-      showToast('请至少添加一个推送时间', 'error')
+      showToast(t('validation.addPushTime'), 'error')
       return
     }
     const scopedPushConfigIds = pushConfigIds.filter((id) => catalogIdSet.has(id))
     if (scopedPushConfigIds.length === 0) {
-      showToast('请至少选择一个供应商', 'error')
+      showToast(t('validation.selectVendor'), 'error')
       return
     }
     const draft: DispatchAlarmScheduleDraft = {
-      weekdays,
+      weekdays: selectedWeekdays,
       pushTimes,
       isEnabled: true,
       stationCode,
@@ -143,30 +146,30 @@ export function DispatchAlarmScheduleDrawer({
       title={
         <div className="flex items-center gap-2">
           <Gauge className="h-4 w-4 text-[var(--admin-accent)]" aria-hidden />
-          <span>{editingSchedule ? '编辑派签告警' : '添加派签告警'}</span>
+          <span>{editingSchedule ? t('drawer.editTitle') : t('drawer.addTitle')}</span>
         </div>
       }
       footer={
         <div className="flex items-center justify-end gap-2">
           <Button onClick={onClose} disabled={saving}>
-            取消
+            {tc('cancel')}
           </Button>
           <Button type="primary" icon={<Save className="h-3.5 w-3.5" />} loading={saving} onClick={() => void handleConfirm()}>
-            确定
+            {tc('confirm')}
           </Button>
         </div>
       }
     >
       <div className="space-y-5">
-        <FormSection icon={Gauge} title="基础配置">
+        <FormSection icon={Gauge} title={t('drawer.basicConfig')}>
           <div className="space-y-1">
             <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
               <div className="flex shrink-0 items-center gap-2">
-                <span className="text-xs font-medium text-slate-500">站点</span>
+                <span className="text-xs font-medium text-slate-500">{t('drawer.station')}</span>
                 <StationSelect value={stationCode} onChange={setStationCode} disabled={saving} className="w-[150px]" />
               </div>
               <div className="flex min-w-0 flex-1 items-center justify-end gap-2">
-                <span className="shrink-0 text-xs font-medium text-slate-500">到件扫描时间</span>
+                <span className="shrink-0 text-xs font-medium text-slate-500">{t('drawer.arrivalScanTime')}</span>
                 <DatePicker.RangePicker
                   className="w-full min-w-0"
                   value={[dayjs(arrivalScanRange[0], 'YYYY-MM-DD'), dayjs(arrivalScanRange[1], 'YYYY-MM-DD')]}
@@ -176,7 +179,6 @@ export function DispatchAlarmScheduleDrawer({
                   disabled={saving}
                   disabledDate={(current, info) => {
                     if (current.isAfter(dayjs().endOf('day'))) return true
-                    // 与后端上限对齐，别等请求打出去才报错
                     if (info?.from) return Math.abs(current.diff(info.from, 'day')) >= MAX_ARRIVAL_SCAN_DAYS
                     return false
                   }}
@@ -188,19 +190,21 @@ export function DispatchAlarmScheduleDrawer({
                 />
               </div>
             </div>
-            <p className="text-right text-xs text-slate-400">
-              到件扫描时间只影响立即推送
-            </p>
+            <p className="text-right text-xs text-slate-400">{t('drawer.arrivalScanHint')}</p>
           </div>
         </FormSection>
 
-        <FormSection icon={Clock} title="定时推送配置" description="推送星期 / 推送时间点 / 预警阈值">
+        <FormSection icon={Clock} title={t('drawer.scheduleConfig')} description={t('drawer.scheduleConfigDesc')}>
           <div className="divide-y divide-[var(--admin-line)]">
             <div className="flex items-center gap-4 py-3 first:pt-0">
-              <span className="w-16 shrink-0 text-xs font-medium text-slate-500">推送星期</span>
-              <Checkbox.Group value={weekdays} disabled={saving} onChange={(vals) => setWeekdays(vals as WeekdayNum[])}>
+              <span className="w-16 shrink-0 text-xs font-medium text-slate-500">{t('drawer.pushWeekdays')}</span>
+              <Checkbox.Group
+                value={selectedWeekdays}
+                disabled={saving}
+                onChange={(vals) => setSelectedWeekdays(vals as WeekdayNum[])}
+              >
                 <div className="flex flex-wrap gap-x-4 gap-y-1">
-                  {WEEKDAYS.map((day) => (
+                  {weekdays.map((day) => (
                     <Checkbox key={day.value} value={day.value}>
                       <span className="text-sm">{day.label}</span>
                     </Checkbox>
@@ -210,7 +214,7 @@ export function DispatchAlarmScheduleDrawer({
             </div>
 
             <div className="flex items-start gap-4 py-3">
-              <span className="mt-1 w-16 shrink-0 text-xs font-medium text-slate-500">推送时间</span>
+              <span className="mt-1 w-16 shrink-0 text-xs font-medium text-slate-500">{t('drawer.pushTimes')}</span>
               <div className="flex flex-wrap items-center gap-2">
                 {pushTimes.map((slot) => (
                   <div
@@ -246,15 +250,17 @@ export function DispatchAlarmScheduleDrawer({
                     onClick={handleAddTime}
                     className="!border-[var(--admin-accent)]/40 !text-xs !text-[var(--admin-accent)] hover:!border-[var(--admin-accent)] hover:!bg-[var(--admin-accent-soft)]"
                   >
-                    添加
+                    {tc('add')}
                   </Button>
                 )}
-                {pushTimes.length === 0 && <span className="text-xs text-slate-400">暂无推送时间</span>}
+                {pushTimes.length === 0 && <span className="text-xs text-slate-400">{t('drawer.noPushTimes')}</span>}
               </div>
             </div>
 
             <div className="flex items-center gap-4 py-3">
-              <span className="flex w-16 shrink-0 items-center gap-1 text-xs font-medium text-slate-500">预警阈值</span>
+              <span className="flex w-16 shrink-0 items-center gap-1 text-xs font-medium text-slate-500">
+                {t('drawer.alertThreshold')}
+              </span>
               <InputNumber
                 value={alertThresholdPct}
                 min={0}
@@ -267,11 +273,11 @@ export function DispatchAlarmScheduleDrawer({
             </div>
 
             <div className="flex items-center gap-4 py-3 last:pb-0">
-              <span className="w-16 shrink-0 text-xs font-medium text-slate-500">推送选项</span>
+              <span className="w-16 shrink-0 text-xs font-medium text-slate-500">{t('drawer.pushOptions')}</span>
               <div className="flex flex-wrap items-center gap-x-5 gap-y-1">
                 <SupplierMentionToggle value={mentionEnabled} onChange={setMentionEnabled} disabled={saving} />
                 <Checkbox checked={showDriverMap} disabled={saving} onChange={(e) => setShowDriverMap(e.target.checked)}>
-                  <span className="text-sm">司机地图</span>
+                  <span className="text-sm">{t('drawer.driverMap')}</span>
                 </Checkbox>
               </div>
             </div>
@@ -284,6 +290,7 @@ export function DispatchAlarmScheduleDrawer({
           onChange={setPushConfigIds}
           disabled={saving}
           catalogLoading={catalogLoading}
+          title={t('drawer.vendorConfig')}
         />
       </div>
     </Drawer>

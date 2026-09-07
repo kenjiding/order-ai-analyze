@@ -1,6 +1,7 @@
 import { Button, Empty, Table, Typography } from 'antd'
 import type { ColumnsType } from 'antd/es/table/interface'
 import { Plus } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
 import type { FeishuPushEntryWithKind } from '../feishuPushTypes'
 import { AttendanceSchedulingPushPanel } from './AttendanceSchedulingPushPanel'
 import './attendanceSchedulingPushTab.css'
@@ -12,14 +13,16 @@ type Props = {
 }
 
 export function AttendanceSchedulingPushTab({ entries, webhookColumns, onOpenCreate }: Props) {
+  const { t } = useTranslation('pushNotifications')
+
   return (
     <div className="attendance-scheduling-push-tab-page space-y-5">
       <div className="as-card">
         <div className="as-card-head">
           <div>
-            <div className="as-card-head-title">排班计划推送</div>
+            <div className="as-card-head-title">{t('attendanceTab.planTitle')}</div>
             <Typography.Text type="secondary" className="mt-1 block text-xs leading-relaxed">
-              填写排班计划并截图推送到飞书群；除固定备注外，其余数值默认为空，由人工填写。
+              {t('attendanceTab.planDesc')}
             </Typography.Text>
           </div>
         </div>
@@ -31,13 +34,13 @@ export function AttendanceSchedulingPushTab({ entries, webhookColumns, onOpenCre
       <div className="as-card">
         <div className="as-card-head">
           <div>
-            <div className="as-card-head-title">推送配置</div>
+            <div className="as-card-head-title">{t('attendanceTab.configTitle')}</div>
             <Typography.Text type="secondary" className="mt-1 block text-xs leading-relaxed">
-              管理出勤及排班计划推送 webhook；推送类型固定为本页签，无需单独选择。
+              {t('attendanceTab.configDesc')}
             </Typography.Text>
           </div>
           <Button type="primary" icon={<Plus className="h-4 w-4" />} onClick={onOpenCreate}>
-            添加推送
+            {t('addPush')}
           </Button>
         </div>
         <div className="as-card-body !pt-3">
@@ -47,7 +50,7 @@ export function AttendanceSchedulingPushTab({ entries, webhookColumns, onOpenCre
             dataSource={entries}
             pagination={false}
             locale={{
-              emptyText: <Empty className="py-12" description="暂无推送条目，点击右上角「添加推送」开始配置。" />,
+              emptyText: <Empty className="py-12" description={t('table.empty')} />,
             }}
             scroll={{ x: 990 }}
           />

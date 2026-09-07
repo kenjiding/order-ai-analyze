@@ -1,5 +1,8 @@
 // @ts-nocheck
 import { Edit2, Save, Trash2, Users, X } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
+import { getDateTimeLocale } from '../../../i18n'
+import { useAppLocale } from '../../../i18n/hooks'
 import { roleBadgeClassName } from '../constants'
 
 export function EmployeesTabContent({
@@ -9,32 +12,37 @@ export function EmployeesTabContent({
   tempRole,
   setTempRole,
   roles,
-  roleMap,
   handleUpdateEmployeeRole,
   handleDeleteEmployee,
 }) {
+  const { t } = useTranslation('wageSalary')
+  const { locale } = useAppLocale()
+  const dateLocale = getDateTimeLocale(locale)
+
   return (
     <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
-      <h3 className="text-lg font-semibold text-gray-900 mb-4">员工列表 ({employees.length} 人)</h3>
+      <h3 className="text-lg font-semibold text-gray-900 mb-4">
+        {t('employees.title', { count: employees.length })}
+      </h3>
 
       {employees.length === 0 ? (
         <div className="text-center py-12 text-gray-500">
           <Users className="w-12 h-12 mx-auto mb-3 opacity-50" />
-          <p>暂无员工数据</p>
-          <p className="text-sm mt-1">上传打卡文件后将自动创建员工档案</p>
+          <p>{t('employees.empty')}</p>
+          <p className="text-sm mt-1">{t('employees.emptyHint')}</p>
         </div>
       ) : (
         <div className="overflow-x-auto">
           <table className="min-w-full divide-y divide-gray-200">
             <thead className="bg-gray-50">
               <tr>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">人员编号</th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">姓氏</th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">昵称</th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">部门</th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">角色</th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">创建时间</th>
-                <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase">操作</th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">{t('col.employeeId')}</th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">{t('col.surname')}</th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">{t('col.nickname')}</th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">{t('col.department')}</th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">{t('col.role')}</th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">{t('col.createdAt')}</th>
+                <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase">{t('col.actions')}</th>
               </tr>
             </thead>
             <tbody className="bg-white divide-y divide-gray-200">
@@ -54,7 +62,7 @@ export function EmployeesTabContent({
                         >
                           {roles.map((role) => (
                             <option key={role} value={role}>
-                              {roleMap[role]}
+                              {t(`role.${role}`)}
                             </option>
                           ))}
                         </select>
@@ -78,7 +86,7 @@ export function EmployeesTabContent({
                         <span
                           className={`rounded-full px-3 py-1 text-xs font-medium ${roleBadgeClassName(employee.role)}`}
                         >
-                          {roleMap[employee.role]}
+                          {t(`role.${employee.role}`)}
                         </span>
                         <button
                           type="button"
@@ -94,14 +102,14 @@ export function EmployeesTabContent({
                     )}
                   </td>
                   <td className="px-4 py-3 text-sm text-gray-600">
-                    {new Date(employee.createdAt).toLocaleDateString('zh-CN')}
+                    {new Date(employee.createdAt).toLocaleDateString(dateLocale)}
                   </td>
                   <td className="px-4 py-3 text-sm text-center">
                     <button
                       type="button"
                       onClick={() => handleDeleteEmployee(employee)}
                       className="text-red-600 hover:text-red-800 transition-colors"
-                      title="删除员工"
+                      title={t('employees.deleteEmployee')}
                     >
                       <Trash2 className="w-4 h-4" />
                     </button>

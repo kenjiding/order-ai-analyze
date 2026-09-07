@@ -3,6 +3,7 @@ import type { RouteCodeDistributionItem } from './scannerEfficiencyApi'
 import type { DailyRouteCodeCount } from './cancelScanAnalysisTypes'
 import { filterDailyRouteCodeCounts } from './cancelScanRouteCodeDaily'
 import { formatDateKey } from './formatAndParse'
+import { i18n } from '../../i18n/index'
 
 export type RouteCodeDailyCount = {
   date: string
@@ -32,15 +33,15 @@ export type RouteZoneGroup = {
 /** 从路由码提取区号：FF001 → F区，BB003 → B区 */
 export function extractRouteZone(routeCode: string): string {
   const code = String(routeCode ?? '').trim()
-  if (!code || code === '(空)') return '未知区'
+  if (!code || code === '(空)') return String(i18n.t('cancelScan.zoneUnknown', { ns: 'scannerEfficiency' }))
   const match = code.match(/[A-Za-z]/)
-  if (!match) return '其他区'
-  return `${match[0].toUpperCase()}区`
+  if (!match) return String(i18n.t('cancelScan.zoneOther', { ns: 'scannerEfficiency' }))
+  return String(i18n.t('cancelScan.zoneSuffix', { ns: 'scannerEfficiency', letter: match[0].toUpperCase() }))
 }
 
 function zoneSortKey(zone: string): string {
-  if (zone === '未知区') return 'zzzz'
-  if (zone === '其他区') return 'zzzy'
+  if (zone === String(i18n.t('cancelScan.zoneUnknown', { ns: 'scannerEfficiency' }))) return 'zzzz'
+  if (zone === String(i18n.t('cancelScan.zoneOther', { ns: 'scannerEfficiency' }))) return 'zzzy'
   return zone
 }
 
@@ -159,3 +160,4 @@ export function attachZoneInboundScanTotals(
     }
   })
 }
+

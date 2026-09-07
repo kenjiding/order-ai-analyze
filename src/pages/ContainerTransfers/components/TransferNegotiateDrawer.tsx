@@ -5,13 +5,9 @@
 import { useState } from 'react'
 import { Alert, Button, Image, Input, Tag } from 'antd'
 import { ClipboardList, FileText, ShieldCheck } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
 import { AdminDrawer } from '../../../components/Drawer/AdminDrawer'
-import {
-  containerTypeName,
-  formatTransferNo,
-  transferStatusColor,
-  transferStatusLabel,
-} from '../../../containerManagement/constants'
+import { formatTransferNo, transferStatusColor } from '../../../containerManagement/constants'
 import type { TransferDetail, TransferLineDraft } from '../../../containerManagement/types'
 import { TransferLineItemsInput } from './TransferLineItemsInput'
 
@@ -30,11 +26,13 @@ function Metric({
   total,
   breakdown,
   tone,
+  t,
 }: {
   label: string
   total: number | null
   breakdown: { containerType: string; quantity: number | null }[]
   tone: MetricTone
+  t: ReturnType<typeof useTranslation<'container'>>['t']
 }) {
   const style = METRIC_TONE[tone]
   const lines = breakdown.filter((item) => item.quantity !== null)
@@ -54,7 +52,7 @@ function Metric({
                 key={item.containerType}
                 className={`rounded-md px-1.5 py-0.5 text-xs ${style.chip}`}
               >
-                {containerTypeName(item.containerType)}
+                {t(`containerType.${item.containerType}`)}
                 <span className="ml-1 font-medium tabular-nums">{item.quantity}</span>
               </span>
             ))}
@@ -123,17 +121,17 @@ function DrawerSkeleton() {
   )
 }
 
-function acceptConfirmDescription(detail: TransferDetail): string {
+function acceptConfirmDescription(detail: TransferDetail, t: ReturnType<typeof useTranslation<'container'>>['t']): string {
   const total = detail.receivedTotal
   if (total === null) return ''
   const details = detail.items
     .filter((item) => item.receivedQuantity !== null)
-    .map((item) => `${containerTypeName(item.containerType)} ${item.receivedQuantity}`)
+    .map((item) => `${t(`containerType.${item.containerType}`)} ${item.receivedQuantity}`)
     .join('、')
-  if (total === 0) return '确认按接收方实收 0 件结算？认可后本条将取消，双方库存不变。'
+  if (total === 0) return t('transfers.acceptConfirmZero')
   return details
-    ? `确认按接收方实收明细结算（${details}，共 ${total} 件）？认可后立即入账。`
-    : `确认按接收方实收 ${total} 件结算？认可后立即入账。`
+    ? t('transfers.acceptConfirmDetail', { details, total })
+    : t('transfers.acceptConfirmTotal', { total })
 }
 
 type Props = {
@@ -163,6 +161,8 @@ export function TransferNegotiateDrawer({
   onAcceptSettlement,
   onUpdateReport,
 }: Props) {
+  const { t } = useTranslation('container')
+  const { t: tc } = useTranslation('common')
   const [acceptConfirmOpen, setAcceptConfirmOpen] = useState(false)
   const [patchLines, setPatchLines] = useState<TransferLineDraft[] | null>(null)
   const [patchReason, setPatchReason] = useState<string | null>(null)
@@ -186,19 +186,19 @@ export function TransferNegotiateDrawer({
     if (!detail) return
     for (const line of lines) {
       if (!line.quantity.trim()) {
-        setPatchError('请填写全部品类的实收数量')
+        setPatchError(t('transfers.errAllReceivedQty'))
         return
       }
       const quantity = Number(line.quantity)
       const max = maxByType[line.containerType]
       if (!Number.isInteger(quantity) || quantity < 0 || quantity > max) {
-        setPatchError(`实收数量须为 0～${max} 之间的整数`)
+        setPatchError(t('transfers.errReceivedRange', { max }))
         return
       }
     }
     if (!reason.trim()) {
       setPatchError(null)
-      setReasonError('请填写原因')
+      setReasonError(t('transfers.errEnterReason'))
       return
     }
     setPatchError(null)
@@ -220,21 +220,21 @@ export function TransferNegotiateDrawer({
       width={560}
       styles={{ footer: { padding: '12px 24px' } }}
       eyebrow={detail ? formatTransferNo(detail.id) : undefined}
-      title="协商"
-      subtitle={detail ? `${detail.fromAccountName} → ${detail.toAccountName}` : '加载中…'}
+      title={t('transfers.negotiateTitle')}
+      subtitle={detail ? `${detail.fromAccountName} → ${detail.toAccountName}` : tc('loading')}
       footer={
         showFooter && detail ? (
           <div className="space-y-3">
             {acceptConfirmOpen ? (
               <p className="m-0 rounded-lg bg-amber-50 px-3 py-2 text-sm leading-relaxed text-amber-800">
-                {acceptConfirmDescription(detail)}
+                {acceptConfirmDescription(detail, t)}
               </p>
             ) : null}
             <div className="flex items-center justify-end gap-2">
               {acceptConfirmOpen ? (
                 <>
                   <Button disabled={busy} onClick={() => setAcceptConfirmOpen(false)}>
-                    取消
+                    {tc('cancel')}
                   </Button>
                   <Button
                     type="primary"
@@ -244,7 +244,7 @@ export function TransferNegotiateDrawer({
                       if (ok) setAcceptConfirmOpen(false)
                     }}
                   >
-                    确认认可
+                    {t('transfers.confirmAccept')}
                   </Button>
                 </>
               ) : (
@@ -254,7 +254,7 @@ export function TransferNegotiateDrawer({
                   disabled={busy || detail.receivedTotal === null}
                   onClick={() => setAcceptConfirmOpen(true)}
                 >
-                  认可接收方实收
+                  {t('transfers.acceptSettlement')}
                 </Button>
               )}
             </div>
@@ -269,54 +269,57 @@ export function TransferNegotiateDrawer({
           <div className="rounded-xl border border-[var(--admin-line)] bg-white">
             <div className="border-b border-[var(--admin-line)] bg-[var(--admin-surface-soft)] px-4 py-2.5">
               <Tag color={transferStatusColor[detail.status]} className="!me-0">
-                {transferStatusLabel[detail.status]}
+                {t(`transferStatus.${detail.status}`)}
               </Tag>
             </div>
             <dl className="m-0 grid grid-cols-3 divide-x divide-[var(--admin-line)]">
               <Metric
-                label="转出方发出"
+                label={t('transfers.metricDeclared')}
                 total={detail.declaredTotal}
                 breakdown={detail.items.map((item) => ({
                   containerType: item.containerType,
                   quantity: item.declaredQuantity,
                 }))}
                 tone="neutral"
+                t={t}
               />
               <Metric
-                label="接收方实收"
+                label={t('transfers.metricReceived')}
                 total={detail.receivedTotal}
                 breakdown={detail.items.map((item) => ({
                   containerType: item.containerType,
                   quantity: item.receivedQuantity,
                 }))}
                 tone="claim"
+                t={t}
               />
               <Metric
-                label="已入账"
+                label={t('transfers.metricSettled')}
                 total={detail.settledTotal}
                 breakdown={detail.items.map((item) => ({
                   containerType: item.containerType,
                   quantity: item.settledQuantity,
                 }))}
                 tone="booked"
+                t={t}
               />
             </dl>
           </div>
 
-          <Section icon={FileText} title="当前申报原因" description="接收方最近一次提交的说明与证据">
+          <Section icon={FileText} title={t('transfers.sectionReportReason')} description={t('transfers.sectionReportReasonDesc')}>
             {detail.receiverReportReason?.trim() ? (
               <p className="m-0 whitespace-pre-wrap text-sm leading-relaxed text-slate-700">
                 {detail.receiverReportReason.trim()}
               </p>
             ) : (
-              <p className="m-0 text-sm text-slate-400">暂无申报原因</p>
+              <p className="m-0 text-sm text-slate-400">{t('transfers.noReportReason')}</p>
             )}
             {detail.receiverReportImageUrl ? (
               <div className="mt-3 space-y-1.5 border-t border-[var(--admin-line)] pt-3">
-                <p className="m-0 text-xs text-slate-500">申报证据</p>
+                <p className="m-0 text-xs text-slate-500">{t('transfers.reportEvidence')}</p>
                 <Image
                   src={detail.receiverReportImageUrl}
-                  alt="申报证据"
+                  alt={t('transfers.timelineEvidenceAlt')}
                   width={180}
                   className="rounded-lg"
                 />
@@ -329,32 +332,33 @@ export function TransferNegotiateDrawer({
               {isReceiver ? (
                 <Section
                   icon={ClipboardList}
-                  title="修改实收申报"
-                  description="数量不得超过转出方发出数，提交后转出方会看到你最新的实收数"
+                  title={t('transfers.sectionUpdateReport')}
+                  description={t('transfers.sectionUpdateReportDesc')}
                 >
                   <div className="space-y-4">
                     <div className="flex flex-col gap-1.5">
                       <span className="text-xs font-medium text-slate-600">
-                        实收明细（品类 + 数量） <span className="text-rose-500">*</span>
+                        {t('transfers.receivedDetail')} <span className="text-rose-500">*</span>
                       </span>
                       <TransferLineItemsInput
                         lines={lines}
                         onChange={(next) => {
                           setPatchLines(next)
                           if (patchError) setPatchError(null)
-                        }}                        maxByType={maxByType}
+                        }}
+                        maxByType={maxByType}
                         minQuantity={0}
                         error={patchError}
                       />
                     </div>
                     <label className="flex flex-col gap-1.5">
                       <span className="text-xs font-medium text-slate-600">
-                        原因 <span className="text-rose-500">*</span>
+                        {t('transfers.reason')} <span className="text-rose-500">*</span>
                       </span>
                       <Input.TextArea
                         rows={2}
                         maxLength={2000}
-                        placeholder="说明与发出数量不一致的原因"
+                        placeholder={t('transfers.updateReportReasonPlaceholder')}
                         status={reasonError ? 'error' : undefined}
                         value={reason}
                         onChange={(e) => {
@@ -368,7 +372,7 @@ export function TransferNegotiateDrawer({
                     </label>
                     <div className="flex justify-end">
                       <Button loading={busy} onClick={() => void handleSubmitPatch()}>
-                        更新实收申报
+                        {t('transfers.updateReportSubmit')}
                       </Button>
                     </div>
                   </div>
@@ -376,7 +380,7 @@ export function TransferNegotiateDrawer({
               ) : null}
 
               {!isSender && !isReceiver ? (
-                <Alert type="info" showIcon message="仅转出方与接收方可操作" />
+                <Alert type="info" showIcon message={t('transfers.onlyPartiesCanAct')} />
               ) : null}
             </>
           ) : null}

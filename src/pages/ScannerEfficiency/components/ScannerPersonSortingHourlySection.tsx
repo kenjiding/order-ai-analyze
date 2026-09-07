@@ -1,5 +1,6 @@
 import Collapse from '@mui/material/Collapse'
 import IconButton from '@mui/material/IconButton'
+import { useTranslation } from 'react-i18next'
 import { ChevronDown } from 'lucide-react'
 import { buildScannerHourlyPivotColumns, type ScannerHourlyPivotTableItem } from '../scannerHourlyPivotTable'
 import { DataTable, SectionTitle } from './ui'
@@ -24,16 +25,19 @@ export function ScannerPersonSortingHourlySection({
   onExpandedChange,
   pivotTables,
   sectionEyebrow,
-  sectionTitle = '扫描员按小时段',
+  sectionTitle,
   sectionDescription = '',
-  emptyPivotText = '暂无按小时段数据。',
+  emptyPivotText,
   forStaticCapture = false,
 }: ScannerPersonSortingHourlySectionProps) {
+  const { t } = useTranslation('scannerEfficiency')
+  const resolvedEmptyPivotText = emptyPivotText ?? t('empty.noHourlyPivot')
+  const resolvedSectionTitle = sectionTitle ?? t('section.scannerHourlyTitle')
   const pivotBody = (
     <div className="space-y-6 p-4 pt-0">
       {pivotTables.length === 0 ? (
         <div className="overflow-x-auto">
-          <DataTable columns={buildScannerHourlyPivotColumns([])} rows={[]} emptyText={emptyPivotText} />
+          <DataTable columns={buildScannerHourlyPivotColumns([])} rows={[]} emptyText={resolvedEmptyPivotText} />
         </div>
       ) : (
         <div className="space-y-6">
@@ -41,7 +45,7 @@ export function ScannerPersonSortingHourlySection({
             <div key={date} className="space-y-2">
               <p className="text-sm font-semibold text-slate-800 tabular-nums">{date}</p>
               <div className="overflow-x-auto">
-                <DataTable columns={buildScannerHourlyPivotColumns(hours)} rows={rows} emptyText="暂无数据。" />
+                <DataTable columns={buildScannerHourlyPivotColumns(hours)} rows={rows} emptyText={t('empty.noTableData')} />
               </div>
             </div>
           ))}
@@ -53,7 +57,7 @@ export function ScannerPersonSortingHourlySection({
   if (forStaticCapture) {
     return (
       <section className="admin-panel overflow-hidden">
-        <SectionTitle kicker={sectionEyebrow} title={sectionTitle} description={sectionDescription} />
+        <SectionTitle kicker={sectionEyebrow} title={resolvedSectionTitle} description={sectionDescription} />
         {pivotBody}
       </section>
     )
@@ -66,13 +70,13 @@ export function ScannerPersonSortingHourlySection({
           <SectionTitle
             bare
             kicker={sectionEyebrow}
-            title={sectionTitle}
+            title={resolvedSectionTitle}
             description={sectionDescription}
           />
         </div>
         <IconButton
           aria-expanded={expanded}
-          aria-label={expanded ? '收起按小时段表格' : '展开按小时段表格'}
+          aria-label={expanded ? t('chart.collapseHourly') : t('chart.expandHourly')}
           onClick={() => onExpandedChange(!expanded)}
           sx={{
             mt: 0.5,

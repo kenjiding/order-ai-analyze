@@ -1,3 +1,4 @@
+import { useTranslation } from 'react-i18next'
 import { Chart } from '@antv/g2'
 import { useEffect, useMemo, useRef } from 'react'
 import {
@@ -30,6 +31,7 @@ const FILL_NORMAL = SCANNER_EFFICIENCY_CHART_FILL_NORMAL
 const FILL_LOW = SCANNER_EFFICIENCY_CHART_FILL_LOW
 
 export default function ScannerSummaryBarChart({ rows, className }: Props) {
+  const { t } = useTranslation('scannerEfficiency')
   const containerRef = useRef<HTMLDivElement>(null)
 
   const rowsKey = useMemo(
@@ -66,7 +68,7 @@ export default function ScannerSummaryBarChart({ rows, className }: Props) {
     })
 
     chart.axis('y', {
-      title: '修正效率（票/小时，含菜鸟修正）',
+      title: t('chart.scannerSummaryBarTitle'),
       grid: true,
       gridLineDash: [4, 4],
       gridStroke: '#e2e8f0',
@@ -90,7 +92,7 @@ export default function ScannerSummaryBarChart({ rows, className }: Props) {
     return () => {
       chart.destroy()
     }
-  }, [rows, rowsKey])
+  }, [rows, rowsKey, t])
 
   if (!rows.length) {
     return (
@@ -100,7 +102,7 @@ export default function ScannerSummaryBarChart({ rows, className }: Props) {
           className ?? '',
         ].join(' ')}
       >
-        暂无扫描员汇总数据。
+        {t('empty.noScannerSummary')}
       </div>
     )
   }
@@ -108,7 +110,7 @@ export default function ScannerSummaryBarChart({ rows, className }: Props) {
   return (
     <div className={className ?? ''}>
       <div className="mb-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs font-medium text-slate-600">
-        <span className="font-medium text-slate-700">各扫描员修正效率（票/小时）</span>
+        <span className="font-medium text-slate-700">{t('chart.scannerSummaryChartTitle')}</span>
         <span className="inline-flex items-center gap-2">
           <span className="h-2.5 w-6 rounded-full" style={{ backgroundColor: FILL_NORMAL }} />
           ≥{SCANNER_ADJUSTED_EFFICIENCY_RED_LT}
@@ -122,7 +124,7 @@ export default function ScannerSummaryBarChart({ rows, className }: Props) {
         ref={containerRef}
         className="g2-scanner-summary min-h-[220px] w-full"
         role="img"
-        aria-label="扫描员修正效率条形对比图"
+        aria-label={t('chart.scannerSummaryChartAria')}
       />
     </div>
   )

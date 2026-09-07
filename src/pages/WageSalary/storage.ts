@@ -1,4 +1,5 @@
 import { getUserPreference, putUserPreference } from '../../api/userPreferencesApi'
+import { i18n } from '../../i18n'
 import type { RateSettings } from '../../payroll/wageRateCalculation'
 
 async function wageIdb() {
@@ -45,7 +46,7 @@ async function loadRateSettingsFromServer(
 async function saveRateSettingsToServer(prefKey: string, settings: RateSettings): Promise<void> {
   const result = await putUserPreference(prefKey, settings)
   if (!result.ok) {
-    throw new Error(result.error || '保存时薪设置失败')
+    throw new Error(result.error || i18n.t('storage.saveRateSettingsFailed', { ns: 'wageSalary' }))
   }
 }
 

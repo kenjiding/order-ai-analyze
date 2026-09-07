@@ -1,5 +1,6 @@
 import { Select } from 'antd'
 import { Globe } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
 import {
   GLOBAL_COUNTRY_OPTIONS,
   GLOBAL_SELECTED_COUNTRY_KEY,
@@ -11,6 +12,7 @@ import {
  * Header 国家选择器：AUS / NZL，与责任站点选择器并排；选中值写入全局 store 并持久化。
  */
 export function GlobalCountrySelector() {
+  const { t } = useTranslation('common')
   const { selectedCountry, setSelectedCountry } = useGlobalFilterStore()
 
   const handleChange = (value: GlobalCountryCode) => {
@@ -26,7 +28,7 @@ export function GlobalCountrySelector() {
         value={selectedCountry}
         onChange={handleChange}
         options={GLOBAL_COUNTRY_OPTIONS}
-        placeholder="国家"
+        placeholder={t('country')}
         suffixIcon={null}
         popupMatchSelectWidth={false}
       />

@@ -1,0 +1,253 @@
+{
+  "page": {
+    "eyebrow": "Efficiency Archive",
+    "title": "效率考勤记录",
+    "lead": "可多选若干日期组合为一段时间，在效率考勤页按区间展示合并后的计算结果。",
+    "refresh": "刷新"
+  },
+  "stats": {
+    "total": "记录总数",
+    "withSorting": "含分拣效率",
+    "withFrontDesk": "含前台饱和度"
+  },
+  "dayKind": {
+    "full": {
+      "label": "到件+考勤",
+      "hint": "有到件也有考勤，正常参与日效率统计"
+    },
+    "attendanceOnly": {
+      "label": "无到件补录",
+      "hint": "有考勤无到件：不产生日效率，但工时计入总体/开仓效率的分母"
+    },
+    "scanOnly": {
+      "label": "缺考勤",
+      "hint": "有到件无考勤：货量计入总货量，但当日无工时可用"
+    }
+  },
+  "format": {
+    "dash": "—",
+    "efficiencyUnit": "票/时",
+    "parcelsPerHour": "票/h",
+    "parcels": "票",
+    "hoursSuffix": "h",
+    "people": "人",
+    "selectedRangeSingle": "{{date}}",
+    "selectedRangeMulti": "{{start}} ~ {{end}}（{{count}} 天）",
+    "cainiaoShare": "菜鸟 {{pct}}%"
+  },
+  "toast": {
+    "loadFailed": "加载效率考勤记录失败",
+    "recordUnavailable": "记录数据不可用，请刷新后重试",
+    "autoIncludedAttendanceOnly": "已自动纳入区间内 {{count}} 个无到件补录日的工时",
+    "selectAtLeastOne": "请先选择至少一条记录",
+    "batchDeleteNone": "未删除任何记录，可能已被删除",
+    "batchDeleteSuccess": "已删除 {{count}} 条记录",
+    "batchDeleteFailed": "批量删除失败",
+    "deleteSuccess": "已删除 {{date}}",
+    "deleteFailed": "删除失败"
+  },
+  "modal": {
+    "batchDeleteTitle": "批量删除效率考勤记录",
+    "batchDeleteContent": "确定删除已选的 {{count}} 条记录吗？{{range}}此操作不可恢复。",
+    "batchDeleteRange": "（{{range}}）",
+    "deleteTitle": "删除效率考勤记录",
+    "deleteContent": "确定删除 {{date}} 的记录吗？此操作不可恢复。",
+    "deleteOk": "删除",
+    "cancel": "取消"
+  },
+  "col": {
+    "date": "日期",
+    "kind": "类型",
+    "volume": "货量",
+    "dayEfficiency": "日效率",
+    "openEfficiency": "开仓效率",
+    "overallEfficiency": "总体效率",
+    "sortingEfficiency": "一级分拣效率",
+    "frontDeskSaturation": "前台饱和度",
+    "saved": "已保存",
+    "savedAt": "保存时间",
+    "actions": "操作",
+    "view": "查看",
+    "delete": "删除"
+  },
+  "selection": {
+    "selected": "已选 {{count}} 天：",
+    "hint": "勾选多天后可组合查看一段时间内的效率数据",
+    "clear": "清空选择",
+    "compareNeedTwoToSix": "请勾选 2~6 天进行对比",
+    "compareMaxSix": "最多选 6 天",
+    "compare": "对比分析差异",
+    "viewSelected": "查看选中",
+    "deleteSelected": "删除选中"
+  },
+  "table": {
+    "total": "共 {{total}} 条",
+    "empty": "暂无效率考勤记录，请先在效率考勤页载入数据并保存。"
+  },
+  "compare": {
+    "drawer": {
+      "eyebrow": "Compare Analysis",
+      "title": "效率对比分析（{{count}} 天）",
+      "subtitleRange": "{{start}} ~ {{end}}（{{count}} 天）"
+    },
+    "empty": {
+      "needFullRecords": "需至少 2 天「到件+考勤」齐全的记录才能对比；无到件补录日与缺考勤日不参与最优/最差日分析",
+      "needTwoDates": "需至少选择 2 天不同日期进行对比分析"
+    },
+    "section": {
+      "overview": "效率总览",
+      "rootCause": "根因诊断 — 效率差距来源",
+      "suggestions": "改善建议",
+      "hoursStructure": "工时结构分析",
+      "scannerCompare": "分拣员扫描效率对比",
+      "personnelCompare": "人员出勤明细对比",
+      "aiAnalysis": "AI 深度分析"
+    },
+    "missing": {
+      "personnel": "部分日期无人员考勤数据，前台工时因素未纳入计算。",
+      "scanner": "部分日期无扫描员数据，个人效率因素未纳入计算。"
+    },
+    "metrics": {
+      "dayEfficiency": "日效率",
+      "openEfficiency": "开仓效率",
+      "overallEfficiency": "总体效率"
+    },
+    "chart": {
+      "worstDay": "▼ 最差日",
+      "bestDay": "▲ 最优日",
+      "efficiencyGap": "效率差距",
+      "legendWorst": "最差日（红色）",
+      "legendBest": "最优日（绿色）",
+      "legendOther": "其他日期",
+      "highestEfficiency": "效率最高",
+      "lowestEfficiency": "效率最低 ⚠",
+      "volumeLabel": "货量",
+      "totalHours": "总工时"
+    },
+    "rootCause": {
+      "visibleGap": "可见效率差距",
+      "normalizedGapTitle": "剥离菜鸟结构后的纯运营差距",
+      "normalizedGapMasked": "菜鸟结构掩盖了 {{amount}} 票/h 的运营问题",
+      "normalizedGapMinor": "菜鸟结构对差距影响较小",
+      "legendHurts": "红色条",
+      "legendHurtsDesc": " = 加剧差距（伤害最差日）",
+      "legendHelps": "绿色条",
+      "legendHelpsDesc": " = 弥补差距（帮助最差日）",
+      "hurtFactors": "拖累因素（加剧了效率差距）",
+      "helpFactors": "弥补因素（部分抵消了差距）",
+      "topHurt": "最大拖累",
+      "helpsGap": "弥补差距",
+      "contributionPositive": "+{{amount}} 票/h",
+      "contributionNegative": "−{{amount}} 票/h",
+      "noSignificant": "无显著影响：{{labels}}",
+      "factorsSum": "各因素叠加",
+      "approxTotalGap": "≈ 总差距 {{amount}} 票/h"
+    },
+    "hours": {
+      "frontDeskShare": "前台工时占比",
+      "outputPerSorterHour": "每分拣工时产出",
+      "hoursPerSorter": "人均在仓工时",
+      "sorterCount": "分拣员人数",
+      "worstDay": "最差日",
+      "bestDay": "最优日",
+      "deltaUnfavorable": "差 {{delta}}，对最差日不利",
+      "footnote": "前台工时不产出扫描量，占比越高对总效率拖累越大。\"每分拣工时产出\"= 货量 ÷ 分拣员工时，直接反映有效产出密度。",
+      "lowestEfficiency": "⚠ 效率最低",
+      "highestEfficiency": "效率最高",
+      "outputDensity": "产出密度",
+      "sorterTooltip": "分拣员 {{hours}}",
+      "frontDeskTooltip": "前台 {{hours}}",
+      "otherTooltip": "其他 {{hours}}",
+      "sorterLegend": "分拣员 {{hours}} ({{pct}}%)",
+      "frontDeskLegend": "前台 {{hours}} ({{pct}}%)",
+      "frontDeskNonProductive": "← 占用非产出工时",
+      "otherLegend": "其他 {{hours}} ({{pct}}%)"
+    },
+    "scanner": {
+      "empty": "暂无分拣员扫描效率数据",
+      "colScanner": "扫描员",
+      "colDelta": "差值",
+      "colDeltaSub": "最优−最差",
+      "colAvgEff": "均 {{avg}} 票/h",
+      "bestDayHeader": "▲最高效率日",
+      "worstDayHeader": "▼最低效率日",
+      "absent": "缺席",
+      "deltaWorstLower": "↓最差日低",
+      "deltaWorstHigher": "↑最差日高",
+      "footnote": "修正效率（票/h，菜鸟结构修正后）。",
+      "footnoteDelta": "「差值」列 = 最优日效率 − 最差日效率，正值越大说明该人在最差日表现下滑越严重，按此排序。",
+      "footnoteAbsent": "缺席",
+      "footnoteAbsentDesc": "表示该分拣员当天未工作。"
+    },
+    "personnel": {
+      "empty": "暂无人员考勤明细数据",
+      "colName": "姓名",
+      "bestHeader": "▲最高",
+      "worstHeader": "▼最低",
+      "headerVolume": "{{volume}}票",
+      "headerCainiao": "菜鸟{{pct}}%",
+      "absentWorst": "未出勤",
+      "roleFrontDesk": "前台",
+      "roleSorter": "分拣",
+      "roleOther": "其他",
+      "footnote": "表头显示各日货量与菜鸟占比；单元格展示工时、扫描效率（如有）、角色。",
+      "footnoteWorstAbsent": "最差日",
+      "footnoteWorstAbsentDesc": "未出勤人员以红色标注。"
+    },
+    "ai": {
+      "title": "AI 深度分析",
+      "subtitle": "基于人员构成、扫描效率和工时结构的综合判断",
+      "analyzing": "分析中…",
+      "reanalyze": "重新分析",
+      "start": "开始分析",
+      "failed": "AI 分析失败，请稍后重试。",
+      "loading": "正在深度分析各日数据差异，请稍候…",
+      "findings": "问题诊断",
+      "suggestions": "改善建议",
+      "placeholder": "点击「开始分析」，AI 将结合所有日期的人员明细、扫描员表现和工时结构给出专业诊断。"
+    }
+  },
+  "analysis": {
+    "errors": {
+      "insufficientComparableDays": "可对比的日期不足 2 天"
+    },
+    "rootCause": {
+      "cainiaoShare": "菜鸟结构效应",
+      "frontDeskRatio": "前台工时拖累",
+      "volume": "货量规模差异",
+      "hoursPerPerson": "人均工时冗余",
+      "personalEfficiency": "分拣员个人效率",
+      "residual": "运营残差（未解释）"
+    },
+    "detail": {
+      "cainiaoHigherOnWorst": "最差日菜鸟占比 {{worstPct}}%，高于最优日 {{bestPct}}%。菜鸟件处理更快，最差日因此获得 {{worstBonus}} 票/h 结构性加成（最优日仅 {{bestBonus}} 票/h），弥补了部分差距，但掩盖了更大的运营问题。",
+      "cainiaoLowerOnWorst": "最差日菜鸟占比 {{worstPct}}%，低于最优日 {{bestPct}}%。菜鸟占比低导致效率天然偏低，加剧了差距。",
+      "cainiaoSimilar": "两日菜鸟占比相近（{{pct}}%），菜鸟结构对差距贡献有限。",
+      "frontDesk": "最差日前台工时占比 {{worstPct}}%，最优日 {{bestPct}}%（前台不产出扫描量，占比越高总效率越低）",
+      "volumeWithBest": "最优日货量 {{bestVolume}} 票，最差日 {{worstVolume}} 票（差 {{diffPct}}%）。货量不足时人员固定成本被摊薄，效率自然下降。",
+      "volumeSimple": "货量对比：最优日 {{bestVolume}} 票，最差日 {{worstVolume}} 票",
+      "hoursPerPerson": "最优日人均工时 {{bestHpp}}h，最差日 {{worstHpp}}h（工时越长但产出未增加，说明低货量下人员在仓时间过长）",
+      "hoursPerPersonIncomplete": "人均工时数据不完整",
+      "scanner": "最优日分拣员综合效率 {{bestEff}} 票/h，最差日 {{worstEff}} 票/h（菜鸟结构修正后的个人效率对比）",
+      "scannerMissing": "部分日期无分拣员扫描数据，无法计算个人效率贡献",
+      "residual": "去除以上可量化结构因素后，最差日仍有约 {{residualAbs}} 票/h 的效率差距无法解释，可能源于人员状态、设备故障、流程混乱等即时运营因素。纯运营效率差（剥离菜鸟结构）：{{pureBest}} vs {{pureWorst}} = {{normalizedGap}} 票/h。"
+    },
+    "suggestion": {
+      "volumeReduceStaff": "最差日货量仅 {{worstVolume}} 票（最优日 {{bestVolume}} 票），建议低货量日减少分拣人数约 {{reducible}} 人，避免工时虚耗。",
+      "volumeInsufficient": "最差日货量仅 {{worstVolume}} 票，较最优日少 {{diffPct}}%，货量不足是效率主因，需关注到仓件数波动原因。",
+      "frontDesk": "最差日前台工时占 {{worstPct}}%（共 {{worstHours}}h），明显高于最优日 {{bestPct}}%，前台人员占用了大量工时但不产出扫描量，建议低货量日削减前台班次。",
+      "hoursPerPersonLonger": "最差日人均工时 {{worstHpp}}h，高于最优日 {{bestHpp}}h，低货量日分拣员在仓时间偏长，建议按货量动态调整班次时长。",
+      "hoursPerPersonShorter": "最差日人均工时 {{worstHpp}}h，低于最优日 {{bestHpp}}h，建议保证高峰期充足在岗时长，避免人手不足拖慢分拣节奏。",
+      "cainiaoLower": "最差日菜鸟占比 {{worstPct}}%，低于最优日 {{bestPct}}%。菜鸟件处理更快，占比偏低会拉低整体效率，部分效率差距可由货量结构解释。",
+      "cainiaoHigher": "最差日菜鸟占比 {{worstPct}}% 反而高于最优日 {{bestPct}}%，说明效率差距主要不由菜鸟结构造成，应重点排查人手排班与前台工时等因素。",
+      "cainiaoStable": "各日菜鸟占比波动 {{spreadPct}}%，日间差异不大；菜鸟占比越高效率天然偏高，对比时宜结合货量结构解读。",
+      "scannerGap": "不同日期分拣员整体效率差距 {{gap}} 票/h，建议重点关注低效率日的人员排班，针对性提升技能薄弱员工。",
+      "default": "各日期效率差距较小，四个主要因素分布均匀，建议继续积累更多日期数据以发现规律。"
+    },
+    "roles": {
+      "frontDesk": "前台",
+      "sorter": "分拣员",
+      "other": "其他"
+    }
+  }
+}

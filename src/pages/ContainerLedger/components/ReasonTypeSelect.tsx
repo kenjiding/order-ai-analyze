@@ -1,9 +1,9 @@
 import { Select, Tooltip } from 'antd'
 import { Info } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
 import {
+  FILTER_BALANCE_REASON_TYPES,
   MANUAL_BALANCE_REASON_TYPES,
-  balanceReasonTypeHint,
-  balanceReasonTypeLabel,
 } from '../../../containerManagement/constants'
 import type { BalanceReasonType } from '../../../containerManagement/types'
 
@@ -17,12 +17,15 @@ type Props = {
 }
 
 export function ReasonTypeSelect({ value, onChange, includeAll, placeholder, className }: Props) {
+  const { t } = useTranslation('container')
+  const { t: tc } = useTranslation('common')
+
   const options = MANUAL_BALANCE_REASON_TYPES.map((type) => ({
     value: type,
     label: (
       <span className="inline-flex items-center gap-1.5">
-        {balanceReasonTypeLabel[type]}
-        <Tooltip title={balanceReasonTypeHint[type]}>
+        {t(`balanceReasonType.${type}`)}
+        <Tooltip title={t(`balanceReasonTypeHint.${type}`)}>
           <Info className="h-3.5 w-3.5 shrink-0 text-slate-400" aria-hidden />
         </Tooltip>
       </span>
@@ -34,15 +37,18 @@ export function ReasonTypeSelect({ value, onChange, includeAll, placeholder, cla
       className={className ?? 'w-full'}
       value={value}
       onChange={onChange}
-      placeholder={placeholder ?? '请选择'}
+      placeholder={placeholder ?? t('selectPlaceholder')}
       allowClear={includeAll}
       options={
         includeAll
           ? [
-              { value: '', label: '全部' },
-              // 流转记账与作废冲回不是手工原因，但筛选时需要能选中
-              { value: 'TRANSFER_SETTLEMENT', label: balanceReasonTypeLabel.TRANSFER_SETTLEMENT },
-              { value: 'TRANSFER_VOID', label: balanceReasonTypeLabel.TRANSFER_VOID },
+              { value: '', label: tc('all') },
+              ...FILTER_BALANCE_REASON_TYPES.filter(
+                (type) => !MANUAL_BALANCE_REASON_TYPES.includes(type),
+              ).map((type) => ({
+                value: type,
+                label: t(`balanceReasonType.${type}`),
+              })),
               ...options,
             ]
           : options

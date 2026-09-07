@@ -1,0 +1,84 @@
+{
+  "page": {
+    "eyebrow": "SLA Monitoring",
+    "title": "Dwell alert",
+    "enabledRatio": "Enabled / total",
+    "add": "Add dwell alert"
+  },
+  "list": {
+    "empty": "No dwell alert schedules yet. Click \"Add dwell alert\" above to create one.",
+    "enabled": "Enabled",
+    "disabled": "Disabled",
+    "missingImileToken": "Missing iMile token",
+    "scheduleSummary": "Every {{weekdays}} at {{times}}, fetch prior-day data and push dwell alerts · {{vendorCount}} vendor(s) selected",
+    "scheduleSummaryWithClearance": "Every {{weekdays}} at {{times}}, fetch prior-day data and push dwell alerts · {{vendorCount}} vendor(s) selected · clearance ${{price}}/waybill",
+    "switchOn": "On",
+    "switchOff": "Off",
+    "pushNowConfirmTitle": "Push now?",
+    "pushNowConfirmDesc": "Pulls data and pushes immediately, ignoring scheduled push times.",
+    "pushNow": "Push now",
+    "exportExcel": "Export Excel ({{count}} unmet)",
+    "deleteConfirm": "Delete this dwell alert schedule?"
+  },
+  "drawer": {
+    "editTitle": "Edit dwell alert",
+    "addTitle": "Add dwell alert",
+    "basicConfig": "Basic settings",
+    "station": "Station",
+    "arrivalScanTime": "Arrival scan window",
+    "arrivalScanHint": "Arrival scan window applies to push-now only",
+    "scheduleConfig": "Scheduled push",
+    "scheduleConfigDesc": "Push weekdays / push times",
+    "pushWeekdays": "Push weekdays",
+    "pushTimes": "Push times",
+    "noPushTimes": "No push times yet",
+    "otherConfig": "Other settings",
+    "routeWhitelistPush": "Push route-code whitelist data",
+    "clearancePrice": "Dwell clearance price",
+    "clearancePricePlaceholder": "Leave blank to omit clearance fees",
+    "vendorConfig": "Vendor settings"
+  },
+  "weekday": {
+    "1": "Mon",
+    "2": "Tue",
+    "3": "Wed",
+    "4": "Thu",
+    "5": "Fri",
+    "6": "Sat",
+    "7": "Sun"
+  },
+  "notSet": "Not set",
+  "listSeparator": ", ",
+  "validation": {
+    "selectStation": "Select a station",
+    "selectWeekday": "Select at least one push weekday",
+    "addPushTime": "Add at least one push time",
+    "selectVendor": "Select at least one vendor"
+  },
+  "toast": {
+    "missingImileTokenBeforeSave": "Configure iMile token in global settings before saving dwell alerts",
+    "loadError": "Failed to load dwell alert schedules",
+    "createSuccess": "Dwell alert added",
+    "updateSuccess": "Dwell alert updated",
+    "saveError": "Save failed",
+    "deleteSuccess": "Deleted",
+    "deleteError": "Delete failed",
+    "toggleError": "Update failed",
+    "missingImileTokenResave": "Missing iMile token — edit this schedule and save again",
+    "selectVendorFirst": "Select vendors for this schedule first",
+    "pushFailed": "Push failed: {{error}}",
+    "pushPartial": "Pushed {{pushed}}/{{total}} (data date {{dates}}); partial failures: {{errors}}",
+    "pushComplete": "Push complete {{pushed}}/{{total}} (data date {{dates}})",
+    "noWaybillsToExport": "No dwell waybills missing hub exit in this push — nothing to export"
+  },
+  "export": {
+    "creator": "Dwell alert",
+    "unknownVendor": "Unknown vendor",
+    "colIndex": "#",
+    "colWaybill": "Waybill",
+    "colType": "Type",
+    "typeMain": "Main",
+    "typeWhitelist": "Whitelist",
+    "filename": "dwell_alert_unmet_waybills_{{station}}_{{dates}}.xlsx"
+  }
+}

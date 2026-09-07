@@ -1,6 +1,7 @@
 import { Input, Select, Tag } from 'antd'
 import { Loader2, Trash2 } from 'lucide-react'
 import { useMemo } from 'react'
+import { useTranslation } from 'react-i18next'
 import { DataTable, type DataTableColumn, type DataTableRow } from '../../ScannerEfficiency/components/ui'
 import type {
   OrderAnalyzeAiProvider,
@@ -9,21 +10,11 @@ import type {
   RegressionCaseListItem,
   RegressionCaseResult,
 } from '../orderExceptionApi'
-
-const LOSS_SCOPE_OPTIONS: OrderAnalyzeResultItem['lossScope'][] = [
-  '库内丢失',
-  '库外丢失',
-  '3PL丢件',
-  '虚假转运',
-  '暂无异常',
-  '需人工判断',
-]
-
-const SUB_TYPE_BY_SCOPE: Partial<Record<OrderAnalyzeResultItem['lossScope'], string[]>> = {
-  库内丢失: ['扫描员丢失', '疑似派件员窃取'],
-  库外丢失: ['快递员丢失'],
-  暂无异常: ['已签收', '订单已完结', 'Abandon销毁', '暂存', '退返商家', ''],
-}
+import {
+  SUB_TYPE_BY_SCOPE,
+  regressionLossScopeOptions,
+  subTypeOptionsForScope,
+} from '../orderExceptionDomain'
 
 const ANALYZE_MODEL_OPTIONS: { value: OrderAnalyzeAiProvider; label: string }[] = [
   { value: 'deepseek', label: 'DeepSeek' },
@@ -77,11 +68,15 @@ export function RegressionTestTabContent({
   regressionSummary,
   regressionTokenUsage,
 }: Props) {
-  const subTypeOptions = useMemo(() => {
-    const list = SUB_TYPE_BY_SCOPE[captureLossScope]
-    if (!list) return [{ label: '（无子类型）', value: '' }]
-    return list.map((v) => ({ label: v || '（无子类型）', value: v }))
-  }, [captureLossScope])
+  const { t, i18n } = useTranslation('orderException')
+  const { t: tc } = useTranslation('common')
+
+  const subTypeOptions = useMemo(
+    () => subTypeOptionsForScope(t, captureLossScope),
+    [captureLossScope, t],
+  )
+
+  const lossScopeOptions = useMemo(() => regressionLossScopeOptions(t), [t])
 
   const caseColumns = useMemo((): DataTableColumn[] => {
     const renderCaseSummary = (row: DataTableRow) => {
@@ -113,51 +108,51 @@ export function RegressionTestTabContent({
           disabled={deleting}
           onClick={() => onDeleteCase(id)}
           className="inline-flex items-center gap-1 text-xs text-red-600 hover:text-red-800 disabled:opacity-50"
-          aria-label={`删除用例 ${orderNo}`}
+          aria-label={t('regression.deleteCaseAria', { orderNo })}
         >
           {deleting ? (
             <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />
           ) : (
             <Trash2 className="h-3.5 w-3.5" aria-hidden />
           )}
-          删除
+          {tc('delete')}
         </button>
       )
     }
 
     return [
-      { key: 'caseSummary', title: '订单号 / 异常类型 / 子类型', render: renderCaseSummary },
-      { key: 'trackCount', title: '轨迹条数' },
-      { key: 'interceptLogCount', title: '阻断日志' },
-      { key: 'capturedAt', title: '录入时间' },
-      { key: 'actions', title: '操作', render: renderActions },
+      { key: 'caseSummary', title: t('regression.caseSummaryCol'), render: renderCaseSummary },
+      { key: 'trackCount', title: t('regression.trackCountCol') },
+      { key: 'interceptLogCount', title: t('regression.interceptLogCountCol') },
+      { key: 'capturedAt', title: t('regression.capturedAtCol') },
+      { key: 'actions', title: tc('actions'), render: renderActions },
     ]
-  }, [isDeletingId, onDeleteCase])
+  }, [isDeletingId, onDeleteCase, t, tc])
 
   const resultColumns = useMemo(
     (): DataTableColumn[] => [
-      { key: 'orderNo', title: '订单号' },
+      { key: 'orderNo', title: t('regression.orderNo') },
       {
         key: 'pass',
-        title: '结果',
+        title: t('regression.resultCol'),
         render: (row) =>
           row.pass === true ? (
             <Tag color="success" className="m-0">
-              通过
+              {t('regression.pass')}
             </Tag>
           ) : (
             <Tag color="error" className="m-0">
-              失败
+              {t('regression.fail')}
             </Tag>
           ),
       },
-      { key: 'expected', title: '期望类型/子类型' },
-      { key: 'actual', title: '实际类型/子类型' },
-      { key: 'confidence', title: '置信度' },
-      { key: 'expectedReason', title: '期望判定依据' },
-      { key: 'actualReason', title: '实际判定依据' },
+      { key: 'expected', title: t('regression.expectedCol') },
+      { key: 'actual', title: t('regression.actualCol') },
+      { key: 'confidence', title: t('regression.confidenceCol') },
+      { key: 'expectedReason', title: t('regression.expectedReasonCol') },
+      { key: 'actualReason', title: t('regression.actualReasonCol') },
     ],
-    []
+    [t],
   )
 
   const caseRows: DataTableRow[] = cases.map((c) => ({
@@ -183,27 +178,24 @@ export function RegressionTestTabContent({
   return (
     <div className="space-y-5">
       <section className="admin-panel p-5">
-        <h3 className="text-sm font-semibold text-slate-950">录入测试用例</h3>
-        <p className="mt-1 text-xs text-slate-600">
-          填写订单号与期望判定后，系统将从 iMile 拉取轨迹与阻断日志并固化为服务端 JSON；回归测试不再调用
-          iMile。通过标准：异常类型与子类型与录入一致。
-        </p>
+        <h3 className="text-sm font-semibold text-slate-950">{t('regression.captureTitle')}</h3>
+        <p className="mt-1 text-xs text-slate-600">{t('regression.captureDescription')}</p>
         <div className="mt-4 flex flex-wrap items-end gap-3">
           <label className="block min-w-[180px] flex-1 text-xs font-medium text-slate-600">
-            订单号
+            {t('regression.orderNo')}
             <Input
               className="mt-1 font-mono"
               value={captureOrderNo}
               onChange={(e) => onCaptureOrderNoChange(e.target.value)}
-              placeholder="单个订单号"
+              placeholder={t('regression.orderNoPlaceholder')}
             />
           </label>
           <label className="block min-w-[140px] text-xs font-medium text-slate-600">
-            异常类型
+            {t('regression.exceptionType')}
             <Select
               className="mt-1 w-full"
               value={captureLossScope}
-              options={LOSS_SCOPE_OPTIONS.map((v) => ({ label: v, value: v }))}
+              options={lossScopeOptions}
               onChange={(v) => {
                 onCaptureLossScopeChange(v)
                 const subs = SUB_TYPE_BY_SCOPE[v]
@@ -212,7 +204,7 @@ export function RegressionTestTabContent({
             />
           </label>
           <label className="block min-w-[140px] text-xs font-medium text-slate-600">
-            子类型
+            {t('regression.subType')}
             <Select
               className="mt-1 w-full"
               value={captureSubType}
@@ -223,13 +215,13 @@ export function RegressionTestTabContent({
         </div>
         <div className="mt-4">
           <label className="block text-xs font-medium text-slate-600">
-            判定依据（存档展示，不参与通过判定）
+            {t('regression.reasonLabel')}
             <Input.TextArea
               className="mt-1"
               rows={3}
               value={captureReason}
               onChange={(e) => onCaptureReasonChange(e.target.value)}
-              placeholder="人工判定的依据说明"
+              placeholder={t('regression.reasonPlaceholder')}
             />
           </label>
         </div>
@@ -241,21 +233,21 @@ export function RegressionTestTabContent({
             className="admin-btn admin-btn-primary inline-flex items-center gap-2 disabled:cursor-not-allowed disabled:opacity-50"
           >
             {isCapturing ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : null}
-            录入并固化
+            {t('regression.captureAndPersist')}
           </button>
           <button type="button" onClick={onRefreshCases} className="admin-btn admin-btn-secondary">
-            刷新列表
+            {t('regression.refreshList')}
           </button>
         </div>
       </section>
 
       <section className="admin-panel p-5">
-        <h3 className="text-sm font-semibold text-slate-950">已录入用例</h3>
+        <h3 className="text-sm font-semibold text-slate-950">{t('regression.casesTitle')}</h3>
         <div className="mt-4">
           <DataTable
             columns={caseColumns}
             rows={caseRows}
-            emptyText="暂无用例，请先录入。"
+            emptyText={t('regression.casesEmpty')}
             boundedScroll
           />
         </div>
@@ -263,9 +255,9 @@ export function RegressionTestTabContent({
 
       <section className="admin-panel p-5">
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <h3 className="text-sm font-semibold text-slate-950">运行回归测试</h3>
+          <h3 className="text-sm font-semibold text-slate-950">{t('regression.runTitle')}</h3>
           <label className="flex flex-wrap items-center gap-2 text-xs font-medium text-slate-600">
-            <span className="shrink-0">分析模型</span>
+            <span className="shrink-0">{t('analyze.analyzeModel')}</span>
             <Select<OrderAnalyzeAiProvider>
               className="min-w-[140px]"
               value={analyzeAiProvider}
@@ -283,20 +275,24 @@ export function RegressionTestTabContent({
             className="admin-btn admin-btn-primary inline-flex items-center gap-2 disabled:cursor-not-allowed disabled:opacity-50"
           >
             {isRunningRegression ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : null}
-            运行全部回归
+            {t('regression.runAll')}
           </button>
           {regressionSummary ? (
             <p className="text-xs text-slate-600">
-              结果：
-              <span className="font-semibold text-emerald-700">{regressionSummary.passed} 通过</span>
+              {t('regression.resultSummary')}
+              <span className="font-semibold text-emerald-700">
+                {t('regression.passedCount', { count: regressionSummary.passed })}
+              </span>
               {' / '}
-              <span className="font-semibold text-red-700">{regressionSummary.failed} 失败</span>
-              {' / 共 '}
-              {regressionSummary.total} 条
+              <span className="font-semibold text-red-700">
+                {t('regression.failedCount', { count: regressionSummary.failed })}
+              </span>
+              {' / '}
+              {t('regression.totalCount', { count: regressionSummary.total })}
               {regressionTokenUsage ? (
                 <>
                   {' '}
-                  · Token {regressionTokenUsage.totalTokens.toLocaleString('zh-CN')}
+                  · Token {regressionTokenUsage.totalTokens.toLocaleString(i18n.language)}
                 </>
               ) : null}
             </p>
@@ -306,7 +302,7 @@ export function RegressionTestTabContent({
           <DataTable
             columns={resultColumns}
             rows={resultRows}
-            emptyText="尚未运行回归，或暂无结果。"
+            emptyText={t('regression.resultsEmpty')}
             boundedScroll
           />
         </div>

@@ -1,3 +1,5 @@
+import { i18n } from '../../i18n/index'
+
 export type FeishuPushKind = 'sort_efficiency' | 'attendance_scheduling' | 'order_exception'
 
 export type FeishuPushEntry = {
@@ -15,10 +17,8 @@ export type FeishuPushEntry = {
 /** 列表展示用：本地存储仍按类型分桶 */
 export type FeishuPushEntryWithKind = FeishuPushEntry & { kind: FeishuPushKind }
 
-export const FEISHU_PUSH_KIND_LABELS: Record<FeishuPushKind, string> = {
-  sort_efficiency: '物流运营推送',
-  attendance_scheduling: '仓库出勤/排班推送',
-  order_exception: '订单异常分析推送',
+export function feishuPushKindLabel(kind: FeishuPushKind): string {
+  return String(i18n.t(`kind.${kind}`, { ns: 'pushNotifications' }))
 }
 
 /** 新增类型时请同步扩展 FeishuPushKind 与本数组顺序 */

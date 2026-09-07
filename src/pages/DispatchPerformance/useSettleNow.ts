@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { getJobArtifact, getJobById } from '../../api/jobsClient'
 import { showToast } from '../../utils/toast'
 import { postSettleNow } from './dispatchPerformanceApi'
@@ -17,10 +18,21 @@ const JOB_POLL_MAX_TICKS = (10 * 60_000) / JOB_POLL_INTERVAL_MS
  * `settlingId` 记的是配置 id，列表页据此只让被点的那一行转圈。
  */
 export function useSettleNow(options?: { onSettled?: () => void | Promise<void> }) {
+  const { t } = useTranslation('dispatchPerformance')
+  const toast = useMemo(
+    () => ({
+      jobAlreadyRunning: t('toast.jobAlreadyRunning'),
+      jobPollTimeout: t('toast.jobPollTimeout'),
+      settleComplete: t('toast.settleComplete'),
+      unknownError: t('toast.unknownError'),
+      triggerSettleFailed: t('toast.triggerSettleFailed'),
+    }),
+    [t],
+  )
+
   const [settlingId, setSettlingId] = useState<string | null>(null)
   const [artifact, setArtifact] = useState<SettleNowArtifact | null>(null)
   const pollTimerRef = useRef<number | null>(null)
-  // 轮询回调里要用最新的 onSettled，又不能让它进依赖数组反复重建定时器
   const onSettledRef = useRef(options?.onSettled)
 
   useEffect(() => {
@@ -34,7 +46,6 @@ export function useSettleNow(options?: { onSettled?: () => void | Promise<void> 
     }
   }, [])
 
-  // 卸载时必须清定时器，否则轮询继续跑并对已卸载组件 setState
   useEffect(() => stopPolling, [stopPolling])
 
   const settleNow = useCallback(
@@ -44,7 +55,7 @@ export function useSettleNow(options?: { onSettled?: () => void | Promise<void> 
       setArtifact(null)
       try {
         const { job, reused } = await postSettleNow(configId)
-        if (reused) showToast('该站点已有统计任务在跑，正在等它完成', 'warning')
+        if (reused) showToast(toast.jobAlreadyRunning, 'warning')
 
         stopPolling()
         let ticks = 0
@@ -52,7 +63,7 @@ export function useSettleNow(options?: { onSettled?: () => void | Promise<void> 
           if ((ticks += 1) > JOB_POLL_MAX_TICKS) {
             stopPolling()
             setSettlingId(null)
-            showToast('统计任务仍在进行，已停止等待，稍后刷新页面查看结果', 'warning')
+            showToast(toast.jobPollTimeout, 'warning')
             return
           }
           try {
@@ -62,24 +73,25 @@ export function useSettleNow(options?: { onSettled?: () => void | Promise<void> 
               setSettlingId(null)
               setArtifact(await getJobArtifact<SettleNowArtifact>(job.id))
               await onSettledRef.current?.()
-              showToast('统计完成', 'success')
+              showToast(toast.settleComplete, 'success')
             } else if (current.status === 'failed' || current.status === 'cancelled') {
               stopPolling()
               setSettlingId(null)
-              showToast(`统计失败：${current.error ?? '未知错误'}`, 'error')
+              showToast(
+                t('toast.settleFailed', { error: current.error ?? toast.unknownError }),
+                'error',
+              )
             }
-            // pending / running：继续轮询
           } catch (err) {
-            // 单次轮询失败不中断，等下一轮重试
-            console.warn('[dispatch-performance] 轮询统计任务失败', err)
+            console.warn('[dispatch-performance] poll settle job failed', err)
           }
         }, JOB_POLL_INTERVAL_MS)
       } catch (err) {
         setSettlingId(null)
-        showToast(err instanceof Error ? err.message : '触发统计失败', 'error')
+        showToast(err instanceof Error ? err.message : toast.triggerSettleFailed, 'error')
       }
     },
-    [settlingId, stopPolling],
+    [settlingId, stopPolling, t, toast],
   )
 
   return {

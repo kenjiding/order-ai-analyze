@@ -213,6 +213,14 @@ export const PERMISSION_REGISTRY: PermissionDefinition[] = [
     sortOrder: 630,
   },
   {
+    key: 'btn:container-ledger:manage-types',
+    type: 'button',
+    label: '管理容器品类',
+    description: '新增、改名、停用容器品类；品类是全站共用的基础数据',
+    menuKey: 'container-ledger',
+    sortOrder: 635,
+  },
+  {
     key: 'btn:container:view-all',
     type: 'button',
     label: '查看全部站点数据',

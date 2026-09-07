@@ -1,5 +1,6 @@
 import { Button, Input } from 'antd'
 import { Send } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
 import type { NewMerchantPushConfig } from '../useNewMerchantFeishuPush'
 
 type Props = {
@@ -11,14 +12,14 @@ type Props = {
 }
 
 export default function NewMerchantPushBar({ config, onChange, pushing, disabled, onPush }: Props) {
+  const { t } = useTranslation('newMerchant')
+
   return (
     <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
       <div className="mb-3 flex items-center justify-between gap-3">
         <div>
-          <div className="text-sm font-semibold text-slate-700">飞书推送</div>
-          <div className="text-xs text-slate-500">
-            将当前查询结果以图文卡片推送到飞书群，复用项目内统一推送通道
-          </div>
+          <div className="text-sm font-semibold text-slate-700">{t('push.title')}</div>
+          <div className="text-xs text-slate-500">{t('push.desc')}</div>
         </div>
         <Button
           type="primary"
@@ -27,14 +28,14 @@ export default function NewMerchantPushBar({ config, onChange, pushing, disabled
           disabled={disabled}
           onClick={onPush}
         >
-          推送到飞书
+          {t('push.submit')}
         </Button>
       </div>
 
       <div className="grid gap-3 md:grid-cols-[minmax(0,2fr)_minmax(0,1fr)_minmax(0,1fr)]">
         <div>
           <label className="mb-1 block text-xs font-medium text-slate-600">
-            Webhook 地址 <span className="text-red-500">*</span>
+            {t('push.webhookLabel')} <span className="text-red-500">*</span>
           </label>
           <Input
             value={config.webhookUrl}
@@ -44,27 +45,25 @@ export default function NewMerchantPushBar({ config, onChange, pushing, disabled
           />
         </div>
         <div>
-          <label className="mb-1 block text-xs font-medium text-slate-600">签名密钥（可选）</label>
+          <label className="mb-1 block text-xs font-medium text-slate-600">{t('push.signingSecret')}</label>
           <Input.Password
             value={config.signingSecret}
             onChange={(e) => onChange({ signingSecret: e.target.value })}
-            placeholder="若群机器人开启签名校验则填写"
+            placeholder={t('push.signingSecretPlaceholder')}
             allowClear
           />
         </div>
         <div>
-          <label className="mb-1 block text-xs font-medium text-slate-600">推送标题</label>
+          <label className="mb-1 block text-xs font-medium text-slate-600">{t('push.pushTitle')}</label>
           <Input
             value={config.pushName}
             onChange={(e) => onChange({ pushName: e.target.value })}
-            placeholder="新商家数据监控"
+            placeholder={t('push.pushTitlePlaceholder')}
             allowClear
           />
         </div>
       </div>
-      <div className="mt-2 text-[11px] text-slate-400">
-        配置自动保存在浏览器本地；权限要求：「物流运营推送」api scope。
-      </div>
+      <div className="mt-2 text-[11px] text-slate-400">{t('push.footer')}</div>
     </div>
   )
 }

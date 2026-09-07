@@ -6,15 +6,15 @@ import type { PushTimeSlot, WeekdayNum } from '../ExitAlarm/exitAlarmTypes'
 /** 滞留时间区间，值与 server/src/imile/stagnantWaybills.ts 的 StagnationBucket 保持一致 */
 export type StagnationBucket = '0-1' | '1-2' | '2-3' | '3-4' | '4-5' | '5-6' | '6-7' | '7+'
 
-export const STAGNATION_BUCKET_OPTIONS: { value: StagnationBucket; label: string }[] = [
-  { value: '0-1', label: '0~1' },
-  { value: '1-2', label: '1~2' },
-  { value: '2-3', label: '2~3' },
-  { value: '3-4', label: '3~4' },
-  { value: '4-5', label: '4~5' },
-  { value: '5-6', label: '5~6' },
-  { value: '6-7', label: '6~7' },
-  { value: '7+', label: '≥7' },
+export const STAGNATION_BUCKET_VALUES: StagnationBucket[] = [
+  '0-1',
+  '1-2',
+  '2-3',
+  '3-4',
+  '4-5',
+  '5-6',
+  '6-7',
+  '7+',
 ]
 
 export type ChaseDispatchScheduleDraft = {

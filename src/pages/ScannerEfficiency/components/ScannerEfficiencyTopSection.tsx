@@ -1,6 +1,7 @@
 import Tooltip from '@mui/material/Tooltip'
 import { Button, InputNumber } from 'antd'
 import { Gauge } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
 import type { ScannerEfficiencyViewModel } from '../useScannerEfficiencyPage'
 import { ScanDataIntakePanel } from './ScanDataIntakePanel'
 
@@ -9,6 +10,7 @@ type Props = {
 }
 
 export default function ScannerEfficiencyTopSection({ vm }: Props) {
+  const { t } = useTranslation('scannerEfficiency')
   const {
     settings,
     handleSettingChange,
@@ -22,41 +24,37 @@ export default function ScannerEfficiencyTopSection({ vm }: Props) {
       {snapshotRestore ? (
         <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[rgba(47,143,135,0.22)] bg-[var(--admin-accent-soft)] px-5 py-3 sm:px-6">
           <div className="min-w-0 text-sm text-[#1f6f68]">
-            <span className="font-semibold">记录查看模式</span>
+            <span className="font-semibold">{t('page.snapshotMode')}</span>
             <span className="mx-2 text-[#2f8f87]/60" aria-hidden>
               |
             </span>
-            正在查看 {snapshotRestore.restoredDate} 的效率考勤记录
+            {t('page.snapshotViewing', { date: snapshotRestore.restoredDate })}
             {snapshotRestore.restoredDates.length > 1
-              ? `（${snapshotRestore.restoredDates.length} 天合并）`
+              ? t('page.snapshotMerged', { count: snapshotRestore.restoredDates.length })
               : ''}
-            （只读快照，重新载入数据将退出此模式）
+            {t('page.snapshotReadonlyHint')}
           </div>
           <Button type="default" onClick={dismissSnapshotRestore}>
-            退出查看
+            {t('page.exitView')}
           </Button>
         </div>
       ) : null}
       <header className="se-hero-head border-b border-[var(--admin-line)] px-5 py-5 sm:px-6">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div className="min-w-0 max-w-3xl">
-            <h1 className="se-page-title">物流运营工作台</h1>
-            <p className="se-page-lead">
-              汇入到件扫描与考勤数据，计算开仓效率、分拣效率与包裹分配密度，支持周报与飞书推送。
-            </p>
+            <h1 className="se-page-title">{t('page.title')}</h1>
+            <p className="se-page-lead">{t('page.lead')}</p>
           </div>
-          <div className="se-status-badge shrink-0">
-            到件必传，考勤可选
-          </div>
+          <div className="se-status-badge shrink-0">{t('page.badge')}</div>
         </div>
       </header>
 
       <div className="grid grid-cols-1 gap-0 lg:grid-cols-[minmax(0,1fr)_minmax(0,3fr)] lg:divide-x lg:divide-[var(--admin-line)]">
         <div className="se-settings-block border-b border-[var(--admin-line)] px-5 py-5 sm:px-6 lg:border-b-0">
           <div className="min-w-0">
-            <h2 className="text-sm font-semibold text-[var(--admin-text)]">开仓设置</h2>
+            <h2 className="text-sm font-semibold text-[var(--admin-text)]">{t('page.openDaySettings')}</h2>
             <p className="mt-1 text-xs leading-relaxed text-[var(--admin-muted)]">
-              调整阈值后，下方图表与表格将自动重算。
+              {t('page.openDaySettingsHint')}
             </p>
           </div>
 
@@ -68,7 +66,7 @@ export default function ScannerEfficiencyTopSection({ vm }: Props) {
                   className="inline-flex cursor-help items-center gap-1 text-xs font-medium text-[var(--admin-text)]"
                 >
                   <Gauge className="h-3.5 w-3.5 shrink-0 text-[var(--admin-accent)]" aria-hidden />
-                  开仓人数
+                  {t('page.openDayThreshold')}
                 </label>
               </Tooltip>
               <InputNumber

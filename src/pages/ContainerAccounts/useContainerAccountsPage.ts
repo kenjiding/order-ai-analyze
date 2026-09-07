@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import {
   createAccount,
   deleteAccount,
@@ -22,6 +23,7 @@ export type AccountDraft = {
 }
 
 export function useContainerAccountsPage() {
+  const { t } = useTranslation('container')
   const canManage = usePermission('btn:container-accounts:manage')
 
   const [accounts, setAccounts] = useState<ContainerAccount[]>([])
@@ -99,17 +101,17 @@ export function useContainerAccountsPage() {
           ? prev.map((item) => (item.id === res.data.id ? res.data : item))
           : [...prev, res.data].sort((a, b) => a.name.localeCompare(b.name, 'zh-CN')),
       )
-      showToast(editing ? '已更新站点账户' : '已新增站点账户', 'success')
+      showToast(editing ? t('toast.accountUpdated') : t('toast.accountCreated'), 'success')
       closeForm()
       return true
     },
-    [editing, closeForm],
+    [editing, closeForm, t],
   )
 
   const removeAccount = useCallback(async (account: ContainerAccount) => {
     const confirmed = await confirmDialog({
-      title: `确认删除站点「${account.name}」？`,
-      content: '若该站点已有容器台账或流转记录，删除会被拒绝。',
+      title: t('accounts.confirmDeleteTitle', { name: account.name }),
+      content: t('accounts.confirmDeleteContent'),
       danger: true,
     })
     if (!confirmed) return
@@ -119,8 +121,8 @@ export function useContainerAccountsPage() {
       return
     }
     setAccounts((prev) => prev.filter((item) => item.id !== account.id))
-    showToast('已删除站点账户', 'success')
-  }, [])
+    showToast(t('toast.accountDeleted'), 'success')
+  }, [t])
 
   return useMemo(
     () => ({

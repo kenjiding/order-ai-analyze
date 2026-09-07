@@ -2,8 +2,9 @@ import { useEffect, useMemo, useState } from 'react'
 import { Segmented, Select } from 'antd'
 import { ArrowDownLeft, ArrowUpRight, ChevronRight, Clock } from 'lucide-react'
 import { Link } from 'react-router-dom'
+import { useTranslation } from 'react-i18next'
+import type { TFunction } from 'i18next'
 import { fetchReconciliation } from '../../../containerManagement/api'
-import { accountKindLabel, containerTypeLabel } from '../../../containerManagement/constants'
 import type {
   AccountKind,
   ContainerAccount,
@@ -132,15 +133,25 @@ function QtyLink({ qty, to }: { qty: number; to: string }) {
 }
 
 /** 展开后的推导行：我发出 − 对方发来 = 净额，前两个数可点进流转 */
-function Derivation({ item, tone, accountId }: { item: DirItem; tone: 'rec' | 'pay'; accountId: string }) {
+function Derivation({
+  item,
+  tone,
+  accountId,
+  t,
+}: {
+  item: DirItem
+  tone: 'rec' | 'pay'
+  accountId: string
+  t: TFunction<'container'>
+}) {
   return (
     <div className="flex items-center justify-between gap-3 py-1.5 text-[13px]">
-      <span className="text-slate-500">{containerTypeLabel[item.type]}</span>
+      <span className="text-slate-500">{t(`containerType.${item.type}`)}</span>
       <span className="flex items-center gap-1.5 tabular-nums text-slate-600">
-        <span className="text-[11px] text-slate-400">发出</span>
+        <span className="text-[11px] text-slate-400">{t('reconciliation.sent')}</span>
         <QtyLink qty={item.outQty} to={transfersUrl(accountId, item.counterpartyId)} />
         <span className="text-slate-300">−</span>
-        <span className="text-[11px] text-slate-400">收到</span>
+        <span className="text-[11px] text-slate-400">{t('reconciliation.received')}</span>
         <QtyLink qty={item.inQty} to={transfersUrl(item.counterpartyId, accountId)} />
         <span className="text-slate-300">=</span>
         <span className={`font-semibold ${tone === 'rec' ? 'text-[#1f6f68]' : 'text-rose-600'}`}>
@@ -157,12 +168,14 @@ function PartyRow({
   accountId,
   expanded,
   onToggle,
+  t,
 }: {
   entry: PartyEntry
   tone: 'rec' | 'pay'
   accountId: string
   expanded: boolean
   onToggle: () => void
+  t: TFunction<'container'>
 }) {
   const numTone = tone === 'rec' ? 'text-[#1f6f68]' : 'text-rose-600'
   return (
@@ -181,13 +194,13 @@ function PartyRow({
         />
         <span className="min-w-0 flex-1">
           <span className="block truncate font-medium text-slate-900">{entry.name}</span>
-          <span className="text-[11px] text-slate-500">{accountKindLabel[entry.kind]}</span>
+          <span className="text-[11px] text-slate-500">{t(`accountKind.${entry.kind}`)}</span>
         </span>
         <span className="flex shrink-0 items-baseline gap-3">
           {entry.items.map((item) => (
             <span key={item.type} className="text-right">
               <span className="block text-[11px] leading-none text-slate-400">
-                {containerTypeLabel[item.type]}
+                {t(`containerType.${item.type}`)}
               </span>
               <span className={`text-xl font-semibold tabular-nums leading-tight ${numTone}`}>
                 {item.amount}
@@ -204,7 +217,7 @@ function PartyRow({
         <div className="overflow-hidden">
           <div className="divide-y divide-[var(--admin-line)] border-t border-[var(--admin-line)] bg-[var(--admin-surface-soft)] px-4 py-1 pl-11">
             {entry.items.map((item) => (
-              <Derivation key={item.type} item={item} tone={tone} accountId={accountId} />
+              <Derivation key={item.type} item={item} tone={tone} accountId={accountId} t={t} />
             ))}
           </div>
         </div>
@@ -221,6 +234,7 @@ function LedgerColumn({
   accountId,
   expanded,
   toggle,
+  t,
 }: {
   tone: 'rec' | 'pay'
   title: string
@@ -229,6 +243,7 @@ function LedgerColumn({
   accountId: string
   expanded: Set<string>
   toggle: (key: string) => void
+  t: TFunction<'container'>
 }) {
   const isRec = tone === 'rec'
   const Icon = isRec ? ArrowDownLeft : ArrowUpRight
@@ -249,18 +264,20 @@ function LedgerColumn({
           <Icon className={`h-4 w-4 ${accent}`} aria-hidden strokeWidth={2} />
           <div>
             <h3 className={`text-sm font-semibold ${accent}`}>{title}</h3>
-            <p className="text-[11px] text-slate-500">{entries.length} 个对手方</p>
+            <p className="text-[11px] text-slate-500">
+              {t('reconciliation.counterpartyCount', { count: entries.length })}
+            </p>
           </div>
         </div>
         <div className="flex items-baseline gap-3">
           {totalPairs.length ? (
-            totalPairs.map((t) => (
-              <span key={t} className="text-right">
+            totalPairs.map((typeKey) => (
+              <span key={typeKey} className="text-right">
                 <span className="block text-[11px] leading-none text-slate-400">
-                  {containerTypeLabel[t]}
+                  {t(`containerType.${typeKey}`)}
                 </span>
                 <span className={`text-lg font-semibold tabular-nums leading-tight ${accent}`}>
-                  {totals[t]}
+                  {totals[typeKey]}
                 </span>
               </span>
             ))
@@ -281,39 +298,40 @@ function LedgerColumn({
                 accountId={accountId}
                 expanded={expanded.has(key)}
                 onToggle={() => toggle(key)}
+                t={t}
               />
             )
           })}
         </ul>
       ) : (
         <p className="px-4 py-10 text-center text-sm text-slate-400">
-          {isRec ? '没有对方欠你的容器' : '你不欠任何对手方'}
+          {isRec ? t('reconciliation.noReceivable') : t('reconciliation.noPayable')}
         </p>
       )}
     </section>
   )
 }
 
-function PendingList({ pending }: { pending: Party[] }) {
+function PendingList({ pending, t }: { pending: Party[]; t: TFunction<'container'> }) {
   if (!pending.length) return null
   return (
     <section className="rounded-xl border border-amber-200 bg-amber-50/50">
       <header className="flex items-center gap-2 border-b border-amber-100 px-4 py-2.5">
         <Clock className="h-4 w-4 text-amber-600" aria-hidden strokeWidth={2} />
-        <h3 className="text-sm font-medium text-amber-900">在途未确认</h3>
-        <span className="text-[11px] text-amber-700">对方确认前不计入应收应付</span>
+        <h3 className="text-sm font-medium text-amber-900">{t('reconciliation.pendingTitle')}</h3>
+        <span className="text-[11px] text-amber-700">{t('reconciliation.pendingHint')}</span>
       </header>
       <ul className="divide-y divide-amber-100">
         {pending.map((p) => (
           <li key={p.id} className="flex items-center justify-between gap-3 px-4 py-2.5">
             <span className="min-w-0">
               <span className="block truncate text-sm text-slate-800">{p.name}</span>
-              <span className="text-[11px] text-slate-500">{accountKindLabel[p.kind]}</span>
+              <span className="text-[11px] text-slate-500">{t(`accountKind.${p.kind}`)}</span>
             </span>
             <span className="shrink-0 text-[13px] tabular-nums text-amber-800">
-              {p.pendingOut ? `发出 ${p.pendingOut}` : ''}
+              {p.pendingOut ? t('reconciliation.pendingOut', { count: p.pendingOut }) : ''}
               {p.pendingOut && p.pendingIn ? ' · ' : ''}
-              {p.pendingIn ? `待收 ${p.pendingIn}` : ''}
+              {p.pendingIn ? t('reconciliation.pendingIn', { count: p.pendingIn }) : ''}
             </span>
           </li>
         ))}
@@ -322,9 +340,9 @@ function PendingList({ pending }: { pending: Party[] }) {
   )
 }
 
-function PanelSkeleton() {
+function PanelSkeleton({ t }: { t: TFunction<'container'> }) {
   return (
-    <div className="grid gap-4 md:grid-cols-2" aria-busy aria-label="对账数据载入中">
+    <div className="grid gap-4 md:grid-cols-2" aria-busy aria-label={t('reconciliation.loadingLabel')}>
       <div className="h-72 animate-pulse rounded-xl bg-slate-100 motion-reduce:animate-none" />
       <div className="h-72 animate-pulse rounded-xl bg-slate-100 motion-reduce:animate-none" />
     </div>
@@ -332,6 +350,7 @@ function PanelSkeleton() {
 }
 
 export function ReconciliationPanel({ accounts }: Props) {
+  const { t } = useTranslation('container')
   const [picked, setPicked] = useState('')
   const [view, setView] = useState<ViewFilter>('open')
   const [expanded, setExpanded] = useState<Set<string>>(new Set())
@@ -381,17 +400,17 @@ export function ReconciliationPanel({ accounts }: Props) {
       grouped.settled.length)
 
   const emptyHint = !accounts.length
-    ? '暂无可对账的站点，请先在「站点账户」建立站点。'
-    : '与该站点还没有任何容器往来记录。'
+    ? t('reconciliation.emptyNoAccounts')
+    : t('reconciliation.emptyNoHistory')
 
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <label className="flex flex-wrap items-center gap-2">
-          <span className="text-sm text-slate-700">对账站点</span>
+          <span className="text-sm text-slate-700">{t('reconciliation.stationLabel')}</span>
           <Select
             className="min-w-56"
-            placeholder="选择…"
+            placeholder={t('selectPlaceholder')}
             showSearch
             optionFilterProp="label"
             value={accountId || undefined}
@@ -405,14 +424,17 @@ export function ReconciliationPanel({ accounts }: Props) {
             value={view}
             onChange={(value) => setView(value as ViewFilter)}
             options={[
-              { label: `未结清 ${openCount}`, value: 'open' },
-              { label: `含已结清 ${openCount + grouped.settled.length}`, value: 'all' },
+              { label: t('reconciliation.openTab', { count: openCount }), value: 'open' },
+              {
+                label: t('reconciliation.allTab', { count: openCount + grouped.settled.length }),
+                value: 'all',
+              },
             ]}
           />
         ) : null}
       </div>
 
-      {loading ? <PanelSkeleton /> : null}
+      {loading ? <PanelSkeleton t={t} /> : null}
 
       {!loading && grouped ? (
         hasAnything ? (
@@ -420,49 +442,50 @@ export function ReconciliationPanel({ accounts }: Props) {
             <div className="grid gap-4 md:grid-cols-2">
               <LedgerColumn
                 tone="rec"
-                title="对方欠我 · 应收"
+                title={t('reconciliation.receivableTitle')}
                 totals={data!.owedToMe}
                 entries={grouped.receivables}
                 accountId={accountId}
                 expanded={expanded}
                 toggle={toggle}
+                t={t}
               />
               <LedgerColumn
                 tone="pay"
-                title="我欠对方 · 应付"
+                title={t('reconciliation.payableTitle')}
                 totals={data!.owedByMe}
                 entries={grouped.payables}
                 accountId={accountId}
                 expanded={expanded}
                 toggle={toggle}
+                t={t}
               />
             </div>
 
-            <PendingList pending={grouped.pending} />
+            <PendingList pending={grouped.pending} t={t} />
 
             {view === 'all' && grouped.settled.length ? (
               <section className="rounded-xl border border-[var(--admin-line)] bg-white">
                 <header className="border-b border-[var(--admin-line)] px-4 py-2.5">
-                  <h3 className="text-sm font-medium text-slate-500">已结清</h3>
+                  <h3 className="text-sm font-medium text-slate-500">{t('reconciliation.settledTitle')}</h3>
                 </header>
                 <ul className="divide-y divide-[var(--admin-line)]">
                   {grouped.settled.map((p) => (
                     <li key={p.id} className="flex items-center justify-between gap-3 px-4 py-2.5">
                       <span className="min-w-0">
                         <span className="block truncate text-sm text-slate-700">{p.name}</span>
-                        <span className="text-[11px] text-slate-400">{accountKindLabel[p.kind]}</span>
+                        <span className="text-[11px] text-slate-400">{t(`accountKind.${p.kind}`)}</span>
                       </span>
-                      <span className="shrink-0 text-[13px] text-slate-400">两清</span>
+                      <span className="shrink-0 text-[13px] text-slate-400">
+                        {t('reconciliation.settledBalanced')}
+                      </span>
                     </li>
                   ))}
                 </ul>
               </section>
             ) : null}
 
-            <p className="text-xs text-slate-500">
-              展开对手方可看「发出 − 收到 = 净额」的构成，数字可点进对应的已确认流转。
-              只统计流转记录，不含盘点、报废；在途未确认不计入应收应付。
-            </p>
+            <p className="text-xs text-slate-500">{t('reconciliation.footnote')}</p>
           </>
         ) : (
           <p className="py-10 text-center text-sm text-slate-500">{emptyHint}</p>
@@ -471,7 +494,7 @@ export function ReconciliationPanel({ accounts }: Props) {
 
       {!loading && !grouped ? (
         <p className="py-10 text-center text-sm text-slate-500">
-          {accountId ? '对账数据加载失败，请稍后重试。' : emptyHint}
+          {accountId ? t('reconciliation.loadFailed') : emptyHint}
         </p>
       ) : null}
     </div>

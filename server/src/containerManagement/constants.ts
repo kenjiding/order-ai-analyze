@@ -1,9 +1,16 @@
 /** 容器管理：品类、站点类型、流转类型/状态、台账原因类型的常量与中文标签 */
 
-export const CONTAINER_TYPES = ['BIG_BASKET', 'SILVER_BOX'] as const
-export type ContainerType = (typeof CONTAINER_TYPES)[number]
+/**
+ * 品类码。值域由 container_types 表在运行期决定，所以这里只是个可读的别名 ——
+ * 编译期本来就管不住用户新建的品类，真正的防线是 containerTypeService 的 isActiveType/isKnownType。
+ */
+export type ContainerType = string
 
-export const containerTypeLabel: Record<ContainerType, string> = {
+/** 内置品类：迁移种子与品类缓存未热时的兜底，不再是值域的全集 */
+export const CONTAINER_TYPES = ['BIG_BASKET', 'SILVER_BOX'] as const
+
+/** 内置品类的显示名兜底；动态品类的名字由 containerTypeService.labelOf 从表里读 */
+export const containerTypeLabel: Record<string, string> = {
   BIG_BASKET: '大蓝筐',
   SILVER_BOX: '银筐',
 }
@@ -78,11 +85,16 @@ export const BALANCE_REASON_TYPES = [
   'HISTORICAL_BACKFILL',
   'TRANSFER_SETTLEMENT',
   'TRANSFER_VOID',
+  'TRANSIT_LOSS',
 ] as const
 export type BalanceReasonType = (typeof BALANCE_REASON_TYPES)[number]
 
-/** 手工调账可选的原因类型；两个 TRANSFER_* 只由流转记账与作废冲账写入，不开放给用户选 */
-const AUTO_BALANCE_REASON_TYPES: readonly BalanceReasonType[] = ['TRANSFER_SETTLEMENT', 'TRANSFER_VOID']
+/** 手工调账可选的原因类型；这三个只由流转记账、作废冲账、差异结算写入，不开放给用户选 */
+const AUTO_BALANCE_REASON_TYPES: readonly BalanceReasonType[] = [
+  'TRANSFER_SETTLEMENT',
+  'TRANSFER_VOID',
+  'TRANSIT_LOSS',
+]
 
 export const MANUAL_BALANCE_REASON_TYPES = BALANCE_REASON_TYPES.filter(
   (item) => !AUTO_BALANCE_REASON_TYPES.includes(item),
@@ -93,10 +105,6 @@ export type BalanceAuditAction = (typeof BALANCE_AUDIT_ACTIONS)[number]
 
 export const TRANSFER_CHANGE_ACTIONS = ['UPDATE', 'DELETE', 'VOID'] as const
 export type TransferChangeAction = (typeof TRANSFER_CHANGE_ACTIONS)[number]
-
-export function isContainerType(value: unknown): value is ContainerType {
-  return CONTAINER_TYPES.includes(value as ContainerType)
-}
 
 export function isAccountKind(value: unknown): value is AccountKind {
   return ACCOUNT_KINDS.includes(value as AccountKind)

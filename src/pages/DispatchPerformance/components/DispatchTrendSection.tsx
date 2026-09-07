@@ -1,6 +1,7 @@
 import { Alert, Select, Spin } from 'antd'
 import type { Dayjs } from 'dayjs'
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { fetchDispatchPerformanceTrend } from '../dispatchPerformanceApi'
 import type {
   DispatchPerformanceSupplierOption,
@@ -18,6 +19,7 @@ type Props = {
 
 function buildSupplierLabels(
   suppliers: DispatchPerformanceSupplierOption[],
+  t: (key: string, options?: Record<string, unknown>) => string,
 ): Map<string, string> {
   const nameCounts = new Map<string, number>()
   for (const supplier of suppliers) {
@@ -27,13 +29,14 @@ function buildSupplierLabels(
     suppliers.map((supplier) => [
       supplier.supplierKey,
       (nameCounts.get(supplier.supplierName) ?? 0) > 1 && supplier.vendorCode
-        ? `${supplier.supplierName}（${supplier.vendorCode}）`
+        ? t('trend.vendorCodeSuffix', { name: supplier.supplierName, code: supplier.vendorCode })
         : supplier.supplierName,
     ]),
   )
 }
 
 export function DispatchTrendSection({ configId, range, supplierKeys, supplierOptions }: Props) {
+  const { t } = useTranslation('dispatchPerformance')
   const startDate = range[0].format('YYYY-MM-DD')
   const endDate = range[1].format('YYYY-MM-DD')
 
@@ -58,14 +61,14 @@ export function DispatchTrendSection({ configId, range, supplierKeys, supplierOp
       })
       .catch((err: unknown) => {
         if (controller.signal.aborted || (err instanceof Error && err.name === 'AbortError')) return
-        setError(err instanceof Error ? err.message : '趋势查询失败')
+        setError(err instanceof Error ? err.message : t('trend.queryFailed'))
         setResult(null)
       })
       .finally(() => {
         if (!controller.signal.aborted) setLoading(false)
       })
     return () => controller.abort()
-  }, [configId, endDate, startDate, supplierKeys])
+  }, [configId, endDate, startDate, supplierKeys, t])
 
   const suppliers = useMemo(
     () => result?.suppliers ?? supplierOptions ?? [],
@@ -81,7 +84,10 @@ export function DispatchTrendSection({ configId, range, supplierKeys, supplierOp
     setRouteSupplierKey(suppliers[0].supplierKey)
   }, [routeSupplierKey, suppliers])
 
-  const supplierLabels = useMemo(() => buildSupplierLabels(suppliers), [suppliers])
+  const supplierLabels = useMemo(
+    () => buildSupplierLabels(suppliers, (key, opts) => t(key, opts)),
+    [suppliers, t],
+  )
   const supplierColorMap = useMemo(
     () => buildVendorColorMap(suppliers.map((supplier) => supplier.supplierKey)),
     [suppliers],
@@ -143,10 +149,12 @@ export function DispatchTrendSection({ configId, range, supplierKeys, supplierOp
     () =>
       routeMeta.map((route) => ({
         key: route.routeCode,
-        label: route.hasWhitelist ? `${route.routeCode}（白名单）` : route.routeCode,
+        label: route.hasWhitelist
+          ? t('trend.whitelistSuffix', { routeCode: route.routeCode })
+          : route.routeCode,
         color: colorFromMap(routeColorMap, route.routeCode),
       })),
-    [routeColorMap, routeMeta],
+    [routeColorMap, routeMeta, t],
   )
 
   const routeBefore11Points = useMemo(
@@ -174,10 +182,8 @@ export function DispatchTrendSection({ configId, range, supplierKeys, supplierOp
   return (
     <section className="admin-panel space-y-4 p-4">
       <div>
-        <h3 className="admin-title text-xl">趋势变化</h3>
-        <p className="mt-1 text-sm text-slate-500">
-          按到件日查看供应商与供应商路由码的 11 点前出仓率、24H 派签率变化。
-        </p>
+        <h3 className="admin-title text-xl">{t('trend.title')}</h3>
+        <p className="mt-1 text-sm text-slate-500">{t('trend.subtitle')}</p>
       </div>
 
       {loading ? (
@@ -189,16 +195,16 @@ export function DispatchTrendSection({ configId, range, supplierKeys, supplierOp
       {error ? <Alert type="error" showIcon message={error} /> : null}
 
       {!loading && !error && result && result.dates.length === 0 ? (
-        <Alert type="info" showIcon message="当前筛选区间没有可展示的趋势数据" />
+        <Alert type="info" showIcon message={t('trend.noData')} />
       ) : null}
 
       {!loading && !error && result && result.dates.length > 0 ? (
         <>
           <div className="space-y-3">
             <div>
-              <h4 className="text-sm font-semibold text-slate-900">供应商维度</h4>
+              <h4 className="text-sm font-semibold text-slate-900">{t('trend.vendorDimension')}</h4>
               <p className="text-xs text-slate-500">
-                当前跟随页面上方供应商筛选（已选 {suppliers.length} 家）。
+                {t('trend.vendorFilterHint', { count: suppliers.length })}
               </p>
             </div>
             <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
@@ -206,17 +212,17 @@ export function DispatchTrendSection({ configId, range, supplierKeys, supplierOp
                 dates={result.dates}
                 series={supplierSeries}
                 points={supplierBefore11Points}
-                yTitle="11点前出仓率"
-                ariaLabel="供应商11点前出仓率趋势图"
-                emptyText="当前区间没有可展示的供应商出仓率趋势。"
+                yTitle={t('trend.before11HubExitRate')}
+                ariaLabel={t('trend.vendorBefore11Chart')}
+                emptyText={t('trend.vendorBefore11Empty')}
               />
               <DispatchRateTrendChart
                 dates={result.dates}
                 series={supplierSeries}
                 points={supplierSignPoints}
-                yTitle="24H派签率"
-                ariaLabel="供应商24H派签率趋势图"
-                emptyText="当前区间没有可展示的供应商派签率趋势。"
+                yTitle={t('trend.signRate24h')}
+                ariaLabel={t('trend.vendorSignChart')}
+                emptyText={t('trend.vendorSignEmpty')}
               />
             </div>
           </div>
@@ -224,15 +230,13 @@ export function DispatchTrendSection({ configId, range, supplierKeys, supplierOp
           <div className="space-y-3">
             <div className="flex flex-wrap items-end justify-between gap-3">
               <div>
-                <h4 className="text-sm font-semibold text-slate-900">供应商路由码维度</h4>
-                <p className="text-xs text-slate-500">
-                  先选供应商，再看该供应商下各路由码的每日变化。
-                </p>
+                <h4 className="text-sm font-semibold text-slate-900">{t('trend.routeDimension')}</h4>
+                <p className="text-xs text-slate-500">{t('trend.routeFilterHint')}</p>
               </div>
               <Select
                 value={routeSupplierKey || undefined}
                 onChange={setRouteSupplierKey}
-                placeholder="选择供应商"
+                placeholder={t('trend.selectVendor')}
                 className="min-w-[260px]"
                 options={suppliers.map((supplier) => ({
                   value: supplier.supplierKey,
@@ -242,7 +246,10 @@ export function DispatchTrendSection({ configId, range, supplierKeys, supplierOp
             </div>
             {routeSupplierKey ? (
               <p className="text-xs text-slate-500">
-                当前供应商：{routeSupplierName || routeSupplierKey}（共 {routeSeries.length} 条路由码）
+                {t('trend.currentVendor', {
+                  name: routeSupplierName || routeSupplierKey,
+                  count: routeSeries.length,
+                })}
               </p>
             ) : null}
             <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
@@ -250,17 +257,17 @@ export function DispatchTrendSection({ configId, range, supplierKeys, supplierOp
                 dates={result.dates}
                 series={routeSeries}
                 points={routeBefore11Points}
-                yTitle="11点前出仓率"
-                ariaLabel="路由码11点前出仓率趋势图"
-                emptyText="请选择供应商后查看路由码出仓率趋势。"
+                yTitle={t('trend.before11HubExitRate')}
+                ariaLabel={t('trend.routeBefore11Chart')}
+                emptyText={t('trend.routeBefore11Empty')}
               />
               <DispatchRateTrendChart
                 dates={result.dates}
                 series={routeSeries}
                 points={routeSignPoints}
-                yTitle="24H派签率"
-                ariaLabel="路由码24H派签率趋势图"
-                emptyText="请选择供应商后查看路由码派签率趋势。"
+                yTitle={t('trend.signRate24h')}
+                ariaLabel={t('trend.routeSignChart')}
+                emptyText={t('trend.routeSignEmpty')}
               />
             </div>
           </div>

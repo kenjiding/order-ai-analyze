@@ -1,5 +1,6 @@
 import { Alert } from 'antd'
 import { CheckCircle2, ScanSearch, XCircle } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
 import { useAppSettings } from '../../context/AppSettingsContext'
 import AuditDetailDrawer from './components/AuditDetailDrawer'
 import AuditFilterPanel from './components/AuditFilterPanel'
@@ -28,6 +29,7 @@ function StatCard({ value, label, valueColor = '#1e293b', icon }: StatCardProps)
 }
 
 export default function ProblemPackageAuditPage() {
+  const { t } = useTranslation('problemPackage')
   const { imileToken } = useAppSettings()
   const {
     daCodeItems,
@@ -47,7 +49,6 @@ export default function ProblemPackageAuditPage() {
 
   const drawerEntry = drawerDaCode ? (auditMap[drawerDaCode] ?? null) : null
 
-  // Compute summary stats from loaded audit entries
   const allPackages = Object.values(auditMap).flatMap((e) => e.packages)
   const totalPackages = allPackages.length
   const qualifiedCount = allPackages.filter((p) => p.auditResult?.overallQualified === true).length
@@ -59,63 +60,45 @@ export default function ProblemPackageAuditPage() {
 
   return (
     <div className="min-h-screen space-y-4 bg-slate-50 p-5">
-      {/* Page header */}
       <div className="flex items-center gap-3">
         <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-teal-50">
           <ScanSearch size={18} className="text-teal-700" />
         </div>
         <div>
-          <h1 className="text-[16px] font-medium text-slate-800">AI 问题件审核</h1>
-          <p className="text-[12px] text-slate-400">
-            按站点查询问题件 · 按 DA 代码批量 AI 审核图片合格性 · 支持暂停与恢复
-          </p>
+          <h1 className="text-[16px] font-medium text-slate-800">{t('title')}</h1>
+          <p className="text-[12px] text-slate-400">{t('description')}</p>
         </div>
       </div>
 
-      {/* Token warning */}
       {!imileToken && (
-        <Alert
-          type="warning"
-          showIcon
-          message="请先在右上角「设置」中配置 iMile Token，才能查询问题件数据"
-        />
+        <Alert type="warning" showIcon message={t('tokenWarning')} />
       )}
 
-      {/* Summary stats — only show when data is loaded */}
       {showStats && (
         <div className="grid grid-cols-4 gap-3">
-          <StatCard
-            value={daCodeItems.length}
-            label="DA 代码总数"
-            valueColor="#2f8f87"
-          />
-          <StatCard
-            value={totalPackages > 0 ? totalPackages : '—'}
-            label="问题件总数"
-          />
+          <StatCard value={daCodeItems.length} label={t('statDaCodes')} valueColor="#2f8f87" />
+          <StatCard value={totalPackages > 0 ? totalPackages : '—'} label={t('statTotal')} />
           <StatCard
             value={qualifiedCount > 0 ? qualifiedCount : '—'}
-            label="合格件数"
+            label={t('statQualified')}
             valueColor="#3B6D11"
             icon={qualifiedCount > 0 ? <CheckCircle2 size={14} /> : undefined}
           />
           <StatCard
             value={unqualifiedCount > 0 ? unqualifiedCount : '—'}
-            label="不合格件数"
+            label={t('statUnqualified')}
             valueColor={unqualifiedCount > 0 ? '#A32D2D' : undefined}
             icon={unqualifiedCount > 0 ? <XCircle size={14} /> : undefined}
           />
         </div>
       )}
 
-      {/* Filter */}
       <AuditFilterPanel
         loading={searchLoading}
         total={daCodeItems.length > 0 ? daCodeItems.length : undefined}
         onSearch={handleSearch}
       />
 
-      {/* DA Code table */}
       <ProblemPackageTable
         daCodeItems={daCodeItems}
         auditMap={auditMap}
@@ -126,7 +109,6 @@ export default function ProblemPackageAuditPage() {
         onViewDetail={handleViewDetail}
       />
 
-      {/* Detail drawer */}
       <AuditDetailDrawer
         open={drawerOpen}
         daCode={drawerDaCode}
