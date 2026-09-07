@@ -1,4 +1,4 @@
-import { Button, Checkbox, DatePicker, Drawer, InputNumber, TimePicker } from 'antd'
+import { Button, Checkbox, DatePicker, Drawer, Input, InputNumber, TimePicker } from 'antd'
 import dayjs from 'dayjs'
 import { Clock, Gauge, Plus, Save, X } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
@@ -78,6 +78,7 @@ export function DispatchAlarmScheduleDrawer({
   const [arrivalScanRange, setArrivalScanRange] = useState<[string, string]>([yesterday(), yesterday()])
   const [mentionEnabled, setMentionEnabled] = useState(false)
   const [showDriverMap, setShowDriverMap] = useState(false)
+  const [importantNotice, setImportantNotice] = useState('')
 
   useEffect(() => {
     if (!open) return
@@ -94,6 +95,7 @@ export function DispatchAlarmScheduleDrawer({
     )
     setMentionEnabled(editingSchedule?.mentionEnabled ?? false)
     setShowDriverMap(editingSchedule?.showDriverMap ?? false)
+    setImportantNotice(editingSchedule?.importantNotice ?? '')
   }, [open, editingSchedule])
 
   const handleAddTime = () => setPushTimes((prev) => [...prev, { id: generateId(), time: '09:30' }])
@@ -131,6 +133,7 @@ export function DispatchAlarmScheduleDrawer({
       arrivalScanDates: expandDateRange(arrivalScanRange),
       mentionEnabled,
       showDriverMap,
+      importantNotice: importantNotice.trim() || null,
     }
     const ok = await onSubmit(draft)
     if (ok) onClose()
@@ -280,6 +283,21 @@ export function DispatchAlarmScheduleDrawer({
                   <span className="text-sm">{t('drawer.driverMap')}</span>
                 </Checkbox>
               </div>
+            </div>
+
+            <div className="flex items-start gap-4 py-3 last:pb-0">
+              <span className="mt-1 w-16 shrink-0 text-xs font-medium leading-tight text-slate-500">
+                {t('drawer.importantNotice')}
+              </span>
+              <Input.TextArea
+                value={importantNotice}
+                disabled={saving}
+                rows={3}
+                maxLength={500}
+                showCount
+                placeholder={t('drawer.importantNoticePlaceholder')}
+                onChange={(e) => setImportantNotice(e.target.value)}
+              />
             </div>
           </div>
         </FormSection>

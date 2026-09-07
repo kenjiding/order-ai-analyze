@@ -547,6 +547,13 @@
       "when": 1785700000049,
       "tag": "0077_container_types",
       "breakpoints": true
+    },
+    {
+      "idx": 78,
+      "version": "7",
+      "when": 1785700000050,
+      "tag": "0078_alarm_important_notice",
+      "breakpoints": true
     }
   ]
 }

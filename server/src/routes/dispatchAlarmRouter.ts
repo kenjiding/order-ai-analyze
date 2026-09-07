@@ -33,6 +33,7 @@ type ScheduleBody = {
   arrivalScanDates?: unknown
   mentionEnabled?: unknown
   showDriverMap?: unknown
+  importantNotice?: unknown
   imileToken?: unknown
 }
 
@@ -46,6 +47,8 @@ type PublicDispatchAlarmSchedule = {
   pushConfigIds: string[]
   mentionEnabled: boolean
   showDriverMap: boolean
+  /** 重要提醒：填了就原样追加在推送卡片末尾，为空表示不追加 */
+  importantNotice: string | null
   /** 「立刻推送」使用的到件扫描日期 YYYY-MM-DD，可多选；为空时按自动计算的最近工作日兜底 */
   arrivalScanDates: string[]
   /** 拥有该配置的账号所属州/区域，决定 pushTimes/weekdays 按哪个时区判断；只读，随账号信息变化 */
@@ -92,6 +95,7 @@ async function toPublicSchedule(
     pushConfigIds: parsePushConfigIds(row.pushConfigIds),
     mentionEnabled: row.mentionEnabled,
     showDriverMap: row.showDriverMap,
+    importantNotice: row.importantNotice ?? null,
     arrivalScanDates: (row.arrivalScanDates as string[] | null) ?? [],
     regionCode,
     updatedAt: row.updatedAt,
@@ -123,6 +127,7 @@ function extractScheduleFields(body: ScheduleBody) {
     arrivalScanDates: normalizeArrivalScanDates(body.arrivalScanDates),
     mentionEnabled: body.mentionEnabled === true,
     showDriverMap: body.showDriverMap === true,
+    importantNotice: typeof body.importantNotice === 'string' ? body.importantNotice.trim() || null : null,
   }
 }
 
@@ -204,6 +209,7 @@ dispatchAlarmRouter.post('/schedules', async (req: AuthenticatedRequest, res: Re
         arrivalScanDates: fields.arrivalScanDates,
         mentionEnabled: fields.mentionEnabled,
         showDriverMap: fields.showDriverMap,
+        importantNotice: fields.importantNotice,
         imileToken: nextImileToken ? normalizeImileToken(nextImileToken) : null,
         updatedBy: userId,
       })
@@ -278,6 +284,7 @@ dispatchAlarmRouter.put('/schedules/:id', async (req: AuthenticatedRequest, res:
         arrivalScanDates: fields.arrivalScanDates,
         mentionEnabled: fields.mentionEnabled,
         showDriverMap: fields.showDriverMap,
+        importantNotice: fields.importantNotice,
         ...(nextImileToken ? { imileToken: normalizeImileToken(nextImileToken) } : {}),
         updatedBy: userId,
         updatedAt: new Date(),
@@ -371,6 +378,7 @@ dispatchAlarmRouter.post('/schedules/:id/push-now', async (req: AuthenticatedReq
       label: `[dispatch-alarm/push-now schedule=${schedule.id}]`,
       mentionEnabled: schedule.mentionEnabled,
       showDriverMap: schedule.showDriverMap,
+      importantNotice: schedule.importantNotice,
     })
     if ('error' in result) {
       res.status(502).json({ ok: false, error: result.error })

@@ -29,6 +29,7 @@ type ScheduleBody = {
   routeCodeWhitelistPushEnabled?: unknown
   arrivalScanDates?: unknown
   clearancePrice?: unknown
+  importantNotice?: unknown
   imileToken?: unknown
 }
 
@@ -45,6 +46,8 @@ type PublicExitAlarmSchedule = {
   arrivalScanDates: string[]
   /** 滞留清货价：每件清货补贴（美元），为空表示不推送清货费用 */
   clearancePrice: number | null
+  /** 重要提醒：填了就原样追加在推送卡片末尾，为空表示不追加 */
+  importantNotice: string | null
   /** 拥有该配置的账号所属州/区域，决定 pushTimes/weekdays 按哪个时区判断；只读，随账号信息变化 */
   regionCode: string | null
   updatedAt: Date
@@ -90,6 +93,7 @@ async function toPublicSchedule(
     routeCodeWhitelistPushEnabled: row.routeCodeWhitelistPushEnabled,
     arrivalScanDates: (row.arrivalScanDates as string[] | null) ?? [],
     clearancePrice: row.clearancePrice ?? null,
+    importantNotice: row.importantNotice ?? null,
     regionCode,
     updatedAt: row.updatedAt,
     hasImileToken: await hasExitAlarmImileToken(row),
@@ -120,6 +124,7 @@ function extractScheduleFields(body: ScheduleBody) {
     routeCodeWhitelistPushEnabled: body.routeCodeWhitelistPushEnabled === true,
     arrivalScanDates: normalizeArrivalScanDates(body.arrivalScanDates),
     clearancePrice: normalizeClearancePrice(body.clearancePrice),
+    importantNotice: typeof body.importantNotice === 'string' ? body.importantNotice.trim() || null : null,
   }
 }
 
@@ -201,6 +206,7 @@ exitAlarmRouter.post('/schedules', async (req: AuthenticatedRequest, res: Respon
         routeCodeWhitelistPushEnabled: fields.routeCodeWhitelistPushEnabled,
         arrivalScanDates: fields.arrivalScanDates,
         clearancePrice: fields.clearancePrice,
+        importantNotice: fields.importantNotice,
         imileToken: nextImileToken ? normalizeImileToken(nextImileToken) : null,
         updatedBy: userId,
       })
@@ -275,6 +281,7 @@ exitAlarmRouter.put('/schedules/:id', async (req: AuthenticatedRequest, res: Res
         routeCodeWhitelistPushEnabled: fields.routeCodeWhitelistPushEnabled,
         arrivalScanDates: fields.arrivalScanDates,
         clearancePrice: fields.clearancePrice,
+        importantNotice: fields.importantNotice,
         ...(nextImileToken ? { imileToken: normalizeImileToken(nextImileToken) } : {}),
         updatedBy: userId,
         updatedAt: new Date(),
@@ -369,6 +376,7 @@ exitAlarmRouter.post('/schedules/:id/push-now', async (req: AuthenticatedRequest
       mentionEnabled: schedule.mentionEnabled,
       routeCodeWhitelistPushEnabled: schedule.routeCodeWhitelistPushEnabled,
       clearancePrice: schedule.clearancePrice,
+      importantNotice: schedule.importantNotice,
     })
     if ('error' in result) {
       res.status(502).json({ ok: false, error: result.error })

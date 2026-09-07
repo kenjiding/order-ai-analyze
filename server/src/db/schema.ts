@@ -339,6 +339,8 @@ export const exitAlarmSchedules = pgTable('exit_alarm_schedules', {
   arrivalScanDates: jsonb('arrival_scan_dates').notNull().default([]),
   /** 滞留清货价：找灵活供应商清货时每件的额外补贴（美元）；为空则卡片不展示清货费用 */
   clearancePrice: doublePrecision('clearance_price'),
+  /** 重要提醒：填写后原样追加在卡片末尾；同时勾选 mentionEnabled 时 @ 人拼在提醒后面 */
+  importantNotice: text('important_notice'),
   /** 定时拉数使用的 iMile token（保存配置时从全局设置同步，不对外返回） */
   imileToken: varchar('imile_token', { length: 2048 }),
   updatedBy: uuid('updated_by').references(() => users.id, { onDelete: 'set null' }),
@@ -434,6 +436,8 @@ export const dispatchAlarmSchedules = pgTable('dispatch_alarm_schedules', {
   mentionEnabled: boolean('mention_enabled').notNull().default(false),
   /** 是否在 24H 派签落地页展示「司机地图」组件 */
   showDriverMap: boolean('show_driver_map').notNull().default(false),
+  /** 重要提醒：填写后原样追加在卡片末尾；同时勾选 mentionEnabled 时 @ 人拼在提醒后面 */
+  importantNotice: text('important_notice'),
   /** 「立刻推送」使用的到件扫描日期数组 YYYY-MM-DD（可多选，多日数据合并统计）；为空时按自动计算的最近工作日兜底，不影响自动定时推送 */
   arrivalScanDates: jsonb('arrival_scan_dates').notNull().default([]),
   /** 定时拉数使用的 iMile token（保存配置时从全局设置同步，不对外返回） */

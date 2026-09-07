@@ -2,7 +2,7 @@ import { eq } from 'drizzle-orm'
 import { getDb, schema } from '../db'
 import type { ExitAlarmSchedule, FleetSupplierPushConfig } from '../db/schema'
 import { buildExitAlarmCard } from './buildExitAlarmCard'
-import { parseSupplierMentionContacts, pickMentions } from './feishuMentionHelpers'
+import { buildImportantNoticeCard, parseSupplierMentionContacts, pickMentions } from './feishuMentionHelpers'
 import { sendSupplierPushCard } from './sendSupplierPushCard'
 import { recordFeishuPushMessage } from './pushMessageRepository'
 import { envFirst } from '../imile/shared'
@@ -130,6 +130,8 @@ export async function executeExitAlarmPush(params: {
   routeCodeWhitelistPushEnabled?: boolean
   /** 滞留清货价：每件清货补贴（美元）；传入时卡片展示「未出仓件数 × 单价」的清货费用 */
   clearancePrice?: number | null
+  /** 重要提醒：填了就原样追加在卡片末尾，@ 人拼在它后面 */
+  importantNotice?: string | null
   /**
    * 仅供定时任务传入：按 (jobKeyPrefix:configId, slotKey) 对每个供应商配置单独做幂等去重。
    * 某个配置本次已经成功推送过则跳过，推送失败/暂无数据则释放，交给下次 catch-up 重试；
@@ -149,6 +151,7 @@ export async function executeExitAlarmPush(params: {
     mentionEnabled,
     routeCodeWhitelistPushEnabled,
     clearancePrice,
+    importantNotice,
     perConfigDedupe,
   } = params
 
@@ -225,6 +228,7 @@ export async function executeExitAlarmPush(params: {
 
     try {
       const mentions = pickMentions(parseSupplierMentionContacts(config.mentionOpenIds), Boolean(mentionEnabled))
+      const noticeText = (importantNotice ?? '').trim()
       // 路由码白名单数据不再作为独立第二条消息推送，而是作为折叠面板追加在主卡片末尾，默认折叠。
       const whitelistStat =
         routeCodeWhitelistPushEnabled && stat.whitelistStat && stat.whitelistStat.totalWaybills > 0
@@ -240,7 +244,8 @@ export async function executeExitAlarmPush(params: {
         totalPending,
         totalWaybills: stat.totalWaybills,
         pushDescription: config.pushDescription,
-        mentions,
+        // 填了重要提醒时 @ 人挪到提醒那条消息里，数据卡片不再 @
+        mentions: noticeText ? [] : mentions,
         whitelistStat,
         clearancePrice,
       })
@@ -252,6 +257,16 @@ export async function executeExitAlarmPush(params: {
         errors.push(`${vendorName}: ${reason ?? '推送失败'}`)
         if (dedupeJobKey) await releaseScheduledSlot(dedupeJobKey, perConfigDedupe!.slotKey)
         continue
+      }
+
+      // 「重要提醒」不融进数据卡片，紧接着单独发一条；此时 @ 人也跟着挪到这条里。
+      // 数据卡片已发出且已 claim 时间槽，提醒发失败只记错误、不释放时间槽（否则下次会重发数据卡片）。
+      if (noticeText) {
+        const noticeRes = await sendSupplierPushCard(config, buildImportantNoticeCard(noticeText, mentions))
+        if (!noticeRes.ok) {
+          console.error(`${label} ✗ 重要提醒推送失败: ${vendorName} (${noticeRes.reason ?? '未知'})`)
+          errors.push(`${vendorName}: 重要提醒推送失败(${noticeRes.reason ?? '未知'})`)
+        }
       }
 
       void recordFeishuPushMessage({ supplierConfigId: config.id, chatId, messageId, pushLabel: '滞留数据告警' })
@@ -335,6 +350,7 @@ async function runOneScheduledPush(schedule: ExitAlarmSchedule, regionCode: stri
       mentionEnabled: schedule.mentionEnabled,
       routeCodeWhitelistPushEnabled: schedule.routeCodeWhitelistPushEnabled,
       clearancePrice: schedule.clearancePrice,
+      importantNotice: schedule.importantNotice,
       perConfigDedupe: { jobKeyPrefix, slotKey },
     })
     if ('error' in result) {

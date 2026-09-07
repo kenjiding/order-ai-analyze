@@ -35,6 +35,8 @@ export type ExitAlarmScheduleDraft = {
   arrivalScanDates: string[]
   /** 滞留清货价：每件清货补贴（美元）；填写后飞书卡片展示「未出仓件数 × 单价」的清货费用，为空则不展示 */
   clearancePrice: number | null
+  /** 重要提醒：填写后原样追加在推送卡片末尾；同时勾选「@ 相关人员」时 @ 人拼在提醒后面 */
+  importantNotice: string | null
 }
 
 export type ExitAlarmSchedule = ExitAlarmScheduleDraft & {

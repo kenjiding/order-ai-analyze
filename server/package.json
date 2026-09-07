@@ -14,7 +14,7 @@
     "db:generate": "drizzle-kit generate",
     "typecheck": "tsc -p tsconfig.json",
     "test:order-analyze": "tsx --test src/orderAnalyze/orderAnalyze.test.ts src/orderAnalyze/driverVendorEnrich.test.ts",
-    "test:feishu-card": "tsx --test src/feishu/buildFleetRichMessageCard.test.ts",
+    "test:feishu-card": "tsx --test src/feishu/buildFleetRichMessageCard.test.ts src/feishu/feishuMentionHelpers.test.ts",
     "test:container-reconcile": "tsx --test src/containerManagement/reconcileNet.test.ts",
     "test:container-access": "tsx --test src/containerManagement/access.test.ts",
     "test:container-card": "tsx --test src/feishu/buildContainerTransferCard.test.ts",

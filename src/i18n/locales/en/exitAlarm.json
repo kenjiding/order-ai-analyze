@@ -36,6 +36,8 @@
     "routeWhitelistPush": "Push route-code whitelist data",
     "clearancePrice": "Dwell clearance price",
     "clearancePricePlaceholder": "Leave blank to omit clearance fees",
+    "importantNotice": "‼️Important notice‼️",
+    "importantNoticePlaceholder": "Appended verbatim at the bottom of the push card; mentions follow it when \"@ related contacts\" is checked",
     "vendorConfig": "Vendor settings"
   },
   "weekday": {

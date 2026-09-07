@@ -36,6 +36,8 @@
     "routeWhitelistPush": "路由码白名单数据推送",
     "clearancePrice": "滞留清货价",
     "clearancePricePlaceholder": "不填则不推送清货费用",
+    "importantNotice": "重要提醒",
+    "importantNoticePlaceholder": "填写后原样追加在推送卡片末尾；勾选「@ 相关人员」时 @ 人跟在提醒后面",
     "vendorConfig": "供应商配置"
   },
   "weekday": {

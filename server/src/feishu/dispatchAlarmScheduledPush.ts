@@ -2,7 +2,7 @@ import { eq } from 'drizzle-orm'
 import { getDb, schema } from '../db'
 import type { DispatchAlarmSchedule, FleetSupplierPushConfig } from '../db/schema'
 import { buildDispatchAlarmCard } from './buildDispatchAlarmCard'
-import { parseSupplierMentionContacts, pickMentions } from './feishuMentionHelpers'
+import { buildImportantNoticeCard, parseSupplierMentionContacts, pickMentions } from './feishuMentionHelpers'
 import { createDispatchAlarmShareSnapshot } from './dispatchAlarmShareSnapshot'
 import { sendSupplierPushCard } from './sendSupplierPushCard'
 import { recordFeishuPushMessage } from './pushMessageRepository'
@@ -92,6 +92,8 @@ export async function executeDispatchAlarmPush(params: {
   mentionEnabled?: boolean
   /** 是否在落地页展示「司机地图」组件；默认 false */
   showDriverMap?: boolean
+  /** 重要提醒：填了就原样追加在卡片末尾，@ 人拼在它后面 */
+  importantNotice?: string | null
   /**
    * 仅供定时任务传入：按 (jobKeyPrefix:configId, slotKey) 对每个供应商配置单独做幂等去重。
    * 某个配置本次已经成功推送过则跳过，推送失败则释放交给下次 catch-up 重试；
@@ -112,6 +114,7 @@ export async function executeDispatchAlarmPush(params: {
     label,
     mentionEnabled,
     showDriverMap,
+    importantNotice,
     perConfigDedupe,
   } = params
 
@@ -195,6 +198,7 @@ export async function executeDispatchAlarmPush(params: {
           : null
 
       const mentions = pickMentions(parseSupplierMentionContacts(config.mentionOpenIds), Boolean(mentionEnabled))
+      const noticeText = (importantNotice ?? '').trim()
       const card = buildDispatchAlarmCard({
         vendorName,
         stationCode,
@@ -211,11 +215,21 @@ export async function executeDispatchAlarmPush(params: {
         alertThresholdPct,
         pushDescription: config.pushDescription,
         detailUrl: share?.url ?? null,
-        mentions,
+        // 填了重要提醒时 @ 人挪到提醒那条消息里，数据卡片不再 @
+        mentions: noticeText ? [] : mentions,
         supplierConfigId: config.id,
       })
       const { ok, reason, messageId, chatId } = await sendSupplierPushCard(config, card)
       if (ok) {
+        // 「重要提醒」不融进数据卡片，紧接着单独发一条；此时 @ 人也跟着挪到这条里。
+        // 数据卡片已发出且已 claim 时间槽，提醒发失败只记错误、不释放时间槽（否则下次会重发数据卡片）。
+        if (noticeText) {
+          const noticeRes = await sendSupplierPushCard(config, buildImportantNoticeCard(noticeText, mentions))
+          if (!noticeRes.ok) {
+            console.error(`${label} ✗ 重要提醒推送失败: ${vendorName} (${noticeRes.reason ?? '未知'})`)
+            errors.push(`${vendorName}: 重要提醒推送失败(${noticeRes.reason ?? '未知'})`)
+          }
+        }
         pushedCount++
         void recordFeishuPushMessage({ supplierConfigId: config.id, chatId, messageId, pushLabel: '24H派签告警' })
       } else {
@@ -326,6 +340,7 @@ async function runOneScheduledPush(schedule: DispatchAlarmSchedule, regionCode: 
       label,
       mentionEnabled: schedule.mentionEnabled,
       showDriverMap: schedule.showDriverMap,
+      importantNotice: schedule.importantNotice,
       perConfigDedupe: { jobKeyPrefix, slotKey },
     })
     if ('error' in result) {

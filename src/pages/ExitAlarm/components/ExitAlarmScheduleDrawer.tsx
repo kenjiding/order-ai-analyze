@@ -1,4 +1,4 @@
-import { Button, Checkbox, DatePicker, Drawer, InputNumber, TimePicker } from 'antd'
+import { Button, Checkbox, DatePicker, Drawer, Input, InputNumber, TimePicker } from 'antd'
 import dayjs from 'dayjs'
 import { AlarmClock, Clock, Plus, Save, Settings, Truck, X } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
@@ -110,6 +110,7 @@ export function ExitAlarmScheduleDrawer({
   const [routeCodeWhitelistPushEnabled, setRouteCodeWhitelistPushEnabled] = useState(false)
   const [arrivalScanRange, setArrivalScanRange] = useState<[string, string]>([yesterday(), yesterday()])
   const [clearancePrice, setClearancePrice] = useState<number | null>(null)
+  const [importantNotice, setImportantNotice] = useState('')
 
   useEffect(() => {
     if (!open) return
@@ -126,6 +127,7 @@ export function ExitAlarmScheduleDrawer({
         : [yesterday(), yesterday()],
     )
     setClearancePrice(editingSchedule?.clearancePrice ?? null)
+    setImportantNotice(editingSchedule?.importantNotice ?? '')
   }, [open, editingSchedule])
 
   const handleAddTime = () => setPushTimes((prev) => [...prev, { id: generateId(), time: '11:00' }])
@@ -164,6 +166,7 @@ export function ExitAlarmScheduleDrawer({
       routeCodeWhitelistPushEnabled,
       arrivalScanDates: expandDateRange(arrivalScanRange),
       clearancePrice,
+      importantNotice: importantNotice.trim() || null,
     }
     const ok = await onSubmit(draft)
     if (ok) onClose()
@@ -316,6 +319,18 @@ export function ExitAlarmScheduleDrawer({
                 onChange={(val) => setClearancePrice(typeof val === 'number' ? val : null)}
               />
             </div>
+          </div>
+          <div className="mt-3 flex flex-col gap-1">
+            <span className="text-sm text-slate-600">{t('drawer.importantNotice')}</span>
+            <Input.TextArea
+              value={importantNotice}
+              disabled={saving}
+              rows={3}
+              maxLength={500}
+              showCount
+              placeholder={t('drawer.importantNoticePlaceholder')}
+              onChange={(e) => setImportantNotice(e.target.value)}
+            />
           </div>
         </FormSection>
 
