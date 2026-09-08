@@ -1,9 +1,10 @@
-import { useMemo } from 'react'
-import { Boxes, History, PackageSearch, Pencil, Plus, Scale, Trash2, Warehouse } from 'lucide-react'
+import { useCallback, useMemo } from 'react'
+import { Boxes, Download, History, PackageSearch, Pencil, Plus, Scale, Trash2, Warehouse } from 'lucide-react'
 import { Button, Table, Tag, Tooltip } from 'antd'
 import type { ColumnsType } from 'antd/es/table'
 import { useTranslation } from 'react-i18next'
 import { PageSectionTabs } from '../../components/PageSectionTabs'
+import { exportBalancesToXlsx } from './exportBalances'
 import type { ContainerBalance } from '../../containerManagement/types'
 import { BalanceAuditPanel } from './components/BalanceAuditPanel'
 import { BalanceDeleteModal } from './components/BalanceDeleteModal'
@@ -91,7 +92,18 @@ export default function ContainerLedgerPage() {
     [page, t, tc],
   )
 
-  const totalQuantity = page.balances.reduce((sum, row) => sum + row.quantity, 0)
+  /** 在库合计按品类拆开：混在一起的总数对不上任何一次实物盘点，看了也没法用 */
+  const totalsByType = useMemo(() => {
+    const map = new Map<string, number>()
+    for (const row of page.balances) {
+      map.set(row.containerType, (map.get(row.containerType) ?? 0) + row.quantity)
+    }
+    return [...map.entries()]
+  }, [page.balances])
+
+  const exportBalances = useCallback(() => {
+    exportBalancesToXlsx(page.balances, t)
+  }, [page.balances, t])
 
   return (
     <div className="admin-page space-y-5">
@@ -107,22 +119,33 @@ export default function ContainerLedgerPage() {
             </div>
           </div>
           {page.tab === 'balances' ? (
-            <Button
-              type="primary"
-              icon={<Plus className="h-4 w-4" aria-hidden />}
-              onClick={page.openCreate}
-            >
-              {t('ledger.addRecord')}
-            </Button>
+            <div className="flex items-center gap-2">
+              <Button
+                icon={<Download className="h-4 w-4" aria-hidden />}
+                disabled={!page.balances.length}
+                onClick={exportBalances}
+              >
+                {t('ledger.exportBalances')}
+              </Button>
+              <Button
+                type="primary"
+                icon={<Plus className="h-4 w-4" aria-hidden />}
+                onClick={page.openCreate}
+              >
+                {t('ledger.addRecord')}
+              </Button>
+            </div>
           ) : null}
         </div>
         <div className="mt-4 flex flex-wrap gap-2 text-xs text-slate-600">
           <span className="inline-flex items-center rounded-md bg-slate-100 px-3 py-1">
             {t('ledger.entryCount', { count: page.balances.length })}
           </span>
-          <span className="inline-flex items-center rounded-md bg-slate-100 px-3 py-1">
-            {t('ledger.totalInStock', { total: totalQuantity })}
-          </span>
+          {totalsByType.map(([type, total]) => (
+            <span key={type} className="inline-flex items-center rounded-md bg-slate-100 px-3 py-1">
+              {t('ledger.totalInStockByType', { type: t(`containerType.${type}`), total })}
+            </span>
+          ))}
         </div>
       </header>
 

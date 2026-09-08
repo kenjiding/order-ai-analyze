@@ -251,12 +251,12 @@ function LedgerColumn({
   const totalPairs = (Object.keys(totals) as ContainerType[]).filter((t) => totals[t] > 0)
   return (
     <section
-      className={`overflow-hidden rounded-xl border bg-white ${
+      className={`flex min-w-0 flex-col overflow-hidden rounded-xl border bg-white ${
         isRec ? 'border-[#2f8f87]/25' : 'border-rose-200'
       }`}
     >
       <header
-        className={`flex items-center justify-between gap-3 border-b px-4 py-3 ${
+        className={`flex shrink-0 items-center justify-between gap-3 border-b px-4 py-3 ${
           isRec ? 'border-[#2f8f87]/20 bg-[#2f8f87]/[0.06]' : 'border-rose-100 bg-rose-50/70'
         }`}
       >
@@ -287,7 +287,8 @@ function LedgerColumn({
         </div>
       </header>
       {entries.length ? (
-        <ul className="divide-y divide-[var(--admin-line)]">
+        /* 对手方一多整页就拖得很长，两列各自内部滚动：表头合计始终留在视野里，页面高度也不再被条目数牵着走 */
+        <ul className="max-h-[26rem] divide-y divide-[var(--admin-line)] overflow-y-auto overscroll-contain">
           {entries.map((entry) => {
             const key = `${tone}:${entry.id}`
             return (
@@ -321,7 +322,7 @@ function PendingList({ pending, t }: { pending: Party[]; t: TFunction<'container
         <h3 className="text-sm font-medium text-amber-900">{t('reconciliation.pendingTitle')}</h3>
         <span className="text-[11px] text-amber-700">{t('reconciliation.pendingHint')}</span>
       </header>
-      <ul className="divide-y divide-amber-100">
+      <ul className="max-h-72 divide-y divide-amber-100 overflow-y-auto overscroll-contain">
         {pending.map((p) => (
           <li key={p.id} className="flex items-center justify-between gap-3 px-4 py-2.5">
             <span className="min-w-0">
@@ -469,7 +470,7 @@ export function ReconciliationPanel({ accounts }: Props) {
                 <header className="border-b border-[var(--admin-line)] px-4 py-2.5">
                   <h3 className="text-sm font-medium text-slate-500">{t('reconciliation.settledTitle')}</h3>
                 </header>
-                <ul className="divide-y divide-[var(--admin-line)]">
+                <ul className="max-h-72 divide-y divide-[var(--admin-line)] overflow-y-auto overscroll-contain">
                   {grouped.settled.map((p) => (
                     <li key={p.id} className="flex items-center justify-between gap-3 px-4 py-2.5">
                       <span className="min-w-0">

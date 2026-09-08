@@ -109,7 +109,13 @@
     "colLinkedTransfer": "Linked transfer",
     "colActor": "Actor",
     "emptyAudits": "No change log entries",
-    "tabTypes": "Types"
+    "tabTypes": "Types",
+    "totalInStockByType": "{{type}} in stock: {{total}}",
+    "exportBalances": "Export ledger",
+    "exportSheetName": "Container ledger",
+    "exportFileNamePrefix": "container-ledger_",
+    "exportEmpty": "No ledger rows to export",
+    "colUpdatedAt": "Updated at"
   },
   "accounts": {
     "title": "Station accounts",

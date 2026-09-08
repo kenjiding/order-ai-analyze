@@ -109,7 +109,13 @@
     "colLinkedTransfer": "关联流转",
     "colActor": "操作者",
     "emptyAudits": "暂无变更记录",
-    "tabTypes": "品类管理"
+    "tabTypes": "品类管理",
+    "totalInStockByType": "{{type}} 在库：{{total}}",
+    "exportBalances": "导出台账",
+    "exportSheetName": "容器台账",
+    "exportFileNamePrefix": "容器台账_",
+    "exportEmpty": "当前没有可导出的台账数据",
+    "colUpdatedAt": "更新时间"
   },
   "accounts": {
     "title": "站点账户",
