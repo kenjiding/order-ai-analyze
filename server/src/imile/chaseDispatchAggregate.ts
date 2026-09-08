@@ -12,12 +12,16 @@ export type BucketResult = {
 export type VendorStagnationWaybill = {
   waybillNo: string
   routeCode: string
+  /** 「本地件优先客户」包裹，供落地页橙色标出；非优先件省略该字段 */
+  isPriority?: boolean
 }
 
 export type VendorStagnationBucketDriverStat = {
   driverName: string
   driverCode: string
   count: number
+  /** 该司机在本区间的「本地件优先客户」件数（已去重） */
+  priorityCount: number
   /** 该司机在本区间的运单（已去重，按出现顺序，带路由码） */
   waybills: VendorStagnationWaybill[]
 }
@@ -31,6 +35,8 @@ export type VendorStagnationBucketStat = {
 
 export type VendorStagnationSummary = {
   totalStagnant: number
+  /** 去重后的「本地件优先客户」滞留件数；滞留单全部未签收，无需再拆 unsigned */
+  priorityTotal: number
   buckets: VendorStagnationBucketStat[]
 }
 
@@ -38,6 +44,16 @@ function waybillKey(row: StagnantWaybillRow, index: number): string {
   const no = (row.waybillNo ?? '').trim()
   // 无单号时用位置兜底，避免把不同单误判为同一单（宁可多算，不可漏算）
   return no || `__row_${index}`
+}
+
+function isPriorityClient(clientCode: string | undefined, codes?: Set<string>): boolean {
+  if (!codes || codes.size === 0 || !clientCode) return false
+  return codes.has(clientCode.trim().toUpperCase())
+}
+
+export type ChaseDispatchPriorityLookup = {
+  clientCodeByWaybillNo: Map<string, string>
+  priorityClientCodes: Set<string>
 }
 
 /**
@@ -49,9 +65,11 @@ export function aggregateVendorStagnation(
   bucketResults: BucketResult[],
   vendorCode: string,
   routeCodeByWaybillNo: Map<string, string> = new Map(),
+  priority?: ChaseDispatchPriorityLookup,
 ): VendorStagnationSummary {
   const target = vendorCode.trim()
   const totalSeen = new Set<string>()
+  const totalPrioritySeen = new Set<string>()
 
   const buckets: VendorStagnationBucketStat[] = []
 
@@ -80,21 +98,31 @@ export function aggregateVendorStagnation(
       seen.add(key)
       if (waybillNo) {
         const routeCode = routeCodeByWaybillNo.get(waybillNo) || '未知路由'
-        driverWaybills.get(driverCode)!.push({ waybillNo, routeCode })
+        const isPriority = isPriorityClient(priority?.clientCodeByWaybillNo.get(waybillNo), priority?.priorityClientCodes)
+        if (isPriority) totalPrioritySeen.add(key)
+        driverWaybills.get(driverCode)!.push({
+          waybillNo,
+          routeCode,
+          ...(isPriority ? { isPriority: true } : {}),
+        })
       }
     })
 
     const drivers: VendorStagnationBucketDriverStat[] = [...driverSeen.entries()]
-      .map(([driverCode, keys]) => ({
-        driverName: driverMeta.get(driverCode)!.driverName,
-        driverCode,
-        count: keys.size,
-        waybills: driverWaybills.get(driverCode) ?? [],
-      }))
+      .map(([driverCode, keys]) => {
+        const waybills = driverWaybills.get(driverCode) ?? []
+        return {
+          driverName: driverMeta.get(driverCode)!.driverName,
+          driverCode,
+          count: keys.size,
+          priorityCount: waybills.filter((w) => w.isPriority).length,
+          waybills,
+        }
+      })
       .sort((a, b) => b.count - a.count)
 
     buckets.push({ bucket, label: stagnationBucketLabel(bucket), count: bucketSeen.size, drivers })
   }
 
-  return { totalStagnant: totalSeen.size, buckets }
+  return { totalStagnant: totalSeen.size, priorityTotal: totalPrioritySeen.size, buckets }
 }

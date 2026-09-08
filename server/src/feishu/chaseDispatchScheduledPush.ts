@@ -32,6 +32,7 @@ import {
 import { resolveDueScheduledSlots } from '../jobs/scheduledDueSlots'
 import { createChaseDispatchShareSnapshot } from './chaseDispatchShareSnapshot'
 import { recordFeishuPushMessage } from './pushMessageRepository'
+import { loadPriorityClientCodes } from '../priorityClients'
 
 type EnabledSchedule = { schedule: ChaseDispatchSchedule; regionCode: string | null }
 
@@ -146,7 +147,9 @@ export async function executeChaseDispatchPush(params: {
     console.error(`${label} 路由码查询失败: ${routeCodeResult.message}`)
     return { error: `路由码查询失败: ${routeCodeResult.message}` }
   }
-  const routeCodeByWaybillNo = routeCodeResult.data
+  const { routeCodeByWaybillNo, clientCodeByWaybillNo } = routeCodeResult.data
+  const priorityClientCodes = await loadPriorityClientCodes()
+  const priorityLookup = { clientCodeByWaybillNo, priorityClientCodes }
 
   const filterRowsByRouteCode = (rows: StagnantWaybillRow[], allowed: Set<string>): StagnantWaybillRow[] => {
     if (allowed.size === 0) return []
@@ -172,7 +175,12 @@ export async function executeChaseDispatchPush(params: {
         : b.rows
       return { bucket: b.bucket, rows: filterRowsByRouteCode(byVendor, allowedRouteCodes) }
     })
-    const summary = aggregateVendorStagnation(configBucketResults, config.vendorCode, routeCodeByWaybillNo)
+    const summary = aggregateVendorStagnation(
+      configBucketResults,
+      config.vendorCode,
+      routeCodeByWaybillNo,
+      priorityLookup,
+    )
 
     // 无滞留数据不推送；不 claim，留给下次重新判断
     if (summary.totalStagnant === 0) {

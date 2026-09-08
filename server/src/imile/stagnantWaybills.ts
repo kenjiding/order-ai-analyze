@@ -177,17 +177,28 @@ function wideRouteCodeSearchWindow(): { startTime: string; endTime: string } {
   return { startTime: '2018-01-01 00:00:00', endTime: `${endDate} 23:59:59` }
 }
 
+export type StagnantWaybillLookupMaps = {
+  routeCodeByWaybillNo: Map<string, string>
+  /** searchWaybill 的 clientCode，供催派按「优先客户配置」打标 */
+  clientCodeByWaybillNo: Map<string, string>
+}
+
+function emptyLookupMaps(): StagnantWaybillLookupMaps {
+  return { routeCodeByWaybillNo: new Map(), clientCodeByWaybillNo: new Map() }
+}
+
 /**
- * 按 waybillNo 批量查询 searchWaybill，只提取路由码（consigneeRouteCode），供催派按供应商 routeCode 二次筛选。
- * 返回 waybillNo -> consigneeRouteCode 映射；查不到的单号不出现在结果里。
+ * 按 waybillNo 批量查询 searchWaybill，提取路由码（consigneeRouteCode）与商家编码（clientCode）。
+ * 路由码供催派按供应商 routeCode 二次筛选；clientCode 供「本地件优先客户」打标。
+ * 查不到的单号不出现在对应映射里。
  */
 export async function fetchStagnantWaybillRouteCodes(
   token: string,
   waybillNos: string[],
   stationCode: string,
-): Promise<{ ok: true; data: Map<string, string> } | ApiError> {
+): Promise<{ ok: true; data: StagnantWaybillLookupMaps } | ApiError> {
   const uniqueNos = [...new Set(waybillNos.filter((no) => typeof no === 'string' && no.trim().length > 0))]
-  const result = new Map<string, string>()
+  const result = emptyLookupMaps()
   if (uniqueNos.length === 0) return { ok: true, data: result }
 
   const normalizedToken = normalizeImileToken(token)
@@ -224,8 +235,11 @@ export async function fetchStagnantWaybillRouteCodes(
     for (const row of pageResult.records) {
       if (!isRecord(row)) continue
       const waybillNo = typeof row.waybillNo === 'string' ? row.waybillNo.trim() : ''
+      if (!waybillNo) continue
       const consigneeRouteCode = typeof row.consigneeRouteCode === 'string' ? row.consigneeRouteCode.trim() : ''
-      if (waybillNo && consigneeRouteCode) result.set(waybillNo, consigneeRouteCode)
+      if (consigneeRouteCode) result.routeCodeByWaybillNo.set(waybillNo, consigneeRouteCode)
+      const clientCode = typeof row.clientCode === 'string' ? row.clientCode.trim() : ''
+      if (clientCode) result.clientCodeByWaybillNo.set(waybillNo, clientCode)
     }
 
     if (i < batches.length - 1) await sleep(ROUTE_CODE_BATCH_DELAY_MS)

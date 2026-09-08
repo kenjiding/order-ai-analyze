@@ -14,6 +14,8 @@ export type ChaseDispatchSharePayload = {
   baseDate: string
   pushTime: string
   totalStagnant: number
+  /** 「本地件优先客户」滞留件数；旧快照可能没有该字段 */
+  priorityTotal?: number
   buckets: VendorStagnationSummary['buckets']
 }
 
@@ -56,6 +58,7 @@ export async function createChaseDispatchShareSnapshot(params: {
     baseDate,
     pushTime,
     totalStagnant: summary.totalStagnant,
+    priorityTotal: summary.priorityTotal,
     buckets: summary.buckets,
   }
 
@@ -120,6 +123,7 @@ export async function loadChaseDispatchShareSnapshot(
     baseDate: String(payload.baseDate ?? row.baseDate),
     pushTime: String(payload.pushTime ?? row.pushTime),
     totalStagnant: typeof payload.totalStagnant === 'number' ? payload.totalStagnant : 0,
+    priorityTotal: typeof payload.priorityTotal === 'number' ? payload.priorityTotal : 0,
     buckets: Array.isArray(payload.buckets) ? payload.buckets : [],
     createdAt: new Date(row.createdAt).toISOString(),
   }

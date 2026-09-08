@@ -38,6 +38,8 @@ type ShareDriverRow = {
   name: string
   code: string
   count: number
+  /** 司机维度优先客户件数，>0 时落地页橙色标出 */
+  priorityCount: number
   waybillNos: string[]
   routes: ShareRouteGroup[]
 }
@@ -58,6 +60,8 @@ type ShareViewModel = {
   subtitle: string
   metricLabel: string
   metricValue: number
+  /** 催派落地页展示「Priority Packages」总数；派签告警不展示该列 */
+  priorityValue: number | null
   groups: ShareGroup[]
   emptyMessage: string
   showDriverMap: boolean
@@ -105,6 +109,7 @@ function toChaseDispatchViewModel(data: ChaseDispatchShareView, t: TFunction<'ch
     subtitle: t('chaseSubtitle', { baseDate: data.baseDate, pushTime: data.pushTime }),
     metricLabel: t('metricTotalStagnant'),
     metricValue: data.totalStagnant,
+    priorityValue: data.priorityTotal ?? 0,
     groups: data.buckets
       .filter((b) => b.count > 0 && b.drivers.length > 0)
       .map((b) => ({
@@ -116,8 +121,9 @@ function toChaseDispatchViewModel(data: ChaseDispatchShareView, t: TFunction<'ch
           name: d.driverName,
           code: d.driverCode,
           count: d.count,
+          priorityCount: d.priorityCount ?? d.waybills.filter((w) => w.isPriority === true).length,
           waybillNos: d.waybills.map((w) => w.waybillNo),
-          routes: groupByRoute(d.waybills, false, t('unknownRoute')),
+          routes: groupByRoute(d.waybills, true, t('unknownRoute')),
         })),
       })),
     emptyMessage: t('emptyChase'),
@@ -150,6 +156,7 @@ function toDispatchAlarmViewModel(data: DispatchAlarmShareView, t: TFunction<'ch
         name: driverRowName(d, t),
         code: d.courierCode,
         count: d.neverSignedWaybills.length,
+        priorityCount: d.neverSignedWaybills.filter((w) => w.isPriority === true).length,
         waybillNos: d.neverSignedWaybills.map((w) => w.waybillNo),
           routes: groupByRoute(d.neverSignedWaybills, true, t('unknownRoute')),
       })),
@@ -165,6 +172,7 @@ function toDispatchAlarmViewModel(data: DispatchAlarmShareView, t: TFunction<'ch
         name: driverRowName(d, t),
         code: d.courierCode,
         count: d.lateSignedWaybills.length,
+        priorityCount: 0,
         waybillNos: d.lateSignedWaybills.map((w) => w.waybillNo),
           routes: groupByRoute(d.lateSignedWaybills, false, t('unknownRoute')),
       })),
@@ -181,6 +189,7 @@ function toDispatchAlarmViewModel(data: DispatchAlarmShareView, t: TFunction<'ch
         name: driverRowName(d, t),
         code: d.courierCode,
         count: d.problemCount,
+        priorityCount: 0,
         waybillNos: d.problemWaybills.map((w) => w.waybillNo),
           routes: groupByRoute(d.problemWaybills, false, t('unknownRoute')),
       })),
@@ -200,6 +209,7 @@ function toDispatchAlarmViewModel(data: DispatchAlarmShareView, t: TFunction<'ch
     }),
     metricLabel: t('metricNotMet24h'),
     metricValue: unmetTotal,
+    priorityValue: null,
     groups,
     emptyMessage: t('emptyDispatch'),
     showDriverMap: data.showDriverMap,
@@ -344,7 +354,7 @@ export default function ChaseDispatchSharePage() {
           <p className="wbs-share__brand">{view.brand}</p>
           <h1 className="wbs-share__title">{view.vendorName}</h1>
           <p className="wbs-share__meta">{view.subtitle}</p>
-          <div className="wbs-share__stats">
+          <div className={`wbs-share__stats${view.priorityValue != null ? ' wbs-share__stats--with-priority' : ''}`}>
             <div>
               <p className="wbs-share__total-label">{view.metricLabel}</p>
               <p
@@ -353,6 +363,16 @@ export default function ChaseDispatchSharePage() {
                 {view.metricValue}
               </p>
             </div>
+            {view.priorityValue != null ? (
+              <div>
+                <p className="wbs-share__total-label">{t('metricPriorityPackages')}</p>
+                <p
+                  className={`wbs-share__total${view.priorityValue > 0 ? ' wbs-share__total--priority' : ' wbs-share__total--ok'}`}
+                >
+                  {view.priorityValue}
+                </p>
+              </div>
+            ) : null}
             <button
               type="button"
               className="wbs-share__copy-all"
@@ -406,6 +426,11 @@ export default function ChaseDispatchSharePage() {
                             <span className="wbs-share__driver-code">{driver.code}</span>
                           </div>
                           <div className="wbs-share__driver-actions">
+                            {driver.priorityCount > 0 ? (
+                              <span className="wbs-share__pill wbs-share__pill--priority" title={t('priorityParcel')}>
+                                {t('priorityCount', { count: driver.priorityCount })}
+                              </span>
+                            ) : null}
                             <span className="wbs-share__pill">{driver.count}</span>
                             <button
                               type="button"

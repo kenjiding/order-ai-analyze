@@ -45,6 +45,7 @@ test('aggregateVendorStagnation 按 driverVendorCode 过滤并跨区间去重', 
   const summary = aggregateVendorStagnation(bucketResults, 'V1')
   // V1 去重后共 W1 W2 W3 = 3 单
   assert.equal(summary.totalStagnant, 3)
+  assert.equal(summary.priorityTotal, 0)
   // 0-1 区间 V1 有 W1 W2 = 2；1-2 区间 V1 有 W1 W3 = 2
   assert.deepEqual(
     summary.buckets.map((b) => [b.bucket, b.count]),
@@ -85,4 +86,43 @@ test('aggregateVendorStagnation 按 routeCodeByWaybillNo 附加路由码，未�
     { waybillNo: 'W1', routeCode: 'R-A' },
     { waybillNo: 'W2', routeCode: '未知路由' },
   ])
+})
+
+test('aggregateVendorStagnation 按 clientCode 命中优先客户：跨区间去重总数 + 司机维度件数 + 运单打标', () => {
+  const bucketResults: BucketResult[] = [
+    {
+      bucket: '0-1',
+      rows: [
+        { waybillNo: 'W1', driverVendorCode: 'V1', driverCode: 'D1', driverName: '张三' },
+        { waybillNo: 'W2', driverVendorCode: 'V1', driverCode: 'D2', driverName: '李四' },
+      ],
+    },
+    {
+      bucket: '1-2',
+      rows: [
+        { waybillNo: 'W1', driverVendorCode: 'V1', driverCode: 'D1', driverName: '张三' },
+        { waybillNo: 'W3', driverVendorCode: 'V1', driverCode: 'D1', driverName: '张三' },
+      ],
+    },
+  ]
+  const summary = aggregateVendorStagnation(bucketResults, 'V1', new Map([['W1', 'R-A']]), {
+    clientCodeByWaybillNo: new Map([
+      ['W1', 'p1'],
+      ['W2', 'OTHER'],
+      ['W3', 'P1'],
+    ]),
+    priorityClientCodes: new Set(['P1']),
+  })
+  // W1+W3 命中（大小写不敏感），W1 跨区间去重后总数 2
+  assert.equal(summary.priorityTotal, 2)
+  assert.equal(summary.totalStagnant, 3)
+  const byBucket = Object.fromEntries(
+    summary.buckets.map((b) => [b.bucket, Object.fromEntries(b.drivers.map((d) => [d.driverCode, d.priorityCount]))]),
+  )
+  assert.deepEqual(byBucket, {
+    '0-1': { D1: 1, D2: 0 },
+    '1-2': { D1: 2 },
+  })
+  assert.equal(summary.buckets[0].drivers.find((d) => d.driverCode === 'D1')?.waybills[0]?.isPriority, true)
+  assert.equal(summary.buckets[0].drivers.find((d) => d.driverCode === 'D2')?.waybills[0]?.isPriority, undefined)
 })

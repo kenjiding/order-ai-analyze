@@ -4,12 +4,16 @@ import type { DriverMapPointsResponse } from '../../components/DriverMap/driverM
 export type ChaseDispatchShareWaybill = {
   waybillNo: string
   routeCode: string
+  /** 「本地件优先客户」包裹，落地页橙色标出 */
+  isPriority?: boolean
 }
 
 export type ChaseDispatchShareDriver = {
   driverName: string
   driverCode: string
   count: number
+  /** 该司机优先客户件数；旧快照可能没有 */
+  priorityCount?: number
   waybills: ChaseDispatchShareWaybill[]
 }
 
@@ -26,6 +30,8 @@ export type ChaseDispatchShareView = {
   baseDate: string
   pushTime: string
   totalStagnant: number
+  /** 「本地件优先客户」滞留件数；旧快照可能没有 */
+  priorityTotal?: number
   buckets: ChaseDispatchShareBucket[]
   createdAt: string
 }

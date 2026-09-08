@@ -100,6 +100,25 @@ html[data-share-shell] body::before {
   border-top: 1px dashed var(--wbs-line);
 }
 
+.wbs-share__stats--with-priority {
+  grid-template-columns: 1fr 1fr auto;
+}
+
+.wbs-share__stats--with-priority .wbs-share__total {
+  font-size: clamp(2rem, 6vw, 2.8rem);
+}
+
+@media (max-width: 520px) {
+  .wbs-share__stats--with-priority {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .wbs-share__stats--with-priority .wbs-share__copy-all {
+    grid-column: 1 / -1;
+    justify-self: start;
+  }
+}
+
 .wbs-share__total-label {
   font-size: 0.75rem;
   font-weight: 600;
@@ -123,6 +142,10 @@ html[data-share-shell] body::before {
 
 .wbs-share__total--alert {
   color: var(--wbs-alert);
+}
+
+.wbs-share__total--priority {
+  color: #d97706;
 }
 
 .wbs-share__copy-all {
@@ -308,6 +331,12 @@ html[data-share-shell] body::before {
   border-radius: 999px;
   background: var(--wbs-alert-soft);
   color: var(--wbs-alert);
+}
+
+.wbs-share__pill--priority {
+  background: #fff2dc;
+  color: #b45309;
+  border: 1px solid #f59e0b;
 }
 
 .wbs-share__copy {

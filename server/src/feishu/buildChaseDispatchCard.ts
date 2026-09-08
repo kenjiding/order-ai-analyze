@@ -3,7 +3,7 @@ import { tzDisplayName, type AusTz } from '../imile/ausTimezone'
 import { buildMentionLarkMd, type SupplierMentionContact } from './feishuMentionHelpers'
 
 type CardEl = Record<string, unknown>
-type MarkColor = 'red' | 'orange' | 'green' | 'grey' | 'blue'
+type MarkColor = 'red' | 'orange' | 'green' | 'grey' | 'blue' | 'purple'
 
 function md(content: string): CardEl {
   return { tag: 'markdown', content }
@@ -20,6 +20,15 @@ function footerCaption(content: string): CardEl {
 
 function colored(value: string, color: MarkColor): string {
   return `<font color='${color}'>${value}</font>`
+}
+
+/**
+ * 司机名原始格式类似 "ADL-Dar-052-Khushdeep Singh"，按 "-" 取最后一段，卡片上不展示站点/路由前缀。
+ * 仅飞书卡片展示；落地页保留全名。
+ */
+function shortDriverName(driverName: string): string {
+  const parts = driverName.split('-')
+  return parts[parts.length - 1].trim() || driverName
 }
 
 /**
@@ -59,7 +68,7 @@ export function buildChaseDispatchCard(params: {
 }): Record<string, unknown> {
   const { vendorName, baseDate, pushTime, tz, summary, pushDescription, detailUrl, mentions, supplierConfigId } =
     params
-  const { totalStagnant, buckets } = summary
+  const { totalStagnant, priorityTotal, buckets } = summary
   const elements: CardEl[] = []
 
   // 供应商名称已在卡片 header 展示，此处仅可选地展示推送说明
@@ -84,6 +93,14 @@ export function buildChaseDispatchCard(params: {
         .join(' ｜ '),
     ),
   )
+  elements.push(
+    md(
+      colored(
+        `**Priority Packages:** ${priorityTotal}`,
+        priorityTotal > 0 ? 'purple' : 'green',
+      ),
+    ),
+  )
 
   // Per driver, grouped by stagnation range
   const bucketsWithDrivers = activeBuckets.filter((b) => b.drivers.length > 0)
@@ -91,7 +108,12 @@ export function buildChaseDispatchCard(params: {
     elements.push(hr())
     const bucketBlocks = bucketsWithDrivers.map((b) => {
       const driverLines = b.drivers
-        .map((d) => `· ${d.driverName} (${d.driverCode}): ${colored(`${d.count}`, d.count >= 10 ? 'red' : 'grey')}`)
+        .map((d) => {
+          const countColor: MarkColor = d.count >= 10 ? 'red' : 'grey'
+          const prioritySuffix =
+            d.priorityCount > 0 ? ` / ${colored(`${d.priorityCount} Priorities`, 'orange')}` : ''
+          return `· ${shortDriverName(d.driverName)} (${d.driverCode}): ${colored(`${d.count}`, countColor)}${prioritySuffix}`
+        })
         .join('\n')
       return `**${b.bucket} days:**\n${driverLines}`
     })
