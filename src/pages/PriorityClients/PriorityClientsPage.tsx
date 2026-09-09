@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Button, Checkbox, Form, Input, Modal, Table, Tag } from 'antd'
+import { Button, Checkbox, Form, Input, Modal, Table, Tag, Upload } from 'antd'
 import type { ColumnsType } from 'antd/es/table'
-import { Pencil, Plus, Star, Trash2 } from 'lucide-react'
+import { Pencil, Plus, Star, Trash2, Upload as UploadIcon } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { backendFetch } from '../../api/httpClient'
 import { confirmDialog } from '../../utils/confirmDialog'
 import { showToast } from '../../utils/toast'
+import { parsePriorityClientFile } from './priorityClientsImport'
 
 export type PriorityClient = {
   id: string
@@ -46,6 +47,7 @@ export default function PriorityClientsPage() {
   const [keyword, setKeyword] = useState('')
   const [editing, setEditing] = useState<PriorityClient | null>(null)
   const [formOpen, setFormOpen] = useState(false)
+  const [importing, setImporting] = useState(false)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -117,6 +119,30 @@ export default function PriorityClientsPage() {
     showToast(t('toastRemoved'), 'success')
   }, [t])
 
+  const importFile = useCallback(
+    async (file: File) => {
+      setImporting(true)
+      const parsed = await parsePriorityClientFile(file)
+      if (!parsed.ok) {
+        setImporting(false)
+        showToast(t(`importErr${parsed.error.charAt(0).toUpperCase()}${parsed.error.slice(1)}`), 'error')
+        return
+      }
+      const res = await callApi<{ inserted: number; skipped: number }>('/bulk', {
+        method: 'POST',
+        body: JSON.stringify({ clients: parsed.clients }),
+      })
+      setImporting(false)
+      if (!res.ok) {
+        showToast(res.error || t('requestFailed'), 'error')
+        return
+      }
+      showToast(t('importDone', res.data), 'success')
+      await load()
+    },
+    [load, t],
+  )
+
   const filtered = useMemo(() => {
     const kw = keyword.trim().toLowerCase()
     if (!kw) return clients
@@ -187,9 +213,23 @@ export default function PriorityClientsPage() {
               <p className="mt-1 max-w-2xl text-sm text-slate-600">{t('description')}</p>
             </div>
           </div>
-          <Button type="primary" icon={<Plus className="h-4 w-4" aria-hidden />} onClick={() => openForm(null)}>
-            {t('addClient')}
-          </Button>
+          <div className="flex items-center gap-2">
+            <Upload
+              accept=".xlsx,.xls,.csv"
+              showUploadList={false}
+              beforeUpload={(file) => {
+                void importFile(file)
+                return false
+              }}
+            >
+              <Button loading={importing} icon={<UploadIcon className="h-4 w-4" aria-hidden />}>
+                {t('importClients')}
+              </Button>
+            </Upload>
+            <Button type="primary" icon={<Plus className="h-4 w-4" aria-hidden />} onClick={() => openForm(null)}>
+              {t('addClient')}
+            </Button>
+          </div>
         </div>
         <div className="mt-4 flex flex-wrap items-center gap-3">
           <Input.Search

@@ -24,5 +24,14 @@
   "confirmRemoveTitle": "确认移除优先客户「{{name}}」？",
   "confirmRemoveContent": "商家编码 {{code}} 将从优先客户名单中删除。",
   "requestFailed": "请求失败",
-  "backendUnreachable": "无法访问后端"
+  "backendUnreachable": "无法访问后端",
+  "importClients": "批量导入",
+  "importParsing": "正在解析文件…",
+  "importDone": "导入完成：新增 {{inserted}} 条，跳过 {{skipped}} 条（重复或已存在）",
+  "importErrMissingCodeColumn": "未找到商家编码列（支持「商家编码 / Client Code」或 parent_client_code）",
+  "importErrNoValidRows": "表格中没有可导入的数据行",
+  "importErrTooManyRows": "单次最多导入 5000 条",
+  "importErrUnsupportedType": "仅支持 .xlsx / .xls / .csv 文件",
+  "importErrEmptySheet": "表格内容为空",
+  "importErrParseFailed": "文件解析失败，请确认格式"
 }

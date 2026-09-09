@@ -64,8 +64,11 @@ function zoneTile(routeCode: string, pending: number, total: number, priority: n
   const exited = total - pending
   const rate = total > 0 ? ((exited / total) * 100).toFixed(0) : '0'
   // 首行不再报未出仓件数，改报该路由的「本地件优先客户」包裹数——供应商据此优先清这批件
-  const priorityColor: MarkColor = priority === 0 ? 'grey' : priority >= 10 ? 'red' : 'orange'
-  const firstLine = `**${routeCode}** - ${colored(`${priority} Priorities`, priorityColor)}`
+  const priorityColor: MarkColor = priority >= 10 ? 'red' : 'orange'
+  const firstLine =
+    priority > 0
+      ? `**${routeCode}** - ${colored(`${priority} Priorities`, priorityColor)}`
+      : `**${routeCode}**`
   const secondLine = colored(`${exited} / ${total} total · ${rate}%`, 'grey')
   return {
     tag: 'column',
@@ -220,9 +223,15 @@ export function buildExitAlarmCard(params: {
   const totalPriority = Object.values(zoneBreakdown).reduce((sum, zone) => sum + zone.priority, 0)
   const exitedPriority = Object.values(zoneBreakdown).reduce((sum, zone) => sum + zone.priorityExited, 0)
   const pendingPriority = totalPriority - exitedPriority
+  // 始终三块：有清货费用时让位——Not exited 并入 Exit rate 副行；没有则单列 Not exited
+  const showClearance = Boolean(clearancePrice && clearancePrice > 0 && totalPending > 0)
   const kpiTiles = [
-    summaryTile('Not exited', `${totalPending}`, `${totalWaybills} total`, totalPending > 0 ? 'red' : 'green'),
-    summaryTile('Exit rate', `${exitRate}%`, `${exited} exited on time`, 'blue'),
+    ...(showClearance
+      ? [summaryTile('Exit rate', `${exitRate}%`, `${exited} / ${totalWaybills} total`, 'blue')]
+      : [
+          summaryTile('Not exited', `${totalPending}`, `${totalWaybills} total`, totalPending > 0 ? 'red' : 'green'),
+          summaryTile('Exit rate', `${exitRate}%`, `${exited} exited on time`, 'blue'),
+        ]),
     summaryTile(
       'Priority Packages',
       `${pendingPriority} Not exited`,
@@ -230,10 +239,10 @@ export function buildExitAlarmCard(params: {
       pendingPriority > 0 ? 'orange' : 'green',
     ),
   ]
-  if (clearancePrice && clearancePrice > 0 && totalPending > 0) {
-    kpiTiles.push(summaryTile('Clearance cost', money(totalPending * clearancePrice), '', 'grey'))
+  if (showClearance) {
+    kpiTiles.push(summaryTile('Clearance cost', money(totalPending * clearancePrice!), '', 'grey'))
   }
-  elements.push(columnSet(kpiTiles, kpiTiles.length === 3 ? 'trisect' : 'none'))
+  elements.push(columnSet(kpiTiles, 'trisect'))
 
   elements.push(hr())
 

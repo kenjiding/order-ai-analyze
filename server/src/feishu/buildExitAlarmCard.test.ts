@@ -39,6 +39,17 @@ test('路由磁贴首行展示「本地件优先客户」包裹数，不再展�
   assert.doesNotMatch(text, /100 not exited/)
 })
 
+test('优先件为 0 的路由不展示 Priorities', () => {
+  const text = bodyText(
+    buildExitAlarmCard({
+      ...baseParams,
+      zoneBreakdown: { GG136: { pending: 1, total: 1, priority: 0, priorityExited: 0 } },
+    }),
+  )
+  assert.match(text, /\*\*GG136\*\*/)
+  assert.doesNotMatch(text, /Priorities/)
+})
+
 test('KPI 行在 Exit rate 右侧展示「Priority Packages」磁贴，取各路由优先件之和', () => {
   const text = bodyText(
     buildExitAlarmCard({
@@ -50,4 +61,15 @@ test('KPI 行在 Exit rate 右侧展示「Priority Packages」磁贴，取各路
   // 主数字为未出仓优先件 (34+22)-(30+20)=6，副行为优先件总数 56
   assert.match(text, /\*\*6 Not exited\*\*/)
   assert.match(text, /56 total/)
+})
+
+test('KPI 行恒为三块：无清货费用时保留 Not exited 磁贴，有清货费用时并入 Exit rate 副行', () => {
+  const plain = bodyText(buildExitAlarmCard(baseParams))
+  assert.match(plain, /\*\*Not exited\*\*/)
+  assert.match(plain, /200 exited on time/)
+
+  const withCost = bodyText(buildExitAlarmCard({ ...baseParams, clearancePrice: 1.25 }))
+  assert.doesNotMatch(withCost, /\*\*Not exited\*\*/)
+  assert.match(withCost, /200 \/ 300 total/)
+  assert.match(withCost, /\*\*Clearance cost\*\*/)
 })

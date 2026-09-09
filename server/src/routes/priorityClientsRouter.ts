@@ -3,6 +3,7 @@ import { asc, eq } from 'drizzle-orm'
 import type { AuthenticatedRequest } from '../auth/middleware'
 import { getDb, schema } from '../db'
 import type { PriorityClient } from '../db/schema'
+import { loadPriorityClientCodes, normalizeClientCode } from '../priorityClients'
 
 export const priorityClientsRouter = Router()
 
@@ -57,6 +58,54 @@ priorityClientsRouter.post('/', async (req: AuthenticatedRequest, res: Response)
       return
     }
     res.status(500).json({ ok: false, error: '新增优先客户失败' })
+  }
+})
+
+/** 表格批量导入：文件内按编码去重，已存在的编码直接跳过 */
+priorityClientsRouter.post('/bulk', async (req: AuthenticatedRequest, res: Response) => {
+  const list = (req.body as { clients?: unknown } | null)?.clients
+  if (!Array.isArray(list) || list.length === 0) {
+    res.status(400).json({ ok: false, error: '未解析到可导入的数据' })
+    return
+  }
+  if (list.length > 5000) {
+    res.status(400).json({ ok: false, error: '单次最多导入 5000 条' })
+    return
+  }
+  const seen = new Set<string>()
+  const drafts: ClientDraft[] = []
+  let invalid = 0
+  for (const item of list) {
+    const draft = parseDraft(item)
+    if (typeof draft === 'string') {
+      invalid += 1
+      continue
+    }
+    const key = normalizeClientCode(draft.clientCode)
+    if (seen.has(key)) continue
+    seen.add(key)
+    drafts.push(draft)
+  }
+  if (drafts.length === 0) {
+    res.status(400).json({ ok: false, error: '没有有效的商家编码' })
+    return
+  }
+  try {
+    const existing = await loadPriorityClientCodes()
+    const fresh = drafts.filter((draft) => !existing.has(normalizeClientCode(draft.clientCode)))
+    const rows = fresh.length
+      ? await getDb()
+          .insert(schema.priorityClients)
+          .values(fresh)
+          .onConflictDoNothing({ target: schema.priorityClients.clientCode })
+          .returning({ id: schema.priorityClients.id })
+      : []
+    res.json({
+      ok: true,
+      data: { received: list.length, inserted: rows.length, skipped: list.length - rows.length, invalid },
+    })
+  } catch {
+    res.status(500).json({ ok: false, error: '批量导入优先客户失败' })
   }
 })
 

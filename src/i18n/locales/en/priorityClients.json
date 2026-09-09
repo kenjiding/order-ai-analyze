@@ -24,5 +24,14 @@
   "confirmRemoveTitle": "Remove priority client \"{{name}}\"?",
   "confirmRemoveContent": "Client code {{code}} will be removed from the priority list.",
   "requestFailed": "Request failed",
-  "backendUnreachable": "Cannot reach backend"
+  "backendUnreachable": "Cannot reach backend",
+  "importClients": "Bulk import",
+  "importParsing": "Parsing file…",
+  "importDone": "Import finished: {{inserted}} added, {{skipped}} skipped (duplicate or existing)",
+  "importErrMissingCodeColumn": "Client code column not found (accepts \"Client Code\" or parent_client_code)",
+  "importErrNoValidRows": "No importable rows found",
+  "importErrTooManyRows": "At most 5000 rows per import",
+  "importErrUnsupportedType": "Only .xlsx / .xls / .csv files are supported",
+  "importErrEmptySheet": "The sheet is empty",
+  "importErrParseFailed": "Failed to parse the file, please check its format"
 }
