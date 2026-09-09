@@ -16,7 +16,8 @@ export function editorContentFromStored(value: string): string {
 
 /** 段落块是否为空（无文字、也无图片/分割线等实体内容） */
 function isEmptyEditorBlock(el: Element): boolean {
-  if (el.querySelector('img, hr')) return false
+  // 图片/分割线是块级节点，编辑器里就是顶层元素本身（不是后代），必须连自身一起判
+  if (el.matches('img, hr') || el.querySelector('img, hr')) return false
   return ((el.textContent ?? '').replace(/\u00a0/g, ' ').trim()) === ''
 }
 

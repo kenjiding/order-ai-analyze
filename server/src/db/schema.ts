@@ -436,6 +436,8 @@ export const dispatchAlarmSchedules = pgTable('dispatch_alarm_schedules', {
   mentionEnabled: boolean('mention_enabled').notNull().default(false),
   /** 是否在 24H 派签落地页展示「司机地图」组件 */
   showDriverMap: boolean('show_driver_map').notNull().default(false),
+  /** 是否剔除供应商配置里的路由码白名单数据；关掉则白名单运单照常计入统计 */
+  excludeWhitelist: boolean('exclude_whitelist').notNull().default(true),
   /** 重要提醒：填写后原样追加在卡片末尾；同时勾选 mentionEnabled 时 @ 人拼在提醒后面 */
   importantNotice: text('important_notice'),
   /** 「立刻推送」使用的到件扫描日期数组 YYYY-MM-DD（可多选，多日数据合并统计）；为空时按自动计算的最近工作日兜底，不影响自动定时推送 */

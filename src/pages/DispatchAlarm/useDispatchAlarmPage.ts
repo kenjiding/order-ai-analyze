@@ -62,6 +62,7 @@ export function useDispatchAlarmPage() {
         arrivalScanDates: schedule.arrivalScanDates,
         mentionEnabled: schedule.mentionEnabled,
         showDriverMap: schedule.showDriverMap,
+        excludeWhitelist: schedule.excludeWhitelist,
         importantNotice: schedule.importantNotice,
       }
       return crud.toggleEnabled(schedule, draft, imileToken)

@@ -218,7 +218,7 @@ export function buildExitAlarmCard(params: {
 
   // 汇总 KPI；配置了滞留清货价且有滞留件时，清货费用并入同一行。
   // 每块磁贴各占一种色相，避免整行同色分不出块：滞留量=红、出仓率=蓝（中性指标）、
-  // 优先客户=橙、清货费用=灰；数量清零时相应磁贴转绿。与 24H 派签告警卡片同一套配色。
+  // 优先客户=橙、清货费用=红；数量清零时相应磁贴转绿。与 24H 派签告警卡片同一套配色。
   // 「本地件优先客户」包裹数按分区明细汇总，口径与 totalWaybills 一致（白名单路由已单列，不在其中）
   const totalPriority = Object.values(zoneBreakdown).reduce((sum, zone) => sum + zone.priority, 0)
   const exitedPriority = Object.values(zoneBreakdown).reduce((sum, zone) => sum + zone.priorityExited, 0)
@@ -240,7 +240,7 @@ export function buildExitAlarmCard(params: {
     ),
   ]
   if (showClearance) {
-    kpiTiles.push(summaryTile('Clearance cost', money(totalPending * clearancePrice!), '', 'grey'))
+    kpiTiles.push(summaryTile('Clearance cost', money(totalPending * clearancePrice!), '', 'red'))
   }
   elements.push(columnSet(kpiTiles, 'trisect'))
 

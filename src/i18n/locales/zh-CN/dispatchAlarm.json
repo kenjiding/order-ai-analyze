@@ -32,6 +32,7 @@
     "noPushTimes": "暂无推送时间",
     "alertThreshold": "预警阈值",
     "pushOptions": "推送选项",
+    "excludeWhitelist": "剔除白名单数据",
     "driverMap": "司机地图",
     "importantNotice": "重要提醒",
     "importantNoticePlaceholder": "填写后原样追加在推送卡片末尾；勾选「@ 相关人员」时 @ 人跟在提醒后面",

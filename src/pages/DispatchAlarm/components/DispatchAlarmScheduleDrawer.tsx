@@ -78,6 +78,7 @@ export function DispatchAlarmScheduleDrawer({
   const [arrivalScanRange, setArrivalScanRange] = useState<[string, string]>([yesterday(), yesterday()])
   const [mentionEnabled, setMentionEnabled] = useState(false)
   const [showDriverMap, setShowDriverMap] = useState(false)
+  const [excludeWhitelist, setExcludeWhitelist] = useState(true)
   const [importantNotice, setImportantNotice] = useState('')
 
   useEffect(() => {
@@ -95,6 +96,7 @@ export function DispatchAlarmScheduleDrawer({
     )
     setMentionEnabled(editingSchedule?.mentionEnabled ?? false)
     setShowDriverMap(editingSchedule?.showDriverMap ?? false)
+    setExcludeWhitelist(editingSchedule?.excludeWhitelist ?? true)
     setImportantNotice(editingSchedule?.importantNotice ?? '')
   }, [open, editingSchedule])
 
@@ -133,6 +135,7 @@ export function DispatchAlarmScheduleDrawer({
       arrivalScanDates: expandDateRange(arrivalScanRange),
       mentionEnabled,
       showDriverMap,
+      excludeWhitelist,
       importantNotice: importantNotice.trim() || null,
     }
     const ok = await onSubmit(draft)
@@ -281,6 +284,13 @@ export function DispatchAlarmScheduleDrawer({
                 <SupplierMentionToggle value={mentionEnabled} onChange={setMentionEnabled} disabled={saving} />
                 <Checkbox checked={showDriverMap} disabled={saving} onChange={(e) => setShowDriverMap(e.target.checked)}>
                   <span className="text-sm">{t('drawer.driverMap')}</span>
+                </Checkbox>
+                <Checkbox
+                  checked={excludeWhitelist}
+                  disabled={saving}
+                  onChange={(e) => setExcludeWhitelist(e.target.checked)}
+                >
+                  <span className="text-sm">{t('drawer.excludeWhitelist')}</span>
                 </Checkbox>
               </div>
             </div>

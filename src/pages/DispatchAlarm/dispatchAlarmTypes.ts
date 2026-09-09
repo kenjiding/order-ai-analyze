@@ -15,6 +15,8 @@ export type DispatchAlarmScheduleDraft = {
   mentionEnabled: boolean
   /** 是否在 24H 派签落地页展示「司机地图」组件 */
   showDriverMap: boolean
+  /** 是否剔除供应商配置里的路由码白名单数据；不勾选则白名单运单照常计入统计 */
+  excludeWhitelist: boolean
   /** 重要提醒：填写后原样追加在推送卡片末尾；同时勾选「@ 相关人员」时 @ 人拼在提醒后面 */
   importantNotice: string | null
 }

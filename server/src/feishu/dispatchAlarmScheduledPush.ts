@@ -98,6 +98,8 @@ export async function executeDispatchAlarmPush(params: {
   mentionEnabled?: boolean
   /** 是否在落地页展示「司机地图」组件；默认 false */
   showDriverMap?: boolean
+  /** 是否剔除路由码白名单数据；默认 true。false 时白名单运单照常计入统计与落地页 */
+  excludeWhitelist?: boolean
   /** 重要提醒：填了就原样追加在卡片末尾，@ 人拼在它后面 */
   importantNotice?: string | null
   /**
@@ -120,6 +122,7 @@ export async function executeDispatchAlarmPush(params: {
     label,
     mentionEnabled,
     showDriverMap,
+    excludeWhitelist,
     importantNotice,
     perConfigDedupe,
   } = params
@@ -162,7 +165,11 @@ export async function executeDispatchAlarmPush(params: {
   // 用 config.id 当 key（而非 vendorCode）一次遍历 rows 拿到全部配置的统计，
   // 不再对每条配置各自重新扫一遍全量运单——大站点几万条时这是聚合阶段的主要开销。
   // 未选供应商的配置（vendorCode 为空）走纯路由码口径，由 buildConfigScope 统一判定
-  const scopes: Dispatch24hScope[] = configs.map((config) => buildConfigScope(config.id, config))
+  // 不剔除白名单时把白名单清空即可：聚合与落地页共用这份 scope，口径自动一致
+  const scopes: Dispatch24hScope[] = configs.map((config) => {
+    const scope = buildConfigScope(config.id, config)
+    return excludeWhitelist === false ? { ...scope, routeCodeWhitelist: undefined } : scope
+  })
   const scopeByConfigId = new Map(scopes.map((scope) => [scope.key, scope]))
   // 兜底规则（每行已带 windowRule，实际不会用到）：取第一个到件日
   const rule = resolveDispatch24hWindowRule(dates[0], tz)
@@ -359,6 +366,7 @@ async function runOneScheduledPush(schedule: DispatchAlarmSchedule, regionCode: 
       label,
       mentionEnabled: schedule.mentionEnabled,
       showDriverMap: schedule.showDriverMap,
+      excludeWhitelist: schedule.excludeWhitelist,
       importantNotice: schedule.importantNotice,
       perConfigDedupe: { jobKeyPrefix, slotKey },
     })

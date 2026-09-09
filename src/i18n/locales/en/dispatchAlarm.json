@@ -32,6 +32,7 @@
     "noPushTimes": "No push times yet",
     "alertThreshold": "Alert threshold",
     "pushOptions": "Push options",
+    "excludeWhitelist": "Exclude whitelist data",
     "driverMap": "Driver map",
     "importantNotice": "‼️Important notice‼️",
     "importantNoticePlaceholder": "Appended verbatim at the bottom of the push card; mentions follow it when \"@ related contacts\" is checked",
