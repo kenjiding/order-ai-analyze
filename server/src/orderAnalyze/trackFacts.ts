@@ -245,7 +245,12 @@ const SYD_WAREHOUSE_OPERATOR_RE = /^SYD Warehouse\d+$/i
 const NSYD_W_OPERATOR_RE = /^NSYD W\d+$/i
 const LEADING_HUB_RE = /^【([^】]+)】/
 const EXTERNAL_CARRIER_RE = /包裹已转交至【([^】]+)】进行承运/
-const DELIVERY_COMPLETION_RE = /(已签收|签收成功|签收完成|妥投|派件完成|投递完成|投递成功|delivery\s*completed|delivered)/i
+/**
+ * 仅保留中文结构化文案关键词。英文 delivered / delivery completed 已移除：
+ * 真实轨迹从未使用英文状态文案，但派件员会在问题件备注里手打英文（如 "i delivered this parcel next time"），
+ * 裸英文关键词只会造成误判为签收。
+ */
+const DELIVERY_COMPLETION_RE = /(已签收|签收成功|签收完成|妥投|派件完成|投递完成|投递成功)/
 const DELIVERY_COMPLETION_NEGATIVE_RE = /(未签收|签收失败|未妥投|妥投失败|投递失败|派件失败|delivery\s*failed|not\s*delivered)/i
 const ORDER_EXCEPTION_CLOSED_RE = /订单异常完结[，,]\s*原因【[^】]+】[。.]?\s*操作员【[^】]+】/
 
@@ -451,6 +456,10 @@ function hasDeliveryCompletionNegativeKeyword(text: string): boolean {
 }
 
 function isDeliveryCompletionEvent(t: TrackEvent): boolean {
+  // 问题件登记按业务定义就是派送失败，永远不可能是正常完结。
+  // 其 content 形如「登记问题件[原因]<派件员手打自由文本>, 操作员【…】」，自由文本不是平台状态字段，
+  // 不加这道互斥保护，派件员备注里出现的任意状态词都会被当成事实（见 6081426514465）。
+  if (isProblemEvent(t)) return false
   const stage = (t.trackStageTx ?? '').trim()
   const content = (t.content ?? '').trim()
   const candidates = [stage, content].filter((text) => text.length > 0)

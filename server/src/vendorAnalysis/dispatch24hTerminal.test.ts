@@ -573,13 +573,13 @@ test('getDispatch24hDeadlineMs：固定截止批次即使尚未派件也有截�
   assert.equal(getDispatch24hDeadlineMs({ waybillNo: 'X' }, { kind: 'rolling24h' }), null)
 })
 
-test('dispatchExitThresholdMs：出仓阈值恒锚在到件日次日的11:00，周末不跳过', () => {
+test('dispatchExitThresholdMs：周一～周四锚在次日11:00，周五/六/日锚在下周一11:00', () => {
   // 周三到件 → 周四 11:00
   assert.equal(dispatchExitThresholdMs('2024-06-26', tz), localDateTimeToMs('2024-06-27 11:00:00', tz))
-  // 周五到件 → 周六 11:00。周六不开仓分拣，但司机照常来取周五分拣好的货出仓派送，
-  // 按分拣日历推到下周一会让周六整天算不出出仓率（本次口径修正的核心）。
-  assert.equal(dispatchExitThresholdMs('2024-06-28', tz), localDateTimeToMs('2024-06-29 11:00:00', tz))
-  // 出仓阈值与派签窗口就此脱钩：同一批周五到件的货，出仓看周六 11:00、派签仍到下周一 23:59:59
+  // 周五/周六/周日到件 → 下周一 11:00；派签仍是下周一 23:59:59
+  for (const d of ['2024-06-28', '2024-06-29', '2024-06-30']) {
+    assert.equal(dispatchExitThresholdMs(d, tz), localDateTimeToMs('2024-07-01 11:00:00', tz), d)
+  }
   assert.deepEqual(resolveDispatch24hWindowRule('2024-06-28', tz), {
     kind: 'fixedDeadline',
     deadlineMs: localDateTimeToMs('2024-07-01 23:59:59', tz),

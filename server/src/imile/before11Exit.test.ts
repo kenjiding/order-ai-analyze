@@ -10,6 +10,18 @@ test('computeBefore11ThresholdMs: 到件日次日 11:00（州时区）', () => {
   assert.equal(isBefore11Exit('2026-07-09 14:00:00', ms), false)
 })
 
+test('computeBefore11ThresholdMs: 周五/六/日到件截止下周一 11:00', () => {
+  // 2026-07-10 周五 → 2026-07-13 周一 11:00（iMile 派件时间是墨尔本本地，用 14:00 避开州时差）
+  const friday = computeBefore11ThresholdMs('2026-07-10', AUS_TZ.Adelaide)
+  assert.equal(isBefore11Exit('2026-07-11 12:00:00', friday), true, '周六出仓仍在下周一 11:00 之前')
+  assert.equal(isBefore11Exit('2026-07-13 10:00:00', friday), true)
+  assert.equal(isBefore11Exit('2026-07-13 14:00:00', friday), false)
+  const saturday = computeBefore11ThresholdMs('2026-07-11', AUS_TZ.Adelaide)
+  const sunday = computeBefore11ThresholdMs('2026-07-12', AUS_TZ.Adelaide)
+  assert.equal(saturday, friday)
+  assert.equal(sunday, friday)
+})
+
 test('isBefore11Exit: 空派件时间未达标', () => {
   const ms = computeBefore11ThresholdMs('2026-07-08', AUS_TZ.Melbourne)
   assert.equal(isBefore11Exit(null, ms), false)

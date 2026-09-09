@@ -46,7 +46,7 @@
     "vendorFootnote": "Missing vendors mean permanently missing history (no backfill). Verify against this station's actual carriers.",
     "timingTitle": "Settlement timing",
     "timingIntro": "After saving, a daily job runs at the trigger time. The two metrics settle one day apart:",
-    "timingBefore11": "Before 11am hub exit rate — settles yesterday's arrival batch; final once the 11:00 threshold passes",
+    "timingBefore11": "Before 11am hub exit rate — Mon–Thu: yesterday's arrivals; Fri/Sat/Sun arrivals close at next Monday 11:00",
     "timingSign24h": "24h dispatch rate — settles the day-before-yesterday arrival batch; must wait for the 24h window to close",
     "timingFootnote": "Early dispatch settlement is wrong because re-dispatch after route return corrupts the data, so it waits an extra day. Do not set trigger time before 11:00, or in-window waybills may be marked unmet."
   },

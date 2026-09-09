@@ -12,6 +12,8 @@
  * 按 (regionCode, date) 查表即可，调用方无需改动。
  */
 
+import { envFirst } from './shared'
+
 /**
  * dateStr: YYYY-MM-DD。是否为分拣工作日。
  * 当前仅排除周六(6)、周日(0)；预留法定假日扩展点（见文件头注释）。
@@ -41,9 +43,7 @@ export function lastSortingWorkdayOnOrBefore(dateStr: string): string {
  * 返回 > dateStr 的第一个工作日（不含 dateStr 本身）。入参/出参均为 YYYY-MM-DD。
  * 例：周四 → 周五；周五 → 下周一；周六 → 下周一。
  *
- * **不要拿它推「出仓日」**：分拣日历只管「哪天开仓分拣」，不管哪天出仓。周五分拣好的货，
- * 司机周六照常来 11 点前取货出仓派送——「不开仓分拣」不等于「不出仓派送」。出仓日恒为
- * 分拣日次日，见 vendorAnalysis/dispatch24hAggregate 的 resolveExitDate。
+ * 出仓日也用它：周五/六/日到件的 11 点前出仓截止是下周一 11:00，见 resolveExitDate。
  */
 export function nextSortingWorkdayAfter(dateStr: string): string {
   const [y, m, d] = dateStr.split('-').map(Number)
@@ -52,4 +52,26 @@ export function nextSortingWorkdayAfter(dateStr: string): string {
     cur.setUTCDate(cur.getUTCDate() + 1)
   } while (!isSortingWorkday(cur.toISOString().slice(0, 10)))
   return cur.toISOString().slice(0, 10)
+}
+
+/**
+ * 到件量低于此数视为「这天没开仓分拣」。
+ *
+ * 不能用「有没有数据」判：没开仓那天值班员工照样会零星扫几十单入库，inbound 接口返回的
+ * 是很低而不是 0。真开仓的日子一天几千单，两者差一两个数量级，一个阈值就分得开。
+ * env `MIN_SORTING_WAYBILLS` 可覆盖（各站点体量差得远时再改成按站点配置）。
+ */
+export const MIN_SORTING_WAYBILLS = (() => {
+  const n = Number(envFirst('MIN_SORTING_WAYBILLS'))
+  return Number.isFinite(n) && n > 0 ? n : 2000
+})()
+
+/**
+ * 这天的到件量是否低到判定为「没开仓分拣」——没有批次，不统计也不推送。
+ *
+ * 没开仓的那天不影响前后批次：前一天到件的货当天照常出仓派送（仓库只是没有新货到，
+ * 不是关门），所以出仓日推导（resolveExitDate）不受此判定影响，只有「这天自己那批」消失。
+ */
+export function isNoSortingBatch(waybillCount: number): boolean {
+  return waybillCount < MIN_SORTING_WAYBILLS
 }

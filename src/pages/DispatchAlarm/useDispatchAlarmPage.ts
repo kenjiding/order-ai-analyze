@@ -86,7 +86,13 @@ export function useDispatchAlarmPage() {
           showToast(t('toast.pushFailed', { error: res.error }), 'error')
           return
         }
-        const { pushedCount, totalConfigs, errors, date } = res.data
+        const { pushedCount, totalConfigs, errors, dates, noBatch } = res.data
+        // 后端返回的是 dates 数组（可多日合并），前端此前误当成单个 date，toast 里显示 undefined
+        const date = dates.join(' / ')
+        if (noBatch) {
+          showToast(t('toast.noSortingBatch', { date }), 'error')
+          return
+        }
         if (errors.length > 0) {
           showToast(
             t('toast.pushPartial', {

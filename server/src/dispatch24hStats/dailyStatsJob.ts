@@ -2,11 +2,10 @@
  * 出仓派签达成分析的每日结算任务，**分两趟**。
  *
  * 两个指标定终值的时间差一天，不能等到同一刻一起算：
- * - **出仓趟**：结算「昨天到件」那批（D = T-1）。出仓日 O 的 11:00 阈值一过就定终值。
- * - **派签趟**：结算「前天到件」那批（D = T-2）。必须等 24h 窗口到期——提前算的话，
- *   包裹会被归班盘点重新派给派送员，统计就乱了。
+ * - **出仓趟**：出仓日 O 的 11:00 一过就定终值（周一～周四 = 昨天到件；周五/六/日到件 = 下周一）。
+ * - **派签趟**：必须等 24h 窗口到期——提前算的话，包裹会被归班盘点重新派给派送员，统计就乱了。
  *
- * 同一个到件日 D 因此被写两次：D+1 写出仓，D+2 完整重算并补上派签与四象限。
+ * 同一个到件日 D 因此被写两次：先写出仓，窗口到期后再完整重算并补上派签与四象限。
  * 有没有批次可结算由日历决定（见 settledArrivalDates），所以 cron 不必编码星期。
  *
  * **不回补历史**：每批只在到期后的第一次运行里结算一次（SETTLE_DUE_WINDOW_MS），漏了就永久缺这天。
@@ -24,6 +23,7 @@ import { isSettleTriggerDue, normalizeSettleTime } from './settleTime'
 import { fetchDriverWaybills } from '../imile/driverPerformance'
 import { getGlobalImileToken } from '../feishu/globalImileToken'
 import { envFirst, normalizeImileToken } from '../imile/shared'
+import { isNoSortingBatch, MIN_SORTING_WAYBILLS } from '../imile/sortingWorkday'
 import {
   dispatchExitThresholdMs,
   resolveDispatch24hWindowRule,
@@ -198,6 +198,8 @@ export type SettleOneResult = {
   cells: DispatchPerformanceCell[]
   /** 写库前复核发现这一趟已被另一条路径跑掉，本次什么都没做 */
   skipped: boolean
+  /** 到件量低于 MIN_SORTING_WAYBILLS：这天没开仓分拣，台账已盖章但一个格子都没写 */
+  noBatch: boolean
 }
 
 /**
@@ -275,16 +277,29 @@ export async function settleOneArrivalDate(input: {
       cellCount: 0,
       cells: [],
       skipped: true,
+      noBatch: false,
     }
   }
 
   const { cells, supplierMeta, waybillCount } = await computeOneArrivalDate(input)
 
+  // 这天没开仓分拣：到件量只有值班员工零星扫入库的几十单，两个率的分母小到毫无意义
+  // （3 单里 1 单没出仓 = 33%），而结算不回补、落库即永久。落一条空台账把这天盖掉，
+  // 不写任何格子 —— 下面那道「0 格子」检查也要让开，那几单碰巧属于所勾供应商时会有格子。
+  const noBatch = isNoSortingBatch(waybillCount)
+  const cellsToSave = noBatch ? [] : cells
+  if (noBatch) {
+    console.warn(
+      `${LABEL} station=${target.stationCode} date=${arrivalDate} 到件仅 ${waybillCount} 单` +
+        `（< ${MIN_SORTING_WAYBILLS}），判定当天未开仓分拣，不写入统计`,
+    )
+  }
+
   // 拉到了运单却一个格子都没聚合出来 = 所选供应商与这天的实际承运商对不上（漏勾，
   // 或勾了别的站点的供应商）。这跟「这天本来就没货」是两回事，必须显式失败：
   // 抛在落库之前，既不写台账也不动既有数据，下一次 cron 或手动「立刻统计」还能重来。
   // 若静默写台账，按「每批只结算一次、不回补」的策略这天就被永久烧掉了。
-  if (waybillCount > 0 && cells.length === 0) {
+  if (!noBatch && waybillCount > 0 && cells.length === 0) {
     throw new Error(
       `拉到 ${waybillCount} 单，但没有一单属于所选供应商 —— ` +
         '请在「出仓派签达成分析」的站点配置里检查勾选的供应商是否与该站点实际承运商一致',
@@ -295,7 +310,7 @@ export async function settleOneArrivalDate(input: {
     arrivalDate,
     stationCode: target.stationCode,
     stage,
-    cells,
+    cells: cellsToSave,
     supplierMeta,
     waybillCount,
     provisional,
@@ -307,8 +322,9 @@ export async function settleOneArrivalDate(input: {
     stage,
     waybillCount,
     cellCount,
-    cells,
+    cells: cellsToSave,
     skipped: false,
+    noBatch,
   }
 }
 

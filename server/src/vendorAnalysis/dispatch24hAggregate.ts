@@ -9,7 +9,7 @@
  * 一批货同属一个到件批次，不能因为其中一单出仓晚了一天就换一套截止规则。
  */
 import { iMileStrToMs, localDateTimeToMs, type AusTz } from '../imile/ausTimezone'
-import { isSortingWorkday } from '../imile/sortingWorkday'
+import { isSortingWorkday, nextSortingWorkdayAfter } from '../imile/sortingWorkday'
 import {
   buildRouteCodeVendorsMap,
   isRowInConfigScope,
@@ -109,8 +109,8 @@ function isPriorityRow(row: Dispatch24hWaybillRow, priorityClientCodes?: Set<str
  *
  * 一批货的窗口口径由它「哪天到件」决定，而不是由某一单碰巧哪天出仓决定：
  * - D ∈ 周一~周四 → 出仓日 O = D+1，每单各自 deliveryTime + 24h
- * - D ∈ 周五/周六/周日 → 出仓日虽仍是 D+1（周六照常出仓，见 resolveExitDate），但周日不派送，
- *   整批共用一个固定截止时刻：D 之后第一个周一 23:59:59（本地时区）
+ * - D ∈ 周五/周六/周日 → 出仓日 O = 下周一 11:00（见 resolveExitDate），但周日不派送，
+ *   整批派签共用一个固定截止时刻：D 之后第一个周一 23:59:59（本地时区）
  *
  * 一次聚合只解析一次日期，逐行判定复用同一个 rule，避免每行重复解析时区。
  */
@@ -130,7 +130,7 @@ function nextMondayAfter(dateStr: string): string {
 
 /** 按到件日 D（YYYY-MM-DD，账号州时区的本地日历日）解析本批次的 24H 派签窗口规则 */
 export function resolveDispatch24hWindowRule(arrivalDateStr: string, tz: AusTz): Dispatch24hWindowRule {
-  // 周五到件那批出仓在周六、次日周日不派送，截止顺延到下周一；其余工作日到件走滚动 24h。
+  // 周五/周末到件：周日不派送，派签整批顺延到下周一；其余工作日到件走滚动 24h。
   // 周末到件（周末不开仓分拣，理论上无批次）同样压到下周一兜底。
   const [y, m, d] = arrivalDateStr.split('-').map(Number)
   const dow = new Date(Date.UTC(y, m - 1, d)).getUTCDay() // 0=周日 … 6=周六
@@ -142,17 +142,13 @@ export function resolveDispatch24hWindowRule(arrivalDateStr: string, tz: AusTz):
 }
 
 /**
- * 到件日（= 当天开仓分拣的那批）D 的出仓日 O = **次日自然日**，不跳周末。
+ * 到件日 D 的出仓日 O = 下一个分拣工作日（nextSortingWorkdayAfter）。
  *
- * 分拣日历（isSortingWorkday）只管「哪天开仓分拣」，**不决定哪天出仓**：周五分拣好的货，
- * 司机周六照常来 11 点前取货出仓派送——「不开仓分拣」不等于「不出仓派送」。用
- * nextSortingWorkdayAfter 推出仓日会把周五那批误推到下周一，周六整天算不出出仓率。
- *
- * 与「供应商数据分析」既有的 computeBefore11ThresholdMs（imile/before11Exit.ts）同口径。
+ * 周一～周四：O = D+1。周五/周六/周日：O = 下周一。「11点前出仓」截止即 O 当天 11:00。
+ * 与 computeBefore11ThresholdMs（供应商数据分析）同口径。
  */
 export function resolveExitDate(arrivalDateStr: string): string {
-  const [y, m, d] = arrivalDateStr.split('-').map(Number)
-  return new Date(Date.UTC(y, m - 1, d + 1)).toISOString().slice(0, 10)
+  return nextSortingWorkdayAfter(arrivalDateStr)
 }
 
 /** 到件日 D 的出仓日 O 当天 hh:mm 对应的 UTC 毫秒——出仓阈值与结算时机共用 */

@@ -67,6 +67,7 @@
     "selectVendorFirst": "Select vendors for this schedule first",
     "pushFailed": "Push failed: {{error}}",
     "pushPartial": "Pushed {{pushed}}/{{total}} (data date {{date}}); partial failures: {{errors}}",
-    "pushComplete": "Push complete {{pushed}}/{{total}} (data date {{date}})"
+    "pushComplete": "Push complete {{pushed}}/{{total}} (data date {{date}})",
+    "noSortingBatch": "Arrival volume on {{date}} is too low — treated as a no-sorting day, push skipped"
   }
 }

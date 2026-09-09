@@ -89,8 +89,13 @@ export function useExitAlarmPage() {
           showToast(t('toast.pushFailed', { error: res.error }), 'error')
           return
         }
-        const { pushedCount, totalConfigs, errors, dates } = res.data
+        const { pushedCount, totalConfigs, errors, dates, noBatch } = res.data
         const date = dates.join(' / ')
+        if (noBatch) {
+          // 没开仓分拣那天没有明细可导，不要留下一个导出空表的按钮
+          showToast(t('toast.noSortingBatch', { dates: date }), 'error')
+          return
+        }
         setPushResults((prev) => ({ ...prev, [schedule.id]: res.data }))
         if (errors.length > 0) {
           showToast(

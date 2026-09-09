@@ -71,6 +71,7 @@
     "pushFailed": "推送失败: {{error}}",
     "pushPartial": "已推送 {{pushed}}/{{total}}（数据日 {{dates}}），部分失败: {{errors}}",
     "pushComplete": "推送完成 {{pushed}}/{{total}}（数据日 {{dates}}）",
+    "noSortingBatch": "{{dates}} 到件量过低，判定当天未开仓分拣，已跳过推送",
     "noWaybillsToExport": "本次推送没有滞留未出仓运单，无需导出"
   },
   "export": {

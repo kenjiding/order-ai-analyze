@@ -74,13 +74,15 @@ function newlyExitSettledAt(runDate: string): string[] {
   return exitSettledAt(runDate).filter((date) => !before.has(date))
 }
 
-test('exitBatchSettleMs：出仓阈值即出仓日 11:00，出仓日恒为到件日次日', () => {
+test('exitBatchSettleMs：出仓阈值即出仓日 11:00；周五/六/日推到下周一', () => {
   // 周一到件 → 周二 11:00
   assert.equal(exitBatchSettleMs('2024-06-24', tz), localDateTimeToMs('2024-06-25 11:00:00', tz))
   // 周四到件 → 周五 11:00
   assert.equal(exitBatchSettleMs('2024-06-27', tz), localDateTimeToMs('2024-06-28 11:00:00', tz))
-  // 周五到件 → 周六 11:00：周六不分拣，但照常出仓派送，不跳到下周一
-  assert.equal(exitBatchSettleMs('2024-06-28', tz), localDateTimeToMs('2024-06-29 11:00:00', tz))
+  // 周五/周六/周日到件 → 下周一 11:00
+  for (const d of ['2024-06-28', '2024-06-29', '2024-06-30']) {
+    assert.equal(exitBatchSettleMs(d, tz), localDateTimeToMs('2024-07-01 11:00:00', tz), d)
+  }
 })
 
 test('出仓趟比派签趟早一天解锁 —— 这一天的差正是两趟结算存在的原因', () => {
@@ -88,7 +90,9 @@ test('出仓趟比派签趟早一天解锁 —— 这一天的差正是两趟结
   assert.deepEqual(newlyExitSettledAt('2024-06-26'), ['2024-06-25']) // 周三 → 周二到件
   assert.deepEqual(newlyExitSettledAt('2024-06-27'), ['2024-06-26']) // 周四 → 周三到件
   assert.deepEqual(newlyExitSettledAt('2024-06-28'), ['2024-06-27']) // 周五 → 周四到件
-  assert.deepEqual(newlyExitSettledAt('2024-06-29'), ['2024-06-28']) // 周六 → 周五到件（周六照常出仓）
+  assert.deepEqual(newlyExitSettledAt('2024-06-29'), []) // 周六 → 周五那批要等到下周一
+  assert.deepEqual(newlyExitSettledAt('2024-06-30'), []) // 周日 → 无
+  assert.deepEqual(newlyExitSettledAt('2024-07-01'), ['2024-06-28', '2024-06-29', '2024-06-30']) // 周一 → 周五/六/日
 
   // 同一个运行日：出仓结算「昨天」，派签结算「前天」
   const runDay = '2024-06-26' // 周三

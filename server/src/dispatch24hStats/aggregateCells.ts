@@ -110,7 +110,7 @@ export function aggregateDispatchPerformanceCells(input: {
   stationCodes: string[]
   /** null = 只结算出仓那一趟；给定 rule = 连派签一起结算 */
   rule: Dispatch24hWindowRule | null
-  /** 出仓阈值：到件日次日（出仓日）的 11:00，见 dispatchExitThresholdMs */
+  /** 出仓阈值：出仓日 11:00，见 dispatchExitThresholdMs */
   before11ThresholdMs: number
   scopes: Dispatch24hScope[]
 }): DispatchPerformanceCell[] {

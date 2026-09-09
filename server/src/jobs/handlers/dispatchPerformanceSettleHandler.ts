@@ -197,7 +197,7 @@ export const dispatchPerformanceSettleHandler: JobHandler = {
       artifact.message =
         artifact.skipped.length > 0
           ? '没有刚到期的批次；已过期的批次不回补（回补会读到退仓重派后的状态）。'
-          : '当前没有到期的批次。出仓要等到件日次日 11:00、派签再晚一天，此前无可结算数据。'
+          : '当前没有到期的批次。出仓要等到出仓日 11:00（周五/六/日到件是下周一 11:00），派签再晚一些，此前无可结算数据。'
     }
 
     return { artifactPayload: artifact }

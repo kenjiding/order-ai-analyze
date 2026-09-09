@@ -71,6 +71,7 @@
     "pushFailed": "Push failed: {{error}}",
     "pushPartial": "Pushed {{pushed}}/{{total}} (data date {{dates}}); partial failures: {{errors}}",
     "pushComplete": "Push complete {{pushed}}/{{total}} (data date {{dates}})",
+    "noSortingBatch": "Arrival volume on {{dates}} is too low — treated as a no-sorting day, push skipped",
     "noWaybillsToExport": "No dwell waybills missing hub exit in this push — nothing to export"
   },
   "export": {

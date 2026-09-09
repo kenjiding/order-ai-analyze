@@ -67,7 +67,10 @@ export type DispatchAlarmPushNowResult = {
   totalConfigs: number
   errors: string[]
   stationCode: string
-  date: string
+  /** 本次统计的到件日列表（可多日合并） */
+  dates: string[]
+  /** 到件量过低：当天没开仓分拣，没有批次可推 */
+  noBatch?: boolean
 }
 
 /** 立刻推送：使用该条目已保存配置，不校验推送时间 */

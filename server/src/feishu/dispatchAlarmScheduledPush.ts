@@ -23,7 +23,11 @@ import {
   type Dispatch24hScope,
   type Dispatch24hWaybillRow,
 } from '../vendorAnalysis/dispatch24hAggregate'
-import { lastSortingWorkdayOnOrBefore } from '../imile/sortingWorkday'
+import {
+  isNoSortingBatch,
+  lastSortingWorkdayOnOrBefore,
+  MIN_SORTING_WAYBILLS,
+} from '../imile/sortingWorkday'
 import {
   claimScheduledSlot,
   countClaimedSlots,
@@ -69,6 +73,8 @@ export type DispatchAlarmPushResult = {
   stationCode: string
   /** 本次统计的到件日列表（可多日合并） */
   dates: string[]
+  /** 到件量低于 MIN_SORTING_WAYBILLS：这天没开仓分拣，没有批次可推 */
+  noBatch?: boolean
 }
 
 /**
@@ -137,6 +143,17 @@ export async function executeDispatchAlarmPush(params: {
   }
 
   const rows = [...rowByWaybillNo.values()]
+
+  // 这天没开仓分拣：值班员工零星扫入库的几十单不构成批次，派签率的分母毫无意义。
+  // 不 claim 时间槽，日志留量便于核对阈值。
+  if (isNoSortingBatch(rows.length)) {
+    console.log(
+      `${label} 到件日 ${dates.join(',')} 仅 ${rows.length} 单（< ${MIN_SORTING_WAYBILLS}），` +
+        '判定当天未开仓分拣，跳过推送',
+    )
+    return { pushedCount: 0, totalConfigs: configs.length, errors: [], stationCode, dates, noBatch: true }
+  }
+
   const dateLabel = dates.join(' ～ ')
   let pushedCount = 0
   const errors: string[] = []
@@ -324,7 +341,9 @@ async function runOneScheduledPush(schedule: DispatchAlarmSchedule, regionCode: 
       continue
     }
 
-    // 目标日避开周末（周六/日不分拣、无数据）：从前一日往前取第一个工作日
+    // 目标日避开周末（周六/日不分拣、无数据）：从前一日往前取第一个工作日。
+    // 周六/周日推的仍是周五那批的实时进度（那批派签截止在下周一 23:59:59）。
+    // 这天没开仓分拣的情形由量判定接手（见 execute）。
     const targetDate = lastSortingWorkdayOnOrBefore(prevDateStr)
     console.log(`${label} 命中推送时间 weekday=${weekday} time=${timeHHmm} date=${targetDate}`)
 

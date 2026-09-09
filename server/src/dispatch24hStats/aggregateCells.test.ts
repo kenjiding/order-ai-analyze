@@ -192,15 +192,15 @@ test('与告警侧 aggregateDispatch24hByScopes 口径一致：达标数、问�
   assert.equal(sum((c) => c.lateSignedCount), stat.lateSignedCount)
 })
 
-test('固定截止批次（周五到件）：出仓阈值在周六11:00，派签截止仍顺延到下周一23:59:59', () => {
-  const arrival = '2024-06-28' // 周五到件 → 周六 06-29 出仓 → 周日不派送，派签给到下周一 07-01
+test('固定截止批次（周五到件）：出仓阈值在下周一11:00，派签截止仍是下周一23:59:59', () => {
+  const arrival = '2024-06-28' // 周五到件 → 出仓截止下周一 07-01 11:00，派签截止下周一 07-01 23:59:59
   const weekendRule = resolveDispatch24hWindowRule(arrival, tz)
   const weekendThreshold = dispatchExitThresholdMs(arrival, tz)
   const rows: Dispatch24hWaybillRow[] = [
-    // 周六 10:00 出仓（≤ 周六 11:00）+ 下周一签收（≤ 下周一 23:59:59）→ 双达标
-    { ...base, waybillNo: 'A', courierCode: 'C1', courier: 'D1', consigneeRouteCode: 'R1', deliveryTime: '2024-06-29 10:00:00', signDate: '2024-07-01 20:00:00' },
-    // 周六 12:00 出仓（超阈值）+ 周二才签收（超下周一 23:59:59）→ 双未达标
-    { ...base, waybillNo: 'B', courierCode: 'C1', courier: 'D1', consigneeRouteCode: 'R1', deliveryTime: '2024-06-29 12:00:00', signDate: '2024-07-02 09:00:00' },
+    // 下周一 10:00 出仓（≤ 周一 11:00）+ 下周一签收（≤ 下周一 23:59:59）→ 双达标
+    { ...base, waybillNo: 'A', courierCode: 'C1', courier: 'D1', consigneeRouteCode: 'R1', deliveryTime: '2024-07-01 10:00:00', signDate: '2024-07-01 20:00:00' },
+    // 下周一 12:00 出仓（超阈值）+ 周二才签收（超下周一 23:59:59）→ 双未达标
+    { ...base, waybillNo: 'B', courierCode: 'C1', courier: 'D1', consigneeRouteCode: 'R1', deliveryTime: '2024-07-01 12:00:00', signDate: '2024-07-02 09:00:00' },
   ]
   const [cell] = aggregateDispatchPerformanceCells({
     rows,

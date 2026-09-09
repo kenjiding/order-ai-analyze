@@ -2,8 +2,8 @@
  * 「哪些到件批次已经可以结算」的日历推导，**两个指标各有各的时机**。
  *
  * 到件日 D 的一批货，两个指标定终值的时间差一天：
- * - **11点前出仓**：出仓日 O = D 的次日（周六照常出仓，见 resolveExitDate），O 当天 11:00
- *   阈值一过就定终值。恒为 D+1，运行日当天就能结算「昨天到件」那批——包括周六结算周五那批。
+ * - **11点前出仓**：出仓日 O 当天 11:00 定终值（见 resolveExitDate）。周一～周四 O = D+1，
+ *   周五/六/日到件 O = 下周一。运行日结算「出仓阈值刚过」的那批。
  * - **24小时派签**：窗口按 D 判（见 resolveDispatch24hWindowRule），滚动批次最迟到 O+1 的
  *   11:00（因为出仓 ≤ 11:00），固定截止批次到下周一 23:59:59。典型即 D+2，运行日结算
  *   「前天到件」那批。**不能提前算**——窗口没到期时包裹会被归班盘点重新派出，统计会乱。
@@ -40,7 +40,7 @@ export const DEFAULT_SETTLE_LOOKBACK_DAYS = 10
  */
 export const SETTLE_DUE_WINDOW_MS = 50 * 60 * 60 * 1000
 
-/** 出仓指标定终值的时刻：出仓日 O（= D 次日）当天 11:00 */
+/** 出仓指标定终值的时刻：出仓日 O 当天 11:00 */
 export function exitBatchSettleMs(arrivalDateStr: string, tz: AusTz): number {
   return localDateTimeToMs(`${resolveExitDate(arrivalDateStr)} 11:00:00`, tz)
 }

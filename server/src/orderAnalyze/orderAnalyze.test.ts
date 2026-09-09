@@ -2130,3 +2130,54 @@ test('签收失败等负向措辞不得命中已签收', () => {
   assert.equal(facts.deliveryCompletionSupersedesMerchantDirection, false)
   assert.notEqual(classifyOrderFromFacts({ orderNo: 'SIGN-FAILED', facts }).exceptionCategoryId, '已签收')
 })
+
+test('问题件备注里的英文 delivered 不得误判为已签收（6081426514465）', () => {
+  const facts = deriveTrackFacts(
+    [
+      track('2026-08-14 22:20:30', '已通过[OpenApi]成功下单 原单号 [1ST04052446244]', '', '订单提交'),
+      track('2026-08-20 17:25:14', '【Melbourne Center】已揽收, 操作员【System】。', '', '已揽件'),
+      track('2026-08-22 11:45:26', '【ADL DS】已到达。操作员【System】 。', '', '派送'),
+      track('2026-08-26 08:38:26', '【ADL DS】包裹正在派送中(派件员: ADL-CXH-124-ABHI PATEL,ID: D21022278701,电话: +61 421427061)。操作员【ADL-CXH-124-ABHI PATEL】', 'delivery', '派送派送中'),
+      track(
+        '2026-08-28 07:54:44',
+        '【ADL DS】登记问题件[特殊个人原因无法完成]i delivered this parcel next time. sorry for the inconvenience , 操作员【ADL-CXH-124-ABHI PATEL】。【View Proof】',
+        '',
+        '派送问题件'
+      ),
+      track('2026-08-28 08:51:43', '【ADL DS】派件员已回到网点。操作员【ADL-前台】', 'delivery', '派送'),
+      track('2026-09-08 11:40:20', '【ADL DS】已盘点，库位编号[01]。操作员【ADL-前台】', 'delivery', '派送'),
+      track('2026-09-08 15:15:57', '【ADL DS】派送任务已分配给派件员(派件员：ADL-CXH-378-YU-WUN HU,电话：+61 413872427)，待派件员领取包裹。 操作员【cornerstone】', 'delivery', '派送'),
+      track('2026-09-08 17:49:28', '【ADL DS】包裹已取消分配给[ADL-CXH-378-YU-WUN HU]。操作员【scott1】', 'delivery', '派送'),
+    ],
+    [],
+    { analysisDate: '2026-09-09' }
+  )
+
+  assert.equal(facts.hasDeliveryCompletion, false)
+  assert.equal(facts.deliveryCompletionTime, null)
+  assert.equal(facts.deliveryCompletionSupersedesMerchantDirection, false)
+
+  const result = classifyOrderFromFacts({ orderNo: '6081426514465', facts })
+  assert.equal(result.lossScope, '暂无异常')
+  assert.notEqual(result.exceptionCategoryId, '已签收')
+})
+
+test('问题件登记本身不得被当作正常完结（即使备注含中文签收字样）', () => {
+  const facts = deriveTrackFacts(
+    [
+      track('2026-08-18 15:19:30', '【Adelaide Center】已揽收, 操作员【System】。', '', '已揽件'),
+      track('2026-08-19 19:52:55', '【ADL DS】包裹正在派送中(派件员: ADL-DPC-19-Deepak,ID: D1,电话: +61 475932880)。操作员【ADL-DPC-19-Deepak】', 'delivery', '派送'),
+      track(
+        '2026-08-20 13:47:15',
+        '【ADL DS】登记问题件[特殊个人原因无法完成]客户说已签收了让我下次再送, 操作员【ADL-DPC-19-Deepak】。【View Proof】',
+        '',
+        '派送问题件'
+      ),
+      track('2026-08-20 18:00:00', '【ADL DS】派件员已回到网点。操作员【ADL-前台】', 'delivery', '派送'),
+    ],
+    [],
+    { analysisDate: '2026-08-21' }
+  )
+
+  assert.equal(facts.hasDeliveryCompletion, false)
+})

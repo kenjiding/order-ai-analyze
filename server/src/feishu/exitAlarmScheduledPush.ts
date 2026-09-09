@@ -17,7 +17,11 @@ import {
 } from '../vendorAnalysis/before11Aggregate'
 import { buildConfigScope } from '../vendorAnalysis/supplierScope'
 import { loadPriorityClientCodes } from '../priorityClients'
-import { lastSortingWorkdayOnOrBefore } from '../imile/sortingWorkday'
+import {
+  isNoSortingBatch,
+  lastSortingWorkdayOnOrBefore,
+  MIN_SORTING_WAYBILLS,
+} from '../imile/sortingWorkday'
 import {
   listPushableSupplierPushConfigsForSchedule,
   parsePushConfigIds,
@@ -100,6 +104,8 @@ export type ExitAlarmPushResult = {
   stationCode: string
   /** 本次统计的到件日列表（可多日合并） */
   dates: string[]
+  /** 到件量低于 MIN_SORTING_WAYBILLS：这天没开仓分拣，没有批次可推 */
+  noBatch?: boolean
   /** 各供应商本次推送中未在阈值前出仓（未达标）的运单号，供前端导出 Excel */
   unqualifiedByVendor: {
     vendorName: string
@@ -172,6 +178,25 @@ export async function executeExitAlarmPush(params: {
   }
 
   const waybills = [...byWaybillNo.values()]
+
+  // 这天没开仓分拣：值班员工零星扫入库的几十单不构成批次，推出去的滞留数据没有意义，
+  // 也不是供应商的责任。不 claim 时间槽（本来就没什么可推），日志留量便于核对阈值。
+  if (isNoSortingBatch(waybills.length)) {
+    console.log(
+      `${label} 到件日 ${dates.join(',')} 仅 ${waybills.length} 单（< ${MIN_SORTING_WAYBILLS}），` +
+        '判定当天未开仓分拣，跳过推送',
+    )
+    return {
+      pushedCount: 0,
+      totalConfigs: configs.length,
+      errors: [],
+      stationCode,
+      dates,
+      noBatch: true,
+      unqualifiedByVendor: [],
+    }
+  }
+
   // 阈值锚在「推送实际触发那天」的「推送触发时刻」——不能用 date（到件日）反推次日，
   // 到件日跨周末/节假日回退后可能是好几天前，「到件日+1天」不等于「今天」（例：周一到件日
   // 回退到上周五，+1 天=周六，早已过去，会把当天所有正常出仓都误判成「未出仓」）。
@@ -333,7 +358,10 @@ async function runOneScheduledPush(schedule: ExitAlarmSchedule, regionCode: stri
       continue
     }
 
-    // 目标日避开周末（周六/日不分拣、无数据）：从前一日往前取第一个工作日
+    // 目标日避开周末（周六/日不分拣、无数据）：从前一日往前取第一个工作日。
+    // 周六/周日推送照样落在周五那批：阈值锚在「今天的推送时刻」（见下方 before11ThresholdMs），
+    // 推的是「截至此刻还剩多少没出仓」的进度，与那批考核终值在下周一 11:00 并不冲突 ——
+    // 很多仓库周六早上照常开仓取货，就是要看这条。这天没开仓分拣的情形由量判定接手（见 execute）。
     const targetDate = lastSortingWorkdayOnOrBefore(prevDateStr)
     console.log(`${label} 命中推送时间 weekday=${weekday} time=${timeHHmm} date=${targetDate}`)
 
