@@ -15,7 +15,6 @@ import type {
   TransferChange,
   TransferDetail,
   TransferKind,
-  TransferStatus,
 } from './types'
 
 export type ApiResult<T> = { ok: true; data: T } | { ok: false; error: string }
@@ -186,9 +185,10 @@ export function fetchBalanceAudits(params: {
 
 export function fetchTransfers(params: {
   transferId?: number
+  /** 多选：逗号分隔透传给后端 */
   fromAccountId?: string
   toAccountId?: string
-  status?: TransferStatus | ''
+  status?: string
   start?: string
   end?: string
   page: number

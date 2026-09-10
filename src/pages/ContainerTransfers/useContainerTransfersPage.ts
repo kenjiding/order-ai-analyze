@@ -40,9 +40,9 @@ const CHANGE_PAGE_SIZE = 10
 
 export type TransferFilters = {
   transferId: string
-  fromAccountId: string
-  toAccountId: string
-  status: TransferStatus | ''
+  fromAccountIds: string[]
+  toAccountIds: string[]
+  statuses: TransferStatus[]
   range: [Dayjs, Dayjs] | null
 }
 
@@ -65,9 +65,9 @@ export type TransferDraft = {
 
 const emptyFilters: TransferFilters = {
   transferId: '',
-  fromAccountId: '',
-  toAccountId: '',
-  status: '',
+  fromAccountIds: [],
+  toAccountIds: [],
+  statuses: [],
   range: null,
 }
 
@@ -104,13 +104,15 @@ export function useContainerTransfersPage() {
   const [loading, setLoading] = useState(false)
   const [submitting, setSubmitting] = useState(false)
   const [filters, setFilters] = useState<TransferFilters>(() => {
-    const status = searchParams.get('status') ?? ''
+    const csv = (key: string) => (searchParams.get(key) ?? '').split(',').filter(Boolean)
     return {
       ...emptyFilters,
       transferId: searchParams.get('transferId') ?? '',
-      fromAccountId: searchParams.get('fromAccountId') ?? '',
-      toAccountId: searchParams.get('toAccountId') ?? '',
-      status: TRANSFER_STATUSES.includes(status as TransferStatus) ? (status as TransferStatus) : '',
+      fromAccountIds: csv('fromAccountId'),
+      toAccountIds: csv('toAccountId'),
+      statuses: csv('status').filter((s): s is TransferStatus =>
+        TRANSFER_STATUSES.includes(s as TransferStatus),
+      ),
     }
   })
 
@@ -166,11 +168,11 @@ export function useContainerTransfersPage() {
       setLoading(true)
       const res = await fetchTransfers({
         transferId: parseTransferNo(nextFilters.transferId) ?? undefined,
-        fromAccountId: nextFilters.fromAccountId || undefined,
-        toAccountId: nextFilters.toAccountId || undefined,
-        status: nextFilters.status || undefined,
-        start: nextFilters.range?.[0].startOf('day').toISOString(),
-        end: nextFilters.range?.[1].endOf('day').toISOString(),
+        fromAccountId: nextFilters.fromAccountIds.join(',') || undefined,
+        toAccountId: nextFilters.toAccountIds.join(',') || undefined,
+        status: nextFilters.statuses.join(',') || undefined,
+        start: nextFilters.range?.[0].format('YYYY-MM-DD'),
+        end: nextFilters.range?.[1].format('YYYY-MM-DD'),
         page: nextPage,
         pageSize: nextPageSize,
       })

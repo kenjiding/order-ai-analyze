@@ -983,11 +983,12 @@ async function loadVoidInfo(transferIds: number[]): Promise<Map<number, VoidInfo
 export type TransferQuery = {
   visibleAccountIds: string[] | null
   transferId?: number
-  fromAccountId?: string
-  toAccountId?: string
-  status?: TransferStatus
-  start?: Date
-  end?: Date
+  fromAccountIds?: string[]
+  toAccountIds?: string[]
+  statuses?: TransferStatus[]
+  /** 业务发生日 YYYY-MM-DD（occurred_at 是 date 列，不是时间戳） */
+  start?: string
+  end?: string
   page: number
   pageSize: number
 }
@@ -1006,18 +1007,23 @@ export async function listTransfers(query: TransferQuery) {
       ),
     )
   }
-  if (query.fromAccountId) {
-    conditions.push(eq(schema.containerTransfers.fromAccountId, query.fromAccountId))
+  if (query.fromAccountIds?.length) {
+    conditions.push(inArray(schema.containerTransfers.fromAccountId, query.fromAccountIds))
   }
-  if (query.toAccountId) conditions.push(eq(schema.containerTransfers.toAccountId, query.toAccountId))
-  if (query.status) conditions.push(eq(schema.containerTransfers.status, query.status))
+  if (query.toAccountIds?.length) {
+    conditions.push(inArray(schema.containerTransfers.toAccountId, query.toAccountIds))
+  }
+  if (query.statuses?.length) {
+    conditions.push(inArray(schema.containerTransfers.status, query.statuses))
+  }
   // 作废单对用户就是「删掉的那条」，默认不出现在列表里；
   // 显式筛「已作废」或按单号精确查才捞得出来，否则纠错完还挂在列表上等于没删
-  if (!query.status && query.transferId === undefined) {
+  if (!query.statuses?.length && query.transferId === undefined) {
     conditions.push(ne(schema.containerTransfers.status, 'VOIDED'))
   }
-  if (query.start) conditions.push(gte(schema.containerTransfers.createdAt, query.start))
-  if (query.end) conditions.push(lte(schema.containerTransfers.createdAt, query.end))
+  // 按业务发生日期筛，不按创建时间：补录的单日期是用户自己选的，跟录入那天常常对不上
+  if (query.start) conditions.push(gte(schema.containerTransfers.occurredAt, query.start))
+  if (query.end) conditions.push(lte(schema.containerTransfers.occurredAt, query.end))
   if (query.transferId !== undefined) {
     conditions.push(eq(schema.containerTransfers.id, query.transferId))
   }
@@ -1026,7 +1032,11 @@ export async function listTransfers(query: TransferQuery) {
   const [totalRow] = await db.select({ n: count() }).from(schema.containerTransfers).where(where)
   const rows = await transferSelectQuery(db)
     .where(where)
-    .orderBy(desc(schema.containerTransfers.createdAt))
+    // 未定论的（待接收方确认、协商中）置顶，这些是要人去处理的活；其余按时间倒序
+    .orderBy(
+      sql`case when ${schema.containerTransfers.status} in ('PENDING_RECEIVER','DISPUTED') then 0 else 1 end`,
+      desc(schema.containerTransfers.createdAt),
+    )
     .limit(query.pageSize)
     .offset((query.page - 1) * query.pageSize)
 

@@ -58,39 +58,41 @@ export function TransferFilterBar({ accounts, filters, loading, onApply }: Props
       <label className="flex flex-col gap-1.5">
         <span className="text-xs text-slate-500">{t('transfers.filterFrom')}</span>
         <Select
-          className="w-44"
+          className="min-w-44 max-w-72"
           placeholder={tc('all')}
+          mode="multiple"
           allowClear
-          showSearch
+          maxTagCount="responsive"
           optionFilterProp="label"
-          value={draft.fromAccountId || undefined}
-          onChange={(value) => setDraft((prev) => ({ ...prev, fromAccountId: value ?? '' }))}
+          value={draft.fromAccountIds}
+          onChange={(value) => setDraft((prev) => ({ ...prev, fromAccountIds: value }))}
           options={accountOptions}
         />
       </label>
       <label className="flex flex-col gap-1.5">
         <span className="text-xs text-slate-500">{t('transfers.filterTo')}</span>
         <Select
-          className="w-44"
+          className="min-w-44 max-w-72"
           placeholder={tc('all')}
+          mode="multiple"
           allowClear
-          showSearch
+          maxTagCount="responsive"
           optionFilterProp="label"
-          value={draft.toAccountId || undefined}
-          onChange={(value) => setDraft((prev) => ({ ...prev, toAccountId: value ?? '' }))}
+          value={draft.toAccountIds}
+          onChange={(value) => setDraft((prev) => ({ ...prev, toAccountIds: value }))}
           options={accountOptions}
         />
       </label>
       <label className="flex flex-col gap-1.5">
         <span className="text-xs text-slate-500">{tc('status')}</span>
         <Select
-          className="w-36"
+          className="min-w-36 max-w-72"
           placeholder={tc('all')}
+          mode="multiple"
           allowClear
-          value={draft.status || undefined}
-          onChange={(value) =>
-            setDraft((prev) => ({ ...prev, status: (value ?? '') as TransferStatus | '' }))
-          }
+          maxTagCount="responsive"
+          value={draft.statuses}
+          onChange={(value) => setDraft((prev) => ({ ...prev, statuses: value as TransferStatus[] }))}
           options={TRANSFER_STATUSES.map((status) => ({
             value: status,
             label: t(`transferStatus.${status}`),

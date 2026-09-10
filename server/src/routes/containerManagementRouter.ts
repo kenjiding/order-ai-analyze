@@ -145,6 +145,20 @@ function parseDate(raw: unknown): Date | undefined {
  * 品类被停用后，它的在途单仍然要能申报、能结算 —— 否则停用一个品类会把在途的单全卡死。
  * 申报明细的品类必须属于原单，这条由 applyReceivedLineItems 保证，这里不重复。
  */
+/** 多选筛选走逗号分隔：a,b,c；单值链接（如台账跳转）天然兼容 */
+function parseCsv(raw: unknown): string[] {
+  return String(raw ?? '')
+    .split(',')
+    .map((v) => v.trim())
+    .filter(Boolean)
+}
+
+/** 业务发生日：occurred_at 是 date 列，只认 YYYY-MM-DD，避免时区把日期挪一天 */
+function parseDay(raw: unknown): string | undefined {
+  const text = String(raw ?? '').trim()
+  return /^\d{4}-\d{2}-\d{2}$/.test(text) ? text : undefined
+}
+
 function parseLineItems(raw: unknown, allowInactive = false): TransferLineInput[] | string {
   if (!Array.isArray(raw) || raw.length === 0) return '至少需要一条流转明细'
   const result: TransferLineInput[] = []
@@ -530,15 +544,14 @@ containerManagementRouter.get('/transfers', async (req: AuthenticatedRequest, re
   try {
     const visible = await resolveVisibleAccountIds(req)
     const { page, pageSize } = parsePagination(req.query as Record<string, unknown>)
-    const statusRaw = String(req.query.status ?? '').trim()
     const data = await listTransfers({
       visibleAccountIds: visible,
       transferId: parseTransferNo(req.query.transferId) ?? undefined,
-      fromAccountId: String(req.query.fromAccountId ?? '').trim() || undefined,
-      toAccountId: String(req.query.toAccountId ?? '').trim() || undefined,
-      status: isTransferStatus(statusRaw) ? (statusRaw as TransferStatus) : undefined,
-      start: parseDate(req.query.start),
-      end: parseDate(req.query.end),
+      fromAccountIds: parseCsv(req.query.fromAccountId),
+      toAccountIds: parseCsv(req.query.toAccountId),
+      statuses: parseCsv(req.query.status).filter(isTransferStatus) as TransferStatus[],
+      start: parseDay(req.query.start),
+      end: parseDay(req.query.end),
       page,
       pageSize,
     })
