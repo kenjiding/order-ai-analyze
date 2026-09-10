@@ -58,7 +58,7 @@ export function TransferFilterBar({ accounts, filters, loading, onApply }: Props
       <label className="flex flex-col gap-1.5">
         <span className="text-xs text-slate-500">{t('transfers.filterFrom')}</span>
         <Select
-          className="min-w-44 max-w-72"
+          className="w-44"
           placeholder={tc('all')}
           mode="multiple"
           allowClear
@@ -72,7 +72,7 @@ export function TransferFilterBar({ accounts, filters, loading, onApply }: Props
       <label className="flex flex-col gap-1.5">
         <span className="text-xs text-slate-500">{t('transfers.filterTo')}</span>
         <Select
-          className="min-w-44 max-w-72"
+          className="w-44"
           placeholder={tc('all')}
           mode="multiple"
           allowClear
@@ -86,7 +86,7 @@ export function TransferFilterBar({ accounts, filters, loading, onApply }: Props
       <label className="flex flex-col gap-1.5">
         <span className="text-xs text-slate-500">{tc('status')}</span>
         <Select
-          className="min-w-36 max-w-72"
+          className="w-36"
           placeholder={tc('all')}
           mode="multiple"
           allowClear
