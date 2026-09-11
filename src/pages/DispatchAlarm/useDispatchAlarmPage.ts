@@ -57,6 +57,7 @@ export function useDispatchAlarmPage() {
         pushTimes: schedule.pushTimes,
         isEnabled,
         stationCode: schedule.stationCode,
+        stationName: schedule.stationName,
         alertThresholdPct: schedule.alertThresholdPct,
         pushConfigIds: schedule.pushConfigIds,
         arrivalScanDates: schedule.arrivalScanDates,
@@ -64,6 +65,7 @@ export function useDispatchAlarmPage() {
         showDriverMap: schedule.showDriverMap,
         excludeWhitelist: schedule.excludeWhitelist,
         importantNotice: schedule.importantNotice,
+        rankingCardEnabled: schedule.rankingCardEnabled,
       }
       return crud.toggleEnabled(schedule, draft, imileToken)
     },

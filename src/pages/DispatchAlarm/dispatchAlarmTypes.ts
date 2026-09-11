@@ -6,6 +6,8 @@ export type DispatchAlarmScheduleDraft = {
   pushTimes: PushTimeSlot[]
   isEnabled: boolean
   stationCode: string
+  /** 站点展示名：保存时从站点列表带上，实时排名卡标题用 */
+  stationName: string
   /** 24H 派签率预警阈值（百分比整数）：低于该值的供应商在推送卡片中标红 */
   alertThresholdPct: number
   pushConfigIds: string[]
@@ -19,6 +21,8 @@ export type DispatchAlarmScheduleDraft = {
   excludeWhitelist: boolean
   /** 重要提醒：填写后原样追加在推送卡片末尾；同时勾选「@ 相关人员」时 @ 人拼在提醒后面 */
   importantNotice: string | null
+  /** 是否在每张数据卡片后紧跟一张同站点供应商的 24H 派签实时排名卡 */
+  rankingCardEnabled: boolean
 }
 
 export type DispatchAlarmSchedule = DispatchAlarmScheduleDraft & {

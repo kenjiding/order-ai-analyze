@@ -36,6 +36,7 @@
     "driverMap": "Driver map",
     "importantNotice": "‼️Important notice‼️",
     "importantNoticePlaceholder": "Appended verbatim at the bottom of the push card; mentions follow it when \"@ related contacts\" is checked",
+    "rankingCard": "Live ranking card",
     "vendorConfig": "Vendor settings"
   },
   "weekday": {

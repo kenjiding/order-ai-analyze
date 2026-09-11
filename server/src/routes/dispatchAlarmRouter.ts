@@ -28,6 +28,7 @@ type ScheduleBody = {
   pushTimes?: unknown
   isEnabled?: unknown
   stationCode?: unknown
+  stationName?: unknown
   alertThresholdPct?: unknown
   pushConfigIds?: unknown
   arrivalScanDates?: unknown
@@ -35,6 +36,7 @@ type ScheduleBody = {
   showDriverMap?: unknown
   excludeWhitelist?: unknown
   importantNotice?: unknown
+  rankingCardEnabled?: unknown
   imileToken?: unknown
 }
 
@@ -44,6 +46,8 @@ type PublicDispatchAlarmSchedule = {
   pushTimes: DispatchAlarmSchedule['pushTimes']
   isEnabled: boolean
   stationCode: string
+  /** 保存时的站点展示名，排名卡标题用；为空表示没取到 */
+  stationName: string
   alertThresholdPct: number
   pushConfigIds: string[]
   mentionEnabled: boolean
@@ -52,6 +56,8 @@ type PublicDispatchAlarmSchedule = {
   excludeWhitelist: boolean
   /** 重要提醒：填了就原样追加在推送卡片末尾，为空表示不追加 */
   importantNotice: string | null
+  /** 是否在每张数据卡片后紧跟一张同站点供应商的 24H 派签实时排名卡 */
+  rankingCardEnabled: boolean
   /** 「立刻推送」使用的到件扫描日期 YYYY-MM-DD，可多选；为空时按自动计算的最近工作日兜底 */
   arrivalScanDates: string[]
   /** 拥有该配置的账号所属州/区域，决定 pushTimes/weekdays 按哪个时区判断；只读，随账号信息变化 */
@@ -94,12 +100,14 @@ async function toPublicSchedule(
     pushTimes: row.pushTimes,
     isEnabled: row.isEnabled,
     stationCode: row.stationCode,
+    stationName: row.stationName,
     alertThresholdPct: row.alertThresholdPct,
     pushConfigIds: parsePushConfigIds(row.pushConfigIds),
     mentionEnabled: row.mentionEnabled,
     showDriverMap: row.showDriverMap,
     excludeWhitelist: row.excludeWhitelist,
     importantNotice: row.importantNotice ?? null,
+    rankingCardEnabled: row.rankingCardEnabled,
     arrivalScanDates: (row.arrivalScanDates as string[] | null) ?? [],
     regionCode,
     updatedAt: row.updatedAt,
@@ -126,6 +134,7 @@ function extractScheduleFields(body: ScheduleBody) {
     pushTimes: Array.isArray(body.pushTimes) ? body.pushTimes : [],
     isEnabled: body.isEnabled !== false,
     stationCode: typeof body.stationCode === 'string' ? body.stationCode.trim() : '',
+    stationName: typeof body.stationName === 'string' ? body.stationName.trim() : '',
     alertThresholdPct: normalizeAlertThresholdPct(body.alertThresholdPct),
     pushConfigIds: parsePushConfigIds(body.pushConfigIds),
     arrivalScanDates: normalizeArrivalScanDates(body.arrivalScanDates),
@@ -134,6 +143,7 @@ function extractScheduleFields(body: ScheduleBody) {
     // 默认剔除白名单：老配置与未传该字段的请求都保持既有口径
     excludeWhitelist: body.excludeWhitelist !== false,
     importantNotice: typeof body.importantNotice === 'string' ? body.importantNotice.trim() || null : null,
+    rankingCardEnabled: body.rankingCardEnabled === true,
   }
 }
 
@@ -210,6 +220,7 @@ dispatchAlarmRouter.post('/schedules', async (req: AuthenticatedRequest, res: Re
         pushTimes: fields.pushTimes,
         isEnabled: fields.isEnabled,
         stationCode: fields.stationCode,
+        stationName: fields.stationName,
         alertThresholdPct: fields.alertThresholdPct,
         pushConfigIds: fields.pushConfigIds,
         arrivalScanDates: fields.arrivalScanDates,
@@ -217,6 +228,7 @@ dispatchAlarmRouter.post('/schedules', async (req: AuthenticatedRequest, res: Re
         showDriverMap: fields.showDriverMap,
         excludeWhitelist: fields.excludeWhitelist,
         importantNotice: fields.importantNotice,
+        rankingCardEnabled: fields.rankingCardEnabled,
         imileToken: nextImileToken ? normalizeImileToken(nextImileToken) : null,
         updatedBy: userId,
       })
@@ -286,6 +298,7 @@ dispatchAlarmRouter.put('/schedules/:id', async (req: AuthenticatedRequest, res:
         pushTimes: fields.pushTimes,
         isEnabled: fields.isEnabled,
         stationCode: fields.stationCode,
+        stationName: fields.stationName,
         alertThresholdPct: fields.alertThresholdPct,
         pushConfigIds: fields.pushConfigIds,
         arrivalScanDates: fields.arrivalScanDates,
@@ -293,6 +306,7 @@ dispatchAlarmRouter.put('/schedules/:id', async (req: AuthenticatedRequest, res:
         showDriverMap: fields.showDriverMap,
         excludeWhitelist: fields.excludeWhitelist,
         importantNotice: fields.importantNotice,
+        rankingCardEnabled: fields.rankingCardEnabled,
         ...(nextImileToken ? { imileToken: normalizeImileToken(nextImileToken) } : {}),
         updatedBy: userId,
         updatedAt: new Date(),
@@ -388,6 +402,8 @@ dispatchAlarmRouter.post('/schedules/:id/push-now', async (req: AuthenticatedReq
       showDriverMap: schedule.showDriverMap,
       excludeWhitelist: schedule.excludeWhitelist,
       importantNotice: schedule.importantNotice,
+      rankingCardEnabled: schedule.rankingCardEnabled,
+      stationName: schedule.stationName,
     })
     if ('error' in result) {
       res.status(502).json({ ok: false, error: result.error })

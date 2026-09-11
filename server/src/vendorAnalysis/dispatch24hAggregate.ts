@@ -60,7 +60,7 @@ export type Dispatch24hDriverStat = {
   lateSignedCount: number
   /** 「本地件优先客户」包裹数（clientCode 命中优先客户配置） */
   priorityTotal: number
-  /** 「本地件优先客户」包裹中尚未签收（未派完）的件数 */
+  /** 「本地件优先客户」包裹中尚未签收（未派完）的件数；本次派送已上报问题件视同已签收，与 24H 派签口径一致 */
   priorityUnsigned: number
   /** 从未签收的运单明细，供告警落地页按运单号展示 */
   neverSignedWaybills: Dispatch24hUnmetWaybill[]
@@ -81,7 +81,7 @@ export type Dispatch24hVendorStat = {
   lateSignedCount: number
   /** 「本地件优先客户」包裹数（clientCode 命中优先客户配置） */
   priorityTotal: number
-  /** 「本地件优先客户」包裹中尚未签收（未派完）的件数 */
+  /** 「本地件优先客户」包裹中尚未签收（未派完）的件数；本次派送已上报问题件视同已签收，与 24H 派签口径一致 */
   priorityUnsigned: number
   unmetNos: string[]
   /** 按司机（courierCode）细分的达标情况，按未达标数从高到低排序 */
@@ -301,7 +301,8 @@ function accumulateDriverStat(
   if (lateSigned) driverStat.lateSignedCount += 1
   if (isPriority) {
     driverStat.priorityTotal += 1
-    if (!row.signDate) driverStat.priorityUnsigned += 1
+    // 本次派送已上报问题件视同已签收，与 24H 派签达标口径一致
+    if (!row.signDate && !hasProblem) driverStat.priorityUnsigned += 1
   }
 }
 
@@ -385,7 +386,8 @@ export function aggregateDispatch24hByVendor(input: {
       if (lateSigned) stat.lateSignedCount += 1
       if (isPriority) {
         stat.priorityTotal += 1
-        if (!row.signDate) stat.priorityUnsigned += 1
+        // 本次派送已上报问题件视同已签收，与 24H 派签达标口径一致
+        if (!row.signDate && !hasProblem) stat.priorityUnsigned += 1
       }
 
       accumulateDriverStat(
@@ -467,7 +469,8 @@ export function aggregateDispatch24hByScopes(input: {
       if (lateSigned) stat.lateSignedCount += 1
       if (isPriority) {
         stat.priorityTotal += 1
-        if (!row.signDate) stat.priorityUnsigned += 1
+        // 本次派送已上报问题件视同已签收，与 24H 派签达标口径一致
+        if (!row.signDate && !hasProblem) stat.priorityUnsigned += 1
       }
 
       accumulateDriverStat(

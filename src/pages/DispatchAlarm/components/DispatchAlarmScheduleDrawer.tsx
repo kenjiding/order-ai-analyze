@@ -5,6 +5,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { FormSection } from '../../../components/FormSection'
 import { StationSelect } from '../../../components/Layout/StationSelect'
+import { useGlobalFilterStore } from '../../../stores/globalFilterStore'
 import {
   SupplierMentionToggle,
   SupplierPushConfigSection,
@@ -60,6 +61,7 @@ export function DispatchAlarmScheduleDrawer({
 }: Props) {
   const { t } = useTranslation('dispatchAlarm')
   const { t: tc } = useTranslation('common')
+  const { stations } = useGlobalFilterStore()
 
   const weekdays = useMemo(
     () =>
@@ -80,6 +82,7 @@ export function DispatchAlarmScheduleDrawer({
   const [showDriverMap, setShowDriverMap] = useState(false)
   const [excludeWhitelist, setExcludeWhitelist] = useState(true)
   const [importantNotice, setImportantNotice] = useState('')
+  const [rankingCardEnabled, setRankingCardEnabled] = useState(false)
 
   useEffect(() => {
     if (!open) return
@@ -98,6 +101,7 @@ export function DispatchAlarmScheduleDrawer({
     setShowDriverMap(editingSchedule?.showDriverMap ?? false)
     setExcludeWhitelist(editingSchedule?.excludeWhitelist ?? true)
     setImportantNotice(editingSchedule?.importantNotice ?? '')
+    setRankingCardEnabled(editingSchedule?.rankingCardEnabled ?? false)
   }, [open, editingSchedule])
 
   const handleAddTime = () => setPushTimes((prev) => [...prev, { id: generateId(), time: '09:30' }])
@@ -130,6 +134,8 @@ export function DispatchAlarmScheduleDrawer({
       pushTimes,
       isEnabled: true,
       stationCode,
+      // 与「出仓派签达成分析」同一做法：保存那一刻带上站点展示名，推送时不再为名字去查 iMile
+      stationName: stations.find((s) => s.value === stationCode)?.label?.trim() ?? '',
       alertThresholdPct: alertThresholdPct ?? DEFAULT_ALERT_THRESHOLD_PCT,
       pushConfigIds: scopedPushConfigIds,
       arrivalScanDates: expandDateRange(arrivalScanRange),
@@ -137,6 +143,7 @@ export function DispatchAlarmScheduleDrawer({
       showDriverMap,
       excludeWhitelist,
       importantNotice: importantNotice.trim() || null,
+      rankingCardEnabled,
     }
     const ok = await onSubmit(draft)
     if (ok) onClose()
@@ -291,6 +298,13 @@ export function DispatchAlarmScheduleDrawer({
                   onChange={(e) => setExcludeWhitelist(e.target.checked)}
                 >
                   <span className="text-sm">{t('drawer.excludeWhitelist')}</span>
+                </Checkbox>
+                <Checkbox
+                  checked={rankingCardEnabled}
+                  disabled={saving}
+                  onChange={(e) => setRankingCardEnabled(e.target.checked)}
+                >
+                  <span className="text-sm">{t('drawer.rankingCard')}</span>
                 </Checkbox>
               </div>
             </div>

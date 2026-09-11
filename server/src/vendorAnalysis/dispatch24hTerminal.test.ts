@@ -615,6 +615,35 @@ test('aggregateDispatch24hByScopes：clientCode 命中「优先客户配置」�
   assert.equal(noList?.priorityTotal, 0)
 })
 
+test('aggregateDispatch24hByScopes：优先件本次派送已上报问题件视同已签收，与 24H 派签达标口径一致', () => {
+  const base = { courierCode: 'C1', courier: '张三', courierVendorCode: 'V1', lastScanSiteCode: 'S1', consigneeRouteCode: 'R-A', clientCode: 'VIP001', deliveryTime: '2024-06-24 10:00:00' }
+  const rows: Dispatch24hWaybillRow[] = [
+    // 未签收、无问题件 → 未签收
+    { ...base, waybillNo: 'P2' },
+    // 未签收、窗口内上报本次派送的问题件 → 视同已签收（24H 派签里也算达标）
+    { ...base, waybillNo: 'P3', lastProblemDate: '2024-06-24 15:00:00' },
+    // 未签收、问题件早于本次派件（上一次派送遗留）→ 不算本次问题件，仍是未签收
+    { ...base, waybillNo: 'P4', lastProblemDate: '2024-06-23 15:00:00' },
+  ]
+  const scopes: Dispatch24hScope[] = [{ key: 'cfg', vendorCode: 'V1', routeCodes: new Set(['R-A']) }]
+
+  const stat = aggregateDispatch24hByScopes({
+    rows,
+    stationCodes: ['S1'],
+    rule,
+    scopes,
+    priorityClientCodes: new Set(['VIP001']),
+  }).get('cfg')
+
+  assert.equal(stat?.priorityTotal, 3)
+  assert.equal(stat?.priorityUnsigned, 2)
+  assert.equal(stat?.met, 1)
+  assert.equal(stat?.drivers[0]?.priorityUnsigned, 2)
+  // 卡片上「Priority not signed」不能超过「Not signed（未达标）」
+  assert.ok(stat!.priorityUnsigned <= stat!.total - stat!.met)
+  assert.ok(stat!.drivers[0]!.priorityUnsigned <= stat!.drivers[0]!.total - stat!.drivers[0]!.met)
+})
+
 test('多到件日合并统计：行自带 windowRule 优先于聚合传入的 rule', () => {
   // 周五（2024-06-21）到件那批：整批固定截止到下周一 23:59:59；本行周一 09:00 才签收
   const fridayRule = resolveDispatch24hWindowRule('2024-06-21', tz)

@@ -1,7 +1,7 @@
 import { eq } from 'drizzle-orm'
 import { getDb, schema } from '../db'
 import type { DispatchAlarmSchedule, FleetSupplierPushConfig } from '../db/schema'
-import { buildDispatchAlarmCard } from './buildDispatchAlarmCard'
+import { buildDispatchAlarmCard, buildDispatchAlarmRankingCard, rankDispatch24h } from './buildDispatchAlarmCard'
 import { buildImportantNoticeCard, parseSupplierMentionContacts, pickMentions } from './feishuMentionHelpers'
 import { createDispatchAlarmShareSnapshot } from './dispatchAlarmShareSnapshot'
 import { sendSupplierPushCard } from './sendSupplierPushCard'
@@ -15,7 +15,7 @@ import {
   parsePushConfigIds,
   supplierDisplayName,
 } from '../supplierPushConfigs'
-import { buildConfigScope } from '../vendorAnalysis/supplierScope'
+import { buildConfigScope, buildSupplierUnitKey, normCode } from '../vendorAnalysis/supplierScope'
 import { loadPriorityClientCodes } from '../priorityClients'
 import {
   aggregateDispatch24hByScopes,
@@ -102,6 +102,10 @@ export async function executeDispatchAlarmPush(params: {
   excludeWhitelist?: boolean
   /** 重要提醒：填了就原样追加在卡片末尾，@ 人拼在它后面 */
   importantNotice?: string | null
+  /** 是否在每张数据卡片后紧跟一张同站点供应商的实时排名卡（发到同一个供应商群） */
+  rankingCardEnabled?: boolean
+  /** 排名卡标题用的站点展示名；为空时用 stationCode */
+  stationName?: string | null
   /**
    * 仅供定时任务传入：按 (jobKeyPrefix:configId, slotKey) 对每个供应商配置单独做幂等去重。
    * 某个配置本次已经成功推送过则跳过，推送失败则释放交给下次 catch-up 重试；
@@ -124,6 +128,8 @@ export async function executeDispatchAlarmPush(params: {
     showDriverMap,
     excludeWhitelist,
     importantNotice,
+    rankingCardEnabled,
+    stationName,
     perConfigDedupe,
   } = params
 
@@ -182,6 +188,34 @@ export async function executeDispatchAlarmPush(params: {
     scopes,
     priorityClientCodes,
   })
+
+  // 同站点实时排名：与卡片上的 24H 派签率同一次统计、同一口径，不额外拉数。
+  // 同一家被勾了多条配置（如多个 region 各一条）按供应商单位去重，保留单量大的那条，避免一家占两个名次
+  const supplierKeyOf = (config: FleetSupplierPushConfig) =>
+    buildSupplierUnitKey(normCode(config.vendorCode), supplierDisplayName(config))
+  const poolByKey = new Map<string, { key: string; name: string; total: number; met: number }>()
+  for (const config of configs) {
+    const stat = statsByConfigId.get(config.id)
+    if (!stat || stat.total === 0) continue
+    const key = supplierKeyOf(config)
+    const existing = poolByKey.get(key)
+    if (!existing || stat.total > existing.total) {
+      poolByKey.set(key, { key, name: supplierDisplayName(config), total: stat.total, met: stat.met })
+    }
+  }
+  const rankEntries = rankDispatch24h([...poolByKey.values()])
+  // 同一次推送各家看到的是同一张排名，构建一次复用；只有 1 家时没有可比性，不发
+  const rankingCard =
+    rankingCardEnabled && rankEntries.length >= 2
+      ? buildDispatchAlarmRankingCard({
+          stationName: stationName?.trim() || stationCode,
+          date: dateLabel,
+          pushTime,
+          tz,
+          alertThresholdPct,
+          entries: rankEntries,
+        })
+      : null
 
   for (const config of configs) {
     const stat = statsByConfigId.get(config.id)
@@ -245,6 +279,15 @@ export async function executeDispatchAlarmPush(params: {
       })
       const { ok, reason, messageId, chatId } = await sendSupplierPushCard(config, card)
       if (ok) {
+        // 实时排名卡紧跟数据卡片发到同一个群。数据卡片已发出且已 claim 时间槽，
+        // 排名卡发失败只记错误、不释放时间槽（否则下次会重发数据卡片）
+        if (rankingCard) {
+          const rankingRes = await sendSupplierPushCard(config, rankingCard)
+          if (!rankingRes.ok) {
+            console.error(`${label} ✗ 实时排名卡推送失败: ${vendorName} (${rankingRes.reason ?? '未知'})`)
+            errors.push(`${vendorName}: 实时排名卡推送失败(${rankingRes.reason ?? '未知'})`)
+          }
+        }
         // 「重要提醒」不融进数据卡片，紧接着单独发一条；此时 @ 人也跟着挪到这条里。
         // 数据卡片已发出且已 claim 时间槽，提醒发失败只记错误、不释放时间槽（否则下次会重发数据卡片）。
         if (noticeText) {
@@ -368,6 +411,8 @@ async function runOneScheduledPush(schedule: DispatchAlarmSchedule, regionCode: 
       showDriverMap: schedule.showDriverMap,
       excludeWhitelist: schedule.excludeWhitelist,
       importantNotice: schedule.importantNotice,
+      rankingCardEnabled: schedule.rankingCardEnabled,
+      stationName: schedule.stationName,
       perConfigDedupe: { jobKeyPrefix, slotKey },
     })
     if ('error' in result) {

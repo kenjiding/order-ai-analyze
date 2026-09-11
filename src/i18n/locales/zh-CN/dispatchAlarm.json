@@ -36,6 +36,7 @@
     "driverMap": "司机地图",
     "importantNotice": "重要提醒",
     "importantNoticePlaceholder": "填写后原样追加在推送卡片末尾；勾选「@ 相关人员」时 @ 人跟在提醒后面",
+    "rankingCard": "实时排名卡片",
     "vendorConfig": "供应商配置"
   },
   "weekday": {

@@ -83,6 +83,111 @@ function summaryTile(label: string, value: string, sub: string, valueColor: Mark
   }
 }
 
+/** 参与名次的最低单量：与 shared/vendorAnalysis/rankingScore.ts 的 MIN_RATE_SAMPLE 同值，量太小的率没有可比性 */
+export const MIN_RANK_SAMPLE = 30
+
+export type Dispatch24hRankEntry = {
+  /** 供应商单位键 buildSupplierUnitKey */
+  key: string
+  name: string
+  total: number
+  met: number
+  /** 名次 1..N；样本不足（total < MIN_RANK_SAMPLE）为 null，排在最后、不计入 N */
+  rank: number | null
+}
+
+/**
+ * 同站点供应商按 24H 派签率实时排名，口径与卡片上的「24H delivery rate」完全一致（met / total）。
+ * 同率时单量大的在前，再按名字，保证结果稳定。
+ * 不复用 rankVendors：它把率映射成分数，≥95% 全是 100 分，头部会并列。
+ */
+export function rankDispatch24h(items: Array<Omit<Dispatch24hRankEntry, 'rank'>>): Dispatch24hRankEntry[] {
+  const isRanked = (e: { total: number }) => e.total >= MIN_RANK_SAMPLE
+  const rate = (e: { total: number; met: number }) => (e.total > 0 ? e.met / e.total : 0)
+  const sorted = [...items].sort((a, b) => {
+    if (isRanked(a) !== isRanked(b)) return isRanked(a) ? -1 : 1
+    return rate(b) - rate(a) || b.total - a.total || a.name.localeCompare(b.name)
+  })
+  let next = 1
+  return sorted.map((e) => ({ ...e, rank: isRanked(e) ? next++ : null }))
+}
+
+const MEDALS = ['🥇', '🥈', '🥉'] as const
+/** 前三名整行底色：金 / 银 / 铜 */
+const PODIUM_BG = ['yellow-50', 'grey-50', 'orange-50'] as const
+
+function rankRate(e: Dispatch24hRankEntry): number {
+  return e.total > 0 ? (e.met / e.total) * 100 : 0
+}
+
+/** 排行卡一行：整行一个色块，左侧名次 + 供应商，右侧派签率；前三名换成奖牌并铺金银铜底色 */
+function rankingRow(e: Dispatch24hRankEntry, alertThresholdPct: number): CardEl {
+  const rate = rankRate(e)
+  const podium = e.rank != null && e.rank <= 3 ? e.rank - 1 : null
+  const badge = podium != null ? MEDALS[podium] : e.rank != null ? `**${e.rank}**` : colored('·', 'grey')
+  const rateText = colored(`**${rate.toFixed(1)}%**`, rate < alertThresholdPct ? 'red' : 'green')
+  // 行内留白挂在每列上（column_set 不支持 padding），列间距为 0，列与列之间不露缝
+  const cell = (layout: CardEl, element: CardEl): CardEl => ({
+    tag: 'column',
+    vertical_align: 'center',
+    padding: '4px 8px 4px 8px',
+    ...layout,
+    elements: [element],
+  })
+  // 整行一块底色挂在 column_set 上，而不是每列各铺一块。
+  // 不用交互容器：它的 behaviors 必填，点一下会等回调、出现 loading
+  return {
+    tag: 'column_set',
+    flex_mode: 'none',
+    horizontal_spacing: '0px',
+    ...(podium != null ? { background_style: PODIUM_BG[podium] } : {}),
+    columns: [
+      // 名次单独一列、固定宽度居中放大，各行的奖牌/数字上下对齐
+      cell({ width: '44px' }, md(badge, { text_align: 'center', text_size: 'xx-large' })),
+      cell({ width: 'weighted', weight: 3 }, md(`**${e.name}**`)),
+      cell({ width: 'weighted', weight: 1 }, md(rateText, { text_align: 'right' })),
+    ],
+  }
+}
+
+/** 实时排名卡：紧跟在每家供应商的数据卡片后发到该供应商群；同站点全部供应商实名排名，前三名金银铜，低于阈值的率标红 */
+export function buildDispatchAlarmRankingCard(params: {
+  /** 站点展示名（取不到时调用方传编码兜底） */
+  stationName: string
+  date: string
+  pushTime: string
+  tz: AusTz
+  alertThresholdPct: number
+  entries: Dispatch24hRankEntry[]
+}): Record<string, unknown> {
+  const { stationName, date, pushTime, tz, alertThresholdPct, entries } = params
+  const ranked = entries.filter((e) => e.rank != null)
+  const unranked = entries.filter((e) => e.rank == null)
+
+  const rankingElements: CardEl[] = ranked.map((e) => rankingRow(e, alertThresholdPct))
+  if (unranked.length > 0) {
+    rankingElements.push(
+      hr(),
+      md(colored(`Not ranked (fewer than ${MIN_RANK_SAMPLE} waybills)`, 'grey'), { text_size: 'notation' }),
+      ...unranked.map((e) => rankingRow(e, alertThresholdPct)),
+    )
+  }
+  rankingElements.push(hr(), footerCaption(`${date} ${pushTime} · iMile Warehouse Management System`))
+
+  return {
+    schema: '2.0',
+    header: {
+      template: 'orange',
+      title: { tag: 'plain_text', content: `🏆 Delivery Live Ranking · ${stationName}` },
+      subtitle: {
+        tag: 'plain_text',
+        content: `${date} ${pushTime} (${tzDisplayName(tz)}) · Threshold ${alertThresholdPct}%`,
+      },
+    },
+    body: { direction: 'vertical', vertical_spacing: '4px', elements: rankingElements },
+  }
+}
+
 /**
  * 构建 24 小时签收率告警飞书卡片（card JSON 2.0 结构）。
  * “派签率”口径实为“24小时内签收率”（deliveryTime 起 24h 内 signDate/lastProblemDate），
@@ -103,7 +208,7 @@ export function buildDispatchAlarmCard(params: {
   problemCount: number
   /** 「本地件优先客户」包裹数 */
   priorityTotal: number
-  /** 「本地件优先客户」包裹中尚未签收的件数 */
+  /** 「本地件优先客户」包裹中尚未签收的件数；本次派送已上报问题件视同已签收，与 24H 派签口径一致 */
   priorityUnsigned: number
   drivers: Dispatch24hDriverStat[]
   /** 未分配司机（尚未派件）的那部分单，见 Dispatch24hVendorStat.unassigned */

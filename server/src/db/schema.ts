@@ -428,6 +428,8 @@ export const dispatchAlarmSchedules = pgTable('dispatch_alarm_schedules', {
   isEnabled: boolean('is_enabled').notNull().default(true),
   /** 定时推送使用的站点编码（lastScanStationCode） */
   stationCode: varchar('station_code', { length: 64 }).notNull().default(''),
+  /** 保存那一刻的站点展示名，实时排名卡标题用，避免推送时为了显示名字再去查 iMile；为空时退回 stationCode */
+  stationName: varchar('station_name', { length: 255 }).notNull().default(''),
   /** 24H 派签率预警阈值（百分比整数）：低于该值的供应商在卡片中标红并列出未达标运单号 */
   alertThresholdPct: integer('alert_threshold_pct').notNull().default(92),
   /** 本条配置启用的供应商配置 id 列表，取代原来全局共享的 supplierConfigScopeBindings */
@@ -440,6 +442,8 @@ export const dispatchAlarmSchedules = pgTable('dispatch_alarm_schedules', {
   excludeWhitelist: boolean('exclude_whitelist').notNull().default(true),
   /** 重要提醒：填写后原样追加在卡片末尾；同时勾选 mentionEnabled 时 @ 人拼在提醒后面 */
   importantNotice: text('important_notice'),
+  /** 是否在每张 24H 派签数据卡片后紧跟一张同站点供应商的实时排名卡（发到同一个供应商群） */
+  rankingCardEnabled: boolean('ranking_card_enabled').notNull().default(false),
   /** 「立刻推送」使用的到件扫描日期数组 YYYY-MM-DD（可多选，多日数据合并统计）；为空时按自动计算的最近工作日兜底，不影响自动定时推送 */
   arrivalScanDates: jsonb('arrival_scan_dates').notNull().default([]),
   /** 定时拉数使用的 iMile token（保存配置时从全局设置同步，不对外返回） */
