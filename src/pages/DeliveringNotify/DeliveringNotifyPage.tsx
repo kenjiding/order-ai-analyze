@@ -99,6 +99,7 @@ export default function DeliveringNotifyPage({
     const res = await pushDeliveringNotify({
       imileToken,
       stationCode,
+      stationName: stationLabel,
       waybillNos: scannedList,
       images: photos.map((p) => p.dataUrl),
     })

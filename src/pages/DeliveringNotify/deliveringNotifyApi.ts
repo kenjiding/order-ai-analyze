@@ -38,6 +38,8 @@ export type DeliveringNotifyPushFail = { ok: false; error: string; unauthorized?
 export async function pushDeliveringNotify(params: {
   imileToken: string
   stationCode: string
+  /** 卡片展示用站点名 */
+  stationName: string
   waybillNos: string[]
   images?: string[]
 }): Promise<{ ok: true; data: DeliveringNotifyPushData } | DeliveringNotifyPushFail> {
@@ -51,6 +53,7 @@ export async function pushDeliveringNotify(params: {
       },
       body: JSON.stringify({
         stationCode: params.stationCode,
+        stationName: params.stationName,
         waybillNos: params.waybillNos,
         images: params.images,
       }),

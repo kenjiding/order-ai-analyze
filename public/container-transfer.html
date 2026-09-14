@@ -10,7 +10,14 @@
 :root{--c:#26746e;--line:#dbe3e1;--bg:#f6f8f8;--txt:#1f2937;--muted:#6b7280;--err:#c81e42}
 *{box-sizing:border-box}
 body{margin:0;background:var(--bg);color:var(--txt);font:16px/1.5 -apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei",sans-serif;padding-bottom:env(safe-area-inset-bottom)}
-header{background:var(--c);color:#fff;padding:14px 16px;font-size:17px;font-weight:600;display:flex;justify-content:space-between;align-items:center}
+header{background:var(--c);color:#fff;padding:14px 16px;font-size:17px;font-weight:600;display:flex;justify-content:space-between;align-items:center;gap:10px}
+.hr{display:flex;align-items:center;gap:8px;flex-shrink:0}
+/* 语言切换：按钮上写「要切到的那种语言」，点之前就知道会变成什么 */
+.lang{width:auto;border-radius:20px;padding:5px 12px;font-size:13px;font-weight:600;line-height:1.3;letter-spacing:.02em}
+header .lang{background:transparent;border:1px solid rgba(255,255,255,.4);color:#fff}
+header .lang:active{background:rgba(255,255,255,.14)}
+#gate .lang{position:absolute;top:calc(14px + env(safe-area-inset-top));right:16px;z-index:2;background:#fff;
+  border:1px solid #dde7e5;color:var(--c);box-shadow:0 4px 12px -6px rgba(24,80,74,.25)}
 /* 透明底 + 描边：白字直接压在主色 header 上（5.52），不靠半透明底垫 */
 #who{width:auto;background:transparent;border:1px solid rgba(255,255,255,.4);color:#fff;
   border-radius:20px;padding:5px 13px;font-size:13px;font-weight:400;line-height:1.3}
@@ -55,7 +62,7 @@ textarea{resize:vertical;min-height:64px}
 .way{font-size:14px;color:var(--txt);margin-bottom:5px;line-height:1.45}
 .way em{font-style:normal;color:#5f7370;padding:0 5px}
 .qty{font-size:13px;color:#5f7370}
-.rec-b{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-top:11px;
+.rec-b{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:10px;margin-top:11px;
   padding-top:10px;border-top:1px solid #eef3f2}
 .day{font-size:12px;color:#5f7370}
 .del{width:auto;background:#fff;border:1px solid #f3ccd6;color:var(--err);border-radius:9px;
@@ -182,114 +189,115 @@ textarea{resize:vertical;min-height:64px}
 </head>
 <body>
 <form id="gate">
+  <button type="button" class="lang"></button>
   <div class="card">
     <div class="logo"><b></b></div>
-    <h1>流转记录</h1>
-    <p>容器管理</p>
+    <h1 data-i="gateTitle">流转记录</h1>
+    <p data-i="gateSub">容器管理</p>
     <div class="f">
-      <label for="u" class="sr">用户名</label>
+      <label for="u" class="sr" data-i="user">用户名</label>
       <span class="ip">
         <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="3.6"/><path d="M5.5 20a6.5 6.5 0 0 1 13 0"/></svg>
-        <input id="u" name="username" placeholder="请输入用户名" autocomplete="username" autocapitalize="off" autocorrect="off" spellcheck="false" enterkeyhint="next" />
+        <input id="u" name="username" placeholder="请输入用户名" data-ip="userPh" autocomplete="username" autocapitalize="off" autocorrect="off" spellcheck="false" enterkeyhint="next" />
       </span>
     </div>
     <div class="f">
-      <label for="p" class="sr">密码</label>
+      <label for="p" class="sr" data-i="pass">密码</label>
       <span class="ip">
         <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4.6" y="10.4" width="14.8" height="9.6" rx="2.4"/><path d="M8.3 10.4V7.9a3.7 3.7 0 0 1 7.4 0v2.5"/></svg>
-        <input id="p" name="password" type="password" placeholder="请输入密码" autocomplete="current-password" enterkeyhint="go" />
+        <input id="p" name="password" type="password" placeholder="请输入密码" data-ip="passPh" autocomplete="current-password" enterkeyhint="go" />
       </span>
     </div>
     <p id="gerr" role="alert" aria-live="polite"></p>
-    <button id="gbtn">登 录</button>
+    <button id="gbtn" data-i="signIn">登 录</button>
   </div>
 </form>
-<header><span>流转记录快填</span><button type="button" id="who" hidden></button></header>
+<header><span data-i="title">流转记录快填</span><span class="hr"><button type="button" class="lang"></button><button type="button" id="who" hidden></button></span></header>
 <nav class="tabs">
-  <button type="button" class="tab on" id="tf">录入</button>
-  <button type="button" class="tab" id="tl">流转记录<b id="cnt" hidden></b></button>
+  <button type="button" class="tab on" id="tf" data-i="tabNew">录入</button>
+  <button type="button" class="tab" id="tl"><span data-i="tabList">流转记录</span><b id="cnt" hidden></b></button>
 </nav>
 <div id="msg"></div>
 <main id="vform">
   <div class="two">
     <div>
-      <label for="occurredAt">日期 <b>*</b></label>
+      <label for="occurredAt"><span data-i="date">日期</span> <b>*</b></label>
       <input type="date" id="occurredAt" />
     </div>
     <div>
-      <label for="kind">类型 <b>*</b></label>
-      <select id="kind"><option value="LEND">借出</option><option value="RETURN">归还</option></select>
+      <label for="kind"><span data-i="kind">类型</span> <b>*</b></label>
+      <select id="kind"><option value="LEND" data-i="LEND">借出</option><option value="RETURN" data-i="RETURN">归还</option></select>
     </div>
   </div>
 
-  <label for="from">转出方 <b>*</b></label>
-  <select id="from"><option value="">加载中…</option></select>
+  <label for="from"><span data-i="from">转出方</span> <b>*</b></label>
+  <select id="from"><option value="" data-i="loading">加载中…</option></select>
 
-  <label for="to">接收方 <b>*</b></label>
-  <select id="to"><option value="">加载中…</option></select>
+  <label for="to"><span data-i="to">接收方</span> <b>*</b></label>
+  <select id="to"><option value="" data-i="loading">加载中…</option></select>
 
-  <label>品类与数量 <b>*</b></label>
+  <label><span data-i="lines">品类与数量</span> <b>*</b></label>
   <div id="lines"></div>
-  <button type="button" class="add" id="addLine">+ 加一行</button>
+  <button type="button" class="add" id="addLine" data-i="addLine">+ 加一行</button>
 
-  <label for="note">备注</label>
+  <label for="note" data-i="note">备注</label>
   <textarea id="note" maxlength="2000"></textarea>
 
-  <p class="hint">提交后保留日期与站点，只清空数量，方便连续录入。</p>
+  <p class="hint" data-i="hint">提交后保留日期与站点，只清空数量，方便连续录入。</p>
 </main>
 <main id="vlist" hidden>
   <div class="seg">
-    <button type="button" class="on" id="sout">我方发出</button>
-    <button type="button" id="sin">我方接收</button>
+    <button type="button" class="on" id="sout" data-i="segOut">我方发出</button>
+    <button type="button" id="sin" data-i="segIn">我方接收</button>
   </div>
   <div id="rows"></div>
 </main>
-<div class="bar" id="bar"><button id="submit" disabled>提交</button></div>
+<div class="bar" id="bar"><button id="submit" disabled data-i="submit">提交</button></div>
 <div id="out" hidden>
   <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="ot">
-    <h2 id="ot">退出登录</h2>
+    <h2 id="ot" data-i="outTitle">退出登录</h2>
     <p id="osum"></p>
     <div class="acts">
-      <button type="button" class="no2" id="ono">取消</button>
-      <button type="button" class="yes2" id="oyes">退出</button>
+      <button type="button" class="no2" id="ono" data-i="cancel">取消</button>
+      <button type="button" class="yes2" id="oyes" data-i="signOut">退出</button>
     </div>
   </div>
 </div>
 <div id="cfm" hidden>
   <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="ct">
-    <h2 id="ct">确认收货</h2>
+    <h2 id="ct" data-i="confirm">确认收货</h2>
     <p id="csum"></p>
-    <label for="cnote">收货备注（选填）</label>
-    <input id="cnote" placeholder="例如：已清点无误" maxlength="200" />
+    <label for="cnote" data-i="cnote">收货备注（选填）</label>
+    <input id="cnote" placeholder="例如：已清点无误" data-ip="cnotePh" maxlength="200" />
     <div class="acts">
-      <button type="button" class="no2" id="cno">取消</button>
-      <button type="button" class="yes2" id="cyes">确认收货</button>
+      <button type="button" class="no2" id="cno" data-i="cancel">取消</button>
+      <button type="button" class="yes2" id="cyes" data-i="confirm">确认收货</button>
     </div>
   </div>
 </div>
 <div id="neg" hidden>
   <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="nt">
-    <h2 id="nt">差异申报</h2>
+    <h2 id="nt" data-i="negTitle">差异申报</h2>
     <p id="nsum"></p>
     <div class="lns" id="nlines"></div>
-    <label for="nreason">申报原因（必填）</label>
-    <input id="nreason" placeholder="例如：破损 3 个，实收不足" maxlength="200" />
+    <label for="nreason" data-i="nreason">申报原因（必填）</label>
+    <input id="nreason" placeholder="例如：破损 3 个，实收不足" data-ip="nreasonPh" maxlength="200" />
     <div class="acts">
-      <button type="button" class="no2" id="nno">取消</button>
-      <button type="button" class="yes2" id="nyes">提交申报</button>
+      <button type="button" class="no2" id="nno" data-i="cancel">取消</button>
+      <button type="button" class="yes2" id="nyes" data-i="negSubmit">提交申报</button>
     </div>
   </div>
 </div>
 <div id="del" hidden>
   <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="dt">
-    <h2 id="dt">删除这条记录</h2>
+    <h2 id="dt" data-i="delTitle">删除这条记录</h2>
     <p id="dsum"></p>
     <div class="chips" id="chips"></div>
-    <label for="dreason">删除原因（必填）</label>
-    <input id="dreason" placeholder="点上面快选，或自己填" maxlength="200" />
+    <label for="dreason" data-i="dreason">删除原因（必填）</label>
+    <input id="dreason" placeholder="点上面快选，或自己填" data-ip="dreasonPh" maxlength="200" />
     <div class="acts">
-      <button type="button" class="no2" id="dno">取消</button>
-      <button type="button" class="yes" id="dyes">确认删除</button>
+      <button type="button" class="no2" id="dno" data-i="cancel">取消</button>
+      <button type="button" class="yes" id="dyes" data-i="delConfirm">确认删除</button>
     </div>
   </div>
 </div>
@@ -299,6 +307,101 @@ textarea{resize:vertical;min-height:64px}
 var API = '/api/container-management'
 var $ = function (id) { return document.getElementById(id) }
 var types = [], own = [], others = []
+
+// ---------------------------------------------------------------- 多语言
+// key 与取值和主站 src/i18n 一致（app_locale_v1 / zh-CN|en），两边切过的语言互相跟随；
+// 英文措辞沿用主站 container.json，同一个动作两边叫法不打架
+var LKEY = 'app_locale_v1'
+var lang = (function () {
+  try { return localStorage.getItem(LKEY) === 'en' ? 'en' : 'zh-CN' } catch (e) { return 'zh-CN' }
+})()
+var I18N = {
+  'zh-CN': {
+    langBtn: 'EN', langAria: 'Switch to English',
+    title: '流转记录快填', gateTitle: '流转记录', gateSub: '容器管理',
+    user: '用户名', userPh: '请输入用户名', pass: '密码', passPh: '请输入密码',
+    signIn: '登 录', signingIn: '登录中…', errCred: '请输入用户名和密码', errSignIn: '登录失败',
+    tabNew: '录入', tabList: '流转记录',
+    date: '日期', kind: '类型', LEND: '借出', RETURN: '归还', from: '转出方', to: '接收方',
+    loading: '加载中…', pick: '请选择', lines: '品类与数量', addLine: '+ 加一行', note: '备注',
+    qty: '数量', rmLine: '删除这一行',
+    hint: '提交后保留日期与站点，只清空数量，方便连续录入。',
+    submit: '提交', submitting: '提交中…', submitted: '已提交 ', errSubmit: '提交失败',
+    errQty: '数量必须为正整数', errDupType: '同一笔记录中品类不能重复', errNoLine: '至少填一行数量',
+    errDate: '请选日期', errFrom: '请选转出方', errTo: '请选接收方',
+    errNet: '网络异常，请重试', errLoad: '加载失败，请刷新', errList: '列表加载失败，请重试',
+    errNoSite: '你还没有被绑定到任何站点，无法记账', errNoType: '没有可用的容器品类',
+    segOut: '我方发出', segIn: '我方接收',
+    emptyOut: '没有我方发出的待确认单', emptyIn: '没有我方接收的待确认单',
+    emptyOutSub: '你提交的单子对方都已处理完', emptyInSub: '别人发给你的容器都已处理完',
+    roleOut: '等对方确认', roleIn: '等我确认', roleBoth: '双方都是我',
+    del: '删除', neg: '协商', confirm: '确认收货', cancel: '取消',
+    delTitle: '删除这条记录', dreason: '删除原因（必填）', dreasonPh: '点上面快选，或自己填',
+    reasons: ['录入错误', '重复提交', '数量填错', '站点选错'],
+    delSuffix: '。删除后不可恢复，台账不受影响。', delConfirm: '确认删除', deleting: '删除中…',
+    deleted: '已删除 ', errDelete: '删除失败', errDelReason: '请填写删除原因',
+    cnote: '收货备注（选填）', cnotePh: '例如：已清点无误', cfmSuffix: '。将按申报数量全额入账：',
+    confirmed: '已确认收货 ',
+    negTitle: '差异申报', nreason: '申报原因（必填）', nreasonPh: '例如：破损 3 个，实收不足',
+    negSubmit: '提交申报', negSuffix: '。填写实际收到的数量，与申报不符的才需要改。', declared: '申报',
+    errNegReason: '请填写申报原因', errRange: '实收数量须为 0 到 {n} 之间的整数',
+    errSame: '实收与申报一致，请直接确认收货', reported: '已申报差异 ', errAction: '操作失败',
+    outTitle: '退出登录', signOut: '退出', signingOut: '退出中…',
+    outSum: '当前登录：{n}。退出后未提交的内容会清空。',
+    sep: '　', comma: '，'
+  },
+  en: {
+    langBtn: '中文', langAria: '切换到中文',
+    title: 'Quick Transfer Entry', gateTitle: 'Transfers', gateSub: 'Container Management',
+    user: 'Username', userPh: 'Enter username', pass: 'Password', passPh: 'Enter password',
+    signIn: 'Sign in', signingIn: 'Signing in…', errCred: 'Enter username and password', errSignIn: 'Sign-in failed',
+    tabNew: 'New', tabList: 'Transfers',
+    date: 'Date', kind: 'Type', LEND: 'Loan', RETURN: 'Return', from: 'From', to: 'To',
+    loading: 'Loading…', pick: 'Select', lines: 'Line items', addLine: '+ Add line', note: 'Note',
+    qty: 'Qty', rmLine: 'Remove line',
+    hint: 'Date and sites stay after submit; only quantities clear.',
+    submit: 'Submit', submitting: 'Submitting…', submitted: 'Submitted ', errSubmit: 'Submit failed',
+    errQty: 'Quantity must be a positive integer', errDupType: 'Each type can appear only once',
+    errNoLine: 'Enter at least one quantity',
+    errDate: 'Select a date', errFrom: 'Select From', errTo: 'Select To',
+    errNet: 'Network error, try again', errLoad: 'Load failed, please refresh', errList: 'List failed to load, try again',
+    errNoSite: 'You are not linked to any site yet', errNoType: 'No container types available',
+    segOut: 'Sent by us', segIn: 'Received by us',
+    emptyOut: 'No pending transfers sent by us', emptyIn: 'No pending transfers received by us',
+    emptyOutSub: 'Everything you sent has been handled', emptyInSub: 'Everything sent to you has been handled',
+    roleOut: 'Awaiting them', roleIn: 'Awaiting me', roleBoth: 'Both sides mine',
+    del: 'Delete', neg: 'Negotiate', confirm: 'Confirm receipt', cancel: 'Cancel',
+    delTitle: 'Delete transfer', dreason: 'Delete reason (required)', dreasonPh: 'Pick above or type your own',
+    reasons: ['Entry mistake', 'Duplicate', 'Wrong quantity', 'Wrong site'],
+    delSuffix: '. This cannot be undone; stock is unaffected.', delConfirm: 'Confirm delete', deleting: 'Deleting…',
+    deleted: 'Deleted ', errDelete: 'Delete failed', errDelReason: 'Enter a delete reason',
+    cnote: 'Receipt note (optional)', cnotePh: 'e.g. Counted, all correct', cfmSuffix: '. Books declared quantities in full: ',
+    confirmed: 'Receipt confirmed ',
+    negTitle: 'Report discrepancy', nreason: 'Reason (required)', nreasonPh: 'e.g. 3 damaged, short received',
+    negSubmit: 'Submit report', negSuffix: '. Enter quantities actually received; change only those that differ.',
+    declared: 'Declared',
+    errNegReason: 'Enter a reason', errRange: 'Received qty must be an integer 0-{n}',
+    errSame: 'Received matches declared, use Confirm receipt', reported: 'Discrepancy reported ', errAction: 'Action failed',
+    outTitle: 'Sign out', signOut: 'Sign out', signingOut: 'Signing out…',
+    outSum: 'Signed in as {n}. Unsubmitted input will be cleared.',
+    sep: ' ', comma: ', '
+  }
+}
+function T(k) {
+  var v = I18N[lang][k]
+  return v == null ? k : v
+}
+
+function applyLang() {
+  document.documentElement.lang = lang
+  document.title = T('title')
+  var i, n = document.querySelectorAll('[data-i]')
+  for (i = 0; i < n.length; i++) n[i].textContent = T(n[i].getAttribute('data-i'))
+  n = document.querySelectorAll('[data-ip]')
+  for (i = 0; i < n.length; i++) n[i].placeholder = T(n[i].getAttribute('data-ip'))
+  n = document.querySelectorAll('.lang')
+  for (i = 0; i < n.length; i++) { n[i].textContent = T('langBtn'); n[i].setAttribute('aria-label', T('langAria')) }
+}
 
 // 记住用户名用的是主站登录页同一个 localStorage key，在主站登过就已经填好了
 var UKEY = 'username'
@@ -328,7 +431,7 @@ function say(text, ok) {
 }
 
 function fill(sel, list, keep) {
-  sel.innerHTML = '<option value="">请选择</option>'
+  sel.innerHTML = '<option value="">' + esc(T('pick')) + '</option>'
   list.forEach(function (item) {
     var o = document.createElement('option')
     o.value = item.id
@@ -359,11 +462,11 @@ function addLine() {
   qty.min = '1'
   qty.step = '1'
   qty.inputMode = 'numeric'
-  qty.placeholder = '数量'
+  qty.placeholder = T('qty')
   var del = document.createElement('button')
   del.type = 'button'
   del.textContent = '×'
-  del.setAttribute('aria-label', '删除这一行')
+  del.setAttribute('aria-label', T('rmLine'))
   del.onclick = function () { if ($('lines').children.length > 1) row.remove() }
   row.appendChild(sel); row.appendChild(qty); row.appendChild(del)
   $('lines').appendChild(row)
@@ -377,12 +480,12 @@ function readLines() {
     var raw = rows[i].querySelector('input').value.trim()
     if (raw === '') continue
     var n = Number(raw)
-    if (!isFinite(n) || n <= 0 || n !== Math.floor(n)) return { error: '数量必须为正整数' }
-    if (seen[code]) return { error: '同一笔记录中品类不能重复' }
+    if (!isFinite(n) || n <= 0 || n !== Math.floor(n)) return { error: T('errQty') }
+    if (seen[code]) return { error: T('errDupType') }
     seen[code] = 1
     out.push({ containerType: code, quantity: n })
   }
-  if (out.length === 0) return { error: '至少填一行数量' }
+  if (out.length === 0) return { error: T('errNoLine') }
   return { items: out }
 }
 
@@ -390,15 +493,15 @@ function submit() {
   var occurredAt = $('occurredAt').value
   var from = $('from').value
   var to = $('to').value
-  if (!occurredAt) return say('请选日期')
-  if (!from) return say('请选转出方')
-  if (!to) return say('请选接收方')
+  if (!occurredAt) return say(T('errDate'))
+  if (!from) return say(T('errFrom'))
+  if (!to) return say(T('errTo'))
   var lines = readLines()
   if (lines.error) return say(lines.error)
 
   var btn = $('submit')
   btn.disabled = true
-  btn.textContent = '提交中…'
+  btn.textContent = T('submitting')
   fetch(API + '/transfers', {
     method: 'POST',
     credentials: 'include',
@@ -422,18 +525,18 @@ function submit() {
       if (json && json.ok) {
         var id = json.data && json.data[0] ? json.data[0].id : 0
         // 单号口径与主站一致：TR- + 6 位补零（server constants.ts formatTransferNo）
-        say('已提交' + (id ? '：TR-' + String(id).padStart(6, '0') : ''), true)
+        say(T('submitted') + (id ? no(id) : ''), true)
         // 站点/日期/类型都留着，现场通常连着录同一批，只清数量与备注
         $('note').value = ''
         $('lines').innerHTML = ''
         addLine()
         listed = false
       } else {
-        say((json && json.error) || '提交失败')
+        say((json && json.error) || T('errSubmit'))
       }
     })
-    .catch(function (e) { if (e.message !== '401') say('网络异常，请重试') })
-    .then(function () { btn.disabled = false; btn.textContent = '提交' })
+    .catch(function (e) { if (e.message !== '401') say(T('errNet')) })
+    .then(function () { btn.disabled = false; btn.textContent = T('submit') })
 }
 
 // 本地日期，不能用 toISOString（那是 UTC，UK 夏令时会差成前一天）
@@ -458,8 +561,8 @@ function boot() {
       // 现场手机可能多人轮着用，把当前登录人摆在标题栏，记录归谁一眼可查
       $('who').textContent = me ? me.displayName || me.username : ''
       $('who').hidden = !$('who').textContent
-      if (own.length === 0) return say('你还没有被绑定到任何站点，无法记账')
-      if (types.length === 0) return say('没有可用的容器品类')
+      if (own.length === 0) return say(T('errNoSite'))
+      if (types.length === 0) return say(T('errNoType'))
       fill($('from'), own)
       if (own.length === 1) $('from').value = own[0].id
       syncTo()
@@ -467,7 +570,7 @@ function boot() {
       addLine()
       $('submit').disabled = false
     })
-    .catch(function (e) { if (e.message !== '401') say('加载失败，请刷新') })
+    .catch(function (e) { if (e.message !== '401') say(T('errLoad')) })
 }
 
 function gateErr(text) {
@@ -482,10 +585,10 @@ $('gate').onsubmit = function (e) {
   e.preventDefault()
   var u = $('u').value.trim()
   var pw = $('p').value
-  if (!u || !pw) return gateErr('请输入用户名和密码')
+  if (!u || !pw) return gateErr(T('errCred'))
   var btn = $('gbtn')
   btn.disabled = true
-  btn.textContent = '登录中…'
+  btn.textContent = T('signingIn')
   $('gerr').textContent = ''
   fetch('/api/auth/login', {
     method: 'POST',
@@ -495,18 +598,17 @@ $('gate').onsubmit = function (e) {
   })
     .then(function (r) { return r.json().then(function (j) { return { ok: r.ok, body: j } }) })
     .then(function (r) {
-      if (!r.ok) return gateErr((r.body && r.body.error) || '登录失败')
+      if (!r.ok) return gateErr((r.body && r.body.error) || T('errSignIn'))
       remember(u)
       $('p').value = ''
       $('gate').classList.remove('on')
       boot()
     })
-    .catch(function () { gateErr('网络异常，请重试') })
-    .then(function () { btn.disabled = false; btn.textContent = '登录' })
+    .catch(function () { gateErr(T('errNet')) })
+    .then(function () { btn.disabled = false; btn.textContent = T('signIn') })
 }
 
 // ---------------------------------------------------------------- 待确认列表
-var REASONS = ['录入错误', '重复提交', '数量填错', '站点选错']
 var listed = false, delId = 0, actId = 0
 // out = 我发出的待对方确认；in = 别人发给我的待我确认
 var scope = 'out', rows = []
@@ -548,7 +650,7 @@ function loadList() {
       renderList((res && res.data && res.data.items) || [])
     })
     .catch(function (e) {
-      if (e.message !== '401') { $('rows').innerHTML = ''; say('列表加载失败，请重试') }
+      if (e.message !== '401') { $('rows').innerHTML = ''; say(T('errList')) }
     })
 }
 
@@ -559,16 +661,16 @@ function renderList(items) {
   cnt.hidden = items.length === 0
   if (items.length === 0) {
     $('rows').innerHTML = '<div class="empty"><b></b><i>'
-      + (scope === 'out' ? '没有我方发出的待确认单' : '没有我方接收的待确认单')
+      + T(scope === 'out' ? 'emptyOut' : 'emptyIn')
       + '</i><span>'
-      + (scope === 'out' ? '你提交的单子对方都已处理完' : '别人发给你的容器都已处理完')
+      + T(scope === 'out' ? 'emptyOutSub' : 'emptyInSub')
       + '</span></div>'
     return
   }
   $('rows').innerHTML = items.map(function (t) {
     var qty = t.items.map(function (it) {
       return esc(typeName(it.containerType)) + ' × ' + it.declaredQuantity
-    }).join('，')
+    }).join(T('comma'))
     return '<div class="rec">'
       + '<div class="rec-t"><span class="no">' + no(t.id) + '</span>'
       + '<span class="st">' + role(t) + '</span></div>'
@@ -576,10 +678,10 @@ function renderList(items) {
       + '<div class="qty">' + qty + '</div>'
       + '<div class="rec-b"><span class="day">' + esc(t.occurredAt) + '</span><span class="acts2">'
       + (isMine(t.fromAccountId)
-          ? '<button type="button" class="del" data-id="' + t.id + '">删除</button>' : '')
+          ? '<button type="button" class="del" data-id="' + t.id + '">' + T('del') + '</button>' : '')
       + (isMine(t.toAccountId)
-          ? '<button type="button" class="neg" data-id="' + t.id + '">协商</button>'
-            + '<button type="button" class="ok" data-id="' + t.id + '">确认收货</button>' : '')
+          ? '<button type="button" class="neg" data-id="' + t.id + '">' + T('neg') + '</button>'
+            + '<button type="button" class="ok" data-id="' + t.id + '">' + T('confirm') + '</button>' : '')
       + '</span></div>'
       + '</div>'
   }).join('')
@@ -587,9 +689,9 @@ function renderList(items) {
 
 function openDel(id, summary) {
   delId = id
-  $('dsum').textContent = summary + '。删除后不可恢复，台账不受影响。'
+  $('dsum').textContent = summary + T('delSuffix')
   $('dreason').value = ''
-  $('chips').innerHTML = REASONS.map(function (r) {
+  $('chips').innerHTML = T('reasons').map(function (r) {
     return '<button type="button" class="chip">' + r + '</button>'
   }).join('')
   $('del').hidden = false
@@ -597,10 +699,10 @@ function openDel(id, summary) {
 
 function doDelete() {
   var reason = $('dreason').value.trim()
-  if (!reason) return say('请填写删除原因')
+  if (!reason) return say(T('errDelReason'))
   var btn = $('dyes')
   btn.disabled = true
-  btn.textContent = '删除中…'
+  btn.textContent = T('deleting')
   fetch(API + '/transfers/' + delId, {
     method: 'DELETE',
     credentials: 'include',
@@ -612,11 +714,11 @@ function doDelete() {
       return r.json()
     })
     .then(function (json) {
-      if (json && json.ok) { $('del').hidden = true; say('已删除 ' + no(delId), true); loadList() }
-      else say((json && json.error) || '删除失败')
+      if (json && json.ok) { $('del').hidden = true; say(T('deleted') + no(delId), true); loadList() }
+      else say((json && json.error) || T('errDelete'))
     })
-    .catch(function (e) { if (e.message !== '401') say('网络异常，请重试') })
-    .then(function () { btn.disabled = false; btn.textContent = '确认删除' })
+    .catch(function (e) { if (e.message !== '401') say(T('errNet')) })
+    .then(function () { btn.disabled = false; btn.textContent = T('delConfirm') })
 }
 
 $('tf').onclick = function () { view('form') }
@@ -633,11 +735,11 @@ function findRow(id) {
 /** 我在这单里的角色，决定了我能做什么 */
 function role(t) {
   var f = isMine(t.fromAccountId), o = isMine(t.toAccountId)
-  if (f && o) return '双方都是我'
-  return f ? '等对方确认' : '等我确认'
+  if (f && o) return T('roleBoth')
+  return T(f ? 'roleOut' : 'roleIn')
 }
 function summary(t) {
-  return no(t.id) + '　' + t.fromAccountName + ' → ' + t.toAccountName
+  return no(t.id) + T('sep') + t.fromAccountName + ' → ' + t.toAccountName
 }
 $('rows').onclick = function (e) {
   var b = e.target.closest('.del,.neg,.ok')
@@ -662,13 +764,13 @@ $('dyes').onclick = doDelete
 function doLogout() {
   var btn = $('oyes')
   btn.disabled = true
-  btn.textContent = '退出中…'
+  btn.textContent = T('signingOut')
   // 无论后端是否响应都要回到登录门：cookie 可能本来就失效了，卡在这儿反而没法换人
   fetch('/api/auth/logout', { method: 'POST', credentials: 'include' })
     .catch(function () {})
     .then(function () {
       btn.disabled = false
-      btn.textContent = '退出'
+      btn.textContent = T('signOut')
       $('out').hidden = true
       $('who').hidden = true
       $('who').textContent = ''
@@ -681,7 +783,7 @@ function doLogout() {
 }
 
 $('who').onclick = function () {
-  $('osum').textContent = '当前登录：' + $('who').textContent + '。退出后未提交的内容会清空。'
+  $('osum').textContent = T('outSum').replace('{n}', $('who').textContent)
   $('out').hidden = false
 }
 $('ono').onclick = function () { $('out').hidden = true }
@@ -690,8 +792,8 @@ $('oyes').onclick = doLogout
 
 function openConfirm(t) {
   actId = t.id
-  $('csum').textContent = summary(t) + '。将按申报数量全额入账：'
-    + t.items.map(function (i) { return typeName(i.containerType) + ' × ' + i.declaredQuantity }).join('，')
+  $('csum').textContent = summary(t) + T('cfmSuffix')
+    + t.items.map(function (i) { return typeName(i.containerType) + ' × ' + i.declaredQuantity }).join(T('comma'))
   $('cnote').value = ''
   $('cfm').hidden = false
 }
@@ -699,19 +801,19 @@ function openConfirm(t) {
 function doConfirm() {
   var btn = $('cyes')
   btn.disabled = true
-  btn.textContent = '提交中…'
-  act('/transfers/' + actId + '/confirm', { note: $('cnote').value.trim() }, '已确认收货 ')
+  btn.textContent = T('submitting')
+  act('/transfers/' + actId + '/confirm', { note: $('cnote').value.trim() }, T('confirmed'))
     .then(function (ok) { if (ok) $('cfm').hidden = true })
-    .then(function () { btn.disabled = false; btn.textContent = '确认收货' })
+    .then(function () { btn.disabled = false; btn.textContent = T('confirm') })
 }
 
 function openNegotiate(t) {
   actId = t.id
-  $('nsum').textContent = summary(t) + '。填写实际收到的数量，与申报不符的才需要改。'
+  $('nsum').textContent = summary(t) + T('negSuffix')
   // 默认填申报数：现场通常只有一两个品类对不上，其余原样放行
   $('nlines').innerHTML = t.items.map(function (i) {
     return '<div class="ln"><span>' + esc(typeName(i.containerType)) + '</span>'
-      + '<em>申报 ' + i.declaredQuantity + '</em>'
+      + '<em>' + T('declared') + ' ' + i.declaredQuantity + '</em>'
       + '<input type="number" inputmode="numeric" min="0" step="1" max="' + i.declaredQuantity
       + '" value="' + i.declaredQuantity + '" data-t="' + esc(i.containerType) + '" /></div>'
   }).join('')
@@ -723,26 +825,26 @@ function doNegotiate() {
   var t = findRow(actId)
   if (!t) return
   var reason = $('nreason').value.trim()
-  if (!reason) return say('请填写申报原因')
+  if (!reason) return say(T('errNegReason'))
   var lineItems = [], boxes = $('nlines').querySelectorAll('input'), same = true
   for (var i = 0; i < boxes.length; i++) {
     var raw = boxes[i].value.trim()
     var n = Number(raw)
     var max = Number(boxes[i].getAttribute('max'))
     if (raw === '' || !isFinite(n) || n < 0 || n > max || n !== Math.floor(n)) {
-      return say('实收数量须为 0 到 ' + max + ' 之间的整数')
+      return say(T('errRange').replace('{n}', max))
     }
     if (n !== max) same = false
     lineItems.push({ containerType: boxes[i].getAttribute('data-t'), quantity: n })
   }
   // 一个都没改就不该走协商，这是要按「确认收货」处理的
-  if (same) return say('实收与申报一致，请直接确认收货')
+  if (same) return say(T('errSame'))
   var btn = $('nyes')
   btn.disabled = true
-  btn.textContent = '提交中…'
-  act('/transfers/' + actId + '/report-receipt', { lineItems: lineItems, reason: reason }, '已申报差异 ')
+  btn.textContent = T('submitting')
+  act('/transfers/' + actId + '/report-receipt', { lineItems: lineItems, reason: reason }, T('reported'))
     .then(function (ok) { if (ok) $('neg').hidden = true })
-    .then(function () { btn.disabled = false; btn.textContent = '提交申报' })
+    .then(function () { btn.disabled = false; btn.textContent = T('negSubmit') })
 }
 
 /** confirm / report-receipt 共用：PATCH、成功刷新列表，返回是否成功 */
@@ -759,10 +861,10 @@ function act(path, body, okText) {
     })
     .then(function (json) {
       if (json && json.ok) { say(okText + no(actId), true); loadList(); return true }
-      say((json && json.error) || '操作失败')
+      say((json && json.error) || T('errAction'))
       return false
     })
-    .catch(function (e) { if (e.message !== '401') say('网络异常，请重试'); return false })
+    .catch(function (e) { if (e.message !== '401') say(T('errNet')); return false })
 }
 
 function seg(next) {
@@ -780,6 +882,17 @@ $('cyes').onclick = doConfirm
 $('nno').onclick = function () { $('neg').hidden = true }
 $('neg').onclick = function (e) { if (e.target === $('neg')) $('neg').hidden = true }
 $('nyes').onclick = doNegotiate
+
+var langBtns = document.querySelectorAll('.lang')
+for (var li = 0; li < langBtns.length; li++) {
+  langBtns[li].onclick = function () {
+    lang = lang === 'en' ? 'zh-CN' : 'en'
+    try { localStorage.setItem(LKEY, lang) } catch (e) {}
+    // ponytail: 切语言直接刷新，未提交内容会丢；一台设备通常只切一次，要保留输入再做运行时重画
+    location.reload()
+  }
+}
+applyLang()
 
 boot()
 </script>

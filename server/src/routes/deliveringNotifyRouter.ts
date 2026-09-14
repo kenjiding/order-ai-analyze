@@ -76,7 +76,7 @@ deliveringNotifyRouter.post('/push', async (req: AuthenticatedRequest, res: Resp
     return
   }
 
-  type PushBody = { waybillNos?: unknown; stationCode?: unknown; images?: unknown }
+  type PushBody = { waybillNos?: unknown; stationCode?: unknown; stationName?: unknown; images?: unknown }
   const body = req.body as PushBody
 
   const stationCode = typeof body.stationCode === 'string' ? body.stationCode.trim() : ''
@@ -84,6 +84,8 @@ deliveringNotifyRouter.post('/push', async (req: AuthenticatedRequest, res: Resp
     res.status(400).json({ ok: false, error: '缺少必填字段: stationCode' })
     return
   }
+  // 卡片展示站点名，取不到时退回编码
+  const stationName = (typeof body.stationName === 'string' ? body.stationName.trim() : '') || stationCode
 
   const waybillNos = Array.isArray(body.waybillNos)
     ? Array.from(
@@ -199,7 +201,7 @@ deliveringNotifyRouter.post('/push', async (req: AuthenticatedRequest, res: Resp
     const vendorName = supplierDisplayName(config)
     const card = buildDeliveringNotifyCard({
       vendorName,
-      stationCode,
+      stationName,
       date: dateStr,
       tz,
       outForDelivery,

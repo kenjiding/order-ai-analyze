@@ -6,7 +6,7 @@ import { buildDeliveringNotifyCard } from './buildDeliveringNotifyCard'
 test('卡片标题为 Parcels left at the warehouse，并按两类分段', () => {
   const card = buildDeliveringNotifyCard({
     vendorName: 'Acme Logistics',
-    stationCode: 'S1',
+    stationName: 'Adelaide Hub',
     date: '2026-08-13',
     tz: AUS_TZ.Adelaide,
     outForDelivery: [{ courier: 'John', courierCode: 'C1', waybillNos: ['W1'] }],
@@ -15,7 +15,7 @@ test('卡片标题为 Parcels left at the warehouse，并按两类分段', () =>
 
   assert.equal(card.header.title.content, '📦 Parcels left at the warehouse - Acme Logistics')
   const intro = card.elements[0]?.text?.content ?? ''
-  assert.equal(intro, "<font color='grey'>Station: S1 · 2026-08-13 (Adelaide) · 3 parcels total</font>")
+  assert.equal(intro, "<font color='grey'>Station: Adelaide Hub · 2026-08-13 (Adelaide) · 3 parcels total</font>")
   assert.doesNotMatch(intro, /Parcels left at the warehouse:/)
   const headings = card.elements.filter((el) => el.text_size === 'heading')
   assert.equal(headings[0]?.content, '**🚚 Dispatched parcels left at the front desk**')
@@ -28,7 +28,7 @@ test('卡片标题为 Parcels left at the warehouse，并按两类分段', () =>
 test('现场照片以 img_key 嵌进同一张卡片', () => {
   const card = buildDeliveringNotifyCard({
     vendorName: 'Acme Logistics',
-    stationCode: 'S1',
+    stationName: 'Adelaide Hub',
     date: '2026-08-13',
     tz: AUS_TZ.Adelaide,
     outForDelivery: [{ courier: 'John', courierCode: 'C1', waybillNos: ['W1'] }],

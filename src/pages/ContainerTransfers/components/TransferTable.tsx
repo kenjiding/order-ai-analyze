@@ -2,6 +2,7 @@ import { useMemo } from 'react'
 import { Button, Dropdown, Table, Tag, Tooltip } from 'antd'
 import type { ColumnsType } from 'antd/es/table'
 import type { MenuProps } from 'antd'
+import dayjs from 'dayjs'
 import { MoreHorizontal } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { formatTransferNo, transferStatusColor } from '../../../containerManagement/constants'
@@ -147,6 +148,17 @@ export function TransferTable({
       { title: t('transfers.colFrom'), dataIndex: 'fromAccountName', key: 'fromAccountName', width: 150 },
       { title: t('transfers.colTo'), dataIndex: 'toAccountName', key: 'toAccountName', width: 150 },
       {
+        title: t('transfers.colCreatedAt'),
+        dataIndex: 'createdAt',
+        key: 'createdAt',
+        width: 150,
+        render: (value: string) => (
+          <span className="whitespace-nowrap text-slate-500">
+            {dayjs(value).format('YYYY-MM-DD HH:mm')}
+          </span>
+        ),
+      },
+      {
         title: t('transfers.colQuantity'),
         key: 'quantity',
         width: 190,
@@ -202,7 +214,7 @@ export function TransferTable({
         showTotal: (rowTotal) => t('tableTotal', { total: rowTotal }),
         onChange: onPageChange,
       }}
-      scroll={{ x: 1230 }}
+      scroll={{ x: 1380 }}
       locale={{ emptyText: t('transfers.empty') }}
     />
   )

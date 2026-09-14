@@ -68,7 +68,8 @@ function photoElement(imageKey: string): CardEl {
 /** 构建「仓内滞留包裹」飞书卡片：正在派送 / 超大件未取 两段英文（卡片对供应商展示） */
 export function buildDeliveringNotifyCard(params: {
   vendorName: string
-  stationCode: string
+  /** 站点展示名（取不到时调用方传编码兜底） */
+  stationName: string
   date: string
   /** 计算 date 所用的账号时区，用于卡片上的时区标签 */
   tz: AusTz
@@ -77,14 +78,14 @@ export function buildDeliveringNotifyCard(params: {
   /** 已上传到飞书 IM 的现场照片 image_key，与文字同一张卡片发出 */
   imageKeys?: string[]
 }): Record<string, unknown> {
-  const { vendorName, stationCode, date, tz, outForDelivery, oversizedUncollected, imageKeys = [] } = params
+  const { vendorName, stationName, date, tz, outForDelivery, oversizedUncollected, imageKeys = [] } = params
   const totalWaybills = courierCount(outForDelivery) + courierCount(oversizedUncollected)
   const elements: CardEl[] = []
 
   elements.push(
     div(
       colored(
-        `Station: ${stationCode} · ${date} (${tzDisplayName(tz)}) · ${totalWaybills} ${parcelWord(totalWaybills)} total`,
+        `Station: ${stationName} · ${date} (${tzDisplayName(tz)}) · ${totalWaybills} ${parcelWord(totalWaybills)} total`,
         'grey',
       ),
     ),
