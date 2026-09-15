@@ -165,6 +165,14 @@ const groups: SidebarMenuGroup[] = [
         description: '11点前出仓率与24小时派签率的最终值、交叉归因与历史回看',
       },
       {
+        id: 'exit-rate-query',
+        path: '/exit-rate-query',
+        permissionKey: 'menu:exit-rate-query',
+        label: '出仓率查询',
+        icon: Timer,
+        description: '按到件日查询当天出仓率、次日11点出仓率及分时段占比',
+      },
+      {
         id: 'chase-dispatch',
         path: '/chase-dispatch',
         permissionKey: 'menu:chase-dispatch',

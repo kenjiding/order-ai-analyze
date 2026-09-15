@@ -51,6 +51,13 @@ export const PERMISSION_REGISTRY: PermissionDefinition[] = [
     description: '11点前出仓率与24小时派签率的最终值、交叉归因与历史回看',
     sortOrder: 39,
   },
+  {
+    key: 'menu:exit-rate-query',
+    type: 'menu',
+    label: '出仓率查询',
+    description: '按到件日查询当天出仓率、次日11点出仓率及分时段占比',
+    sortOrder: 39,
+  },
   { key: 'menu:chase-dispatch', type: 'menu', label: '催派推送', description: '按滞留时间统计供应商滞留订单并定时推送催派', sortOrder: 39 },
   { key: 'menu:work-order-push', type: 'menu', label: '工单推送', description: '未处理工单定时推送提醒供应商', sortOrder: 39 },
   {

@@ -1,0 +1,62 @@
+{
+  "page": {
+    "eyebrow": "Hub Exit",
+    "title": "出仓率查询",
+    "description": "按到件日拉 inbound 运单，再用 searchWaybill 的派件时间算出仓。当天 = 到件日 23:59:59 前；次日 0–11 点 = 次日 00:00 至 11:00（含）。日历次日，不跳周末。结果不落库。"
+  },
+  "filter": {
+    "inboundRange": "到件日期",
+    "rangeHint": "最多 7 天，按每天各自的到件日对齐",
+    "query": "查询",
+    "querying": "正在拉取到件与派件信息，大站点可能需要几分钟",
+    "viewDate": "查看日期（已加载，无需重拉）",
+    "allDates": "全部日期"
+  },
+  "toast": {
+    "selectStation": "请先在顶部选择站点",
+    "selectDate": "请选择到件日期区间",
+    "maxRange": "到件日期最多 7 天",
+    "done": "查询完成，共 {{count}} 单"
+  },
+  "empty": "选择到件日期后点击查询",
+  "kpi": {
+    "total": "到件总量",
+    "sameDay": "当天出仓率",
+    "sameDayHint": "{{count}} 单在到件日 23:59:59 前出仓",
+    "nextMorning": "次日 0–11 点出仓率",
+    "nextMorningHint": "{{count}} 单在次日 00:00–11:00 出仓",
+    "cumulative": "截止次日 11 点",
+    "cumulativeHint": "当天 + 次日早晨，共 {{count}} 单",
+    "pending": "尚未出仓 {{count}}"
+  },
+  "dim": {
+    "vendor": "供应商",
+    "route": "路由码",
+    "driver": "派件司机",
+    "name": "名称",
+    "total": "到件",
+    "share": "货量占比",
+    "sameDay": "当天出仓",
+    "nextMorning": "次日 0–11 点",
+    "cumulative": "截止次日 11 点",
+    "pending": "未出仓",
+    "unassigned": "未派件 / 未知"
+  },
+  "hourly": {
+    "title": "分时段出仓（对齐到件日）",
+    "subtitle": "柱 = 该小时新增出仓占比，线 = 截止该小时累计。点击上方表格行可看该供应商 / 路由 / 司机。",
+    "matrixTitle": "次日 7–11 点对照",
+    "matrixShowAll": "全部",
+    "matrixHideZero": "剔除为零的数据",
+    "matrixHideZeroHint": "仅对路由码、派件司机生效：7–11 点各时段均为 0 的行会隐藏",
+    "matrixRangeTotal": "7–11 点合计",
+    "overall": "全部到件",
+    "incremental": "时段占比",
+    "cumulative": "累计出仓率",
+    "count": "出仓件数",
+    "empty": "暂无出仓时间数据",
+    "axisPercent": "占比 (%)",
+    "sameDay": "当天 {{start}}–{{end}}",
+    "nextDay": "次日 {{start}}–{{end}}"
+  }
+}
