@@ -16,6 +16,7 @@ import { isBefore11Exit } from '../imile/before11Exit'
 import {
   isDispatch24hMet,
   isDispatch24hProblem,
+  isPriorityRow,
   type Dispatch24hScope,
   type Dispatch24hWaybillRow,
   type Dispatch24hWindowRule,
@@ -48,6 +49,14 @@ export type DispatchPerformanceCell = {
   exitMetSignUnmet: number
   exitUnmetSignMet: number
   exitUnmetSignUnmet: number
+  /** 当天出仓达标数：deliveryTime ≤ 到件日 D 23:59:59。出仓趟即定 */
+  sameDayExitMet: number
+  /** 次日派签达标数：出仓日 O 23:59:59 前签收或上报本次派送问题件（仅 dispatchSettled 时有效） */
+  nextDaySignMet: number
+  /** 优先件数：clientCode 命中「优先客户配置」。出仓趟即定 */
+  priorityTotal: number
+  /** 优先件中次日派签达标数（仅 dispatchSettled 时有效） */
+  priorityNextDaySignMet: number
   /** 问题件数：见 isDispatch24hProblem 口径，与四象限正交（不参与加总） */
   problemCount: number
   /** 派签未达标中：完全没有签收记录 */
@@ -84,6 +93,10 @@ function newCell(
     exitMetSignUnmet: 0,
     exitUnmetSignMet: 0,
     exitUnmetSignUnmet: 0,
+    sameDayExitMet: 0,
+    nextDaySignMet: 0,
+    priorityTotal: 0,
+    priorityNextDaySignMet: 0,
     problemCount: 0,
     neverSignedCount: 0,
     lateSignedCount: 0,
@@ -112,10 +125,26 @@ export function aggregateDispatchPerformanceCells(input: {
   rule: Dispatch24hWindowRule | null
   /** 出仓阈值：出仓日 11:00，见 dispatchExitThresholdMs */
   before11ThresholdMs: number
+  /** 当天出仓阈值：到件日 D 23:59:59 */
+  sameDayExitThresholdMs: number
+  /** 次日派签截止：出仓日 O 23:59:59（周一~四到件 = D+1，周五/六/日 = 下周一） */
+  nextDayDeadlineMs: number
   scopes: Dispatch24hScope[]
+  /** 「优先客户配置」商家编码（大写）；缺省 = 不统计优先件 */
+  priorityClientCodes?: Set<string>
 }): DispatchPerformanceCell[] {
-  const { rows, stationCodes, rule, before11ThresholdMs, scopes } = input
+  const {
+    rows,
+    stationCodes,
+    rule,
+    before11ThresholdMs,
+    sameDayExitThresholdMs,
+    nextDayDeadlineMs,
+    scopes,
+    priorityClientCodes,
+  } = input
   const dispatchSettled = rule != null
+  const nextDayRule: Dispatch24hWindowRule = { kind: 'fixedDeadline', deadlineMs: nextDayDeadlineMs }
   const stationSet = new Set(stationCodes.map((s) => s.trim()).filter(Boolean))
   const inStation = (code: string | undefined) => stationSet.size === 0 || stationSet.has(norm(code))
 
@@ -134,6 +163,10 @@ export function aggregateDispatchPerformanceCells(input: {
     const hasProblem = rule != null && isDispatch24hProblem(row)
     const neverSigned = rule != null && !signMet && !row.signDate
     const lateSigned = rule != null && !signMet && Boolean(row.signDate)
+    const sameDayExitMet = isBefore11Exit(row.deliveryTime, sameDayExitThresholdMs)
+    // 次日派签同 24H 口径，只把截止换成出仓日 23:59:59；同样只在派签趟判定
+    const nextDaySignMet = rule != null && isDispatch24hMet(row, nextDayRule)
+    const isPriority = isPriorityRow(row, priorityClientCodes)
     const wbNo = row.waybillNo ?? ''
 
     for (const scope of scopes) {
@@ -152,6 +185,12 @@ export function aggregateDispatchPerformanceCells(input: {
       cell.total += 1
       cell.dispatchSettled = dispatchSettled
       if (exitMet) cell.before11Met += 1
+      if (sameDayExitMet) cell.sameDayExitMet += 1
+      if (nextDaySignMet) cell.nextDaySignMet += 1
+      if (isPriority) {
+        cell.priorityTotal += 1
+        if (nextDaySignMet) cell.priorityNextDaySignMet += 1
+      }
 
       // 四象限只在派签结算那一趟才有意义；出仓趟留全 0，由 dispatchSettled 标明「还不知道」
       if (dispatchSettled) {

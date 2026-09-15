@@ -99,7 +99,7 @@ function norm(code: unknown): string {
 }
 
 /** 该单是否属于「本地件优先客户」：clientCode 命中「优先客户配置」的商家编码（大写比较） */
-function isPriorityRow(row: Dispatch24hWaybillRow, priorityClientCodes?: Set<string>): boolean {
+export function isPriorityRow(row: Dispatch24hWaybillRow, priorityClientCodes?: Set<string>): boolean {
   if (!priorityClientCodes || priorityClientCodes.size === 0) return false
   return priorityClientCodes.has(norm(row.clientCode).toUpperCase())
 }

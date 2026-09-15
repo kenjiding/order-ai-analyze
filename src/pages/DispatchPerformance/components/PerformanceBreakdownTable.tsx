@@ -15,8 +15,10 @@ const BEFORE11_TARGET_PCT = 99
 const SIGN_ALERT_PCT = 92
 const SIGN_TARGET_PCT = 95
 
-function rateColor(rate: number | null, alertPct: number, targetPct: number): string {
+function rateColor(rate: number | null, alertPct?: number, targetPct?: number): string {
   if (rate == null) return 'text-slate-300'
+  // 没有考核目标的指标（当天出仓率）不着色
+  if (alertPct == null || targetPct == null) return 'text-slate-700'
   if (rate < alertPct) return 'text-red-600'
   if (rate < targetPct) return 'text-amber-600'
   return 'text-emerald-600'
@@ -29,8 +31,8 @@ function RateCell({
   pendingLabel,
 }: {
   rate: number | null
-  alertPct: number
-  targetPct: number
+  alertPct?: number
+  targetPct?: number
   pendingLabel?: string
 }) {
   if (rate == null) {
@@ -108,6 +110,13 @@ function metricColumns<T extends DispatchMetrics>(
       ),
     },
     {
+      title: t('breakdown.sameDayExitRate'),
+      dataIndex: 'sameDayExitRate',
+      width: 110,
+      align: 'right',
+      render: (rate: number | null) => <RateCell rate={rate} />,
+    },
+    {
       title: t('breakdown.signRate24h'),
       dataIndex: 'signRate',
       width: 120,
@@ -119,6 +128,41 @@ function metricColumns<T extends DispatchMetrics>(
           targetPct={SIGN_TARGET_PCT}
           pendingLabel={row.total > 0 && !row.dispatchSettled ? settlingLabel : undefined}
         />
+      ),
+    },
+    {
+      title: t('breakdown.nextDaySignRate'),
+      dataIndex: 'nextDaySignRate',
+      width: 110,
+      align: 'right',
+      render: (rate: number | null, row) => (
+        <RateCell
+          rate={rate}
+          alertPct={SIGN_ALERT_PCT}
+          targetPct={SIGN_TARGET_PCT}
+          pendingLabel={row.total > 0 && !row.dispatchSettled ? settlingLabel : undefined}
+        />
+      ),
+    },
+    {
+      title: t('breakdown.priorityNextDaySignRate'),
+      dataIndex: 'priorityNextDaySignRate',
+      width: 130,
+      align: 'right',
+      render: (rate: number | null, row) => (
+        <div className="flex flex-col items-end">
+          <RateCell
+            rate={rate}
+            alertPct={SIGN_ALERT_PCT}
+            targetPct={SIGN_TARGET_PCT}
+            pendingLabel={row.priorityTotal > 0 && !row.dispatchSettled ? settlingLabel : undefined}
+          />
+          {row.priorityTotal > 0 && row.dispatchSettled && (
+            <span className="text-xs tabular-nums text-slate-400">
+              {row.priorityNextDaySignMet} / {row.priorityTotal}
+            </span>
+          )}
+        </div>
       ),
     },
     {

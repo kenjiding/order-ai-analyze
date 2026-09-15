@@ -917,6 +917,15 @@ export const dispatchPerformanceDailyStats = pgTable(
     exitUnmetSignMet: integer('exit_unmet_sign_met').notNull().default(0),
     exitUnmetSignUnmet: integer('exit_unmet_sign_unmet').notNull().default(0),
 
+    /** 当天出仓达标数：deliveryTime ≤ 到件日 D 23:59:59。出仓趟即定终值 */
+    sameDayExitMet: integer('same_day_exit_met').notNull().default(0),
+    /** 次日派签达标数：出仓日 O 23:59:59 前签收或上报本次派送问题件。仅 dispatchSettled 时有效 */
+    nextDaySignMet: integer('next_day_sign_met').notNull().default(0),
+    /** 优先件数（clientCode 命中「优先客户配置」）。出仓趟即定 */
+    priorityTotal: integer('priority_total').notNull().default(0),
+    /** 优先件中次日派签达标数，口径同 nextDaySignMet。仅 dispatchSettled 时有效 */
+    priorityNextDaySignMet: integer('priority_next_day_sign_met').notNull().default(0),
+
     problemCount: integer('problem_count').notNull().default(0),
     neverSignedCount: integer('never_signed_count').notNull().default(0),
     lateSignedCount: integer('late_signed_count').notNull().default(0),

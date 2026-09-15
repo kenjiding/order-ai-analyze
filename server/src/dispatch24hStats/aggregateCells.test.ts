@@ -1,10 +1,11 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { AUS_TZ } from '../imile/ausTimezone'
+import { AUS_TZ, localDateTimeToMs } from '../imile/ausTimezone'
 import {
   aggregateDispatch24hByScopes,
   dispatchExitThresholdMs,
   resolveDispatch24hWindowRule,
+  resolveExitDate,
   type Dispatch24hScope,
   type Dispatch24hWaybillRow,
 } from '../vendorAnalysis/dispatch24hAggregate'
@@ -15,6 +16,9 @@ const tz = AUS_TZ.Adelaide
 const ARRIVAL = '2024-06-24'
 const rule = resolveDispatch24hWindowRule(ARRIVAL, tz)
 const threshold = dispatchExitThresholdMs(ARRIVAL, tz)
+const sameDayThreshold = localDateTimeToMs(`${ARRIVAL} 23:59:59`, tz)
+const nextDayDeadline = localDateTimeToMs(`${resolveExitDate(ARRIVAL)} 23:59:59`, tz)
+const priorityClientCodes = new Set(['P1'])
 
 function scope(
   key: string,
@@ -37,7 +41,10 @@ function run(rows: Dispatch24hWaybillRow[], scopes: Dispatch24hScope[]): Dispatc
     stationCodes: ['S1'],
     rule,
     before11ThresholdMs: threshold,
+    sameDayExitThresholdMs: sameDayThreshold,
+    nextDayDeadlineMs: nextDayDeadline,
     scopes,
+    priorityClientCodes,
   })
 }
 
@@ -48,7 +55,10 @@ function runExitOnly(rows: Dispatch24hWaybillRow[], scopes: Dispatch24hScope[]):
     stationCodes: ['S1'],
     rule: null,
     before11ThresholdMs: threshold,
+    sameDayExitThresholdMs: sameDayThreshold,
+    nextDayDeadlineMs: nextDayDeadline,
     scopes,
+    priorityClientCodes,
   })
 }
 
@@ -207,10 +217,44 @@ test('固定截止批次（周五到件）：出仓阈值在下周一11:00，派
     stationCodes: ['S1'],
     rule: weekendRule,
     before11ThresholdMs: weekendThreshold,
+    sameDayExitThresholdMs: localDateTimeToMs(`${arrival} 23:59:59`, tz),
+    nextDayDeadlineMs: localDateTimeToMs(`${resolveExitDate(arrival)} 23:59:59`, tz),
     scopes: [scope('U1', 'V1')],
   })
   assert.equal(cell.exitMetSignMet, 1)
   assert.equal(cell.exitUnmetSignUnmet, 1)
+  // 周五到件的次日派签截止 = 下周一 23:59:59，与该批 24h 固定截止重合
+  assert.equal(cell.nextDaySignMet, 1)
+  assert.equal(cell.sameDayExitMet, 0, '周五当天没出仓')
+})
+
+test('当天出仓 / 次日派签 / 优先件：周一到件，截止分别为 D 23:59:59 与 D+1 23:59:59', () => {
+  const rows: Dispatch24hWaybillRow[] = [
+    // 到件当天 20:00 就出仓 → 当天出仓达标；次日 10:00 签收 → 次日派签达标
+    { ...base, waybillNo: 'A', courierCode: 'C1', courier: 'D1', consigneeRouteCode: 'R1', deliveryTime: '2024-06-24 20:00:00', signDate: '2024-06-25 10:00:00' },
+    // 次日 09:00 出仓、D+2 08:00 签收 → 24h 达标，但超过次日 23:59:59，次日派签未达标
+    { ...base, waybillNo: 'B', courierCode: 'C1', courier: 'D1', consigneeRouteCode: 'R1', deliveryTime: '2024-06-25 09:00:00', signDate: '2024-06-26 08:00:00' },
+    // 优先件（clientCode 小写也要命中）：次日 22:00 签收 → 次日达标
+    { ...base, waybillNo: 'C', courierCode: 'C1', courier: 'D1', consigneeRouteCode: 'R1', clientCode: 'p1', deliveryTime: '2024-06-25 09:00:00', signDate: '2024-06-25 22:00:00' },
+    // 优先件：从未派件 → 次日未完成
+    { ...base, waybillNo: 'D', courierCode: 'C1', courier: 'D1', consigneeRouteCode: 'R1', clientCode: 'P1' },
+  ]
+  const scopes = [scope('U1', 'V1')]
+
+  const [cell] = run(rows, scopes)
+  assert.equal(cell.total, 4)
+  assert.equal(cell.sameDayExitMet, 1)
+  assert.equal(cell.exitMetSignMet + cell.exitUnmetSignMet, 3, '24h 口径 A/B/C 达标')
+  assert.equal(cell.nextDaySignMet, 2, '次日口径只有 A/C 达标')
+  assert.equal(cell.priorityTotal, 2)
+  assert.equal(cell.priorityNextDaySignMet, 1)
+
+  // 出仓趟：当天出仓与优先件数已定，次日派签还不知道，保持 0
+  const [exitCell] = runExitOnly(rows, scopes)
+  assert.equal(exitCell.sameDayExitMet, 1)
+  assert.equal(exitCell.priorityTotal, 2)
+  assert.equal(exitCell.nextDaySignMet, 0)
+  assert.equal(exitCell.priorityNextDaySignMet, 0)
 })
 
 test('白名单路由：照常出格子并打标记，不再被整行剔除', () => {

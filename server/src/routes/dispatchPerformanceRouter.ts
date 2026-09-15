@@ -17,10 +17,7 @@ import {
 } from '../dispatch24hStats/configRepository'
 import { resolveStationTz } from '../dispatch24hStats/dailyStatsJob'
 import { DEFAULT_SETTLE_TIME, isValidSettleTime } from '../dispatch24hStats/settleTime'
-import {
-  isWorkdayArrival,
-  resolveExitSettledArrivalDates,
-} from '../dispatch24hStats/settledArrivalDates'
+import { resolveExitSettledArrivalDates } from '../dispatch24hStats/settledArrivalDates'
 import { resolveRegionTz } from '../imile/ausTimezone'
 import { resolveEnqueueRegionCode, sendJobAccessDenied } from '../jobs/access'
 import { DISPATCH_PERFORMANCE_SETTLE_JOB_TYPE } from '../jobs/handlers'
@@ -207,9 +204,9 @@ dispatchPerformanceRouter.get('/configs/:id/data', async (req: Request, res: Res
         ? resolveRegionTz(configRegion)
         : await resolveStationTz(config.stationCode)
 
-    // 周末不分拣、没有到件批次，结算任务本就跳过（isWorkdayArrival），不算漏跑
+    // 周末也照常结算（没开仓的日子台账记「跑过」、不写格子），所以不再按星期几排除
     const dueDates = resolveExitSettledArrivalDates(Date.now(), tz, MAX_RANGE_DAYS).filter(
-      (d) => d >= range.startDate && d <= range.endDate && isWorkdayArrival(d),
+      (d) => d >= range.startDate && d <= range.endDate,
     )
     const [supplierOptions, recentBatches, exitSettled] = await Promise.all([
       listDispatchPerformanceSuppliers({ stationCode: config.stationCode, ...range }),

@@ -23,7 +23,6 @@ import {
 } from '../../dispatch24hStats/dailyStatsJob'
 import { listSettledArrivalDates } from '../../dispatch24hStats/repository'
 import {
-  isWorkdayArrival,
   resolveDispatchDueArrivalDates,
   resolveExitDueArrivalDates,
   resolveExitSettledArrivalDates,
@@ -84,11 +83,11 @@ async function splitPending(input: {
   stage: 'exit' | 'dispatch'
 }): Promise<{ toRun: string[]; skipped: string[] }> {
   const { stationCode, nowMs, tz, stage } = input
-  const settled = (
+  // 与定时结算一致：不按星期几筛，开没开仓由到件量判定
+  const settled =
     stage === 'dispatch'
       ? resolveSettledArrivalDates(nowMs, tz)
       : resolveExitSettledArrivalDates(nowMs, tz)
-  ).filter(isWorkdayArrival)
   if (settled.length === 0) return { toRun: [], skipped: [] }
 
   const done = await listSettledArrivalDates(stationCode, settled, stage)

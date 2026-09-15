@@ -6,7 +6,8 @@
  * - **派签趟**：必须等 24h 窗口到期——提前算的话，包裹会被归班盘点重新派给派送员，统计就乱了。
  *
  * 同一个到件日 D 因此被写两次：先写出仓，窗口到期后再完整重算并补上派签与四象限。
- * 有没有批次可结算由日历决定（见 settledArrivalDates），所以 cron 不必编码星期。
+ * 何时到期由日历决定（见 settledArrivalDates），有没有批次由到件量决定（isNoSortingBatch），
+ * 不按星期几筛 —— 周六/日临时开仓同样是一批，截止规则与周五一致（下周一）。
  *
  * **不回补历史**：每批只在到期后的第一次运行里结算一次（SETTLE_DUE_WINDOW_MS），漏了就永久缺这天。
  * 按日期拉运单拿到的是单据的当前状态——退回仓库、隔几天重新派送的单，回补时读到的是第二次
@@ -18,7 +19,8 @@
  */
 import { eq } from 'drizzle-orm'
 import { getDb, schema } from '../db'
-import { resolveRegionTz, type AusTz } from '../imile/ausTimezone'
+import { localDateTimeToMs, resolveRegionTz, type AusTz } from '../imile/ausTimezone'
+import { loadPriorityClientCodes } from '../priorityClients'
 import { isSettleTriggerDue, normalizeSettleTime } from './settleTime'
 import { fetchDriverWaybills } from '../imile/driverPerformance'
 import { getGlobalImileToken } from '../feishu/globalImileToken'
@@ -27,6 +29,7 @@ import { isNoSortingBatch, MIN_SORTING_WAYBILLS } from '../imile/sortingWorkday'
 import {
   dispatchExitThresholdMs,
   resolveDispatch24hWindowRule,
+  resolveExitDate,
   type Dispatch24hScope,
   type Dispatch24hWaybillRow,
 } from '../vendorAnalysis/dispatch24hAggregate'
@@ -51,7 +54,6 @@ import {
   type SettleStage,
 } from './repository'
 import {
-  isWorkdayArrival,
   resolveDispatchDueArrivalDates,
   resolveExitDueArrivalDates,
   resolveExitSettledArrivalDates,
@@ -242,7 +244,11 @@ export async function computeOneArrivalDate(input: {
     stationCodes: [stationCode],
     rule: stage === 'dispatch' ? resolveDispatch24hWindowRule(arrivalDate, tz) : null,
     before11ThresholdMs: dispatchExitThresholdMs(arrivalDate, tz),
+    sameDayExitThresholdMs: localDateTimeToMs(`${arrivalDate} 23:59:59`, tz),
+    // 派签趟的结算时刻（O+1 11:00 / 周五批次下周一 23:59:59）恒不早于这个截止，无需另开一趟
+    nextDayDeadlineMs: localDateTimeToMs(`${resolveExitDate(arrivalDate)} 23:59:59`, tz),
     scopes,
+    priorityClientCodes: await loadPriorityClientCodes(),
   })
 
   const supplierMeta = new Map(
@@ -407,12 +413,11 @@ export async function runDispatchPerformanceDailyStats(): Promise<void> {
       // 派签趟先跑并顺手盖上 exit_settled_at，下面的出仓趟就会被台账判重挡掉，
       // 不会用 rule=null 把刚补好的四象限清成 0。
       for (const stage of ['dispatch', 'exit'] as const) {
-        // 周末不开仓分拣、没有到件批次，不为它去 iMile 空拉一次
-        const settled = (
+        // 不按星期几筛：周六/日临时开仓也是一批。开没开仓由到件量判定（见 settleOneArrivalDate 的 noBatch）
+        const settled =
           stage === 'dispatch'
             ? resolveSettledArrivalDates(nowMs, target.tz)
             : resolveExitSettledArrivalDates(nowMs, target.tz)
-        ).filter(isWorkdayArrival)
         if (settled.length === 0) continue
 
         const done = await listSettledArrivalDates(target.stationCode, settled, stage)

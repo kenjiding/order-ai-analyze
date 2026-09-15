@@ -35,6 +35,16 @@ export type DispatchMetrics = {
    * 所以最新一天只有出仓率，派签率要等次日的定时任务补上。
    */
   dispatchSettled: boolean
+  /** 当天出仓（到件日 D 23:59:59 前）达标数与率 */
+  sameDayExitMet: number
+  sameDayExitRate: number | null
+  /** 次日派签（出仓日 23:59:59 前完成）达标数与率；派签未结算时率为 null */
+  nextDaySignMet: number
+  nextDaySignRate: number | null
+  /** 优先件数与其次日完成率；派签未结算或无优先件时率为 null */
+  priorityTotal: number
+  priorityNextDaySignMet: number
+  priorityNextDaySignRate: number | null
   problemCount: number
   neverSignedCount: number
   lateSignedCount: number

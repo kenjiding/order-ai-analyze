@@ -27,6 +27,10 @@ function cell(over: Partial<DispatchPerformanceStatRow> = {}): DispatchPerforman
     exitMetSignUnmet: 0,
     exitUnmetSignMet: 0,
     exitUnmetSignUnmet: 0,
+    sameDayExitMet: 0,
+    nextDaySignMet: 0,
+    priorityTotal: 0,
+    priorityNextDaySignMet: 0,
     problemCount: 0,
     neverSignedCount: 0,
     lateSignedCount: 0,
@@ -128,4 +132,28 @@ test('司机层：白名单路由下的司机照常出指标与运单号', () =>
   assert.equal(driver.total, 2)
   assert.equal(driver.signRate, 0)
   assert.deepEqual(driver.neverSignedWaybillNos, ['W1', 'W2'])
+})
+
+test('次日指标：已结算按计数出率，混进未结算的一天则次日两个率为 null、当天出仓率照常', () => {
+  const settled = cell({
+    arrivalDate: '2024-06-24',
+    total: 10,
+    sameDayExitMet: 4,
+    nextDaySignMet: 8,
+    priorityTotal: 2,
+    priorityNextDaySignMet: 1,
+  })
+  const tree = buildDispatchPerformanceTree([settled])
+  assert.equal(tree.overall.sameDayExitRate, 40)
+  assert.equal(tree.overall.nextDaySignRate, 80)
+  assert.equal(tree.overall.priorityNextDaySignRate, 50)
+
+  const mixed = buildDispatchPerformanceTree([
+    settled,
+    cell({ arrivalDate: '2024-06-25', total: 10, sameDayExitMet: 6, priorityTotal: 3, dispatchSettled: false }),
+  ])
+  assert.equal(mixed.overall.sameDayExitRate, 50)
+  assert.equal(mixed.overall.priorityTotal, 5)
+  assert.equal(mixed.overall.nextDaySignRate, null)
+  assert.equal(mixed.overall.priorityNextDaySignRate, null)
 })

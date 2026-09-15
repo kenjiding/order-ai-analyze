@@ -47,6 +47,16 @@ export type DispatchPerformanceMetrics = {
    * 也不能把只算了一半的批次当成完整数据摆出来。
    */
   dispatchSettled: boolean
+  /** 当天出仓（到件日 D 23:59:59 前）达标数与率；出仓那一趟就已确定 */
+  sameDayExitMet: number
+  sameDayExitRate: number | null
+  /** 次日派签（出仓日 O 23:59:59 前完成）达标数与率；率在派签未结算时为 null */
+  nextDaySignMet: number
+  nextDaySignRate: number | null
+  /** 优先件数与其次日完成率；率在派签未结算或无优先件时为 null */
+  priorityTotal: number
+  priorityNextDaySignMet: number
+  priorityNextDaySignRate: number | null
   problemCount: number
   neverSignedCount: number
   lateSignedCount: number
@@ -147,6 +157,10 @@ type Acc = {
   exitMetSignUnmet: number
   exitUnmetSignMet: number
   exitUnmetSignUnmet: number
+  sameDayExitMet: number
+  nextDaySignMet: number
+  priorityTotal: number
+  priorityNextDaySignMet: number
   problemCount: number
   neverSignedCount: number
   lateSignedCount: number
@@ -162,6 +176,10 @@ function newAcc(): Acc {
     exitMetSignUnmet: 0,
     exitUnmetSignMet: 0,
     exitUnmetSignUnmet: 0,
+    sameDayExitMet: 0,
+    nextDaySignMet: 0,
+    priorityTotal: 0,
+    priorityNextDaySignMet: 0,
     problemCount: 0,
     neverSignedCount: 0,
     lateSignedCount: 0,
@@ -176,6 +194,10 @@ function addToAcc(acc: Acc, row: Omit<Acc, 'dispatchSettled'> & { dispatchSettle
   acc.exitMetSignUnmet += row.exitMetSignUnmet
   acc.exitUnmetSignMet += row.exitUnmetSignMet
   acc.exitUnmetSignUnmet += row.exitUnmetSignUnmet
+  acc.sameDayExitMet += row.sameDayExitMet
+  acc.nextDaySignMet += row.nextDaySignMet
+  acc.priorityTotal += row.priorityTotal
+  acc.priorityNextDaySignMet += row.priorityNextDaySignMet
   acc.problemCount += row.problemCount
   acc.neverSignedCount += row.neverSignedCount
   acc.lateSignedCount += row.lateSignedCount
@@ -201,6 +223,15 @@ export function toMetrics(acc: Acc): DispatchPerformanceMetrics {
         ? null
         : Math.round((before11Rate - signRate) * 100) / 100,
     dispatchSettled: acc.dispatchSettled,
+    sameDayExitMet: acc.sameDayExitMet,
+    sameDayExitRate: rate(acc.sameDayExitMet, acc.total),
+    nextDaySignMet: acc.nextDaySignMet,
+    nextDaySignRate: acc.dispatchSettled ? rate(acc.nextDaySignMet, acc.total) : null,
+    priorityTotal: acc.priorityTotal,
+    priorityNextDaySignMet: acc.priorityNextDaySignMet,
+    priorityNextDaySignRate: acc.dispatchSettled
+      ? rate(acc.priorityNextDaySignMet, acc.priorityTotal)
+      : null,
     problemCount: acc.problemCount,
     neverSignedCount: acc.neverSignedCount,
     lateSignedCount: acc.lateSignedCount,
@@ -273,6 +304,10 @@ export async function saveDispatchPerformanceCells(input: SaveCellsInput): Promi
       exitMetSignUnmet: cell.exitMetSignUnmet,
       exitUnmetSignMet: cell.exitUnmetSignMet,
       exitUnmetSignUnmet: cell.exitUnmetSignUnmet,
+      sameDayExitMet: cell.sameDayExitMet,
+      nextDaySignMet: cell.nextDaySignMet,
+      priorityTotal: cell.priorityTotal,
+      priorityNextDaySignMet: cell.priorityNextDaySignMet,
       problemCount: cell.problemCount,
       neverSignedCount: cell.neverSignedCount,
       lateSignedCount: cell.lateSignedCount,

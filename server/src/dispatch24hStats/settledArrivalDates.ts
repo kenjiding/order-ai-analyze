@@ -19,7 +19,6 @@
  *   过期即弃、不回补（原因见该常量的注释）。
  */
 import { localDateTimeToMs, type AusTz } from '../imile/ausTimezone'
-import { isSortingWorkday } from '../imile/sortingWorkday'
 import { resolveDispatch24hWindowRule, resolveExitDate } from '../vendorAnalysis/dispatch24hAggregate'
 
 const DAY_MS = 24 * 60 * 60 * 1000
@@ -96,7 +95,7 @@ function collectSettled(
 
 /**
  * 截至 nowMs，**出仓**指标已定终值的到件日列表（升序）。典型是「昨天」及更早。
- * 周末不开仓分拣、理论上无到件批次，但仍纳入候选——真有周末到件数据时不会被漏掉。
+ * 周末同样纳入：周六/日临时开仓也是一批（截止与周五一致），没开仓的日子由到件量判定跳过。
  */
 export function resolveExitSettledArrivalDates(
   nowMs: number,
@@ -116,11 +115,6 @@ export function resolveSettledArrivalDates(
   lookbackDays: number = DEFAULT_SETTLE_LOOKBACK_DAYS,
 ): string[] {
   return collectSettled(nowMs, tz, lookbackDays, dispatchBatchSettleMs)
-}
-
-/** 到件日是否为分拣工作日——调用方据此决定是否值得为它去 iMile 拉数 */
-export function isWorkdayArrival(arrivalDateStr: string): boolean {
-  return isSortingWorkday(arrivalDateStr)
 }
 
 /**
