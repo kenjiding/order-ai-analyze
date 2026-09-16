@@ -188,6 +188,8 @@
     "defaultTimeoutDays": "默认超时（天）",
     "defaultTimeoutTooltip": "库内/库外丢失超时，未配置仓库超时时使用此值",
     "thirdPartyTimeoutDays": "3PL 丢件超时（天）",
+    "merchantReturnTimeoutDays": "退返商家时效（天）",
+    "merchantReturnTimeoutTooltip": "商家给出退返/退回商家方向后多久未闭环即判「退返超时」。仅对「先暂存、再转退返」的订单生效：暂存期间不计库内超时，时钟从退返事件重新起算。超期会被商家罚款。",
     "globalSystemOperators": "全局系统操作员",
     "globalNonRealOperators": "全局非真实操作员",
     "globalNonRealPatterns": "全局非真实操作员正则",
@@ -364,6 +366,7 @@
   "validation": {
     "defaultTimeoutMin": "默认丢失超时须 ≥ 1 天",
     "thirdPartyTimeoutMin": "3PL 超时须 ≥ 1 天",
+    "merchantReturnTimeoutMin": "退返时效须 ≥ 1 天",
     "invalidGlobalPattern": "无效全局正则: {{pattern}}",
     "hubIdRequired": "Hub ID 不能为空",
     "hubIdDuplicate": "Hub ID 重复: {{hubId}}",

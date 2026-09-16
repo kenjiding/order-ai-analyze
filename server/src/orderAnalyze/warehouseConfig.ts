@@ -3,6 +3,8 @@ import type { OperatorClassification, WarehouseCityId, WarehouseProfile } from '
 export type WarehouseConfigGlobalDto = {
   defaultLossTimeoutDays: number
   externalCarrierLossTimeoutDays: number
+  /** 退返商家时效（天）：商家给出退返方向后多久未闭环即判退返超时，超期会被商家罚款 */
+  merchantReturnTimeoutDays: number
   commonSystemOperators: string[]
   commonNonRealOperators: string[]
   commonNonRealOperatorPatterns: string[]
@@ -28,6 +30,7 @@ export type WarehouseProfileContext = {
   profiles: readonly WarehouseProfile[]
   defaultLossTimeoutDays: number
   externalCarrierLossTimeoutDays: number
+  merchantReturnTimeoutDays: number
   findWarehouseProfileByName(raw: string): WarehouseProfile | null
   classifyOperatorForWarehouse(
     operatorName: string,
@@ -124,6 +127,7 @@ function sanitizeGlobal(raw: unknown, fallback: WarehouseConfigGlobalDto): Wareh
   const input = raw as Partial<WarehouseConfigGlobalDto>
   const defaultLossTimeoutDays = Number(input.defaultLossTimeoutDays)
   const externalCarrierLossTimeoutDays = Number(input.externalCarrierLossTimeoutDays)
+  const merchantReturnTimeoutDays = Number(input.merchantReturnTimeoutDays)
   return {
     defaultLossTimeoutDays:
       Number.isFinite(defaultLossTimeoutDays) && defaultLossTimeoutDays >= 1
@@ -133,6 +137,10 @@ function sanitizeGlobal(raw: unknown, fallback: WarehouseConfigGlobalDto): Wareh
       Number.isFinite(externalCarrierLossTimeoutDays) && externalCarrierLossTimeoutDays >= 1
         ? Math.floor(externalCarrierLossTimeoutDays)
         : fallback.externalCarrierLossTimeoutDays,
+    merchantReturnTimeoutDays:
+      Number.isFinite(merchantReturnTimeoutDays) && merchantReturnTimeoutDays >= 1
+        ? Math.floor(merchantReturnTimeoutDays)
+        : fallback.merchantReturnTimeoutDays,
     commonSystemOperators: sanitizeStringList(input.commonSystemOperators).length
       ? sanitizeStringList(input.commonSystemOperators)
       : [...fallback.commonSystemOperators],
@@ -176,6 +184,7 @@ export const DEFAULT_WAREHOUSE_CONFIG: WarehouseConfigDto = {
   global: {
     defaultLossTimeoutDays: 15,
     externalCarrierLossTimeoutDays: 15,
+    merchantReturnTimeoutDays: 3,
     commonSystemOperators: ['System', 'cornerstone'],
     commonNonRealOperators: ['ADL-DC-Unload', 'Kuangyi Gao', 'Leeki', 'sorter', 'ADL OP1'],
     commonNonRealOperatorPatterns: ['^[A-Z]{2,5}\\s+OPS\\d+$'],
@@ -394,6 +403,7 @@ export function createWarehouseProfileContext(config: WarehouseConfigDto): Wareh
       ]
       return nonRealOperatorPatterns.some((pattern) => pattern.test(name))
     },
+    merchantReturnTimeoutDays: global.merchantReturnTimeoutDays,
     getWarehouseLossTimeoutDays(profile: WarehouseProfile | null) {
       const configured = profile?.lossTimeoutDays
       if (!Number.isFinite(configured) || configured === undefined) return global.defaultLossTimeoutDays

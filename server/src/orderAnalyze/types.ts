@@ -300,16 +300,22 @@ export type TrackFacts = {
   /** 退返处理已进入转运但尚未闭环；最终结论仍以当前责任段最终责任点为准 */
   merchantReturnTransferInProgress: boolean
   /**
-   * 商家处理方向指令（暂存/销毁/Abandon/退返方向）后，是否存在真实物理扫描作为支撑。
-   * - merchantReturnClosed = true：物理退返完成，视为有物理支撑
-   * - merchantAbandonClosed = true（退件已销毁）：物理销毁完成，视为有物理支撑
-   * - 其他情况：检查方向事件时间之后是否有 allResponsibilityPoints 中的责任点
-   * - 无活跃方向时设为 false（字段无意义）
-   *
-   * 用于判断方向指令是否应豁免超时检测：只有指令后有物理支撑，才视为终态；
-   * 若方向指令是在包裹已超时后由系统 NDR 流程触发（无后续扫描），则不重置超时计数。
+   * 最新商家处理方向（暂存/Abandon销毁/退返商家）之后，包裹是否已回到履约流程
+   * （预约派送 / 真出库 / 分配给派件员）。为 true 时方向失效，恢复库内/库外超时判断。
+   * 盘点、收退件等原地实物确认不算解冻——暂存后的盘点本就是为了挑出要退返的包裹。
    */
-  hasPhysicalActivityAfterDirectionFeedback: boolean
+  merchantDirectionUnfrozen: boolean
+  /**
+   * 暂存冻结是否仍然生效：商家给出暂存后库内时钟停摆，直到包裹回到履约流程。
+   * 冻结期内不适用任何库内/库外超时，也不需要靠持续盘点来续命。
+   */
+  merchantStorageFreezeActive: boolean
+  /**
+   * 释放暂存冻结的是否为退返方向。为 true 时超时起算点与阈值都切到退返口径
+   * （从退返事件起算 + 「分析配置」的退返时效），冻结期间的滞留不予追认。
+   * 非暂存路径的退返不适用：仓库已累积的滞留照常追责。
+   */
+  merchantStorageReleasedByReturn: boolean
   latestEventKind: string
 }
 

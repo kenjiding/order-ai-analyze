@@ -188,6 +188,8 @@
     "defaultTimeoutDays": "Default timeout (days)",
     "defaultTimeoutTooltip": "In-hub / last-mile loss timeout when a hub has no override",
     "thirdPartyTimeoutDays": "3PL loss timeout (days)",
+    "merchantReturnTimeoutDays": "Return-to-merchant timeout (days)",
+    "merchantReturnTimeoutTooltip": "How long after the merchant issues a return-to-merchant direction before it counts as a return timeout. Applies only to orders that were on hold first: the in-warehouse clock is frozen while on hold and restarts from the return event. Overruns incur merchant penalties.",
     "globalSystemOperators": "Global system operators",
     "globalNonRealOperators": "Global non-real operators",
     "globalNonRealPatterns": "Global non-real operator regex",
@@ -364,6 +366,7 @@
   "validation": {
     "defaultTimeoutMin": "Default loss timeout must be ≥ 1 day",
     "thirdPartyTimeoutMin": "3PL timeout must be ≥ 1 day",
+    "merchantReturnTimeoutMin": "Return timeout must be ≥ 1 day",
     "invalidGlobalPattern": "Invalid global regex: {{pattern}}",
     "hubIdRequired": "Hub ID cannot be empty",
     "hubIdDuplicate": "Duplicate hub ID: {{hubId}}",

@@ -1131,6 +1131,7 @@ test('仓库名与轨迹【】文案一致时匹配配置', () => {
     global: {
       defaultLossTimeoutDays: 15,
       externalCarrierLossTimeoutDays: 15,
+    merchantReturnTimeoutDays: 3,
       commonSystemOperators: ['System'],
       commonNonRealOperators: ['MEL-CSP1'],
       commonNonRealOperatorPatterns: [],
@@ -2180,4 +2181,136 @@ test('问题件登记本身不得被当作正常完结（即使备注含中文�
   )
 
   assert.equal(facts.hasDeliveryCompletion, false)
+})
+
+// ── 商家处理方向（暂存 / Abandon销毁 / 退返商家）同类状态与时钟冻结 ──
+// 三者都表示包裹已脱离正常履约、由商家指令接管，不适用库内/库外超时；
+// 唯一的失效条件是包裹回到履约流程（预约派送 / 真出库 / 分配给派件员）。
+// 退返额外带一个独立的退返时效时钟（超期会被商家罚款）。
+
+const STORAGE_TRACK = '【ADL DS】包裹确认派送结束, 将按照商家反馈意见[暂存]进行处理。'
+const INVENTORY_TRACK = '【ADL DS】已盘点，库位编号[01]。操作员【ADL-前台】'
+const ABANDON_TRACK = '商家已反馈退件处理意见[Abandon]，操作员【autoHandle】'
+const RETURN_DIRECTION_TRACK = '【ADL DS】商家已反馈NDR处理意见[退返商家]'
+
+function classifyTracks(tracks: TrackEvent[]): OrderAnalyzeResult {
+  return classifyOrderFromFacts({ orderNo: 'T-DIR', facts: deriveTrackFacts(tracks) })
+}
+
+test('暂存后即使再无盘点也不计库内超时（冻结不靠盘点续命）', () => {
+  // 曾经要求「方向指令后有物理扫描」才豁免超时，导致暂存后仓库顺手盘过一次的单判暂无异常、
+  // 没盘的同类单判库内丢失；两者业务上等价，结论却相反。
+  const withInventory = classifyTracks([
+    track(daysAgo(60), STORAGE_TRACK),
+    track(daysAgo(59), INVENTORY_TRACK),
+  ])
+  const withoutInventory = classifyTracks([
+    track(daysAgo(61), INVENTORY_TRACK),
+    track(daysAgo(60), STORAGE_TRACK),
+  ])
+  assert.equal(withInventory.lossScope, '暂无异常')
+  assert.equal(withInventory.exceptionCategoryId, '暂存')
+  assert.equal(withoutInventory.lossScope, '暂无异常')
+  assert.equal(withoutInventory.exceptionCategoryId, '暂存')
+})
+
+test('Abandon 是终态，无论此前是否暂存、也无论已滞留多久', () => {
+  const afterStorage = classifyTracks([
+    track(daysAgo(60), STORAGE_TRACK),
+    track(daysAgo(59), INVENTORY_TRACK),
+    track(daysAgo(2), ABANDON_TRACK),
+  ])
+  const withoutStorage = classifyTracks([
+    track(daysAgo(60), INVENTORY_TRACK),
+    track(daysAgo(2), ABANDON_TRACK),
+  ])
+  for (const result of [afterStorage, withoutStorage]) {
+    assert.equal(result.lossScope, '暂无异常')
+    assert.equal(result.exceptionCategoryId, 'Abandon销毁')
+  }
+})
+
+test('Abandon 结论不随分析日期漂移（6080126833322）', () => {
+  // 旧 gate 用「责任点距今」反证指令有效性，同一条轨迹会在某一天突然从暂无异常翻成库内丢失。
+  const buildTracks = (): TrackEvent[] => [
+    track(daysAgo(22), INVENTORY_TRACK),
+    track(daysAgo(19), STORAGE_TRACK),
+    track(daysAgo(19, '14:25:34'), INVENTORY_TRACK),
+    track(daysAgo(16), '【Adelaide Center】已收到退件包裹。操作员【ADL-DC-Shruti】'),
+    track(daysAgo(0, '01:00:15'), ABANDON_TRACK),
+  ]
+  const tracks = buildTracks()
+  for (const analysisDate of ['2026-09-16', '2026-10-16', '2027-06-16']) {
+    const facts = deriveTrackFacts(tracks, [], { analysisDate })
+    const result = classifyOrderFromFacts({ orderNo: '6080126833322', facts })
+    assert.equal(result.lossScope, '暂无异常', `分析日 ${analysisDate} 结论漂移`)
+    assert.equal(result.exceptionCategoryId, 'Abandon销毁')
+  }
+})
+
+test('暂存被退返释放后从退返事件起算，未超退返时效判退返商家', () => {
+  const result = classifyTracks([
+    track(daysAgo(60), STORAGE_TRACK),
+    track(daysAgo(59), INVENTORY_TRACK),
+    track(daysAgo(1), RETURN_DIRECTION_TRACK),
+  ])
+  assert.equal(result.lossScope, '暂无异常')
+  assert.equal(result.exceptionCategoryId, '退返商家')
+})
+
+test('暂存被退返释放后超过退返时效判退返超时，而非扫描员丢失', () => {
+  const result = classifyTracks([
+    track(daysAgo(60), STORAGE_TRACK),
+    track(daysAgo(59), INVENTORY_TRACK),
+    track(daysAgo(30), RETURN_DIRECTION_TRACK),
+  ])
+  assert.equal(result.lossScope, '库内丢失')
+  assert.equal(result.exceptionCategoryId, '退返超时')
+})
+
+test('非暂存路径的退返不重置起算，仓库已累积的滞留照常追责', () => {
+  const result = classifyTracks([
+    track(daysAgo(40), INVENTORY_TRACK),
+    track(daysAgo(1), RETURN_DIRECTION_TRACK),
+  ])
+  assert.equal(result.lossScope, '库内丢失')
+  assert.equal(result.exceptionCategoryId, '扫描员丢失')
+})
+
+test('真出库解除方向冻结，暂存/Abandon 都不再掩盖库外丢失', () => {
+  const afterStorage = classifyTracks([
+    track(daysAgo(60), STORAGE_TRACK),
+    track(daysAgo(55), '【ADL DS】包裹正在派送中'),
+  ])
+  const afterAbandon = classifyTracks([
+    track(daysAgo(60), INVENTORY_TRACK),
+    track(daysAgo(58), ABANDON_TRACK),
+    track(daysAgo(55), '【ADL DS】包裹正在派送中'),
+  ])
+  for (const result of [afterStorage, afterAbandon]) {
+    assert.equal(result.lossScope, '库外丢失')
+    assert.equal(result.exceptionCategoryId, '快递员丢失')
+  }
+})
+
+test('分配给派件员解除暂存冻结，派件员窃取信号不被吞掉', () => {
+  const result = classifyTracks([
+    track(daysAgo(60), INVENTORY_TRACK),
+    track(daysAgo(59), STORAGE_TRACK),
+    track(daysAgo(50), INVENTORY_TRACK),
+    track(daysAgo(49), '【ADL DS】派送任务已分配给派件员'),
+    track(daysAgo(48), '【ADL DS】取消分配'),
+  ])
+  assert.equal(result.lossScope, '库内丢失')
+  assert.equal(result.exceptionCategoryId, '疑似派件员窃取')
+})
+
+test('暂存后预约派送仍然释放冻结并恢复库内超时', () => {
+  const result = classifyTracks([
+    track(daysAgo(60), INVENTORY_TRACK),
+    track(daysAgo(59), STORAGE_TRACK),
+    track(daysAgo(40), '【ADL DS】已预约派送'),
+  ])
+  assert.equal(result.lossScope, '库内丢失')
+  assert.equal(result.exceptionCategoryId, '扫描员丢失')
 })

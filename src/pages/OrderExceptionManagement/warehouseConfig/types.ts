@@ -13,6 +13,8 @@ export const WAREHOUSE_CITY_OPTIONS: { value: WarehouseCityId; label: string }[]
 export type WarehouseConfigGlobalDto = {
   defaultLossTimeoutDays: number
   externalCarrierLossTimeoutDays: number
+  /** 退返商家时效（天）：退返方向释放暂存冻结后多久未闭环即判退返超时 */
+  merchantReturnTimeoutDays: number
   commonSystemOperators: string[]
   commonNonRealOperators: string[]
   commonNonRealOperatorPatterns: string[]

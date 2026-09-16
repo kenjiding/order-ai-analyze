@@ -12,6 +12,7 @@ import {
   classifyOperatorForWarehouse,
   findWarehouseProfileByName,
   getWarehouseLossTimeoutDays,
+  getMerchantReturnTimeoutDays,
   isSharedWorkstationOperator,
   EXTERNAL_CARRIER_LOSS_TIMEOUT_DAYS,
 } from './warehouseProfiles'
@@ -436,6 +437,19 @@ function isPostStorageBusinessProgressEvent(t: TrackEvent): boolean {
     content.includes('商家已反馈退件处理意见') ||
     content.includes('商家反馈退件处理意见') ||
     content.includes('已装箱')
+  )
+}
+
+/**
+ * 「回到履约流程」信号：包裹离开商家指令托管、重新进入正常派送链路。
+ * 命中任意一条即解除商家处理方向的时钟冻结，恢复库内/库外超时判断。
+ * 刻意不含盘点/收退件：那是原地实物确认，不代表包裹回到履约。
+ */
+function isFulfillmentResumeEvent(t: TrackEvent): boolean {
+  return (
+    isDeliveryScheduleEvent(t) ||
+    isDispatchOutEvent(t) ||
+    t.content.includes('派送任务已分配给派件员')
   )
 }
 
@@ -1109,13 +1123,15 @@ function makeEmptyFacts(input: {
     merchantStorageSupersededByBusinessProgress: false,
     merchantStorageBusinessProgressTime: null,
     merchantStorageBusinessProgressEvidence: null,
-    hasPhysicalActivityAfterDirectionFeedback: false,
+    merchantDirectionUnfrozen: false,
     merchantReturnClosed: false,
     merchantReturnClosedTime: null,
     merchantReturnClosedEvidence: null,
     merchantReturnDirectionActive: false,
     merchantReturnRequested: false,
     merchantReturnRequestTime: null,
+    merchantStorageFreezeActive: false,
+    merchantStorageReleasedByReturn: false,
     merchantReturnRequestDaysDiff: -1,
     merchantReturnRequestEvidence: null,
     merchantReturnLatestProgressTime: null,
@@ -1373,26 +1389,32 @@ export function deriveTrackFacts(
 
   const merchantDestroyActive = latestMerchantDirection?.type === 'destroy'
   const merchantAbandonActive = latestMerchantDirection?.type === 'abandon'
+  // 暂存冻结：暂存给出后库内时钟停摆，直到包裹回到履约流程为止。
+  // 暂存期间的盘点不解冻，也不构成「暂存已失效」——不再要求盘点来续命。
+  const merchantStorageFreezeActive =
+    merchantStorageEvent !== null &&
+    !sorted.some((event) => event.time > merchantStorageEvent.time && isFulfillmentResumeEvent(event))
+  // 释放暂存的是退返方向时，时钟从退返事件重新起算：冻结期间没有累积任何仓库责任，不予追认。
+  const merchantStorageReleasedByReturn =
+    merchantStorageEvent !== null &&
+    merchantReturnDirectionRequestEvent !== null &&
+    merchantReturnDirectionRequestEvent.time > merchantStorageEvent.time
   const merchantStorageActive =
     latestMerchantDirection?.type === 'storage' &&
     !merchantStorageReleasedBySchedule &&
-    !merchantStorageSupersededByBusinessProgress
+    !merchantStorageSupersededByBusinessProgress &&
+    merchantStorageFreezeActive
   const merchantReturnClosed = latestMerchantDirection?.type === 'return_closed'
   const merchantReturnDirectionActive = merchantReturnClosed || latestMerchantDirection?.type === 'return_direction'
   const merchantReturnActive = merchantReturnDirectionActive || latestMerchantDirection?.type === 'other_return'
 
-  // 计算：方向指令后是否有真实物理活动支撑（责任点为证据）
-  // merchantReturnClosed / merchantAbandonClosed 本身即物理闭环证据，无需后续检查
-  const latestActiveDirectionTime: string | null = merchantReturnClosed
-    ? null
-    : latestMerchantDirection?.event.time ?? null
-  const hasPhysicalActivityAfterDirectionFeedback: boolean = merchantReturnClosed
-    ? true
-    : merchantAbandonActive && merchantAbandonClosedEvent !== null
-    ? true
-    : latestActiveDirectionTime === null
-    ? false
-    : allResponsibilityPoints.some((rp) => rp.time > latestActiveDirectionTime)
+  // 商家处理方向（暂存 / Abandon销毁 / 退返商家）是同一类状态：包裹已脱离正常履约，由商家指令接管。
+  // 方向失效的唯一条件是包裹回到履约流程——预约派送、真出库、或被分配给派件员。
+  // 仅仅是盘点/收退件等原地实物确认不解冻：暂存后的盘点本就是为了把要退返的包裹挑出来。
+  const latestMerchantDirectionEventTime = latestMerchantDirection?.event.time ?? null
+  const merchantDirectionUnfrozen =
+    latestMerchantDirectionEventTime !== null &&
+    sorted.some((event) => event.time > latestMerchantDirectionEventTime && isFulfillmentResumeEvent(event))
 
   // 签收/妥投晚于最新商家处理方向（或无任何方向指令）时，以签收为最新事实
   const latestMerchantDirectionTime = latestMerchantDirection?.event.time ?? null
@@ -1418,7 +1440,16 @@ export function deriveTrackFacts(
     ? `${finalResponsibilityPoint.basis}，当前责任段最终责任为${responsibilityOwnerLabel(finalResponsibilityPoint.owner)}`
     : null
   const activeSegmentStartTime = activeSegment?.startTime ?? null
-  const activeWarehouseLossTimeoutDays = getWarehouseLossTimeoutDays(activeProfile)
+  const warehouseLossTimeoutDays = getWarehouseLossTimeoutDays(activeProfile)
+  /**
+   * 退返时钟：暂存冻结被退返方向释放后，唯一在跑的是退返时效（退返晚了会被商家罚款），
+   * 库内那段冻结期不予追认。非暂存路径的退返不走这里——仓库已累积的滞留照常追责。
+   */
+  const storageReturnClock =
+    merchantStorageReleasedByReturn && merchantReturnDirectionActive && !merchantReturnClosed
+  const activeWarehouseLossTimeoutDays = storageReturnClock
+    ? getMerchantReturnTimeoutDays()
+    : warehouseLossTimeoutDays
   const externalCarrierTransferTime =
     activeSegment?.owner === 'external_carrier' ? activeSegment.startTime : null
   const merchantReturnLatestProgressDestination = merchantReturnLatestProgressEvent
@@ -1497,9 +1528,15 @@ export function deriveTrackFacts(
         : -1,
     interceptAdjustedResponsibilityBasis,
     finalResponsibilityOwner: finalResponsibilityPoint?.owner ?? null,
-    finalResponsibilityStartTime: finalResponsibilityPoint?.time ?? null,
+    finalResponsibilityStartTime: storageReturnClock
+      ? merchantReturnDirectionRequestEvent?.time ?? finalResponsibilityPoint?.time ?? null
+      : finalResponsibilityPoint?.time ?? null,
     finalResponsibilitySource: finalResponsibilityPoint?.source ?? null,
-    finalResponsibilityDaysDiff: finalResponsibilityPoint ? daysDiff(finalResponsibilityPoint.time) : -1,
+    finalResponsibilityDaysDiff: storageReturnClock && merchantReturnDirectionRequestEvent
+      ? daysDiff(merchantReturnDirectionRequestEvent.time)
+      : finalResponsibilityPoint
+        ? daysDiff(finalResponsibilityPoint.time)
+        : -1,
     finalResponsibilityBasis,
     merchantDestroyConfirmed: merchantDestroyActive,
     merchantDestroyConfirmTime: merchantDestroyEvent?.time ?? null,
@@ -1519,13 +1556,15 @@ export function deriveTrackFacts(
     merchantStorageSupersededByBusinessProgress,
     merchantStorageBusinessProgressTime: storageBusinessProgressEvent?.time ?? null,
     merchantStorageBusinessProgressEvidence: storageBusinessProgressEvent?.content ?? null,
-    hasPhysicalActivityAfterDirectionFeedback,
+    merchantDirectionUnfrozen,
     merchantReturnClosed,
     merchantReturnClosedTime: merchantReturnClosed ? merchantReturnEvent?.time ?? null : null,
     merchantReturnClosedEvidence: merchantReturnClosed ? merchantReturnClosedEvidence : null,
     merchantReturnDirectionActive,
     merchantReturnRequested: merchantReturnRequestEvent !== null && !merchantReturnClosed && merchantReturnActive,
     merchantReturnRequestTime: merchantReturnRequestEvent?.time ?? null,
+    merchantStorageFreezeActive,
+    merchantStorageReleasedByReturn,
     merchantReturnRequestDaysDiff: merchantReturnRequestEvent ? daysDiff(merchantReturnRequestEvent.time) : -1,
     merchantReturnRequestEvidence,
     merchantReturnLatestProgressTime: merchantReturnLatestProgressEvent?.time ?? null,

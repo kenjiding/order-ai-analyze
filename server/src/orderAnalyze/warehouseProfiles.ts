@@ -28,6 +28,9 @@ export const DEFAULT_WAREHOUSE_LOSS_TIMEOUT_DAYS = DEFAULT_WAREHOUSE_CONFIG.glob
 /** 外部承运（3PL）交接后多久仍未完结即判「3PL丢件」；默认与公司仓库库内/库外丢失超时阈值一致 */
 export const EXTERNAL_CARRIER_LOSS_TIMEOUT_DAYS = DEFAULT_WAREHOUSE_CONFIG.global.externalCarrierLossTimeoutDays
 
+/** 退返商家时效（天）默认值；实际取值走「分析配置」，见 getMerchantReturnTimeoutDays */
+export const DEFAULT_MERCHANT_RETURN_TIMEOUT_DAYS = DEFAULT_WAREHOUSE_CONFIG.global.merchantReturnTimeoutDays
+
 let activeWarehouseProfileContext: WarehouseProfileContext = defaultWarehouseProfileContext
 
 export function resolveWarehouseProfileContext(
@@ -87,6 +90,11 @@ export function isSharedWorkstationOperator(
 
 export function getWarehouseLossTimeoutDays(profile: WarehouseProfile | null): number {
   return activeWarehouseProfileContext.getWarehouseLossTimeoutDays(profile)
+}
+
+/** 退返商家时效（天）：商家给出退返方向后多久未闭环即判「退返超时」，取「分析配置」全局值 */
+export function getMerchantReturnTimeoutDays(): number {
+  return activeWarehouseProfileContext.merchantReturnTimeoutDays
 }
 
 export function getConfiguredSystemOperatorNames(): string[] {

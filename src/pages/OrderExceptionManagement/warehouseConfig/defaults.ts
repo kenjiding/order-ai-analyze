@@ -5,6 +5,7 @@ export const DEFAULT_WAREHOUSE_CONFIG: WarehouseConfigDto = {
   global: {
     defaultLossTimeoutDays: 15,
     externalCarrierLossTimeoutDays: 15,
+    merchantReturnTimeoutDays: 3,
     commonSystemOperators: ['System', 'cornerstone'],
     commonNonRealOperators: ['ADL-DC-Unload', 'Kuangyi Gao', 'Leeki', 'sorter', 'ADL OP1'],
     commonNonRealOperatorPatterns: ['^[A-Z]{2,5}\\s+OPS\\d+$'],

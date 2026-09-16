@@ -2,25 +2,18 @@ import type { AiLossScope, OrderAnalyzeResult, TrackFacts } from './types'
 import { EXTERNAL_CARRIER_LOSS_TIMEOUT_DAYS } from './warehouseProfiles'
 
 /**
- * 判断商家处理方向指令（暂存/销毁/Abandon）是否应视为终态，豁免超时检测。
+ * 商家处理方向（暂存 / Abandon销毁 / 退返商家）是同一类状态：包裹已脱离正常履约，
+ * 由商家指令接管，不适用库内/库外超时。方向有效直到包裹回到履约流程为止
+ * （预约派送 / 真出库 / 分配给派件员，见 merchantDirectionUnfrozen）。
  *
- * 豁免规则：
- * - 指令未激活 → 不适用（返回 false）
- * - 指令后有真实物理扫描 → 有效（物理支撑存在，豁免超时）
- * - 指令后无物理扫描 且 按最终责任点已构成库内/库外丢失 → 无效（不豁免，超时规则应接管）
- * - 指令后无物理扫描 但 尚未构成丢失 → 有效（方向刚给出，尚未超时，豁免）
- *
- * 是否「已超时」统一复用 expectedScopeFromFinalResponsibility，与库内/库外丢失判定同源，
- * 即以当前仓库配置的「仓库丢失超时（天）」为唯一口径，避免口径分裂。
- *
- * 不适用于 merchantReturnClosed（物理退返完成）：该状态永远有效。
+ * 曾用「指令后有无物理扫描 + 当前是否已超时」做反证，有两个致命问题，已移除：
+ * 1. 反证用的是「责任点距今」而非「距指令下达时」，同一条轨迹的结论会随分析日期翻转
+ *    （真实案例 6080126833322：09-14 判暂无异常，09-15 起判库内丢失）；
+ * 2. Abandon 语义上就是就地销毁，之后不可能再有扫描，「指令后需有物理扫描」恒不成立。
  */
 function isDirectionTerminalEffective(directionActive: boolean, facts: TrackFacts): boolean {
   if (!directionActive) return false
-  if (facts.hasPhysicalActivityAfterDirectionFeedback) return true
-  const expectedScope = expectedScopeFromFinalResponsibility(facts)
-  if (expectedScope === '库内丢失' || expectedScope === '库外丢失') return false
-  return true
+  return !facts.merchantDirectionUnfrozen
 }
 
 type DecisionRule = {
@@ -102,6 +95,11 @@ function expectedScopeFromFinalResponsibility(facts: TrackFacts): AiLossScope | 
  * ≥2 组）：后者仍是虚假转运等规则的口径，两者刻意分开，改子类型口径不得波及那些判定。
  */
 function inWarehouseLossSubType(facts: TrackFacts): string {
+  // 暂存冻结被退返方向释放后，唯一在跑的是退返时效；此路径下超时必为退返超时，
+  // 而非扫描员滞留——冻结期间仓库没有累积责任，超的是商家给的退返窗口。
+  if (facts.merchantStorageReleasedByReturn && facts.merchantReturnDirectionActive && !facts.merchantReturnClosed) {
+    return '退返超时'
+  }
   return facts.assignCancelPairWithoutDispatch ? '疑似派件员窃取' : '扫描员丢失'
 }
 

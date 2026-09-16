@@ -30,6 +30,19 @@ export const EXCEPTION_CATALOG: readonly ExceptionScopeDefinition[] = [
       '满足真实操作员扫描入库、未真正出库或已回仓、无正常完结，且最终库内责任点距今达到当前仓库「仓库丢失超时（天）」阈值。',
     subTypes: [
       {
+        id: '退返超时',
+        promptDescription:
+          '商家给出退返/退回商家方向前该单处于暂存冻结（暂存期间不计库内超时），退返方向释放冻结后从退返事件起算已达「分析配置」的退返商家时效仍未闭环。超期会被商家罚款，责任在仓库未及时盘出并退回，故仍归库内丢失，但子类型区分于单纯滞留。',
+        aliases: ['退返商家超时', '退回超时'],
+        inferFromFacts: (facts) =>
+          facts.hasRealOperatorScan &&
+          facts.merchantStorageReleasedByReturn &&
+          facts.merchantReturnDirectionActive &&
+          !facts.merchantReturnClosed &&
+          facts.finalResponsibilityOwner === 'in_warehouse' &&
+          facts.finalResponsibilityDaysDiff >= facts.activeWarehouseLossTimeoutDays,
+      },
+      {
         id: '疑似派件员窃取',
         promptDescription:
           '已达到库内超时阈值，且最近一次库内实物确认（回仓/盘点/入库扫描）之后出现过至少 1 组「分配→取消」配对、此后未再真正出库；即包裹被实物确认在仓后由派件员领走又取消，从此再无任何真实操作记录。问题指向具体派件员而非仓库扫描员单纯滞留超时。该实物确认点之前的分配-取消已被洗清嫌疑，不计入。',

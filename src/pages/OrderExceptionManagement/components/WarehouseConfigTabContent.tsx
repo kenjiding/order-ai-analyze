@@ -229,6 +229,27 @@ function GlobalRulesSection({
                   }
                 />
               </Form.Item>
+              <Form.Item
+                label={
+                  <span className="text-xs font-semibold uppercase tracking-[0.06em] text-slate-500">
+                    {t('warehouseConfig.merchantReturnTimeoutDays')}
+                  </span>
+                }
+                tooltip={t('warehouseConfig.merchantReturnTimeoutTooltip')}
+                className="mb-0"
+              >
+                <InputNumber
+                  min={1}
+                  className="w-28"
+                  value={global.merchantReturnTimeoutDays}
+                  onChange={(value) =>
+                    onChange({
+                      ...global,
+                      merchantReturnTimeoutDays: value ?? 1,
+                    })
+                  }
+                />
+              </Form.Item>
               <div className="min-w-[160px] flex-1">
                 <TagListEditor
                   label={t('warehouseConfig.globalSystemOperators')}

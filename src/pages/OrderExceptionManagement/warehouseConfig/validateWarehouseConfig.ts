@@ -28,6 +28,9 @@ export function validateWarehouseConfig(config: WarehouseConfigDto): WarehouseCo
   if (!Number.isFinite(global.externalCarrierLossTimeoutDays) || global.externalCarrierLossTimeoutDays < 1) {
     issues.push({ field: 'global.externalCarrierLossTimeoutDays', message: t('validation.thirdPartyTimeoutMin') })
   }
+  if (!Number.isFinite(global.merchantReturnTimeoutDays) || global.merchantReturnTimeoutDays < 1) {
+    issues.push({ field: 'global.merchantReturnTimeoutDays', message: t('validation.merchantReturnTimeoutMin') })
+  }
 
   for (const pattern of global.commonNonRealOperatorPatterns) {
     try {
