@@ -204,6 +204,13 @@ function addToAcc(acc: Acc, row: Omit<Acc, 'dispatchSettled'> & { dispatchSettle
   acc.dispatchSettled &&= row.dispatchSettled
 }
 
+/** 白名单格子只累加优先件：优先件是该供应商全部的，不按白名单剔除（与滞留告警 Priority Packages 同口径） */
+function addPriorityToAcc(acc: Acc, row: Pick<Acc, 'priorityTotal' | 'priorityNextDaySignMet' | 'dispatchSettled'>): void {
+  acc.priorityTotal += row.priorityTotal
+  acc.priorityNextDaySignMet += row.priorityNextDaySignMet
+  acc.dispatchSettled &&= row.dispatchSettled
+}
+
 /**
  * 累加结果 → 对外指标。
  * 出仓率任何时候都能算；派签率只在该范围内全部结算后才有意义，否则给 null（前端显示「结算中」）。
@@ -467,9 +474,11 @@ export function buildDispatchPerformanceTree(rows: DispatchPerformanceStatRow[])
   const suppliers = new Map<string, SupplierBucket>()
 
   for (const row of rows) {
-    // 白名单不参与考核：站点汇总与供应商行都跳过，单量另记一笔用于解释口径差
-    if (row.isWhitelist) overallWhitelistTotal += row.total
-    else addToAcc(overallAcc, row)
+    // 白名单不参与考核：站点汇总与供应商行都跳过，单量另记一笔用于解释口径差；优先件例外，照常计入
+    if (row.isWhitelist) {
+      overallWhitelistTotal += row.total
+      addPriorityToAcc(overallAcc, row)
+    } else addToAcc(overallAcc, row)
 
     let supplier = suppliers.get(row.supplierKey)
     if (!supplier) {
@@ -483,8 +492,10 @@ export function buildDispatchPerformanceTree(rows: DispatchPerformanceStatRow[])
       }
       suppliers.set(row.supplierKey, supplier)
     }
-    if (row.isWhitelist) supplier.whitelistTotal += row.total
-    else addToAcc(supplier.acc, row)
+    if (row.isWhitelist) {
+      supplier.whitelistTotal += row.total
+      addPriorityToAcc(supplier.acc, row)
+    } else addToAcc(supplier.acc, row)
 
     let route = supplier.routes.get(row.routeCode)
     if (!route) {

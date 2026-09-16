@@ -157,3 +157,24 @@ test('次日指标：已结算按计数出率，混进未结算的一天则次�
   assert.equal(mixed.overall.nextDaySignRate, null)
   assert.equal(mixed.overall.priorityNextDaySignRate, null)
 })
+
+test('优先件不按白名单剔除：供应商行与站点汇总的优先件总数/完成数含白名单路由，其余考核指标仍不含', () => {
+  const tree = buildDispatchPerformanceTree([
+    met({ routeCode: 'R1', total: 90, priorityTotal: 234, priorityNextDaySignMet: 200 }),
+    unmet({ routeCode: 'AA018', total: 10, isWhitelist: true, priorityTotal: 4, priorityNextDaySignMet: 1 }),
+  ])
+
+  const [supplier] = tree.suppliers
+  assert.equal(supplier.priorityTotal, 238, '234 + 白名单 4')
+  assert.equal(supplier.priorityNextDaySignMet, 201)
+  assert.equal(supplier.priorityNextDaySignRate, 84.45, '201 / 238')
+  assert.equal(supplier.total, 90, '单量仍不含白名单')
+  assert.equal(supplier.before11Rate, 100, '出仓率仍不被白名单拉低')
+  assert.equal(tree.overall.priorityTotal, 238)
+  assert.equal(tree.overall.priorityNextDaySignMet, 201)
+  assert.equal(tree.overall.total, 90)
+
+  // 路由行加起来等于供应商行
+  const routeSum = supplier.routes.reduce((s, r) => s + r.priorityTotal, 0)
+  assert.equal(routeSum, supplier.priorityTotal)
+})

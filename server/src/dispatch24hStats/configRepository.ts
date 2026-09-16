@@ -185,6 +185,7 @@ function countSupplierUnits(
  * （详情页只在路由码/司机两层展示白名单，见 queryDispatchPerformance）。
  * 只在第二步排除是不够的——那样某天若只有白名单数据，max() 仍会选中它，
  * 聚合却是空的，这一行会变成「有日期没数据」。
+ * 例外：优先件总数/完成数不按白名单剔除（该供应商全部优先件），第二步对其余列用 filter 排除白名单。
  */
 async function loadLatestSnapshots(
   stationCodes: string[],
@@ -213,28 +214,30 @@ async function loadLatestSnapshots(
     latestDates.map((d) => sql`(${d.stationCode}, ${d.arrivalDate})`),
     sql`, `,
   )
+  // 考核指标不含白名单；优先件是该供应商全部的，不按白名单剔除（与 buildDispatchPerformanceTree 同口径）
+  const assessedOnly = sql`filter (where ${t.isWhitelist} = false)`
   const rows = await db
     .select({
       stationCode: t.stationCode,
       arrivalDate: t.arrivalDate,
-      total: sql<number>`sum(${t.total})::int`,
-      before11Met: sql<number>`sum(${t.before11Met})::int`,
-      exitMetSignMet: sql<number>`sum(${t.exitMetSignMet})::int`,
-      exitMetSignUnmet: sql<number>`sum(${t.exitMetSignUnmet})::int`,
-      exitUnmetSignMet: sql<number>`sum(${t.exitUnmetSignMet})::int`,
-      exitUnmetSignUnmet: sql<number>`sum(${t.exitUnmetSignUnmet})::int`,
-      sameDayExitMet: sql<number>`sum(${t.sameDayExitMet})::int`,
-      nextDaySignMet: sql<number>`sum(${t.nextDaySignMet})::int`,
+      total: sql<number>`sum(${t.total}) ${assessedOnly}::int`,
+      before11Met: sql<number>`sum(${t.before11Met}) ${assessedOnly}::int`,
+      exitMetSignMet: sql<number>`sum(${t.exitMetSignMet}) ${assessedOnly}::int`,
+      exitMetSignUnmet: sql<number>`sum(${t.exitMetSignUnmet}) ${assessedOnly}::int`,
+      exitUnmetSignMet: sql<number>`sum(${t.exitUnmetSignMet}) ${assessedOnly}::int`,
+      exitUnmetSignUnmet: sql<number>`sum(${t.exitUnmetSignUnmet}) ${assessedOnly}::int`,
+      sameDayExitMet: sql<number>`sum(${t.sameDayExitMet}) ${assessedOnly}::int`,
+      nextDaySignMet: sql<number>`sum(${t.nextDaySignMet}) ${assessedOnly}::int`,
       priorityTotal: sql<number>`sum(${t.priorityTotal})::int`,
       priorityNextDaySignMet: sql<number>`sum(${t.priorityNextDaySignMet})::int`,
-      problemCount: sql<number>`sum(${t.problemCount})::int`,
-      neverSignedCount: sql<number>`sum(${t.neverSignedCount})::int`,
-      lateSignedCount: sql<number>`sum(${t.lateSignedCount})::int`,
+      problemCount: sql<number>`sum(${t.problemCount}) ${assessedOnly}::int`,
+      neverSignedCount: sql<number>`sum(${t.neverSignedCount}) ${assessedOnly}::int`,
+      lateSignedCount: sql<number>`sum(${t.lateSignedCount}) ${assessedOnly}::int`,
       // 只要该日混进一行未结算，整日就算未结算——宁可显示结算中，也不摆出算了一半的数
       dispatchSettled: sql<boolean>`bool_and(${t.dispatchSettled})`,
     })
     .from(t)
-    .where(and(sql`(${t.stationCode}, ${t.arrivalDate}) IN (${pairs})`, eq(t.isWhitelist, false)))
+    .where(sql`(${t.stationCode}, ${t.arrivalDate}) IN (${pairs})`)
     .groupBy(t.stationCode, t.arrivalDate)
 
   for (const row of rows) {

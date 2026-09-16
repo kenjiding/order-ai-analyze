@@ -180,6 +180,8 @@ export function buildExitAlarmCard(params: {
   mentions?: SupplierMentionContact[] | null
   /** 命中「路由码白名单数据推送」且有命中数据时传入，作为折叠面板追加在主卡片末尾，默认折叠 */
   whitelistStat?: WhitelistStat | null
+  /** 白名单路由分区统计，不受折叠面板开关影响；Priority Packages 磁贴是该供应商全部优先件，要把这部分并进去 */
+  whitelistZoneBreakdown?: Record<string, ZoneStats> | null
   /** 滞留清货价：每件清货补贴（美元）；配置了且有未出仓件时展示清货费用 */
   clearancePrice?: number | null
 }): Record<string, unknown> {
@@ -194,6 +196,7 @@ export function buildExitAlarmCard(params: {
     pushDescription,
     mentions,
     whitelistStat,
+    whitelistZoneBreakdown,
     clearancePrice,
   } = params
   const elements: CardEl[] = []
@@ -219,9 +222,10 @@ export function buildExitAlarmCard(params: {
   // 汇总 KPI；配置了滞留清货价且有滞留件时，清货费用并入同一行。
   // 每块磁贴各占一种色相，避免整行同色分不出块：滞留量=红、出仓率=蓝（中性指标）、
   // 优先客户=橙、清货费用=红；数量清零时相应磁贴转绿。与 24H 派签告警卡片同一套配色。
-  // 「本地件优先客户」包裹数按分区明细汇总，口径与 totalWaybills 一致（白名单路由已单列，不在其中）
-  const totalPriority = Object.values(zoneBreakdown).reduce((sum, zone) => sum + zone.priority, 0)
-  const exitedPriority = Object.values(zoneBreakdown).reduce((sum, zone) => sum + zone.priorityExited, 0)
+  // 「本地件优先客户」包裹数 = 该供应商全部优先件：主统计 + 白名单路由，不按白名单剔除
+  const priorityZones = [...Object.values(zoneBreakdown), ...Object.values(whitelistZoneBreakdown ?? {})]
+  const totalPriority = priorityZones.reduce((sum, zone) => sum + zone.priority, 0)
+  const exitedPriority = priorityZones.reduce((sum, zone) => sum + zone.priorityExited, 0)
   const pendingPriority = totalPriority - exitedPriority
   // 始终三块：有清货费用时让位——Not exited 并入 Exit rate 副行；没有则单列 Not exited
   const showClearance = Boolean(clearancePrice && clearancePrice > 0 && totalPending > 0)

@@ -271,6 +271,7 @@ export async function executeExitAlarmPush(params: {
         // 填了重要提醒时 @ 人挪到提醒那条消息里，数据卡片不再 @
         mentions: noticeText ? [] : mentions,
         whitelistStat,
+        whitelistZoneBreakdown: stat.whitelistStat?.zoneBreakdown,
         clearancePrice,
       })
 

@@ -63,6 +63,23 @@ test('KPI 行在 Exit rate 右侧展示「Priority Packages」磁贴，取各路
   assert.match(text, /56 total/)
 })
 
+test('Priority Packages 是全部优先件：白名单路由的优先件也计入，与折叠面板开关无关', () => {
+  const text = bodyText(
+    buildExitAlarmCard({
+      ...baseParams,
+      // 主统计 34 件（已出仓 30），白名单路由 4 件（已出仓 1）；不传 whitelistStat = 面板关闭
+      whitelistZoneBreakdown: { AA018: { pending: 3, total: 10, priority: 4, priorityExited: 1 } },
+    }),
+  )
+  // 未出仓 (34+4)-(30+1)=7，总数 38
+  assert.match(text, /\*\*7 Not exited\*\*/)
+  assert.match(text, /38 total/)
+  // 其余磁贴仍不含白名单：Not exited 100 / 300 total
+  assert.match(text, /\*\*100\*\*/)
+  assert.match(text, /300 total/)
+  assert.doesNotMatch(text, /Whitelisted Routes/)
+})
+
 test('KPI 行恒为三块：无清货费用时保留 Not exited 磁贴，有清货费用时并入 Exit rate 副行', () => {
   const plain = bodyText(buildExitAlarmCard(baseParams))
   assert.match(plain, /\*\*Not exited\*\*/)
