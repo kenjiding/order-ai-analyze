@@ -354,7 +354,9 @@
     "orderClosed": "订单已完结",
     "abandonDestroy": "Abandon销毁",
     "storage": "暂存",
-    "returnToMerchant": "退返商家"
+    "returnToMerchant": "退返商家",
+    "returnedToMerchant": "已退返商家",
+    "returnOverdue": "退返超时"
   },
   "rowStatus": {
     "pending": "待分析",

@@ -127,11 +127,26 @@ export const EXCEPTION_CATALOG: readonly ExceptionScopeDefinition[] = [
           !facts.deliveryCompletionSupersedesMerchantDirection,
       },
       {
+        id: '已退返商家',
+        promptDescription:
+          'lossScope 为「暂无异常」，且退返已物理闭环：轨迹出现「退件已退返商家」「已退返商家」、退回发件方/商家签收、退货妥投、退款退货闭环等。包裹已回到商家，该单终结；即使退返耗时超过退返商家时效，闭环后也不再标记超期。',
+        aliases: ['已退回商家', '退返完成', '退返闭环'],
+        inferFromFacts: (facts) =>
+          facts.merchantReturnClosed &&
+          !facts.latestOrderExceptionClosed &&
+          !facts.deliveryCompletionSupersedesMerchantDirection &&
+          !facts.merchantAbandonActive &&
+          !facts.merchantDestroyConfirmed &&
+          !facts.merchantStorageActive,
+      },
+      {
         id: '退返商家',
-        promptDescription: 'lossScope 为「暂无异常」，且当前最新有效商家处理方向为退返/退回商家；包含已退返商家/商家签收等闭环，也包含商家反馈意见[退返商家]但尚未闭环的处理方向。若后续最新反馈改为 Abandon/销毁/暂存/其他退件方向，则以最新方向为准。',
+        promptDescription:
+          'lossScope 为「暂无异常」，且当前最新有效商家处理方向为退返/退回商家但尚未闭环：商家反馈意见[退返商家] 已给出，包裹可能仍在盘点、装箱、转运途中。一旦出现退返物理闭环改用「已退返商家」；若后续最新反馈改为 Abandon/销毁/暂存/其他退件方向，则以最新方向为准。',
         aliases: ['退回商家'],
         inferFromFacts: (facts) =>
-          (facts.merchantReturnClosed || facts.merchantReturnDirectionActive) &&
+          facts.merchantReturnDirectionActive &&
+          !facts.merchantReturnClosed &&
           !facts.latestOrderExceptionClosed &&
           !facts.deliveryCompletionSupersedesMerchantDirection &&
           !facts.merchantAbandonActive &&

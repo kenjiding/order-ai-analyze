@@ -13,9 +13,9 @@ export const REGRESSION_LOSS_SCOPES: OrderAnalyzeResultItem['lossScope'][] = [
 ]
 
 export const SUB_TYPE_BY_SCOPE: Partial<Record<OrderAnalyzeResultItem['lossScope'], string[]>> = {
-  库内丢失: ['扫描员丢失', '疑似派件员窃取'],
+  库内丢失: ['扫描员丢失', '疑似派件员窃取', '退返超时'],
   库外丢失: ['快递员丢失'],
-  暂无异常: ['已签收', '订单已完结', 'Abandon销毁', '暂存', '退返商家', ''],
+  暂无异常: ['已签收', '订单已完结', 'Abandon销毁', '暂存', '退返商家', '已退返商家', ''],
 }
 
 const LOSS_SCOPE_I18N_KEY: Partial<Record<string, string>> = {
@@ -37,6 +37,8 @@ const SUB_TYPE_I18N_KEY: Partial<Record<string, string>> = {
   'Abandon销毁': 'subType.abandonDestroy',
   暂存: 'subType.storage',
   退返商家: 'subType.returnToMerchant',
+  已退返商家: 'subType.returnedToMerchant',
+  退返超时: 'subType.returnOverdue',
 }
 
 export function lossScopeLabel(t: TFunction, value: string): string {

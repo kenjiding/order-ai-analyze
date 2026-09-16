@@ -98,7 +98,7 @@ test('暂存后出现预约派送会释放暂存状态', () => {
   assert.equal(facts.merchantStorageReleasedBySchedule, true)
 })
 
-test('退返商家闭环纠正为暂无异常且子类型为退返商家', () => {
+test('退返物理闭环纠正为暂无异常且子类型为已退返商家', () => {
   const facts = deriveTrackFacts([
     track('2024-01-01 10:00:00', '【ADL DS】操作员【ADL-DC-Tong】 已盘点'),
     track('2024-01-03 10:00:00', '【ADL DS】退件已退返商家。操作员【ADL OP1】'),
@@ -107,8 +107,54 @@ test('退返商家闭环纠正为暂无异常且子类型为退返商家', () =>
 
   assert.equal(facts.merchantReturnClosed, true)
   assert.equal(guarded.lossScope, '暂无异常')
-  assert.equal(guarded.exceptionCategoryId, '退返商家')
+  assert.equal(guarded.exceptionCategoryId, '已退返商家')
   assert.equal(guarded.appliedDecisionRuleId, 'merchant_return_terminal')
+})
+
+// 「退返商家」= 方向已给未闭环，「已退返商家」= 包裹已物理回到商家。
+// 两者判别只看 merchantReturnClosed；真实单轨迹见 6080126833322 同批次的 Shein AUS 退返单。
+test('退返方向未闭环时子类型为退返商家，出现退返闭环后改为已退返商家', () => {
+  const inProgress = [
+    track('2026-09-01 14:18:09', '【ADL DS】已盘点，库位编号[01]。操作员【ADL-前台】'),
+    track('2026-09-01 19:52:40', '商家已反馈NDR处理意见[退返商家]。 操作人【黄昭莹】'),
+    track('2026-09-02 15:44:39', '【ADL DS】已盘点，库位编号[01]。操作员【ADL-前台】'),
+    track('2026-09-04 16:28:26', '【ADL DS】已装箱，集包号[2609046105101]，目的地【Shein AUS】。操作员【ADL-前台】'),
+  ]
+  const openFacts = deriveTrackFacts(inProgress, [], { analysisDate: '2026-09-06' })
+  const open = classifyOrderFromFacts({ orderNo: 'RTC-OPEN', facts: openFacts })
+  assert.equal(openFacts.merchantReturnClosed, false)
+  assert.equal(openFacts.merchantReturnDirectionActive, true)
+  assert.equal(open.lossScope, '暂无异常')
+  assert.equal(open.exceptionCategoryId, '退返商家')
+
+  const closedFacts = deriveTrackFacts(
+    [...inProgress, track('2026-09-16 15:51:57', '【ADL DS】退件已退返商家。操作员【AI 推送账号【澳洲风控】】')],
+    [],
+    { analysisDate: '2026-09-16' }
+  )
+  const closed = classifyOrderFromFacts({ orderNo: 'RTC-CLOSED', facts: closedFacts })
+  assert.equal(closedFacts.merchantReturnClosed, true)
+  assert.equal(closed.lossScope, '暂无异常')
+  assert.equal(closed.exceptionCategoryId, '已退返商家')
+})
+
+// A 方案：闭环即干净。超期退返一旦回到商家就不再标记超期，想查超期从轨迹时间差自己算。
+test('退返耗时超过退返时效但已闭环时判已退返商家而非退返超时', () => {
+  const facts = deriveTrackFacts(
+    [
+      track('2026-07-01 10:00:00', '【ADL DS】已盘点，库位编号[01]。操作员【ADL-前台】'),
+      track('2026-07-02 10:00:00', '【ADL DS】包裹确认派送结束, 将按照商家反馈意见[暂存]进行处理。'),
+      track('2026-07-05 10:00:00', '商家已反馈NDR处理意见[退返商家]。 操作人【黄昭莹】'),
+      track('2026-09-16 10:00:00', '【ADL DS】退件已退返商家。操作员【ADL OP1】'),
+    ],
+    [],
+    { analysisDate: '2026-09-16' }
+  )
+  const result = classifyOrderFromFacts({ orderNo: 'RTC-LATE', facts })
+
+  assert.equal(facts.merchantReturnClosed, true)
+  assert.equal(result.lossScope, '暂无异常')
+  assert.equal(result.exceptionCategoryId, '已退返商家')
 })
 
 test('最新退返方向不会沿用历史退返闭环', () => {
@@ -250,7 +296,7 @@ test('NDR 退返商家终态优先于当前责任段缺证据兜底', () => {
     ]
   )
   const guarded = applyFactGuardrails(
-    baseResult({ lossScope: '暂无异常', exceptionCategoryId: '退返商家', reason: '退返商家' }),
+    baseResult({ lossScope: '暂无异常', exceptionCategoryId: '已退返商家', reason: '已退返商家' }),
     facts
   )
 
@@ -259,7 +305,7 @@ test('NDR 退返商家终态优先于当前责任段缺证据兜底', () => {
   assert.equal(facts.inWarehouseStartTime, inventoryTime)
   assert.equal(facts.merchantReturnClosed, true)
   assert.equal(guarded.lossScope, '暂无异常')
-  assert.equal(guarded.exceptionCategoryId, '退返商家')
+  assert.equal(guarded.exceptionCategoryId, '已退返商家')
   assert.equal(guarded.appliedDecisionRuleId, undefined)
 })
 
@@ -270,7 +316,7 @@ test('已退返商家终态不被公司仓缺证据兜底覆盖', () => {
   const guarded = applyFactGuardrails(
     baseResult({
       lossScope: '暂无异常',
-      exceptionCategoryId: '退返商家',
+      exceptionCategoryId: '已退返商家',
       reason: '包裹已退返商家闭环',
       confidence: 0.65,
     }),
@@ -281,7 +327,7 @@ test('已退返商家终态不被公司仓缺证据兜底覆盖', () => {
   assert.equal(facts.hasRealOperatorScan, false)
   assert.equal(facts.merchantReturnClosed, true)
   assert.equal(guarded.lossScope, '暂无异常')
-  assert.equal(guarded.exceptionCategoryId, '退返商家')
+  assert.equal(guarded.exceptionCategoryId, '已退返商家')
   assert.equal(guarded.appliedDecisionRuleId, undefined)
 })
 
@@ -316,7 +362,7 @@ test('退返商家已正确闭环时不被后续退件装箱和缺证据兜底�
   const guarded = applyFactGuardrails(
     baseResult({
       lossScope: '暂无异常',
-      exceptionCategoryId: '退返商家',
+      exceptionCategoryId: '已退返商家',
       reason: '商家已反馈退返商家意见，包裹已退返商家闭环',
       confidence: 0.65,
     }),
@@ -326,7 +372,7 @@ test('退返商家已正确闭环时不被后续退件装箱和缺证据兜底�
   assert.equal(facts.merchantReturnClosed, true)
   assert.equal(facts.activeSegmentStatus, 'in_warehouse')
   assert.equal(guarded.lossScope, '暂无异常')
-  assert.equal(guarded.exceptionCategoryId, '退返商家')
+  assert.equal(guarded.exceptionCategoryId, '已退返商家')
   assert.equal(guarded.appliedDecisionRuleId, undefined)
 })
 
@@ -1628,7 +1674,7 @@ test('子类型归一只接受当前异常类型目录内的值或强事实推�
   assert.equal(normalizeSubType({ lossScope: '暂无异常', facts: storageFacts }), '暂存')
   assert.equal(normalizeSubType({ lossScope: '暂无异常', facts: deriveTrackFacts([
     track('2024-01-01 10:00:00', '【ADL DS】退件已退返商家。操作员【ADL OP1】'),
-  ]) }), '退返商家')
+  ]) }), '已退返商家')
 })
 
 test('回归比对：异常类型与子类型均一致时通过', () => {
@@ -2086,7 +2132,7 @@ test('已签收与商家处理方向的时序优先级矩阵', () => {
       name: '签收后出现退返闭环时以退返为准',
       tracks: [pickup, sign('2026-08-14 10:00:00'), track('2026-08-16 10:00:00', '【ADL DS】退件已退返商家。操作员【ADL OP1】', '', '已退返商家')],
       scope: '暂无异常',
-      subType: '退返商家',
+      subType: '已退返商家',
     },
     {
       name: '同一天内按秒级时序判定，签收在后即已签收',

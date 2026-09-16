@@ -1790,7 +1790,7 @@ export function computeTrackTemporalContext(
   }
   if (facts.merchantReturnClosed) {
     lines.push(
-      `退返商家闭环: 是（${facts.merchantReturnClosedTime ?? '-'}，证据: ${facts.merchantReturnClosedEvidence ?? '命中退返闭环关键词'}）  → 该订单已完成退返/退回商家，优先判定「暂无异常」，子类型建议「退返商家」`
+      `退返商家闭环: 是（${facts.merchantReturnClosedTime ?? '-'}，证据: ${facts.merchantReturnClosedEvidence ?? '命中退返闭环关键词'}）  → 该订单已完成退返/退回商家（包裹已物理回到商家），优先判定「暂无异常」，子类型建议「已退返商家」`
     )
   } else if (facts.merchantReturnRequested) {
     lines.push(

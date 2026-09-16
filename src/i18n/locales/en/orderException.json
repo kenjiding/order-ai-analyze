@@ -354,7 +354,9 @@
     "orderClosed": "Order closed",
     "abandonDestroy": "Abandon destroy",
     "storage": "Storage",
-    "returnToMerchant": "Return to merchant"
+    "returnToMerchant": "Return to merchant",
+    "returnedToMerchant": "Returned to merchant",
+    "returnOverdue": "Return overdue"
   },
   "rowStatus": {
     "pending": "Pending",

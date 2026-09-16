@@ -173,7 +173,8 @@ function noExceptionSubTypeFromFacts(facts: TrackFacts): string {
   if (facts.deliveryCompletionSupersedesMerchantDirection) return '已签收'
   if (facts.merchantDestroyConfirmed || facts.merchantAbandonActive) return 'Abandon销毁'
   if (facts.merchantStorageActive) return '暂存'
-  if (facts.merchantReturnClosed || facts.merchantReturnDirectionActive) return '退返商家'
+  if (facts.merchantReturnClosed) return '已退返商家'
+  if (facts.merchantReturnDirectionActive) return '退返商家'
   if (facts.hasDeliveryCompletion) return '已签收'
   return ''
 }
@@ -487,14 +488,14 @@ export const DECISION_RULES: readonly DecisionRule[] = [
       facts.merchantReturnClosed &&
       !facts.merchantAbandonActive &&
       !facts.deliveryCompletionSupersedesMerchantDirection &&
-      (result.lossScope !== '暂无异常' || result.exceptionCategoryId !== '退返商家'),
+      (result.lossScope !== '暂无异常' || result.exceptionCategoryId !== '已退返商家'),
     resolve: ({ result, facts }) => {
       const hit = `轨迹命中退返商家闭环（${facts.merchantReturnClosedTime ?? '-'}，${facts.merchantReturnClosedEvidence ?? '命中退返闭环关键词'}），该单已完成退返/退回商家，不应归责为库内/库外异常`
       return withRuleHit({
         result,
         ruleId: 'merchant_return_terminal',
         lossScope: '暂无异常',
-        exceptionCategoryId: '退返商家',
+        exceptionCategoryId: '已退返商家',
         confidence: Math.max(0.88, result.confidence),
         needsReview: false,
         hit,
