@@ -22,6 +22,13 @@ export const PERMISSION_REGISTRY: PermissionDefinition[] = [
   { key: 'menu:order-exception', type: 'menu', label: 'AI订单异常分析', description: '轨迹样本与异常分类分析', sortOrder: 30 },
   { key: 'menu:new-merchant-monitor', type: 'menu', label: '新商家数据监控', description: '新商家货量与签收指标看板', sortOrder: 35 },
   { key: 'menu:problem-package-audit', type: 'menu', label: 'AI问题件审核', description: '问题件图片AI智能审核', sortOrder: 37 },
+  {
+    key: 'menu:return-to-merchant-finish',
+    type: 'menu',
+    label: '退返商家完结',
+    description: '按集包创建时间查询集包并批量提交退返商家完结',
+    sortOrder: 25,
+  },
   { key: 'menu:vendor-analysis', type: 'menu', label: '供应商数据分析', description: '供应商客诉率与工单数据推送', sortOrder: 38 },
   {
     key: 'menu:vendor-region-map',

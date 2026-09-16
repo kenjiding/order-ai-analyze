@@ -9,7 +9,7 @@ type Card = { body: { elements: Array<{ content?: string }> } }
 const bodyText = (card: unknown): string =>
   (card as Card).body.elements.map((el) => el.content ?? '').join('\n')
 
-const unassignedBucket = (total: number): Dispatch24hDriverStat => ({
+const unassignedBucket = (total: number, priority = 0): Dispatch24hDriverStat => ({
   courierCode: '',
   courierName: '',
   routeCode: 'R-A',
@@ -18,8 +18,8 @@ const unassignedBucket = (total: number): Dispatch24hDriverStat => ({
   problemCount: 0,
   neverSignedCount: total,
   lateSignedCount: 0,
-  priorityTotal: 0,
-  priorityUnsigned: 0,
+  priorityTotal: priority,
+  priorityUnsigned: priority,
   neverSignedWaybills: [],
   lateSignedWaybills: [],
   problemWaybills: [],
@@ -81,7 +81,7 @@ test('司机行展示「本地件优先客户」包裹数，不再展示问题�
     buildDispatchAlarmCard({ ...baseParams, total: 132, met: 131, problemCount: 4, drivers: [driver], unassigned: null }),
   )
 
-  assert.match(text, /TIRTH THAKAR\*\* \(D21021044801\).*1 not signed.*\/ 132 total\. .*34 Priorities/)
+  assert.match(text, /TIRTH THAKAR\*\* \(D21021044801\).*1 not signed.*\/ 132 total\. .*1\/34 Priorities/)
   assert.doesNotMatch(text, /4 problem/)
 })
 
@@ -168,4 +168,40 @@ test('实时排名卡：标题用站点名，前三名金银铜按名次排列�
   assert.doesNotMatch(text, /interactive_container|"behaviors"/)
   assert.ok(pos('**Tiny**') > pos('Not ranked ('))
   assert.ok(pos('Not ranked (') > pos('**MEL-West**'))
+})
+
+test('未派件（无司机）那行也要标出「本地件优先客户」件数，否则磁贴的未签优先件数在明细里对不上', () => {
+  // 磁贴 26 未签优先件 = 司机 4 + 未派件 22；不显示未派件那 22 张时，明细里只找得到 4 张
+  const driver: Dispatch24hDriverStat = {
+    courierCode: 'D001',
+    courierName: 'ADL-KM-0001-Somebody',
+    routeCode: 'R-A',
+    total: 186,
+    met: 180,
+    problemCount: 0,
+    neverSignedCount: 6,
+    lateSignedCount: 0,
+    priorityTotal: 25,
+    priorityUnsigned: 4,
+    neverSignedWaybills: [],
+    lateSignedWaybills: [],
+    problemWaybills: [],
+  }
+  const text = bodyText(
+    buildDispatchAlarmCard({
+      ...baseParams,
+      total: 252,
+      met: 180,
+      priorityTotal: 252,
+      priorityUnsigned: 26,
+      drivers: [driver],
+      unassigned: unassignedBucket(66, 22),
+    }),
+  )
+
+  assert.match(text, /Not dispatched \(no driver assigned\).*66 not signed.*\/ 66 total\. .*22\/22 Priorities/)
+  // 明细行的未签优先件之和必须等于磁贴上的 26
+  const unsignedPriorities = [...text.matchAll(/(\d+)\/\d+ Priorities/g)].map((m) => Number(m[1]))
+  assert.deepEqual(unsignedPriorities, [4, 22])
+  assert.equal(unsignedPriorities.reduce((a, b) => a + b, 0), 26)
 })

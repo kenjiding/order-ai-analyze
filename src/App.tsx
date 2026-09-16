@@ -19,6 +19,9 @@ import { ToastBridge } from './utils/toast'
 const NewMerchantMonitorPage = lazy(() => import('./pages/NewMerchantMonitor/NewMerchantMonitorPage'))
 const OrderExceptionManagementPage = lazy(() => import('./pages/OrderExceptionManagement/OrderExceptionManagementPage'))
 const ProblemPackageAuditPage = lazy(() => import('./pages/ProblemPackageAudit/ProblemPackageAuditPage'))
+const ReturnToMerchantFinishPage = lazy(
+  () => import('./pages/ReturnToMerchantFinish/ReturnToMerchantFinishPage'),
+)
 const VendorAnalysisPage = lazy(() => import('./pages/VendorAnalysis/VendorAnalysisPage'))
 const ScannerEfficiencyPage = lazy(() => import('./pages/ScannerEfficiency/ScannerEfficiencyPage'))
 const EfficiencyAttendanceRecordsPage = lazy(
@@ -195,6 +198,14 @@ function AppRoutes() {
             element={
               <KeptPage cacheKey="page-problem-package-audit" name="problem-package-audit">
                 <ProblemPackageAuditPage />
+              </KeptPage>
+            }
+          />
+          <Route
+            path="/return-to-merchant-finish"
+            element={
+              <KeptPage cacheKey="page-return-to-merchant-finish" name="return-to-merchant-finish">
+                <ReturnToMerchantFinishPage />
               </KeptPage>
             }
           />

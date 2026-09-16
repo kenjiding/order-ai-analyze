@@ -21,7 +21,7 @@ export type ReturnToMerchantSubmitParams = {
 }
 
 export type ReturnToMerchantSubmitResult =
-  | { ok: true; blockInfo: string; operateTypeDesc: string }
+  | { ok: true; blockCode: number | null; blockInfo: string; operateTypeDesc: string }
   | { ok: false; status: number; message: string }
 
 /** blockInfo 的实际形态未抓包确认，可能是字符串/对象/数组；统一压成可展示文本，别静默丢掉 */
@@ -68,8 +68,11 @@ export async function submitReturnToMerchant(
   }
 
   const resultObject = readResultObject(result.json)
+  const rawBlockCode = isRecord(resultObject) ? resultObject.blockCode : undefined
   return {
     ok: true,
+    // 成功时 iMile 不返回 blockCode，只有被拦截才回非 0 的 blockCode + blockInfo
+    blockCode: rawBlockCode == null || rawBlockCode === '' ? null : Number(rawBlockCode),
     blockInfo: isRecord(resultObject) ? toDisplayText(resultObject.blockInfo) : '',
     operateTypeDesc: isRecord(resultObject) ? toDisplayText(resultObject.operateTypeDesc) : '',
   }
