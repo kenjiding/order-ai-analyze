@@ -1,0 +1,62 @@
+{
+  "page": {
+    "eyebrow": "Hub Exit",
+    "title": "Hub exit rate",
+    "description": "Pull inbound waybills by arrival date, then use searchWaybill deliveryTime as hub-exit time. Same-day = by 23:59:59 on arrival day; next-morning = next calendar day 00:00–11:00 inclusive. Weekends are not skipped. Results are not stored."
+  },
+  "filter": {
+    "inboundRange": "Arrival dates",
+    "rangeHint": "Up to 7 days; each day is aligned to its own arrival date",
+    "query": "Query",
+    "querying": "Fetching inbound and waybill details — large stations may take a few minutes",
+    "viewDate": "View date (already loaded, no refetch)",
+    "allDates": "All dates"
+  },
+  "toast": {
+    "selectStation": "Select a station in the top bar first",
+    "selectDate": "Select an arrival date range",
+    "maxRange": "Arrival date range cannot exceed 7 days",
+    "done": "Done, {{count}} waybills"
+  },
+  "empty": "Pick arrival dates and run a query",
+  "kpi": {
+    "total": "Inbound volume",
+    "sameDay": "Same-day exit rate",
+    "sameDayHint": "{{count}} exited by 23:59:59 on the arrival day",
+    "nextMorning": "Next-day 0–11am rate",
+    "nextMorningHint": "{{count}} exited between 00:00 and 11:00 the next day",
+    "cumulative": "By next-day 11am",
+    "cumulativeHint": "Same-day + next morning, {{count}} waybills",
+    "pending": "{{count}} not yet exited"
+  },
+  "dim": {
+    "vendor": "Vendor",
+    "route": "Route code",
+    "driver": "Courier",
+    "name": "Name",
+    "total": "Inbound",
+    "share": "Volume share",
+    "sameDay": "Same-day",
+    "nextMorning": "Next-day 0–11am",
+    "cumulative": "By next-day 11am",
+    "pending": "Not exited",
+    "unassigned": "Unassigned"
+  },
+  "hourly": {
+    "title": "Hourly exit (aligned to arrival day)",
+    "subtitle": "Bars = incremental share that hour; line = cumulative. Click a table row to filter by vendor / route / courier.",
+    "matrixTitle": "Next-day 7–11am by row",
+    "matrixShowAll": "All rows",
+    "matrixHideZero": "Hide all-zero rows",
+    "matrixHideZeroHint": "Route and courier only: hide rows with 0 exits in every 7–11am hour",
+    "matrixRangeTotal": "7–11am total",
+    "overall": "All inbound",
+    "incremental": "Hour share",
+    "cumulative": "Cumulative rate",
+    "count": "Exits",
+    "empty": "No exit timestamps",
+    "axisPercent": "Share (%)",
+    "sameDay": "Day 0 {{start}}–{{end}}",
+    "nextDay": "Day +1 {{start}}–{{end}}"
+  }
+}

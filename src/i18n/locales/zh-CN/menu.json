@@ -34,6 +34,7 @@
     "exit-alarm": "滞留数据告警",
     "dispatch-alarm": "24小时派签告警",
     "dispatch-performance": "出仓派签达成分析",
+    "exit-rate-query": "出仓率查询",
     "chase-dispatch": "催派推送",
     "work-order-push": "工单推送",
     "package-loss-monitor": "丢包监控",

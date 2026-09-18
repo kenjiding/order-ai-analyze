@@ -34,6 +34,7 @@
     "exit-alarm": "Dwell alert",
     "dispatch-alarm": "24h dispatch alert",
     "dispatch-performance": "Exit & dispatch performance",
+    "exit-rate-query": "Hub exit rate query",
     "chase-dispatch": "Chase dispatch",
     "work-order-push": "Ticket push",
     "package-loss-monitor": "Lost parcel monitor",
