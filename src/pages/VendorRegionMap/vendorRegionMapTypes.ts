@@ -4,6 +4,12 @@ export type VendorRegionVendor = {
   supplierName: string
   vendorCode: string
   packageCount: number
+  /** 理论供应商利润 Σ(price - courierPrice)，按到件量算，不扣未签收 */
+  vendorProfit: number
+  /** 理论司机利润 Σ courierPrice，口径同上 */
+  courierProfit: number
+  /** 没在价格表里匹配到单价的票数：这些票一分钱没算进两个利润 */
+  unpricedCount: number
   zipCount: number
 }
 
@@ -13,6 +19,9 @@ export type VendorRegionCell = {
   supplierName: string
   vendorCode: string
   count: number
+  vendorProfit: number
+  courierProfit: number
+  unpricedCount: number
   lat: number | null
   lng: number | null
   suburb: string
@@ -35,6 +44,8 @@ export type VendorRegionMapMeta = {
   unmatchedNoZip: number
   unmatchedNoVendor: number
   unmatchedNoGeo: number
+  /** 没匹配到区域包裹价格的票数，两个利润里不含它们 */
+  unpricedPackages: number
   polygonCount: number
   missingPolygons?: string[]
 }
@@ -44,6 +55,42 @@ export type VendorRegionMapResult = {
   cells: VendorRegionCell[]
   zipRegions: VendorRegionZipRegion[]
   meta: VendorRegionMapMeta
+}
+
+/**
+ * 柱高表达的指标。
+ *
+ * 两个利润是**理论值**：按到件量 × 区域包裹价格算，不看包裹最终是否签收
+ * （到件扫描接口不返回签收状态）。与「出仓派签达成分析」的实收金额口径不同、数也对不上，
+ * 那边只算签收成功的包裹，因此这里恒偏大。
+ */
+export const MAP_METRICS = ['count', 'vendorProfit', 'courierProfit'] as const
+export type MapMetric = (typeof MAP_METRICS)[number]
+
+export function isMoneyMetric(metric: MapMetric): boolean {
+  return metric !== 'count'
+}
+
+/** 负利润（手工把司机价录得比总价高）在柱体堆叠里会让底座倒退，统一夹到 0 */
+export function cellMetricValue(cell: VendorRegionCell, metric: MapMetric): number {
+  const value = metric === 'count' ? cell.count : cell[metric]
+  return value > 0 ? value : 0
+}
+
+export function vendorMetricValue(vendor: VendorRegionVendor, metric: MapMetric): number {
+  const value = metric === 'count' ? vendor.packageCount : vendor[metric]
+  return value > 0 ? value : 0
+}
+
+const moneyFormat = new Intl.NumberFormat('en-AU', {
+  style: 'currency',
+  currency: 'AUD',
+  maximumFractionDigits: 0,
+})
+const countFormat = new Intl.NumberFormat('en-AU')
+
+export function formatMetricValue(value: number, metric: MapMetric): string {
+  return isMoneyMetric(metric) ? moneyFormat.format(value) : countFormat.format(value)
 }
 
 export const ADELAIDE_MAP_CENTER = { lng: 138.6007, lat: -34.9285 }

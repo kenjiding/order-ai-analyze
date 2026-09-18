@@ -1,9 +1,16 @@
 import { useMemo } from 'react'
-import { Alert, Button, DatePicker } from 'antd'
+import { Alert, Button, DatePicker, Segmented } from 'antd'
 import dayjs from 'dayjs'
 import { useTranslation } from 'react-i18next'
 import { colorFromMap } from '../vendorColors'
 import type { useVendorRegionMapPage } from '../useVendorRegionMapPage'
+import {
+  formatMetricValue,
+  isMoneyMetric,
+  MAP_METRICS,
+  vendorMetricValue,
+  type MapMetric,
+} from '../vendorRegionMapTypes'
 import { VendorRegionMapCanvas } from './VendorRegionMapCanvas'
 
 const nf = new Intl.NumberFormat('en-AU')
@@ -16,16 +23,30 @@ export function VendorRegionMapTab({ page }: Props) {
   const { t } = useTranslation('vendorRegionMap')
   const { t: tc } = useTranslation('common')
 
+  const { metric } = page
+
+  // 排序跟着指标走：看利润时最赚钱的排前面，不然勾选面板和地图讲的是两件事
   const vendors = useMemo(() => {
     const list = [...(page.data?.vendors ?? [])]
-    list.sort((a, b) => b.packageCount - a.packageCount)
+    list.sort((a, b) => vendorMetricValue(b, metric) - vendorMetricValue(a, metric))
     return list
-  }, [page.data])
+  }, [metric, page.data])
 
   const selectedCount = page.selectedSupplierKeys.length
-  const selectedPackages = vendors
-    .filter((vendor) => page.selectedSupplierKeys.includes(vendor.supplierKey))
-    .reduce((sum, vendor) => sum + vendor.packageCount, 0)
+  const selectedVendors = vendors.filter((vendor) =>
+    page.selectedSupplierKeys.includes(vendor.supplierKey),
+  )
+  const selectedPackages = selectedVendors.reduce((sum, vendor) => sum + vendor.packageCount, 0)
+  const unpricedPackages = page.data?.meta.unpricedPackages ?? 0
+
+  const metricOptions = useMemo(
+    () =>
+      MAP_METRICS.map((value) => ({
+        value,
+        label: t(`metric.${value}`),
+      })),
+    [t],
+  )
 
   const datePresets = useMemo(
     () => [
@@ -59,11 +80,30 @@ export function VendorRegionMapTab({ page }: Props) {
             <Button type="primary" loading={page.loading} onClick={() => void page.query()}>
               {t('query')}
             </Button>
+            <label className="vrm-field">
+              <span className="vrm-field__label">{t('metric.label')}</span>
+              <Segmented
+                value={metric}
+                options={metricOptions}
+                onChange={(value) => page.setMetric(value as MapMetric)}
+              />
+            </label>
           </div>
         </div>
       </section>
 
       {page.error ? <Alert type="error" showIcon message={page.error} /> : null}
+
+      {isMoneyMetric(metric) && page.data ? (
+        <Alert
+          type="info"
+          showIcon
+          message={t('profitCaveat')}
+          description={
+            unpricedPackages > 0 ? t('profitUnpriced', { count: nf.format(unpricedPackages) }) : undefined
+          }
+        />
+      ) : null}
 
       <section className="admin-panel vrm-vendors">
         <div className="vrm-vendors__head">
@@ -120,7 +160,9 @@ export function VendorRegionMapTab({ page }: Props) {
                 >
                   <span className="vrm-swatch" style={{ background: color }} aria-hidden />
                   <span className="vrm-vendor__name">{vendor.supplierName}</span>
-                  <span className="vrm-vendor__count">{nf.format(vendor.packageCount)}</span>
+                  <span className="vrm-vendor__count">
+                    {formatMetricValue(vendorMetricValue(vendor, metric), metric)}
+                  </span>
                 </button>
               )
             })}
@@ -134,6 +176,7 @@ export function VendorRegionMapTab({ page }: Props) {
           loading={page.loading}
           selectedSupplierKeys={page.selectedSupplierKeys}
           colorMap={page.vendorColorMap}
+          metric={metric}
         />
       </section>
     </div>

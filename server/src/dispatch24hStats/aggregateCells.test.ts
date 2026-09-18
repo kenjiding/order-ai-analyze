@@ -272,6 +272,54 @@ test('当天出仓 / 次日派签 / 优先件：周一到件，截止分别为 D
   assert.equal(exitCell.priorityNextDaySignMet, 0)
 })
 
+test('出仓准点 × 次日派签 交叉格：另外三格能由边际减出来且非负', () => {
+  const rows: Dispatch24hWaybillRow[] = [
+    // 准点出仓 + 次日签收 → 交叉格
+    { ...base, waybillNo: 'A', courierCode: 'C1', courier: 'D1', consigneeRouteCode: 'R1', deliveryTime: '2024-06-25 09:00:00', signDate: '2024-06-25 10:00:00' },
+    // 准点出仓 + 超次日才签 → 出仓准点却没派掉
+    { ...base, waybillNo: 'B', courierCode: 'C1', courier: 'D1', consigneeRouteCode: 'R1', deliveryTime: '2024-06-25 09:00:00', signDate: '2024-06-26 08:00:00' },
+    // 出仓晚 + 次日签上了 → 赶回来了
+    { ...base, waybillNo: 'C', courierCode: 'C1', courier: 'D1', consigneeRouteCode: 'R1', deliveryTime: '2024-06-25 13:00:00', signDate: '2024-06-25 20:00:00' },
+    // 出仓晚 + 从未签收 → 连锁失败；同时是优先件
+    { ...base, waybillNo: 'D', courierCode: 'C1', courier: 'D1', consigneeRouteCode: 'R1', clientCode: 'P1' },
+    // 优先件：准点出仓 + 次日签收
+    { ...base, waybillNo: 'E', courierCode: 'C1', courier: 'D1', consigneeRouteCode: 'R1', clientCode: 'P1', deliveryTime: '2024-06-25 09:00:00', signDate: '2024-06-25 18:00:00' },
+  ]
+  const [cell] = run(rows, [scope('U1', 'V1')])
+
+  assert.equal(cell.total, 5)
+  assert.equal(cell.before11Met, 3, 'A/B/E')
+  assert.equal(cell.nextDaySignMet, 3, 'A/C/E')
+  assert.equal(cell.exitMetNextDaySignMet, 2, 'A/E')
+  // 减法必须减得出非负的四格，且四格之和 = total
+  const exitMetUnsigned = cell.before11Met - cell.exitMetNextDaySignMet
+  const exitUnmetSigned = cell.nextDaySignMet - cell.exitMetNextDaySignMet
+  const bothUnmet =
+    cell.total - cell.before11Met - cell.nextDaySignMet + cell.exitMetNextDaySignMet
+  assert.deepEqual([exitMetUnsigned, exitUnmetSigned, bothUnmet], [1, 1, 1], 'B / C / D')
+  assert.equal(cell.exitMetNextDaySignMet + exitMetUnsigned + exitUnmetSigned + bothUnmet, cell.total)
+
+  // 优先件同一套减法：D 出仓晚且没派掉，E 准点且达成
+  assert.equal(cell.priorityTotal, 2)
+  assert.equal(cell.priorityBefore11Met, 1, 'E')
+  assert.equal(cell.priorityNextDaySignMet, 1, 'E')
+  assert.equal(cell.priorityExitMetNextDaySignMet, 1, 'E')
+  assert.equal(
+    cell.priorityTotal -
+      cell.priorityBefore11Met -
+      cell.priorityNextDaySignMet +
+      cell.priorityExitMetNextDaySignMet,
+    1,
+    'D 出仓晚且没派掉',
+  )
+
+  // 出仓趟：优先件的出仓分母已定，派签相关交叉格还不知道
+  const [exitCell] = runExitOnly(rows, [scope('U1', 'V1')])
+  assert.equal(exitCell.priorityBefore11Met, 1)
+  assert.equal(exitCell.exitMetNextDaySignMet, 0)
+  assert.equal(exitCell.priorityExitMetNextDaySignMet, 0)
+})
+
 test('白名单路由：照常出格子并打标记，不再被整行剔除', () => {
   const rows: Dispatch24hWaybillRow[] = [
     // R1 正常考核

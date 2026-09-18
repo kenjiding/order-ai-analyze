@@ -22,7 +22,7 @@
     "test:exit-alarm-card": "tsx --test src/feishu/buildExitAlarmCard.test.ts",
     "test:vendor-metrics": "tsx --test src/vendorAnalysis/metricsCatalog.test.ts",
     "test:vendor-ranking": "tsx --test src/vendorAnalysis/rankingScore.test.ts",
-    "test:vendor-region-map": "tsx --test src/vendorRegionMap/trendAggregate.test.ts",
+    "test:vendor-region-map": "tsx --test src/vendorRegionMap/trendAggregate.test.ts src/vendorRegionMap/aggregate.test.ts",
     "test:vendor-scope": "tsx --test src/vendorAnalysis/supplierScope.test.ts src/vendorAnalysis/before11Aggregate.test.ts src/imile/before11Exit.test.ts",
     "test:sorting-workday": "tsx --test src/imile/sortingWorkday.test.ts",
     "test:dispatch-performance": "tsx --test src/dispatch24hStats/settledArrivalDates.test.ts src/dispatch24hStats/settleTime.test.ts src/dispatch24hStats/settleLock.test.ts src/dispatch24hStats/aggregateCells.test.ts src/dispatch24hStats/performanceTree.test.ts src/vendorAnalysis/dispatch24hTerminal.test.ts src/vendorAnalysis/aggregate.test.ts",

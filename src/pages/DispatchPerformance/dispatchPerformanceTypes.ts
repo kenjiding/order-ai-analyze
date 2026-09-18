@@ -45,6 +45,14 @@ export type DispatchMetrics = {
   priorityTotal: number
   priorityNextDaySignMet: number
   priorityNextDaySignRate: number | null
+  /**
+   * 「出仓准点 × 次日派签」交叉格。未达成靠它拆成两段（减法见 attributionBreakdown.ts）：
+   * 出仓准点却没派掉 → 司机/负载侧；出仓就晚了 → 分拣出仓侧。
+   */
+  exitMetNextDaySignMet: number
+  /** 优先件的出仓达标数与交叉格，口径同上但分母是 priorityTotal */
+  priorityBefore11Met: number
+  priorityExitMetNextDaySignMet: number
   problemCount: number
   neverSignedCount: number
   lateSignedCount: number

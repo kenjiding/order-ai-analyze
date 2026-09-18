@@ -4,6 +4,7 @@ import { AUS_TZ } from '../imile/ausTimezone'
 import { queryImileInboundScans } from '../imile/inbound'
 import { getRegionNow } from '../imile/inboundWaybillIndex'
 import { mapWithConcurrency } from '../orderAnalyze/runtime'
+import { loadPriceBook } from '../regionPackagePrices'
 import { LEGACY_GLOBAL_SUPPLIER_REGION_CODE, listSupplierPushConfigs } from '../supplierPushConfigs'
 import { fetchAbsPostcodePolygons } from '../vendorRegionMap/absPostcodePolygons'
 import { aggregateVendorZipCells } from '../vendorRegionMap/aggregate'
@@ -65,13 +66,14 @@ vendorRegionMapRouter.post('/aggregate', async (req: Request, res: Response) => 
     }
 
     const authReq = req as AuthenticatedRequest
-    const [scanResult, configs] = await Promise.all([
+    const [scanResult, configs, priceBook] = await Promise.all([
       queryImileInboundScans({
         imileToken: token,
         startTime: `${startDate} 00:00:00`,
         endTime: `${endDate} 23:59:59`,
       }),
       listSupplierPushConfigs(resolveRegionCode(authReq)),
+      loadPriceBook(),
     ])
 
     if (!scanResult.ok) {
@@ -86,6 +88,7 @@ vendorRegionMapRouter.post('/aggregate', async (req: Request, res: Response) => 
     const aggregated = aggregateVendorZipCells({
       records: scanResult.records,
       configs,
+      priceBook,
     })
 
     const zipTotals = new Map<string, number>()
@@ -127,6 +130,7 @@ vendorRegionMapRouter.post('/aggregate', async (req: Request, res: Response) => 
         unmatchedNoZip: aggregated.unmatchedNoZip,
         unmatchedNoVendor: aggregated.unmatchedNoVendor,
         unmatchedNoGeo,
+        unpricedPackages: aggregated.unpricedPackages,
         polygonCount: zipRegions.length,
         missingPolygons,
       },

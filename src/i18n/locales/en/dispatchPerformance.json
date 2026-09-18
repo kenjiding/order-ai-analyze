@@ -92,6 +92,54 @@
     "whitelistDesc": "Whitelist routes are not scored, but data is still tracked: expand a vendor to see volume and achievement; route rows are marked \"Whitelist\".",
     "dateListSeparator": ", "
   },
+  "attribution": {
+    "title": "Achievement attribution",
+    "subtitle": "Splits every missed waybill into two causes: left the hub late (sorting/hub-exit side) and left on time but was not delivered (courier and workload side). Each points to a different action.",
+    "priorityTitle": "Priority next-day completion",
+    "overallTitle": "Next-day delivery (all)",
+    "barTotal": "Total waybills",
+    "barExitLate": "Late exit, not delivered",
+    "barDispatchSlow": "On-time exit, not delivered",
+    "barMet": "Completed next day",
+    "hintTotal": "Assessed waybills in this range",
+    "hintExitLate": "Left the hub after 11:00 and still missed next day — chained failure, start with hub exit",
+    "hintDispatchSlow": "Handed to the courier on time yet still missed — check courier, route and daily workload",
+    "hintMet": "Signed or reported as a problem waybill before 23:59 the next day",
+    "tooltipCount": "Waybills",
+    "tooltipMeaning": "Meaning",
+    "rateSummary": "Rate {{rate}}% ({{met}} / {{total}})",
+    "liftExitMet": "On-time exit group {{rate}}% ({{count}})",
+    "liftExitUnmet": "Late exit group {{rate}}% ({{count}})",
+    "liftValue": "On-time exit lift {{lift}} pt",
+    "liftTooltip": "Difference between the two groups' next-day rates. A large gap means on-time hub exit matters a lot for this metric; near zero means the bottleneck is on the delivery side. This is observational correlation, not causation — on-time waybills also tend to land with the better couriers.",
+    "settling": "Dispatch is not settled yet; attribution waits for tomorrow's settlement job",
+    "needsResettle": "This range contains data from before the cross-tab counters shipped; re-settle those arrival dates to get attribution",
+    "noData": "No assessable waybills in this range"
+  },
+  "pareto": {
+    "title": "Where the misses concentrate",
+    "subtitle": "Sorted by missed waybill count — the order is the fix priority. Not by rate: 1 of 3 looks worse at 66%, but 50 of 1000 is what to fix first.",
+    "metric": {
+      "priority": "Priority next-day",
+      "nextDay": "Next-day delivery (all)"
+    },
+    "dimension": {
+      "driver": "Courier",
+      "route": "Route code",
+      "supplier": "Vendor"
+    },
+    "axisUnmet": "Missed waybills",
+    "tooltipUnmet": "Missed",
+    "tooltipTotal": "Total",
+    "tooltipRate": "Rate",
+    "tooltipCumulative": "Cumulative",
+    "unmetTotal": "{{count}} missed waybills across {{items}} items",
+    "top20": "Top 20% hold {{share}}% of misses",
+    "top20Tooltip": "Near 20% means misses are spread evenly — replacing people will not help, change the process. Well above 20% means a handful are responsible and targeted action pays off most.",
+    "truncated": "Chart shows the top {{shown}}; concentration uses all of them",
+    "settling": "Dispatch is not settled yet; the ranking waits for tomorrow's settlement job",
+    "allMet": "No missed waybills in this range"
+  },
   "breakdown": {
     "totalWaybills": "Total waybills",
     "before11HubExitRate": "Before 11am hub exit rate",

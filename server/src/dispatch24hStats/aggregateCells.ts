@@ -69,6 +69,12 @@ export type DispatchPerformanceCell = {
   priorityTotal: number
   /** 优先件中次日派签达标数（仅 dispatchSettled 时有效） */
   priorityNextDaySignMet: number
+  /** 出仓准点 × 次日派签的交叉格；另外三格由边际减出来，见 schema 注释 */
+  exitMetNextDaySignMet: number
+  /** 优先件中 11 点前出仓达标数：优先件的出仓分母，出仓趟即定 */
+  priorityBefore11Met: number
+  /** 优先件的出仓准点 × 次日派签交叉格 */
+  priorityExitMetNextDaySignMet: number
   /** 问题件数：见 isDispatch24hProblem 口径，与四象限正交（不参与加总） */
   problemCount: number
   /** 供应商利润 Σ(price - courierPrice)，仅签收成功且匹配到价格的包裹（仅 dispatchSettled 时有效） */
@@ -117,6 +123,9 @@ function newCell(
     nextDaySignMet: 0,
     priorityTotal: 0,
     priorityNextDaySignMet: 0,
+    exitMetNextDaySignMet: 0,
+    priorityBefore11Met: 0,
+    priorityExitMetNextDaySignMet: 0,
     problemCount: 0,
     vendorProfit: 0,
     courierProfit: 0,
@@ -221,9 +230,12 @@ export function aggregateDispatchPerformanceCells(input: {
       if (exitMet) cell.before11Met += 1
       if (sameDayExitMet) cell.sameDayExitMet += 1
       if (nextDaySignMet) cell.nextDaySignMet += 1
+      if (exitMet && nextDaySignMet) cell.exitMetNextDaySignMet += 1
       if (isPriority) {
         cell.priorityTotal += 1
+        if (exitMet) cell.priorityBefore11Met += 1
         if (nextDaySignMet) cell.priorityNextDaySignMet += 1
+        if (exitMet && nextDaySignMet) cell.priorityExitMetNextDaySignMet += 1
       }
 
       // 四象限只在派签结算那一趟才有意义；出仓趟留全 0，由 dispatchSettled 标明「还不知道」

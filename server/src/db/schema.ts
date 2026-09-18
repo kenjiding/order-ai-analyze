@@ -930,6 +930,23 @@ export const dispatchPerformanceDailyStats = pgTable(
     /** 优先件中次日派签达标数，口径同 nextDaySignMet。仅 dispatchSettled 时有效 */
     priorityNextDaySignMet: integer('priority_next_day_sign_met').notNull().default(0),
 
+    /**
+     * 「出仓准点 × 次日派签」的交叉计数，用于把未达成拆成「出仓就晚了」和「出仓准点却没派掉」两段。
+     *
+     * 只存交叉的那一格：另外三格由边际减出来（下同），不再多存三列。
+     *   出仓准点却没次日签 = before11Met − exitMetNextDaySignMet
+     *   出仓晚但抢回来了   = nextDaySignMet − exitMetNextDaySignMet
+     *   双未达标           = total − before11Met − nextDaySignMet + exitMetNextDaySignMet
+     * 仅 dispatchSettled 时有效（nextDaySignMet 本身出仓趟恒为 0）。
+     */
+    exitMetNextDaySignMet: integer('exit_met_next_day_sign_met').notNull().default(0),
+    /** 优先件中 11 点前出仓达标数。优先件的出仓分母，出仓趟即定 */
+    priorityBefore11Met: integer('priority_before11_met').notNull().default(0),
+    /** 优先件的「出仓准点 × 次日派签」交叉格，拆解方式同 exitMetNextDaySignMet */
+    priorityExitMetNextDaySignMet: integer('priority_exit_met_next_day_sign_met')
+      .notNull()
+      .default(0),
+
     problemCount: integer('problem_count').notNull().default(0),
     neverSignedCount: integer('never_signed_count').notNull().default(0),
     lateSignedCount: integer('late_signed_count').notNull().default(0),

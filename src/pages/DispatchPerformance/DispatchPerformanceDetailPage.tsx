@@ -3,7 +3,9 @@ import { ArrowLeft, RefreshCw, Zap } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { useNavigate, useParams } from 'react-router-dom'
 import type { Dayjs } from 'dayjs'
+import { AttributionWaterfall } from './components/AttributionWaterfall'
 import { PerformanceBreakdownTable } from './components/PerformanceBreakdownTable'
+import { UnmetParetoChart } from './components/UnmetParetoChart'
 import { SettleNowResult } from './components/SettleNowResult'
 import { useDispatchPerformanceDetailPage } from './useDispatchPerformanceDetailPage'
 import type { DispatchMetrics, DispatchSettledBatch } from './dispatchPerformanceTypes'
@@ -251,6 +253,42 @@ export default function DispatchPerformanceDetailPage() {
           <SummaryTiles
             overall={v.result.overall}
             t={(key, opts) => t(key, { ns: 'dispatchPerformance', ...opts })}
+          />
+          <section className="admin-panel space-y-4 p-4">
+            <div>
+              <h3 className="admin-title text-xl">
+                {t('attribution.title', { ns: 'dispatchPerformance' })}
+              </h3>
+              <p className="mt-1 text-sm text-slate-500">
+                {t('attribution.subtitle', { ns: 'dispatchPerformance' })}
+              </p>
+            </div>
+            <div className="grid grid-cols-1 gap-6 xl:grid-cols-2">
+              <AttributionWaterfall
+                title={t('attribution.priorityTitle', { ns: 'dispatchPerformance' })}
+                settled={v.result.overall.dispatchSettled}
+                input={{
+                  total: v.result.overall.priorityTotal,
+                  before11Met: v.result.overall.priorityBefore11Met,
+                  nextDaySignMet: v.result.overall.priorityNextDaySignMet,
+                  crossMet: v.result.overall.priorityExitMetNextDaySignMet,
+                }}
+              />
+              <AttributionWaterfall
+                title={t('attribution.overallTitle', { ns: 'dispatchPerformance' })}
+                settled={v.result.overall.dispatchSettled}
+                input={{
+                  total: v.result.overall.total,
+                  before11Met: v.result.overall.before11Met,
+                  nextDaySignMet: v.result.overall.nextDaySignMet,
+                  crossMet: v.result.overall.exitMetNextDaySignMet,
+                }}
+              />
+            </div>
+          </section>
+          <UnmetParetoChart
+            suppliers={v.result.suppliers}
+            settled={v.result.overall.dispatchSettled}
           />
           {v.result.whitelistTotal > 0 ? (
             <Alert

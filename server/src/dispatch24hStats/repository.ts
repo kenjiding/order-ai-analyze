@@ -57,6 +57,14 @@ export type DispatchPerformanceMetrics = {
   priorityTotal: number
   priorityNextDaySignMet: number
   priorityNextDaySignRate: number | null
+  /**
+   * 「出仓准点 × 次日派签」交叉格。前端据此把未达成拆成两段（见 schema 注释的减法）：
+   * 出仓准点却没派掉 = 司机/负载问题；出仓就晚了 = 分拣出仓问题。
+   */
+  exitMetNextDaySignMet: number
+  /** 优先件的出仓达标数与交叉格，口径同上但分母是 priorityTotal */
+  priorityBefore11Met: number
+  priorityExitMetNextDaySignMet: number
   problemCount: number
   neverSignedCount: number
   lateSignedCount: number
@@ -135,6 +143,9 @@ type Acc = {
   nextDaySignMet: number
   priorityTotal: number
   priorityNextDaySignMet: number
+  exitMetNextDaySignMet: number
+  priorityBefore11Met: number
+  priorityExitMetNextDaySignMet: number
   problemCount: number
   neverSignedCount: number
   lateSignedCount: number
@@ -161,6 +172,9 @@ function newAcc(): Acc {
     nextDaySignMet: 0,
     priorityTotal: 0,
     priorityNextDaySignMet: 0,
+    exitMetNextDaySignMet: 0,
+    priorityBefore11Met: 0,
+    priorityExitMetNextDaySignMet: 0,
     problemCount: 0,
     neverSignedCount: 0,
     lateSignedCount: 0,
@@ -183,6 +197,9 @@ function addToAcc(acc: Acc, row: Omit<Acc, 'dispatchSettled'> & { dispatchSettle
   acc.nextDaySignMet += row.nextDaySignMet
   acc.priorityTotal += row.priorityTotal
   acc.priorityNextDaySignMet += row.priorityNextDaySignMet
+  acc.exitMetNextDaySignMet += row.exitMetNextDaySignMet
+  acc.priorityBefore11Met += row.priorityBefore11Met
+  acc.priorityExitMetNextDaySignMet += row.priorityExitMetNextDaySignMet
   acc.problemCount += row.problemCount
   acc.neverSignedCount += row.neverSignedCount
   acc.lateSignedCount += row.lateSignedCount
@@ -207,6 +224,8 @@ function addUnassessedToAcc(
     Acc,
     | 'priorityTotal'
     | 'priorityNextDaySignMet'
+    | 'priorityBefore11Met'
+    | 'priorityExitMetNextDaySignMet'
     | 'vendorProfit'
     | 'courierProfit'
     | 'pricedSignedCount'
@@ -216,6 +235,8 @@ function addUnassessedToAcc(
 ): void {
   acc.priorityTotal += row.priorityTotal
   acc.priorityNextDaySignMet += row.priorityNextDaySignMet
+  acc.priorityBefore11Met += row.priorityBefore11Met
+  acc.priorityExitMetNextDaySignMet += row.priorityExitMetNextDaySignMet
   acc.vendorProfit += row.vendorProfit
   acc.courierProfit += row.courierProfit
   acc.pricedSignedCount += row.pricedSignedCount
@@ -256,6 +277,9 @@ export function toMetrics(acc: Acc): DispatchPerformanceMetrics {
     priorityNextDaySignRate: acc.dispatchSettled
       ? rate(acc.priorityNextDaySignMet, acc.priorityTotal)
       : null,
+    exitMetNextDaySignMet: acc.exitMetNextDaySignMet,
+    priorityBefore11Met: acc.priorityBefore11Met,
+    priorityExitMetNextDaySignMet: acc.priorityExitMetNextDaySignMet,
     problemCount: acc.problemCount,
     neverSignedCount: acc.neverSignedCount,
     lateSignedCount: acc.lateSignedCount,
@@ -345,6 +369,9 @@ export async function saveDispatchPerformanceCells(input: SaveCellsInput): Promi
       nextDaySignMet: cell.nextDaySignMet,
       priorityTotal: cell.priorityTotal,
       priorityNextDaySignMet: cell.priorityNextDaySignMet,
+      exitMetNextDaySignMet: cell.exitMetNextDaySignMet,
+      priorityBefore11Met: cell.priorityBefore11Met,
+      priorityExitMetNextDaySignMet: cell.priorityExitMetNextDaySignMet,
       problemCount: cell.problemCount,
       neverSignedCount: cell.neverSignedCount,
       lateSignedCount: cell.lateSignedCount,

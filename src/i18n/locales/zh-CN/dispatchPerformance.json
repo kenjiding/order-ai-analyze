@@ -92,6 +92,54 @@
     "whitelistDesc": "白名单路由不参与考核，但数据照常统计：展开供应商即可看到这些路由的单量与达成情况，路由码行上带「白名单」标记。",
     "dateListSeparator": "、"
   },
+  "attribution": {
+    "title": "达成归因",
+    "subtitle": "把没做到的单拆成两段：出仓就晚了（分拣出仓侧）和出仓准点却没派掉（司机与负载侧）。两段各自对应不同的动作。",
+    "priorityTitle": "优先件次日完成",
+    "overallTitle": "次日派签（全量）",
+    "barTotal": "总单量",
+    "barExitLate": "出仓晚且没派掉",
+    "barDispatchSlow": "出仓准点却没派掉",
+    "barMet": "次日达成",
+    "hintTotal": "该区间内纳入考核的单量",
+    "hintExitLate": "出仓就超过 11 点，次日也没完成——连锁失败，先查分拣出仓",
+    "hintDispatchSlow": "货准点给到了司机手上，次日仍没完成——查司机、路由与当日负载",
+    "hintMet": "次日 23:59 前签收或上报问题件",
+    "tooltipCount": "单量",
+    "tooltipMeaning": "含义",
+    "rateSummary": "达成率 {{rate}}%（{{met}} / {{total}}）",
+    "liftExitMet": "出仓准点组 {{rate}}%（{{count}} 单）",
+    "liftExitUnmet": "出仓晚组 {{rate}}%（{{count}} 单）",
+    "liftValue": "出仓准点杠杆 {{lift}} pt",
+    "liftTooltip": "两组次日达成率之差。差值越大，说明「把出仓做准点」对这个指标的影响越大；接近 0 说明瓶颈不在出仓，在派送端。这是观察性相关不是因果——出仓准点的单往往也落在好司机手上。",
+    "settling": "派签尚未结算，归因要等次日的结算任务跑完",
+    "needsResettle": "该区间含交叉计数上线前的数据，归因无法成立，请对这些到件日重跑结算",
+    "noData": "该区间没有可归因的单量"
+  },
+  "pareto": {
+    "title": "未达成集中在谁身上",
+    "subtitle": "按未达成单量降序，排序即修复优先级。不按率排：3 单错 1 单 = 66% 看着刺眼，但 1000 单错 50 单才是该先修的。",
+    "metric": {
+      "priority": "优先件次日完成",
+      "nextDay": "次日派签（全量）"
+    },
+    "dimension": {
+      "driver": "司机",
+      "route": "路由码",
+      "supplier": "供应商"
+    },
+    "axisUnmet": "未达成单量",
+    "tooltipUnmet": "未达成",
+    "tooltipTotal": "总单量",
+    "tooltipRate": "达成率",
+    "tooltipCumulative": "累计占比",
+    "unmetTotal": "共 {{count}} 单未达成，分布在 {{items}} 个对象上",
+    "top20": "Top 20% 占未达成 {{share}}%",
+    "top20Tooltip": "接近 20% 说明未达成是均匀散开的——换人没用，要改流程；明显高于 20% 说明是少数几个拖的，针对性处理收益最大。",
+    "truncated": "图上只画前 {{shown}} 个，集中度按全部算",
+    "settling": "派签尚未结算，排行要等次日的结算任务跑完",
+    "allMet": "该区间没有未达成的单"
+  },
   "breakdown": {
     "totalWaybills": "总单量",
     "before11HubExitRate": "11点前出仓率",

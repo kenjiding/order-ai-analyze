@@ -1,6 +1,11 @@
 import type { Feature, FeatureCollection, Polygon, Position } from 'geojson'
 import { polygonAreaKm2, polygonCentroid, type DensityScale } from './regionMetrics'
-import type { VendorRegionCell, VendorRegionZipRegion } from './vendorRegionMapTypes'
+import {
+  cellMetricValue,
+  type MapMetric,
+  type VendorRegionCell,
+  type VendorRegionZipRegion,
+} from './vendorRegionMapTypes'
 
 const EARTH_M_PER_DEG = 111_320
 
@@ -51,13 +56,13 @@ export function columnMaxHeightM(worldScale: number): number {
 }
 
 /** 平方根标度：压缩头部长尾，中小邮区重新可见。返回 0–1，供地图和图例共用同一映射 */
-export function columnHeightRatio(count: number, maxCount: number): number {
-  if (maxCount <= 0 || count <= 0) return 0
-  return Math.sqrt(Math.min(count, maxCount) / maxCount)
+export function columnHeightRatio(value: number, maxValue: number): number {
+  if (maxValue <= 0 || value <= 0) return 0
+  return Math.sqrt(Math.min(value, maxValue) / maxValue)
 }
 
-export function columnHeightM(count: number, maxCount: number, maxHeightM: number): number {
-  return MIN_COLUMN_M + columnHeightRatio(count, maxCount) * (maxHeightM - MIN_COLUMN_M)
+export function columnHeightM(value: number, maxValue: number, maxHeightM: number): number {
+  return MIN_COLUMN_M + columnHeightRatio(value, maxValue) * (maxHeightM - MIN_COLUMN_M)
 }
 
 function niceNumber(value: number): number {
@@ -69,25 +74,33 @@ function niceNumber(value: number): number {
   return nice * base
 }
 
-/** 图例参考柱：sqrt 标度是非线性的，没有这根标尺读者无法把柱高换算回票量 */
-export function heightLegendTicks(maxCount: number): number[] {
-  if (maxCount <= 0) return []
-  const ticks = [maxCount, maxCount / 4, maxCount / 16]
+/** 图例参考柱：sqrt 标度是非线性的，没有这根标尺读者无法把柱高换算回指标值 */
+export function heightLegendTicks(maxValue: number): number[] {
+  if (maxValue <= 0) return []
+  const ticks = [maxValue, maxValue / 4, maxValue / 16]
     .map(niceNumber)
     .filter((value) => value >= 1)
   return [...new Set(ticks)].sort((a, b) => b - a)
 }
 
+/** 一个供应商在该邮区的一段，value 是当前选中指标（票量 / 供应商利润 / 司机利润）的值 */
+export type ZipStatRow = { cell: VendorRegionCell; value: number }
+
 export type ZipStat = {
   zipCode: string
   suburb: string
+  /** 当前选中指标在该邮区的合计；柱高与密度都由它导出 */
   total: number
+  /** 票量恒定不随指标变化，弹窗里始终显示，用来解释金额是几票算出来的 */
+  packageCount: number
+  /** 该邮区没匹配到区域包裹价格的票数：这些票的钱没算进 total */
+  unpricedCount: number
   /** 没有 ABS 多边形时为 null，不伪造面积 */
   areaKm2: number | null
   density: number | null
   center: [number, number] | null
   polygons: Polygon[]
-  rows: VendorRegionCell[]
+  rows: ZipStatRow[]
 }
 
 /** MultiPolygon 拆成多个 Polygon，fill / fill-extrusion 对各部分更稳 */
@@ -100,6 +113,7 @@ function splitPolygons(geometry: VendorRegionZipRegion['geometry']): Polygon[] {
 export function aggregateZipStats(input: {
   cells: VendorRegionCell[]
   zipRegions: VendorRegionZipRegion[]
+  metric: MapMetric
 }): ZipStat[] {
   const geometryByZip = new Map<string, VendorRegionZipRegion['geometry']>()
   for (const region of input.zipRegions) geometryByZip.set(region.zipCode, region.geometry)
@@ -113,12 +127,16 @@ export function aggregateZipStats(input: {
 
   const stats: ZipStat[] = []
   for (const [zipCode, group] of cellsByZip) {
-    const rows = [...group].sort((a, b) => b.count - a.count || a.supplierKey.localeCompare(b.supplierKey))
-    const total = rows.reduce((sum, cell) => sum + cell.count, 0)
+    const rows: ZipStatRow[] = group
+      .map((cell) => ({ cell, value: cellMetricValue(cell, input.metric) }))
+      .sort((a, b) => b.value - a.value || a.cell.supplierKey.localeCompare(b.cell.supplierKey))
+    const total = rows.reduce((sum, row) => sum + row.value, 0)
+    const packageCount = group.reduce((sum, cell) => sum + cell.count, 0)
+    const unpricedCount = group.reduce((sum, cell) => sum + cell.unpricedCount, 0)
     const geometry = geometryByZip.get(zipCode)
     const polygons = geometry ? splitPolygons(geometry) : []
     const areaKm2 = geometry ? polygonAreaKm2(geometry) : null
-    const geoCell = rows.find((cell) => cell.lat != null && cell.lng != null)
+    const geoCell = group.find((cell) => cell.lat != null && cell.lng != null)
     const center: [number, number] | null =
       geoCell?.lng != null && geoCell.lat != null
         ? [geoCell.lng, geoCell.lat]
@@ -128,8 +146,10 @@ export function aggregateZipStats(input: {
 
     stats.push({
       zipCode,
-      suburb: rows[0]?.suburb ?? '',
+      suburb: group[0]?.suburb ?? '',
       total,
+      packageCount,
+      unpricedCount,
       areaKm2,
       density: areaKm2 != null && areaKm2 > 0 ? total / areaKm2 : null,
       center,
@@ -168,7 +188,7 @@ export function buildRegionFillCollection(stats: ZipStat[], scale: DensityScale)
   return { type: 'FeatureCollection', features }
 }
 
-/** 等底柱：底面恒定，体积严格正比票量，跨邮区可直接目测对比 */
+/** 等底柱：底面恒定，体积严格正比当前指标，跨邮区可直接目测对比 */
 export function buildColumnCollection(
   stats: ZipStat[],
   options: { radiusM: number; maxHeightM: number; colorOf: (supplierKey: string) => string },
@@ -185,8 +205,9 @@ export function buildColumnCollection(
     const totalHeight = columnHeightM(stat.total, maxTotal, options.maxHeightM)
 
     let base = 0
-    for (const cell of stat.rows) {
-      const height = base + (cell.count / stat.total) * totalHeight
+    for (const { cell, value } of stat.rows) {
+      if (value <= 0) continue
+      const height = base + (value / stat.total) * totalHeight
       features.push({
         type: 'Feature',
         properties: {
@@ -194,7 +215,7 @@ export function buildColumnCollection(
           supplierKey: cell.supplierKey,
           supplierName: cell.supplierName,
           suburb: cell.suburb,
-          count: cell.count,
+          value,
           base,
           height,
           color: options.colorOf(cell.supplierKey),

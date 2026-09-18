@@ -6,7 +6,7 @@ import { showToast } from '../../utils/toast'
 import { vrmT } from './vendorRegionMapI18n'
 import { fetchVendorRegionMap } from './vendorRegionMapApi'
 import { buildVendorColorMap } from './vendorColors'
-import { type VendorRegionMapResult } from './vendorRegionMapTypes'
+import { type MapMetric, type VendorRegionMapResult } from './vendorRegionMapTypes'
 
 export function useVendorRegionMapPage() {
   const { imileToken } = useAppSettings()
@@ -19,6 +19,7 @@ export function useVendorRegionMapPage() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [selectedSupplierKeys, setSelectedSupplierKeys] = useState<string[]>([])
+  const [metric, setMetric] = useState<MapMetric>('count')
 
   const query = useCallback(async () => {
     const token = imileToken.trim()
@@ -84,6 +85,8 @@ export function useVendorRegionMapPage() {
   return {
     dateRange,
     setDateRange,
+    metric,
+    setMetric,
     data,
     loading,
     error,

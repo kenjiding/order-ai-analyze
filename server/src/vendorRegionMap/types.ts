@@ -4,6 +4,12 @@ export type VendorRegionVendor = {
   supplierName: string
   vendorCode: string
   packageCount: number
+  /** 理论供应商利润 Σ(price - courierPrice)，按到件量算，不扣未签收 */
+  vendorProfit: number
+  /** 理论司机利润 Σ courierPrice，口径同上 */
+  courierProfit: number
+  /** 没在价格表里匹配到单价的票数：这些票一分钱没算进两个利润 */
+  unpricedCount: number
   zipCount: number
 }
 
@@ -13,6 +19,9 @@ export type VendorRegionCell = {
   supplierName: string
   vendorCode: string
   count: number
+  vendorProfit: number
+  courierProfit: number
+  unpricedCount: number
   lat: number | null
   lng: number | null
   suburb: string
@@ -47,6 +56,8 @@ export type VendorRegionMapMeta = {
   unmatchedNoZip: number
   unmatchedNoVendor: number
   unmatchedNoGeo: number
+  /** 没匹配到区域包裹价格的票数（按运单去重后计），两个利润里不含它们 */
+  unpricedPackages: number
   polygonCount: number
   missingPolygons?: string[]
 }

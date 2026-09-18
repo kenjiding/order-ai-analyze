@@ -2,6 +2,8 @@ export type ParsedInboundScan = {
   waybillNo: string
   routeCode: string
   consigneeZipCode: string
+  /** 收件 suburb（iMile consigneeCity，导出表里的「收件人城市」列）；与邮编一起匹配区域包裹价格 */
+  consigneeSuburb: string
   courierVendorCode: string
 }
 
@@ -89,13 +91,14 @@ export function parseInboundScanRecord(raw: unknown): ParsedInboundScan | null {
     waybillNo,
     routeCode: readText(row, ['routeCode', 'consigneeRouteCode']),
     consigneeZipCode: resolveConsigneeZipCode(row),
+    consigneeSuburb: readText(row, ['consigneeCity', 'consigneeSuburb', 'city']),
     courierVendorCode: readText(row, ['courierVendorCode', 'vendorCode']),
   }
 }
 
 /**
  * 同一运单可能被多种 scanType 扫多次。包裹数按运单去重：
- * 优先保留已有邮编 / 路由码的那次。
+ * 优先保留已有邮编 / suburb / 路由码的那次。
  */
 export function dedupeScansByWaybill(records: unknown[]): ParsedInboundScan[] {
   const byWaybill = new Map<string, ParsedInboundScan>()
@@ -108,6 +111,7 @@ export function dedupeScansByWaybill(records: unknown[]): ParsedInboundScan[] {
       continue
     }
     if (!existing.consigneeZipCode && parsed.consigneeZipCode) existing.consigneeZipCode = parsed.consigneeZipCode
+    if (!existing.consigneeSuburb && parsed.consigneeSuburb) existing.consigneeSuburb = parsed.consigneeSuburb
     if (!existing.routeCode && parsed.routeCode) existing.routeCode = parsed.routeCode
     if (!existing.courierVendorCode && parsed.courierVendorCode) existing.courierVendorCode = parsed.courierVendorCode
   }

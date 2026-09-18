@@ -23,8 +23,11 @@ import { buildDensityScale, formatAreaKm2, formatDensity } from '../regionMetric
 import {
   ADELAIDE_MAP_CENTER,
   ADELAIDE_MAP_ZOOM,
+  formatMetricValue,
+  isMoneyMetric,
   WAREHOUSE,
   warehouseRingScaleLabel,
+  type MapMetric,
   type VendorRegionMapResult,
 } from '../vendorRegionMapTypes'
 import {
@@ -77,13 +80,12 @@ const WORLD_SCALE_STEP = 5
 const LEGEND_BAR_MIN_PX = 4
 const LEGEND_BAR_MAX_PX = 42
 
-const nf = new Intl.NumberFormat('en-AU')
-
 type Props = {
   data: VendorRegionMapResult | null
   loading: boolean
   selectedSupplierKeys: string[]
   colorMap: Map<string, string>
+  metric: MapMetric
 }
 
 function escapeHtml(value: string): string {
@@ -119,19 +121,24 @@ function flyToWarehouse(map: maplibregl.Map) {
   })
 }
 
-function buildPopupHtml(stat: ZipStat, colorMap: Map<string, string>, distanceLabel: string) {
+function buildPopupHtml(
+  stat: ZipStat,
+  colorMap: Map<string, string>,
+  distanceLabel: string,
+  metric: MapMetric,
+) {
   const t = (key: string, opts?: Record<string, unknown>) =>
     String(i18n.t(key, { ns: 'vendorRegionMap', ...opts }))
-  const top = stat.rows[0]?.count ?? 0
+  const top = stat.rows[0]?.value ?? 0
   const items = stat.rows
-    .map((row) => {
-      const color = colorFromMap(colorMap, row.supplierKey)
-      const share = top > 0 ? Math.max(4, (row.count / top) * 100) : 0
+    .map(({ cell, value }) => {
+      const color = colorFromMap(colorMap, cell.supplierKey)
+      const share = top > 0 ? Math.max(4, (value / top) * 100) : 0
       return `
         <li class="vrm-iw__row">
           <span class="vrm-iw__swatch" style="background:${color}"></span>
-          <span class="vrm-iw__name">${escapeHtml(row.supplierName)}</span>
-          <span class="vrm-iw__count">${row.count.toLocaleString('en-AU')}</span>
+          <span class="vrm-iw__name">${escapeHtml(cell.supplierName)}</span>
+          <span class="vrm-iw__count">${formatMetricValue(value, metric)}</span>
           <span class="vrm-iw__meter"><span style="width:${share}%;background:${color}"></span></span>
         </li>`
     })
@@ -144,21 +151,36 @@ function buildPopupHtml(stat: ZipStat, colorMap: Map<string, string>, distanceLa
   if (stat.areaKm2 != null) facts.push(t('popupArea', { area: formatAreaKm2(stat.areaKm2) }))
   facts.push(
     stat.density != null
-      ? t('popupDensity', { density: formatDensity(stat.density) })
+      ? t(isMoneyMetric(metric) ? 'popupDensityMoney' : 'popupDensity', {
+          density: formatDensity(stat.density),
+        })
       : t('popupDensityMissing'),
   )
+  // 金额是几票算出来的、有多少票没价可算，都得摆在弹窗里，否则读者无从判断这个数可不可信
+  if (isMoneyMetric(metric)) {
+    facts.push(t('popupParcels', { count: stat.packageCount.toLocaleString('en-AU') }))
+    if (stat.unpricedCount > 0) {
+      facts.push(t('popupUnpriced', { count: stat.unpricedCount.toLocaleString('en-AU') }))
+    }
+  }
   return `
     <div class="vrm-iw">
       <div class="vrm-iw__head">
         <div class="vrm-iw__zip">${place}</div>
-        <div class="vrm-iw__total">${t('popupTotal', { count: stat.total.toLocaleString('en-AU') })}</div>
+        <div class="vrm-iw__total">${formatMetricValue(stat.total, metric)}</div>
       </div>
       <div class="vrm-iw__dist">${facts.join(' · ')}</div>
       <ul class="vrm-iw__list">${items}</ul>
     </div>`
 }
 
-export function VendorRegionMapCanvas({ data, loading, selectedSupplierKeys, colorMap }: Props) {
+export function VendorRegionMapCanvas({
+  data,
+  loading,
+  selectedSupplierKeys,
+  colorMap,
+  metric,
+}: Props) {
   const { t } = useTranslation('vendorRegionMap')
   const containerRef = useRef<HTMLDivElement | null>(null)
   const mapRef = useRef<maplibregl.Map | null>(null)
@@ -168,6 +190,7 @@ export function VendorRegionMapCanvas({ data, loading, selectedSupplierKeys, col
   const fittedQueryRef = useRef<string>('')
   const statsRef = useRef<Map<string, ZipStat>>(new Map())
   const colorMapRef = useRef(colorMap)
+  const metricRef = useRef(metric)
   const warehouseMarkerRef = useRef<maplibregl.Marker | null>(null)
   const [ringsVisible, setRingsVisible] = useState(true)
   const [worldScale, setWorldScale] = useState(() =>
@@ -179,6 +202,10 @@ export function VendorRegionMapCanvas({ data, loading, selectedSupplierKeys, col
     colorMapRef.current = colorMap
   }, [colorMap])
 
+  useEffect(() => {
+    metricRef.current = metric
+  }, [metric])
+
   const visibleCells = useMemo(() => {
     if (!data) return []
     if (selectedSupplierKeys.length === 0) return []
@@ -189,8 +216,8 @@ export function VendorRegionMapCanvas({ data, loading, selectedSupplierKeys, col
 
   // 填色层与柱体层共用这一份聚合，勾选供应商时两层始终自洽
   const zipStats = useMemo(
-    () => aggregateZipStats({ cells: visibleCells, zipRegions: data?.zipRegions ?? [] }),
-    [data?.zipRegions, visibleCells],
+    () => aggregateZipStats({ cells: visibleCells, zipRegions: data?.zipRegions ?? [], metric }),
+    [data?.zipRegions, metric, visibleCells],
   )
 
   useEffect(() => {
@@ -369,7 +396,7 @@ export function VendorRegionMapCanvas({ data, loading, selectedSupplierKeys, col
           : ''
         popupRef.current
           ?.setLngLat(lngLat)
-          .setHTML(buildPopupHtml(stat, colorMapRef.current, distanceLabel))
+          .setHTML(buildPopupHtml(stat, colorMapRef.current, distanceLabel, metricRef.current))
           .addTo(map)
       }
 
@@ -495,7 +522,7 @@ export function VendorRegionMapCanvas({ data, loading, selectedSupplierKeys, col
       <div className="vrm-map-legend vrm-glass">
         {heightTicks.length > 0 ? (
           <div className="vrm-map-legend__block">
-            <div className="vrm-map-legend__title">{t('legendHeight')}</div>
+            <div className="vrm-map-legend__title">{t(`legendHeight_${metric}`)}</div>
             <div className="vrm-map-legend__bars">
               {heightTicks.map((tick) => (
                 <div key={tick} className="vrm-map-legend__bar-row">
@@ -509,7 +536,7 @@ export function VendorRegionMapCanvas({ data, loading, selectedSupplierKeys, col
                     }}
                     aria-hidden
                   />
-                  <span className="vrm-map-legend__bar-value">{nf.format(tick)}</span>
+                  <span className="vrm-map-legend__bar-value">{formatMetricValue(tick, metric)}</span>
                 </div>
               ))}
             </div>
@@ -519,7 +546,7 @@ export function VendorRegionMapCanvas({ data, loading, selectedSupplierKeys, col
 
         {densityLabels.length > 0 ? (
           <div className="vrm-map-legend__block">
-            <div className="vrm-map-legend__title">{t('legendDensity')}</div>
+            <div className="vrm-map-legend__title">{t(`legendDensity_${metric}`)}</div>
             <div className="vrm-map-legend__swatches">
               {densityScale.colors.map((color, index) => (
                 <div key={color} className="vrm-map-legend__swatch-row">
@@ -528,7 +555,9 @@ export function VendorRegionMapCanvas({ data, loading, selectedSupplierKeys, col
                 </div>
               ))}
             </div>
-            <div className="vrm-map-legend__hint">{t('legendDensityHint')}</div>
+            <div className="vrm-map-legend__hint">
+              {t(isMoneyMetric(metric) ? 'legendDensityHintMoney' : 'legendDensityHint')}
+            </div>
           </div>
         ) : null}
 
