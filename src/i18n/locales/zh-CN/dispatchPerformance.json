@@ -144,7 +144,13 @@
     "before11Unmet": "未在11点前出仓",
     "waybillListTruncated": "仅显示前 {{shown}} 条",
     "driverAllMet": "该司机本区间内全部达标",
-    "empty": "该区间暂无已结算数据"
+    "empty": "该区间暂无已结算数据",
+    "vendorProfit": "供应商利润",
+    "courierProfit": "司机利润",
+    "unpricedTag": "{{count}} 单未计价",
+    "unpricedTooltip": "有 {{count}} 单已签收，但收件地址的 postcode + suburb 在「区域包裹价格配置」里查不到价格，这部分金额没有计入。",
+    "profitPartialTag": "截至已结算日",
+    "profitPartialTooltip": "所选区间里有到件日的派签还没结算，这些天的金额尚未产生。此处金额是截至最近一个已结算到件日的累计值，不是整个区间的总额。"
   },
   "quadrant": {
     "exitMetSignMet": "准时出仓·按时派签",

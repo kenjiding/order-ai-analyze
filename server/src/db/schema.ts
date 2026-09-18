@@ -540,6 +540,10 @@ export const driverMapWaybillPoints = pgTable(
     consigneeRouteCode: varchar('consignee_route_code', { length: 64 }).notNull().default(''),
     lastScanSiteCode: varchar('last_scan_site_code', { length: 64 }).notNull().default(''),
     status: varchar('status', { length: 16 }).notNull().default('pending'),
+    /** searchWaybill.consigneeZipCode，归一成 4 位；与 suburb 一起匹配 region_package_prices */
+    postcode: varchar('postcode', { length: 16 }).notNull().default(''),
+    /** searchWaybill.consigneeCity —— iMile 这个字段装的就是澳洲的 suburb */
+    suburb: varchar('suburb', { length: 128 }).notNull().default(''),
     addressText: varchar('address_text', { length: 1024 }).notNull().default(''),
     latitude: doublePrecision('latitude'),
     longitude: doublePrecision('longitude'),
@@ -930,6 +934,19 @@ export const dispatchPerformanceDailyStats = pgTable(
     neverSignedCount: integer('never_signed_count').notNull().default(0),
     lateSignedCount: integer('late_signed_count').notNull().default(0),
 
+    /**
+     * 利润：只统计**签收成功**的包裹（signDate 非空），单价按运单的 postcode + suburb
+     * 查 region_package_prices 得到。与四象限同样只在派签趟（dispatchSettled）算，
+     * 出仓趟恒为 0 —— 那天大半包裹还没签收，此时算钱必然偏小且会变。
+     * 供应商利润 = Σ(price - courierPrice)，司机利润 = Σ courierPrice。
+     */
+    vendorProfit: doublePrecision('vendor_profit').notNull().default(0),
+    courierProfit: doublePrecision('courier_profit').notNull().default(0),
+    /** 签收且匹配到价格的件数 */
+    pricedSignedCount: integer('priced_signed_count').notNull().default(0),
+    /** 签收但没匹配到价格的件数：这些单一分钱没算进去，必须在页面上看得见 */
+    unpricedSignedCount: integer('unpriced_signed_count').notNull().default(0),
+
     neverSignedWaybillNos: jsonb('never_signed_waybill_nos').notNull().default([]),
     lateSignedWaybillNos: jsonb('late_signed_waybill_nos').notNull().default([]),
     problemWaybillNos: jsonb('problem_waybill_nos').notNull().default([]),
@@ -1047,3 +1064,32 @@ export const priorityClients = pgTable(
 )
 
 export type PriorityClient = typeof priorityClients.$inferSelect
+
+/**
+ * 区域包裹价格配置：按州（regionCode）隔离的 postcode/suburb 派送单价。
+ * prePrice 为上一次的价格，价格变更时由路由自动把旧 price 滚存过去。
+ */
+export const regionPackagePrices = pgTable(
+  'region_package_prices',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    regionCode: varchar('region_code', { length: 16 }).notNull(),
+    postcode: varchar('postcode', { length: 16 }).notNull(),
+    suburb: varchar('suburb', { length: 128 }).notNull(),
+    price: doublePrecision('price').notNull(),
+    prePrice: doublePrecision('pre_price'),
+    /** 派送员价格；新增/导入时没给值就默认取 price - 0.25 */
+    courierPrice: doublePrecision('courier_price').notNull(),
+    /** iMile 供应商编码（SRM…），与 fleetSupplierPushConfigs.vendorCode 同一口径 */
+    vendorCode: varchar('vendor_code', { length: 64 }).notNull().default(''),
+    /** 供应商展示名称；表格里没有 SRM 编码的备注行只填这一列 */
+    vendorName: varchar('vendor_name', { length: 255 }).notNull().default(''),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    uniqueIndex('region_package_prices_region_area_unique').on(table.regionCode, table.postcode, table.suburb),
+  ],
+)
+
+export type RegionPackagePrice = typeof regionPackagePrices.$inferSelect

@@ -48,6 +48,18 @@ export type DispatchMetrics = {
   problemCount: number
   neverSignedCount: number
   lateSignedCount: number
+  /**
+   * 供应商利润 Σ(包裹价格 - 派送员价格) / 司机利润 Σ派送员价格。
+   * 只统计**签收成功**的包裹，单价按运单的 postcode + suburb 查「区域包裹价格配置」。
+   * 与 signRate 不同：金额恒为数值，给的是**截至已结算日**累计的钱（未结算日金额本就是 0）。
+   * 区间是否完整看 dispatchSettled —— 为 false 时金额只是「到目前为止」，前端要标出来。
+   */
+  vendorProfit: number
+  courierProfit: number
+  /** 签收且匹配到价格的件数 */
+  pricedSignedCount: number
+  /** 签收但没匹配到区域价格的件数：这些单没计钱，页面要标出来 */
+  unpricedSignedCount: number
   quadrant: DispatchQuadrant
 }
 

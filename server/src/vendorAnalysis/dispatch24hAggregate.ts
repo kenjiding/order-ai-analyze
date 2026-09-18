@@ -31,6 +31,10 @@ export type Dispatch24hWaybillRow = {
   signDate?: string
   deliveryTime?: string
   lastScanSiteCode?: string
+  /** 收件邮编（iMile consigneeZipCode，已归一成 4 位）；与 suburb 一起匹配区域包裹价格 */
+  postcode?: string
+  /** 收件 suburb（iMile consigneeCity） */
+  suburb?: string
   lastProblemDate?: string
   /** 该行数据最后一次真正从 searchWaybill 同步的时间；仅缓存行携带，用于终态判定 */
   syncedAtMs?: number

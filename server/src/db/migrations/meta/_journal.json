@@ -575,6 +575,20 @@
       "when": 1785700000055,
       "tag": "0081_dispatch_performance_next_day",
       "breakpoints": true
+    },
+    {
+      "idx": 82,
+      "version": "7",
+      "when": 1785700000057,
+      "tag": "0082_region_package_prices",
+      "breakpoints": true
+    },
+    {
+      "idx": 83,
+      "version": "7",
+      "when": 1785700000059,
+      "tag": "0083_dispatch_profit",
+      "breakpoints": true
     }
   ]
 }

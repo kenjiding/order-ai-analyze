@@ -10,6 +10,7 @@ import {
   type InboundWaybillRow,
 } from './inboundWaybillIndex'
 import type { Dispatch24hWaybillRow } from '../vendorAnalysis/dispatch24hAggregate'
+import { normalizeZipCode } from '../vendorRegionMap/parseInbound'
 
 function readText(row: InboundWaybillRow | Dispatch24hWaybillRow, key: string): string {
   const v = (row as Record<string, unknown>)[key]
@@ -75,6 +76,8 @@ type CacheableWaybillPoint = Pick<
   | 'consigneeRouteCode'
   | 'lastScanSiteCode'
   | 'stationCode'
+  | 'postcode'
+  | 'suburb'
   | 'deliveryTime'
   | 'signDate'
   | 'lastProblemDate'
@@ -90,6 +93,8 @@ function toCacheRow(row: CacheableWaybillPoint): Dispatch24hWaybillRow {
     clientCode: row.clientCode || undefined,
     consigneeRouteCode: row.consigneeRouteCode || undefined,
     lastScanSiteCode: row.lastScanSiteCode || row.stationCode || undefined,
+    postcode: row.postcode || undefined,
+    suburb: row.suburb || undefined,
     deliveryTime: row.deliveryTime ?? undefined,
     signDate: row.signDate ?? undefined,
     lastProblemDate: row.lastProblemDate ?? undefined,
@@ -186,6 +191,9 @@ export async function syncStationDayWaybillsIncremental(input: {
       consigneeRouteCode: readText(row, 'consigneeRouteCode'),
       lastScanSiteCode: readText(row, 'lastScanSiteCode') || stationCode,
       status,
+      // iMile 的 consigneeCity 装的就是澳洲 suburb；与 postcode 一起用于匹配区域包裹价格
+      postcode: normalizeZipCode(readText(row, 'consigneeZipCode')),
+      suburb: readText(row, 'consigneeCity'),
       addressText: buildAddressText(row),
       latitude: null,
       longitude: null,
@@ -218,6 +226,8 @@ export async function syncStationDayWaybillsIncremental(input: {
           consigneeRouteCode: sql`excluded.consignee_route_code`,
           lastScanSiteCode: sql`excluded.last_scan_site_code`,
           status: sql`excluded.status`,
+          postcode: sql`excluded.postcode`,
+          suburb: sql`excluded.suburb`,
           latitude: sql`CASE WHEN ${p.addressText} = excluded.address_text THEN ${p.latitude} ELSE NULL END`,
           longitude: sql`CASE WHEN ${p.addressText} = excluded.address_text THEN ${p.longitude} ELSE NULL END`,
           geocodedAt: sql`CASE WHEN ${p.addressText} = excluded.address_text THEN ${p.geocodedAt} ELSE NULL END`,

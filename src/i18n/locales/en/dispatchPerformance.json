@@ -144,7 +144,13 @@
     "before11Unmet": "Not hub-exited before 11am",
     "waybillListTruncated": "Showing first {{shown}} only",
     "driverAllMet": "All waybills met for this driver in the range",
-    "empty": "No settled data for this range"
+    "empty": "No settled data for this range",
+    "vendorProfit": "Vendor profit",
+    "courierProfit": "Driver profit",
+    "unpricedTag": "{{count}} unpriced",
+    "unpricedTooltip": "{{count}} signed parcel(s) have no price for their postcode + suburb in Region Package Prices, so their amount is not included.",
+    "profitPartialTag": "settled days only",
+    "profitPartialTooltip": "Some arrival dates in this range are not settled yet, so no amount exists for them. This figure covers only the settled days, not the whole range."
   },
   "quadrant": {
     "exitMetSignMet": "On-time exit · on-time dispatch",

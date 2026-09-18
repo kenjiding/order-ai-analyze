@@ -233,6 +233,11 @@ async function loadLatestSnapshots(
       problemCount: sql<number>`sum(${t.problemCount}) ${assessedOnly}::int`,
       neverSignedCount: sql<number>`sum(${t.neverSignedCount}) ${assessedOnly}::int`,
       lateSignedCount: sql<number>`sum(${t.lateSignedCount}) ${assessedOnly}::int`,
+      // 金额不按白名单剔除（同 priorityTotal）：白名单路由不考核，但钱照样发生了
+      vendorProfit: sql<number>`coalesce(sum(${t.vendorProfit}), 0)::double precision`,
+      courierProfit: sql<number>`coalesce(sum(${t.courierProfit}), 0)::double precision`,
+      pricedSignedCount: sql<number>`coalesce(sum(${t.pricedSignedCount}), 0)::int`,
+      unpricedSignedCount: sql<number>`coalesce(sum(${t.unpricedSignedCount}), 0)::int`,
       // 只要该日混进一行未结算，整日就算未结算——宁可显示结算中，也不摆出算了一半的数
       dispatchSettled: sql<boolean>`bool_and(${t.dispatchSettled})`,
     })
@@ -257,6 +262,10 @@ async function loadLatestSnapshots(
         problemCount: row.problemCount,
         neverSignedCount: row.neverSignedCount,
         lateSignedCount: row.lateSignedCount,
+        vendorProfit: row.vendorProfit,
+        courierProfit: row.courierProfit,
+        pricedSignedCount: row.pricedSignedCount,
+        unpricedSignedCount: row.unpricedSignedCount,
         dispatchSettled: row.dispatchSettled,
       }),
     })

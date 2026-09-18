@@ -34,6 +34,7 @@ import { packageLossMonitorRouter } from './routes/packageLossMonitorRouter'
 import { supplierConfigScopeRouter } from './routes/supplierConfigScopeRouter'
 import { userPreferencesRouter } from './routes/userPreferencesRouter'
 import { priorityClientsRouter } from './routes/priorityClientsRouter'
+import { regionPackagePriceRouter } from './routes/regionPackagePriceRouter'
 
 const app = express()
 
@@ -86,6 +87,7 @@ app.use('/api/fleet-supplier-push', requireAuth, fleetSupplierPushRouter)
 app.use('/api/supplier-config-scopes', requireAuth, supplierConfigScopeRouter)
 app.use('/api/user-preferences', requireAuth, userPreferencesRouter)
 app.use('/api/priority-clients', requireAuth, priorityClientsRouter)
+app.use('/api/region-package-prices', requireAuth, regionPackagePriceRouter)
 app.use('/api/feishu-webhook', requireAuth, feishuWebhookTestRouter)
 app.use('/api/exit-alarm', requireAuth, exitAlarmRouter)
 app.use('/api/chase-dispatch', requireAuth, chaseDispatchRouter)

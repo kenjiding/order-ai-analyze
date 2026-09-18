@@ -60,6 +60,18 @@ export type DispatchPerformanceMetrics = {
   problemCount: number
   neverSignedCount: number
   lateSignedCount: number
+  /**
+   * 供应商利润 Σ(price - courierPrice) / 司机利润 Σ courierPrice。
+   * 只统计**签收成功**的包裹，单价按运单 postcode + suburb 查 region_package_prices。
+   * 与 signRate 不同：金额恒为数值，给出的是**截至已结算日**累计的钱（未结算日金额本就是 0）。
+   * 区间是否完整看 dispatchSettled。
+   */
+  vendorProfit: number
+  courierProfit: number
+  /** 签收且匹配到价格的件数 */
+  pricedSignedCount: number
+  /** 签收但没匹配到价格的件数：这些单没计钱，页面要显式标出来 */
+  unpricedSignedCount: number
   quadrant: DispatchPerformanceQuadrant
 }
 
@@ -164,6 +176,13 @@ type Acc = {
   problemCount: number
   neverSignedCount: number
   lateSignedCount: number
+  /** 供应商利润 Σ(price - courierPrice)，只含签收成功且匹配到价格的包裹 */
+  vendorProfit: number
+  /** 司机利润 Σ courierPrice，口径同上 */
+  courierProfit: number
+  pricedSignedCount: number
+  /** 签收但没匹配到区域价格的件数：一分钱没算进去，页面要标出来 */
+  unpricedSignedCount: number
   /** 累加范围内是否每一行的派签都已结算；只要混进一行未结算就为 false */
   dispatchSettled: boolean
 }
@@ -183,6 +202,10 @@ function newAcc(): Acc {
     problemCount: 0,
     neverSignedCount: 0,
     lateSignedCount: 0,
+    vendorProfit: 0,
+    courierProfit: 0,
+    pricedSignedCount: 0,
+    unpricedSignedCount: 0,
     dispatchSettled: true,
   }
 }
@@ -201,14 +224,46 @@ function addToAcc(acc: Acc, row: Omit<Acc, 'dispatchSettled'> & { dispatchSettle
   acc.problemCount += row.problemCount
   acc.neverSignedCount += row.neverSignedCount
   acc.lateSignedCount += row.lateSignedCount
+  acc.vendorProfit += row.vendorProfit
+  acc.courierProfit += row.courierProfit
+  acc.pricedSignedCount += row.pricedSignedCount
+  acc.unpricedSignedCount += row.unpricedSignedCount
   acc.dispatchSettled &&= row.dispatchSettled
 }
 
-/** 白名单格子只累加优先件：优先件是该供应商全部的，不按白名单剔除（与滞留告警 Priority Packages 同口径） */
-function addPriorityToAcc(acc: Acc, row: Pick<Acc, 'priorityTotal' | 'priorityNextDaySignMet' | 'dispatchSettled'>): void {
+/**
+ * 白名单格子里仍要计入供应商行与站点汇总的那几项。
+ *
+ * - 优先件：是该供应商全部的，不按白名单剔除（与滞留告警 Priority Packages 同口径）。
+ * - 利润：**钱不跟着考核口径走**。白名单路由「不参与考核」说的是不算它的达成率，
+ *   但这些包裹照样派了、照样要给司机钱、供应商照样赚了差价。把它们从金额里剔掉，
+ *   供应商利润会系统性少算白名单那部分（实测约占单量一成），那是记错账而不是「不考核」。
+ */
+function addUnassessedToAcc(
+  acc: Acc,
+  row: Pick<
+    Acc,
+    | 'priorityTotal'
+    | 'priorityNextDaySignMet'
+    | 'vendorProfit'
+    | 'courierProfit'
+    | 'pricedSignedCount'
+    | 'unpricedSignedCount'
+    | 'dispatchSettled'
+  >,
+): void {
   acc.priorityTotal += row.priorityTotal
   acc.priorityNextDaySignMet += row.priorityNextDaySignMet
+  acc.vendorProfit += row.vendorProfit
+  acc.courierProfit += row.courierProfit
+  acc.pricedSignedCount += row.pricedSignedCount
+  acc.unpricedSignedCount += row.unpricedSignedCount
   acc.dispatchSettled &&= row.dispatchSettled
+}
+
+/** 金额保留两位小数，避免浮点累加尾巴透到接口上 */
+function money(value: number): number {
+  return Math.round(value * 100) / 100
 }
 
 /**
@@ -242,6 +297,19 @@ export function toMetrics(acc: Acc): DispatchPerformanceMetrics {
     problemCount: acc.problemCount,
     neverSignedCount: acc.neverSignedCount,
     lateSignedCount: acc.lateSignedCount,
+    /**
+     * 金额**不跟 signRate 那套 null 规矩**：率是比例，混进未结算的日子就没意义；
+     * 钱是可加的，已结算那些天赚到的钱是确定的。未结算日的金额本来就是 0
+     * （出仓趟不算钱），直接累加得到的就是「截至已结算日的钱」。
+     *
+     * 跟着 signRate 给 null 的话，只要区间里混一天没结算，整段金额就全成「结算中」——
+     * 而详情页默认区间的最后一天（昨天）派签必然还没结算，等于永远看不到钱。
+     * 区间是否完整由 dispatchSettled 与 pricedSignedCount 告诉前端，不靠把金额抹掉来表达。
+     */
+    vendorProfit: money(acc.vendorProfit),
+    courierProfit: money(acc.courierProfit),
+    pricedSignedCount: acc.pricedSignedCount,
+    unpricedSignedCount: acc.unpricedSignedCount,
     quadrant: {
       exitMetSignMet: acc.exitMetSignMet,
       exitMetSignUnmet: acc.exitMetSignUnmet,
@@ -318,6 +386,10 @@ export async function saveDispatchPerformanceCells(input: SaveCellsInput): Promi
       problemCount: cell.problemCount,
       neverSignedCount: cell.neverSignedCount,
       lateSignedCount: cell.lateSignedCount,
+      vendorProfit: cell.vendorProfit,
+      courierProfit: cell.courierProfit,
+      pricedSignedCount: cell.pricedSignedCount,
+      unpricedSignedCount: cell.unpricedSignedCount,
       neverSignedWaybillNos: cell.neverSignedWaybillNos,
       lateSignedWaybillNos: cell.lateSignedWaybillNos,
       problemWaybillNos: cell.problemWaybillNos,
@@ -477,7 +549,7 @@ export function buildDispatchPerformanceTree(rows: DispatchPerformanceStatRow[])
     // 白名单不参与考核：站点汇总与供应商行都跳过，单量另记一笔用于解释口径差；优先件例外，照常计入
     if (row.isWhitelist) {
       overallWhitelistTotal += row.total
-      addPriorityToAcc(overallAcc, row)
+      addUnassessedToAcc(overallAcc, row)
     } else addToAcc(overallAcc, row)
 
     let supplier = suppliers.get(row.supplierKey)
@@ -494,7 +566,7 @@ export function buildDispatchPerformanceTree(rows: DispatchPerformanceStatRow[])
     }
     if (row.isWhitelist) {
       supplier.whitelistTotal += row.total
-      addPriorityToAcc(supplier.acc, row)
+      addUnassessedToAcc(supplier.acc, row)
     } else addToAcc(supplier.acc, row)
 
     let route = supplier.routes.get(row.routeCode)

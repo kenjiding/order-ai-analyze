@@ -99,6 +99,13 @@ export const PERMISSION_REGISTRY: PermissionDefinition[] = [
     sortOrder: 65,
   },
   {
+    key: 'menu:region-package-prices',
+    type: 'menu',
+    label: '区域包裹价格配置',
+    description: '按州维护 postcode/suburb 的派送单价、所属供应商与上一次价格',
+    sortOrder: 66,
+  },
+  {
     key: 'btn:wage-salary:export',
     type: 'button',
     label: '导出工资',

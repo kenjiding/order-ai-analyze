@@ -34,6 +34,10 @@ function cell(over: Partial<DispatchPerformanceStatRow> = {}): DispatchPerforman
     problemCount: 0,
     neverSignedCount: 0,
     lateSignedCount: 0,
+    vendorProfit: 0,
+    courierProfit: 0,
+    pricedSignedCount: 0,
+    unpricedSignedCount: 0,
     neverSignedWaybillNos: [],
     lateSignedWaybillNos: [],
     problemWaybillNos: [],
@@ -177,4 +181,48 @@ test('优先件不按白名单剔除：供应商行与站点汇总的优先件�
   // 路由行加起来等于供应商行
   const routeSum = supplier.routes.reduce((s, r) => s + r.priorityTotal, 0)
   assert.equal(routeSum, supplier.priorityTotal)
+})
+
+test('利润：三层加总一致，白名单格子的金额照样计入供应商行（钱不跟考核口径走）', () => {
+  const tree = buildDispatchPerformanceTree([
+    met({ routeCode: 'R1', courierCode: 'C1', total: 10, vendorProfit: 2.5, courierProfit: 24.5, pricedSignedCount: 10 }),
+    met({ routeCode: 'R1', courierCode: 'C2', total: 20, vendorProfit: 5, courierProfit: 49, pricedSignedCount: 18, unpricedSignedCount: 2 }),
+    // 白名单路由不考核，但这些包裹照样派了、照样付了钱 —— 金额必须计入，否则供应商利润系统性少算
+    met({ routeCode: 'R9', courierCode: 'C3', total: 5, vendorProfit: 1.25, courierProfit: 12.25, pricedSignedCount: 5, isWhitelist: true }),
+  ])
+
+  const [supplier] = tree.suppliers
+  assert.equal(supplier.total, 30, '考核单量仍不含白名单')
+  assert.equal(supplier.whitelistTotal, 5)
+  assert.equal(supplier.vendorProfit, 8.75, '白名单的 1.25 要算进供应商利润')
+  assert.equal(supplier.courierProfit, 85.75)
+  assert.equal(supplier.pricedSignedCount, 33)
+  assert.equal(supplier.unpricedSignedCount, 2)
+  assert.equal(tree.overall.vendorProfit, 8.75)
+
+  const routes = new Map(supplier.routes.map((r) => [r.routeCode, r]))
+  assert.equal(routes.get('R1')?.vendorProfit, 7.5)
+  assert.equal(routes.get('R9')?.vendorProfit, 1.25, '白名单路由自己那行照常看得见金额')
+
+  // 司机行加总 = 路由行
+  const drivers = routes.get('R1')?.drivers ?? []
+  assert.equal(
+    drivers.reduce((n, d) => n + (d.courierProfit ?? 0), 0),
+    routes.get('R1')?.courierProfit,
+  )
+})
+
+test('利润：区间混进未结算日时仍给出已结算部分的钱，不整段抹成 null', () => {
+  const tree = buildDispatchPerformanceTree([
+    met({ arrivalDate: '2024-06-24', routeCode: 'R1', total: 10, vendorProfit: 2.5, courierProfit: 24.5 }),
+    // 未结算日：金额本就是 0（出仓趟不算钱），累加不会污染已结算那天的数
+    cell({ arrivalDate: '2024-06-25', routeCode: 'R1', total: 10, before11Met: 10, dispatchSettled: false }),
+  ])
+
+  const [supplier] = tree.suppliers
+  assert.equal(supplier.dispatchSettled, false, '区间不完整这件事仍要如实报出来')
+  assert.equal(supplier.signRate, null, '率照旧给 null：比例混了未结算日就没意义')
+  assert.equal(supplier.vendorProfit, 2.5, '钱是可加的，已结算那天赚的必须看得见')
+  assert.equal(supplier.courierProfit, 24.5)
+  assert.equal(supplier.before11Rate, 100, '出仓率不受影响，它出仓那趟就定死了')
 })

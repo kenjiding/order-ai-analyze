@@ -44,6 +44,7 @@
     "push-notifications": "Feishu push",
     "system-users": "Users",
     "supplier-configs": "Vendor config",
-    "priority-clients": "Priority clients"
+    "priority-clients": "Priority clients",
+    "region-package-prices": "Region package prices"
   }
 }

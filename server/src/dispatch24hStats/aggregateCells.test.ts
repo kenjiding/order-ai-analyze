@@ -9,7 +9,12 @@ import {
   type Dispatch24hScope,
   type Dispatch24hWaybillRow,
 } from '../vendorAnalysis/dispatch24hAggregate'
-import { aggregateDispatchPerformanceCells, type DispatchPerformanceCell } from './aggregateCells'
+import {
+  aggregateDispatchPerformanceCells,
+  priceBookKey,
+  type DispatchPerformanceCell,
+  type PackagePrice,
+} from './aggregateCells'
 
 const tz = AUS_TZ.Adelaide
 // 到件日 2024-06-24（周一）→ 出仓日周二 06-25，出仓阈值 06-25 11:00，派签窗口滚动 24h
@@ -35,7 +40,11 @@ function scope(
 }
 
 /** 派签趟（D+2）：完整结算 */
-function run(rows: Dispatch24hWaybillRow[], scopes: Dispatch24hScope[]): DispatchPerformanceCell[] {
+function run(
+  rows: Dispatch24hWaybillRow[],
+  scopes: Dispatch24hScope[],
+  priceBook?: Map<string, PackagePrice>,
+): DispatchPerformanceCell[] {
   return aggregateDispatchPerformanceCells({
     rows,
     stationCodes: ['S1'],
@@ -45,11 +54,16 @@ function run(rows: Dispatch24hWaybillRow[], scopes: Dispatch24hScope[]): Dispatc
     nextDayDeadlineMs: nextDayDeadline,
     scopes,
     priorityClientCodes,
+    priceBook,
   })
 }
 
 /** 出仓趟（D+1）：rule=null，只结算出仓 */
-function runExitOnly(rows: Dispatch24hWaybillRow[], scopes: Dispatch24hScope[]): DispatchPerformanceCell[] {
+function runExitOnly(
+  rows: Dispatch24hWaybillRow[],
+  scopes: Dispatch24hScope[],
+  priceBook?: Map<string, PackagePrice>,
+): DispatchPerformanceCell[] {
   return aggregateDispatchPerformanceCells({
     rows,
     stationCodes: ['S1'],
@@ -59,6 +73,7 @@ function runExitOnly(rows: Dispatch24hWaybillRow[], scopes: Dispatch24hScope[]):
     nextDayDeadlineMs: nextDayDeadline,
     scopes,
     priorityClientCodes,
+    priceBook,
   })
 }
 
@@ -274,4 +289,84 @@ test('白名单路由：照常出格子并打标记，不再被整行剔除', ()
   assert.equal(byRoute.get('R2')?.total, 1)
   assert.equal(byRoute.get('R2')?.before11Met, 0)
   assert.equal(byRoute.get('R2')?.neverSignedCount, 1)
+})
+
+// ── 利润 ───────────────────────────────────────────────────────────
+
+/** ADELAIDE 2.70/2.45（差 0.25），PROSPECT 3.10/2.80（差 0.30） */
+const priceBook = new Map<string, PackagePrice>([
+  [priceBookKey('5000', 'ADELAIDE'), { price: 2.7, courierPrice: 2.45 }],
+  [priceBookKey('5082', 'PROSPECT'), { price: 3.1, courierPrice: 2.8 }],
+])
+
+const adelaide = { postcode: '5000', suburb: 'ADELAIDE' }
+
+test('利润：只算签收成功的包裹，供应商利润 = Σ(price - courierPrice)，司机利润 = Σ courierPrice', () => {
+  const rows: Dispatch24hWaybillRow[] = [
+    // 签收且命中价格：ADELAIDE ×2 + PROSPECT ×1
+    { ...base, ...adelaide, waybillNo: 'A', courierCode: 'C1', courier: 'D1', consigneeRouteCode: 'R1', deliveryTime: '2024-06-25 09:00:00', signDate: '2024-06-25 15:00:00' },
+    // 超 24h 才签收 —— 派签不达标，但钱照算：计费看的是有没有派到，不是达不达标
+    { ...base, ...adelaide, waybillNo: 'B', courierCode: 'C1', courier: 'D1', consigneeRouteCode: 'R1', deliveryTime: '2024-06-25 09:00:00', signDate: '2024-06-27 10:00:00' },
+    { ...base, postcode: '5082', suburb: 'PROSPECT', waybillNo: 'C', courierCode: 'C1', courier: 'D1', consigneeRouteCode: 'R1', deliveryTime: '2024-06-25 09:00:00', signDate: '2024-06-25 16:00:00' },
+    // 从未签收：一分不算
+    { ...base, ...adelaide, waybillNo: 'D', courierCode: 'C1', courier: 'D1', consigneeRouteCode: 'R1', deliveryTime: '2024-06-25 09:00:00' },
+  ]
+  const [cell] = run(rows, [scope('U1', 'V1')], priceBook)
+
+  assert.equal(cell.total, 4)
+  assert.equal(cell.pricedSignedCount, 3)
+  assert.equal(cell.unpricedSignedCount, 0)
+  // 0.25 + 0.25 + 0.30
+  assert.equal(Math.round(cell.vendorProfit * 100) / 100, 0.8)
+  // 2.45 + 2.45 + 2.80
+  assert.equal(Math.round(cell.courierProfit * 100) / 100, 7.7)
+})
+
+test('利润：签收但查不到价格的单计入 unpricedSignedCount，不静默按 0 元混进金额', () => {
+  const rows: Dispatch24hWaybillRow[] = [
+    { ...base, ...adelaide, waybillNo: 'A', courierCode: 'C1', courier: 'D1', consigneeRouteCode: 'R1', deliveryTime: '2024-06-25 09:00:00', signDate: '2024-06-25 15:00:00' },
+    // 价格表里没有这个 suburb
+    { ...base, postcode: '5999', suburb: 'NOWHERE', waybillNo: 'B', courierCode: 'C1', courier: 'D1', consigneeRouteCode: 'R1', deliveryTime: '2024-06-25 09:00:00', signDate: '2024-06-25 15:00:00' },
+    // iMile 压根没返回地址
+    { ...base, waybillNo: 'C', courierCode: 'C1', courier: 'D1', consigneeRouteCode: 'R1', deliveryTime: '2024-06-25 09:00:00', signDate: '2024-06-25 15:00:00' },
+  ]
+  const [cell] = run(rows, [scope('U1', 'V1')], priceBook)
+
+  assert.equal(cell.pricedSignedCount, 1)
+  assert.equal(cell.unpricedSignedCount, 2)
+  assert.equal(cell.vendorProfit, 0.25)
+  assert.equal(cell.courierProfit, 2.45)
+})
+
+test('利润：suburb 大小写不影响匹配（价格表里全大写，iMile 返回的可能是混合大小写）', () => {
+  const rows: Dispatch24hWaybillRow[] = [
+    { ...base, postcode: '5000', suburb: ' Adelaide ', waybillNo: 'A', courierCode: 'C1', courier: 'D1', consigneeRouteCode: 'R1', deliveryTime: '2024-06-25 09:00:00', signDate: '2024-06-25 15:00:00' },
+  ]
+  const [cell] = run(rows, [scope('U1', 'V1')], priceBook)
+
+  assert.equal(cell.pricedSignedCount, 1)
+  assert.equal(cell.courierProfit, 2.45)
+})
+
+test('利润：出仓趟（rule=null）不算钱 —— 那时大半包裹还没签收，算出来必然偏小且会变', () => {
+  const rows: Dispatch24hWaybillRow[] = [
+    { ...base, ...adelaide, waybillNo: 'A', courierCode: 'C1', courier: 'D1', consigneeRouteCode: 'R1', deliveryTime: '2024-06-25 09:00:00', signDate: '2024-06-25 15:00:00' },
+  ]
+  const [cell] = runExitOnly(rows, [scope('U1', 'V1')], priceBook)
+
+  assert.equal(cell.dispatchSettled, false)
+  assert.equal(cell.vendorProfit, 0)
+  assert.equal(cell.courierProfit, 0)
+  assert.equal(cell.pricedSignedCount, 0)
+  assert.equal(cell.unpricedSignedCount, 0)
+})
+
+test('利润：没有价格表（该州没配）时全部记入 unpricedSignedCount', () => {
+  const rows: Dispatch24hWaybillRow[] = [
+    { ...base, ...adelaide, waybillNo: 'A', courierCode: 'C1', courier: 'D1', consigneeRouteCode: 'R1', deliveryTime: '2024-06-25 09:00:00', signDate: '2024-06-25 15:00:00' },
+  ]
+  const [cell] = run(rows, [scope('U1', 'V1')])
+
+  assert.equal(cell.unpricedSignedCount, 1)
+  assert.equal(cell.vendorProfit, 0)
 })

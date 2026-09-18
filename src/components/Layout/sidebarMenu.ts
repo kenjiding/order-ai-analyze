@@ -297,6 +297,14 @@ const systemGroup: SidebarMenuGroup = {
       icon: Star,
       description: '维护优先客户名单：负责人、商家编码/名称、开户时间与销售团队',
     },
+    {
+      id: 'region-package-prices',
+      path: '/system/region-package-prices',
+      permissionKey: 'menu:region-package-prices',
+      label: '区域包裹价格配置',
+      icon: DollarSign,
+      description: '按州维护 postcode/suburb 的派送单价、所属供应商与上一次价格',
+    },
   ],
 }
 

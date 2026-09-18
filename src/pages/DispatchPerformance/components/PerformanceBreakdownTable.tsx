@@ -2,7 +2,6 @@ import { Table, Tag, Tooltip, Empty } from 'antd'
 import type { ColumnsType } from 'antd/es/table'
 import { useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
-import { QuadrantBar, QuadrantLegend } from './QuadrantBar'
 import type {
   DispatchDriverNode,
   DispatchMetrics,
@@ -77,15 +76,64 @@ function WhitelistTag({
   )
 }
 
-function GapCell({ gap }: { gap: number | null }) {
-  if (gap == null) return <span className="text-slate-300">—</span>
-  const sign = gap > 0 ? '+' : ''
+/**
+ * 利润单元格。金额恒是数值，但有两种「这个数不是全部」的情况必须当场说清楚，
+ * 否则一个偏小的金额看上去和正常值毫无区别：
+ * - 区间里混了派签未结算的到件日 → 金额只是截至已结算日的累计；
+ * - 有签收单没匹配到区域价格 → 那部分钱一分没算进来。
+ */
+function ProfitCell({
+  amount,
+  unpriced,
+  settled,
+  t,
+}: {
+  amount: number
+  unpriced: number
+  settled: boolean
+  t: (key: string, options?: Record<string, unknown>) => string
+}) {
   return (
-    <span className={`tabular-nums ${gap >= 10 ? 'font-semibold text-amber-600' : 'text-slate-600'}`}>
-      {sign}
-      {gap.toFixed(2)}
-    </span>
+    <div className="flex flex-col items-end">
+      <span className="tabular-nums font-medium text-slate-800">${amount.toFixed(2)}</span>
+      {!settled ? (
+        <Tooltip title={t('breakdown.profitPartialTooltip')}>
+          <span className="cursor-help text-xs text-slate-400">{t('breakdown.profitPartialTag')}</span>
+        </Tooltip>
+      ) : null}
+      {unpriced > 0 ? (
+        <Tooltip title={t('breakdown.unpricedTooltip', { count: unpriced })}>
+          <span className="cursor-help text-xs tabular-nums text-amber-600">
+            {t('breakdown.unpricedTag', { count: unpriced })}
+          </span>
+        </Tooltip>
+      ) : null}
+    </div>
   )
+}
+
+/**
+ * 利润列。供应商行看供应商利润、司机行看司机利润、路由行夹在中间两个都给。
+ * 单独一个工厂而不是塞进 metricColumns：那个是三层共用的，三层要的利润口径并不一样。
+ */
+function profitColumns<T extends DispatchMetrics>(
+  t: (key: string, options?: Record<string, unknown>) => string,
+  kinds: ('vendor' | 'courier')[],
+): ColumnsType<T> {
+  return kinds.map((kind) => ({
+    title: t(kind === 'vendor' ? 'breakdown.vendorProfit' : 'breakdown.courierProfit'),
+    key: `${kind}Profit`,
+    width: 120,
+    align: 'right' as const,
+    render: (_: unknown, row: T) => (
+      <ProfitCell
+        amount={kind === 'vendor' ? row.vendorProfit : row.courierProfit}
+        unpriced={row.unpricedSignedCount}
+        settled={row.dispatchSettled}
+        t={t}
+      />
+    ),
+  }))
 }
 
 function metricColumns<T extends DispatchMetrics>(
@@ -164,24 +212,6 @@ function metricColumns<T extends DispatchMetrics>(
           )}
         </div>
       ),
-    },
-    {
-      title: t('breakdown.rateGap'),
-      dataIndex: 'rateGap',
-      width: 90,
-      align: 'right',
-      render: (gap: number | null) => <GapCell gap={gap} />,
-    },
-    {
-      title: t('breakdown.quadrantDistribution'),
-      key: 'quadrant',
-      width: 200,
-      render: (_, row) =>
-        row.dispatchSettled ? (
-          <QuadrantBar quadrant={row.quadrant} total={row.total} />
-        ) : (
-          <span className="text-xs text-slate-400">{t('breakdown.quadrantPending')}</span>
-        ),
     },
     {
       title: t('breakdown.problemWaybills'),
@@ -301,6 +331,7 @@ function DriverTable({
           <span className="text-slate-500">{t('breakdown.unassignedDriver')}</span>
         ),
     },
+    ...profitColumns<DispatchDriverNode>(t, ['courier']),
     ...metricColumns<DispatchDriverNode>(t),
   ]
 
@@ -344,6 +375,7 @@ function RouteTable({
         </div>
       ),
     },
+    ...profitColumns<DispatchRouteNode>(t, ['vendor', 'courier']),
     ...metricColumns<DispatchRouteNode>(t),
   ]
 
@@ -387,6 +419,7 @@ export function PerformanceBreakdownTable({
           </div>
         ),
       },
+      ...profitColumns<DispatchSupplierNode>((key, options) => t(key, options), ['vendor']),
       ...metricColumns<DispatchSupplierNode>((key, options) => t(key, options)),
     ],
     [t],
@@ -394,7 +427,6 @@ export function PerformanceBreakdownTable({
 
   return (
     <div className="space-y-3">
-      <QuadrantLegend />
       <Table
         rowKey="supplierKey"
         columns={columns}

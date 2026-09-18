@@ -44,6 +44,7 @@
     "push-notifications": "推送功能",
     "system-users": "用户管理",
     "supplier-configs": "供应商配置",
-    "priority-clients": "优先客户配置"
+    "priority-clients": "优先客户配置",
+    "region-package-prices": "区域包裹价格配置"
   }
 }

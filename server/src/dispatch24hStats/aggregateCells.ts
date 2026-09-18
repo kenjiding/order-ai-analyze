@@ -11,6 +11,8 @@
  *   这些路由跑成什么样。剔除发生在查询侧的供应商/站点累加（见 queryDispatchPerformance）。
  * - 派签：dispatch24hAggregate 的 isDispatch24hMet / isDispatch24hProblem
  * - 出仓：imile/before11Exit 的 isBefore11Exit
+ * - 利润：按运单 postcode + suburb 查 priceBook（region_package_prices），**只算签收成功的包裹**，
+ *   且与四象限一样只在派签趟才算（见下）。
  */
 import { isBefore11Exit } from '../imile/before11Exit'
 import {
@@ -30,6 +32,16 @@ export const NO_ROUTE_CODE = ''
 
 /** 格子主键分隔符：路由码/司机码都不含制表符，不会与内容冲突 */
 const CELL_KEY_SEP = '\t'
+
+export type PackagePrice = { price: number; courierPrice: number }
+
+/**
+ * 价格表主键：postcode + 大写 suburb。
+ * 价格表里 suburb 的大小写并不统一（导入的种子数据全大写，手工录入原样存），统一大写后再比。
+ */
+export function priceBookKey(postcode: string, suburb: string): string {
+  return `${postcode.trim()}|${suburb.trim().toUpperCase()}`
+}
 
 export type DispatchPerformanceCell = {
   /** scope 的 key，本模块调用方传的是 supplierKey */
@@ -59,6 +71,14 @@ export type DispatchPerformanceCell = {
   priorityNextDaySignMet: number
   /** 问题件数：见 isDispatch24hProblem 口径，与四象限正交（不参与加总） */
   problemCount: number
+  /** 供应商利润 Σ(price - courierPrice)，仅签收成功且匹配到价格的包裹（仅 dispatchSettled 时有效） */
+  vendorProfit: number
+  /** 司机利润 Σ courierPrice，口径同上 */
+  courierProfit: number
+  /** 签收且匹配到价格的件数 */
+  pricedSignedCount: number
+  /** 签收但没匹配到价格的件数：这些单一分钱没算进去，必须能在页面上看见 */
+  unpricedSignedCount: number
   /** 派签未达标中：完全没有签收记录 */
   neverSignedCount: number
   /** 派签未达标中：有签收记录但超过窗口才签收 */
@@ -98,6 +118,10 @@ function newCell(
     priorityTotal: 0,
     priorityNextDaySignMet: 0,
     problemCount: 0,
+    vendorProfit: 0,
+    courierProfit: 0,
+    pricedSignedCount: 0,
+    unpricedSignedCount: 0,
     neverSignedCount: 0,
     lateSignedCount: 0,
     neverSignedWaybillNos: [],
@@ -132,6 +156,8 @@ export function aggregateDispatchPerformanceCells(input: {
   scopes: Dispatch24hScope[]
   /** 「优先客户配置」商家编码（大写）；缺省 = 不统计优先件 */
   priorityClientCodes?: Set<string>
+  /** 区域包裹价格，key 见 priceBookKey；缺省 = 不算利润（该州没配价格表时就是这样） */
+  priceBook?: Map<string, PackagePrice>
 }): DispatchPerformanceCell[] {
   const {
     rows,
@@ -142,6 +168,7 @@ export function aggregateDispatchPerformanceCells(input: {
     nextDayDeadlineMs,
     scopes,
     priorityClientCodes,
+    priceBook,
   } = input
   const dispatchSettled = rule != null
   const nextDayRule: Dispatch24hWindowRule = { kind: 'fixedDeadline', deadlineMs: nextDayDeadlineMs }
@@ -168,6 +195,13 @@ export function aggregateDispatchPerformanceCells(input: {
     const nextDaySignMet = rule != null && isDispatch24hMet(row, nextDayRule)
     const isPriority = isPriorityRow(row, priorityClientCodes)
     const wbNo = row.waybillNo ?? ''
+
+    // 计钱口径：签收成功即计（不看是否 24H 达标、是否超窗口），与实际给供应商/司机结钱一致。
+    // 只在派签趟算：出仓趟（D+1）大半包裹还没签收，此刻的金额必然偏小且一定会变。
+    const signed = dispatchSettled && Boolean(row.signDate)
+    const priced = signed
+      ? priceBook?.get(priceBookKey(row.postcode ?? '', row.suburb ?? ''))
+      : undefined
 
     for (const scope of scopes) {
       if (!isRowInConfigScopeIgnoringWhitelist(scope, explicitVendorCode, routeCode)) continue
@@ -201,6 +235,16 @@ export function aggregateDispatchPerformanceCells(input: {
           cell.exitUnmetSignMet += 1
         } else {
           cell.exitUnmetSignUnmet += 1
+        }
+      }
+
+      if (signed) {
+        if (priced) {
+          cell.vendorProfit += priced.price - priced.courierPrice
+          cell.courierProfit += priced.courierPrice
+          cell.pricedSignedCount += 1
+        } else {
+          cell.unpricedSignedCount += 1
         }
       }
 

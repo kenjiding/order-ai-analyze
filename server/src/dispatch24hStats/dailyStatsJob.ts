@@ -46,7 +46,9 @@ import {
 import { listEnabledDispatchPerformanceConfigs } from './configRepository'
 import {
   aggregateDispatchPerformanceCells,
+  priceBookKey,
   type DispatchPerformanceCell,
+  type PackagePrice,
 } from './aggregateCells'
 import {
   listSettledArrivalDates,
@@ -249,6 +251,8 @@ export async function computeOneArrivalDate(input: {
     nextDayDeadlineMs: localDateTimeToMs(`${resolveExitDate(arrivalDate)} 23:59:59`, tz),
     scopes,
     priorityClientCodes: await loadPriorityClientCodes(),
+    // 出仓趟不算钱（见 aggregateCells），省掉这一次查询
+    priceBook: stage === 'dispatch' ? await loadPriceBook(regionCode) : undefined,
   })
 
   const supplierMeta = new Map(
@@ -258,6 +262,30 @@ export async function computeOneArrivalDate(input: {
     ]),
   )
   return { cells, supplierMeta, waybillCount: rows.length }
+}
+
+/**
+ * 该州的区域包裹价格表。价格按 (regionCode, postcode, suburb) 唯一，这里拍平成内存 Map 供逐行查。
+ * 州为空 = 这批数据没有归属州，查不了价，全部记入 unpricedSignedCount 而不是静默按 0 元算。
+ */
+async function loadPriceBook(regionCode: string | null): Promise<Map<string, PackagePrice> | undefined> {
+  const region = regionCode?.trim()
+  if (!region) return undefined
+  const rows = await getDb()
+    .select({
+      postcode: schema.regionPackagePrices.postcode,
+      suburb: schema.regionPackagePrices.suburb,
+      price: schema.regionPackagePrices.price,
+      courierPrice: schema.regionPackagePrices.courierPrice,
+    })
+    .from(schema.regionPackagePrices)
+    .where(eq(schema.regionPackagePrices.regionCode, region))
+  if (rows.length === 0) return undefined
+  const book = new Map<string, PackagePrice>()
+  for (const row of rows) {
+    book.set(priceBookKey(row.postcode, row.suburb), { price: row.price, courierPrice: row.courierPrice })
+  }
+  return book
 }
 
 export async function settleOneArrivalDate(input: {
