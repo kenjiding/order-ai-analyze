@@ -469,6 +469,8 @@ export type IncrementalWaybillFetchSuccess = {
  * 已达标或已拿到签收时间的单复用 cachedByWaybillNo，供告警多时段推送与司机地图刷新共用。
  * 唯一调用方（stationDayWaybillSync）只消费 fetchedRecords，不需要把跳过的缓存行合并回一份
  * 全量 records 数组——大站点几万条时那份合并数组是纯粹的内存浪费，故不再构建。
+ *
+ * 传 forceDetailRefresh 则退化成全量重拉（见该字段注释），供结算这类要求字段完整的调用方使用。
  */
 export async function fetchWaybillDetailsIncremental(input: {
   token: string
@@ -483,6 +485,15 @@ export async function fetchWaybillDetailsIncremental(input: {
    * 之后永不刷新。要求分母准确的场景（出仓派签达成分析的结算）必须传 true。
    */
   forceIndexRefresh?: boolean
+  /**
+   * 强制重拉全部明细，忽略终态跳过。理由与 forceIndexRefresh 同源：缓存行只保证「当时关心的字段」
+   * 是对的，后来新增的列（如 postcode/suburb）在旧行里是空的，而终态单永远不会被重拉，缺的列就
+   * 永远补不上。要求字段完整的场景（出仓派签达成分析的结算要按收件地址查价）必须传 true。
+   *
+   * 注意这里**不是**放宽终态判定——isDispatch24hTerminal 仍然只看签收时间，是调用方声明
+   * 「这一趟我不吃缓存」。重拉已签收的单拿回的是同一份 signDate，两个率的结论不受影响。
+   */
+  forceDetailRefresh?: boolean
 }): Promise<IncrementalWaybillFetchSuccess | InboundWaybillFetchError> {
   const indexResult = await getOrFetchInboundWaybillNos({
     token: input.token,
@@ -494,11 +505,13 @@ export async function fetchWaybillDetailsIncremental(input: {
   if (!indexResult.ok) return indexResult
 
   // 窗口规则按「到件日」定，dateStr 就是该批次的到件日
-  const needNos = selectWaybillNosNeedingRefresh(
-    indexResult.waybillNos,
-    input.cachedByWaybillNo,
-    resolveDispatch24hWindowRule(input.dateStr, input.tz),
-  )
+  const needNos = input.forceDetailRefresh
+    ? indexResult.waybillNos
+    : selectWaybillNosNeedingRefresh(
+        indexResult.waybillNos,
+        input.cachedByWaybillNo,
+        resolveDispatch24hWindowRule(input.dateStr, input.tz),
+      )
 
   const fetched = await fetchSearchWaybillByNos({
     token: input.token,

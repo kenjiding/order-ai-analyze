@@ -145,8 +145,10 @@ export async function syncStationDayWaybillsIncremental(input: {
   label: string
   /** 见 fetchWaybillDetailsIncremental.forceIndexRefresh：结算类调用必须传 true */
   forceIndexRefresh?: boolean
+  /** 见 fetchWaybillDetailsIncremental.forceDetailRefresh：要求字段完整的结算类调用必须传 true */
+  forceDetailRefresh?: boolean
 }): Promise<StationDayWaybillSyncResult | { ok: false; message: string }> {
-  const { token, stationCode, dataDate, tz, label, forceIndexRefresh } = input
+  const { token, stationCode, dataDate, tz, label, forceIndexRefresh, forceDetailRefresh } = input
   const cachedByWaybillNo = await loadStationDayWaybillCache(stationCode, dataDate)
 
   const fetched = await fetchWaybillDetailsIncremental({
@@ -157,6 +159,7 @@ export async function syncStationDayWaybillsIncremental(input: {
     tz,
     cachedByWaybillNo,
     forceIndexRefresh,
+    forceDetailRefresh,
   })
   if (!fetched.ok) return { ok: false, message: fetched.message }
 

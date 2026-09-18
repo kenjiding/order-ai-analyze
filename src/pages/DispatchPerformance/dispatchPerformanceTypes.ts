@@ -171,38 +171,6 @@ export type DispatchPerformanceResult = {
   recentBatches: DispatchSettledBatch[]
 }
 
-export type DispatchSupplierTrendPoint = {
-  date: string
-  supplierKey: string
-  supplierName: string
-  vendorCode: string
-  total: number
-  dispatchSettled: boolean
-  before11Rate: number | null
-  signRate: number | null
-}
-
-export type DispatchRouteTrendPoint = {
-  date: string
-  supplierKey: string
-  routeCode: string
-  total: number
-  isWhitelist: boolean
-  dispatchSettled: boolean
-  before11Rate: number | null
-  signRate: number | null
-}
-
-export type DispatchTrendResult = {
-  stationCode: string
-  startDate: string
-  endDate: string
-  dates: string[]
-  suppliers: DispatchPerformanceSupplierOption[]
-  supplierDaily: DispatchSupplierTrendPoint[]
-  routeDaily: DispatchRouteTrendPoint[]
-}
-
 /** 「立刻统计」作业的结果：两趟都已落库，派签是临时值（到点的定时结算会覆盖） */
 export type SettleNowArtifact = {
   stationCode: string

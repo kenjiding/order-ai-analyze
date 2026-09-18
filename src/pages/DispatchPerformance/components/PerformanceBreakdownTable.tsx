@@ -321,10 +321,13 @@ function DriverTable({
     {
       title: t('breakdown.driver'),
       dataIndex: 'courierName',
+      width: 140,
       render: (name: string, row) =>
         row.courierCode ? (
-          <div className="min-w-0">
-            <div className="truncate text-slate-800">{name}</div>
+          <div className="min-w-0 max-w-[140px]">
+            <div className="truncate text-slate-800" title={name}>
+              {name}
+            </div>
             <div className="font-mono text-xs text-slate-400">{row.courierCode}</div>
           </div>
         ) : (
@@ -365,13 +368,17 @@ function RouteTable({
       title: t('breakdown.routeCode'),
       dataIndex: 'routeCode',
       render: (routeCode: string, row) => (
-        <div className="flex items-center gap-2">
+        <div className="min-w-0">
           {routeCode ? (
             <span className="font-mono text-slate-800">{routeCode}</span>
           ) : (
             <span className="text-slate-500">{t('breakdown.noRouteCode')}</span>
           )}
-          <WhitelistTag whitelistTotal={row.whitelistTotal} total={row.total} t={t} />
+          {row.whitelistTotal > 0 ? (
+            <div className="mt-0.5">
+              <WhitelistTag whitelistTotal={row.whitelistTotal} total={row.total} t={t} />
+            </div>
+          ) : null}
         </div>
       ),
     },
@@ -411,11 +418,6 @@ export function PerformanceBreakdownTable({
           <div className="min-w-0">
             <div className="truncate font-medium text-slate-900">{name}</div>
             <div className="font-mono text-xs text-slate-400">{row.vendorCode}</div>
-            {row.whitelistTotal > 0 ? (
-              <div className="mt-0.5 text-xs text-slate-400">
-                {t('breakdown.whitelistExtra', { count: row.whitelistTotal })}
-              </div>
-            ) : null}
           </div>
         ),
       },

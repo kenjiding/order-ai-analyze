@@ -4,7 +4,6 @@ import { useTranslation } from 'react-i18next'
 import { useNavigate, useParams } from 'react-router-dom'
 import type { Dayjs } from 'dayjs'
 import { PerformanceBreakdownTable } from './components/PerformanceBreakdownTable'
-import { DispatchTrendSection } from './components/DispatchTrendSection'
 import { SettleNowResult } from './components/SettleNowResult'
 import { useDispatchPerformanceDetailPage } from './useDispatchPerformanceDetailPage'
 import type { DispatchMetrics, DispatchSettledBatch } from './dispatchPerformanceTypes'
@@ -253,14 +252,6 @@ export default function DispatchPerformanceDetailPage() {
             overall={v.result.overall}
             t={(key, opts) => t(key, { ns: 'dispatchPerformance', ...opts })}
           />
-          {id ? (
-            <DispatchTrendSection
-              configId={id}
-              range={v.range}
-              supplierKeys={v.supplierKeys}
-              supplierOptions={v.result.supplierOptions}
-            />
-          ) : null}
           {v.result.whitelistTotal > 0 ? (
             <Alert
               type="info"

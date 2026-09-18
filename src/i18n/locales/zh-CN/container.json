@@ -194,7 +194,7 @@
     "filterTransferIdPlaceholder": "如 123 或 TR-000123",
     "filterFrom": "转出方",
     "filterTo": "接收方",
-    "filterDateRange": "日期区间",
+    "filterDateRange": "流转日期",
     "declaredToSettled": "转出方发出 → 已入账",
     "declaredToReceived": "转出方发出 → 接收方实收",
     "quantityLabel": "{{type}}: ",

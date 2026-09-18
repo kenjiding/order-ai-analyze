@@ -194,7 +194,7 @@
     "filterTransferIdPlaceholder": "e.g. 123 or TR-000123",
     "filterFrom": "From",
     "filterTo": "To",
-    "filterDateRange": "Date range",
+    "filterDateRange": "Transfer date",
     "declaredToSettled": "Declared → settled",
     "declaredToReceived": "Declared → received",
     "quantityLabel": "{{type}}: ",

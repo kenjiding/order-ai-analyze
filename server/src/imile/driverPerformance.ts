@@ -50,6 +50,8 @@ export async function fetchDriverWaybills(
     regionCode?: string | null
     /** 见 fetchWaybillDetailsIncremental.forceIndexRefresh：结算类调用必须传 true */
     forceIndexRefresh?: boolean
+    /** 见 fetchWaybillDetailsIncremental.forceDetailRefresh：要求字段完整的结算类调用必须传 true */
+    forceDetailRefresh?: boolean
   },
 ): Promise<{ ok: true; data: DriverWaybillRow[] } | ApiError> {
   const tz = resolveRegionTz(params.regionCode)
@@ -60,6 +62,7 @@ export async function fetchDriverWaybills(
     tz,
     label: '24H派签率运单查询',
     forceIndexRefresh: params.forceIndexRefresh,
+    forceDetailRefresh: params.forceDetailRefresh,
   })
   if (!synced.ok) return { ok: false, status: 502, message: synced.message }
   return { ok: true, data: synced.rows as DriverWaybillRow[] }
