@@ -95,11 +95,12 @@ export type DispatchPerformanceDriverNode = DispatchPerformanceMetrics & {
 export type DispatchPerformanceRouteNode = DispatchPerformanceMetrics & {
   routeCode: string
   /**
-   * 本行 total 里有多少单落在白名单上、因而没进供应商行与站点汇总的率。
+   * 本行 total 里有多少单落在路由码白名单上。仅用于标记，不改变本行任何数字。
+   * 「剔除白名单」口径下这些行压根不在结果里，所以它恒为 0；「全量」口径下它 > 0
+   * 就是在告诉用户这条路由本不参与考核。
    *
    * 用数量而不是布尔：区间跨多天时，同一条路由可能前几天还在考核、后几天才被加进白名单，
-   * 一个布尔只能记住碰到的第一天，会给出忽真忽假的标记。0 = 全部计入，
-   * 等于 total = 全部不计入，介于两者之间 = 这几天里改过配置。
+   * 一个布尔只能记住碰到的第一天，会给出忽真忽假的标记。
    */
   whitelistTotal: number
   drivers: DispatchPerformanceDriverNode[]
@@ -109,8 +110,6 @@ export type DispatchPerformanceSupplierNode = DispatchPerformanceMetrics & {
   supplierKey: string
   supplierName: string
   vendorCode: string
-  /** 该供应商名下白名单路由的单量：没算进本行的 total 与两个率，展示出来解释口径差 */
-  whitelistTotal: number
   routes: DispatchPerformanceRouteNode[]
 }
 
@@ -121,7 +120,10 @@ export type DispatchPerformanceQueryResult = {
   /** 区间内实际有数据的到件日（升序），供前端提示哪些天尚未结算 */
   arrivalDates: string[]
   overall: DispatchPerformanceMetrics
-  /** 全站白名单路由的单量：同样没算进 overall */
+  /**
+   * 全站白名单单量。「剔除白名单」口径下 = 被剔掉了多少单（不在 overall 里）；
+   * 「全量」口径下 = overall 里含了多少单白名单。两种口径都靠它告诉用户差在哪。
+   */
   whitelistTotal: number
   suppliers: DispatchPerformanceSupplierNode[]
 }
@@ -203,40 +205,6 @@ function addToAcc(acc: Acc, row: Omit<Acc, 'dispatchSettled'> & { dispatchSettle
   acc.problemCount += row.problemCount
   acc.neverSignedCount += row.neverSignedCount
   acc.lateSignedCount += row.lateSignedCount
-  acc.vendorProfit += row.vendorProfit
-  acc.courierProfit += row.courierProfit
-  acc.pricedSignedCount += row.pricedSignedCount
-  acc.unpricedSignedCount += row.unpricedSignedCount
-  acc.dispatchSettled &&= row.dispatchSettled
-}
-
-/**
- * 白名单格子里仍要计入供应商行与站点汇总的那几项。
- *
- * - 优先件：是该供应商全部的，不按白名单剔除（与滞留告警 Priority Packages 同口径）。
- * - 利润：**钱不跟着考核口径走**。白名单路由「不参与考核」说的是不算它的达成率，
- *   但这些包裹照样派了、照样要给司机钱、供应商照样赚了差价。把它们从金额里剔掉，
- *   供应商利润会系统性少算白名单那部分（实测约占单量一成），那是记错账而不是「不考核」。
- */
-function addUnassessedToAcc(
-  acc: Acc,
-  row: Pick<
-    Acc,
-    | 'priorityTotal'
-    | 'priorityNextDaySignMet'
-    | 'priorityBefore11Met'
-    | 'priorityExitMetNextDaySignMet'
-    | 'vendorProfit'
-    | 'courierProfit'
-    | 'pricedSignedCount'
-    | 'unpricedSignedCount'
-    | 'dispatchSettled'
-  >,
-): void {
-  acc.priorityTotal += row.priorityTotal
-  acc.priorityNextDaySignMet += row.priorityNextDaySignMet
-  acc.priorityBefore11Met += row.priorityBefore11Met
-  acc.priorityExitMetNextDaySignMet += row.priorityExitMetNextDaySignMet
   acc.vendorProfit += row.vendorProfit
   acc.courierProfit += row.courierProfit
   acc.pricedSignedCount += row.pricedSignedCount
@@ -494,12 +462,19 @@ export type DispatchPerformanceStatRow = Omit<Acc, 'dispatchSettled'> & {
 /**
  * 把日度格子累加成「站点 → 供应商 → 路由码 → 司机」四层结果。纯函数，不碰数据库。
  *
- * **白名单口径（本模块唯一的判定处）**：命中路由码白名单的格子不参与考核 ——
- * 站点汇总与供应商行的累加一律跳过它们，只把单量另记进 whitelistTotal；
- * 路由码层与司机层照常累加，使这些路由的达成情况仍然看得见。
- * 因此展开后各路由 total 之和会大于供应商行的 total，差额正是 whitelistTotal。
+ * **白名单是一个口径开关，不是逐指标的特例**（`includeWhitelist`）：
+ * - `false`（剔除白名单，默认）：白名单格子直接不参与统计 —— 每一层、每一个指标，
+ *   单量、率、问题件、优先件、利润一视同仁。被剔掉的单量在 whitelistTotal 里给出。
+ * - `true`（全量）：白名单格子照常累加，全部指标都是全量口径。
+ *
+ * 两个口径各自内部自洽，四层之间可以对得上（Σ路由 = 供应商 = Σ供应商 = 站点）。
+ * 早先那套「率剔白名单、钱和优先件不剔」的混合口径已废弃：同一行里两个数用两套分母，
+ * 没人解释得清。想看钱含不含白名单，切口径看两次即可。
  */
-export function buildDispatchPerformanceTree(rows: DispatchPerformanceStatRow[]): {
+export function buildDispatchPerformanceTree(
+  rows: DispatchPerformanceStatRow[],
+  includeWhitelist = false,
+): {
   overall: DispatchPerformanceMetrics
   whitelistTotal: number
   suppliers: DispatchPerformanceSupplierNode[]
@@ -515,7 +490,7 @@ export function buildDispatchPerformanceTree(rows: DispatchPerformanceStatRow[])
   }
   type RouteBucket = {
     routeCode: string
-    /** 本路由里不计入考核的单量，见 DispatchPerformanceRouteNode.whitelistTotal */
+    /** 本路由里的白名单单量，只用于打标记，见 DispatchPerformanceRouteNode.whitelistTotal */
     whitelistTotal: number
     acc: Acc
     drivers: Map<string, DriverBucket>
@@ -525,21 +500,20 @@ export function buildDispatchPerformanceTree(rows: DispatchPerformanceStatRow[])
     supplierName: string
     vendorCode: string
     acc: Acc
-    /** 白名单单量，不进 acc */
-    whitelistTotal: number
     routes: Map<string, RouteBucket>
   }
 
   const overallAcc = newAcc()
+  // 两种口径下都要报这个数：剔除口径下是「剔掉了多少」，全量口径下是「含了多少」
   let overallWhitelistTotal = 0
   const suppliers = new Map<string, SupplierBucket>()
 
   for (const row of rows) {
-    // 白名单不参与考核：站点汇总与供应商行都跳过，单量另记一笔用于解释口径差；优先件例外，照常计入
     if (row.isWhitelist) {
       overallWhitelistTotal += row.total
-      addUnassessedToAcc(overallAcc, row)
-    } else addToAcc(overallAcc, row)
+      if (!includeWhitelist) continue // 剔除口径：这一格自此完全不存在
+    }
+    addToAcc(overallAcc, row)
 
     let supplier = suppliers.get(row.supplierKey)
     if (!supplier) {
@@ -548,15 +522,11 @@ export function buildDispatchPerformanceTree(rows: DispatchPerformanceStatRow[])
         supplierName: row.supplierName || row.supplierKey,
         vendorCode: row.vendorCode,
         acc: newAcc(),
-        whitelistTotal: 0,
         routes: new Map(),
       }
       suppliers.set(row.supplierKey, supplier)
     }
-    if (row.isWhitelist) {
-      supplier.whitelistTotal += row.total
-      addUnassessedToAcc(supplier.acc, row)
-    } else addToAcc(supplier.acc, row)
+    addToAcc(supplier.acc, row)
 
     let route = supplier.routes.get(row.routeCode)
     if (!route) {
@@ -591,21 +561,15 @@ export function buildDispatchPerformanceTree(rows: DispatchPerformanceStatRow[])
     const unmet = (x: Acc) => x.total - (x.exitMetSignMet + x.exitUnmetSignMet)
     return unmet(b.acc) - unmet(a.acc) || b.acc.total - a.acc.total
   }
-  // 整条都不考核的路由沉到末尾，别挤在最差的那几条前面；部分白名单的仍按未达标排
-  const fullyWhitelisted = (r: RouteBucket) => r.acc.total > 0 && r.whitelistTotal >= r.acc.total
-  const byUnmetWhitelistLast = (a: RouteBucket, b: RouteBucket) =>
-    Number(fullyWhitelisted(a)) - Number(fullyWhitelisted(b)) || byUnmet(a, b)
-
   const supplierNodes: DispatchPerformanceSupplierNode[] = [...suppliers.values()]
     .sort(byUnmet)
     .map((supplier) => ({
       supplierKey: supplier.supplierKey,
       supplierName: supplier.supplierName,
       vendorCode: supplier.vendorCode,
-      whitelistTotal: supplier.whitelistTotal,
       ...toMetrics(supplier.acc),
       routes: [...supplier.routes.values()]
-        .sort(byUnmetWhitelistLast)
+        .sort(byUnmet)
         .map((route) => ({
           routeCode: route.routeCode,
           whitelistTotal: route.whitelistTotal,
@@ -639,8 +603,10 @@ export async function queryDispatchPerformance(params: {
   startDate: string
   endDate: string
   supplierKeys?: string[]
+  /** 口径开关，见 buildDispatchPerformanceTree；默认剔除白名单 */
+  includeWhitelist?: boolean
 }): Promise<DispatchPerformanceQueryResult> {
-  const { stationCode, startDate, endDate, supplierKeys } = params
+  const { stationCode, startDate, endDate, supplierKeys, includeWhitelist = false } = params
   const db = getDb()
   const t = schema.dispatchPerformanceDailyStats
 
@@ -651,14 +617,20 @@ export async function queryDispatchPerformance(params: {
   ]
   if (supplierKeys?.length) conditions.push(inArray(t.supplierKey, supplierKeys))
 
-  const rows = await db.select().from(t).where(and(...conditions))
+  const rows = await db
+    .select()
+    .from(t)
+    .where(and(...conditions))
 
   return {
     stationCode,
     startDate,
     endDate,
-    arrivalDates: [...new Set(rows.map((r) => r.arrivalDate))].sort(),
-    ...buildDispatchPerformanceTree(rows),
+    // 跟着口径走：剔除白名单时，只有白名单数据的那天就是「这天没数据」
+    arrivalDates: [
+      ...new Set(rows.filter((r) => includeWhitelist || !r.isWhitelist).map((r) => r.arrivalDate)),
+    ].sort(),
+    ...buildDispatchPerformanceTree(rows, includeWhitelist),
   }
 }
 
@@ -691,9 +663,7 @@ export async function listDispatchPerformanceSuppliers(params: {
 export async function purgeOldDispatchPerformanceStats(
   keepDays = DISPATCH_PERFORMANCE_RETENTION_DAYS,
 ): Promise<number> {
-  const cutoff = new Date(Date.now() - keepDays * 24 * 60 * 60 * 1000)
-    .toISOString()
-    .slice(0, 10)
+  const cutoff = new Date(Date.now() - keepDays * 24 * 60 * 60 * 1000).toISOString().slice(0, 10)
   const db = getDb()
   const deleted = await db
     .delete(schema.dispatchPerformanceDailyStats)

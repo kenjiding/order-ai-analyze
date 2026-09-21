@@ -55,14 +55,10 @@ function driver(code: string, total: number, met: number): DispatchDriverNode {
   }
 }
 
-function route(
-  code: string,
-  drivers: DispatchDriverNode[],
-  whitelistTotal = 0,
-): DispatchRouteNode {
+function route(code: string, drivers: DispatchDriverNode[]): DispatchRouteNode {
   const total = drivers.reduce((s, d) => s + d.total, 0)
   const met = drivers.reduce((s, d) => s + d.nextDaySignMet, 0)
-  return { ...metrics(total, met), routeCode: code, whitelistTotal, drivers }
+  return { ...metrics(total, met), routeCode: code, whitelistTotal: 0, drivers }
 }
 
 function supplier(key: string, routes: DispatchRouteNode[]): DispatchSupplierNode {
@@ -73,7 +69,6 @@ function supplier(key: string, routes: DispatchRouteNode[]): DispatchSupplierNod
     supplierKey: key,
     supplierName: key,
     vendorCode: 'V1',
-    whitelistTotal: 0,
     routes,
   }
 }
@@ -108,20 +103,6 @@ test('同一个司机跑多条路由时合并成一行，而不是重复出现',
   assert.equal(p.items.length, 1)
   assert.equal(p.items[0].total, 150)
   assert.equal(p.items[0].unmet, 40, '20 + 20')
-})
-
-test('整条白名单路由不参与考核，路由与司机两个维度都要排除', () => {
-  const wl = route('RW', [driver('CW', 100, 0)], 100)
-  const tree = [supplier('S1', [route('R1', [driver('C1', 100, 90)]), wl])]
-
-  assert.deepEqual(
-    buildPareto(tree, 'route', 'nextDay', 10).items.map((i) => i.label),
-    ['R1'],
-  )
-  assert.deepEqual(
-    buildPareto(tree, 'driver', 'nextDay', 10).items.map((i) => i.label),
-    ['司机C1'],
-  )
 })
 
 test('优先件口径换的是分母分子，不是过滤条件', () => {

@@ -35,6 +35,8 @@ export function useExitRateQueryPage() {
   const [matrixTab, setMatrixTab] = useState<ExitRateDimTab>('route')
   const [matrixSelectedKey, setMatrixSelectedKey] = useState<string | null>(null)
   const [hideZeroMatrixRows, setHideZeroMatrixRows] = useState(false)
+  const [dimView, setDimView] = useState<'chart' | 'table'>('chart')
+  const [matrixView, setMatrixView] = useState<'chart' | 'table'>('chart')
 
   const view: ExitRateSlice | null = useMemo(() => {
     if (!result) return null
@@ -145,6 +147,10 @@ export function useExitRateQueryPage() {
     onChangeMatrixTab,
     hideZeroMatrixRows,
     setHideZeroMatrixRows,
+    dimView,
+    setDimView,
+    matrixView,
+    setMatrixView,
     handleQuery,
     canSubmit,
     stationCode,

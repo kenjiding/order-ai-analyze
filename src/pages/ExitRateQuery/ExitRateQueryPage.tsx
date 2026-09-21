@@ -4,7 +4,9 @@ import type { Dayjs } from 'dayjs'
 import { Search, Timer } from 'lucide-react'
 import { useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
+import { DimRateBarChart } from './components/DimRateBarChart'
 import { HourlyExitChart } from './components/HourlyExitChart'
+import { NextDayHourHeatmap } from './components/NextDayHourHeatmap'
 import {
   formatPct,
   MATRIX_NEXT_DAY_HOURS,
@@ -268,21 +270,44 @@ export default function ExitRateQueryPage() {
                 { key: 'driver', label: t('dim.driver') },
               ]}
               className="px-4 pt-2"
-            />
-            <Table<ExitRateDimRow>
-              rowKey={(row) => row.key || '__empty__'}
-              columns={columns}
-              dataSource={v.dimRows}
-              pagination={{ pageSize: 20, showSizeChanger: false }}
-              scroll={{ x: 900 }}
-              rowClassName={(row) =>
-                row.key === v.selectedKey ? 'bg-[var(--admin-accent-soft)]' : ''
+              tabBarExtraContent={
+                <Radio.Group
+                  optionType="button"
+                  buttonStyle="solid"
+                  value={v.dimView}
+                  onChange={(e) => v.setDimView(e.target.value as 'chart' | 'table')}
+                >
+                  <Radio.Button value="chart">{t('chart.asChart')}</Radio.Button>
+                  <Radio.Button value="table">{t('chart.asTable')}</Radio.Button>
+                </Radio.Group>
               }
-              onRow={(row) => ({
-                onClick: () => v.setSelectedKey(row.key === v.selectedKey ? null : row.key),
-                className: 'cursor-pointer',
-              })}
             />
+            {v.dimView === 'chart' ? (
+              <div className="px-4 pb-5">
+                <p className="mb-1 text-sm font-medium text-slate-700">{t('chart.barTitle')}</p>
+                <p className="mb-3 text-xs text-slate-400">{t('chart.barHint')}</p>
+                <DimRateBarChart
+                  rows={v.dimRows}
+                  selectedKey={v.selectedKey}
+                  onSelect={(key) => v.setSelectedKey(key === v.selectedKey ? null : key)}
+                />
+              </div>
+            ) : (
+              <Table<ExitRateDimRow>
+                rowKey={(row) => row.key || '__empty__'}
+                columns={columns}
+                dataSource={v.dimRows}
+                pagination={{ pageSize: 20, showSizeChanger: false }}
+                scroll={{ x: 900 }}
+                rowClassName={(row) =>
+                  row.key === v.selectedKey ? 'bg-[var(--admin-accent-soft)]' : ''
+                }
+                onRow={(row) => ({
+                  onClick: () => v.setSelectedKey(row.key === v.selectedKey ? null : row.key),
+                  className: 'cursor-pointer',
+                })}
+              />
+            )}
           </section>
 
           <section className="admin-panel p-5">
@@ -294,15 +319,26 @@ export default function ExitRateQueryPage() {
             <HourlyExitChart byHour={chartHours} total={chartTotal} title={chartTitle} />
             <div className="mb-1 mt-5 flex flex-wrap items-center justify-between gap-3">
               <h4 className="text-sm font-medium text-slate-700">{t('hourly.matrixTitle')}</h4>
-              <Radio.Group
-                optionType="button"
-                buttonStyle="solid"
-                value={v.hideZeroMatrixRows ? 'hideZero' : 'all'}
-                onChange={(e) => v.setHideZeroMatrixRows(e.target.value === 'hideZero')}
-              >
-                <Radio.Button value="all">{t('hourly.matrixShowAll')}</Radio.Button>
-                <Radio.Button value="hideZero">{t('hourly.matrixHideZero')}</Radio.Button>
-              </Radio.Group>
+              <div className="flex flex-wrap items-center gap-2">
+                <Radio.Group
+                  optionType="button"
+                  buttonStyle="solid"
+                  value={v.hideZeroMatrixRows ? 'hideZero' : 'all'}
+                  onChange={(e) => v.setHideZeroMatrixRows(e.target.value === 'hideZero')}
+                >
+                  <Radio.Button value="all">{t('hourly.matrixShowAll')}</Radio.Button>
+                  <Radio.Button value="hideZero">{t('hourly.matrixHideZero')}</Radio.Button>
+                </Radio.Group>
+                <Radio.Group
+                  optionType="button"
+                  buttonStyle="solid"
+                  value={v.matrixView}
+                  onChange={(e) => v.setMatrixView(e.target.value as 'chart' | 'table')}
+                >
+                  <Radio.Button value="chart">{t('chart.asChart')}</Radio.Button>
+                  <Radio.Button value="table">{t('chart.asTable')}</Radio.Button>
+                </Radio.Group>
+              </div>
             </div>
             <p className="mb-2 text-xs text-slate-400">{t('hourly.matrixHideZeroHint')}</p>
             <Tabs
@@ -314,21 +350,34 @@ export default function ExitRateQueryPage() {
                 { key: 'driver', label: t('dim.driver') },
               ]}
             />
-            <Table<ExitRateDimRow>
-              rowKey={(row) => `h-${row.key || '__empty__'}`}
-              columns={hourColumns}
-              dataSource={v.matrixRows}
-              pagination={{ pageSize: 20, showSizeChanger: false }}
-              scroll={{ x: 720 }}
-              rowClassName={(row) =>
-                row.key === v.matrixSelectedKey ? 'bg-[var(--admin-accent-soft)]' : ''
-              }
-              onRow={(row) => ({
-                onClick: () =>
-                  v.setMatrixSelectedKey(row.key === v.matrixSelectedKey ? null : row.key),
-                className: 'cursor-pointer',
-              })}
-            />
+            {v.matrixView === 'chart' ? (
+              <div className="pt-2">
+                <p className="mb-3 text-xs text-slate-400">{t('chart.heatHint')}</p>
+                <NextDayHourHeatmap
+                  rows={v.matrixRows}
+                  selectedKey={v.matrixSelectedKey}
+                  onSelect={(key) =>
+                    v.setMatrixSelectedKey(key === v.matrixSelectedKey ? null : key)
+                  }
+                />
+              </div>
+            ) : (
+              <Table<ExitRateDimRow>
+                rowKey={(row) => `h-${row.key || '__empty__'}`}
+                columns={hourColumns}
+                dataSource={v.matrixRows}
+                pagination={{ pageSize: 20, showSizeChanger: false }}
+                scroll={{ x: 720 }}
+                rowClassName={(row) =>
+                  row.key === v.matrixSelectedKey ? 'bg-[var(--admin-accent-soft)]' : ''
+                }
+                onRow={(row) => ({
+                  onClick: () =>
+                    v.setMatrixSelectedKey(row.key === v.matrixSelectedKey ? null : row.key),
+                  className: 'cursor-pointer',
+                })}
+              />
+            )}
           </section>
         </>
       )}

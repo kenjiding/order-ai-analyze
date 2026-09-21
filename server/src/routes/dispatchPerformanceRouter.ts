@@ -80,6 +80,20 @@ function requestUserId(req: Request): string | null {
   return (req as AuthenticatedRequest).authUser?.id ?? null
 }
 
+/**
+ * 同州账号共享同一份配置（读写都算），global/空是老数据的历史兜底、谁都能碰。
+ * 与 fleetSupplierPushRouter 的 canManageSupplierConfig 同一套规则、也要跟
+ * regionVisible() 的三选一保持一致——否则会出现「列表里看得到，点进去却 403」。
+ */
+function canAccessDispatchPerformanceConfig(configRegionCode: string, userRegionCode: string): boolean {
+  const region = configRegionCode.trim()
+  return region === '' || region === LEGACY_GLOBAL_SUPPLIER_REGION_CODE || region === userRegionCode
+}
+
+function sendCrossRegionDenied(res: Response, action: '查看' | '编辑' | '删除' | '触发'): void {
+  res.status(403).json({ error: `无权${action}其他州的统计配置` })
+}
+
 // ── 站点配置：添加一条即开启该站点的每日两趟结算 ──────────────────────────────
 
 dispatchPerformanceRouter.get('/configs', async (req: Request, res: Response) => {
@@ -141,6 +155,9 @@ dispatchPerformanceRouter.put('/configs/:id', async (req: Request, res: Response
   try {
     const existing = await findDispatchPerformanceConfig(id)
     if (!existing) return res.status(404).json({ error: '配置不存在' })
+    if (!canAccessDispatchPerformanceConfig(existing.regionCode, requestRegionCode(req))) {
+      return sendCrossRegionDenied(res, '编辑')
+    }
     if (stationCode && (await isStationTaken(stationCode, id))) {
       return res.status(409).json({ error: '该站点已有统计配置，不能重复添加' })
     }
@@ -162,8 +179,14 @@ dispatchPerformanceRouter.put('/configs/:id', async (req: Request, res: Response
 
 /** 删除配置只停止今后的统计；已结算的历史数据保留，重新添加同一站点即可再看到 */
 dispatchPerformanceRouter.delete('/configs/:id', async (req: Request, res: Response) => {
+  const id = String(req.params.id ?? '').trim()
   try {
-    const ok = await deleteDispatchPerformanceConfig(String(req.params.id ?? '').trim())
+    const existing = await findDispatchPerformanceConfig(id)
+    if (!existing) return res.status(404).json({ error: '配置不存在' })
+    if (!canAccessDispatchPerformanceConfig(existing.regionCode, requestRegionCode(req))) {
+      return sendCrossRegionDenied(res, '删除')
+    }
+    const ok = await deleteDispatchPerformanceConfig(id)
     if (!ok) return res.status(404).json({ error: '配置不存在' })
     return res.json({ ok: true })
   } catch (err) {
@@ -189,11 +212,16 @@ dispatchPerformanceRouter.get('/configs/:id/data', async (req: Request, res: Res
   try {
     const config = await findDispatchPerformanceConfig(String(req.params.id ?? '').trim())
     if (!config) return res.status(404).json({ error: '配置不存在' })
+    if (!canAccessDispatchPerformanceConfig(config.regionCode, requestRegionCode(req))) {
+      return sendCrossRegionDenied(res, '查看')
+    }
 
     const result = await queryDispatchPerformance({
       stationCode: config.stationCode,
       ...range,
       supplierKeys: parseSupplierKeys(req.query.supplierKey ?? req.query.supplierKeys),
+      // 口径开关：缺省（含老链接）= 剔除白名单，只有显式要全量才带 whitelist=include
+      includeWhitelist: req.query.whitelist === 'include',
     })
     // 时区必须与结算任务一致；本行 regionCode 就是结算取的那个州，只有空/global 才需要
     // 回落到 resolveStationTargets 那条重路径（全量供应商配置 + 建索引）
@@ -244,6 +272,9 @@ dispatchPerformanceRouter.post('/configs/:id/settle-now', async (req: Request, r
   try {
     const config = await findDispatchPerformanceConfig(String(req.params.id ?? '').trim())
     if (!config) return res.status(404).json({ error: '配置不存在' })
+    if (!canAccessDispatchPerformanceConfig(config.regionCode, requestRegionCode(req))) {
+      return sendCrossRegionDenied(res, '触发')
+    }
     if (!config.isEnabled) return res.status(400).json({ error: '该站点统计已停用，请先启用' })
 
     // 同一站点已有排队/执行中的任务就复用，避免连点打出多份 iMile 请求

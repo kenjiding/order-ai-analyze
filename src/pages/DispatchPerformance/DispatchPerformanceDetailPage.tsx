@@ -1,4 +1,4 @@
-import { Alert, Button, DatePicker, Popconfirm, Select, Tag, Tooltip } from 'antd'
+import { Alert, Button, DatePicker, Popconfirm, Segmented, Select, Tag, Tooltip } from 'antd'
 import { ArrowLeft, RefreshCw, Zap } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { useNavigate, useParams } from 'react-router-dom'
@@ -8,7 +8,7 @@ import { PerformanceBreakdownTable } from './components/PerformanceBreakdownTabl
 import { UnmetParetoChart } from './components/UnmetParetoChart'
 import { SettleNowResult } from './components/SettleNowResult'
 import { useDispatchPerformanceDetailPage } from './useDispatchPerformanceDetailPage'
-import type { DispatchMetrics, DispatchSettledBatch } from './dispatchPerformanceTypes'
+import type { DispatchMetrics, DispatchSettledBatch, WhitelistMode } from './dispatchPerformanceTypes'
 
 const { RangePicker } = DatePicker
 
@@ -215,6 +215,14 @@ export default function DispatchPerformanceDetailPage() {
             className="min-w-[260px]"
             maxTagCount="responsive"
           />
+          <Segmented<WhitelistMode>
+            value={v.whitelistMode}
+            onChange={v.setWhitelistMode}
+            options={[
+              { label: t('detail.whitelistModeExclude', { ns: 'dispatchPerformance' }), value: 'exclude' },
+              { label: t('detail.whitelistModeInclude', { ns: 'dispatchPerformance' }), value: 'include' },
+            ]}
+          />
           {v.result ? (
             <SettleProgress batches={v.result.recentBatches} t={(key, opts) => t(key, { ns: 'dispatchPerformance', ...opts })} />
           ) : null}
@@ -294,11 +302,18 @@ export default function DispatchPerformanceDetailPage() {
             <Alert
               type="info"
               showIcon
-              message={t('detail.whitelistTitle', {
-                ns: 'dispatchPerformance',
-                count: v.result.whitelistTotal,
-              })}
-              description={t('detail.whitelistDesc', { ns: 'dispatchPerformance' })}
+              message={t(
+                v.whitelistMode === 'exclude'
+                  ? 'detail.whitelistExcludedTitle'
+                  : 'detail.whitelistIncludedTitle',
+                { ns: 'dispatchPerformance', count: v.result.whitelistTotal },
+              )}
+              description={t(
+                v.whitelistMode === 'exclude'
+                  ? 'detail.whitelistExcludedDesc'
+                  : 'detail.whitelistIncludedDesc',
+                { ns: 'dispatchPerformance' },
+              )}
             />
           ) : null}
           <div className="admin-panel p-4">

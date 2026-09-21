@@ -58,5 +58,16 @@
     "axisPercent": "Share (%)",
     "sameDay": "Day 0 {{start}}–{{end}}",
     "nextDay": "Day +1 {{start}}–{{end}}"
+  },
+  "chart": {
+    "asChart": "Chart",
+    "asTable": "Table",
+    "barTitle": "Same-day vs next-morning exit rate (worst combined rate on top)",
+    "barHint": "Four bars share one baseline, so lengths compare directly: same-day, next-day 0–11am, exited late, not exited. Inbound volume in brackets. Click a bar to filter the hourly chart below.",
+    "late": "Exited late",
+    "heatTitle": "Next-day 7–11am exit heatmap",
+    "heatHint": "Rows sorted by share exiting between 7 and 11am; darker and higher = volume held until the next morning. Click a cell to select the row.",
+    "heatLegend": "Hour share",
+    "empty": "No data"
   }
 }

@@ -4,6 +4,7 @@ import type {
   DispatchPerformanceConfig,
   DispatchPerformanceConfigDraft,
   DispatchPerformanceResult,
+  WhitelistMode,
 } from './dispatchPerformanceTypes'
 
 const JSON_HEADERS = { 'Content-Type': 'application/json' } as const
@@ -68,6 +69,7 @@ export type DispatchPerformanceDataQuery = {
   startDate: string
   endDate: string
   supplierKeys?: string[]
+  whitelistMode: WhitelistMode
 }
 
 export async function fetchDispatchPerformanceData(
@@ -76,6 +78,7 @@ export async function fetchDispatchPerformanceData(
 ): Promise<DispatchPerformanceResult> {
   const params = new URLSearchParams({ startDate: query.startDate, endDate: query.endDate })
   if (query.supplierKeys?.length) params.set('supplierKey', query.supplierKeys.join(','))
+  if (query.whitelistMode === 'include') params.set('whitelist', 'include')
   return request<DispatchPerformanceResult>(`/configs/${query.configId}/data?${params}`, {
     method: 'GET',
     signal,

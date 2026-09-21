@@ -80,11 +80,17 @@ export type DispatchDriverNode = DispatchMetrics & {
   before11UnmetWaybillNos: string[]
 }
 
+/**
+ * 统计口径：白名单格子算不算进来。全局一个开关，每一层每一个指标都跟着它走 ——
+ * 不存在「率剔白名单但钱不剔」这种逐指标特例。
+ */
+export type WhitelistMode = 'exclude' | 'include'
+
 export type DispatchRouteNode = DispatchMetrics & {
   routeCode: string
   /**
-   * 本行 total 里有多少单落在白名单上、因而没进供应商行与站点汇总的率。
-   * 0 = 全部计入；等于 total = 整条路由都不计入；介于两者之间 = 区间内改过白名单配置。
+   * 本行 total 里有多少单落在白名单上。只是标记，不改变本行任何数字。
+   * 'exclude' 口径下这些行不在结果里，故恒为 0；'include' 口径下 > 0 表示这条路由本不参与考核。
    */
   whitelistTotal: number
   drivers: DispatchDriverNode[]
@@ -94,8 +100,6 @@ export type DispatchSupplierNode = DispatchMetrics & {
   supplierKey: string
   supplierName: string
   vendorCode: string
-  /** 该供应商名下白名单路由的单量：没算进本行的 total 与两个率，展开后能看到明细 */
-  whitelistTotal: number
   routes: DispatchRouteNode[]
 }
 
@@ -170,7 +174,7 @@ export type DispatchPerformanceResult = {
   /** 日历上出仓趟已该跑完、台账里却没有跑过记录的到件日 = 结算任务真的漏跑的天（服务端已算好） */
   missingDates: string[]
   overall: DispatchMetrics
-  /** 全站白名单路由的单量：同样没算进 overall */
+  /** 'exclude' 口径 = 被剔掉了多少单；'include' 口径 = overall 里含了多少单白名单 */
   whitelistTotal: number
   suppliers: DispatchSupplierNode[]
   /** 该区间内有数据的供应商，供筛选器用 */

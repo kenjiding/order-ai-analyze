@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import dayjs, { type Dayjs } from 'dayjs'
 import { useTranslation } from 'react-i18next'
 import { fetchDispatchPerformanceData } from './dispatchPerformanceApi'
-import type { DispatchPerformanceResult } from './dispatchPerformanceTypes'
+import type { DispatchPerformanceResult, WhitelistMode } from './dispatchPerformanceTypes'
 import { useSettleNow } from './useSettleNow'
 
 /** 默认区间：最近 7 天。结算最长滞后 4 天（周五到件→下周二），7 天能稳定看到几批完整数据 */
@@ -22,6 +22,8 @@ export function useDispatchPerformanceDetailPage(configId: string | undefined) {
     dayjs().subtract(1, 'day'),
   ])
   const [supplierKeys, setSupplierKeys] = useState<string[]>([])
+  // 默认剔除白名单：这是考核口径，跟列表页那两个率对得上
+  const [whitelistMode, setWhitelistMode] = useState<WhitelistMode>('exclude')
   const [result, setResult] = useState<DispatchPerformanceResult | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -41,7 +43,7 @@ export function useDispatchPerformanceDetailPage(configId: string | undefined) {
     setError(null)
     try {
       const data = await fetchDispatchPerformanceData(
-        { configId, startDate, endDate, supplierKeys },
+        { configId, startDate, endDate, supplierKeys, whitelistMode },
         controller.signal,
       )
       if (!controller.signal.aborted) setResult(data)
@@ -52,7 +54,7 @@ export function useDispatchPerformanceDetailPage(configId: string | undefined) {
     } finally {
       if (!controller.signal.aborted) setLoading(false)
     }
-  }, [configId, startDate, endDate, supplierKeys, queryError])
+  }, [configId, startDate, endDate, supplierKeys, whitelistMode, queryError])
 
   useEffect(() => {
     // 筛选条件变化即重查已存的统计结果（不拉 iMile）
@@ -76,6 +78,8 @@ export function useDispatchPerformanceDetailPage(configId: string | undefined) {
     setRange,
     supplierKeys,
     setSupplierKeys,
+    whitelistMode,
+    setWhitelistMode,
     result,
     // 服务端按结算台账算好的「真的漏跑」的天，不能在前端拿 arrivalDates 反推：
     // 周末没批次、不分拣的工作日 0 格子、供应商筛选，都会让有跑过的天看起来是空的

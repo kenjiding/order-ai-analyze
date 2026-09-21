@@ -7,8 +7,8 @@
  *   Top 20% 占未达成 ≈ 20% → 全员问题，换人没用，要改流程；
  *   Top 20% 占未达成 70%   → 少数人/少数路由拖的，针对性处理收益最大。
  *
- * 白名单口径与后端一致：供应商层本就已剔除；路由层与司机层的 metrics 含白名单单量，
- * 所以整条落在白名单上的路由（及其司机）在这里直接跳过——它们不参与考核。
+ * 白名单不在这里做特判：口径由页面开关决定，后端已经按口径把树建好了 ——
+ * 「剔除白名单」口径下白名单路由压根不在树里，「全量」口径下它就该和别的路由一起排。
  */
 import type {
   DispatchMetrics,
@@ -48,11 +48,6 @@ function metricOf(m: DispatchMetrics, metric: ParetoMetric): { total: number; me
     : { total: m.total, met: m.nextDaySignMet }
 }
 
-/** 整条路由都落在白名单上 = 不参与考核，排行里不该出现 */
-function fullyWhitelisted(total: number, whitelistTotal: number): boolean {
-  return total > 0 && whitelistTotal >= total
-}
-
 type Raw = { key: string; label: string; metrics: DispatchMetrics }
 
 function flatten(suppliers: DispatchSupplierNode[], dimension: ParetoDimension): Raw[] {
@@ -63,7 +58,6 @@ function flatten(suppliers: DispatchSupplierNode[], dimension: ParetoDimension):
   const out: Raw[] = []
   for (const supplier of suppliers) {
     for (const route of supplier.routes) {
-      if (fullyWhitelisted(route.total, route.whitelistTotal)) continue
       if (dimension === 'route') {
         out.push({
           key: `${supplier.supplierKey}\t${route.routeCode}`,

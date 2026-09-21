@@ -902,8 +902,8 @@ export const dispatchPerformanceDailyStats = pgTable(
     /**
      * 该格子的路由码命中了供应商配置的路由码白名单。
      *
-     * 白名单路由「不参与考核」但要看得见：路由码/司机两层照常展示各自指标，
-     * 供应商行与站点汇总在累加时跳过这些格子（见 queryDispatchPerformance）。
+     * 是否剔除是查询侧的口径开关，不是这张表的固定行为（见 queryDispatchPerformance
+     * 的 includeWhitelist）：默认剔除时这些格子整格不参与统计；全量口径下照常参与。
      */
     isWhitelist: boolean('is_whitelist').notNull().default(false),
 
