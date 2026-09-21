@@ -89,6 +89,30 @@
     "whitelistModeExclude": "Exclude whitelist",
     "whitelistModeInclude": "All data"
   },
+  "ranking": {
+    "title": "Supplier composite ranking",
+    "needTwo": "Composite ranking needs at least 2 suppliers to be meaningful",
+    "poolMedian": "Pool median",
+    "topScore": "Top",
+    "bottomScore": "Bottom",
+    "compositeScore": "Composite score",
+    "weightSettings": "Weight settings",
+    "resetDefault": "Reset to default",
+    "weightHint": "Effective weights: {{weights}}. Metrics with insufficient sample (hub-exit/dispatch denominator < 30, priority denominator < 10) are excluded and their weight is redistributed to the rest.",
+    "breakdownTitle": "Metric breakdown (weights renormalized to enabled metrics)",
+    "sampleInsufficient": "Insufficient sample",
+    "sampleInsufficientHint": "Insufficient sample, reference only",
+    "notEnabled": "Not enabled",
+    "weightPct": "Weight {{pct}}%",
+    "ticketsToTarget": "{{count}} more to target",
+    "metrics": {
+      "dispatch.priorityNextDaySign": "Priority next-day completion rate",
+      "dispatch.sign24h": "24h dispatch rate",
+      "dispatch.before11Exit": "Before-11 hub exit rate",
+      "dispatch.nextDaySign": "Next-day dispatch rate",
+      "dispatch.sameDayExit": "Same-day hub exit rate"
+    }
+  },
   "attribution": {
     "title": "Achievement attribution",
     "subtitle": "Splits every missed waybill into two causes: left the hub late (sorting/hub-exit side) and left on time but was not delivered (courier and workload side). Each points to a different action.",

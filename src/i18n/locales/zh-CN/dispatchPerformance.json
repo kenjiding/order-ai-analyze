@@ -89,6 +89,30 @@
     "whitelistModeExclude": "剔除白名单",
     "whitelistModeInclude": "全量"
   },
+  "ranking": {
+    "title": "供应商综合排名",
+    "needTwo": "综合排名需至少 2 家供应商才有对标意义",
+    "poolMedian": "池均分",
+    "topScore": "榜首",
+    "bottomScore": "垫底",
+    "compositeScore": "综合分",
+    "weightSettings": "权重设置",
+    "resetDefault": "恢复默认",
+    "weightHint": "生效权重：{{weights}}。样本不足（出仓/派签分母 <30，优先件分母 <10）的分项不参与加权，权重按比例转移给其余分项。",
+    "breakdownTitle": "分项贡献（权重已按启用指标重归一化）",
+    "sampleInsufficient": "样本不足",
+    "sampleInsufficientHint": "样本不足，仅供参考",
+    "notEnabled": "未启用",
+    "weightPct": "权 {{pct}}%",
+    "ticketsToTarget": "还差 {{count}} 票",
+    "metrics": {
+      "dispatch.priorityNextDaySign": "优先件次日完成率",
+      "dispatch.sign24h": "24H派签达成率",
+      "dispatch.before11Exit": "11点前出仓率",
+      "dispatch.nextDaySign": "次日派签达成率",
+      "dispatch.sameDayExit": "当天出仓率"
+    }
+  },
   "attribution": {
     "title": "达成归因",
     "subtitle": "把没做到的单拆成两段：出仓就晚了（分拣出仓侧）和出仓准点却没派掉（司机与负载侧）。两段各自对应不同的动作。",

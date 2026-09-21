@@ -30,10 +30,10 @@ export const RANKING_METRIC_LABELS_ZH: Record<RankingMetricKey, string> = {
   'vendor.longTail': '长尾单',
 }
 
-const MIN_RATE_SAMPLE = 30
+export const MIN_RATE_SAMPLE = 30
 const MIN_COMPLAINT_WAYBILLS = 500
 /** 有效分项权重和低于此值 → 样本不足，名次排在有效样本之后 */
-const MIN_EFFECTIVE_WEIGHT_RATIO = 0.5
+export const MIN_EFFECTIVE_WEIGHT_RATIO = 0.5
 
 export type VendorRankingInput = {
   /**

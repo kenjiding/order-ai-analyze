@@ -7,6 +7,7 @@ import { AttributionWaterfall } from './components/AttributionWaterfall'
 import { PerformanceBreakdownTable } from './components/PerformanceBreakdownTable'
 import { UnmetParetoChart } from './components/UnmetParetoChart'
 import { SettleNowResult } from './components/SettleNowResult'
+import { SupplierRankingBoard } from './components/SupplierRankingBoard'
 import { useDispatchPerformanceDetailPage } from './useDispatchPerformanceDetailPage'
 import type { DispatchMetrics, DispatchSettledBatch, WhitelistMode } from './dispatchPerformanceTypes'
 
@@ -250,6 +251,14 @@ export default function DispatchPerformanceDetailPage() {
             overall={v.result.overall}
             t={(key, opts) => t(key, { ns: 'dispatchPerformance', ...opts })}
           />
+          <SupplierRankingBoard suppliers={v.result.suppliers} />
+          <div className="admin-panel p-4">
+            <PerformanceBreakdownTable suppliers={v.result.suppliers} loading={v.loading} />
+          </div>
+          <UnmetParetoChart
+            suppliers={v.result.suppliers}
+            settled={v.result.overall.dispatchSettled}
+          />
           <section className="admin-panel space-y-4 p-4">
             <div>
               <h3 className="admin-title text-xl">
@@ -282,13 +291,6 @@ export default function DispatchPerformanceDetailPage() {
               />
             </div>
           </section>
-          <div className="admin-panel p-4">
-            <PerformanceBreakdownTable suppliers={v.result.suppliers} loading={v.loading} />
-          </div>
-          <UnmetParetoChart
-            suppliers={v.result.suppliers}
-            settled={v.result.overall.dispatchSettled}
-          />
         </>
       ) : null}
     </div>
