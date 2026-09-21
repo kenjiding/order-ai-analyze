@@ -3,12 +3,6 @@ import type { MultiPolygon, Polygon, Position } from 'geojson'
 const EARTH_RADIUS_M = 6_371_008.8
 const TO_RAD = Math.PI / 180
 
-/**
- * 密度色阶刻意用无彩色：明度轴表达量值，色相轴留给 vendorColors 的分类色。
- * 两者分工明确，底图不会和柱体抢读。
- */
-export const DENSITY_RAMP = ['#f1f5f9', '#cbd5e1', '#94a3b8', '#64748b', '#334155'] as const
-
 /** 球面余量法（Chamberlain & Duquette），环是否显式闭合都能算 */
 function ringAreaM2(ring: Position[]): number {
   if (ring.length < 3) return 0
@@ -77,71 +71,6 @@ export function polygonCentroid(geometry: Polygon | MultiPolygon): [number, numb
   }
   if (!Number.isFinite(minLng) || !Number.isFinite(minLat)) return null
   return [(minLng + maxLng) / 2, (minLat + maxLat) / 2]
-}
-
-export type DensityScale = {
-  /** 内部切点，长度 = colors.length - 1 */
-  breaks: number[]
-  colors: string[]
-  colorOf: (density: number) => string
-  labels: () => string[]
-}
-
-/**
- * 分位分级：票/km² 在 CBD 与外围之间跨数个数量级，固定断点会把绝大多数邮区压进同一档。
- * 代价是跨日期区间颜色不可比，所以图例必须打出实际区间数值。
- */
-export function quantileBreaks(values: number[], classes: number): number[] {
-  const sorted = [...values].sort((a, b) => a - b)
-  if (sorted.length === 0 || classes < 2) return []
-  const breaks: number[] = []
-  for (let i = 1; i < classes; i += 1) {
-    const pos = (i / classes) * (sorted.length - 1)
-    const low = Math.floor(pos)
-    const high = Math.ceil(pos)
-    breaks.push(sorted[low]! + (sorted[high]! - sorted[low]!) * (pos - low))
-  }
-  // 重复切点会造成空档位，去掉后色阶自动收窄
-  return [...new Set(breaks.filter((value) => Number.isFinite(value)))].sort((a, b) => a - b)
-}
-
-/**
- * 丢掉会造出空档位的切点：数据偏斜时（比如只有一个 CBD 离群邮区）分位切点会挤在一起，
- * 图例上打出一个没有任何邮区落进去的区间是误导。
- */
-function dropEmptyBuckets(sortedValues: number[], breaks: number[]): number[] {
-  const kept: number[] = []
-  let cursor = 0
-  for (const value of breaks) {
-    let next = cursor
-    while (next < sortedValues.length && sortedValues[next]! <= value) next += 1
-    if (next > cursor && next < sortedValues.length) {
-      kept.push(value)
-      cursor = next
-    }
-  }
-  return kept
-}
-
-export function buildDensityScale(values: number[], classes = DENSITY_RAMP.length): DensityScale {
-  const usable = values.filter((value) => Number.isFinite(value) && value >= 0)
-  const max = usable.length > 0 ? Math.max(...usable) : 0
-  const breaks = dropEmptyBuckets(
-    [...usable].sort((a, b) => a - b),
-    quantileBreaks(usable, Math.min(classes, DENSITY_RAMP.length)),
-  )
-  const colors = DENSITY_RAMP.slice(DENSITY_RAMP.length - (breaks.length + 1))
-  const colorOf = (density: number) => {
-    let index = 0
-    while (index < breaks.length && density > breaks[index]!) index += 1
-    return colors[Math.min(index, colors.length - 1)]!
-  }
-  const labels = () => {
-    const min = usable.length > 0 ? Math.min(...usable) : 0
-    const edges = [min, ...breaks, max]
-    return colors.map((_, index) => `${formatDensity(edges[index]!)} – ${formatDensity(edges[index + 1]!)}`)
-  }
-  return { breaks, colors: [...colors], colorOf, labels }
 }
 
 export function formatDensity(density: number): string {

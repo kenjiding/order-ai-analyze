@@ -91,6 +91,8 @@ SSH_BASE_OPTS=(
   -p "$ECS_SSH_PORT"
   -o StrictHostKeyChecking=accept-new
   -o ConnectTimeout=15
+  -o ServerAliveInterval=15
+  -o ServerAliveCountMax=3
 )
 
 run_ssh() {
@@ -149,8 +151,11 @@ if $USE_SUDO; then
   echo "==> 远端写入: sudo（目录在 /var/www 下）"
 fi
 
-echo "==> 上传 dist/（tar + ssh）"
+echo "==> 上传 dist/（tar + ssh，网络较慢时可能需要 1~3 分钟，请耐心等待）"
+( while true; do sleep 10; echo "    ...仍在上传（$(date +%H:%M:%S)）"; done ) &
+HEARTBEAT_PID=$!
 COPYFILE_DISABLE=1 tar czf - -C "$ROOT/dist" . | remote_prepare_and_extract "$ECS_WEB_REMOTE_DIR"
+kill "$HEARTBEAT_PID" 2>/dev/null || true
 
 if $RELOAD_NGINX; then
   echo "==> 重载 Nginx"

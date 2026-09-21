@@ -90,12 +90,16 @@ SSH_BASE_OPTS=(
   -p "$ECS_SSH_PORT"
   -o StrictHostKeyChecking=accept-new
   -o ConnectTimeout=15
+  -o ServerAliveInterval=15
+  -o ServerAliveCountMax=3
 )
 # scp 端口用大写 -P；-p 在 scp 中表示保留时间戳
 SCP_BASE_OPTS=(
   -P "$ECS_SSH_PORT"
   -o StrictHostKeyChecking=accept-new
   -o ConnectTimeout=15
+  -o ServerAliveInterval=15
+  -o ServerAliveCountMax=3
 )
 
 run_ssh() {
@@ -114,6 +118,15 @@ run_ssh() {
   fi
 }
 
+start_heartbeat() {
+  ( while true; do sleep 10; echo "    ...仍在传输（$(date +%H:%M:%S)）"; done ) &
+  HEARTBEAT_PID=$!
+}
+
+stop_heartbeat() {
+  kill "$HEARTBEAT_PID" 2>/dev/null || true
+}
+
 run_scp() {
   local src="$1"
   local dest="$2"
@@ -127,7 +140,8 @@ run_scp() {
 }
 
 upload_via_tar() {
-  echo "==> 同步 server 文件（tar + ssh，不依赖远端 rsync）"
+  echo "==> 同步 server 文件（tar + ssh，不依赖远端 rsync；网络较慢时可能需要几分钟，请耐心等待）"
+  start_heartbeat
   # COPYFILE_DISABLE 避免 macOS 扩展属性在 Linux 解压时报错
   COPYFILE_DISABLE=1 tar czf - \
     --exclude 'node_modules' \
@@ -140,6 +154,7 @@ upload_via_tar() {
     --exclude '.env.*' \
     -C "$ROOT" . \
   | run_ssh "mkdir -p ${ECS_REMOTE_DIR} && tar xzf - -C ${ECS_REMOTE_DIR} 2>/dev/null"
+  stop_heartbeat
 }
 
 # 前后端共用模块（如 rankingScore）；镜像 build context 为 server 的父目录
@@ -153,8 +168,10 @@ upload_shared_via_tar() {
   remote_parent="$(dirname "${ECS_REMOTE_DIR}")"
   remote_shared="${remote_parent}/shared"
   echo "==> 同步 shared/ → ${remote_shared}"
+  start_heartbeat
   COPYFILE_DISABLE=1 tar czf - -C "$(cd "$shared_dir/.." && pwd)" shared \
   | run_ssh "mkdir -p ${remote_parent} && tar xzf - -C ${remote_parent} 2>/dev/null"
+  stop_heartbeat
 }
 
 echo "==> 目标: ${ECS_USER}@${ECS_HOST}:${ECS_REMOTE_DIR}"

@@ -1,5 +1,5 @@
 import type { Feature, FeatureCollection, Polygon, Position } from 'geojson'
-import { polygonAreaKm2, polygonCentroid, type DensityScale } from './regionMetrics'
+import { polygonAreaKm2, polygonCentroid } from './regionMetrics'
 import {
   cellMetricValue,
   type MapMetric,
@@ -168,18 +168,45 @@ export function maxZipTotal(stats: ZipStat[]): number {
   return max
 }
 
-/** 平铺的邮区面：只表达密度，不表达绝对票量 */
-export function buildRegionFillCollection(stats: ZipStat[], scale: DensityScale): FeatureCollection {
+export function maxZipDensity(stats: ZipStat[]): number {
+  let max = 0
+  for (const stat of stats) {
+    if (stat.density != null && stat.density > max) max = stat.density
+  }
+  return max
+}
+
+/** 密度未知的邮区（没有 ABS 边界面积）退回这个中性透明度，不伪造深浅 */
+const REGION_FILL_OPACITY_DEFAULT = 0.5
+export const REGION_FILL_OPACITY_MIN = 0.22
+export const REGION_FILL_OPACITY_MAX = 0.85
+
+/**
+ * 平铺的邮区面：颜色 = 该邮区票量/金额最高的供应商（同色连片即该供应商的地盘），
+ * 深浅 = 配送密度（沿用柱高同一套 sqrt 压缩，长尾不会把大多数邮区都糊成一个色阶）。
+ */
+export function buildRegionFillCollection(
+  stats: ZipStat[],
+  colorOf: (supplierKey: string) => string,
+): FeatureCollection {
+  const maxDensity = maxZipDensity(stats)
   const features: Feature[] = []
   for (const stat of stats) {
-    if (stat.density == null) continue
+    const topRow = stat.rows[0]
+    if (!topRow || topRow.value <= 0) continue
+    const fillOpacity =
+      stat.density == null
+        ? REGION_FILL_OPACITY_DEFAULT
+        : REGION_FILL_OPACITY_MIN +
+          columnHeightRatio(stat.density, maxDensity) * (REGION_FILL_OPACITY_MAX - REGION_FILL_OPACITY_MIN)
     for (const geometry of stat.polygons) {
       features.push({
         type: 'Feature',
         properties: {
           zipCode: stat.zipCode,
           density: stat.density,
-          densityColor: scale.colorOf(stat.density),
+          fillColor: colorOf(topRow.cell.supplierKey),
+          fillOpacity,
         },
         geometry,
       })

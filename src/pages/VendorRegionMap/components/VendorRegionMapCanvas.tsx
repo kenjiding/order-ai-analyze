@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { Compass, Radar, Warehouse } from 'lucide-react'
+import { ChevronDown, ChevronUp, Columns3, Compass, Radar, Warehouse } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { i18n } from '../../../i18n'
 import { VendorRegionMapLoading } from './VendorRegionMapLoading'
@@ -17,9 +17,11 @@ import {
   columnWorldScale,
   heightLegendTicks,
   maxZipTotal,
+  REGION_FILL_OPACITY_MAX,
+  REGION_FILL_OPACITY_MIN,
   type ZipStat,
 } from '../columnGeometry'
-import { buildDensityScale, formatAreaKm2, formatDensity } from '../regionMetrics'
+import { formatAreaKm2, formatDensity } from '../regionMetrics'
 import {
   ADELAIDE_MAP_CENTER,
   ADELAIDE_MAP_ZOOM,
@@ -193,6 +195,8 @@ export function VendorRegionMapCanvas({
   const metricRef = useRef(metric)
   const warehouseMarkerRef = useRef<maplibregl.Marker | null>(null)
   const [ringsVisible, setRingsVisible] = useState(true)
+  const [columnsVisible, setColumnsVisible] = useState(true)
+  const [legendExpanded, setLegendExpanded] = useState(false)
   const [worldScale, setWorldScale] = useState(() =>
     Math.round(columnWorldScale(ADELAIDE_MAP_CENTER.lat, ADELAIDE_MAP_ZOOM) / WORLD_SCALE_STEP) *
     WORLD_SCALE_STEP,
@@ -224,17 +228,9 @@ export function VendorRegionMapCanvas({
     statsRef.current = new Map(zipStats.map((stat) => [stat.zipCode, stat]))
   }, [zipStats])
 
-  const densityScale = useMemo(
-    () =>
-      buildDensityScale(
-        zipStats.flatMap((stat) => (stat.density != null ? [stat.density] : [])),
-      ),
-    [zipStats],
-  )
-
   const regionCollection = useMemo(
-    () => buildRegionFillCollection(zipStats, densityScale),
-    [densityScale, zipStats],
+    () => buildRegionFillCollection(zipStats, (supplierKey) => colorFromMap(colorMap, supplierKey)),
+    [colorMap, zipStats],
   )
 
   const columnCollection = useMemo(
@@ -249,7 +245,6 @@ export function VendorRegionMapCanvas({
 
   const maxTotal = useMemo(() => maxZipTotal(zipStats), [zipStats])
   const heightTicks = useMemo(() => heightLegendTicks(maxTotal), [maxTotal])
-  const densityLabels = useMemo(() => densityScale.labels(), [densityScale])
 
   useEffect(() => {
     if (!containerRef.current || mapRef.current) return
@@ -301,8 +296,8 @@ export function VendorRegionMapCanvas({
           type: 'fill',
           source: REGIONS_SOURCE,
           paint: {
-            'fill-color': ['get', 'densityColor'],
-            'fill-opacity': 0.45,
+            'fill-color': ['get', 'fillColor'],
+            'fill-opacity': ['to-number', ['get', 'fillOpacity']],
           },
         })
         map.addLayer({
@@ -451,6 +446,12 @@ export function VendorRegionMapCanvas({
 
   useEffect(() => {
     const map = mapRef.current
+    if (!map?.getLayer(COLUMNS_EXTRUSION)) return
+    map.setLayoutProperty(COLUMNS_EXTRUSION, 'visibility', columnsVisible ? 'visible' : 'none')
+  }, [columnsVisible])
+
+  useEffect(() => {
+    const map = mapRef.current
     const apply = () => {
       ;(map?.getSource(REGIONS_SOURCE) as maplibregl.GeoJSONSource | undefined)?.setData(regionCollection)
       ;(map?.getSource(COLUMNS_SOURCE) as maplibregl.GeoJSONSource | undefined)?.setData(columnCollection)
@@ -505,6 +506,15 @@ export function VendorRegionMapCanvas({
           <Radar className="h-4 w-4" aria-hidden />
           {t('distanceRings')}
         </button>
+        <button
+          type="button"
+          className="vrm-tool"
+          aria-pressed={columnsVisible}
+          onClick={() => setColumnsVisible((current) => !current)}
+        >
+          <Columns3 className="h-4 w-4" aria-hidden />
+          {t('toggleColumns')}
+        </button>
       </div>
 
       {allHidden ? (
@@ -520,61 +530,85 @@ export function VendorRegionMapCanvas({
       ) : null}
 
       <div className="vrm-map-legend vrm-glass">
-        {heightTicks.length > 0 ? (
-          <div className="vrm-map-legend__block">
-            <div className="vrm-map-legend__title">{t(`legendHeight_${metric}`)}</div>
-            <div className="vrm-map-legend__bars">
-              {heightTicks.map((tick) => (
-                <div key={tick} className="vrm-map-legend__bar-row">
+        <button
+          type="button"
+          className="vrm-map-legend__header"
+          aria-expanded={legendExpanded}
+          onClick={() => setLegendExpanded((current) => !current)}
+        >
+          <span className="vrm-map-legend__title">{t('legendToggle')}</span>
+          {legendExpanded ? (
+            <ChevronUp className="h-4 w-4" aria-hidden />
+          ) : (
+            <ChevronDown className="h-4 w-4" aria-hidden />
+          )}
+        </button>
+
+        {legendExpanded ? (
+          <div className="vrm-map-legend__body">
+            {heightTicks.length > 0 ? (
+              <div className="vrm-map-legend__block">
+                <div className="vrm-map-legend__title">{t(`legendHeight_${metric}`)}</div>
+                <div className="vrm-map-legend__bars">
+                  {heightTicks.map((tick) => (
+                    <div key={tick} className="vrm-map-legend__bar-row">
+                      <span
+                        className="vrm-map-legend__bar-col"
+                        style={{
+                          height: `${
+                            LEGEND_BAR_MIN_PX +
+                            columnHeightRatio(tick, maxTotal) * (LEGEND_BAR_MAX_PX - LEGEND_BAR_MIN_PX)
+                          }px`,
+                        }}
+                        aria-hidden
+                      />
+                      <span className="vrm-map-legend__bar-value">{formatMetricValue(tick, metric)}</span>
+                    </div>
+                  ))}
+                </div>
+                <div className="vrm-map-legend__hint">{t('legendHeightHint')}</div>
+              </div>
+            ) : null}
+
+            <div className="vrm-map-legend__block">
+              <div className="vrm-map-legend__title">{t('legendVendorTitle')}</div>
+              <div className="vrm-map-legend__swatches">
+                <div className="vrm-map-legend__swatch-row">
                   <span
-                    className="vrm-map-legend__bar-col"
-                    style={{
-                      height: `${
-                        LEGEND_BAR_MIN_PX +
-                        columnHeightRatio(tick, maxTotal) * (LEGEND_BAR_MAX_PX - LEGEND_BAR_MIN_PX)
-                      }px`,
-                    }}
+                    className="vrm-map-legend__swatch"
+                    style={{ background: '#334155', opacity: REGION_FILL_OPACITY_MIN }}
                     aria-hidden
                   />
-                  <span className="vrm-map-legend__bar-value">{formatMetricValue(tick, metric)}</span>
+                  <span className="vrm-map-legend__swatch-label">{t('legendVendorDensityLow')}</span>
                 </div>
-              ))}
+                <div className="vrm-map-legend__swatch-row">
+                  <span
+                    className="vrm-map-legend__swatch"
+                    style={{ background: '#334155', opacity: REGION_FILL_OPACITY_MAX }}
+                    aria-hidden
+                  />
+                  <span className="vrm-map-legend__swatch-label">{t('legendVendorDensityHigh')}</span>
+                </div>
+              </div>
+              <div className="vrm-map-legend__hint">{t('legendVendorHint')}</div>
             </div>
-            <div className="vrm-map-legend__hint">{t('legendHeightHint')}</div>
+
+            <div className="vrm-map-legend__block">
+              <div className="vrm-map-legend__wh">
+                <span className="vrm-wh-marker__pin vrm-wh-marker__pin--legend" aria-hidden>
+                  <Warehouse className="h-3.5 w-3.5" />
+                </span>
+                <div>
+                  <div className="vrm-map-legend__title">{t('legendWarehouse')}</div>
+                  <div className="vrm-map-legend__addr">{WAREHOUSE.address}</div>
+                </div>
+              </div>
+              <div className="vrm-map-legend__rings">
+                {t('legendRings', { scale: warehouseRingScaleLabel() })}
+              </div>
+            </div>
           </div>
         ) : null}
-
-        {densityLabels.length > 0 ? (
-          <div className="vrm-map-legend__block">
-            <div className="vrm-map-legend__title">{t(`legendDensity_${metric}`)}</div>
-            <div className="vrm-map-legend__swatches">
-              {densityScale.colors.map((color, index) => (
-                <div key={color} className="vrm-map-legend__swatch-row">
-                  <span className="vrm-map-legend__swatch" style={{ background: color }} aria-hidden />
-                  <span className="vrm-map-legend__swatch-label">{densityLabels[index]}</span>
-                </div>
-              ))}
-            </div>
-            <div className="vrm-map-legend__hint">
-              {t(isMoneyMetric(metric) ? 'legendDensityHintMoney' : 'legendDensityHint')}
-            </div>
-          </div>
-        ) : null}
-
-        <div className="vrm-map-legend__block">
-          <div className="vrm-map-legend__wh">
-            <span className="vrm-wh-marker__pin vrm-wh-marker__pin--legend" aria-hidden>
-              <Warehouse className="h-3.5 w-3.5" />
-            </span>
-            <div>
-              <div className="vrm-map-legend__title">{t('legendWarehouse')}</div>
-              <div className="vrm-map-legend__addr">{WAREHOUSE.address}</div>
-            </div>
-          </div>
-          <div className="vrm-map-legend__rings">
-            {t('legendRings', { scale: warehouseRingScaleLabel() })}
-          </div>
-        </div>
       </div>
 
       {loading ? <VendorRegionMapLoading /> : null}
