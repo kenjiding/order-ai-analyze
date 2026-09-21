@@ -30,6 +30,7 @@
   "loadingWait": "匹配路由码并按邮编聚合成柱体，通常需要几十秒。已等待 {{seconds}} 秒",
   "reset3d": "复位 3D 视角",
   "locateWarehouse": "定位仓库",
+  "topDownView": "俯瞰视角",
   "distanceRings": "距离圈",
   "toggleColumns": "柱体",
   "noVendorsSelected": "供应商已全部取消勾选，<strong>地图上暂不显示柱体</strong>",

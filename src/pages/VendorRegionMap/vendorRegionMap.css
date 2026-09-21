@@ -248,6 +248,14 @@
   overflow: hidden;
 }
 
+/* 全屏 API 默认样式会被上面这条固定高度盖掉，不补这条全屏只会撑满宽度、高度还卡在 880px */
+.vrm-map-shell:fullscreen,
+.vrm-map-shell:-webkit-full-screen {
+  height: 100vh;
+  min-height: 0;
+  border-radius: 0;
+}
+
 .vrm-map-canvas {
   width: 100%;
   height: 100%;

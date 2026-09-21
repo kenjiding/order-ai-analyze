@@ -122,12 +122,17 @@ function quantizeWorldScale(map: maplibregl.Map): number {
   return Math.round(scale / WORLD_SCALE_STEP) * WORLD_SCALE_STEP
 }
 
+const DEFAULT_PITCH = 58
+const DEFAULT_BEARING = -22
+const TOP_DOWN_PITCH = 0
+const TOP_DOWN_BEARING = 0
+
 function resetCamera(map: maplibregl.Map) {
   map.easeTo({
     center: [ADELAIDE_MAP_CENTER.lng, ADELAIDE_MAP_CENTER.lat],
     zoom: ADELAIDE_MAP_ZOOM,
-    pitch: 58,
-    bearing: -22,
+    pitch: DEFAULT_PITCH,
+    bearing: DEFAULT_BEARING,
     duration: 700,
   })
 }
@@ -136,8 +141,17 @@ function flyToWarehouse(map: maplibregl.Map) {
   map.easeTo({
     center: [WAREHOUSE.lng, WAREHOUSE.lat],
     zoom: 12.2,
-    pitch: 58,
-    bearing: -22,
+    pitch: DEFAULT_PITCH,
+    bearing: DEFAULT_BEARING,
+    duration: 700,
+  })
+}
+
+/** 只转视角，不挪中心点/缩放——切俯瞰看整体分布或切回 3D 看柱高，不打断当前浏览的位置 */
+function setViewPitch(map: maplibregl.Map, topDown: boolean) {
+  map.easeTo({
+    pitch: topDown ? TOP_DOWN_PITCH : DEFAULT_PITCH,
+    bearing: topDown ? TOP_DOWN_BEARING : DEFAULT_BEARING,
     duration: 700,
   })
 }
@@ -203,6 +217,7 @@ export function VendorRegionMapCanvas({
   metric,
 }: Props) {
   const { t } = useTranslation('vendorRegionMap')
+  const shellRef = useRef<HTMLDivElement | null>(null)
   const containerRef = useRef<HTMLDivElement | null>(null)
   const mapRef = useRef<maplibregl.Map | null>(null)
   const popupRef = useRef<maplibregl.Popup | null>(null)
@@ -215,6 +230,7 @@ export function VendorRegionMapCanvas({
   const warehouseMarkerRef = useRef<maplibregl.Marker | null>(null)
   const [ringsVisible, setRingsVisible] = useState(true)
   const [columnsVisible, setColumnsVisible] = useState(true)
+  const [topDown, setTopDown] = useState(false)
   const [legendExpanded, setLegendExpanded] = useState(false)
   const [worldScale, setWorldScale] = useState(() =>
     Math.round(columnWorldScale(ADELAIDE_MAP_CENTER.lat, ADELAIDE_MAP_ZOOM) / WORLD_SCALE_STEP) *
@@ -306,11 +322,13 @@ export function VendorRegionMapCanvas({
       style: MAP_STYLE_URL,
       center: [ADELAIDE_MAP_CENTER.lng, ADELAIDE_MAP_CENTER.lat],
       zoom: ADELAIDE_MAP_ZOOM,
-      pitch: 58,
-      bearing: -22,
+      pitch: DEFAULT_PITCH,
+      bearing: DEFAULT_BEARING,
       maxPitch: 80,
     })
     map.addControl(new maplibregl.NavigationControl({ visualizePitch: true }), 'top-right')
+    // container 指向外层 shell，全屏时把工具条/图例一起带进去，不然只有裸地图放大、按钮全没了
+    map.addControl(new maplibregl.FullscreenControl({ container: shellRef.current ?? undefined }), 'top-right')
     mapRef.current = map
     popupRef.current = new maplibregl.Popup({ closeButton: false, maxWidth: '280px', offset: 16 })
 
@@ -544,7 +562,13 @@ export function VendorRegionMapCanvas({
         if (cell.lng == null || cell.lat == null) continue
         bounds.extend([cell.lng, cell.lat])
       }
-      map.fitBounds(bounds, { padding: 72, maxZoom: 11.6, pitch: 58, bearing: -22, duration: 800 })
+      map.fitBounds(bounds, {
+        padding: 72,
+        maxZoom: 11.6,
+        pitch: DEFAULT_PITCH,
+        bearing: DEFAULT_BEARING,
+        duration: 800,
+      })
       fittedQueryRef.current = queryKey
     }
 
@@ -556,22 +580,35 @@ export function VendorRegionMapCanvas({
   const allHidden = hasData && visibleCells.length === 0
 
   return (
-    <div className="vrm-map-shell">
+    <div ref={shellRef} className="vrm-map-shell">
       <div ref={containerRef} className="vrm-map-canvas" />
 
       <div className="vrm-map-tools vrm-glass">
         <button
           type="button"
           className="vrm-tool"
-          onClick={() => mapRef.current && resetCamera(mapRef.current)}
+          aria-pressed={topDown}
+          onClick={() => {
+            const map = mapRef.current
+            if (!map) return
+            const next = !topDown
+            // 切俯瞰只转角度、不挪位置；切回 3D 顺带把位置也复位，这样按钮还兼着“复位3D视角”的老功能
+            if (next) setViewPitch(map, true)
+            else resetCamera(map)
+            setTopDown(next)
+          }}
         >
           <Compass className="h-4 w-4" aria-hidden />
-          {t('reset3d')}
+          {t(topDown ? 'reset3d' : 'topDownView')}
         </button>
         <button
           type="button"
           className="vrm-tool"
-          onClick={() => mapRef.current && flyToWarehouse(mapRef.current)}
+          onClick={() => {
+            if (!mapRef.current) return
+            flyToWarehouse(mapRef.current)
+            setTopDown(false)
+          }}
         >
           <Warehouse className="h-4 w-4" aria-hidden />
           {t('locateWarehouse')}

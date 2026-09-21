@@ -30,6 +30,7 @@
   "loadingWait": "Matching routes and aggregating by postcode — usually tens of seconds. Waited {{seconds}}s",
   "reset3d": "Reset 3D view",
   "locateWarehouse": "Locate warehouse",
+  "topDownView": "Top-down view",
   "distanceRings": "Distance rings",
   "toggleColumns": "Columns",
   "noVendorsSelected": "All vendors deselected — <strong>columns hidden on map</strong>",
