@@ -17,6 +17,25 @@ const COLUMN_SIDES = 20
 const COLUMN_RADIUS_PX = 11
 const COLUMN_MAX_HEIGHT_PX = 130
 /**
+ * 路由码标签的环形偏移半径：固定真实米数区间，不跟 worldScale 走。
+ * worldScale 是为了让柱体在缩小时屏幕像素不缩成针尖，故意把「米数」越缩小拉得越大（上限 200 m/px）；
+ * 标签文字不需要这个补偿，用 worldScale 会导致缩小到 zoom 7~9 时偏移膨胀到几公里，
+ * 把路由码飘到隔壁邮区，邮区对应就不准了。
+ *
+ * 半径本身按邮区内路由码个数自适应：固定半径下，路由码越多，相邻两个标签间的弧长越短，
+ * 叠字会挡住更多文字，要缩放到很大（街道级）才能一个个分开。
+ * 这里按「相邻标签间隔 ROUTE_LABEL_TARGET_ARC_M 米」反推半径，路由码多的邮区自动分得更开。
+ * 900 米是按 zoom 13（常用的邮区级视角，约 15.6 m/px）反推的——两个路由码时留出约 60px 的
+ * 锚点间距，字号 17px 的标签基本不会再压在一起；上限封顶，避免邮区路由码特别多时把标签甩出邮区范围。
+ */
+const ROUTE_LABEL_TARGET_ARC_M = 900
+const ROUTE_LABEL_RADIUS_MAX_M = 650
+
+function routeLabelRingRadiusM(total: number): number {
+  if (total <= 1) return 0
+  return Math.min(ROUTE_LABEL_RADIUS_MAX_M, ROUTE_LABEL_TARGET_ARC_M / (2 * Math.sin(Math.PI / total)))
+}
+/**
  * 下界只用来兜住街道级的极端缩放；定得太高会适得其反——glyph 在世界里被冻住尺寸，
  * 放大时就会在屏幕上无限膨胀（40 时 zoom 15 的柱子有 1100px 高）。
  * 上界则是故意的：拉到全州视野时让柱子在屏幕上缩小，否则密集处糊成一片。
@@ -158,6 +177,49 @@ export function aggregateZipStats(input: {
     })
   }
   return stats
+}
+
+/** 一个邮区内按票量排好序的路由码，count 用于挑选碰撞时优先显示谁 */
+export type RouteCodeLabelGroup = { routeCode: string; count: number }
+
+/**
+ * 路由码标签点：邮区只有一个路由码时直接落在中心点，多个则按票量降序沿环形错位摆放。
+ * 具体哪个标签在低 zoom 时被挤掉，交给 MapLibre 的 symbol 碰撞避让处理，这里只负责给出候选位置。
+ */
+export function buildRouteCodeLabelCollection(
+  stats: ZipStat[],
+  routesByZip: Map<string, RouteCodeLabelGroup[]>,
+): FeatureCollection {
+  const features: Feature[] = []
+  for (const stat of stats) {
+    if (!stat.center) continue
+    const routes = routesByZip.get(stat.zipCode)
+    if (!routes || routes.length === 0) continue
+    const total = routes.length
+    const radiusM = routeLabelRingRadiusM(total)
+    routes.forEach((route, index) => {
+      const [lng, lat] =
+        total === 1
+          ? stat.center!
+          : offsetLngLat(
+              stat.center![0],
+              stat.center![1],
+              radiusM * Math.cos((index / total) * Math.PI * 2 - Math.PI / 2),
+              radiusM * Math.sin((index / total) * Math.PI * 2 - Math.PI / 2),
+            )
+      features.push({
+        type: 'Feature',
+        properties: {
+          zipCode: stat.zipCode,
+          routeCode: route.routeCode,
+          count: route.count,
+          sortKey: -route.count,
+        },
+        geometry: { type: 'Point', coordinates: [lng, lat] },
+      })
+    })
+  }
+  return { type: 'FeatureCollection', features }
 }
 
 export function maxZipTotal(stats: ZipStat[]): number {

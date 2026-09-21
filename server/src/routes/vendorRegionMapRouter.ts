@@ -120,6 +120,7 @@ vendorRegionMapRouter.post('/aggregate', async (req: Request, res: Response) => 
     res.json({
       vendors: aggregated.vendors,
       cells: aggregated.cells,
+      routes: aggregated.routes,
       zipRegions,
       meta: {
         startDate,

@@ -29,10 +29,21 @@ function scan(input: { waybillNo: string; routeCode?: string; courierVendorCode?
 const LU = config({ vendorCode: 'SRM001', supplierNickname: 'ADL-Lu', routeCode: 'R1,R2' })
 const CITY = config({ vendorCode: 'SRM001', supplierNickname: 'ADL-City', routeCode: 'R3' })
 
-function supplierOf(result: ReturnType<typeof aggregateVendorDailyVolume>, name: string) {
-  const found = result.suppliers.find((s) => s.supplierName === name)
+function supplierMetaOf(
+  result: ReturnType<typeof aggregateVendorDailyVolume>,
+  name: string,
+) {
+  const found = result.supplierMeta.find((s) => s.supplierName === name)
   assert.ok(found, `未找到供应商 ${name}`)
   return found
+}
+
+function countOf(
+  result: ReturnType<typeof aggregateVendorDailyVolume>,
+  supplierKey: string,
+  date: string,
+): number {
+  return result.daily.find((p) => p.supplierKey === supplierKey && p.date === date)?.count ?? 0
 }
 
 test('同一运单当天被多次扫描只计 1 票', () => {
@@ -53,10 +64,28 @@ test('同一运单当天被多次扫描只计 1 票', () => {
   })
 
   assert.equal(result.meta.uniqueWaybills, 2)
-  assert.equal(supplierOf(result, 'ADL-Lu').totalCount, 2)
+  assert.equal(result.dayTotals['2026-08-01'], 2)
+  const lu = supplierMetaOf(result, 'ADL-Lu')
+  assert.equal(countOf(result, lu.supplierKey, '2026-08-01'), 2)
 })
 
-test('拉取失败的天不进日期轴，也不被当成 0 票拉低日均', () => {
+test('dayTotals 是当天去重后的真实票量，不是按供应商求和——一票匹配多个供应商单位时不会虚高', () => {
+  // 构造一个会被同时判给两个 supplierKey 的场景：同一个 routeCode 出现在两条不同供应商的配置里
+  const OVERLAP_A = config({ vendorCode: 'SRM010', supplierNickname: 'A', routeCode: 'R9' })
+  const OVERLAP_B = config({ vendorCode: 'SRM011', supplierNickname: 'B', routeCode: 'R9' })
+  const result = aggregateVendorDailyVolume({
+    perDay: [{ date: '2026-08-01', records: [scan({ waybillNo: 'W1', routeCode: 'R9' })] }],
+    configs: [OVERLAP_A, OVERLAP_B],
+    startDate: '2026-08-01',
+    endDate: '2026-08-01',
+  })
+
+  // dayTotals 必须是真实票量 1，不能因为这一票同时匹配了 A 和 B 就变成 2
+  assert.equal(result.dayTotals['2026-08-01'], 1)
+  assert.equal(result.meta.uniqueWaybills, 1)
+})
+
+test('拉取失败的天不进日期轴', () => {
   const result = aggregateVendorDailyVolume({
     perDay: [
       { date: '2026-08-01', records: [scan({ waybillNo: 'W1', routeCode: 'R1' })] },
@@ -76,56 +105,39 @@ test('拉取失败的天不进日期轴，也不被当成 0 票拉低日均', ()
 
   assert.deepEqual(result.dates, ['2026-08-01', '2026-08-03'])
   assert.deepEqual(result.meta.failedDates, ['2026-08-02'])
-  // 3 票 / 2 个有效天 = 1.5，而不是 3 / 3 = 1
-  assert.equal(supplierOf(result, 'ADL-Lu').dailyAvg, 1.5)
   assert.ok(!result.daily.some((point) => point.date === '2026-08-02'))
+  assert.equal(result.dayTotals['2026-08-02'], undefined)
 })
 
-test('当天数据不完整时最后一天被排除出环比', () => {
-  const perDay = [
-    { date: '2026-08-01', records: [scan({ waybillNo: 'A1', routeCode: 'R1' })] },
-    { date: '2026-08-02', records: [scan({ waybillNo: 'A2', routeCode: 'R1' })] },
-    {
-      date: '2026-08-03',
-      records: [
-        scan({ waybillNo: 'A3', routeCode: 'R1' }),
-        scan({ waybillNo: 'A4', routeCode: 'R1' }),
-      ],
-    },
-    // 当天只跑了半天，1 票；若混入环比会把这家算成在掉量
-    { date: '2026-08-04', records: [scan({ waybillNo: 'A5', routeCode: 'R1' })] },
-  ]
+test('接口成功但当天票量为 0 的天：dayTotals 记为 0，daily 里仍有该日期的 0 计数行（脏数据判定交给前端）', () => {
+  const result = aggregateVendorDailyVolume({
+    perDay: [
+      { date: '2026-08-01', records: [scan({ waybillNo: 'W1', routeCode: 'R1' })] },
+      { date: '2026-08-02', records: [] },
+    ],
+    configs: [LU],
+    startDate: '2026-08-01',
+    endDate: '2026-08-02',
+  })
 
-  const partial = aggregateVendorDailyVolume({
-    perDay,
+  assert.deepEqual(result.dates, ['2026-08-01', '2026-08-02'])
+  assert.equal(result.dayTotals['2026-08-02'], 0)
+  const lu = supplierMetaOf(result, 'ADL-Lu')
+  assert.equal(countOf(result, lu.supplierKey, '2026-08-02'), 0)
+})
+
+test('lastDayPartial 原样透传，不在这一阶段做任何裁剪判断', () => {
+  const result = aggregateVendorDailyVolume({
+    perDay: [{ date: '2026-08-01', records: [scan({ waybillNo: 'W1', routeCode: 'R1' })] }],
     configs: [LU],
     lastDayPartial: true,
     startDate: '2026-08-01',
-    endDate: '2026-08-04',
+    endDate: '2026-08-01',
   })
-  assert.deepEqual(partial.meta.comparableDates, ['2026-08-01', '2026-08-02', '2026-08-03'])
-  const partialLu = supplierOf(partial, 'ADL-Lu')
-  // 前段 [08-01] = 1，后段 [08-02, 08-03] = (1+2)/2 = 1.5 → +50%
-  assert.equal(partialLu.prevAvg, 1)
-  assert.equal(partialLu.recentAvg, 1.5)
-  assert.equal(partialLu.changeRate, 0.5)
-  // 但整条日期轴与总量仍包含当天
-  assert.equal(partial.dates.length, 4)
-  assert.equal(partialLu.totalCount, 5)
-
-  const complete = aggregateVendorDailyVolume({
-    perDay,
-    configs: [LU],
-    lastDayPartial: false,
-    startDate: '2026-08-01',
-    endDate: '2026-08-04',
-  })
-  // 不排除时前段变成 (1+1)/2 = 1、后段 (2+1)/2 = 1.5，可比日期从 3 天变 4 天 —— 开关确实在起作用
-  assert.equal(complete.meta.comparableDates.length, 4)
-  assert.equal(supplierOf(complete, 'ADL-Lu').recentAvg, 1.5)
+  assert.equal(result.meta.lastDayPartial, true)
 })
 
-test('区间内新增的供应商 changeRate 为 null 而不是 Infinity', () => {
+test('区间内新增的供应商也照常记入 supplierMeta 和 daily（涨跌幅等统计交给前端算）', () => {
   const result = aggregateVendorDailyVolume({
     perDay: [
       { date: '2026-08-01', records: [scan({ waybillNo: 'W1', routeCode: 'R1' })] },
@@ -144,10 +156,10 @@ test('区间内新增的供应商 changeRate 为 null 而不是 Infinity', () =>
     endDate: '2026-08-04',
   })
 
-  const city = supplierOf(result, 'ADL-City')
-  assert.equal(city.prevAvg, 0)
-  assert.ok(city.recentAvg > 0)
-  assert.equal(city.changeRate, null)
+  const city = supplierMetaOf(result, 'ADL-City')
+  assert.equal(countOf(result, city.supplierKey, '2026-08-01'), 0)
+  assert.equal(countOf(result, city.supplierKey, '2026-08-03'), 1)
+  assert.equal(countOf(result, city.supplierKey, '2026-08-04'), 1)
 })
 
 test('路由码为空的扫描归入 (无路由码) 行且票数照常计入总量', () => {
@@ -167,10 +179,8 @@ test('路由码为空的扫描归入 (无路由码) 行且票数照常计入总�
     endDate: '2026-08-01',
   })
 
-  const noRoute = supplierOf(result, 'NoRoute')
-  assert.equal(noRoute.totalCount, 1)
-  assert.equal(noRoute.routeCodeCount, 1)
-  const rows = result.routeDaily.filter((row) => row.supplierKey === noRoute.supplierKey)
+  const noRoute = supplierMetaOf(result, 'NoRoute')
+  const rows = result.routeDaily.filter((row) => row.supplierKey === noRoute.supplierKey && row.count > 0)
   assert.deepEqual(
     rows.map((row) => row.routeCode),
     [NO_ROUTE_CODE_LABEL],
@@ -194,9 +204,11 @@ test('同 vendorCode 不同展示名拆成两家，票量各归各家', () => {
     endDate: '2026-08-01',
   })
 
-  assert.equal(result.suppliers.length, 2)
-  assert.equal(supplierOf(result, 'ADL-Lu').totalCount, 2)
-  assert.equal(supplierOf(result, 'ADL-City').totalCount, 1)
+  assert.equal(result.supplierMeta.length, 2)
+  const lu = supplierMetaOf(result, 'ADL-Lu')
+  const city = supplierMetaOf(result, 'ADL-City')
+  assert.equal(countOf(result, lu.supplierKey, '2026-08-01'), 2)
+  assert.equal(countOf(result, city.supplierKey, '2026-08-01'), 1)
 })
 
 test('路由码对不上任何配置时落到未匹配供应商，并计入 unmatchedNoVendor', () => {
@@ -216,5 +228,6 @@ test('路由码对不上任何配置时落到未匹配供应商，并计入 unma
   })
 
   assert.equal(result.meta.unmatchedNoVendor, 1)
-  assert.equal(supplierOf(result, '未匹配供应商').totalCount, 1)
+  const unmatched = supplierMetaOf(result, '未匹配供应商')
+  assert.equal(countOf(result, unmatched.supplierKey, '2026-08-01'), 1)
 })

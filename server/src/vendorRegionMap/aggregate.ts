@@ -7,7 +7,7 @@ import {
   UNMATCHED_SUPPLIER_NAME,
   type ScopeConfig,
 } from './supplierMatcher'
-import type { VendorRegionCell, VendorRegionVendor } from './types'
+import type { VendorRegionCell, VendorRegionRouteCode, VendorRegionVendor } from './types'
 
 export { UNMATCHED_SUPPLIER_KEY, UNMATCHED_SUPPLIER_NAME }
 
@@ -38,6 +38,7 @@ export function aggregateVendorZipCells(input: {
 }): {
   vendors: VendorRegionVendor[]
   cells: VendorRegionCell[]
+  routes: VendorRegionRouteCode[]
   uniqueWaybills: number
   matchedPackages: number
   unmatchedNoZip: number
@@ -47,6 +48,7 @@ export function aggregateVendorZipCells(input: {
   const matcher = buildSupplierMatcher(input.configs)
 
   const buckets = new Map<string, Bucket>()
+  const routeCounts = new Map<string, number>()
   const scans = dedupeScansByWaybill(input.records)
   let unmatchedNoZip = 0
   let unmatchedNoVendor = 0
@@ -67,6 +69,8 @@ export function aggregateVendorZipCells(input: {
     const priced = input.priceBook?.get(priceBookKey(scan.consigneeZipCode, scan.consigneeSuburb))
     if (!priced) unpricedPackages += 1
 
+    const routeCode = scan.routeCode.trim()
+
     for (const supplierKey of assigned) {
       const key = `${supplierKey}\0${scan.consigneeZipCode}`
       const bucket = buckets.get(key) ?? newBucket()
@@ -78,6 +82,12 @@ export function aggregateVendorZipCells(input: {
         bucket.unpricedCount += 1
       }
       buckets.set(key, bucket)
+
+      // 空路由码不产出地图标签，避免在每个邮区都钉一个「无路由码」的孤零零标签
+      if (routeCode) {
+        const routeKey = `${key}\0${routeCode}`
+        routeCounts.set(routeKey, (routeCounts.get(routeKey) ?? 0) + 1)
+      }
     }
   }
 
@@ -133,9 +143,17 @@ export function aggregateVendorZipCells(input: {
     })
     .sort((a, b) => b.packageCount - a.packageCount || a.supplierName.localeCompare(b.supplierName))
 
+  const routes: VendorRegionRouteCode[] = [...routeCounts.entries()]
+    .map(([key, count]) => {
+      const [supplierKey, zipCode, routeCode] = key.split('\0') as [string, string, string]
+      return { zipCode, supplierKey, routeCode, count }
+    })
+    .sort((a, b) => b.count - a.count || a.routeCode.localeCompare(b.routeCode))
+
   return {
     vendors,
     cells,
+    routes,
     uniqueWaybills: scans.length,
     matchedPackages,
     unmatchedNoZip,

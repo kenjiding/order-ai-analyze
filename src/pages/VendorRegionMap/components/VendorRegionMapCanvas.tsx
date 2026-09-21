@@ -11,6 +11,7 @@ import {
   aggregateZipStats,
   buildColumnCollection,
   buildRegionFillCollection,
+  buildRouteCodeLabelCollection,
   columnHeightRatio,
   columnMaxHeightM,
   columnRadiusM,
@@ -19,6 +20,7 @@ import {
   maxZipTotal,
   REGION_FILL_OPACITY_MAX,
   REGION_FILL_OPACITY_MIN,
+  type RouteCodeLabelGroup,
   type ZipStat,
 } from '../columnGeometry'
 import { formatAreaKm2, formatDensity } from '../regionMetrics'
@@ -51,6 +53,8 @@ const COLUMNS_SOURCE = 'vrm-columns'
 const REGIONS_FILL = 'vrm-regions-fill'
 const REGIONS_LINE = 'vrm-regions-line'
 const COLUMNS_EXTRUSION = 'vrm-columns-extrusion'
+const ROUTE_CODES_SOURCE = 'vrm-routecodes'
+const ROUTE_CODES_LABEL = 'vrm-routecodes-label'
 const WAREHOUSE_PAD_SOURCE = 'vrm-wh-pad'
 const WAREHOUSE_RINGS_SOURCE = 'vrm-wh-rings'
 const WAREHOUSE_PAD_LAYER = 'vrm-wh-pad-fill'
@@ -75,6 +79,21 @@ const RING_LABEL_OPACITY: maplibregl.ExpressionSpecification = [
   9, 1,
   12.2, 1,
   13, 0,
+]
+
+/** 路由码标签跟距离圈标签相反：缩小时不挤堆——直接不渲染；放大到邮区级别才淡入显示 */
+const ROUTE_LABEL_MIN_ZOOM = 7
+const ROUTE_LABEL_OPACITY: maplibregl.ExpressionSpecification = [
+  'interpolate', ['linear'], ['zoom'],
+  ROUTE_LABEL_MIN_ZOOM, 0,
+  8.5, 1,
+]
+// interpolate 在两端会夹住不再变化：zoom<7 用 7 档那个值、zoom>14 用 14 档那个值，
+// 所以 14 档天然就是放大时的字号上限，不用另外设置
+const ROUTE_LABEL_TEXT_SIZE: maplibregl.ExpressionSpecification = [
+  'interpolate', ['linear'], ['zoom'],
+  7, 8,
+  14, 17,
 ]
 
 /** worldScale 按 5 m/px 取整再入 state，避免每次微小缩放都重建几何 */
@@ -224,6 +243,34 @@ export function VendorRegionMapCanvas({
     [data?.zipRegions, metric, visibleCells],
   )
 
+  // 路由码标签只跟着供应商勾选走，不受指标切换影响——它标的是线路，不是金额/票量口径
+  const visibleRoutes = useMemo(() => {
+    if (!data) return []
+    if (selectedSupplierKeys.length === 0) return []
+    const selected = new Set(selectedSupplierKeys)
+    if (selected.size === data.vendors.length) return data.routes
+    return data.routes.filter((route) => selected.has(route.supplierKey))
+  }, [data, selectedSupplierKeys])
+
+  const routesByZip = useMemo(() => {
+    const merged = new Map<string, Map<string, number>>()
+    for (const route of visibleRoutes) {
+      const byRoute = merged.get(route.zipCode) ?? new Map<string, number>()
+      byRoute.set(route.routeCode, (byRoute.get(route.routeCode) ?? 0) + route.count)
+      merged.set(route.zipCode, byRoute)
+    }
+    const result = new Map<string, RouteCodeLabelGroup[]>()
+    for (const [zipCode, byRoute] of merged) {
+      result.set(
+        zipCode,
+        [...byRoute.entries()]
+          .map(([routeCode, count]) => ({ routeCode, count }))
+          .sort((a, b) => b.count - a.count || a.routeCode.localeCompare(b.routeCode)),
+      )
+    }
+    return result
+  }, [visibleRoutes])
+
   useEffect(() => {
     statsRef.current = new Map(zipStats.map((stat) => [stat.zipCode, stat]))
   }, [zipStats])
@@ -241,6 +288,11 @@ export function VendorRegionMapCanvas({
         colorOf: (supplierKey) => colorFromMap(colorMap, supplierKey),
       }),
     [colorMap, worldScale, zipStats],
+  )
+
+  const routeLabelCollection = useMemo(
+    () => buildRouteCodeLabelCollection(zipStats, routesByZip),
+    [routesByZip, zipStats],
   )
 
   const maxTotal = useMemo(() => maxZipTotal(zipStats), [zipStats])
@@ -289,6 +341,7 @@ export function VendorRegionMapCanvas({
       if (!map.getSource(REGIONS_SOURCE)) {
         map.addSource(REGIONS_SOURCE, { type: 'geojson', data: EMPTY_FC })
         map.addSource(COLUMNS_SOURCE, { type: 'geojson', data: EMPTY_FC })
+        map.addSource(ROUTE_CODES_SOURCE, { type: 'geojson', data: EMPTY_FC })
         map.addSource(WAREHOUSE_RINGS_SOURCE, { type: 'geojson', data: buildWarehouseRingCollection() })
         map.addSource(WAREHOUSE_PAD_SOURCE, { type: 'geojson', data: buildWarehousePadCollection() })
         map.addLayer({
@@ -381,6 +434,30 @@ export function VendorRegionMapCanvas({
             'fill-extrusion-vertical-gradient': true,
           },
         })
+        // 要求尽可能多地露出路由码，哪怕缩小也一样，所以关掉碰撞避让（text-allow-overlap:true）——
+        // 都画出来，宁可叠字也不隐藏。symbol-sort-key 决定叠在一起时谁画在最上面（票量大的在上）
+        map.addLayer({
+          id: ROUTE_CODES_LABEL,
+          type: 'symbol',
+          source: ROUTE_CODES_SOURCE,
+          minzoom: ROUTE_LABEL_MIN_ZOOM,
+          layout: {
+            'text-field': ['get', 'routeCode'],
+            'text-font': ['Noto Sans Bold'],
+            'text-size': ROUTE_LABEL_TEXT_SIZE,
+            'text-padding': 2,
+            'text-allow-overlap': true,
+            'text-ignore-placement': true,
+            'symbol-sort-key': ['get', 'sortKey'],
+          },
+          paint: {
+            // 跟底图地名的深灰/黑拉开，一眼能分出这是业务标签而不是底图自带的文字
+            'text-color': '#0000ff',
+            'text-halo-color': 'rgba(255,255,255,0.92)',
+            'text-halo-width': 1.3,
+            'text-opacity': ROUTE_LABEL_OPACITY,
+          },
+        })
       }
 
       const openPopup = (zipCode: string, lngLat: maplibregl.LngLatLike) => {
@@ -395,8 +472,9 @@ export function VendorRegionMapCanvas({
           .addTo(map)
       }
 
-      // 顺序有讲究：柱体的监听后注册、后触发，点柱子时它的邮区覆盖掉底下的面
-      for (const layerId of [REGIONS_FILL, COLUMNS_EXTRUSION]) {
+      // 顺序有讲究：柱体的监听后注册、后触发，点柱子时它的邮区覆盖掉底下的面。
+      // 路由码标签也点得开同一个邮区弹窗——点一下就能确认这个标签到底对应哪个邮编
+      for (const layerId of [REGIONS_FILL, COLUMNS_EXTRUSION, ROUTE_CODES_LABEL]) {
         map.on('mouseenter', layerId, () => {
           map.getCanvas().style.cursor = 'pointer'
         })
@@ -455,6 +533,7 @@ export function VendorRegionMapCanvas({
     const apply = () => {
       ;(map?.getSource(REGIONS_SOURCE) as maplibregl.GeoJSONSource | undefined)?.setData(regionCollection)
       ;(map?.getSource(COLUMNS_SOURCE) as maplibregl.GeoJSONSource | undefined)?.setData(columnCollection)
+      ;(map?.getSource(ROUTE_CODES_SOURCE) as maplibregl.GeoJSONSource | undefined)?.setData(routeLabelCollection)
 
       const queryKey = data ? `${data.meta.startDate}:${data.meta.endDate}:${data.cells.length}` : ''
       if (!data || !map || fittedQueryRef.current === queryKey) return
@@ -471,7 +550,7 @@ export function VendorRegionMapCanvas({
 
     applyRef.current = apply
     if (layersReadyRef.current) apply()
-  }, [columnCollection, data, regionCollection])
+  }, [columnCollection, data, regionCollection, routeLabelCollection])
 
   const hasData = Boolean(data && data.cells.length > 0)
   const allHidden = hasData && visibleCells.length === 0

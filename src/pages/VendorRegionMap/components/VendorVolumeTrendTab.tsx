@@ -1,12 +1,14 @@
 import { useMemo, useState } from 'react'
-import { Alert, Button, DatePicker, Segmented, Select, Table } from 'antd'
+import { Alert, Button, DatePicker, InputNumber, Segmented, Select, Table } from 'antd'
 import type { ColumnsType } from 'antd/es/table'
 import dayjs, { type Dayjs } from 'dayjs'
 import { useTranslation } from 'react-i18next'
 import { colorFromMap } from '../vendorColors'
 import type { useVendorVolumeTrend } from '../useVendorVolumeTrend'
 import {
+  TREND_GRANULARITIES,
   TREND_MAX_RANGE_DAYS,
+  type TrendGranularity,
   type VendorTrendSupplier,
 } from '../vendorRegionMapTypes'
 import { VendorDailyVolumeLineChart } from './VendorDailyVolumeLineChart'
@@ -30,6 +32,9 @@ export function VendorVolumeTrendTab({ trend }: Props) {
   const { t } = useTranslation('vendorRegionMap')
   const { t: tc } = useTranslation('common')
   const [chartMode, setChartMode] = useState<'line' | 'stack'>('line')
+  const { granularity } = trend
+  const isWeekly = granularity === 'week'
+  // trend.data 已经是按当前阈值/维度算好的视图（hook 内部本地重算），这里直接用
   const data = trend.data
 
   const rangePresets = useMemo(
@@ -39,6 +44,11 @@ export function VendorVolumeTrendTab({ trend }: Props) {
         value: [dayjs().subtract(days, 'day').startOf('day'), dayjs().endOf('day')] as [Dayjs, Dayjs],
       })),
     [t, tc],
+  )
+
+  const granularityOptions = useMemo(
+    () => TREND_GRANULARITIES.map((value) => ({ value, label: t(`trend.granularity.${value}`) })),
+    [t],
   )
 
   const formatChangeRate = (rate: number | null) => {
@@ -87,7 +97,7 @@ export function VendorVolumeTrendTab({ trend }: Props) {
       render: (value: number) => nf.format(value),
     },
     {
-      title: t('trend.colDailyAvg'),
+      title: t(isWeekly ? 'trend.colWeeklyAvg' : 'trend.colDailyAvg'),
       dataIndex: 'dailyAvg',
       align: 'right',
       sorter: (a, b) => a.dailyAvg - b.dailyAvg,
@@ -127,7 +137,7 @@ export function VendorVolumeTrendTab({ trend }: Props) {
       ),
     },
   ],
-    [t, trend.vendorColorMap],
+    [t, trend.vendorColorMap, isWeekly],
   )
 
   const routeSupplierName =
@@ -159,11 +169,30 @@ export function VendorVolumeTrendTab({ trend }: Props) {
                 }}
               />
             </label>
+            <label className="vrm-field">
+              <span className="vrm-field__label">{t('trend.dirtyThreshold')}</span>
+              <InputNumber
+                min={0}
+                step={1}
+                precision={0}
+                value={trend.dirtyThreshold}
+                onChange={(value) => trend.setDirtyThreshold(value ?? 0)}
+                style={{ width: 96 }}
+              />
+            </label>
             <Button type="primary" loading={trend.loading} onClick={() => void trend.query()}>
               {t('query')}
             </Button>
             <span className="vrm-field__hint">{t('trend.queryHint')}</span>
           </div>
+          <label className="vrm-field">
+            <span className="vrm-field__label">{t('trend.granularity.label')}</span>
+            <Segmented
+              value={granularity}
+              options={granularityOptions}
+              onChange={(value) => trend.setGranularity(value as TrendGranularity)}
+            />
+          </label>
         </div>
       </section>
 
@@ -175,6 +204,18 @@ export function VendorVolumeTrendTab({ trend }: Props) {
           showIcon
           message={t('trend.failedDates', { count: data.meta.failedDates.length })}
           description={t('trend.failedDatesList', { dates: data.meta.failedDates.join('、') })}
+        />
+      ) : null}
+
+      {data && data.meta.dirtyDates.length > 0 ? (
+        <Alert
+          type="warning"
+          showIcon
+          message={t('trend.dirtyDates', {
+            count: data.meta.dirtyDates.length,
+            threshold: data.meta.dirtyThreshold,
+          })}
+          description={t('trend.dirtyDatesList', { dates: data.meta.dirtyDates.join('、') })}
         />
       ) : null}
 
@@ -194,7 +235,7 @@ export function VendorVolumeTrendTab({ trend }: Props) {
                 <span className="vrm-kpi__value">{nf.format(kpi.totalCount)}</span>
               </div>
               <div className="vrm-kpi">
-                <span className="vrm-kpi__label">{t('trend.dailyAvg')}</span>
+                <span className="vrm-kpi__label">{t(isWeekly ? 'trend.weeklyAvg' : 'trend.dailyAvg')}</span>
                 <span className="vrm-kpi__value">{nf1.format(kpi.dailyAvg)}</span>
               </div>
               <div className="vrm-kpi">
@@ -225,13 +266,15 @@ export function VendorVolumeTrendTab({ trend }: Props) {
           <section className="admin-panel vrm-vendors">
             <div className="vrm-vendors__head">
               <div>
-                <h2 className="vrm-vendors__title">{t('trend.dailyTrend')}</h2>
+                <h2 className="vrm-vendors__title">{t(isWeekly ? 'trend.weeklyTrend' : 'trend.dailyTrend')}</h2>
                 <p className="vrm-vendors__meta">
                   {t('trend.selectedVendors', {
                     selected: trend.selectedSupplierKeys.length,
                     total: suppliers.length,
                   })}
-                  {data.meta.lastDayPartial ? t('trend.todayExcluded') : ''}
+                  {data.meta.lastDayPartial
+                    ? t(isWeekly ? 'trend.thisWeekExcluded' : 'trend.todayExcluded')
+                    : ''}
                 </p>
               </div>
               <div className="vrm-vendors__actions">
@@ -295,7 +338,9 @@ export function VendorVolumeTrendTab({ trend }: Props) {
               <div>
                 <h2 className="vrm-vendors__title">{t('trend.momRanking')}</h2>
                 <p className="vrm-vendors__meta">
-                  {t('trend.momHint', { days: data.meta.comparableDates.length })}
+                  {t(isWeekly ? 'trend.momHintWeek' : 'trend.momHintDay', {
+                    days: data.meta.comparableDates.length,
+                  })}
                 </p>
               </div>
             </div>

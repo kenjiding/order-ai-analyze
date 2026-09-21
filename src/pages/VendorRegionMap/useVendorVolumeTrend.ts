@@ -5,10 +5,14 @@ import { showToast } from '../../utils/toast'
 import { fetchVendorVolumeTrend } from './vendorRegionMapApi'
 import { buildVendorColorMap } from './vendorColors'
 import {
+  computeTrendView,
   TREND_DEFAULT_SELECTED_COUNT,
   UNMATCHED_SUPPLIER_KEY,
-  type VendorVolumeTrendResult,
+  type TrendGranularity,
+  type VendorVolumeTrendRawResult,
 } from './vendorRegionMapTypes'
+
+const DEFAULT_DIRTY_THRESHOLD = 1
 
 export function useVendorVolumeTrend() {
   const { imileToken } = useAppSettings()
@@ -17,11 +21,19 @@ export function useVendorVolumeTrend() {
     dayjs().subtract(13, 'day').startOf('day'),
     dayjs().endOf('day'),
   ])
-  const [data, setData] = useState<VendorVolumeTrendResult | null>(null)
+  // 服务端只吐「按天计数」的原始数据；脏数据阈值和天/周切换在下面本地重算，不重新请求
+  const [rawData, setRawData] = useState<VendorVolumeTrendRawResult | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [selectedSupplierKeys, setSelectedSupplierKeys] = useState<string[]>([])
   const [routeSupplierKey, setRouteSupplierKey] = useState('')
+  const [dirtyThreshold, setDirtyThreshold] = useState(DEFAULT_DIRTY_THRESHOLD)
+  const [granularity, setGranularity] = useState<TrendGranularity>('day')
+
+  const data = useMemo(
+    () => (rawData ? computeTrendView({ raw: rawData, dirtyThreshold, granularity }) : null),
+    [rawData, dirtyThreshold, granularity],
+  )
 
   const query = useCallback(async () => {
     const token = imileToken.trim()
@@ -33,33 +45,39 @@ export function useVendorVolumeTrend() {
     setLoading(true)
     setError('')
     try {
-      const result = await fetchVendorVolumeTrend({
+      const raw = await fetchVendorVolumeTrend({
         imileToken: token,
         startDate: dateRange[0].format('YYYY-MM-DD'),
         endDate: dateRange[1].format('YYYY-MM-DD'),
       })
-      setData(result)
+      setRawData(raw)
+      const view = computeTrendView({ raw, dirtyThreshold, granularity })
       // 十几条线一起画会糊成一团：默认只亮票量前几家，未匹配的那条不默认参与
-      const defaults = result.suppliers
+      const defaults = view.suppliers
         .filter((supplier) => supplier.supplierKey !== UNMATCHED_SUPPLIER_KEY)
         .slice(0, TREND_DEFAULT_SELECTED_COUNT)
         .map((supplier) => supplier.supplierKey)
       setSelectedSupplierKeys(defaults)
-      setRouteSupplierKey(defaults[0] ?? result.suppliers[0]?.supplierKey ?? '')
-      if (result.meta.failedDates.length > 0) {
-        showToast(`有 ${result.meta.failedDates.length} 天到件数据拉取失败，已从统计中剔除`, 'warning')
-      } else if (result.suppliers.length === 0) {
+      setRouteSupplierKey(defaults[0] ?? view.suppliers[0]?.supplierKey ?? '')
+      if (raw.meta.failedDates.length > 0) {
+        showToast(`有 ${raw.meta.failedDates.length} 天到件数据拉取失败，已从统计中剔除`, 'warning')
+      } else if (view.meta.dirtyDates.length > 0) {
+        showToast(
+          `有 ${view.meta.dirtyDates.length} 天货量低于 ${view.meta.dirtyThreshold}，判定为脏数据，已从统计中剔除`,
+          'warning',
+        )
+      } else if (view.suppliers.length === 0) {
         showToast('已拉取扫描数据，但没有匹配到任何供应商', 'warning')
       }
     } catch (err) {
       const message = err instanceof Error ? err.message : '查询失败'
       setError(message)
-      setData(null)
+      setRawData(null)
       showToast(message, 'error')
     } finally {
       setLoading(false)
     }
-  }, [dateRange, imileToken])
+  }, [dateRange, dirtyThreshold, granularity, imileToken])
 
   const allSupplierKeys = useMemo(
     () => (data?.suppliers ?? []).map((supplier) => supplier.supplierKey),
@@ -92,6 +110,10 @@ export function useVendorVolumeTrend() {
   return {
     dateRange,
     setDateRange,
+    dirtyThreshold,
+    setDirtyThreshold,
+    granularity,
+    setGranularity,
     data,
     loading,
     error,

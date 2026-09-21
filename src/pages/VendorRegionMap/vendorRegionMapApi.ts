@@ -1,5 +1,5 @@
 import { backendFetch } from '../../api/httpClient'
-import type { VendorRegionMapResult, VendorVolumeTrendResult } from './vendorRegionMapTypes'
+import type { VendorRegionMapResult, VendorVolumeTrendRawResult } from './vendorRegionMapTypes'
 
 const JSON_HEADERS = { 'Content-Type': 'application/json' } as const
 
@@ -32,7 +32,7 @@ export async function fetchVendorVolumeTrend(payload: {
   imileToken: string
   startDate: string
   endDate: string
-}): Promise<VendorVolumeTrendResult> {
+}): Promise<VendorVolumeTrendRawResult> {
   const res = await backendFetch('/api/vendor-region-map/trend', {
     method: 'POST',
     headers: JSON_HEADERS,
@@ -40,5 +40,5 @@ export async function fetchVendorVolumeTrend(payload: {
   })
   const text = await res.text()
   if (!res.ok) throw new Error(await readHttpError(res, text))
-  return JSON.parse(text) as VendorVolumeTrendResult
+  return JSON.parse(text) as VendorVolumeTrendRawResult
 }
