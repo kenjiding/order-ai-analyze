@@ -22,8 +22,7 @@ export function useDispatchPerformanceDetailPage(configId: string | undefined) {
     dayjs().subtract(1, 'day'),
   ])
   const [supplierKeys, setSupplierKeys] = useState<string[]>([])
-  // 默认剔除白名单：这是考核口径，跟列表页那两个率对得上
-  const [whitelistMode, setWhitelistMode] = useState<WhitelistMode>('exclude')
+  const [whitelistMode, setWhitelistMode] = useState<WhitelistMode>('include')
   const [result, setResult] = useState<DispatchPerformanceResult | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)

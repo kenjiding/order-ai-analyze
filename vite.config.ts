@@ -18,6 +18,8 @@ export default defineConfig(() => ({
     },
   },
   build: {
+    // 大体积来自 maplibre-gl / exceljs / xlsx / @antv/g2 等第三方库自身,均已按需异步加载,不在首屏路径
+    chunkSizeWarningLimit: 1500,
     rollupOptions: {
       input: {
         main: resolve(__dirname, 'index.html'),

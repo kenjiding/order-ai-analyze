@@ -244,18 +244,6 @@ export default function DispatchPerformanceDetailPage() {
         />
       ) : null}
 
-      {v.missingDates.length > 0 ? (
-        <Alert
-          type="warning"
-          showIcon
-          message={t('detail.missingDatesTitle', {
-            ns: 'dispatchPerformance',
-            dates: v.missingDates.join(t('detail.dateListSeparator', { ns: 'dispatchPerformance' })),
-          })}
-          description={t('detail.missingDatesDesc', { ns: 'dispatchPerformance' })}
-        />
-      ) : null}
-
       {v.result ? (
         <>
           <SummaryTiles
@@ -294,31 +282,13 @@ export default function DispatchPerformanceDetailPage() {
               />
             </div>
           </section>
+          <div className="admin-panel p-4">
+            <PerformanceBreakdownTable suppliers={v.result.suppliers} loading={v.loading} />
+          </div>
           <UnmetParetoChart
             suppliers={v.result.suppliers}
             settled={v.result.overall.dispatchSettled}
           />
-          {v.result.whitelistTotal > 0 ? (
-            <Alert
-              type="info"
-              showIcon
-              message={t(
-                v.whitelistMode === 'exclude'
-                  ? 'detail.whitelistExcludedTitle'
-                  : 'detail.whitelistIncludedTitle',
-                { ns: 'dispatchPerformance', count: v.result.whitelistTotal },
-              )}
-              description={t(
-                v.whitelistMode === 'exclude'
-                  ? 'detail.whitelistExcludedDesc'
-                  : 'detail.whitelistIncludedDesc',
-                { ns: 'dispatchPerformance' },
-              )}
-            />
-          ) : null}
-          <div className="admin-panel p-4">
-            <PerformanceBreakdownTable suppliers={v.result.suppliers} loading={v.loading} />
-          </div>
         </>
       ) : null}
     </div>
