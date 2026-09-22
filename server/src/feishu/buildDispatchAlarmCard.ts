@@ -46,10 +46,12 @@ function shortDriverName(courierName: string): string {
  * 明细行尾巴上的「本地件优先客户」包裹数：`未签 / 总数`。
  * 司机行与「未派件」行共用——未派件那批同样可能压着优先件，只显示司机行会让
  * 磁贴上的 priorityUnsigned 对不上明细（曾出现「26 未签优先件」而明细里一张都找不到）。
+ * 未签数为 0（本行优先件已全部处理）时不展示，这行已经没有需要跟进的优先件了。
  */
 function prioritySuffix(d: Dispatch24hDriverStat): string {
-  if (d.priorityTotal <= 0) return ''
-  return `. ${colored(`${d.priorityUnsigned}/${d.priorityTotal} Priorities`, 'orange')}`
+  if (d.priorityTotal <= 0 || d.priorityUnsigned <= 0) return ''
+  const unsigned = colored(`${d.priorityUnsigned}`, 'red')
+  return `. ${colored(`<${unsigned}/${d.priorityTotal} Priorities>`, 'orange')}`
 }
 
 function columnSet(columns: CardEl[]): CardEl {
@@ -298,10 +300,10 @@ export function buildDispatchAlarmCard(params: {
   } else {
     const shown = unmetDrivers.slice(0, MAX_DRIVER_LINES)
     const lines = shown.map((d) => {
-      const unmetParts: string[] = []
-      if (d.neverSignedCount > 0) unmetParts.push(colored(`${d.neverSignedCount} not signed`, 'red'))
-      if (d.lateSignedCount > 0) unmetParts.push(colored(`${d.lateSignedCount} signed late`, 'orange'))
-      return `· **${shortDriverName(d.courierName)}** (${d.courierCode}) ${unmetParts.join(', ')} / ${d.total} total${prioritySuffix(d)}`
+      // 不再展示 signed late 明细，司机行统一按未达标数（含逾期签收）标「not signed」
+      const unmetCount = d.total - d.met
+      const unmetPart = colored(`${unmetCount} not signed`, 'red')
+      return `· **${shortDriverName(d.courierName)}** (${d.courierCode}) ${unmetPart} / ${d.total} total${prioritySuffix(d)}`
     })
     if (unmetDrivers.length > MAX_DRIVER_LINES) {
       lines.push(`及其他 ${unmetDrivers.length - MAX_DRIVER_LINES} 位司机`)

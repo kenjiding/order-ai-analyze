@@ -81,8 +81,33 @@ test('司机行展示「本地件优先客户」包裹数，不再展示问题�
     buildDispatchAlarmCard({ ...baseParams, total: 132, met: 131, problemCount: 4, drivers: [driver], unassigned: null }),
   )
 
-  assert.match(text, /TIRTH THAKAR\*\* \(D21021044801\).*1 not signed.*\/ 132 total\. .*1\/34 Priorities/)
+  assert.match(text, /TIRTH THAKAR\*\* \(D21021044801\).*1 not signed.*\/ 132 total\. .*<.*1.*\/34 Priorities>/)
+  // 未签数（1）单独标红，与外层橙色的 <N/M Priorities> 区分
+  assert.match(text, /<font color='red'>1<\/font>\/34 Priorities>/)
   assert.doesNotMatch(text, /4 problem/)
+})
+
+test('优先件全部已处理（未签数为 0）时不展示 Priorities 数据', () => {
+  const driver: Dispatch24hDriverStat = {
+    courierCode: 'D002',
+    courierName: 'Somebody',
+    routeCode: 'R-A',
+    total: 100,
+    met: 90,
+    problemCount: 0,
+    neverSignedCount: 10,
+    lateSignedCount: 0,
+    priorityTotal: 27,
+    priorityUnsigned: 0,
+    neverSignedWaybills: [],
+    lateSignedWaybills: [],
+    problemWaybills: [],
+  }
+  const text = bodyText(
+    buildDispatchAlarmCard({ ...baseParams, total: 100, met: 90, drivers: [driver], unassigned: null }),
+  )
+
+  assert.doesNotMatch(text, /Priorities/)
 })
 
 test('KPI 行用「Priority Packages」磁贴取代问题件磁贴，展示未签收优先件 / 优先件总数', () => {
@@ -199,9 +224,11 @@ test('未派件（无司机）那行也要标出「本地件优先客户」件�
     }),
   )
 
-  assert.match(text, /Not dispatched \(no driver assigned\).*66 not signed.*\/ 66 total\. .*22\/22 Priorities/)
+  assert.match(text, /Not dispatched \(no driver assigned\).*66 not signed.*\/ 66 total\. .*<.*22.*\/22 Priorities>/)
   // 明细行的未签优先件之和必须等于磁贴上的 26
-  const unsignedPriorities = [...text.matchAll(/(\d+)\/\d+ Priorities/g)].map((m) => Number(m[1]))
+  const unsignedPriorities = [...text.matchAll(/<font color='red'>(\d+)<\/font>\/\d+ Priorities>/g)].map((m) =>
+    Number(m[1]),
+  )
   assert.deepEqual(unsignedPriorities, [4, 22])
   assert.equal(unsignedPriorities.reduce((a, b) => a + b, 0), 26)
 })
