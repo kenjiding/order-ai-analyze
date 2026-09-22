@@ -121,10 +121,12 @@ run_ssh() {
 start_heartbeat() {
   ( while true; do sleep 10; echo "    ...仍在传输（$(date +%H:%M:%S)）"; done ) &
   HEARTBEAT_PID=$!
+  trap 'kill "$HEARTBEAT_PID" 2>/dev/null' EXIT
 }
 
 stop_heartbeat() {
   kill "$HEARTBEAT_PID" 2>/dev/null || true
+  trap - EXIT
 }
 
 run_scp() {

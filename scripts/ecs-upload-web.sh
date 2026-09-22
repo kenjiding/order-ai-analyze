@@ -154,8 +154,10 @@ fi
 echo "==> 上传 dist/（tar + ssh，网络较慢时可能需要 1~3 分钟，请耐心等待）"
 ( while true; do sleep 10; echo "    ...仍在上传（$(date +%H:%M:%S)）"; done ) &
 HEARTBEAT_PID=$!
+trap 'kill "$HEARTBEAT_PID" 2>/dev/null' EXIT
 COPYFILE_DISABLE=1 tar czf - -C "$ROOT/dist" . | remote_prepare_and_extract "$ECS_WEB_REMOTE_DIR"
 kill "$HEARTBEAT_PID" 2>/dev/null || true
+trap - EXIT
 
 if $RELOAD_NGINX; then
   echo "==> 重载 Nginx"

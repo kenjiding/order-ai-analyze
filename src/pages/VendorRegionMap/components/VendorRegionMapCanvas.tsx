@@ -214,7 +214,9 @@ export function VendorRegionMapCanvas({
   const popupRef = useRef<maplibregl.Popup | null>(null)
   const layersReadyRef = useRef(false)
   const applyRef = useRef<() => void>(() => {})
-  const fittedQueryRef = useRef<string>('')
+  // 只在本次会话第一次拿到数据时自动 fit 一次；之后用户改日期/筛选重新查询，
+  // 都不再抢镜头——不然每次查询都会把用户手动缩放/平移过的视角冲掉
+  const hasFittedOnceRef = useRef(false)
   const statsRef = useRef<Map<string, ZipStat>>(new Map())
   const colorMapRef = useRef(colorMap)
   const metricRef = useRef(metric)
@@ -560,8 +562,7 @@ export function VendorRegionMapCanvas({
       ;(map?.getSource(COLUMNS_SOURCE) as maplibregl.GeoJSONSource | undefined)?.setData(columnCollection)
       ;(map?.getSource(ROUTE_CODES_SOURCE) as maplibregl.GeoJSONSource | undefined)?.setData(routeLabelCollection)
 
-      const queryKey = data ? `${data.meta.startDate}:${data.meta.endDate}:${data.cells.length}` : ''
-      if (!data || !map || fittedQueryRef.current === queryKey) return
+      if (!data || !map || hasFittedOnceRef.current) return
 
       // 仓库坐标不参与定位——不同州仓库不同，定位只看这批数据实际落在哪
       const bounds = new maplibregl.LngLatBounds()
@@ -586,7 +587,7 @@ export function VendorRegionMapCanvas({
           duration: 800,
         })
       }
-      fittedQueryRef.current = queryKey
+      hasFittedOnceRef.current = true
     }
 
     applyRef.current = apply
