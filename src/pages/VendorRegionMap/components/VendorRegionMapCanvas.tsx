@@ -356,6 +356,10 @@ export function VendorRegionMapCanvas({
     }
     map.on('zoomend', handleZoomEnd)
 
+    // 切到其他 tab 时容器被 [hidden] 收成 0 尺寸，maplibre 不会自己感知——切回来时手动 resize 一下
+    const resizeObserver = new ResizeObserver(() => map.resize())
+    resizeObserver.observe(containerRef.current)
+
     const setupLayers = () => {
       if (!map.getSource(REGIONS_SOURCE)) {
         map.addSource(REGIONS_SOURCE, { type: 'geojson', data: EMPTY_FC })
@@ -525,6 +529,7 @@ export function VendorRegionMapCanvas({
     return () => {
       layersReadyRef.current = false
       map.off('zoomend', handleZoomEnd)
+      resizeObserver.disconnect()
       warehouseMarkerRef.current?.remove()
       warehouseMarkerRef.current = null
       popupRef.current?.remove()

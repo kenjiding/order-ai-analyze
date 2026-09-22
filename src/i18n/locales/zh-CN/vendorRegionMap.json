@@ -2,6 +2,7 @@
   "title": "供应商区域地图",
   "tabMap": "区域地图",
   "tabTrend": "供应商货量趋势",
+  "tabDifficulty": "路由难度",
   "statDate": "统计日期",
   "query": "查询",
   "vendorFilter": "供应商筛选",
@@ -119,6 +120,31 @@
     "noVendorsMatched": "已拉取扫描数据，但没有匹配到供应商路由码的包裹",
     "queryFailed": "查询失败",
     "partialFailed": "有 {{count}} 天到件数据拉取失败，已从统计中剔除"
+  },
+  "difficulty": {
+    "hint": "综合距仓库距离、单量（查询区间内的原始票量）、单量密度（件/km²）算出的路由派送难易度分（0~1，越大越难）。按「供应商 → 路由码 → 邮编」三级展示，点行首箭头逐级展开；供应商难度是其名下各路由码难度分的简单平均（不按票量加权——一条路由码≈一条司机线路，票量小但又远又稀的路由恰恰最难留住司机，加权只会把它边缘化）。缺邮区坐标或边界面积的邮编不参与评分。",
+    "colRouteCode": "路由码",
+    "colZip": "邮编",
+    "colZipCount": "覆盖邮编数",
+    "colRouteCount": "路由数",
+    "colHardRoutes": "困难路由数",
+    "colSupplier": "供应商",
+    "colVolume": "单量",
+    "colDistance": "距仓库",
+    "colDensity": "单量密度",
+    "colScore": "难度分",
+    "colLevel": "难度等级",
+    "perKm2": "票/km²",
+    "level": {
+      "easy": "容易",
+      "fair": "较易",
+      "medium": "一般",
+      "hard": "较难",
+      "extreme": "极难",
+      "unknown": "数据不足"
+    },
+    "empty": "还没有路由难度数据，先在「区域地图」Tab 查询一次",
+    "rowsTotal": "共 {{total}} 家供应商"
   },
   "presets": {
     "last14Days": "近 14 天",

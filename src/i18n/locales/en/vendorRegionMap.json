@@ -2,6 +2,7 @@
   "title": "Vendor Region Map",
   "tabMap": "Region map",
   "tabTrend": "Vendor volume trend",
+  "tabDifficulty": "Route difficulty",
   "statDate": "Stat date",
   "query": "Query",
   "vendorFilter": "Vendor filter",
@@ -119,6 +120,31 @@
     "noVendorsMatched": "Fetched scans but no vendor route matches",
     "queryFailed": "Query failed",
     "partialFailed": "{{count}} day(s) failed — excluded from stats"
+  },
+  "difficulty": {
+    "hint": "A 0-1 delivery-difficulty score combining distance from warehouse, volume (raw parcel count in the queried range), and volume density (parcels/km²) — higher is harder. Shown as a Vendor → Route code → Postcode hierarchy — expand each row to drill down. Vendor difficulty is the simple (unweighted) average of its route codes' scores, not volume-weighted — one route code is roughly one driver line, and a low-volume, far, sparse route is exactly the kind that's hardest to keep a driver on, so weighting by volume would marginalize it. Postcodes missing coordinates or boundary area are excluded from scoring.",
+    "colRouteCode": "Route code",
+    "colZip": "Postcode",
+    "colZipCount": "Postcodes",
+    "colRouteCount": "Routes",
+    "colHardRoutes": "Hard routes",
+    "colSupplier": "Vendor",
+    "colVolume": "Volume",
+    "colDistance": "From warehouse",
+    "colDensity": "Density",
+    "colScore": "Difficulty score",
+    "colLevel": "Difficulty level",
+    "perKm2": "parcels/km²",
+    "level": {
+      "easy": "Easy",
+      "fair": "Fairly easy",
+      "medium": "Moderate",
+      "hard": "Hard",
+      "extreme": "Very hard",
+      "unknown": "Insufficient data"
+    },
+    "empty": "No route difficulty data yet — query once on the Region map tab first",
+    "rowsTotal": "{{total}} vendors"
   },
   "presets": {
     "last14Days": "Last 14 days",
