@@ -105,6 +105,24 @@ export function formatMetricValue(value: number, metric: MapMetric): string {
 export const ADELAIDE_MAP_CENTER = { lng: 138.6007, lat: -34.9285 }
 export const ADELAIDE_MAP_ZOOM = 10.4
 
+/** 各州府城市中心点，供账号按所属州自动定位地图；坐标取州府市中心 */
+const REGION_MAP_CENTER: Record<string, { lng: number; lat: number }> = {
+  NSW: { lng: 151.2093, lat: -33.8688 }, // 悉尼
+  VIC: { lng: 144.9631, lat: -37.8136 }, // 墨尔本
+  QLD: { lng: 153.0251, lat: -27.4698 }, // 布里斯班
+  SA: ADELAIDE_MAP_CENTER,
+  WA: { lng: 115.8605, lat: -31.9505 }, // 珀斯
+  TAS: { lng: 147.3272, lat: -42.8821 }, // 霍巴特
+  ACT: { lng: 149.13, lat: -35.2809 }, // 堪培拉
+  NT: { lng: 130.8456, lat: -12.4634 }, // 达尔文
+}
+
+/** 账号「州/区域」→ 地图默认定位。未知/未设置州（如超管）兜底阿德莱德，与 resolveRegionTz 同一约定 */
+export function resolveRegionMapCenter(regionCode: string | null | undefined): { lng: number; lat: number } {
+  if (!regionCode) return ADELAIDE_MAP_CENTER
+  return REGION_MAP_CENTER[regionCode] ?? ADELAIDE_MAP_CENTER
+}
+
 /** 本仓固定地址：Gillman 工业区 */
 export const WAREHOUSE = {
   name: '本仓库',

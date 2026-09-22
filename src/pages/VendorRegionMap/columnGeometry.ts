@@ -179,16 +179,18 @@ export function aggregateZipStats(input: {
   return stats
 }
 
-/** 一个邮区内按票量排好序的路由码，count 用于挑选碰撞时优先显示谁 */
-export type RouteCodeLabelGroup = { routeCode: string; count: number }
+/** 一个邮区内按票量排好序的路由码，count 用于挑选碰撞时优先显示谁；supplierKey 用来给标签上色 */
+export type RouteCodeLabelGroup = { routeCode: string; count: number; supplierKey: string }
 
 /**
  * 路由码标签点：邮区只有一个路由码时直接落在中心点，多个则按票量降序沿环形错位摆放。
  * 具体哪个标签在低 zoom 时被挤掉，交给 MapLibre 的 symbol 碰撞避让处理，这里只负责给出候选位置。
+ * 标签颜色跟柱体、填色层一样取供应商色，一眼能看出这条路由属于哪家供应商。
  */
 export function buildRouteCodeLabelCollection(
   stats: ZipStat[],
   routesByZip: Map<string, RouteCodeLabelGroup[]>,
+  colorOf: (supplierKey: string) => string,
 ): FeatureCollection {
   const features: Feature[] = []
   for (const stat of stats) {
@@ -214,6 +216,7 @@ export function buildRouteCodeLabelCollection(
           routeCode: route.routeCode,
           count: route.count,
           sortKey: -route.count,
+          color: colorOf(route.supplierKey),
         },
         geometry: { type: 'Point', coordinates: [lng, lat] },
       })

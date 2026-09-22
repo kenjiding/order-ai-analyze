@@ -63,11 +63,12 @@ export function useReturnToMerchantFinishPage() {
         startDate: range[0].startOf('day').format(DATE_TIME_FORMAT),
         endDate: range[1].endOf('day').format(DATE_TIME_FORMAT),
       })
-      setRows(data.rows.map((row, index) => ({ ...row, key: `${row.bagNumber}__${index}` })))
+      const nonEmptyRows = data.rows.filter((row) => row.waybillTotalCount > 0)
+      setRows(nonEmptyRows.map((row, index) => ({ ...row, key: `${row.bagNumber}__${index}` })))
       setSelectedKeys([])
       setResults({})
       setLoadedAt(dayjs().format('HH:mm:ss'))
-      showToast(`已加载 ${data.rows.length} 条集包`, 'success')
+      showToast(`已加载 ${nonEmptyRows.length} 条集包`, 'success')
     } catch (error: unknown) {
       showToast(error instanceof Error ? error.message : '集包查询失败', 'error')
     } finally {

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { ChevronDown, ChevronUp, Columns3, Compass, Radar, Warehouse } from 'lucide-react'
+import { ChevronDown, ChevronUp, Columns3, Compass, Radar, Route, Warehouse } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { i18n } from '../../../i18n'
 import { VendorRegionMapLoading } from './VendorRegionMapLoading'
@@ -7,6 +7,7 @@ import maplibregl from 'maplibre-gl/dist/maplibre-gl-csp'
 import maplibreWorkerUrl from 'maplibre-gl/dist/maplibre-gl-csp-worker.js?url'
 import 'maplibre-gl/dist/maplibre-gl.css'
 import { colorFromMap } from '../vendorColors'
+import { useAuthStore } from '../../../stores/authStore'
 import {
   aggregateZipStats,
   buildColumnCollection,
@@ -25,10 +26,10 @@ import {
 } from '../columnGeometry'
 import { formatAreaKm2, formatDensity } from '../regionMetrics'
 import {
-  ADELAIDE_MAP_CENTER,
   ADELAIDE_MAP_ZOOM,
   formatMetricValue,
   isMoneyMetric,
+  resolveRegionMapCenter,
   WAREHOUSE,
   warehouseRingScaleLabel,
   type MapMetric,
@@ -127,16 +128,6 @@ const DEFAULT_BEARING = -22
 const TOP_DOWN_PITCH = 0
 const TOP_DOWN_BEARING = 0
 
-function resetCamera(map: maplibregl.Map) {
-  map.easeTo({
-    center: [ADELAIDE_MAP_CENTER.lng, ADELAIDE_MAP_CENTER.lat],
-    zoom: ADELAIDE_MAP_ZOOM,
-    pitch: DEFAULT_PITCH,
-    bearing: DEFAULT_BEARING,
-    duration: 700,
-  })
-}
-
 function flyToWarehouse(map: maplibregl.Map) {
   map.easeTo({
     center: [WAREHOUSE.lng, WAREHOUSE.lat],
@@ -228,12 +219,16 @@ export function VendorRegionMapCanvas({
   const colorMapRef = useRef(colorMap)
   const metricRef = useRef(metric)
   const warehouseMarkerRef = useRef<maplibregl.Marker | null>(null)
+  // 账号所属州决定地图落点；地图只在挂载时创建一次，州在会话内不会变
+  const regionCode = useAuthStore((s) => s.user?.regionCode ?? null)
+  const regionCenter = useMemo(() => resolveRegionMapCenter(regionCode), [regionCode])
   const [ringsVisible, setRingsVisible] = useState(true)
   const [columnsVisible, setColumnsVisible] = useState(true)
+  const [routeCodesVisible, setRouteCodesVisible] = useState(true)
   const [topDown, setTopDown] = useState(false)
   const [legendExpanded, setLegendExpanded] = useState(false)
   const [worldScale, setWorldScale] = useState(() =>
-    Math.round(columnWorldScale(ADELAIDE_MAP_CENTER.lat, ADELAIDE_MAP_ZOOM) / WORLD_SCALE_STEP) *
+    Math.round(columnWorldScale(regionCenter.lat, ADELAIDE_MAP_ZOOM) / WORLD_SCALE_STEP) *
     WORLD_SCALE_STEP,
   )
 
@@ -269,10 +264,14 @@ export function VendorRegionMapCanvas({
   }, [data, selectedSupplierKeys])
 
   const routesByZip = useMemo(() => {
-    const merged = new Map<string, Map<string, number>>()
+    // data.routes 已按 count 降序，同一路由码第一次遇到的 supplierKey 就是票量最大的那家——
+    // 极少数场景下同一路由码字符串被两家供应商共用，标签颜色跟着票量占优的那家走
+    const merged = new Map<string, Map<string, { count: number; supplierKey: string }>>()
     for (const route of visibleRoutes) {
-      const byRoute = merged.get(route.zipCode) ?? new Map<string, number>()
-      byRoute.set(route.routeCode, (byRoute.get(route.routeCode) ?? 0) + route.count)
+      const byRoute = merged.get(route.zipCode) ?? new Map<string, { count: number; supplierKey: string }>()
+      const existing = byRoute.get(route.routeCode)
+      if (existing) existing.count += route.count
+      else byRoute.set(route.routeCode, { count: route.count, supplierKey: route.supplierKey })
       merged.set(route.zipCode, byRoute)
     }
     const result = new Map<string, RouteCodeLabelGroup[]>()
@@ -280,7 +279,7 @@ export function VendorRegionMapCanvas({
       result.set(
         zipCode,
         [...byRoute.entries()]
-          .map(([routeCode, count]) => ({ routeCode, count }))
+          .map(([routeCode, { count, supplierKey }]) => ({ routeCode, count, supplierKey }))
           .sort((a, b) => b.count - a.count || a.routeCode.localeCompare(b.routeCode)),
       )
     }
@@ -307,8 +306,8 @@ export function VendorRegionMapCanvas({
   )
 
   const routeLabelCollection = useMemo(
-    () => buildRouteCodeLabelCollection(zipStats, routesByZip),
-    [routesByZip, zipStats],
+    () => buildRouteCodeLabelCollection(zipStats, routesByZip, (supplierKey) => colorFromMap(colorMap, supplierKey)),
+    [colorMap, routesByZip, zipStats],
   )
 
   const maxTotal = useMemo(() => maxZipTotal(zipStats), [zipStats])
@@ -320,7 +319,7 @@ export function VendorRegionMapCanvas({
     const map = new maplibregl.Map({
       container: containerRef.current,
       style: MAP_STYLE_URL,
-      center: [ADELAIDE_MAP_CENTER.lng, ADELAIDE_MAP_CENTER.lat],
+      center: [regionCenter.lng, regionCenter.lat],
       zoom: ADELAIDE_MAP_ZOOM,
       pitch: DEFAULT_PITCH,
       bearing: DEFAULT_BEARING,
@@ -469,8 +468,8 @@ export function VendorRegionMapCanvas({
             'symbol-sort-key': ['get', 'sortKey'],
           },
           paint: {
-            // 跟底图地名的深灰/黑拉开，一眼能分出这是业务标签而不是底图自带的文字
-            'text-color': '#0000ff',
+            // 跟柱体、填色层同一套供应商色，一眼能看出这条路由属于哪家供应商
+            'text-color': ['get', 'color'],
             'text-halo-color': 'rgba(255,255,255,0.92)',
             'text-halo-width': 1.3,
             'text-opacity': ROUTE_LABEL_OPACITY,
@@ -530,6 +529,8 @@ export function VendorRegionMapCanvas({
       map.remove()
       mapRef.current = null
     }
+    // regionCenter 只用于地图创建时的初始落点，地图本身只建一次，不随它变化重建
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   useEffect(() => {
@@ -548,6 +549,12 @@ export function VendorRegionMapCanvas({
 
   useEffect(() => {
     const map = mapRef.current
+    if (!map?.getLayer(ROUTE_CODES_LABEL)) return
+    map.setLayoutProperty(ROUTE_CODES_LABEL, 'visibility', routeCodesVisible ? 'visible' : 'none')
+  }, [routeCodesVisible])
+
+  useEffect(() => {
+    const map = mapRef.current
     const apply = () => {
       ;(map?.getSource(REGIONS_SOURCE) as maplibregl.GeoJSONSource | undefined)?.setData(regionCollection)
       ;(map?.getSource(COLUMNS_SOURCE) as maplibregl.GeoJSONSource | undefined)?.setData(columnCollection)
@@ -556,25 +563,35 @@ export function VendorRegionMapCanvas({
       const queryKey = data ? `${data.meta.startDate}:${data.meta.endDate}:${data.cells.length}` : ''
       if (!data || !map || fittedQueryRef.current === queryKey) return
 
+      // 仓库坐标不参与定位——不同州仓库不同，定位只看这批数据实际落在哪
       const bounds = new maplibregl.LngLatBounds()
-      bounds.extend([WAREHOUSE.lng, WAREHOUSE.lat])
       for (const cell of data.cells) {
         if (cell.lng == null || cell.lat == null) continue
         bounds.extend([cell.lng, cell.lat])
       }
-      map.fitBounds(bounds, {
-        padding: 72,
-        maxZoom: 11.6,
-        pitch: DEFAULT_PITCH,
-        bearing: DEFAULT_BEARING,
-        duration: 800,
-      })
+      if (bounds.isEmpty()) {
+        map.easeTo({
+          center: [regionCenter.lng, regionCenter.lat],
+          zoom: ADELAIDE_MAP_ZOOM,
+          pitch: DEFAULT_PITCH,
+          bearing: DEFAULT_BEARING,
+          duration: 800,
+        })
+      } else {
+        map.fitBounds(bounds, {
+          padding: 72,
+          maxZoom: 11.6,
+          pitch: DEFAULT_PITCH,
+          bearing: DEFAULT_BEARING,
+          duration: 800,
+        })
+      }
       fittedQueryRef.current = queryKey
     }
 
     applyRef.current = apply
     if (layersReadyRef.current) apply()
-  }, [columnCollection, data, regionCollection, routeLabelCollection])
+  }, [columnCollection, data, regionCenter.lat, regionCenter.lng, regionCollection, routeLabelCollection])
 
   const hasData = Boolean(data && data.cells.length > 0)
   const allHidden = hasData && visibleCells.length === 0
@@ -592,9 +609,7 @@ export function VendorRegionMapCanvas({
             const map = mapRef.current
             if (!map) return
             const next = !topDown
-            // 切俯瞰只转角度、不挪位置；切回 3D 顺带把位置也复位，这样按钮还兼着“复位3D视角”的老功能
-            if (next) setViewPitch(map, true)
-            else resetCamera(map)
+            setViewPitch(map, next)
             setTopDown(next)
           }}
         >
@@ -630,6 +645,15 @@ export function VendorRegionMapCanvas({
         >
           <Columns3 className="h-4 w-4" aria-hidden />
           {t('toggleColumns')}
+        </button>
+        <button
+          type="button"
+          className="vrm-tool"
+          aria-pressed={routeCodesVisible}
+          onClick={() => setRouteCodesVisible((current) => !current)}
+        >
+          <Route className="h-4 w-4" aria-hidden />
+          {t('toggleRouteCodes')}
         </button>
       </div>
 
