@@ -1,8 +1,13 @@
 /** 不在 SPA Router 内的独立 HTML；登录后必须整页跳回，不能 navigate */
 export const DELIVERING_NOTIFY_ENTRY = '/delivering-notify.html'
 export const RETURN_TO_MERCHANT_ENTRY = '/return-to-merchant.html'
+export const SCAN_STAT_ENTRY = '/scan-stat.html'
 
-const STANDALONE_HTML_ENTRIES = new Set([DELIVERING_NOTIFY_ENTRY, RETURN_TO_MERCHANT_ENTRY])
+const STANDALONE_HTML_ENTRIES = new Set([
+  DELIVERING_NOTIFY_ENTRY,
+  RETURN_TO_MERCHANT_ENTRY,
+  SCAN_STAT_ENTRY,
+])
 
 export function deliveringNotifyLoginHref(): string {
   return `/login?from=${encodeURIComponent(DELIVERING_NOTIFY_ENTRY)}`
@@ -10,6 +15,10 @@ export function deliveringNotifyLoginHref(): string {
 
 export function returnToMerchantLoginHref(): string {
   return `/login?from=${encodeURIComponent(RETURN_TO_MERCHANT_ENTRY)}`
+}
+
+export function scanStatLoginHref(): string {
+  return `/login?from=${encodeURIComponent(SCAN_STAT_ENTRY)}`
 }
 
 /** 只接受站内相对路径，避免 open redirect */

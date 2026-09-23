@@ -128,6 +128,17 @@ function AuthenticatedShell() {
   )
 }
 
+function ScanStatEntry() {
+  useEffect(() => {
+    window.location.replace('/scan-stat.html')
+  }, [])
+  return (
+    <div className="flex min-h-screen items-center justify-center bg-slate-50 text-sm text-slate-600">
+      正在打开扫描统计…
+    </div>
+  )
+}
+
 function DefaultHomeRedirect() {
   const { hasPermission, isSuperAdmin, loading, isAuthenticated } = useAuthStore()
   const { t } = useTranslation()
@@ -154,6 +165,7 @@ function AppRoutes() {
       <Route path="/chase-dispatch-share/:token" element={<LazyBoundary><ChaseDispatchSharePage /></LazyBoundary>} />
       <Route path="/dispatch-alarm-share/:token" element={<LazyBoundary><ChaseDispatchSharePage /></LazyBoundary>} />
       <Route element={<ProtectedRoute />}>
+        <Route path="/scan-stat" element={<ScanStatEntry />} />
         <Route path="/vendor-snapshot" element={<LazyBoundary><VendorSnapshotPage /></LazyBoundary>} />
         <Route element={<AuthenticatedShell />}>
           <Route path="/" element={<DefaultHomeRedirect />} />

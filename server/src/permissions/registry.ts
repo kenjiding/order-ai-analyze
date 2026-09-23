@@ -29,6 +29,13 @@ export const PERMISSION_REGISTRY: PermissionDefinition[] = [
     description: '按集包创建时间查询集包并批量提交退返商家完结',
     sortOrder: 25,
   },
+  {
+    key: 'menu:scan-stat',
+    type: 'menu',
+    label: '扫描统计',
+    description: 'PDA 扫描运单，按商家编码统计后私聊推送到飞书',
+    sortOrder: 26,
+  },
   { key: 'menu:vendor-analysis', type: 'menu', label: '供应商数据分析', description: '供应商客诉率与工单数据推送', sortOrder: 38 },
   {
     key: 'menu:vendor-region-map',

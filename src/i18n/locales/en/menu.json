@@ -26,6 +26,7 @@
     "warehouse-safety": "Hub safety checklist",
     "attendance-work-time": "Work hours",
     "return-to-merchant-finish": "Return-to-merchant closeout",
+    "scan-stat": "Scan tally",
     "order-exception": "Waybill exception AI",
     "new-merchant-monitor": "New merchant monitor",
     "problem-package-audit": "Exception-parcel AI audit",

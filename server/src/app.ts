@@ -28,6 +28,7 @@ import { dispatchPerformanceRouter } from './routes/dispatchPerformanceRouter'
 import { exitRateQueryRouter } from './routes/exitRateQueryRouter'
 import { dispatchAlarmPortalRouter } from './routes/dispatchAlarmPortalRouter'
 import { deliveringNotifyRouter } from './routes/deliveringNotifyRouter'
+import { scanStatRouter } from './routes/scanStatRouter'
 import { returnToMerchantRouter } from './routes/returnToMerchantRouter'
 import { attendanceWorkTimeRouter } from './routes/attendanceWorkTimeRouter'
 import { containerManagementRouter } from './routes/containerManagementRouter'
@@ -105,6 +106,7 @@ app.use('/api/exit-rate-query', requireAuth, exitRateQueryRouter)
 // 24小时派签告警外部门户：凭分享 token 查看未达标运单明细，不走登录鉴权
 app.use('/api/dispatch-alarm-portal', dispatchAlarmPortalRouter)
 app.use('/api/delivering-notify', requireAuth, deliveringNotifyRouter)
+app.use('/api/scan-stat', requireAuth, scanStatRouter)
 app.use('/api/return-to-merchant', requireAuth, returnToMerchantRouter)
 app.use('/api/attendance-work-time', requireAuth, attendanceWorkTimeRouter)
 app.use('/api/container-management', requireAuth, containerManagementRouter)
