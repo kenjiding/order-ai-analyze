@@ -183,6 +183,11 @@ export type DispatchPerformanceResult = {
   recentBatches: DispatchSettledBatch[]
 }
 
+// 司机利润趋势相关类型（DispatchProfitDailyRow / DriverProfitSummary / ProfitTrendGranularity 等）
+// 及聚合函数 computeDriverProfitTrend 都在 shared/dispatchPerformance/profitTrendAggregate.ts——
+// 前后端共用同一份定义和实现，天/周/月切换、按司机全局合并直接在前端本地重算，不用重新请求。
+export * from '../../../shared/dispatchPerformance/profitTrendAggregate'
+
 /** 「立刻统计」作业的结果：两趟都已落库，派签是临时值（到点的定时结算会覆盖） */
 export type SettleNowArtifact = {
   stationCode: string

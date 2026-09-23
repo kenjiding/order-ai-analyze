@@ -7,6 +7,7 @@
 import { and, eq, gte, inArray, lte, sql } from 'drizzle-orm'
 import { getDb, schema } from '../db'
 import type { DispatchPerformanceCell } from './aggregateCells'
+import type { DispatchProfitDailyRow } from '../../../shared/dispatchPerformance/profitTrendAggregate'
 
 /** 日度指标保留天数：日度表体积很小，留半年支撑趋势对比 */
 export const DISPATCH_PERFORMANCE_RETENTION_DAYS = 180
@@ -657,6 +658,70 @@ export async function listDispatchPerformanceSuppliers(params: {
       ),
     )
   return rows.sort((a, b) => a.supplierName.localeCompare(b.supplierName))
+}
+
+const CELL_KEY_SEP_PROFIT = '::'
+
+/**
+ * 利润趋势的原始明细：按 (到件日, 供应商, 路由码, 司机) 出未合桶的行，不跨天合并——
+ * 这已经是日度表的最细粒度，只是不揉成树。供应商/路由码/司机三个维度都从这同一份
+ * 原始行本地聚合出来（shared/dispatchPerformance/profitTrendAggregate.ts），天/周/月切换、
+ * 按 courierCode 全局合并（同一司机可能跨供应商接单）也留给前端本地算，不用分别请求三次接口。
+ */
+export async function queryDispatchProfitTrend(params: {
+  stationCode: string
+  startDate: string
+  endDate: string
+  supplierKeys?: string[]
+  includeWhitelist?: boolean
+}): Promise<DispatchProfitDailyRow[]> {
+  const { stationCode, startDate, endDate, supplierKeys, includeWhitelist = false } = params
+  const db = getDb()
+  const t = schema.dispatchPerformanceDailyStats
+
+  const conditions = [
+    eq(t.stationCode, stationCode),
+    gte(t.arrivalDate, startDate),
+    lte(t.arrivalDate, endDate),
+  ]
+  if (supplierKeys?.length) conditions.push(inArray(t.supplierKey, supplierKeys))
+
+  const rows = await db
+    .select()
+    .from(t)
+    .where(and(...conditions))
+
+  const merged = new Map<string, DispatchProfitDailyRow>()
+  for (const row of rows) {
+    if (row.isWhitelist && !includeWhitelist) continue
+    const key = [row.arrivalDate, row.supplierKey, row.routeCode, row.courierCode].join(CELL_KEY_SEP_PROFIT)
+    let acc = merged.get(key)
+    if (!acc) {
+      acc = {
+        arrivalDate: row.arrivalDate,
+        supplierKey: row.supplierKey,
+        supplierName: row.supplierName || row.supplierKey,
+        routeCode: row.routeCode,
+        courierCode: row.courierCode,
+        courierName: row.courierName || row.courierCode,
+        vendorProfit: 0,
+        courierProfit: 0,
+        total: 0,
+        pricedSignedCount: 0,
+        unpricedSignedCount: 0,
+      }
+      merged.set(key, acc)
+    }
+    acc.vendorProfit += row.vendorProfit
+    acc.courierProfit += row.courierProfit
+    acc.total += row.total
+    acc.pricedSignedCount += row.pricedSignedCount
+    acc.unpricedSignedCount += row.unpricedSignedCount
+  }
+
+  return [...merged.values()]
+    .map((r) => ({ ...r, vendorProfit: money(r.vendorProfit), courierProfit: money(r.courierProfit) }))
+    .sort((a, b) => a.arrivalDate.localeCompare(b.arrivalDate))
 }
 
 /** 删除超过保留期的日度指标（按 arrival_date 的字符串比较，格式固定 YYYY-MM-DD 可直接比） */

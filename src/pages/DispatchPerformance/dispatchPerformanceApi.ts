@@ -4,6 +4,7 @@ import type {
   DispatchPerformanceConfig,
   DispatchPerformanceConfigDraft,
   DispatchPerformanceResult,
+  DispatchProfitDailyRow,
   WhitelistMode,
 } from './dispatchPerformanceTypes'
 
@@ -83,6 +84,22 @@ export async function fetchDispatchPerformanceData(
     method: 'GET',
     signal,
   })
+}
+
+// ── 司机利润趋势 ──────────────────────────────────────────────────
+
+export async function fetchDispatchProfitTrend(
+  query: DispatchPerformanceDataQuery,
+  signal?: AbortSignal,
+): Promise<DispatchProfitDailyRow[]> {
+  const params = new URLSearchParams({ startDate: query.startDate, endDate: query.endDate })
+  if (query.supplierKeys?.length) params.set('supplierKey', query.supplierKeys.join(','))
+  if (query.whitelistMode === 'include') params.set('whitelist', 'include')
+  const json = await request<{ rows: DispatchProfitDailyRow[] }>(
+    `/configs/${query.configId}/profit-trend?${params}`,
+    { method: 'GET', signal },
+  )
+  return json.rows
 }
 
 // ── 立刻统计 ──────────────────────────────────────────────────────

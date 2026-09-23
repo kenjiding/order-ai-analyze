@@ -25,7 +25,7 @@
     "test:vendor-region-map": "tsx --test src/vendorRegionMap/trendAggregate.test.ts src/vendorRegionMap/trendPeriodAggregate.test.ts src/vendorRegionMap/aggregate.test.ts",
     "test:vendor-scope": "tsx --test src/vendorAnalysis/supplierScope.test.ts src/vendorAnalysis/before11Aggregate.test.ts src/imile/before11Exit.test.ts",
     "test:sorting-workday": "tsx --test src/imile/sortingWorkday.test.ts",
-    "test:dispatch-performance": "tsx --test src/dispatch24hStats/settledArrivalDates.test.ts src/dispatch24hStats/settleTime.test.ts src/dispatch24hStats/settleLock.test.ts src/dispatch24hStats/aggregateCells.test.ts src/dispatch24hStats/performanceTree.test.ts src/vendorAnalysis/dispatch24hTerminal.test.ts src/vendorAnalysis/aggregate.test.ts",
+    "test:dispatch-performance": "tsx --test src/dispatch24hStats/settledArrivalDates.test.ts src/dispatch24hStats/settleTime.test.ts src/dispatch24hStats/settleLock.test.ts src/dispatch24hStats/aggregateCells.test.ts src/dispatch24hStats/performanceTree.test.ts src/dispatch24hStats/profitTrendAggregate.test.ts src/vendorAnalysis/dispatch24hTerminal.test.ts src/vendorAnalysis/aggregate.test.ts",
     "test:scheduled-push": "tsx --test src/jobs/scheduledDueSlots.test.ts",
     "test:order-analyze-regression": "tsx src/orderAnalyze/regression/regressionCli.ts",
     "podman:build": "podman build -t warehouse-server:latest -f Containerfile .",

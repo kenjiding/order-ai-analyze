@@ -4,11 +4,13 @@ import { useTranslation } from 'react-i18next'
 import { useNavigate, useParams } from 'react-router-dom'
 import type { Dayjs } from 'dayjs'
 import { AttributionWaterfall } from './components/AttributionWaterfall'
+import { ProfitStabilityPanel } from './components/ProfitStabilityPanel'
 import { PerformanceBreakdownTable } from './components/PerformanceBreakdownTable'
 import { UnmetParetoChart } from './components/UnmetParetoChart'
 import { SettleNowResult } from './components/SettleNowResult'
 import { SupplierRankingBoard } from './components/SupplierRankingBoard'
 import { useDispatchPerformanceDetailPage } from './useDispatchPerformanceDetailPage'
+import { useProfitStabilityTrend } from './useProfitStabilityTrend'
 import type { DispatchMetrics, DispatchSettledBatch, WhitelistMode } from './dispatchPerformanceTypes'
 
 const { RangePicker } = DatePicker
@@ -129,6 +131,12 @@ export default function DispatchPerformanceDetailPage() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
   const v = useDispatchPerformanceDetailPage(id)
+  const profitTrend = useProfitStabilityTrend({
+    configId: id,
+    startDate: v.range[0].format('YYYY-MM-DD'),
+    endDate: v.range[1].format('YYYY-MM-DD'),
+    whitelistMode: v.whitelistMode,
+  })
 
   const config = v.result?.config
 
@@ -231,6 +239,7 @@ export default function DispatchPerformanceDetailPage() {
       </div>
 
       {v.error ? <Alert type="error" showIcon message={v.error} /> : null}
+      {profitTrend.error ? <Alert type="error" showIcon message={profitTrend.error} /> : null}
 
       {v.settleResult ? (
         <SettleNowResult artifact={v.settleResult} onDismiss={v.dismissSettleResult} />
@@ -258,6 +267,17 @@ export default function DispatchPerformanceDetailPage() {
           <UnmetParetoChart
             suppliers={v.result.suppliers}
             settled={v.result.overall.dispatchSettled}
+          />
+          <ProfitStabilityPanel
+            result={profitTrend.result}
+            loading={profitTrend.loading}
+            dimension={profitTrend.dimension}
+            onDimensionChange={profitTrend.setDimension}
+            granularity={profitTrend.granularity}
+            onGranularityChange={profitTrend.setGranularity}
+            supplierOptions={v.result.supplierOptions}
+            supplierKeys={profitTrend.supplierKeys}
+            onSupplierKeysChange={profitTrend.setSupplierKeys}
           />
           <section className="admin-panel space-y-4 p-4">
             <div>

@@ -4,6 +4,7 @@ import {
   listDispatchPerformanceSuppliers,
   listSettledArrivalDates,
   queryDispatchPerformance,
+  queryDispatchProfitTrend,
 } from '../dispatch24hStats/repository'
 import {
   createDispatchPerformanceConfig,
@@ -256,6 +257,34 @@ dispatchPerformanceRouter.get('/configs/:id/data', async (req: Request, res: Res
     })
   } catch (err) {
     console.error('[dispatch-performance] 数据查询失败:', err)
+    return res.status(500).json({ error: '查询失败' })
+  }
+})
+
+/**
+ * 司机利润趋势的原始明细：按 (到件日, 供应商, 司机) 不合桶。天/周/月切换、按司机全局合并
+ * （同一人可能跨供应商接单）都由前端本地算，与 /data 共享同一套权限校验。
+ */
+dispatchPerformanceRouter.get('/configs/:id/profit-trend', async (req: Request, res: Response) => {
+  const range = parseRange(req.query as Record<string, unknown>)
+  if ('error' in range) return res.status(400).json({ error: range.error })
+
+  try {
+    const config = await findDispatchPerformanceConfig(String(req.params.id ?? '').trim())
+    if (!config) return res.status(404).json({ error: '配置不存在' })
+    if (!canAccessDispatchPerformanceConfig(config.regionCode, requestRegionCode(req))) {
+      return sendCrossRegionDenied(res, '查看')
+    }
+
+    const rows = await queryDispatchProfitTrend({
+      stationCode: config.stationCode,
+      ...range,
+      supplierKeys: parseSupplierKeys(req.query.supplierKey ?? req.query.supplierKeys),
+      includeWhitelist: req.query.whitelist === 'include',
+    })
+    return res.json({ rows })
+  } catch (err) {
+    console.error('[dispatch-performance] 司机利润趋势查询失败:', err)
     return res.status(500).json({ error: '查询失败' })
   }
 })

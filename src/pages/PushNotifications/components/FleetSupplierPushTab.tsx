@@ -561,7 +561,7 @@ export function FleetSupplierPushTab() {
               aria-hidden
               onChange={onPushImagesInputChange}
             />
-            <Button type="default" icon={<UploadCloud className="h-4 w-4" />} loading={scanParsing} onClick={openScanFilePicker}>
+            <Button color="blue" variant="solid" icon={<UploadCloud className="h-4 w-4" />} loading={scanParsing} onClick={openScanFilePicker}>
               {scanParsing ? t('fleetTab.parsingScan') : t('fleetTab.selectScanFiles')}
             </Button>
             <Popover
@@ -596,12 +596,13 @@ export function FleetSupplierPushTab() {
                 </div>
               }
             >
-              <Button type="default" icon={<CloudDownload className="h-4 w-4" />} loading={pendingBoxLoading}>
+              <Button color="geekblue" variant="solid" icon={<CloudDownload className="h-4 w-4" />} loading={pendingBoxLoading}>
                 {pendingBoxLoading ? t('fleetTab.fetchingPendingData') : t('fleetTab.fetchPendingData')}
               </Button>
             </Popover>
             <Button
-              type="default"
+              color="cyan"
+              variant="solid"
               icon={<ImageIcon className="h-4 w-4" />}
               loading={pushImagesLoading}
               onClick={openPushImagePicker}

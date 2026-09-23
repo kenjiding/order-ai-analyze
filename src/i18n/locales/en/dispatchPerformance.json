@@ -196,6 +196,36 @@
     "profitPartialTag": "settled days only",
     "profitPartialTooltip": "Some arrival dates in this range are not settled yet, so no amount exists for them. This figure covers only the settled days, not the whole range."
   },
+  "profitStability": {
+    "title": "Profit Stability",
+    "subtitle": "Earnings, attendance, and day-to-day volatility across three dimensions — supplier, route code, and driver — sorted high to low; the driver dimension merges by person (across suppliers) to help decide who's a good full-time candidate.",
+    "allSuppliers": "All suppliers",
+    "dimension": {
+      "supplier": "Supplier",
+      "route": "Route code",
+      "courier": "Driver"
+    },
+    "granularityDay": "Day",
+    "granularityWeek": "Week",
+    "granularityMonth": "Month",
+    "chartTitle": "Profit trend",
+    "chartAxisProfit": "Profit",
+    "chartTruncated": "Chart shows the top {{shown}} by profit only; the table below lists everyone",
+    "colSuppliers": "Suppliers",
+    "crossSupplierTag": "Cross-supplier",
+    "crossSupplierTooltip": "This entity is associated with more than one supplier in the selected range (drivers commonly from covering shifts or switching jobs); the figures below are merged",
+    "colAttendance": "Attendance",
+    "attendanceDaysHint": "{{days}} / {{total}} days",
+    "colTotalProfit": {
+      "vendor": "Total vendor profit",
+      "courier": "Total driver profit"
+    },
+    "colAvgPerDay": "Avg profit / worked day",
+    "colAvgCourierPerDay": "Avg driver profit / day",
+    "colCv": "CV",
+    "cvTooltip": "Standard deviation / mean of daily profit on worked days — lower means steadier daily earnings. Not shown when worked days < 2 or the mean is <= 0",
+    "empty": "No profit data for this range"
+  },
   "quadrant": {
     "exitMetSignMet": "On-time exit · on-time dispatch",
     "exitMetSignUnmet": "On-time exit · dispatch overdue (driver)",

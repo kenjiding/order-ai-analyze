@@ -196,6 +196,36 @@
     "profitPartialTag": "截至已结算日",
     "profitPartialTooltip": "所选区间里有到件日的派签还没结算，这些天的金额尚未产生。此处金额是截至最近一个已结算到件日的累计值，不是整个区间的总额。"
   },
+  "profitStability": {
+    "title": "利润稳定性",
+    "subtitle": "从供应商、路由码、司机三个维度统计期间赚了多少钱、出勤是否规律、每天赚的钱是否稳定，从高到低排序；司机维度按人（跨供应商合并）统计，辅助判断谁适合转全职。",
+    "allSuppliers": "全部供应商",
+    "dimension": {
+      "supplier": "供应商",
+      "route": "路由码",
+      "courier": "司机"
+    },
+    "granularityDay": "日",
+    "granularityWeek": "周",
+    "granularityMonth": "月",
+    "chartTitle": "利润趋势",
+    "chartAxisProfit": "利润",
+    "chartTruncated": "图上只画利润前 {{shown}} 名，下面表格是全部对象",
+    "colSuppliers": "涉及供应商",
+    "crossSupplierTag": "跨供应商",
+    "crossSupplierTooltip": "该对象在所选区间内关联了多家供应商（司机维度常见于借调或跳槽），下方各项金额已合并统计",
+    "colAttendance": "出勤率",
+    "attendanceDaysHint": "{{days}} / {{total}} 天",
+    "colTotalProfit": {
+      "vendor": "期间供应商利润",
+      "courier": "期间司机利润"
+    },
+    "colAvgPerDay": "出勤日均利润",
+    "colAvgCourierPerDay": "司机日均利润",
+    "colCv": "波动系数",
+    "cvTooltip": "出勤日利润的标准差 / 均值，越小说明每天赚的钱越稳定。出勤天数不足 2 天或均值 ≤0 时不显示",
+    "empty": "该区间暂无利润数据"
+  },
   "quadrant": {
     "exitMetSignMet": "准时出仓·按时派签",
     "exitMetSignUnmet": "准时出仓·派签超时（司机侧）",
