@@ -43,6 +43,7 @@
     "container-accounts": "Station accounts",
     "container-transfers": "Transfers",
     "push-notifications": "Feishu push",
+    "supplier-content-push": "Supplier content push",
     "system-users": "Users",
     "supplier-configs": "Vendor config",
     "priority-clients": "Priority clients",

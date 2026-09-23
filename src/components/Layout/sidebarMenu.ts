@@ -272,6 +272,14 @@ const groups: SidebarMenuGroup[] = [
         icon: Megaphone,
         description: '飞书群机器人推送配置',
       },
+      {
+        id: 'supplier-content-push',
+        path: '/supplier-content-push',
+        permissionKey: 'menu:supplier-content-push',
+        label: '供应商内容推送',
+        icon: Truck,
+        description: '向车队供应商推送货量报表、推送文案与图片',
+      },
     ],
   },
 ]

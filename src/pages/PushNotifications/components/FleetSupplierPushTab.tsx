@@ -1,7 +1,9 @@
-import { Button, Image, Input, Select, Switch, Tooltip } from 'antd'
+import { Button, DatePicker, Image, Input, Popover, Select, Switch, Tooltip } from 'antd'
+import dayjs, { type Dayjs } from 'dayjs'
 import {
   AlertTriangle,
   CheckCheck,
+  CloudDownload,
   CloudRain,
   ExternalLink,
   FlipHorizontal2,
@@ -16,6 +18,8 @@ import { useEffect, useMemo, useRef, useState, type ChangeEvent, type Key } from
 import { useTranslation } from 'react-i18next'
 import { aggregateFleetRowsForRoute } from '../fleetSupplierAggregate'
 import { captureFleetRouteReportPng } from '../fleetReportCapture'
+import { fetchFleetPendingSplitBox } from '../fleetPendingSplitBoxApi'
+import { fetchPriorityClientCodes } from '../priorityClientCodesApi'
 import { parseFleetRouteCodes } from '../fleetRouteCodeParse'
 import { parseFleetScanFiles } from '../fleetScanParse'
 import { fetchDeliveryWeatherLarkMd, fetchFeishuAppBotChats, summarizeFeishuTestFailure } from '../feishuWebhookTestApi'
@@ -71,6 +75,14 @@ export function FleetSupplierPushTab() {
   const [scanDropped, setScanDropped] = useState(0)
   const [scanFileLabel, setScanFileLabel] = useState('')
   const [scanRows, setScanRows] = useState<Awaited<ReturnType<typeof parseFleetScanFiles>>['rows']>([])
+  const [priorityClientCodes, setPriorityClientCodes] = useState<Set<string>>(new Set())
+
+  const [pendingBoxOpen, setPendingBoxOpen] = useState(false)
+  const [pendingBoxLoading, setPendingBoxLoading] = useState(false)
+  const [pendingBoxRange, setPendingBoxRange] = useState<[Dayjs, Dayjs]>(() => [
+    dayjs().subtract(6, 'day').startOf('day'),
+    dayjs().endOf('day'),
+  ])
 
   const [pushing, setPushing] = useState(false)
   const [scanParsing, setScanParsing] = useState(false)
@@ -109,6 +121,25 @@ export function FleetSupplierPushTab() {
     })
     return () => { cancelled = true }
   }, [])
+
+  useEffect(() => {
+    let cancelled = false
+    void fetchPriorityClientCodes().then((res) => {
+      if (cancelled || !res.ok) return
+      setPriorityClientCodes(res.codes)
+    })
+    return () => { cancelled = true }
+  }, [])
+
+  const pendingBoxPresets = useMemo(
+    () => [
+      { label: t('fleetTab.pendingRangePresetWeek'), value: [dayjs().subtract(6, 'day').startOf('day'), dayjs().endOf('day')] as [Dayjs, Dayjs] },
+      { label: t('fleetTab.pendingRangePresetMonth'), value: [dayjs().subtract(1, 'month').startOf('day'), dayjs().endOf('day')] as [Dayjs, Dayjs] },
+      { label: t('fleetTab.pendingRangePresetHalfYear'), value: [dayjs().subtract(6, 'month').startOf('day'), dayjs().endOf('day')] as [Dayjs, Dayjs] },
+      { label: t('fleetTab.pendingRangePresetYear'), value: [dayjs().subtract(1, 'year').startOf('day'), dayjs().endOf('day')] as [Dayjs, Dayjs] },
+    ],
+    [t],
+  )
 
   const supplierIdSet = useMemo(() => new Set(suppliers.map((s) => s.id)), [suppliers])
   const effectiveSelectedKeys = useMemo(
@@ -211,6 +242,44 @@ export function FleetSupplierPushTab() {
       setScanFileLabel('')
     } finally {
       setScanParsing(false)
+    }
+  }
+
+  const handleFetchPendingSplitBox = async () => {
+    const [start, end] = pendingBoxRange
+    setPendingBoxLoading(true)
+    try {
+      const res = await fetchFleetPendingSplitBox({
+        startTime: start.format('YYYY-MM-DD HH:mm:ss'),
+        endTime: end.format('YYYY-MM-DD HH:mm:ss'),
+      })
+      if (!res.ok) {
+        showToast(t('fleetTab.pendingBoxFetchFailed', { error: res.error }), 'error')
+        return
+      }
+      if (!res.data.rows.length) {
+        showToast(t('fleetTab.pendingBoxNoValidRows'), 'error')
+        setScanRows([])
+        setScanRowCount(0)
+        setScanDropped(res.data.droppedRows)
+        setScanFileLabel(
+          t('fleetTab.pendingBoxSourceLabel', { start: start.format('YYYY-MM-DD'), end: end.format('YYYY-MM-DD') }),
+        )
+        return
+      }
+      setScanRows(res.data.rows)
+      setScanRowCount(res.data.rows.length)
+      setScanDropped(res.data.droppedRows)
+      setScanFileLabel(
+        t('fleetTab.pendingBoxSourceLabel', { start: start.format('YYYY-MM-DD'), end: end.format('YYYY-MM-DD') }),
+      )
+      showToast(
+        t('fleetTab.pendingBoxFetchSuccess', { rowCount: res.data.rows.length, dropped: res.data.droppedRows }),
+        'success',
+      )
+      setPendingBoxOpen(false)
+    } finally {
+      setPendingBoxLoading(false)
     }
   }
 
@@ -319,7 +388,7 @@ export function FleetSupplierPushTab() {
       if (!routeCodes.length) {
         supplierErrors.push(t('fleetTab.errorNoRouteCode'))
       } else {
-        const buckets = aggregateFleetRowsForRoute(scanRows, s.routeCode)
+        const buckets = aggregateFleetRowsForRoute(scanRows, s.routeCode, priorityClientCodes)
         const total = buckets.reduce((sum, b) => sum + b.total, 0)
         if (!total) {
           supplierErrors.push(
@@ -461,17 +530,11 @@ export function FleetSupplierPushTab() {
 
   return (
     <div className="fleet-supplier-push-tab space-y-5">
-      <div className="fs-card">
-        <div className="fs-card-head">
-          <div>
-            <div className="fs-card-head-title">{t('fleetTab.copyAndScanTitle')}</div>
-          </div>
-        </div>
-        <div className="fs-card-body space-y-4">
+      <div className="space-y-4">
           <div>
             <div className="mb-1.5 text-xs font-semibold text-[var(--admin-muted)]">{t('fleetTab.pushContent')}</div>
             <FeishuLarkMdEditor
-              rows={4}
+              rows={7}
               value={globalPushText}
               onChange={setGlobalPushText}
               placeholder={t('fleetTab.pushContentPlaceholder')}
@@ -501,6 +564,42 @@ export function FleetSupplierPushTab() {
             <Button type="default" icon={<UploadCloud className="h-4 w-4" />} loading={scanParsing} onClick={openScanFilePicker}>
               {scanParsing ? t('fleetTab.parsingScan') : t('fleetTab.selectScanFiles')}
             </Button>
+            <Popover
+              trigger="click"
+              open={pendingBoxOpen}
+              onOpenChange={setPendingBoxOpen}
+              placement="bottomLeft"
+              content={
+                <div className="w-80 space-y-3">
+                  <div className="text-xs font-semibold text-[var(--admin-muted)]">
+                    {t('fleetTab.inboundTimeRangeLabel')}
+                  </div>
+                  <DatePicker.RangePicker
+                    value={pendingBoxRange}
+                    onChange={(vals) => {
+                      if (vals && vals[0] && vals[1]) setPendingBoxRange([vals[0], vals[1]])
+                    }}
+                    presets={pendingBoxPresets}
+                    showTime={{ format: 'HH:mm' }}
+                    format="YYYY-MM-DD HH:mm"
+                    className="!w-full"
+                    allowClear={false}
+                  />
+                  <Button
+                    type="primary"
+                    block
+                    loading={pendingBoxLoading}
+                    onClick={() => void handleFetchPendingSplitBox()}
+                  >
+                    {pendingBoxLoading ? t('fleetTab.fetchingPendingData') : t('fleetTab.pendingBoxFetchButton')}
+                  </Button>
+                </div>
+              }
+            >
+              <Button type="default" icon={<CloudDownload className="h-4 w-4" />} loading={pendingBoxLoading}>
+                {pendingBoxLoading ? t('fleetTab.fetchingPendingData') : t('fleetTab.fetchPendingData')}
+              </Button>
+            </Popover>
             <Button
               type="default"
               icon={<ImageIcon className="h-4 w-4" />}
@@ -625,7 +724,6 @@ export function FleetSupplierPushTab() {
               </ul>
             </Image.PreviewGroup>
           ) : null}
-        </div>
       </div>
 
       <div className="fs-card">

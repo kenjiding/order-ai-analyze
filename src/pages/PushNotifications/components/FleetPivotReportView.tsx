@@ -18,7 +18,22 @@ export const FleetPivotReportView = forwardRef<HTMLDivElement, FleetPivotReportV
     const { t } = useTranslation('pushNotifications')
     // 截图固定英文，不跟随界面语言（供应商侧只看英文表格）
     const tEn = (key: string): string => t(key, { lng: 'en' })
-    const { bodyRows, grandTotal } = useMemo(() => buildFleetPivotOutlineModel(buckets), [buckets])
+    const { bodyRows, grandTotal, grandPriorityTotal } = useMemo(
+      () => buildFleetPivotOutlineModel(buckets),
+      [buckets],
+    )
+    // 命中优先客户时展示「总量 / 优先客户量 Priorities」（后半段橙色、字号更小，避免大字号下换行）
+    const formatCount = (total: number, priorityTotal: number | undefined) => {
+      if (!priorityTotal) return String(total)
+      return (
+        <>
+          {total}{' '}
+          <span className="fpr-priority-inline">
+            / {priorityTotal} {tEn('fleetReport.priorityLabel')}
+          </span>
+        </>
+      )
+    }
 
     if (!buckets.length) {
       return (
@@ -43,16 +58,16 @@ export const FleetPivotReportView = forwardRef<HTMLDivElement, FleetPivotReportV
           </div>
           <div className="fpr-total-panel">
             <div className="fpr-total-label">{tEn('fleetReport.grandTotalLabel')}</div>
-            <div className="fpr-total-value">{String(grandTotal)}</div>
+            <div className="fpr-total-value">{formatCount(grandTotal, grandPriorityTotal)}</div>
           </div>
         </div>
 
         <table className="fpr-table">
           <colgroup>
-            <col style={{ width: '20%' }} />
+            <col style={{ width: '22%' }} />
             <col style={{ width: '20%' }} />
             <col style={{ width: '32%' }} />
-            <col style={{ width: '28%' }} />
+            <col style={{ width: '26%' }} />
           </colgroup>
           <thead>
             <tr>
@@ -68,12 +83,12 @@ export const FleetPivotReportView = forwardRef<HTMLDivElement, FleetPivotReportV
                 <td>{row.c0}</td>
                 <td>{row.c1}</td>
                 <td>{row.c2}</td>
-                <td className="fpr-td-num">{row.c3}</td>
+                <td className="fpr-td-num">{formatCount(Number(row.c3), row.priorityTotal)}</td>
               </tr>
             ))}
             <tr className="fpr-tr--footer">
               <td colSpan={3}>{tEn('fleetReport.total')}</td>
-              <td className="fpr-td-num">{String(grandTotal)}</td>
+              <td className="fpr-td-num">{formatCount(grandTotal, grandPriorityTotal)}</td>
             </tr>
           </tbody>
         </table>

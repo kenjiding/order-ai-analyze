@@ -7,7 +7,6 @@ import { useSearchParams } from 'react-router-dom'
 import { useAuthStore } from '../../stores/authStore'
 import { AttendanceSchedulingPushTab } from './components/AttendanceSchedulingPushTab'
 import { PushEntryEditModal } from './components/PushEntryEditModal'
-import { FleetSupplierPushTab } from './components/FleetSupplierPushTab'
 import { feishuPushKindLabel, type FeishuPushEntryWithKind, type FeishuPushKind } from './feishuPushTypes'
 import { postFeishuPushTest, summarizeFeishuTestFailure, type FeishuPushTestFail } from './feishuWebhookTestApi'
 import { usePushNotificationsPage } from './usePushNotificationsPage'
@@ -376,17 +375,10 @@ export default function PushNotificationsPage() {
           ),
         }
       }
-      if (feature.tabKey === 'order_exception') {
-        return {
-          key: feature.tabKey,
-          label: t(`tabs.${feature.tabKey}`),
-          children: renderWarehousePushTab('order_exception', t('tabHint.orderException')),
-        }
-      }
       return {
         key: feature.tabKey,
         label: t(`tabs.${feature.tabKey}`),
-        children: <FleetSupplierPushTab />,
+        children: renderWarehousePushTab('order_exception', t('tabHint.orderException')),
       }
     })
   }, [accessibleFeatures, buildColumns, hasPermission, openCreateModal, renderWarehousePushTab, t, v.entriesWithKind])

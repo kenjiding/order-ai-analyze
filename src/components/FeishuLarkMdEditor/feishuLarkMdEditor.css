@@ -82,6 +82,9 @@
   border: 1px solid var(--admin-line);
   border-radius: 0 0 8px 8px;
   background: #fff;
+  /* 右下角拖拽手柄，行为对齐原生 textarea 的手动放大 */
+  resize: vertical;
+  overflow: auto;
 }
 
 .feishu-lark-md-editor-surface:focus-within {

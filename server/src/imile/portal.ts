@@ -237,6 +237,21 @@ export const IMILE_DS_BOX_ASSIGNED_PORTAL: ImilePortalDefaults = {
   path: '/DSOperation/hubOperation/report/pd/box/assignedList',
 }
 
+/**
+ * ds.imile.com 待拆分箱（pendingSplitBox）门户默认配置。
+ * resourceCode 为占位值（按 assignedList 同族接口的命名习惯推断），若鉴权失败需通过
+ * IMILE_PENDING_SPLIT_BOX_RESOURCE_CODE 勘误。
+ */
+export const IMILE_DS_PENDING_SPLIT_BOX_PORTAL: ImilePortalDefaults = {
+  resourceCode: 'pendingSplitBox',
+  sysName: 'DS',
+  sysPortal: 'DS',
+  origin: 'https://ds.imile.com',
+  referer: 'https://ds.imile.com/',
+  hubcode: 'S210431701',
+  path: '/DSOperation/hubOperation/report/pd/box/pendingSplitBox',
+}
+
 /** oc.imile.com 阻断日志门户默认配置 */
 export const IMILE_OC_INTERCEPT_PORTAL: ImilePortalDefaults = {
   resourceCode: 'listScanInterceptLogs',

@@ -9,6 +9,8 @@ export type FleetPivotOutlineRow = {
   c1: string
   c2: string
   c3: string
+  /** 仅 'route' 行有值：该路由命中「优先客户配置」的单量 */
+  priorityTotal?: number
 }
 
 /**
@@ -17,13 +19,16 @@ export type FleetPivotOutlineRow = {
 export function buildFleetPivotOutlineModel(buckets: FleetRouteBucket[]): {
   bodyRows: FleetPivotOutlineRow[]
   grandTotal: number
+  grandPriorityTotal: number
 } {
   const bodyRows: FleetPivotOutlineRow[] = []
   let grandTotal = 0
+  let grandPriorityTotal = 0
   let n = 0
 
   for (const route of buckets) {
     grandTotal += route.total
+    grandPriorityTotal += route.priorityTotal
     n += 1
     bodyRows.push({
       key: `r-${route.routeCode}-${n}`,
@@ -32,6 +37,7 @@ export function buildFleetPivotOutlineModel(buckets: FleetRouteBucket[]): {
       c1: '',
       c2: '',
       c3: String(route.total),
+      priorityTotal: route.priorityTotal,
     })
     for (const pc of route.postcodes) {
       n += 1
@@ -59,5 +65,5 @@ export function buildFleetPivotOutlineModel(buckets: FleetRouteBucket[]): {
     }
   }
 
-  return { bodyRows, grandTotal }
+  return { bodyRows, grandTotal, grandPriorityTotal }
 }

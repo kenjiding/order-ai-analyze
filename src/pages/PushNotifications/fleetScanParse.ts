@@ -41,6 +41,16 @@ const ORDER_KEY_COLUMNS = [
   'WaybillNo',
 ] as const
 
+// 可选列：不识别时留空，不影响其余字段解析（优先客户统计跳过即可）
+const CLIENT_CODE_COLUMNS = [
+  '商家编码',
+  '商家编号',
+  '客户编码',
+  'ClientCode',
+  'client_code',
+  'clientCode',
+] as const
+
 // 英文版模板列名大小写/分隔符与中文版不一致（Post Code / POSTAL_CODE …），统一压平后再比对
 const normalizeHeader = (value: unknown): string =>
   String(value ?? '')
@@ -107,12 +117,14 @@ function parseWorkbook(workbook: XLSX.WorkBook, fileName: string): { rows: Fleet
       const orderKey =
         explicitOrderKey ||
         `${fileName}#${sheetName}#${index + 2}:${routeCode}|${postcode}|${city}`
+      const clientCode = sanitizeText(getValueByCandidates(row, CLIENT_CODE_COLUMNS))
 
       rows.push({
         routeCode,
         postcode,
         city,
         orderKey,
+        ...(clientCode ? { clientCode } : {}),
         sourceSheet: sheetName,
         sourceRowNumber: index + 2,
       })

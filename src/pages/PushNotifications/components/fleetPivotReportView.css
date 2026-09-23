@@ -71,6 +71,13 @@
   font-weight: 800;
   letter-spacing: 0.02em;
   color: #0d57c6;
+  white-space: nowrap;
+}
+
+.fleet-pivot-report-view .fpr-priority-inline {
+  font-size: 0.8em;
+  font-weight: 700;
+  color: #d2691e;
 }
 
 .fleet-pivot-report-view .fpr-note {
@@ -108,6 +115,10 @@
   background: linear-gradient(180deg, #d6e7ff 0%, #c3daf7 100%);
   font-weight: 750;
   color: #1b3f73;
+  /* 固定列宽下防止长表头（如 Postcode）溢出到相邻单元格，比换行/挤在一起更安全 */
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .fleet-pivot-report-view .fpr-table thead th.fpr-th-num {
@@ -120,9 +131,14 @@
   text-align: left;
 }
 
+.fleet-pivot-report-view .fpr-table tbody td:first-child {
+  white-space: nowrap;
+}
+
 .fleet-pivot-report-view .fpr-table tbody td.fpr-td-num {
   text-align: right;
   font-variant-numeric: tabular-nums;
+  white-space: nowrap;
 }
 
 .fleet-pivot-report-view .fpr-tr--route td {

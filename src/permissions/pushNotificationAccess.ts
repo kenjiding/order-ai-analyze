@@ -4,7 +4,7 @@ import type { FeishuPushKind } from '../pages/PushNotifications/feishuPushTypes'
 /** 与 server/src/permissions/pushNotificationAccess.ts 的 PushApiScope 保持一致 */
 export type PushApiScope = 'warehouse-efficiency' | 'attendance-scheduling' | 'fleet-supplier' | 'order-exception' | 'vendor-analysis'
 
-export type PushPageTabKey = 'warehouse_efficiency' | 'attendance_scheduling' | 'fleet_supplier' | 'order_exception'
+export type PushPageTabKey = 'warehouse_efficiency' | 'attendance_scheduling' | 'order_exception'
 
 export const PUSH_NOTIFICATIONS_BASE_PATH = '/push-notifications'
 export const PUSH_PAGE_TAB_QUERY_KEY = 'tab'
@@ -32,12 +32,6 @@ export const PUSH_NOTIFICATION_FEATURES: readonly PushNotificationFeature[] = [
     permissionKey: PERMISSION_KEYS.btnPushNotificationsAttendanceScheduling,
     apiScope: 'attendance-scheduling',
     feishuKind: 'attendance_scheduling',
-  },
-  {
-    tabKey: 'fleet_supplier',
-    label: '车队供应商推送',
-    permissionKey: PERMISSION_KEYS.btnPushNotificationsFleetSupplier,
-    apiScope: 'fleet-supplier',
   },
   {
     tabKey: 'order_exception',

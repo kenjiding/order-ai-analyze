@@ -1,11 +1,20 @@
 import { normFleetRouteCodeForMatch, parseFleetRouteCodes } from './fleetRouteCodeParse'
 import type { FleetRouteBucket, FleetScanRow } from './fleetSupplierPushTypes'
 
+/** 与后端 loadPriorityClientCodes 同一口径：trim + 大写后比较 */
+export function normalizeFleetClientCode(code: string | undefined): string {
+  return (code ?? '').trim().toUpperCase()
+}
+
 /**
  * 先按路由编码（应匹配供应商配置；支持多个编码，以空格/逗号分隔），再按收件人邮编、收件人城市聚合；
- * 单量：同一城市下按 orderKey 去重计数。
+ * 单量：同一城市下按 orderKey 去重计数。priorityClientCodes 传入时按 orderKey 去重统计命中「优先客户配置」的单量。
  */
-export function aggregateFleetRowsForRoute(rows: FleetScanRow[], routeFilterRaw: string): FleetRouteBucket[] {
+export function aggregateFleetRowsForRoute(
+  rows: FleetScanRow[],
+  routeFilterRaw: string,
+  priorityClientCodes?: Set<string>,
+): FleetRouteBucket[] {
   const targets = parseFleetRouteCodes(routeFilterRaw)
   if (!targets.length) return []
 
@@ -16,6 +25,7 @@ export function aggregateFleetRowsForRoute(rows: FleetScanRow[], routeFilterRaw:
   type RouteAcc = Map<string, PostAcc>
 
   const acc: RouteAcc = new Map()
+  const priorityOrderKeysByRoute = new Map<string, Set<string>>()
 
   for (const row of rows) {
     if (!targetSet.has(normFleetRouteCodeForMatch(row.routeCode))) continue
@@ -30,6 +40,11 @@ export function aggregateFleetRowsForRoute(rows: FleetScanRow[], routeFilterRaw:
     const byCity = byPost.get(pc)!
     if (!byCity.has(ct)) byCity.set(ct, new Set())
     byCity.get(ct)!.add(row.orderKey)
+
+    if (priorityClientCodes?.has(normalizeFleetClientCode(row.clientCode))) {
+      if (!priorityOrderKeysByRoute.has(rc)) priorityOrderKeysByRoute.set(rc, new Set())
+      priorityOrderKeysByRoute.get(rc)!.add(row.orderKey)
+    }
   }
 
   const routeBuckets: FleetRouteBucket[] = []
@@ -55,7 +70,12 @@ export function aggregateFleetRowsForRoute(rows: FleetScanRow[], routeFilterRaw:
       postcodes.push({ postcode, cities, total: postTotal })
     }
 
-    routeBuckets.push({ routeCode, postcodes, total: routeTotal })
+    routeBuckets.push({
+      routeCode,
+      postcodes,
+      total: routeTotal,
+      priorityTotal: priorityOrderKeysByRoute.get(routeCode)?.size ?? 0,
+    })
   }
 
   routeBuckets.sort((a, b) => a.routeCode.localeCompare(b.routeCode, 'zh-CN'))

@@ -29,6 +29,16 @@ function isUniqueViolation(error: unknown): boolean {
   return (error as { code?: string } | null)?.code === '23505'
 }
 
+/** 只读商家编码集合，供纯前端场景（如车队供应商推送里的 Excel 导入）本地比对是否优先客户 */
+priorityClientsRouter.get('/codes', async (_req: AuthenticatedRequest, res: Response) => {
+  try {
+    const codes = await loadPriorityClientCodes()
+    res.json({ ok: true, data: [...codes] })
+  } catch {
+    res.status(500).json({ ok: false, error: '读取优先客户编码失败' })
+  }
+})
+
 priorityClientsRouter.get('/', async (_req: AuthenticatedRequest, res: Response) => {
   try {
     const db = getDb()

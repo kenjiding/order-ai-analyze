@@ -28,6 +28,7 @@ const EfficiencyAttendanceRecordsPage = lazy(
   () => import('./pages/EfficiencyAttendanceRecords/EfficiencyAttendanceRecordsPage'),
 )
 const PushNotificationsPage = lazy(() => import('./pages/PushNotifications/PushNotificationsPage'))
+const FleetSupplierPushPage = lazy(() => import('./pages/PushNotifications/FleetSupplierPushPage'))
 const WageSalaryPage = lazy(() => import('./pages/WageSalary/WageSalaryPage'))
 const WarehouseSafetyInspectionPage = lazy(
   () => import('./pages/WarehouseSafetyInspection/WarehouseSafetyInspectionPage'),
@@ -289,6 +290,14 @@ function AppRoutes() {
             element={
               <KeptPage cacheKey="page-push-notifications" name="push-notifications">
                 <PushNotificationsPage />
+              </KeptPage>
+            }
+          />
+          <Route
+            path="/supplier-content-push"
+            element={
+              <KeptPage cacheKey="page-supplier-content-push" name="supplier-content-push">
+                <FleetSupplierPushPage />
               </KeptPage>
             }
           />

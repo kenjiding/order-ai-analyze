@@ -65,6 +65,7 @@ export const PERMISSION_KEYS = {
   menuOrderException: 'menu:order-exception',
   menuNewMerchantMonitor: 'menu:new-merchant-monitor',
   menuPushNotifications: 'menu:push-notifications',
+  menuSupplierContentPush: 'menu:supplier-content-push',
   menuPushEngagementMonitor: 'menu:push-engagement-monitor',
   menuWarehouseSafety: 'menu:warehouse-safety',
   menuContainerLedger: 'menu:container-ledger',

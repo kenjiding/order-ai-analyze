@@ -31,7 +31,6 @@
   "tabs": {
     "warehouse_efficiency": "物流运营推送",
     "attendance_scheduling": "仓库出勤/排班推送",
-    "fleet_supplier": "车队供应商推送",
     "order_exception": "订单异常分析推送"
   },
   "table": {
@@ -104,19 +103,23 @@
     "templateSaved": "已保存排班模版，下次进入将自动回填。",
     "templateSaveFailed": "模版保存失败，请重试。"
   },
-  "fleetPage": {
-    "headerTitle": "车队供应商推送",
-    "eyebrow": "Fleet Supplier",
-    "title": "车队供应商推送",
-    "supplierEyebrow": "Supplier",
-    "supplierTitle": "供应商配置"
-  },
   "fleetTab": {
-    "copyAndScanTitle": "推送文案与扫描文件",
     "pushContent": "推送内容",
     "pushContentPlaceholder": "与各供应商「供应商推送内容」合并为一条富文本推送（含段落与编辑器内图片）。货量截图与「选择推送图片」各单独一条消息。",
     "selectScanFiles": "选择扫描文件",
     "parsingScan": "正在解析…",
+    "fetchPendingData": "拉取入站数据",
+    "fetchingPendingData": "正在拉取…",
+    "inboundTimeRangeLabel": "入站时间",
+    "pendingRangePresetWeek": "近1周",
+    "pendingRangePresetMonth": "近1月",
+    "pendingRangePresetHalfYear": "近6月",
+    "pendingRangePresetYear": "近1年",
+    "pendingBoxFetchButton": "获取数据",
+    "pendingBoxSourceLabel": "入站数据 {{start}} ~ {{end}}",
+    "pendingBoxFetchSuccess": "已拉取入站数据，有效行 {{rowCount}}（跳过 {{dropped}} 行缺路由编码）。",
+    "pendingBoxNoValidRows": "拉取到的入站数据未解析到含「路由编码」的有效行。",
+    "pendingBoxFetchFailed": "拉取入站数据失败：{{error}}",
     "selectPushImages": "选择推送图片",
     "readingImages": "正在读取…",
     "pushSelected": "推送所选供应商",
@@ -246,7 +249,8 @@
     "postcode": "邮政编码",
     "city": "城市",
     "countColumn": "计数项: 运单号",
-    "total": "合计"
+    "total": "合计",
+    "priorityLabel": "Priorities"
   },
   "validation": {
     "webhookRequired": "请填写群 webhook 地址",

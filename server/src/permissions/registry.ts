@@ -76,6 +76,13 @@ export const PERMISSION_REGISTRY: PermissionDefinition[] = [
   },
   { key: 'menu:push-notifications', type: 'menu', label: '推送功能', description: '飞书群机器人推送配置', sortOrder: 40 },
   {
+    key: 'menu:supplier-content-push',
+    type: 'menu',
+    label: '供应商内容推送',
+    description: '向车队供应商推送货量报表、推送文案与图片',
+    sortOrder: 41,
+  },
+  {
     key: 'menu:push-engagement-monitor',
     type: 'menu',
     label: '推送数据监控',

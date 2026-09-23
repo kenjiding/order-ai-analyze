@@ -2,6 +2,8 @@ import { Router, type Response } from 'express'
 import { and, eq } from 'drizzle-orm'
 import type { AuthenticatedRequest } from '../auth/middleware'
 import { getDb, schema } from '../db'
+import { getGlobalImileToken } from '../feishu/globalImileToken'
+import { queryImilePendingSplitBox } from '../imile/pendingSplitBox'
 import {
   extractSupplierPushConfigFields,
   LEGACY_GLOBAL_SUPPLIER_REGION_CODE,
@@ -182,4 +184,67 @@ fleetSupplierPushRouter.post('/configs/import', async (req: AuthenticatedRequest
     console.error('[fleet-supplier-push] import error:', err)
     res.status(500).json({ ok: false, error: '导入失败' })
   }
+})
+
+type PendingSplitBoxScanRow = {
+  routeCode: string
+  postcode: string
+  city: string
+  orderKey: string
+  clientCode?: string
+}
+
+function readStringField(row: Record<string, unknown>, key: string): string {
+  const value = row[key]
+  return value == null ? '' : String(value).trim()
+}
+
+/** pendingSplitBox 原始记录 → FleetScanRow 兼容字段；缺 routeCode 的行按「选择扫描文件」同一口径丢弃 */
+function mapPendingSplitBoxRecord(raw: unknown, index: number): PendingSplitBoxScanRow | null {
+  if (!raw || typeof raw !== 'object') return null
+  const row = raw as Record<string, unknown>
+  const routeCode = readStringField(row, 'routeCode')
+  if (!routeCode) return null
+  const clientCode = readStringField(row, 'clientCode')
+  return {
+    routeCode,
+    postcode: readStringField(row, 'consigneeZipCode') || '—',
+    city: readStringField(row, 'city') || '—',
+    orderKey: readStringField(row, 'waybillNo') || `pendingSplitBox#${index}`,
+    ...(clientCode ? { clientCode } : {}),
+  }
+}
+
+// POST /api/fleet-supplier-push/pending-split-box
+fleetSupplierPushRouter.post('/pending-split-box', async (req: AuthenticatedRequest, res: Response) => {
+  const body = req.body as { startTime?: unknown; endTime?: unknown }
+  const startTime = String(body.startTime ?? '').trim()
+  const endTime = String(body.endTime ?? '').trim()
+  if (!startTime || !endTime) {
+    res.status(400).json({ ok: false, error: '缺少 startTime / endTime' })
+    return
+  }
+
+  const userId = req.authUser?.id
+  const imileToken = userId ? await getGlobalImileToken(userId) : ''
+  if (!imileToken) {
+    res.status(400).json({ ok: false, error: '未配置 iMile token，请先在「系统设置」中保存' })
+    return
+  }
+
+  const result = await queryImilePendingSplitBox({ imileToken, startTime, endTime })
+  if (!result.ok) {
+    res.status(502).json({ ok: false, error: result.message })
+    return
+  }
+
+  const rows: PendingSplitBoxScanRow[] = []
+  let droppedRows = 0
+  result.records.forEach((record, index) => {
+    const row = mapPendingSplitBoxRecord(record, index)
+    if (row) rows.push(row)
+    else droppedRows += 1
+  })
+
+  res.json({ ok: true, data: { rows, droppedRows, totalResult: result.totalResult } })
 })

@@ -31,7 +31,6 @@
   "tabs": {
     "warehouse_efficiency": "Hub ops push",
     "attendance_scheduling": "Hub attendance & scheduling push",
-    "fleet_supplier": "Fleet supplier push",
     "order_exception": "Order exception analysis push"
   },
   "table": {
@@ -104,19 +103,23 @@
     "templateSaved": "Scheduling template saved. It will auto-fill next time.",
     "templateSaveFailed": "Failed to save template. Please retry."
   },
-  "fleetPage": {
-    "headerTitle": "Fleet supplier push",
-    "eyebrow": "Fleet Supplier",
-    "title": "Fleet supplier push",
-    "supplierEyebrow": "Supplier",
-    "supplierTitle": "Supplier config"
-  },
   "fleetTab": {
-    "copyAndScanTitle": "Push copy & scan files",
     "pushContent": "Push content",
     "pushContentPlaceholder": "Merged with each supplier's push copy into one rich-text message (paragraphs and in-editor images). Volume screenshots and selected push images are sent as separate messages.",
     "selectScanFiles": "Select scan files",
     "parsingScan": "Parsing…",
+    "fetchPendingData": "Fetch inbound data",
+    "fetchingPendingData": "Fetching…",
+    "inboundTimeRangeLabel": "Inbound time",
+    "pendingRangePresetWeek": "Last week",
+    "pendingRangePresetMonth": "Last month",
+    "pendingRangePresetHalfYear": "Last 6 months",
+    "pendingRangePresetYear": "Last year",
+    "pendingBoxFetchButton": "Fetch data",
+    "pendingBoxSourceLabel": "Inbound data {{start}} ~ {{end}}",
+    "pendingBoxFetchSuccess": "Fetched inbound data, {{rowCount}} valid rows ({{dropped}} skipped for missing route code).",
+    "pendingBoxNoValidRows": "No valid rows with a route code found in the fetched inbound data.",
+    "pendingBoxFetchFailed": "Failed to fetch inbound data: {{error}}",
     "selectPushImages": "Select push images",
     "readingImages": "Reading…",
     "pushSelected": "Push selected suppliers",
@@ -246,7 +249,8 @@
     "postcode": "Postcode",
     "city": "City",
     "countColumn": "Count",
-    "total": "Total"
+    "total": "Total",
+    "priorityLabel": "Priorities"
   },
   "validation": {
     "webhookRequired": "Enter a group webhook URL",
