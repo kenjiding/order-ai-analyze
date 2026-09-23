@@ -1,15 +1,14 @@
 import { useState } from 'react'
-import { Gauge, MapPinned, TrendingUp } from 'lucide-react'
+import { MapPinned, TrendingUp } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { PageSectionTabs } from '../../components/PageSectionTabs'
 import { useVendorRegionMapPage } from './useVendorRegionMapPage'
 import { useVendorVolumeTrend } from './useVendorVolumeTrend'
 import { VendorRegionMapTab } from './components/VendorRegionMapTab'
-import { VendorRouteDifficultyTab } from './components/VendorRouteDifficultyTab'
 import { VendorVolumeTrendTab } from './components/VendorVolumeTrendTab'
 import './vendorRegionMap.css'
 
-type TabId = 'map' | 'trend' | 'difficulty'
+type TabId = 'map' | 'trend'
 
 export default function VendorRegionMapPage() {
   const { t } = useTranslation('vendorRegionMap')
@@ -36,7 +35,6 @@ export default function VendorRegionMapPage() {
           items={[
             { id: 'map', label: t('tabMap'), icon: MapPinned },
             { id: 'trend', label: t('tabTrend'), icon: TrendingUp },
-            { id: 'difficulty', label: t('tabDifficulty'), icon: Gauge },
           ]}
         />
       </section>
@@ -49,11 +47,6 @@ export default function VendorRegionMapPage() {
       {visitedTabs.has('trend') && (
         <div hidden={activeTab !== 'trend'}>
           <VendorVolumeTrendTab trend={trend} />
-        </div>
-      )}
-      {visitedTabs.has('difficulty') && (
-        <div hidden={activeTab !== 'difficulty'}>
-          <VendorRouteDifficultyTab page={page} />
         </div>
       )}
     </div>

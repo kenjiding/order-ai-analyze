@@ -7,6 +7,7 @@ import { aggregateZipStats } from '../columnGeometry'
 import { formatDensity } from '../regionMetrics'
 import { colorFromMap } from '../vendorColors'
 import type { useVendorRegionMapPage } from '../useVendorRegionMapPage'
+import { useRouteDifficultyAverageVolume } from '../useRouteDifficultyAverageVolume'
 import { useWarehouseConfigData } from '../useWarehouseConfigData'
 import {
   computeRouteDifficulty,
@@ -73,7 +74,7 @@ function ZipBreakdownTable({ zips }: { zips: RouteDifficultyZipDetail[] }) {
   return <Table<RouteDifficultyZipDetail> rowKey="zipCode" columns={columns} dataSource={zips} pagination={false} />
 }
 
-function RouteBreakdownTable({ routes }: { routes: RouteDifficultyRow[] }) {
+function RouteBreakdownTable({ routes, routeAvg }: { routes: RouteDifficultyRow[]; routeAvg: Map<string, number> }) {
   const { t } = useTranslation('vendorRegionMap')
   const columns: ColumnsType<RouteDifficultyRow> = [
     { title: t('difficulty.colRouteCode'), dataIndex: 'routeCode', width: 140 },
@@ -90,6 +91,18 @@ function RouteBreakdownTable({ routes }: { routes: RouteDifficultyRow[] }) {
       width: 100,
       sorter: (a, b) => a.totalCount - b.totalCount,
       render: (v: number) => nf.format(v),
+    },
+    {
+      title: t('difficulty.colAvgVolume'),
+      dataIndex: 'routeCode',
+      width: 100,
+      sorter: (a, b) =>
+        (routeAvg.get(`${a.supplierKey}\0${a.routeCode}`) ?? -1) -
+        (routeAvg.get(`${b.supplierKey}\0${b.routeCode}`) ?? -1),
+      render: (_: string, row) => {
+        const avg = routeAvg.get(`${row.supplierKey}\0${row.routeCode}`)
+        return avg == null ? '—' : nf.format(Math.round(avg))
+      },
     },
     {
       title: t('difficulty.colDistance'),
@@ -146,6 +159,11 @@ type Props = {
 export function VendorRouteDifficultyTab({ page }: Props) {
   const { t } = useTranslation('vendorRegionMap')
   const { regionWarehouse, stations, loaded: warehouseConfigLoaded } = useWarehouseConfigData()
+  const { data: avgVolume } = useRouteDifficultyAverageVolume(
+    page.data?.meta.startDate ?? null,
+    page.data?.meta.endDate ?? null,
+  )
+  const routeAvg = avgVolume?.routeAvg ?? new Map<string, number>()
 
   const warehouseConfig = useMemo<WarehouseConfig>(
     () => ({
@@ -200,6 +218,16 @@ export function VendorRouteDifficultyTab({ page }: Props) {
         render: (value: number) => nf.format(value),
       },
       {
+        title: t('difficulty.colAvgVolume'),
+        dataIndex: 'supplierKey',
+        width: 110,
+        sorter: (a, b) => (avgVolume?.supplierAvg.get(a.supplierKey) ?? -1) - (avgVolume?.supplierAvg.get(b.supplierKey) ?? -1),
+        render: (supplierKey: string) => {
+          const avg = avgVolume?.supplierAvg.get(supplierKey)
+          return avg == null ? '—' : nf.format(Math.round(avg))
+        },
+      },
+      {
         title: t('difficulty.colDistance'),
         dataIndex: 'distanceKm',
         width: 110,
@@ -234,13 +262,20 @@ export function VendorRouteDifficultyTab({ page }: Props) {
         sorter: (a, b) => a.hardRouteCount - b.hardRouteCount,
       },
     ],
-    [page.vendorColorMap, supplierNameByKey, t],
+    [avgVolume, page.vendorColorMap, supplierNameByKey, t],
   )
 
   return (
     <div className="space-y-5">
       <section className="admin-panel px-5 py-4">
         <p className="text-sm text-slate-500">{t('difficulty.hint')}</p>
+        {page.data ? (
+          <p className="text-sm text-slate-500">
+            {avgVolume
+              ? t('difficulty.avgVolumeHint', { days: avgVolume.validDays })
+              : t('difficulty.avgVolumeLoading')}
+          </p>
+        ) : null}
       </section>
       {warehouseConfigLoaded && !regionWarehouse ? (
         <Alert type="warning" showIcon message={t('difficulty.noRegionWarehouse')} />
@@ -254,7 +289,7 @@ export function VendorRouteDifficultyTab({ page }: Props) {
           locale={{ emptyText: <Empty description={t('difficulty.empty')} /> }}
           expandable={{
             rowExpandable: (row) => row.routes.length > 0,
-            expandedRowRender: (row) => <RouteBreakdownTable routes={row.routes} />,
+            expandedRowRender: (row) => <RouteBreakdownTable routes={row.routes} routeAvg={routeAvg} />,
           }}
           pagination={{ pageSize: 50, showTotal: (total) => t('difficulty.rowsTotal', { total }) }}
           scroll={{ x: 1100 }}

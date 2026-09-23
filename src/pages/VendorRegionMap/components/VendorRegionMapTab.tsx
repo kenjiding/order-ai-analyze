@@ -12,6 +12,7 @@ import {
   type MapMetric,
 } from '../vendorRegionMapTypes'
 import { VendorRegionMapCanvas } from './VendorRegionMapCanvas'
+import { VendorRouteDifficultyTab } from './VendorRouteDifficultyTab'
 
 const nf = new Intl.NumberFormat('en-AU')
 
@@ -179,6 +180,8 @@ export function VendorRegionMapTab({ page }: Props) {
           metric={metric}
         />
       </section>
+
+      <VendorRouteDifficultyTab page={page} />
     </div>
   )
 }
