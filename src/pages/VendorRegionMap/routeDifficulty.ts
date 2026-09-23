@@ -1,14 +1,31 @@
 import type { ZipStat } from './columnGeometry'
 import { columnHeightRatio } from './columnGeometry'
 import { haversineKm } from './warehouseOverlay'
-import {
-  UNMATCHED_SUPPLIER_KEY,
-  WAREHOUSE,
-  WAREHOUSE_RING_KM,
-  type VendorRegionRouteCode,
-} from './vendorRegionMapTypes'
+import { UNMATCHED_SUPPLIER_KEY, WAREHOUSE_RING_KM, type VendorRegionRouteCode } from './vendorRegionMapTypes'
 
 export type DifficultyLevel = 'easy' | 'fair' | 'medium' | 'hard' | 'extreme'
+
+export type WarehouseCoords = { lat: number; lng: number }
+
+/** 这条路由的距离用的是哪一级仓库坐标：站点(准) / 大区主仓(退化) / 都没配(不参与打分) */
+export type WarehouseSource = 'station' | 'region' | 'none'
+
+export type WarehouseConfig = {
+  /** 按站点名（iMile deliveryStation 原字符串）查坐标 */
+  stationCoordsByName: Map<string, WarehouseCoords>
+  /** 当前账号所属大区的主仓坐标；没配则为 null */
+  regionWarehouse: WarehouseCoords | null
+}
+
+function resolveRouteWarehouse(
+  deliveryStation: string,
+  config: WarehouseConfig,
+): { coords: WarehouseCoords | null; source: WarehouseSource } {
+  const byStation = deliveryStation ? config.stationCoordsByName.get(deliveryStation) : undefined
+  if (byStation) return { coords: byStation, source: 'station' }
+  if (config.regionWarehouse) return { coords: config.regionWarehouse, source: 'region' }
+  return { coords: null, source: 'none' }
+}
 
 export type RouteDifficultyZipDetail = {
   zipCode: string
@@ -30,6 +47,8 @@ export type RouteDifficultyRow = {
   /** null = 一个能打分的邮编都没有，不编造 */
   difficulty: number | null
   level: DifficultyLevel | 'unknown'
+  /** 这条路由的距离算的是哪一级仓库坐标，UI 要标出来，不能悄悄退化 */
+  warehouseSource: WarehouseSource
   /** 展开明细：同一路由码分布在哪些邮编、各多少票 */
   zips: RouteDifficultyZipDetail[]
 }
@@ -52,6 +71,12 @@ export function difficultyLevel(score: number): DifficultyLevel {
 
 /**
  * 路由难易度 = 距仓库距离 + 单量 + 单量密度(件/km²) 的加权合成，越大越难派。
+ *
+ * 距离用的「仓库」不再是全局唯一常量：大区很大时（悉尼/墨尔本），货从主仓分拨到各个小仓
+ * （站点），司机从自己站点取货派送，不会跑回主仓——所以每条路由先按它的 deliveryStation
+ * （到件扫描自带的派件站点，同一路由码下已验证 100% 唯一稳定）查站点坐标，查不到再退到
+ * 所属大区的主仓坐标，两个都没配就不参与打分（不拿错的坐标凑数）。退化到哪一级用
+ * `warehouseSource` 标出来，供 UI 提示运营去补哪个站点。
  *
  * 距离归一化用固定封顶（150km，地图上已有的最外圈距离圈），不用「本次查询里最远的那条
  * 路由」当分母——早期版本用后者，结果被一条孤立的离群值（1 票、上千公里、还是未匹配供应商
@@ -80,7 +105,11 @@ export function difficultyLevel(score: number): DifficultyLevel {
  * 「未匹配供应商」（路由码对不上任何供应商配置）的包裹是发错/记错的货，根本不是一条真实
  * 常态化的司机线路，不参与难度评分——留着只会继续污染距离/单量刻度。
  */
-export function computeRouteDifficulty(routes: VendorRegionRouteCode[], zipStats: ZipStat[]): RouteDifficultyRow[] {
+export function computeRouteDifficulty(
+  routes: VendorRegionRouteCode[],
+  zipStats: ZipStat[],
+  warehouseConfig: WarehouseConfig,
+): RouteDifficultyRow[] {
   const statByZip = new Map(zipStats.map((stat) => [stat.zipCode, stat]))
   const matchedRoutes = routes.filter((route) => route.supplierKey !== UNMATCHED_SUPPLIER_KEY)
 
@@ -96,12 +125,18 @@ export function computeRouteDifficulty(routes: VendorRegionRouteCode[], zipStats
     const [supplierKey, routeCode] = key.split('\0') as [string, string]
     const totalCount = group.reduce((sum, route) => sum + route.count, 0)
 
+    // 同一路由码下 deliveryStation 已验证唯一稳定，取第一条即可
+    const { coords: warehouse, source: warehouseSource } = resolveRouteWarehouse(
+      group[0]?.deliveryStation ?? '',
+      warehouseConfig,
+    )
+
     const zips: RouteDifficultyZipDetail[] = group
       .map((route) => {
         const stat = statByZip.get(route.zipCode)
         const distanceKm =
-          stat?.center != null
-            ? haversineKm(WAREHOUSE.lat, WAREHOUSE.lng, stat.center[1], stat.center[0])
+          warehouse && stat?.center != null
+            ? haversineKm(warehouse.lat, warehouse.lng, stat.center[1], stat.center[0])
             : null
         const density = stat?.areaKm2 != null && stat.areaKm2 > 0 ? route.count / stat.areaKm2 : null
         return { zipCode: route.zipCode, suburb: stat?.suburb ?? '', count: route.count, distanceKm, density }
@@ -126,7 +161,7 @@ export function computeRouteDifficulty(routes: VendorRegionRouteCode[], zipStats
     const distanceKm = distanceDenominator > 0 ? distanceNumerator / distanceDenominator : null
     const density = hasArea && areaSum > 0 ? totalCount / areaSum : null
 
-    return { supplierKey, routeCode, totalCount, distanceKm, density, zips }
+    return { supplierKey, routeCode, totalCount, distanceKm, density, warehouseSource, zips }
   })
 
   let maxVolume = 0
@@ -152,6 +187,7 @@ export function computeRouteDifficulty(routes: VendorRegionRouteCode[], zipStats
       density: r.density,
       difficulty,
       level: difficulty == null ? 'unknown' : difficultyLevel(difficulty),
+      warehouseSource: r.warehouseSource,
       zips: r.zips,
     }
   })

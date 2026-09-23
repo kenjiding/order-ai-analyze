@@ -47,6 +47,7 @@
   "legendVendorDensityHigh": "密度高",
   "legendVendorHint": "配色见上方「供应商筛选」；颜色越深代表该邮区配送密度越高",
   "legendWarehouse": "本仓库",
+  "warehouseNotConfiguredHint": "本州还没配置主仓地址，去「系统管理 → 仓库/站点地址配置」设置一下",
   "legendRings": "虚线同心圆：距仓库 {{scale}}",
   "popupDistance": "距仓库 {{distance}}",
   "popupArea": "面积 {{area}} km²",
@@ -144,7 +145,9 @@
       "unknown": "数据不足"
     },
     "empty": "还没有路由难度数据，先在「区域地图」Tab 查询一次",
-    "rowsTotal": "共 {{total}} 家供应商"
+    "rowsTotal": "共 {{total}} 家供应商",
+    "warehouseSourceRegionHint": "这条路由的派件站点还没配坐标，距离用的是所属大区主仓的坐标退化算出来的，可能不准——去「系统管理 → 仓库/站点地址配置」把这个站点的地址配上",
+    "noRegionWarehouse": "当前账号所属的大区还没配置主仓地址，站点坐标缺失时无法退化计算距离，这些路由会显示「数据不足」——去「系统管理 → 仓库/站点地址配置」配置一下"
   },
   "presets": {
     "last14Days": "近 14 天",

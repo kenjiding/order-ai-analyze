@@ -75,6 +75,7 @@ export const PERMISSION_KEYS = {
   menuSupplierConfigs: 'menu:supplier-configs',
   menuPriorityClients: 'menu:priority-clients',
   menuRegionPackagePrices: 'menu:region-package-prices',
+  menuWarehouseSettings: 'menu:warehouse-settings',
   btnContainerAccountsManage: 'btn:container-accounts:manage',
   btnContainerLedgerEdit: 'btn:container-ledger:edit',
   btnContainerLedgerDelete: 'btn:container-ledger:delete',

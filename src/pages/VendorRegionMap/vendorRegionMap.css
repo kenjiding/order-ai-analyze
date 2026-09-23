@@ -327,6 +327,16 @@
   color: #94a3b8;
 }
 
+.vrm-tool:disabled {
+  color: #cbd5e1;
+  cursor: not-allowed;
+}
+
+.vrm-tool:disabled:hover {
+  background: transparent;
+  color: #cbd5e1;
+}
+
 .vrm-tool[aria-pressed='false'] svg {
   opacity: 0.6;
 }
@@ -815,6 +825,24 @@
   font-weight: 700;
   letter-spacing: 0.04em;
   white-space: nowrap;
+}
+
+.vrm-station-marker {
+  display: flex;
+  cursor: pointer;
+  filter: drop-shadow(0 4px 8px rgba(15, 23, 42, 0.24));
+}
+
+.vrm-station-marker__pin {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 6px;
+  color: #fff;
+  background: linear-gradient(180deg, #7c8fa8, #5a6d87);
+  box-shadow: 0 0 0 2px #fff;
 }
 
 .vrm-map-shell .maplibregl-ctrl-group {

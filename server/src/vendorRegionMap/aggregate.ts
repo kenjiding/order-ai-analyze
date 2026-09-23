@@ -49,6 +49,8 @@ export function aggregateVendorZipCells(input: {
 
   const buckets = new Map<string, Bucket>()
   const routeCounts = new Map<string, number>()
+  /** 派件站点同一路由码下唯一稳定，取第一次遇到的值即可，不需要众数 */
+  const routeDeliveryStations = new Map<string, string>()
   const scans = dedupeScansByWaybill(input.records)
   let unmatchedNoZip = 0
   let unmatchedNoVendor = 0
@@ -87,6 +89,9 @@ export function aggregateVendorZipCells(input: {
       if (routeCode) {
         const routeKey = `${key}\0${routeCode}`
         routeCounts.set(routeKey, (routeCounts.get(routeKey) ?? 0) + 1)
+        if (!routeDeliveryStations.has(routeKey) && scan.deliveryStation) {
+          routeDeliveryStations.set(routeKey, scan.deliveryStation)
+        }
       }
     }
   }
@@ -146,7 +151,7 @@ export function aggregateVendorZipCells(input: {
   const routes: VendorRegionRouteCode[] = [...routeCounts.entries()]
     .map(([key, count]) => {
       const [supplierKey, zipCode, routeCode] = key.split('\0') as [string, string, string]
-      return { zipCode, supplierKey, routeCode, count }
+      return { zipCode, supplierKey, routeCode, count, deliveryStation: routeDeliveryStations.get(key) ?? '' }
     })
     .sort((a, b) => b.count - a.count || a.routeCode.localeCompare(b.routeCode))
 

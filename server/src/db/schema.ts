@@ -1110,3 +1110,39 @@ export const regionPackagePrices = pgTable(
 )
 
 export type RegionPackagePrice = typeof regionPackagePrices.$inferSelect
+
+/**
+ * 大区主仓地址：每个州一条记录，供供应商区域地图/路由难度算距离时当兜底仓库坐标用
+ * （某条路由的派件站点没配坐标时，退到它所属大区的主仓坐标）。
+ */
+export const regionWarehouses = pgTable('region_warehouses', {
+  regionCode: varchar('region_code', { length: 16 }).primaryKey(),
+  name: varchar('name', { length: 128 }).notNull(),
+  address: varchar('address', { length: 512 }).notNull(),
+  lat: doublePrecision('lat').notNull(),
+  lng: doublePrecision('lng').notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+})
+
+export type RegionWarehouse = typeof regionWarehouses.$inferSelect
+
+/**
+ * 站点（小仓）坐标：站点编码/名称取自顶部「站点选择器」（iMile 的责任站点列表），
+ * 运营手动录入地址+经纬度。`stationName` 是运行时用来匹配到件扫描 deliveryStation
+ * 字段的 key（deliveryStation 只有名字没有编码，已验证同一 station 下两边名字一致）。
+ * 不按 regionCode 隔离——站点是全公司共用的物理地址，不属于某一个州的账号私有。
+ */
+export const stationCoordinates = pgTable(
+  'station_coordinates',
+  {
+    stationCode: varchar('station_code', { length: 32 }).primaryKey(),
+    stationName: varchar('station_name', { length: 128 }).notNull(),
+    address: varchar('address', { length: 512 }).notNull(),
+    lat: doublePrecision('lat').notNull(),
+    lng: doublePrecision('lng').notNull(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [uniqueIndex('station_coordinates_name_unique').on(table.stationName)],
+)
+
+export type StationCoordinate = typeof stationCoordinates.$inferSelect

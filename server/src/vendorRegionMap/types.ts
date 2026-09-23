@@ -34,6 +34,8 @@ export type VendorRegionRouteCode = {
   supplierKey: string
   routeCode: string
   count: number
+  /** 派件站点（iMile deliveryStation），同一路由码下唯一稳定；没有值时为空字符串 */
+  deliveryStation: string
 }
 
 export type PolygonGeometry = {

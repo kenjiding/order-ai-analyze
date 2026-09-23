@@ -5,6 +5,8 @@ export type ParsedInboundScan = {
   /** 收件 suburb（iMile consigneeCity，导出表里的「收件人城市」列）；与邮编一起匹配区域包裹价格 */
   consigneeSuburb: string
   courierVendorCode: string
+  /** 派件站点（iMile deliveryStation），同一路由码下唯一稳定；用于算「路由难易度」的距离 */
+  deliveryStation: string
 }
 
 function readText(row: Record<string, unknown>, keys: string[]): string {
@@ -93,6 +95,7 @@ export function parseInboundScanRecord(raw: unknown): ParsedInboundScan | null {
     consigneeZipCode: resolveConsigneeZipCode(row),
     consigneeSuburb: readText(row, ['consigneeCity', 'consigneeSuburb', 'city']),
     courierVendorCode: readText(row, ['courierVendorCode', 'vendorCode']),
+    deliveryStation: readText(row, ['deliveryStation']),
   }
 }
 
@@ -114,6 +117,7 @@ export function dedupeScansByWaybill(records: unknown[]): ParsedInboundScan[] {
     if (!existing.consigneeSuburb && parsed.consigneeSuburb) existing.consigneeSuburb = parsed.consigneeSuburb
     if (!existing.routeCode && parsed.routeCode) existing.routeCode = parsed.routeCode
     if (!existing.courierVendorCode && parsed.courierVendorCode) existing.courierVendorCode = parsed.courierVendorCode
+    if (!existing.deliveryStation && parsed.deliveryStation) existing.deliveryStation = parsed.deliveryStation
   }
   return [...byWaybill.values()]
 }

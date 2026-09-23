@@ -36,6 +36,9 @@ import { supplierConfigScopeRouter } from './routes/supplierConfigScopeRouter'
 import { userPreferencesRouter } from './routes/userPreferencesRouter'
 import { priorityClientsRouter } from './routes/priorityClientsRouter'
 import { regionPackagePriceRouter } from './routes/regionPackagePriceRouter'
+import { regionWarehouseRouter } from './routes/regionWarehouseRouter'
+import { stationCoordinateRouter } from './routes/stationCoordinateRouter'
+import { geocodingRouter } from './routes/geocodingRouter'
 
 const app = express()
 
@@ -89,6 +92,9 @@ app.use('/api/supplier-config-scopes', requireAuth, supplierConfigScopeRouter)
 app.use('/api/user-preferences', requireAuth, userPreferencesRouter)
 app.use('/api/priority-clients', requireAuth, priorityClientsRouter)
 app.use('/api/region-package-prices', requireAuth, regionPackagePriceRouter)
+app.use('/api/region-warehouses', requireAuth, regionWarehouseRouter)
+app.use('/api/station-coordinates', requireAuth, stationCoordinateRouter)
+app.use('/api/geocoding', requireAuth, geocodingRouter)
 app.use('/api/feishu-webhook', requireAuth, feishuWebhookTestRouter)
 app.use('/api/exit-alarm', requireAuth, exitAlarmRouter)
 app.use('/api/chase-dispatch', requireAuth, chaseDispatchRouter)

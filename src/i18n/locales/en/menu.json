@@ -47,6 +47,7 @@
     "system-users": "Users",
     "supplier-configs": "Vendor config",
     "priority-clients": "Priority clients",
-    "region-package-prices": "Region package prices"
+    "region-package-prices": "Region package prices",
+    "warehouse-settings": "Warehouse/station addresses"
   }
 }

@@ -321,6 +321,14 @@ const systemGroup: SidebarMenuGroup = {
       icon: DollarSign,
       description: '按州维护 postcode/suburb 的派送单价、所属供应商与上一次价格',
     },
+    {
+      id: 'warehouse-settings',
+      path: '/system/warehouse-settings',
+      permissionKey: 'menu:warehouse-settings',
+      label: '仓库/站点地址配置',
+      icon: Warehouse,
+      description: '维护各州主仓地址与站点坐标，供供应商区域地图的路由难易程度计算距离',
+    },
   ],
 }
 

@@ -13,13 +13,21 @@ function config(vendorCode: string): ScopeConfig {
   }
 }
 
-function scan(input: { waybillNo: string; zip: string; suburb: string; vendorCode: string; routeCode?: string }) {
+function scan(input: {
+  waybillNo: string
+  zip: string
+  suburb: string
+  vendorCode: string
+  routeCode?: string
+  deliveryStation?: string
+}) {
   return {
     waybillNo: input.waybillNo,
     consigneeZipCode: input.zip,
     consigneeCity: input.suburb,
     courierVendorCode: input.vendorCode,
     routeCode: input.routeCode ?? 'R1',
+    deliveryStation: input.deliveryStation ?? '',
   }
 }
 
@@ -90,6 +98,23 @@ test('路由码按 供应商+邮区+路由码 聚合票量，空路由码不产�
   assert.equal(r1?.zipCode, '5000')
   assert.equal(r1?.supplierKey, r2?.supplierKey)
   assert.equal(r2?.count, 1)
+})
+
+test('路由码带出 deliveryStation，且同一路由码取首次出现的值，不因后续扫描缺失被覆盖成空', () => {
+  const result = aggregateVendorZipCells({
+    records: [
+      scan({ waybillNo: 'A1', zip: '5000', suburb: 'Adelaide', vendorCode: 'SRM1', routeCode: 'R1', deliveryStation: 'ADL DS' }),
+      scan({ waybillNo: 'A2', zip: '5000', suburb: 'Adelaide', vendorCode: 'SRM1', routeCode: 'R1', deliveryStation: '' }),
+      scan({ waybillNo: 'A3', zip: '5000', suburb: 'Adelaide', vendorCode: 'SRM1', routeCode: 'R2' }),
+    ],
+    configs: [config('SRM1')],
+    priceBook,
+  })
+
+  const r1 = result.routes.find((item) => item.routeCode === 'R1')
+  const r2 = result.routes.find((item) => item.routeCode === 'R2')
+  assert.equal(r1?.deliveryStation, 'ADL DS')
+  assert.equal(r2?.deliveryStation, '')
 })
 
 test('价格表缺省时全部票记为未计价，金额恒为 0', () => {

@@ -47,6 +47,7 @@
     "system-users": "用户管理",
     "supplier-configs": "供应商配置",
     "priority-clients": "优先客户配置",
-    "region-package-prices": "区域包裹价格配置"
+    "region-package-prices": "区域包裹价格配置",
+    "warehouse-settings": "仓库/站点地址配置"
   }
 }

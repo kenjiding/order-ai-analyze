@@ -37,6 +37,7 @@ export const I18N_NAMESPACES = [
   'supplierConfig',
   'priorityClients',
   'regionPackagePrice',
+  'warehouseSettings',
 ] as const
 
 export type I18nNamespace = (typeof I18N_NAMESPACES)[number]

@@ -25,25 +25,29 @@ import {
   type ZipStat,
 } from '../columnGeometry'
 import { formatAreaKm2, formatDensity } from '../regionMetrics'
+import { useWarehouseConfigData } from '../useWarehouseConfigData'
 import {
   ADELAIDE_MAP_ZOOM,
   formatMetricValue,
   isMoneyMetric,
   resolveRegionMapCenter,
-  WAREHOUSE,
   warehouseRingScaleLabel,
   type MapMetric,
   type VendorRegionMapResult,
 } from '../vendorRegionMapTypes'
 import {
+  buildStationPopupHtml,
   buildWarehousePadCollection,
   buildWarehousePopupHtml,
   buildWarehouseRingCollection,
   createRingChipImage,
+  createStationMarkerElement,
   createWarehouseMarkerElement,
+  escapeHtml,
   formatDistanceKm,
   haversineKm,
   RING_CHIP_IMAGE_ID,
+  type WarehousePoint,
 } from '../warehouseOverlay'
 
 maplibregl.setWorkerUrl(maplibreWorkerUrl)
@@ -110,14 +114,6 @@ type Props = {
   metric: MapMetric
 }
 
-function escapeHtml(value: string): string {
-  return value
-    .replaceAll('&', '&amp;')
-    .replaceAll('<', '&lt;')
-    .replaceAll('>', '&gt;')
-    .replaceAll('"', '&quot;')
-}
-
 function quantizeWorldScale(map: maplibregl.Map): number {
   const scale = columnWorldScale(map.getCenter().lat, map.getZoom())
   return Math.round(scale / WORLD_SCALE_STEP) * WORLD_SCALE_STEP
@@ -128,9 +124,9 @@ const DEFAULT_BEARING = -22
 const TOP_DOWN_PITCH = 0
 const TOP_DOWN_BEARING = 0
 
-function flyToWarehouse(map: maplibregl.Map) {
+function flyToWarehouse(map: maplibregl.Map, warehouse: WarehousePoint) {
   map.easeTo({
-    center: [WAREHOUSE.lng, WAREHOUSE.lat],
+    center: [warehouse.lng, warehouse.lat],
     zoom: 12.2,
     pitch: DEFAULT_PITCH,
     bearing: DEFAULT_BEARING,
@@ -214,6 +210,9 @@ export function VendorRegionMapCanvas({
   const popupRef = useRef<maplibregl.Popup | null>(null)
   const layersReadyRef = useRef(false)
   const applyRef = useRef<() => void>(() => {})
+  // 主仓/站点数据是异步拉到的，可能比地图图层建好得早或得晚——跟 applyRef 同一套「谁先到谁触发」模式，
+  // 拆成独立的 ref 而不是塞进 applyRef：更新节奏完全不同（几乎只在进页面时变一次，不跟着查询筛选动）
+  const applyWarehouseRef = useRef<() => void>(() => {})
   // 只在本次会话第一次拿到数据时自动 fit 一次；之后用户改日期/筛选重新查询，
   // 都不再抢镜头——不然每次查询都会把用户手动缩放/平移过的视角冲掉
   const hasFittedOnceRef = useRef(false)
@@ -221,6 +220,7 @@ export function VendorRegionMapCanvas({
   const colorMapRef = useRef(colorMap)
   const metricRef = useRef(metric)
   const warehouseMarkerRef = useRef<maplibregl.Marker | null>(null)
+  const stationMarkersRef = useRef<maplibregl.Marker[]>([])
   // 账号所属州决定地图落点；地图只在挂载时创建一次，州在会话内不会变
   const regionCode = useAuthStore((s) => s.user?.regionCode ?? null)
   const regionCenter = useMemo(() => resolveRegionMapCenter(regionCode), [regionCode])
@@ -233,6 +233,24 @@ export function VendorRegionMapCanvas({
     Math.round(columnWorldScale(regionCenter.lat, ADELAIDE_MAP_ZOOM) / WORLD_SCALE_STEP) *
     WORLD_SCALE_STEP,
   )
+
+  // 大区主仓 + 站点坐标是静态参考数据，跟地图数据查询无关；地图挂载时立刻拉，不等用户点「查询」
+  const { regionWarehouse, stations, loaded: warehouseLoaded } = useWarehouseConfigData()
+  // regionWarehouse 引用本身是稳定的（只在 fetch 真正resolve 时变一次），这里 useMemo 一下
+  // 避免每次渲染都产出新对象引用，导致下面依赖它的 effect 每次渲染都重建地图 marker
+  const warehousePoint = useMemo<WarehousePoint | null>(
+    () =>
+      regionWarehouse
+        ? { name: regionWarehouse.name, address: regionWarehouse.address, lat: regionWarehouse.lat, lng: regionWarehouse.lng }
+        : null,
+    [regionWarehouse],
+  )
+  // 地图的挂载 effect 只跑一次，但仓库数据是异步到达的——用 ref 给那些在挂载时就注册好的
+  // 闭包（点击事件、popup 距离计算）一份「随时最新」的镜像，不然它们会一直读到挂载那一刻的 null
+  const warehousePointRef = useRef<WarehousePoint | null>(warehousePoint)
+  useEffect(() => {
+    warehousePointRef.current = warehousePoint
+  })
 
   useEffect(() => {
     colorMapRef.current = colorMap
@@ -333,22 +351,16 @@ export function VendorRegionMapCanvas({
     mapRef.current = map
     popupRef.current = new maplibregl.Popup({ closeButton: false, maxWidth: '280px', offset: 16 })
 
+    // 主仓坐标是异步拉到的，挂载这一刻可能还没有——marker 本身在下面单独一个 effect 里
+    // 按 warehousePoint 变化创建/挪动/移除，这里只注册一个读「最新 ref」的弹窗开启函数
     const openWarehousePopup = () => {
+      const warehouse = warehousePointRef.current
+      if (!warehouse) return
       popupRef.current
-        ?.setLngLat([WAREHOUSE.lng, WAREHOUSE.lat])
-        .setHTML(buildWarehousePopupHtml())
+        ?.setLngLat([warehouse.lng, warehouse.lat])
+        .setHTML(buildWarehousePopupHtml(warehouse))
         .addTo(map)
     }
-
-    const markerEl = createWarehouseMarkerElement()
-    markerEl.addEventListener('click', (event) => {
-      event.stopPropagation()
-      openWarehousePopup()
-    })
-    const warehouseMarker = new maplibregl.Marker({ element: markerEl, anchor: 'bottom' })
-      .setLngLat([WAREHOUSE.lng, WAREHOUSE.lat])
-      .addTo(map)
-    warehouseMarkerRef.current = warehouseMarker
 
     const handleZoomEnd = () => {
       const next = quantizeWorldScale(map)
@@ -365,8 +377,14 @@ export function VendorRegionMapCanvas({
         map.addSource(REGIONS_SOURCE, { type: 'geojson', data: EMPTY_FC })
         map.addSource(COLUMNS_SOURCE, { type: 'geojson', data: EMPTY_FC })
         map.addSource(ROUTE_CODES_SOURCE, { type: 'geojson', data: EMPTY_FC })
-        map.addSource(WAREHOUSE_RINGS_SOURCE, { type: 'geojson', data: buildWarehouseRingCollection() })
-        map.addSource(WAREHOUSE_PAD_SOURCE, { type: 'geojson', data: buildWarehousePadCollection() })
+        map.addSource(WAREHOUSE_RINGS_SOURCE, {
+          type: 'geojson',
+          data: buildWarehouseRingCollection(warehousePointRef.current),
+        })
+        map.addSource(WAREHOUSE_PAD_SOURCE, {
+          type: 'geojson',
+          data: buildWarehousePadCollection(warehousePointRef.current),
+        })
         map.addLayer({
           id: REGIONS_FILL,
           type: 'fill',
@@ -486,9 +504,12 @@ export function VendorRegionMapCanvas({
       const openPopup = (zipCode: string, lngLat: maplibregl.LngLatLike) => {
         const stat = statsRef.current.get(zipCode)
         if (!stat || stat.rows.length === 0) return
-        const distanceLabel = stat.center
-          ? formatDistanceKm(haversineKm(WAREHOUSE.lat, WAREHOUSE.lng, stat.center[1], stat.center[0]))
-          : ''
+        const warehouse = warehousePointRef.current
+        // 主仓没配置时不编造距离——弹窗里直接不出现这条 fact，跟缺边界/缺密度同一个处理原则
+        const distanceLabel =
+          warehouse && stat.center
+            ? formatDistanceKm(haversineKm(warehouse.lat, warehouse.lng, stat.center[1], stat.center[0]))
+            : ''
         popupRef.current
           ?.setLngLat(lngLat)
           .setHTML(buildPopupHtml(stat, colorMapRef.current, distanceLabel, metricRef.current))
@@ -521,6 +542,7 @@ export function VendorRegionMapCanvas({
 
       layersReadyRef.current = true
       applyRef.current()
+      applyWarehouseRef.current()
     }
 
     if (map.isStyleLoaded()) setupLayers()
@@ -532,6 +554,8 @@ export function VendorRegionMapCanvas({
       resizeObserver.disconnect()
       warehouseMarkerRef.current?.remove()
       warehouseMarkerRef.current = null
+      for (const marker of stationMarkersRef.current) marker.remove()
+      stationMarkersRef.current = []
       popupRef.current?.remove()
       map.remove()
       mapRef.current = null
@@ -539,6 +563,55 @@ export function VendorRegionMapCanvas({
     // regionCenter 只用于地图创建时的初始落点，地图本身只建一次，不随它变化重建
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
+
+  // 主仓 + 站点坐标异步到达/变化时：更新距离圈/落地面的 GeoJSON，创建/挪动/移除对应的 DOM marker。
+  // 跟 applyRef 同一套「图层建好、数据拉到，谁先谁触发」的处理——避免数据先到而图层还没建好、
+  // 或者反过来图层先建好而数据还没到，导致这层永远没机会补画上去
+  useEffect(() => {
+    const applyWarehouse = () => {
+      const map = mapRef.current
+      if (!map) return
+
+      ;(map.getSource(WAREHOUSE_PAD_SOURCE) as maplibregl.GeoJSONSource | undefined)?.setData(
+        buildWarehousePadCollection(warehousePoint),
+      )
+      ;(map.getSource(WAREHOUSE_RINGS_SOURCE) as maplibregl.GeoJSONSource | undefined)?.setData(
+        buildWarehouseRingCollection(warehousePoint),
+      )
+
+      warehouseMarkerRef.current?.remove()
+      warehouseMarkerRef.current = null
+      if (warehousePoint) {
+        const markerEl = createWarehouseMarkerElement()
+        markerEl.addEventListener('click', (event) => {
+          event.stopPropagation()
+          popupRef.current
+            ?.setLngLat([warehousePoint.lng, warehousePoint.lat])
+            .setHTML(buildWarehousePopupHtml(warehousePoint))
+            .addTo(map)
+        })
+        warehouseMarkerRef.current = new maplibregl.Marker({ element: markerEl, anchor: 'bottom' })
+          .setLngLat([warehousePoint.lng, warehousePoint.lat])
+          .addTo(map)
+      }
+
+      // 站点数量不多、也不常变（运营手动维护），每次直接整体重建，不做增量 diff
+      for (const marker of stationMarkersRef.current) marker.remove()
+      stationMarkersRef.current = stations.map((station) => {
+        const markerEl = createStationMarkerElement()
+        markerEl.addEventListener('click', (event) => {
+          event.stopPropagation()
+          popupRef.current?.setLngLat([station.lng, station.lat]).setHTML(buildStationPopupHtml(station)).addTo(map)
+        })
+        return new maplibregl.Marker({ element: markerEl, anchor: 'bottom' })
+          .setLngLat([station.lng, station.lat])
+          .addTo(map)
+      })
+    }
+
+    applyWarehouseRef.current = applyWarehouse
+    if (layersReadyRef.current) applyWarehouse()
+  }, [warehousePoint, stations])
 
   useEffect(() => {
     const map = mapRef.current
@@ -625,9 +698,11 @@ export function VendorRegionMapCanvas({
         <button
           type="button"
           className="vrm-tool"
+          disabled={!warehousePoint}
+          title={warehousePoint ? undefined : t('warehouseNotConfiguredHint')}
           onClick={() => {
-            if (!mapRef.current) return
-            flyToWarehouse(mapRef.current)
+            if (!mapRef.current || !warehousePoint) return
+            flyToWarehouse(mapRef.current, warehousePoint)
             setTopDown(false)
           }}
         >
@@ -739,20 +814,27 @@ export function VendorRegionMapCanvas({
               <div className="vrm-map-legend__hint">{t('legendVendorHint')}</div>
             </div>
 
-            <div className="vrm-map-legend__block">
-              <div className="vrm-map-legend__wh">
-                <span className="vrm-wh-marker__pin vrm-wh-marker__pin--legend" aria-hidden>
-                  <Warehouse className="h-3.5 w-3.5" />
-                </span>
-                <div>
-                  <div className="vrm-map-legend__title">{t('legendWarehouse')}</div>
-                  <div className="vrm-map-legend__addr">{WAREHOUSE.address}</div>
+            {warehousePoint ? (
+              <div className="vrm-map-legend__block">
+                <div className="vrm-map-legend__wh">
+                  <span className="vrm-wh-marker__pin vrm-wh-marker__pin--legend" aria-hidden>
+                    <Warehouse className="h-3.5 w-3.5" />
+                  </span>
+                  <div>
+                    <div className="vrm-map-legend__title">{t('legendWarehouse')}</div>
+                    <div className="vrm-map-legend__addr">{warehousePoint.address}</div>
+                  </div>
+                </div>
+                <div className="vrm-map-legend__rings">
+                  {t('legendRings', { scale: warehouseRingScaleLabel() })}
                 </div>
               </div>
-              <div className="vrm-map-legend__rings">
-                {t('legendRings', { scale: warehouseRingScaleLabel() })}
+            ) : warehouseLoaded ? (
+              <div className="vrm-map-legend__block">
+                <div className="vrm-map-legend__title">{t('legendWarehouse')}</div>
+                <div className="vrm-map-legend__addr">{t('warehouseNotConfiguredHint')}</div>
               </div>
-            </div>
+            ) : null}
           </div>
         ) : null}
       </div>

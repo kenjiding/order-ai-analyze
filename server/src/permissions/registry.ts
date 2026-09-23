@@ -120,6 +120,13 @@ export const PERMISSION_REGISTRY: PermissionDefinition[] = [
     sortOrder: 66,
   },
   {
+    key: 'menu:warehouse-settings',
+    type: 'menu',
+    label: '仓库/站点地址配置',
+    description: '维护各州主仓地址与站点坐标，供供应商区域地图的路由难易程度计算距离',
+    sortOrder: 67,
+  },
+  {
     key: 'btn:wage-salary:export',
     type: 'button',
     label: '导出工资',

@@ -1,11 +1,13 @@
 import { useMemo } from 'react'
-import { Empty, Table, Tag } from 'antd'
+import { Alert, Empty, Table, Tag, Tooltip } from 'antd'
 import type { ColumnsType } from 'antd/es/table'
+import { TriangleAlert } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { aggregateZipStats } from '../columnGeometry'
 import { formatDensity } from '../regionMetrics'
 import { colorFromMap } from '../vendorColors'
 import type { useVendorRegionMapPage } from '../useVendorRegionMapPage'
+import { useWarehouseConfigData } from '../useWarehouseConfigData'
 import {
   computeRouteDifficulty,
   computeSupplierDifficulty,
@@ -13,6 +15,8 @@ import {
   type RouteDifficultyRow,
   type RouteDifficultyZipDetail,
   type SupplierDifficultyRow,
+  type WarehouseConfig,
+  type WarehouseSource,
 } from '../routeDifficulty'
 import { formatDistanceKm } from '../warehouseOverlay'
 
@@ -27,13 +31,20 @@ const LEVEL_COLOR: Record<DifficultyLevel | 'unknown', string> = {
   unknown: 'default',
 }
 
-type Props = {
-  page: ReturnType<typeof useVendorRegionMapPage>
-}
-
 function DifficultyTag({ level }: { level: DifficultyLevel | 'unknown' }) {
   const { t } = useTranslation('vendorRegionMap')
   return <Tag color={LEVEL_COLOR[level]}>{t(`difficulty.level.${level}`)}</Tag>
+}
+
+/** 站点坐标是正常情况，不额外提示；退化到大区主仓时才需要提醒运营去补这个站点的地址 */
+function WarehouseSourceHint({ source }: { source: WarehouseSource }) {
+  const { t } = useTranslation('vendorRegionMap')
+  if (source !== 'region') return null
+  return (
+    <Tooltip title={t('difficulty.warehouseSourceRegionHint')}>
+      <TriangleAlert className="ml-1 inline h-3.5 w-3.5 text-amber-500" aria-hidden />
+    </Tooltip>
+  )
 }
 
 function ZipBreakdownTable({ zips }: { zips: RouteDifficultyZipDetail[] }) {
@@ -83,9 +94,14 @@ function RouteBreakdownTable({ routes }: { routes: RouteDifficultyRow[] }) {
     {
       title: t('difficulty.colDistance'),
       dataIndex: 'distanceKm',
-      width: 100,
+      width: 120,
       sorter: (a, b) => (a.distanceKm ?? -1) - (b.distanceKm ?? -1),
-      render: (v: number | null) => (v == null ? '—' : formatDistanceKm(v)),
+      render: (v: number | null, row) => (
+        <>
+          {v == null ? '—' : formatDistanceKm(v)}
+          <WarehouseSourceHint source={row.warehouseSource} />
+        </>
+      ),
     },
     {
       title: t('difficulty.colDensity'),
@@ -123,16 +139,29 @@ function RouteBreakdownTable({ routes }: { routes: RouteDifficultyRow[] }) {
   )
 }
 
+type Props = {
+  page: ReturnType<typeof useVendorRegionMapPage>
+}
+
 export function VendorRouteDifficultyTab({ page }: Props) {
   const { t } = useTranslation('vendorRegionMap')
+  const { regionWarehouse, stations, loaded: warehouseConfigLoaded } = useWarehouseConfigData()
+
+  const warehouseConfig = useMemo<WarehouseConfig>(
+    () => ({
+      stationCoordsByName: new Map(stations.map((s) => [s.stationName, { lat: s.lat, lng: s.lng }])),
+      regionWarehouse: regionWarehouse ? { lat: regionWarehouse.lat, lng: regionWarehouse.lng } : null,
+    }),
+    [stations, regionWarehouse],
+  )
 
   const supplierRows = useMemo(() => {
-    if (!page.data) return []
+    if (!page.data || !warehouseConfigLoaded) return []
     // 独立于「区域地图」Tab 的供应商筛选，这里始终展示当次查询的全量路由数据
     const zipStats = aggregateZipStats({ cells: page.data.cells, zipRegions: page.data.zipRegions, metric: 'count' })
-    const routeRows = computeRouteDifficulty(page.data.routes, zipStats)
+    const routeRows = computeRouteDifficulty(page.data.routes, zipStats, warehouseConfig)
     return computeSupplierDifficulty(routeRows)
-  }, [page.data])
+  }, [page.data, warehouseConfig, warehouseConfigLoaded])
 
   const supplierNameByKey = useMemo(() => {
     const map = new Map<string, string>()
@@ -213,12 +242,15 @@ export function VendorRouteDifficultyTab({ page }: Props) {
       <section className="admin-panel px-5 py-4">
         <p className="text-sm text-slate-500">{t('difficulty.hint')}</p>
       </section>
+      {warehouseConfigLoaded && !regionWarehouse ? (
+        <Alert type="warning" showIcon message={t('difficulty.noRegionWarehouse')} />
+      ) : null}
       <section className="admin-panel overflow-hidden">
         <Table<SupplierDifficultyRow>
           rowKey={(row) => row.supplierKey}
           columns={columns}
           dataSource={supplierRows}
-          loading={page.loading}
+          loading={page.loading || !warehouseConfigLoaded}
           locale={{ emptyText: <Empty description={t('difficulty.empty')} /> }}
           expandable={{
             rowExpandable: (row) => row.routes.length > 0,
