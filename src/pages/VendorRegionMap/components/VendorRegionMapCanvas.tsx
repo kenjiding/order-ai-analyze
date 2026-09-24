@@ -86,8 +86,14 @@ const RING_LABEL_OPACITY: maplibregl.ExpressionSpecification = [
   13, 0,
 ]
 
-/** 同一路由码的候选点之间这么近就合并——用途和推导见下面 routeLabelAreas 里的注释 */
-const ROUTE_MERGE_DISTANCE_M = 1500
+/**
+ * 同一路由码的候选点之间这么近就合并——用途见下面 routeLabelAreas 里的注释。
+ * 1500m 太激进：贪心合并下，一个票量最大的代表点只要跟别的点在阈值内就会吸进来，哪怕那些
+ * 点彼此相距很远，市区一片挨着的郊区很容易被吸成一两个点。改成 700m——用实测过的内城区
+ * 郊区间距做参考，只吃掉 Renown Park/Ridleyton 这种低于 700m、基本挨在一起的组合，
+ * 1200~1700m 这个市区最常见的相邻郊区间距会保留成独立标签。
+ */
+const ROUTE_MERGE_DISTANCE_M = 700
 
 /** 路由码标签跟距离圈标签相反：缩小时不挤堆——直接不渲染；放大到邮区级别才淡入显示 */
 const ROUTE_LABEL_MIN_ZOOM = 7
