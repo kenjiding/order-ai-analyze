@@ -1,5 +1,5 @@
 import { Alert, Button, DatePicker, Popconfirm, Segmented, Select, Tag, Tooltip } from 'antd'
-import { ArrowLeft, RefreshCw, Zap } from 'lucide-react'
+import { ArrowLeft, Download, RefreshCw, Zap } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { useNavigate, useParams } from 'react-router-dom'
 import type { Dayjs } from 'dayjs'
@@ -11,6 +11,7 @@ import { SettleNowResult } from './components/SettleNowResult'
 import { SupplierRankingBoard } from './components/SupplierRankingBoard'
 import { useDispatchPerformanceDetailPage } from './useDispatchPerformanceDetailPage'
 import { useProfitStabilityTrend } from './useProfitStabilityTrend'
+import { exportDispatchPerformanceToXlsx } from './exportDispatchPerformance'
 import type { DispatchMetrics, DispatchSettledBatch, WhitelistMode } from './dispatchPerformanceTypes'
 
 const { RangePicker } = DatePicker
@@ -200,6 +201,18 @@ export default function DispatchPerformanceDetailPage() {
                 {t('detail.refresh', { ns: 'dispatchPerformance' })}
               </Button>
             </Tooltip>
+            <Button
+              icon={<Download className="h-4 w-4" />}
+              disabled={!v.result}
+              onClick={() =>
+                v.result &&
+                exportDispatchPerformanceToXlsx(v.result, v.whitelistMode, (key, opts) =>
+                  t(key, { ns: 'dispatchPerformance', ...opts }),
+                )
+              }
+            >
+              {t('detail.exportButton', { ns: 'dispatchPerformance' })}
+            </Button>
           </div>
         </div>
 
