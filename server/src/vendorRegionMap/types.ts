@@ -33,9 +33,17 @@ export type VendorRegionRouteCode = {
   zipCode: string
   supplierKey: string
   routeCode: string
+  /** 收件人城市/郊区（consigneeCity），同一邮区可能覆盖好几个郊区；没有值时为空字符串 */
+  suburb: string
   count: number
   /** 派件站点（iMile deliveryStation），同一路由码下唯一稳定；没有值时为空字符串 */
   deliveryStation: string
+  /**
+   * 郊区质心坐标（按 suburb 查 ABS SAL 边界算出来的），比邮区共用的那一个点更贴近这条路由实际服务的片区；
+   * suburb 为空、州份未知、或 ABS 查不到匹配的郊区名时为 null，前端回落到邮区中心点
+   */
+  lat: number | null
+  lng: number | null
 }
 
 export type PolygonGeometry = {

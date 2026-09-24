@@ -37,7 +37,7 @@ const priceBook = new Map<string, PackagePrice>([
   [priceBookKey('5000', 'NORTH ADELAIDE'), { price: 5, courierPrice: 4 }],
 ])
 
-test('同一邮编下不同 suburb 按各自单价计价', () => {
+test('同一邮编下不同 suburb 按各自单价计价，且各自出一个 cell（密度/柱体要按郊区分开算，不能合并成一个邮区大面）', () => {
   const result = aggregateVendorZipCells({
     records: [
       scan({ waybillNo: 'A1', zip: '5000', suburb: 'Adelaide', vendorCode: 'SRM1' }),
@@ -47,13 +47,19 @@ test('同一邮编下不同 suburb 按各自单价计价', () => {
     priceBook,
   })
 
-  const cell = result.cells.find((item) => item.zipCode === '5000')
-  assert.ok(cell)
-  assert.equal(cell.count, 2)
-  // 均价会给出 (3-2.5 + 5-4) 之外的错数；逐单算才得到 0.5 + 1
-  assert.equal(cell.vendorProfit, 1.5)
-  assert.equal(cell.courierProfit, 6.5)
-  assert.equal(cell.unpricedCount, 0)
+  const cells = result.cells.filter((item) => item.zipCode === '5000')
+  assert.equal(cells.length, 2, '两个郊区各出一个 cell，不再合并成同一个邮区大面')
+  const adelaide = cells.find((item) => item.suburb === 'ADELAIDE')
+  const northAdelaide = cells.find((item) => item.suburb === 'NORTH ADELAIDE')
+  assert.equal(adelaide?.count, 1)
+  assert.equal(adelaide?.vendorProfit, 0.5)
+  assert.equal(adelaide?.courierProfit, 2.5)
+  assert.equal(northAdelaide?.count, 1)
+  assert.equal(northAdelaide?.vendorProfit, 1)
+  assert.equal(northAdelaide?.courierProfit, 4)
+  // 均价会给出 (3-2.5 + 5-4) 之外的错数；逐单算才得到 0.5 + 1，两个 cell 加总要对得上
+  assert.equal((adelaide?.vendorProfit ?? 0) + (northAdelaide?.vendorProfit ?? 0), 1.5)
+  assert.equal((adelaide?.courierProfit ?? 0) + (northAdelaide?.courierProfit ?? 0), 6.5)
   assert.equal(result.unpricedPackages, 0)
 })
 
@@ -115,6 +121,30 @@ test('路由码带出 deliveryStation，且同一路由码取首次出现的值�
   const r2 = result.routes.find((item) => item.routeCode === 'R2')
   assert.equal(r1?.deliveryStation, 'ADL DS')
   assert.equal(r2?.deliveryStation, '')
+})
+
+test('同一路由码横跨两个郊区时按郊区拆成两行，不共用一个点；郊区名归一化大小写', () => {
+  const result = aggregateVendorZipCells({
+    records: [
+      // 同一邮区（5114）同时覆盖 Craigmore 和 One Tree Hill 两个郊区——路由码要能分清这两边
+      scan({ waybillNo: 'A1', zip: '5114', suburb: 'Craigmore', vendorCode: 'SRM1', routeCode: 'AA011' }),
+      scan({ waybillNo: 'A2', zip: '5114', suburb: 'craigmore', vendorCode: 'SRM1', routeCode: 'AA011' }),
+      scan({ waybillNo: 'A3', zip: '5114', suburb: 'One Tree Hill', vendorCode: 'SRM1', routeCode: 'AA011' }),
+    ],
+    configs: [config('SRM1')],
+    priceBook,
+  })
+
+  const aa011 = result.routes.filter((item) => item.routeCode === 'AA011')
+  assert.equal(aa011.length, 2, '同一路由码在两个郊区各出一行，不合并成一行')
+  const craigmore = aa011.find((item) => item.suburb === 'CRAIGMORE')
+  const oneTreeHill = aa011.find((item) => item.suburb === 'ONE TREE HILL')
+  // 大小写不同（Craigmore / craigmore）的两条要归一化合并成一行
+  assert.equal(craigmore?.count, 2)
+  assert.equal(oneTreeHill?.count, 1)
+  // 郊区质心是 router 层异步查 ABS 才补上的，纯聚合函数这里必须留空，不能伪造坐标
+  assert.equal(craigmore?.lat, null)
+  assert.equal(craigmore?.lng, null)
 })
 
 test('价格表缺省时全部票记为未计价，金额恒为 0', () => {

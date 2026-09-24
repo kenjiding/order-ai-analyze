@@ -72,9 +72,12 @@ export function aggregateVendorZipCells(input: {
     if (!priced) unpricedPackages += 1
 
     const routeCode = scan.routeCode.trim()
+    // 同一邮区常常覆盖好几个郊区（如 5114 邮区同时含 Craigmore 和 One Tree Hill），密度、柱体、
+    // 路由码标签都按邮区+郊区一起分组，这样地图才能把这些东西摆在实际服务的那个郊区，而不是整个邮区共用一个点/一个面
+    const suburb = scan.consigneeSuburb.trim().toUpperCase()
 
     for (const supplierKey of assigned) {
-      const key = `${supplierKey}\0${scan.consigneeZipCode}`
+      const key = `${supplierKey}\0${scan.consigneeZipCode}\0${suburb}`
       const bucket = buckets.get(key) ?? newBucket()
       bucket.count += 1
       if (priced) {
@@ -99,8 +102,9 @@ export function aggregateVendorZipCells(input: {
   const cells: VendorRegionCell[] = []
   const unitTotals = new Map<string, { bucket: Bucket; zips: Set<string> }>()
   for (const [key, bucket] of buckets) {
-    const [supplierKey, zipCode] = key.split('\0') as [string, string]
+    const [supplierKey, zipCode, suburb] = key.split('\0') as [string, string, string]
     const unit = matcher.units.get(supplierKey)
+    // 邮编中心点是同步兜底：郊区真实质心要查 ABS（异步），这个函数是同步纯聚合，交给调用方（router）覆盖升级
     const geo = lookupPostcode(zipCode)
     cells.push({
       zipCode,
@@ -113,7 +117,7 @@ export function aggregateVendorZipCells(input: {
       unpricedCount: bucket.unpricedCount,
       lat: geo?.lat ?? null,
       lng: geo?.lng ?? null,
-      suburb: geo?.suburb ?? '',
+      suburb,
       state: geo?.state ?? '',
     })
     const total = unitTotals.get(supplierKey) ?? { bucket: newBucket(), zips: new Set<string>() }
@@ -150,8 +154,18 @@ export function aggregateVendorZipCells(input: {
 
   const routes: VendorRegionRouteCode[] = [...routeCounts.entries()]
     .map(([key, count]) => {
-      const [supplierKey, zipCode, routeCode] = key.split('\0') as [string, string, string]
-      return { zipCode, supplierKey, routeCode, count, deliveryStation: routeDeliveryStations.get(key) ?? '' }
+      const [supplierKey, zipCode, suburb, routeCode] = key.split('\0') as [string, string, string, string]
+      return {
+        zipCode,
+        supplierKey,
+        routeCode,
+        suburb,
+        count,
+        deliveryStation: routeDeliveryStations.get(key) ?? '',
+        // 郊区质心坐标要查 ABS（异步、需要外部请求），这个函数是同步纯聚合，交给调用方（router）补上
+        lat: null,
+        lng: null,
+      }
     })
     .sort((a, b) => b.count - a.count || a.routeCode.localeCompare(b.routeCode))
 

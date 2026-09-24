@@ -128,31 +128,39 @@ function splitPolygons(geometry: VendorRegionZipRegion['geometry']): Polygon[] {
   return geometry.coordinates.map((coordinates) => ({ type: 'Polygon' as const, coordinates }))
 }
 
-/** 填色层和柱体层共用同一份聚合，两层永远自洽 */
+/**
+ * 填色层和柱体层共用同一份聚合，两层永远自洽。
+ * 分组单位是「邮区+郊区」而不是邮区——邮区常覆盖好几个郊区（比如同一个邮区同时有密集住宅区和
+ * 大片乡村地），按整个邮区合并的话，密度分母会被邮区里没人住的面积稀释，色块也会把没有票量的
+ * 地方一起涂上色。郊区文本为空的 cell（没有 consigneeCity）自然单独成一组，退回邮区整体渲染，
+ * 兼容 zipRegions 里那些没查到郊区边界、只有邮编边界的情况。
+ */
 export function aggregateZipStats(input: {
   cells: VendorRegionCell[]
   zipRegions: VendorRegionZipRegion[]
   metric: MapMetric
 }): ZipStat[] {
-  const geometryByZip = new Map<string, VendorRegionZipRegion['geometry']>()
-  for (const region of input.zipRegions) geometryByZip.set(region.zipCode, region.geometry)
+  const geometryByArea = new Map<string, VendorRegionZipRegion['geometry']>()
+  for (const region of input.zipRegions) geometryByArea.set(`${region.zipCode}\0${region.suburb}`, region.geometry)
 
-  const cellsByZip = new Map<string, VendorRegionCell[]>()
+  const cellsByArea = new Map<string, VendorRegionCell[]>()
   for (const cell of input.cells) {
-    const list = cellsByZip.get(cell.zipCode) ?? []
+    const areaKey = `${cell.zipCode}\0${cell.suburb}`
+    const list = cellsByArea.get(areaKey) ?? []
     list.push(cell)
-    cellsByZip.set(cell.zipCode, list)
+    cellsByArea.set(areaKey, list)
   }
 
   const stats: ZipStat[] = []
-  for (const [zipCode, group] of cellsByZip) {
+  for (const [areaKey, group] of cellsByArea) {
+    const [zipCode, suburb] = areaKey.split('\0') as [string, string]
     const rows: ZipStatRow[] = group
       .map((cell) => ({ cell, value: cellMetricValue(cell, input.metric) }))
       .sort((a, b) => b.value - a.value || a.cell.supplierKey.localeCompare(b.cell.supplierKey))
     const total = rows.reduce((sum, row) => sum + row.value, 0)
     const packageCount = group.reduce((sum, cell) => sum + cell.count, 0)
     const unpricedCount = group.reduce((sum, cell) => sum + cell.unpricedCount, 0)
-    const geometry = geometryByZip.get(zipCode)
+    const geometry = geometryByArea.get(areaKey)
     const polygons = geometry ? splitPolygons(geometry) : []
     const areaKm2 = geometry ? polygonAreaKm2(geometry) : null
     const geoCell = group.find((cell) => cell.lat != null && cell.lng != null)
@@ -165,7 +173,7 @@ export function aggregateZipStats(input: {
 
     stats.push({
       zipCode,
-      suburb: group[0]?.suburb ?? '',
+      suburb,
       total,
       packageCount,
       unpricedCount,
@@ -179,40 +187,51 @@ export function aggregateZipStats(input: {
   return stats
 }
 
-/** 一个邮区内按票量排好序的路由码，count 用于挑选碰撞时优先显示谁；supplierKey 用来给标签上色 */
+/** 同一 (邮区, 郊区) 下按票量排好序的路由码，count 用于挑选碰撞时优先显示谁；supplierKey 用来给标签上色 */
 export type RouteCodeLabelGroup = { routeCode: string; count: number; supplierKey: string }
 
 /**
- * 路由码标签点：邮区只有一个路由码时直接落在中心点，多个则按票量降序沿环形错位摆放。
+ * 一个郊区级摆放点：anchor 优先用该郊区自己的质心（后端查 ABS 郊区边界算出来的），
+ * 查不到时为 null，由调用方回落到邮区中心点——不能因为查不到就把这批路由码整个丢掉。
+ */
+export type RouteLabelArea = {
+  zipCode: string
+  suburb: string
+  anchor: [number, number] | null
+  routes: RouteCodeLabelGroup[]
+}
+
+/**
+ * 路由码标签点：每个 (邮区, 郊区) 组合是独立的一个摆放点，同一郊区下只有一个路由码时直接落在
+ * 郊区质心，多个则按票量降序沿环形错位摆放。以前是整个邮区共用一个点，一个邮区常覆盖好几个郊区，
+ * 摆一起会让路由码明显对不上它实际服务的片区；现在按郊区分开摆，同一路由码归属不同郊区时各摆一份。
  * 具体哪个标签在低 zoom 时被挤掉，交给 MapLibre 的 symbol 碰撞避让处理，这里只负责给出候选位置。
  * 标签颜色跟柱体、填色层一样取供应商色，一眼能看出这条路由属于哪家供应商。
  */
 export function buildRouteCodeLabelCollection(
-  stats: ZipStat[],
-  routesByZip: Map<string, RouteCodeLabelGroup[]>,
+  areas: RouteLabelArea[],
   colorOf: (supplierKey: string) => string,
 ): FeatureCollection {
   const features: Feature[] = []
-  for (const stat of stats) {
-    if (!stat.center) continue
-    const routes = routesByZip.get(stat.zipCode)
-    if (!routes || routes.length === 0) continue
-    const total = routes.length
+  for (const area of areas) {
+    if (!area.anchor || area.routes.length === 0) continue
+    const total = area.routes.length
     const radiusM = routeLabelRingRadiusM(total)
-    routes.forEach((route, index) => {
+    area.routes.forEach((route, index) => {
       const [lng, lat] =
         total === 1
-          ? stat.center!
+          ? area.anchor!
           : offsetLngLat(
-              stat.center![0],
-              stat.center![1],
+              area.anchor![0],
+              area.anchor![1],
               radiusM * Math.cos((index / total) * Math.PI * 2 - Math.PI / 2),
               radiusM * Math.sin((index / total) * Math.PI * 2 - Math.PI / 2),
             )
       features.push({
         type: 'Feature',
         properties: {
-          zipCode: stat.zipCode,
+          zipCode: area.zipCode,
+          suburb: area.suburb,
           routeCode: route.routeCode,
           count: route.count,
           sortKey: -route.count,
@@ -269,6 +288,7 @@ export function buildRegionFillCollection(
         type: 'Feature',
         properties: {
           zipCode: stat.zipCode,
+          suburb: stat.suburb,
           density: stat.density,
           fillColor: colorOf(topRow.cell.supplierKey),
           fillOpacity,

@@ -21,7 +21,7 @@ import {
   maxZipTotal,
   REGION_FILL_OPACITY_MAX,
   REGION_FILL_OPACITY_MIN,
-  type RouteCodeLabelGroup,
+  type RouteLabelArea,
   type ZipStat,
 } from '../columnGeometry'
 import { formatAreaKm2, formatDensity } from '../regionMetrics'
@@ -86,6 +86,9 @@ const RING_LABEL_OPACITY: maplibregl.ExpressionSpecification = [
   13, 0,
 ]
 
+/** 同一路由码的候选点之间这么近就合并——用途和推导见下面 routeLabelAreas 里的注释 */
+const ROUTE_MERGE_DISTANCE_M = 1500
+
 /** 路由码标签跟距离圈标签相反：缩小时不挤堆——直接不渲染；放大到邮区级别才淡入显示 */
 const ROUTE_LABEL_MIN_ZOOM = 7
 const ROUTE_LABEL_OPACITY: maplibregl.ExpressionSpecification = [
@@ -112,6 +115,11 @@ type Props = {
   selectedSupplierKeys: string[]
   colorMap: Map<string, string>
   metric: MapMetric
+}
+
+/** 填色层/柱体层现在按「邮区+郊区」分组，点击弹窗查 statsRef 也要用同一个复合 key，不能只用邮编 */
+function areaStatKey(zipCode: string, suburb: string): string {
+  return `${zipCode}\0${suburb}`
 }
 
 function quantizeWorldScale(map: maplibregl.Map): number {
@@ -283,31 +291,91 @@ export function VendorRegionMapCanvas({
     return data.routes.filter((route) => selected.has(route.supplierKey))
   }, [data, selectedSupplierKeys])
 
-  const routesByZip = useMemo(() => {
-    // data.routes 已按 count 降序，同一路由码第一次遇到的 supplierKey 就是票量最大的那家——
-    // 极少数场景下同一路由码字符串被两家供应商共用，标签颜色跟着票量占优的那家走
-    const merged = new Map<string, Map<string, { count: number; supplierKey: string }>>()
-    for (const route of visibleRoutes) {
-      const byRoute = merged.get(route.zipCode) ?? new Map<string, { count: number; supplierKey: string }>()
-      const existing = byRoute.get(route.routeCode)
-      if (existing) existing.count += route.count
-      else byRoute.set(route.routeCode, { count: route.count, supplierKey: route.supplierKey })
-      merged.set(route.zipCode, byRoute)
+  // 邮区中心点当兜底：郊区质心查不到（拼写对不上 ABS 官方名、州份未知等）时用它，总比整条路由码消失强
+  const zipCenterByCode = useMemo(() => {
+    const map = new Map<string, [number, number]>()
+    for (const stat of zipStats) if (stat.center) map.set(stat.zipCode, stat.center)
+    return map
+  }, [zipStats])
+
+  const routeLabelAreas = useMemo<RouteLabelArea[]>(() => {
+    type RoutePoint = {
+      zipCode: string
+      suburb: string
+      routeCode: string
+      supplierKey: string
+      count: number
+      anchor: [number, number] | null
     }
-    const result = new Map<string, RouteCodeLabelGroup[]>()
-    for (const [zipCode, byRoute] of merged) {
-      result.set(
-        zipCode,
-        [...byRoute.entries()]
-          .map(([routeCode, { count, supplierKey }]) => ({ routeCode, count, supplierKey }))
-          .sort((a, b) => b.count - a.count || a.routeCode.localeCompare(b.routeCode)),
-      )
+    const points: RoutePoint[] = visibleRoutes.map((route) => ({
+      zipCode: route.zipCode,
+      suburb: route.suburb,
+      routeCode: route.routeCode,
+      supplierKey: route.supplierKey,
+      count: route.count,
+      anchor: route.lat != null && route.lng != null ? [route.lng, route.lat] : zipCenterByCode.get(route.zipCode) ?? null,
+    }))
+
+    // 同一路由码常常在好几个挨得很近的小郊区都有票（内城区郊区一个挨一个，consigneeCity 分得比
+    // 实际配送片区细），不合并的话地图上会钉出七八个一模一样的标签，看着乱还没多少信息量。
+    // 按路由码分组、组内按票量降序贪心合并：票量最大的子区当代表点占住位置，附近的小票量子区
+    // 并进它的计数，不重新算加权中心——票量最大的地方本来就最能代表这条路由主要在哪。
+    // 阈值 1.5km：明显盖过市区相邻郊区间距，又明显小于真正分属两片区域的距离（不会把 4km 开外
+    // 、货真价实分属两片的情况也吞并成一个点）。
+    const byRouteCode = new Map<string, RoutePoint[]>()
+    for (const point of points) {
+      if (!point.anchor) continue
+      const list = byRouteCode.get(point.routeCode) ?? []
+      list.push(point)
+      byRouteCode.set(point.routeCode, list)
     }
-    return result
-  }, [visibleRoutes])
+    const mergedPoints: RoutePoint[] = []
+    for (const group of byRouteCode.values()) {
+      const survivors: RoutePoint[] = []
+      for (const point of [...group].sort((a, b) => b.count - a.count)) {
+        const near = survivors.find(
+          (s) =>
+            haversineKm(point.anchor![1], point.anchor![0], s.anchor![1], s.anchor![0]) * 1000 <=
+            ROUTE_MERGE_DISTANCE_M,
+        )
+        if (near) near.count += point.count
+        else survivors.push({ ...point })
+      }
+      mergedPoints.push(...survivors)
+    }
+
+    // 合并后再按「邮区+郊区」分组摆环形——同一片区内不同路由码之间互相错位，这一步逻辑不变
+    type AreaAcc = {
+      zipCode: string
+      suburb: string
+      anchor: [number, number] | null
+      routes: Map<string, { count: number; supplierKey: string }>
+    }
+    const areas = new Map<string, AreaAcc>()
+    for (const point of mergedPoints) {
+      const areaKey = `${point.zipCode}\0${point.suburb}`
+      let area = areas.get(areaKey)
+      if (!area) {
+        area = { zipCode: point.zipCode, suburb: point.suburb, anchor: point.anchor, routes: new Map() }
+        areas.set(areaKey, area)
+      }
+      // 极少数场景下同一路由码字符串被两家供应商共用，标签颜色跟着票量占优的那家走
+      const existing = area.routes.get(point.routeCode)
+      if (existing) existing.count += point.count
+      else area.routes.set(point.routeCode, { count: point.count, supplierKey: point.supplierKey })
+    }
+    return [...areas.values()].map((area) => ({
+      zipCode: area.zipCode,
+      suburb: area.suburb,
+      anchor: area.anchor,
+      routes: [...area.routes.entries()]
+        .map(([routeCode, { count, supplierKey }]) => ({ routeCode, count, supplierKey }))
+        .sort((a, b) => b.count - a.count || a.routeCode.localeCompare(b.routeCode)),
+    }))
+  }, [visibleRoutes, zipCenterByCode])
 
   useEffect(() => {
-    statsRef.current = new Map(zipStats.map((stat) => [stat.zipCode, stat]))
+    statsRef.current = new Map(zipStats.map((stat) => [areaStatKey(stat.zipCode, stat.suburb), stat]))
   }, [zipStats])
 
   const regionCollection = useMemo(
@@ -326,8 +394,8 @@ export function VendorRegionMapCanvas({
   )
 
   const routeLabelCollection = useMemo(
-    () => buildRouteCodeLabelCollection(zipStats, routesByZip, (supplierKey) => colorFromMap(colorMap, supplierKey)),
-    [colorMap, routesByZip, zipStats],
+    () => buildRouteCodeLabelCollection(routeLabelAreas, (supplierKey) => colorFromMap(colorMap, supplierKey)),
+    [colorMap, routeLabelAreas],
   )
 
   const maxTotal = useMemo(() => maxZipTotal(zipStats), [zipStats])
@@ -501,8 +569,8 @@ export function VendorRegionMapCanvas({
         })
       }
 
-      const openPopup = (zipCode: string, lngLat: maplibregl.LngLatLike) => {
-        const stat = statsRef.current.get(zipCode)
+      const openPopup = (zipCode: string, suburb: string, lngLat: maplibregl.LngLatLike) => {
+        const stat = statsRef.current.get(areaStatKey(zipCode, suburb))
         if (!stat || stat.rows.length === 0) return
         const warehouse = warehousePointRef.current
         // 主仓没配置时不编造距离——弹窗里直接不出现这条 fact，跟缺边界/缺密度同一个处理原则
@@ -527,7 +595,8 @@ export function VendorRegionMapCanvas({
         })
         map.on('click', layerId, (event) => {
           const zipCode = String(event.features?.[0]?.properties?.zipCode ?? '')
-          if (zipCode) openPopup(zipCode, event.lngLat)
+          const suburb = String(event.features?.[0]?.properties?.suburb ?? '')
+          if (zipCode) openPopup(zipCode, suburb, event.lngLat)
         })
       }
       map.on('mouseenter', WAREHOUSE_PAD_LAYER, () => {

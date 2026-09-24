@@ -35,14 +35,19 @@ export type VendorRegionZipRegion = {
   geometry: GeoJSON.Polygon | GeoJSON.MultiPolygon
 }
 
-/** 邮区内的路由码票量，供地图在邮区中心点附近渲染路由码标签；空路由码不产出这条数据 */
+/** 邮区内的路由码票量，供地图渲染路由码标签；空路由码不产出这条数据 */
 export type VendorRegionRouteCode = {
   zipCode: string
   supplierKey: string
   routeCode: string
+  /** 收件人城市/郊区（consigneeCity），同一邮区可能覆盖好几个郊区；没有值时为空字符串 */
+  suburb: string
   count: number
   /** 派件站点（iMile deliveryStation），同一路由码下唯一稳定；没有值时为空字符串 */
   deliveryStation: string
+  /** 郊区质心坐标；suburb 为空或 ABS 查不到匹配的郊区名时为 null，前端回落到邮区中心点 */
+  lat: number | null
+  lng: number | null
 }
 
 export type VendorRegionMapMeta = {

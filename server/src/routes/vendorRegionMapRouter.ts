@@ -7,8 +7,8 @@ import { mapWithConcurrency } from '../orderAnalyze/runtime'
 import { loadPriceBook } from '../regionPackagePrices'
 import { LEGACY_GLOBAL_SUPPLIER_REGION_CODE, listSupplierPushConfigs } from '../supplierPushConfigs'
 import { fetchAbsPostcodePolygons } from '../vendorRegionMap/absPostcodePolygons'
+import { fetchSuburbAreas, suburbKey } from '../vendorRegionMap/absSuburbPolygons'
 import { aggregateVendorZipCells } from '../vendorRegionMap/aggregate'
-import { lookupPostcode } from '../vendorRegionMap/postcodeLookup'
 import { aggregateVendorDailyVolume, type TrendDayInput } from '../vendorRegionMap/trendAggregate'
 import { readImileTokenFromRequest } from './imileAuth'
 
@@ -92,35 +92,65 @@ vendorRegionMapRouter.post('/aggregate', async (req: Request, res: Response) => 
     })
 
     const zipTotals = new Map<string, number>()
+    const zipStateByCode = new Map<string, string>()
     for (const cell of aggregated.cells) {
       zipTotals.set(cell.zipCode, (zipTotals.get(cell.zipCode) ?? 0) + cell.count)
+      if (cell.state && !zipStateByCode.has(cell.zipCode)) zipStateByCode.set(cell.zipCode, cell.state)
     }
-    const polygons = await fetchAbsPostcodePolygons([...zipTotals.keys()])
-    const polygonByZip = new Map(polygons.map((item) => [item.zipCode, item.geometry]))
 
-    const zipRegions = [...zipTotals.entries()]
-      .flatMap(([zipCode, totalCount]) => {
-        const geometry = polygonByZip.get(zipCode)
+    // 邮区边界（兜底用）和郊区真实边界是两个独立的外部请求，互不依赖，并发拉。
+    // 郊区请求从 cells 取——cells 覆盖了 routes 会用到的每一个 (邮区,郊区) 组合，一份请求两边都够用
+    const suburbRequests = aggregated.cells
+      .filter((cell) => cell.suburb)
+      .map((cell) => ({ state: cell.state, suburb: cell.suburb }))
+    const [polygons, suburbAreas] = await Promise.all([
+      fetchAbsPostcodePolygons([...zipTotals.keys()]),
+      fetchSuburbAreas(suburbRequests),
+    ])
+    const polygonByZip = new Map(polygons.map((item) => [item.zipCode, item.geometry]))
+    const suburbAreaOf = (zipCode: string, suburb: string) => {
+      const state = zipStateByCode.get(zipCode)
+      return suburb && state ? suburbAreas.get(suburbKey(state, suburb)) : undefined
+    }
+
+    // 郊区质心比邮编中心点准得多——查得到就升级 cell 的坐标；查不到（拼写/缩写对不上 ABS 官方名等）
+    // 保持邮编中心点兜底，不能因为一个郊区匹配不上就让这批票在地图上完全没有坐标
+    const cellsWithGeo = aggregated.cells.map((cell) => {
+      const area = suburbAreaOf(cell.zipCode, cell.suburb)
+      return area ? { ...cell, lat: area.center[1], lng: area.center[0] } : cell
+    })
+    // 路由码同理，查不到就保持 null，前端回落到邮区/郊区中心点——不能因为一个郊区匹配不上就丢掉整条路由码
+    const routesWithGeo = aggregated.routes.map((route) => {
+      const area = suburbAreaOf(route.zipCode, route.suburb)
+      return { ...route, lat: area ? area.center[1] : null, lng: area ? area.center[0] : null }
+    })
+
+    // 密度色块 / 柱体按「邮区+郊区」分组，不再是整个邮区共用一个大面——邮区常覆盖好几个郊区，
+    // 密度分母用整个邮区面积会被没人住的地方稀释，色块形状也会盖住实际没有票量的地方
+    const areaTotals = new Map<string, { zipCode: string; suburb: string; totalCount: number }>()
+    for (const cell of cellsWithGeo) {
+      const areaKey = `${cell.zipCode}\0${cell.suburb}`
+      const existing = areaTotals.get(areaKey)
+      if (existing) existing.totalCount += cell.count
+      else areaTotals.set(areaKey, { zipCode: cell.zipCode, suburb: cell.suburb, totalCount: cell.count })
+    }
+    const zipRegions = [...areaTotals.values()]
+      .flatMap(({ zipCode, suburb, totalCount }) => {
+        // 优先用郊区真实边界；查不到郊区边界（或本来就没有郊区文本）时退回整个邮编的边界
+        const geometry = suburbAreaOf(zipCode, suburb)?.geometry ?? polygonByZip.get(zipCode)
         if (!geometry) return []
-        const geo = lookupPostcode(zipCode)
-        return [
-          {
-            zipCode,
-            suburb: geo?.suburb ?? '',
-            totalCount,
-            geometry,
-          },
-        ]
+        return [{ zipCode, suburb, totalCount, geometry }]
       })
       .sort((a, b) => b.totalCount - a.totalCount || a.zipCode.localeCompare(b.zipCode))
 
-    const unmatchedNoGeo = aggregated.cells.filter((cell) => cell.lat == null || cell.lng == null).length
-    const missingPolygons = [...zipTotals.keys()].filter((zipCode) => !polygonByZip.has(zipCode))
+    const unmatchedNoGeo = cellsWithGeo.filter((cell) => cell.lat == null || cell.lng == null).length
+    const renderedZipCodes = new Set(zipRegions.map((region) => region.zipCode))
+    const missingPolygons = [...zipTotals.keys()].filter((zipCode) => !renderedZipCodes.has(zipCode))
 
     res.json({
       vendors: aggregated.vendors,
-      cells: aggregated.cells,
-      routes: aggregated.routes,
+      cells: cellsWithGeo,
+      routes: routesWithGeo,
       zipRegions,
       meta: {
         startDate,
