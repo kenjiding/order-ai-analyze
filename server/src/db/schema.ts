@@ -1112,6 +1112,35 @@ export const regionPackagePrices = pgTable(
 export type RegionPackagePrice = typeof regionPackagePrices.$inferSelect
 
 /**
+ * 区域包裹价格 ↔ iMile 路由码的对应关系：一个 postcode+suburb 常年被拆成多个路由码
+ * （密度高的大区按车/按片再切分），是一对多，不能塞进 region_package_prices 的单值列。
+ * 数据来自「对齐路由码」按钮：拉一段时间窗口的到件记录，按此三元组去重后与本表做全量 diff
+ * （窗口内查到的 upsert，查不到的删除——route_code 会随派件区域调整而失效/换绑，需要让表跟着现状走）。
+ */
+export const regionPackagePriceRouteCodes = pgTable(
+  'region_package_price_route_codes',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    regionCode: varchar('region_code', { length: 16 }).notNull(),
+    postcode: varchar('postcode', { length: 16 }).notNull(),
+    suburb: varchar('suburb', { length: 128 }).notNull(),
+    routeCode: varchar('route_code', { length: 32 }).notNull(),
+    syncedAt: timestamp('synced_at', { withTimezone: true }).notNull().defaultNow(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    uniqueIndex('region_package_price_route_codes_unique').on(
+      table.regionCode,
+      table.postcode,
+      table.suburb,
+      table.routeCode,
+    ),
+  ],
+)
+
+export type RegionPackagePriceRouteCode = typeof regionPackagePriceRouteCodes.$inferSelect
+
+/**
  * 大区主仓地址：每个州一条记录，供供应商区域地图/路由难度算距离时当兜底仓库坐标用
  * （某条路由的派件站点没配坐标时，退到它所属大区的主仓坐标）。
  */

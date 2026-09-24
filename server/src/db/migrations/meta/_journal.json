@@ -603,6 +603,13 @@
       "when": 1785700000063,
       "tag": "0085_region_warehouses_station_coordinates",
       "breakpoints": true
+    },
+    {
+      "idx": 86,
+      "version": "7",
+      "when": 1785700000065,
+      "tag": "0086_region_package_price_route_codes",
+      "breakpoints": true
     }
   ]
 }

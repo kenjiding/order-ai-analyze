@@ -3,7 +3,9 @@
   "description": "按州维护 postcode / suburb 的派送单价与所属供应商；价格调整后，上一次的价格会自动记录在「上次价格」列。",
   "addPrice": "新增价格",
   "editPrice": "编辑价格",
-  "searchPlaceholder": "搜索 postcode / suburb / 供应商",
+  "postcodeSearchPlaceholder": "搜索 Postcode，多个用空格或逗号隔开",
+  "suburbSearchPlaceholder": "搜索 Suburb，多个用空格或逗号隔开",
+  "routeCodeSearchPlaceholder": "搜索路由码，多个用空格或逗号隔开",
   "priceCount": "当前价格记录：{{filtered}} / {{total}}",
   "colPostcode": "Postcode",
   "colSuburb": "Suburb",
@@ -45,5 +47,10 @@
   "exportEmpty": "当前没有可导出的价格记录",
   "exportSheetName": "区域包裹价格",
   "exportFileNamePrefix": "区域包裹价格-",
-  "exportColVendorCode": "供应商编码"
+  "exportColVendorCode": "供应商编码",
+  "colRouteCodes": "路由码",
+  "routeCodesMore": "+{{count}}",
+  "alignRouteCode": "对齐路由码/供应商",
+  "alignRouteCodeHint": "先按到件记录的邮编+城市匹配已有价格区域，再拿运单号去中心运单查询取当前的路由码和供应商——比到件记录自带的供应商字段更准（到件那一刻经常还没回填）。路由码窗口内查不到视为失效并删除；供应商按窗口内出现次数最多的写回。仅对齐当前州已配置价格的区域，时间跨度越大越准但也越慢。",
+  "alignDone": "对齐完成：路由码新增 {{inserted}} 条 / 失效删除 {{deleted}} 条，供应商更新 {{vendorUpdated}} 个区域，命中 {{matchedAreas}} / {{totalAreas}} 个区域"
 }

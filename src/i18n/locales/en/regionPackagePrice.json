@@ -3,7 +3,9 @@
   "description": "Maintain per-state delivery prices by postcode / suburb and their vendor. When a price changes, the previous one is kept in the \"Previous price\" column.",
   "addPrice": "Add price",
   "editPrice": "Edit price",
-  "searchPlaceholder": "Search postcode / suburb / vendor",
+  "postcodeSearchPlaceholder": "Search postcode, space or comma separated",
+  "suburbSearchPlaceholder": "Search suburb, space or comma separated",
+  "routeCodeSearchPlaceholder": "Search route code, space or comma separated",
   "priceCount": "Price rows: {{filtered}} / {{total}}",
   "colPostcode": "Postcode",
   "colSuburb": "Suburb",
@@ -45,5 +47,10 @@
   "exportEmpty": "No price rows to export",
   "exportSheetName": "Region package prices",
   "exportFileNamePrefix": "region-package-prices-",
-  "exportColVendorCode": "Vendor code"
+  "exportColVendorCode": "Vendor code",
+  "colRouteCodes": "Route codes",
+  "routeCodesMore": "+{{count}}",
+  "alignRouteCode": "Align route codes / vendor",
+  "alignRouteCodeHint": "Matches inbound scans by postcode + suburb against existing price rows, then looks up each waybill in the central waybill search for its current route code and vendor — more reliable than the vendor field on the scan itself (often not backfilled yet at scan time). Route codes not seen in the window are treated as stale and removed; the vendor is set to whichever one appears most often in the window. Only areas already priced in the current state are aligned — a wider window is more accurate but slower.",
+  "alignDone": "Align finished: routes +{{inserted}} / -{{deleted}} stale, vendor updated on {{vendorUpdated}} areas, matched {{matchedAreas}} / {{totalAreas}} areas"
 }

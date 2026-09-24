@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Button, Form, Input, InputNumber, Modal, Select, Table, Tag, Tooltip, Upload } from 'antd'
+import { Button, DatePicker, Form, Input, InputNumber, Modal, Select, Table, Tag, Tooltip, Upload } from 'antd'
 import type { ColumnsType } from 'antd/es/table'
-import { DollarSign, Download, Pencil, Plus, Trash2, Upload as UploadIcon } from 'lucide-react'
+import type { Dayjs } from 'dayjs'
+import { DollarSign, Download, GitBranch, Pencil, Plus, Trash2, Upload as UploadIcon } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { backendFetch } from '../../api/httpClient'
 import { useAppSettings } from '../../context/AppSettingsContext'
@@ -21,6 +22,16 @@ export type RegionPackagePrice = {
   courierPrice: number
   vendorCode: string
   vendorName: string
+  /** 该 postcode+suburb 当前覆盖的路由码，一对多；来自「对齐路由码」，只读 */
+  routeCodes: string[]
+}
+
+type AlignRouteCodeResult = {
+  inserted: number
+  deleted: number
+  vendorUpdated: number
+  matchedAreas: number
+  totalAreas: number
 }
 
 type PriceDraft = Pick<
@@ -44,6 +55,14 @@ async function callApi<T>(path: string, options?: RequestInit): Promise<{ ok: tr
   }
 }
 
+// 空格/中英文逗号分隔多个关键词（一次查多个 postcode/suburb/路由码），同一栏内命中任一个即算匹配
+function splitKeywords(raw: string): string[] {
+  return raw
+    .split(/[\s,，]+/)
+    .map((k) => k.trim().toLowerCase())
+    .filter(Boolean)
+}
+
 type FormValues = {
   postcode: string
   suburb: string
@@ -60,12 +79,17 @@ export default function RegionPackagePricePage() {
   const [prices, setPrices] = useState<RegionPackagePrice[]>([])
   const [loading, setLoading] = useState(false)
   const [submitting, setSubmitting] = useState(false)
-  const [keyword, setKeyword] = useState('')
+  const [postcodeKeyword, setPostcodeKeyword] = useState('')
+  const [suburbKeyword, setSuburbKeyword] = useState('')
+  const [routeCodeKeyword, setRouteCodeKeyword] = useState('')
   const [editing, setEditing] = useState<RegionPackagePrice | null>(null)
   const [formOpen, setFormOpen] = useState(false)
   const [importing, setImporting] = useState(false)
   const [vendors, setVendors] = useState<VendorOption[]>([])
   const [vendorsLoading, setVendorsLoading] = useState(false)
+  const [alignOpen, setAlignOpen] = useState(false)
+  const [aligning, setAligning] = useState(false)
+  const [alignRange, setAlignRange] = useState<[Dayjs, Dayjs] | null>(null)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -190,15 +214,43 @@ export default function RegionPackagePricePage() {
     [load, t],
   )
 
+  const alignRouteCode = useCallback(async () => {
+    if (!alignRange) return
+    setAligning(true)
+    const res = await callApi<AlignRouteCodeResult>('/align-route-code', {
+      method: 'POST',
+      body: JSON.stringify({
+        imileToken,
+        startDate: alignRange[0].format('YYYY-MM-DD'),
+        endDate: alignRange[1].format('YYYY-MM-DD'),
+      }),
+    })
+    setAligning(false)
+    if (!res.ok) {
+      showToast(res.error || t('requestFailed'), 'error')
+      return
+    }
+    showToast(t('alignDone', res.data), 'success')
+    setAlignOpen(false)
+    await load()
+  }, [alignRange, imileToken, load, t])
+
   const filtered = useMemo(() => {
-    const kw = keyword.trim().toLowerCase()
-    if (!kw) return prices
-    return prices.filter((item) =>
-      [item.postcode, item.suburb, item.vendorCode, item.vendorName].some((field) =>
-        field.toLowerCase().includes(kw),
-      ),
-    )
-  }, [prices, keyword])
+    const postcodeKws = splitKeywords(postcodeKeyword)
+    const suburbKws = splitKeywords(suburbKeyword)
+    const routeCodeKws = splitKeywords(routeCodeKeyword)
+    if (postcodeKws.length === 0 && suburbKws.length === 0 && routeCodeKws.length === 0) return prices
+    return prices.filter((item) => {
+      const postcode = item.postcode.toLowerCase()
+      const suburb = item.suburb.toLowerCase()
+      const routeCodes = item.routeCodes.map((code) => code.toLowerCase())
+      if (postcodeKws.length > 0 && !postcodeKws.some((kw) => postcode.includes(kw))) return false
+      if (suburbKws.length > 0 && !suburbKws.some((kw) => suburb.includes(kw))) return false
+      if (routeCodeKws.length > 0 && !routeCodeKws.some((kw) => routeCodes.some((code) => code.includes(kw))))
+        return false
+      return true
+    })
+  }, [prices, postcodeKeyword, suburbKeyword, routeCodeKeyword])
 
   const columns: ColumnsType<RegionPackagePrice> = useMemo(
     () => [
@@ -248,6 +300,31 @@ export default function RegionPackagePricePage() {
                 {`${rising ? '+' : ''}${(record.price - value).toFixed(2)}`}
               </Tag>
             </span>
+          )
+        },
+      },
+      {
+        title: t('colRouteCodes'),
+        dataIndex: 'routeCodes',
+        key: 'routeCodes',
+        width: 220,
+        render: (value: string[]) => {
+          if (!value || value.length === 0) return <span className="text-slate-400">—</span>
+          const shown = value.slice(0, 4)
+          const rest = value.slice(4)
+          return (
+            <div className="flex flex-wrap gap-1">
+              {shown.map((code) => (
+                <Tag key={code} className="!mr-0">
+                  {code}
+                </Tag>
+              ))}
+              {rest.length > 0 ? (
+                <Tooltip title={rest.join(', ')}>
+                  <Tag className="!mr-0">{t('routeCodesMore', { count: rest.length })}</Tag>
+                </Tooltip>
+              ) : null}
+            </div>
           )
         },
       },
@@ -321,6 +398,15 @@ export default function RegionPackagePricePage() {
             >
               {t('exportPrices')}
             </Button>
+            <Button
+              icon={<GitBranch className="h-4 w-4" aria-hidden />}
+              onClick={() => {
+                setAlignRange(null)
+                setAlignOpen(true)
+              }}
+            >
+              {t('alignRouteCode')}
+            </Button>
             <Button type="primary" icon={<Plus className="h-4 w-4" aria-hidden />} onClick={() => openForm(null)}>
               {t('addPrice')}
             </Button>
@@ -329,10 +415,24 @@ export default function RegionPackagePricePage() {
         <div className="mt-4 flex flex-wrap items-center gap-3">
           <Input.Search
             allowClear
-            className="w-64"
-            placeholder={t('searchPlaceholder')}
-            value={keyword}
-            onChange={(event) => setKeyword(event.target.value)}
+            className="w-48"
+            placeholder={t('postcodeSearchPlaceholder')}
+            value={postcodeKeyword}
+            onChange={(event) => setPostcodeKeyword(event.target.value)}
+          />
+          <Input.Search
+            allowClear
+            className="w-48"
+            placeholder={t('suburbSearchPlaceholder')}
+            value={suburbKeyword}
+            onChange={(event) => setSuburbKeyword(event.target.value)}
+          />
+          <Input.Search
+            allowClear
+            className="w-48"
+            placeholder={t('routeCodeSearchPlaceholder')}
+            value={routeCodeKeyword}
+            onChange={(event) => setRouteCodeKeyword(event.target.value)}
           />
           <span className="inline-flex items-center rounded-md bg-slate-100 px-3 py-1 text-xs text-slate-600">
             {t('priceCount', { filtered: filtered.length, total: prices.length })}
@@ -347,7 +447,7 @@ export default function RegionPackagePricePage() {
           dataSource={filtered}
           loading={loading}
           pagination={{ pageSize: 20, showSizeChanger: false, showTotal: (total) => t('tableTotal', { total }) }}
-          scroll={{ x: 1040 }}
+          scroll={{ x: 1260 }}
           locale={{ emptyText: t('emptyText') }}
         />
       </section>
@@ -406,6 +506,27 @@ export default function RegionPackagePricePage() {
             />
           </Form.Item>
         </Form>
+      </Modal>
+
+      <Modal
+        open={alignOpen}
+        title={t('alignRouteCode')}
+        okText={t('alignRouteCode')}
+        cancelText={tc('cancel')}
+        confirmLoading={aligning}
+        okButtonProps={{ disabled: !alignRange }}
+        onOk={() => void alignRouteCode()}
+        onCancel={() => setAlignOpen(false)}
+        destroyOnClose
+      >
+        <p className="mb-3 text-sm text-slate-600">{t('alignRouteCodeHint')}</p>
+        <DatePicker.RangePicker
+          className="w-full"
+          value={alignRange}
+          onChange={(values) => setAlignRange((values as [Dayjs, Dayjs] | null) ?? null)}
+          format="YYYY-MM-DD"
+          allowClear
+        />
       </Modal>
     </div>
   )
