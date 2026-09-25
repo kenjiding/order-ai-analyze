@@ -106,6 +106,38 @@ test('路由码按 供应商+邮区+路由码 聚合票量，空路由码不产�
   assert.equal(r2?.count, 1)
 })
 
+test('路由码维度的利润按同一 priced 口径累加，跟对应 cell 的利润对得上', () => {
+  const result = aggregateVendorZipCells({
+    records: [
+      scan({ waybillNo: 'A1', zip: '5000', suburb: 'Adelaide', vendorCode: 'SRM1', routeCode: 'R1' }),
+      scan({ waybillNo: 'A2', zip: '5000', suburb: 'Adelaide', vendorCode: 'SRM1', routeCode: 'R1' }),
+    ],
+    configs: [config('SRM1')],
+    priceBook,
+  })
+
+  const cell = result.cells.find((item) => item.zipCode === '5000')
+  const r1 = result.routes.find((item) => item.routeCode === 'R1')
+  // 单价 3/2.5，两票：供应商利润 (3-2.5)*2=1，司机利润 2.5*2=5
+  assert.equal(r1?.vendorProfit, 1)
+  assert.equal(r1?.courierProfit, 5)
+  assert.equal(r1?.vendorProfit, cell?.vendorProfit)
+  assert.equal(r1?.courierProfit, cell?.courierProfit)
+})
+
+test('路由码维度未匹配到价格的票计入 unpricedCount，不静默按 0 处理', () => {
+  const result = aggregateVendorZipCells({
+    records: [scan({ waybillNo: 'A1', zip: '5000', suburb: 'Unknown Suburb', vendorCode: 'SRM1', routeCode: 'R1' })],
+    configs: [config('SRM1')],
+    priceBook,
+  })
+
+  const r1 = result.routes.find((item) => item.routeCode === 'R1')
+  assert.equal(r1?.unpricedCount, 1)
+  assert.equal(r1?.vendorProfit, 0)
+  assert.equal(r1?.courierProfit, 0)
+})
+
 test('路由码带出 deliveryStation，且同一路由码取首次出现的值，不因后续扫描缺失被覆盖成空', () => {
   const result = aggregateVendorZipCells({
     records: [

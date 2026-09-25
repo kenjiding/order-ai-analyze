@@ -40,6 +40,8 @@ export type RouteDifficultyRow = {
   routeCode: string
   /** 该路由码下所有邮编的票量之和 */
   totalCount: number
+  /** 该路由码下所有邮编的理论司机利润之和，口径同 VendorRegionRouteCode.courierProfit */
+  totalCourierProfit: number
   /** 按各邮编票量加权平均的距仓库距离；缺坐标的邮编不计入 */
   distanceKm: number | null
   /** 总票量 / 覆盖邮编的总面积（km²）；缺边界的邮编不计入面积 */
@@ -124,6 +126,7 @@ export function computeRouteDifficulty(
   const raw = [...groups.entries()].map(([key, group]) => {
     const [supplierKey, routeCode] = key.split('\0') as [string, string]
     const totalCount = group.reduce((sum, route) => sum + route.count, 0)
+    const totalCourierProfit = group.reduce((sum, route) => sum + route.courierProfit, 0)
 
     // 同一路由码下 deliveryStation 已验证唯一稳定，取第一条即可
     const { coords: warehouse, source: warehouseSource } = resolveRouteWarehouse(
@@ -161,7 +164,7 @@ export function computeRouteDifficulty(
     const distanceKm = distanceDenominator > 0 ? distanceNumerator / distanceDenominator : null
     const density = hasArea && areaSum > 0 ? totalCount / areaSum : null
 
-    return { supplierKey, routeCode, totalCount, distanceKm, density, warehouseSource, zips }
+    return { supplierKey, routeCode, totalCount, totalCourierProfit, distanceKm, density, warehouseSource, zips }
   })
 
   let maxVolume = 0
@@ -183,6 +186,7 @@ export function computeRouteDifficulty(
       supplierKey: r.supplierKey,
       routeCode: r.routeCode,
       totalCount: r.totalCount,
+      totalCourierProfit: r.totalCourierProfit,
       distanceKm: r.distanceKm,
       density: r.density,
       difficulty,

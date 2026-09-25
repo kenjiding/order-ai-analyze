@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { ChevronDown, ChevronUp, Columns3, Compass, Radar, Route, Warehouse } from 'lucide-react'
+import { ChevronDown, ChevronUp, Columns3, Compass, Radar, Route, Warehouse, Waypoints } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { i18n } from '../../../i18n'
 import { VendorRegionMapLoading } from './VendorRegionMapLoading'
@@ -24,6 +24,8 @@ import {
   type RouteLabelArea,
   type ZipStat,
 } from '../columnGeometry'
+import { buildRouteMergeClusterCollection, excludeMergedRoutes } from '../routeMergeGeometry'
+import type { RouteMergeGroup } from '../routeMergeSuggestion'
 import { formatAreaKm2, formatDensity } from '../regionMetrics'
 import { useWarehouseConfigData } from '../useWarehouseConfigData'
 import {
@@ -60,6 +62,8 @@ const REGIONS_LINE = 'vrm-regions-line'
 const COLUMNS_EXTRUSION = 'vrm-columns-extrusion'
 const ROUTE_CODES_SOURCE = 'vrm-routecodes'
 const ROUTE_CODES_LABEL = 'vrm-routecodes-label'
+const ROUTE_MERGE_SOURCE = 'vrm-routemerge'
+const ROUTE_MERGE_LABEL = 'vrm-routemerge-label'
 const WAREHOUSE_PAD_SOURCE = 'vrm-wh-pad'
 const WAREHOUSE_RINGS_SOURCE = 'vrm-wh-rings'
 const WAREHOUSE_PAD_LAYER = 'vrm-wh-pad-fill'
@@ -121,6 +125,8 @@ type Props = {
   selectedSupplierKeys: string[]
   colorMap: Map<string, string>
   metric: MapMetric
+  /** 智能合并建议簇，地图工具条「智能合并」开关打开时用来把低单量路由码渲染成合并标签 */
+  mergeGroups: RouteMergeGroup[]
 }
 
 /** 填色层/柱体层现在按「邮区+郊区」分组，点击弹窗查 statsRef 也要用同一个复合 key，不能只用邮编 */
@@ -210,12 +216,48 @@ function buildPopupHtml(
     </div>`
 }
 
+/**
+ * 合并簇弹窗：列出被合并的原始路由码，按司机利润降序——呼应 routeMergeSuggestion.ts 的排序口径，
+ * 让运营一眼看到「哪条路由对这一趟车的利润贡献最大」。不编造「合并多赚了多少钱」这类叙事。
+ */
+function buildRouteMergePopupHtml(group: RouteMergeGroup, colorMap: Map<string, string>) {
+  const t = (key: string, opts?: Record<string, unknown>) =>
+    String(i18n.t(key, { ns: 'vendorRegionMap', ...opts }))
+  const sortedMembers = [...group.members].sort((a, b) => b.totalCourierProfit - a.totalCourierProfit)
+  const top = sortedMembers[0]?.totalCourierProfit ?? 0
+  const color = colorFromMap(colorMap, group.supplierKey)
+  const items = sortedMembers
+    .map((member) => {
+      const share = top > 0 ? Math.max(4, (member.totalCourierProfit / top) * 100) : 0
+      return `
+        <li class="vrm-iw__row">
+          <span class="vrm-iw__swatch" style="background:${color}"></span>
+          <span class="vrm-iw__name">${escapeHtml(member.routeCode)}</span>
+          <span class="vrm-iw__count">${formatMetricValue(member.totalCourierProfit, 'courierProfit')}</span>
+          <span class="vrm-iw__meter"><span style="width:${share}%;background:${color}"></span></span>
+        </li>`
+    })
+    .join('')
+  return `
+    <div class="vrm-iw">
+      <div class="vrm-iw__head">
+        <div class="vrm-iw__zip">${t('merge.popupTitle', { count: group.members.length })}</div>
+        <div class="vrm-iw__total">${formatMetricValue(group.totalCourierProfit, 'courierProfit')}</div>
+      </div>
+      <div class="vrm-iw__dist">${escapeHtml(t('merge.popupHint', { count: nfMerge.format(group.totalCount) }))}</div>
+      <ul class="vrm-iw__list">${items}</ul>
+    </div>`
+}
+
+const nfMerge = new Intl.NumberFormat('en-AU')
+
 export function VendorRegionMapCanvas({
   data,
   loading,
   selectedSupplierKeys,
   colorMap,
   metric,
+  mergeGroups,
 }: Props) {
   const { t } = useTranslation('vendorRegionMap')
   const shellRef = useRef<HTMLDivElement | null>(null)
@@ -233,6 +275,7 @@ export function VendorRegionMapCanvas({
   const statsRef = useRef<Map<string, ZipStat>>(new Map())
   const colorMapRef = useRef(colorMap)
   const metricRef = useRef(metric)
+  const mergeGroupsRef = useRef(mergeGroups)
   const warehouseMarkerRef = useRef<maplibregl.Marker | null>(null)
   const stationMarkersRef = useRef<maplibregl.Marker[]>([])
   // 账号所属州决定地图落点；地图只在挂载时创建一次，州在会话内不会变
@@ -241,6 +284,7 @@ export function VendorRegionMapCanvas({
   const [ringsVisible, setRingsVisible] = useState(true)
   const [columnsVisible, setColumnsVisible] = useState(true)
   const [routeCodesVisible, setRouteCodesVisible] = useState(true)
+  const [mergeModeEnabled, setMergeModeEnabled] = useState(false)
   const [topDown, setTopDown] = useState(false)
   const [legendExpanded, setLegendExpanded] = useState(false)
   const [worldScale, setWorldScale] = useState(() =>
@@ -273,6 +317,10 @@ export function VendorRegionMapCanvas({
   useEffect(() => {
     metricRef.current = metric
   }, [metric])
+
+  useEffect(() => {
+    mergeGroupsRef.current = mergeGroups
+  }, [mergeGroups])
 
   const visibleCells = useMemo(() => {
     if (!data) return []
@@ -399,10 +447,25 @@ export function VendorRegionMapCanvas({
     [colorMap, worldScale, zipStats],
   )
 
-  const routeLabelCollection = useMemo(
-    () => buildRouteCodeLabelCollection(routeLabelAreas, (supplierKey) => colorFromMap(colorMap, supplierKey)),
-    [colorMap, routeLabelAreas],
+  // 智能合并开启时，已经进了某个簇的路由码要从单路由标签里摘掉，改由 vrm-routemerge 层渲染成簇标签
+  const unclusteredRouteLabelAreas = useMemo(
+    () => (mergeModeEnabled ? excludeMergedRoutes(routeLabelAreas, mergeGroups) : routeLabelAreas),
+    [mergeModeEnabled, mergeGroups, routeLabelAreas],
   )
+
+  const routeLabelCollection = useMemo(
+    () => buildRouteCodeLabelCollection(unclusteredRouteLabelAreas, (supplierKey) => colorFromMap(colorMap, supplierKey)),
+    [colorMap, unclusteredRouteLabelAreas],
+  )
+
+  const routeMergeCollection = useMemo(() => {
+    const collection = buildRouteMergeClusterCollection(mergeGroups, (supplierKey) => colorFromMap(colorMap, supplierKey))
+    for (const feature of collection.features) {
+      const props = feature.properties as Record<string, unknown>
+      props.label = t('merge.clusterLabel', { memberCount: props.memberCount, count: props.count })
+    }
+    return collection
+  }, [colorMap, mergeGroups, t])
 
   const maxTotal = useMemo(() => maxZipTotal(zipStats), [zipStats])
   const heightTicks = useMemo(() => heightLegendTicks(maxTotal), [maxTotal])
@@ -451,6 +514,7 @@ export function VendorRegionMapCanvas({
         map.addSource(REGIONS_SOURCE, { type: 'geojson', data: EMPTY_FC })
         map.addSource(COLUMNS_SOURCE, { type: 'geojson', data: EMPTY_FC })
         map.addSource(ROUTE_CODES_SOURCE, { type: 'geojson', data: EMPTY_FC })
+        map.addSource(ROUTE_MERGE_SOURCE, { type: 'geojson', data: EMPTY_FC })
         map.addSource(WAREHOUSE_RINGS_SOURCE, {
           type: 'geojson',
           data: buildWarehouseRingCollection(warehousePointRef.current),
@@ -573,6 +637,30 @@ export function VendorRegionMapCanvas({
             'text-opacity': ROUTE_LABEL_OPACITY,
           },
         })
+        // 智能合并簇标签：默认隐藏，跟 ROUTE_CODES_LABEL 共用同一套随 zoom 渐变的字号/透明度曲线，
+        // 加一圈描边跟普通路由码标签区分开——一眼看出这是个合并簇而不是单条路由
+        map.addLayer({
+          id: ROUTE_MERGE_LABEL,
+          type: 'symbol',
+          source: ROUTE_MERGE_SOURCE,
+          minzoom: ROUTE_LABEL_MIN_ZOOM,
+          layout: {
+            visibility: 'none',
+            'text-field': ['get', 'label'],
+            'text-font': ['Noto Sans Bold'],
+            'text-size': ROUTE_LABEL_TEXT_SIZE,
+            'text-padding': 4,
+            'text-allow-overlap': true,
+            'text-ignore-placement': true,
+            'symbol-sort-key': ['get', 'sortKey'],
+          },
+          paint: {
+            'text-color': '#ffffff',
+            'text-halo-color': ['get', 'color'],
+            'text-halo-width': 3,
+            'text-opacity': ROUTE_LABEL_OPACITY,
+          },
+        })
       }
 
       const openPopup = (zipCode: string, suburb: string, lngLat: maplibregl.LngLatLike) => {
@@ -605,6 +693,23 @@ export function VendorRegionMapCanvas({
           if (zipCode) openPopup(zipCode, suburb, event.lngLat)
         })
       }
+      map.on('mouseenter', ROUTE_MERGE_LABEL, () => {
+        map.getCanvas().style.cursor = 'pointer'
+      })
+      map.on('mouseleave', ROUTE_MERGE_LABEL, () => {
+        map.getCanvas().style.cursor = ''
+      })
+      map.on('click', ROUTE_MERGE_LABEL, (event) => {
+        const clusterKey = String(event.features?.[0]?.properties?.clusterKey ?? '')
+        const group = mergeGroupsRef.current.find(
+          (g) => g.members.map((m) => `${m.supplierKey}\0${m.routeCode}`).join(',') === clusterKey,
+        )
+        if (!group) return
+        popupRef.current
+          ?.setLngLat(event.lngLat)
+          .setHTML(buildRouteMergePopupHtml(group, colorMapRef.current))
+          .addTo(map)
+      })
       map.on('mouseenter', WAREHOUSE_PAD_LAYER, () => {
         map.getCanvas().style.cursor = 'pointer'
       })
@@ -710,10 +815,18 @@ export function VendorRegionMapCanvas({
 
   useEffect(() => {
     const map = mapRef.current
+    if (!map?.getLayer(ROUTE_MERGE_LABEL)) return
+    const visibility = mergeModeEnabled && routeCodesVisible ? 'visible' : 'none'
+    map.setLayoutProperty(ROUTE_MERGE_LABEL, 'visibility', visibility)
+  }, [mergeModeEnabled, routeCodesVisible])
+
+  useEffect(() => {
+    const map = mapRef.current
     const apply = () => {
       ;(map?.getSource(REGIONS_SOURCE) as maplibregl.GeoJSONSource | undefined)?.setData(regionCollection)
       ;(map?.getSource(COLUMNS_SOURCE) as maplibregl.GeoJSONSource | undefined)?.setData(columnCollection)
       ;(map?.getSource(ROUTE_CODES_SOURCE) as maplibregl.GeoJSONSource | undefined)?.setData(routeLabelCollection)
+      ;(map?.getSource(ROUTE_MERGE_SOURCE) as maplibregl.GeoJSONSource | undefined)?.setData(routeMergeCollection)
 
       if (!data || !map || hasFittedOnceRef.current) return
 
@@ -745,7 +858,15 @@ export function VendorRegionMapCanvas({
 
     applyRef.current = apply
     if (layersReadyRef.current) apply()
-  }, [columnCollection, data, regionCenter.lat, regionCenter.lng, regionCollection, routeLabelCollection])
+  }, [
+    columnCollection,
+    data,
+    regionCenter.lat,
+    regionCenter.lng,
+    regionCollection,
+    routeLabelCollection,
+    routeMergeCollection,
+  ])
 
   const hasData = Boolean(data && data.cells.length > 0)
   const allHidden = hasData && visibleCells.length === 0
@@ -810,6 +931,17 @@ export function VendorRegionMapCanvas({
         >
           <Route className="h-4 w-4" aria-hidden />
           {t('toggleRouteCodes')}
+        </button>
+        <button
+          type="button"
+          className="vrm-tool"
+          aria-pressed={mergeModeEnabled}
+          disabled={mergeGroups.length === 0}
+          title={mergeGroups.length === 0 ? t('merge.noSuggestionsHint') : undefined}
+          onClick={() => setMergeModeEnabled((current) => !current)}
+        >
+          <Waypoints className="h-4 w-4" aria-hidden />
+          {t('merge.toggleButton')}
         </button>
       </div>
 

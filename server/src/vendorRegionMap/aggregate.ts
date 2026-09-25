@@ -48,7 +48,7 @@ export function aggregateVendorZipCells(input: {
   const matcher = buildSupplierMatcher(input.configs)
 
   const buckets = new Map<string, Bucket>()
-  const routeCounts = new Map<string, number>()
+  const routeBuckets = new Map<string, Bucket>()
   /** 派件站点同一路由码下唯一稳定，取第一次遇到的值即可，不需要众数 */
   const routeDeliveryStations = new Map<string, string>()
   const scans = dedupeScansByWaybill(input.records)
@@ -91,7 +91,15 @@ export function aggregateVendorZipCells(input: {
       // 空路由码不产出地图标签，避免在每个邮区都钉一个「无路由码」的孤零零标签
       if (routeCode) {
         const routeKey = `${key}\0${routeCode}`
-        routeCounts.set(routeKey, (routeCounts.get(routeKey) ?? 0) + 1)
+        const routeBucket = routeBuckets.get(routeKey) ?? newBucket()
+        routeBucket.count += 1
+        if (priced) {
+          routeBucket.vendorProfit += priced.price - priced.courierPrice
+          routeBucket.courierProfit += priced.courierPrice
+        } else {
+          routeBucket.unpricedCount += 1
+        }
+        routeBuckets.set(routeKey, routeBucket)
         if (!routeDeliveryStations.has(routeKey) && scan.deliveryStation) {
           routeDeliveryStations.set(routeKey, scan.deliveryStation)
         }
@@ -152,15 +160,18 @@ export function aggregateVendorZipCells(input: {
     })
     .sort((a, b) => b.packageCount - a.packageCount || a.supplierName.localeCompare(b.supplierName))
 
-  const routes: VendorRegionRouteCode[] = [...routeCounts.entries()]
-    .map(([key, count]) => {
+  const routes: VendorRegionRouteCode[] = [...routeBuckets.entries()]
+    .map(([key, bucket]) => {
       const [supplierKey, zipCode, suburb, routeCode] = key.split('\0') as [string, string, string, string]
       return {
         zipCode,
         supplierKey,
         routeCode,
         suburb,
-        count,
+        count: bucket.count,
+        vendorProfit: money(bucket.vendorProfit),
+        courierProfit: money(bucket.courierProfit),
+        unpricedCount: bucket.unpricedCount,
         deliveryStation: routeDeliveryStations.get(key) ?? '',
         // 郊区质心坐标要查 ABS（异步、需要外部请求），这个函数是同步纯聚合，交给调用方（router）补上
         lat: null,

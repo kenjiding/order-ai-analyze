@@ -7,7 +7,7 @@ import { aggregateZipStats } from '../columnGeometry'
 import { formatDensity } from '../regionMetrics'
 import { colorFromMap } from '../vendorColors'
 import type { useVendorRegionMapPage } from '../useVendorRegionMapPage'
-import { useRouteDifficultyAverageVolume } from '../useRouteDifficultyAverageVolume'
+import type { RouteDifficultyAverageVolume } from '../useRouteDifficultyAverageVolume'
 import { useWarehouseConfigData } from '../useWarehouseConfigData'
 import {
   computeRouteDifficulty,
@@ -154,15 +154,12 @@ function RouteBreakdownTable({ routes, routeAvg }: { routes: RouteDifficultyRow[
 
 type Props = {
   page: ReturnType<typeof useVendorRegionMapPage>
+  avgVolume: RouteDifficultyAverageVolume | null
 }
 
-export function VendorRouteDifficultyTab({ page }: Props) {
+export function VendorRouteDifficultyTab({ page, avgVolume }: Props) {
   const { t } = useTranslation('vendorRegionMap')
   const { regionWarehouse, stations, loaded: warehouseConfigLoaded } = useWarehouseConfigData()
-  const { data: avgVolume } = useRouteDifficultyAverageVolume(
-    page.data?.meta.startDate ?? null,
-    page.data?.meta.endDate ?? null,
-  )
   const routeAvg = avgVolume?.routeAvg ?? new Map<string, number>()
 
   const warehouseConfig = useMemo<WarehouseConfig>(

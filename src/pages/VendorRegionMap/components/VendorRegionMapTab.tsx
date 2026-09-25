@@ -1,8 +1,13 @@
-import { useMemo } from 'react'
+import { useMemo, useState } from 'react'
 import { Alert, Button, DatePicker, Segmented } from 'antd'
 import dayjs from 'dayjs'
 import { useTranslation } from 'react-i18next'
+import { aggregateZipStats } from '../columnGeometry'
 import { colorFromMap } from '../vendorColors'
+import { computeRouteDifficulty, type WarehouseConfig } from '../routeDifficulty'
+import { computeRouteMergeSuggestions, DEFAULT_ROUTE_MERGE_PARAMS, type RouteMergeParams } from '../routeMergeSuggestion'
+import { useRouteDifficultyAverageVolume } from '../useRouteDifficultyAverageVolume'
+import { useWarehouseConfigData } from '../useWarehouseConfigData'
 import type { useVendorRegionMapPage } from '../useVendorRegionMapPage'
 import {
   formatMetricValue,
@@ -13,6 +18,7 @@ import {
 } from '../vendorRegionMapTypes'
 import { VendorRegionMapCanvas } from './VendorRegionMapCanvas'
 import { VendorRouteDifficultyTab } from './VendorRouteDifficultyTab'
+import { VendorRouteMergeTab } from './VendorRouteMergeTab'
 
 const nf = new Intl.NumberFormat('en-AU')
 
@@ -25,6 +31,39 @@ export function VendorRegionMapTab({ page }: Props) {
   const { t: tc } = useTranslation('common')
 
   const { metric } = page
+
+  // 大区主仓/站点坐标是静态参考数据，供应商难度表格和地图各自也拉过一份；这里单独拉一份供
+  // 合并算法用，避免为了共用而牵动其他两处已经在跑的独立请求
+  const { regionWarehouse, stations } = useWarehouseConfigData()
+  const warehouseConfig = useMemo<WarehouseConfig>(
+    () => ({
+      stationCoordsByName: new Map(stations.map((s) => [s.stationName, { lat: s.lat, lng: s.lng }])),
+      regionWarehouse: regionWarehouse ? { lat: regionWarehouse.lat, lng: regionWarehouse.lng } : null,
+    }),
+    [stations, regionWarehouse],
+  )
+
+  // 日均单量按天单独拉取，难度表格和合并建议都要用同一份口径——提到这一层只请求一次，
+  // 避免两个子组件各自重复拉一遍同样的按天数据
+  const { data: avgVolume } = useRouteDifficultyAverageVolume(
+    page.data?.meta.startDate ?? null,
+    page.data?.meta.endDate ?? null,
+  )
+
+  const [mergeParams, setMergeParams] = useState<RouteMergeParams>(DEFAULT_ROUTE_MERGE_PARAMS)
+
+  const mergeGroups = useMemo(() => {
+    if (!page.data || !avgVolume) return []
+    // 「智能合并」是地图工具条上的按钮，操作的是当前地图上看到的东西——跟地图其他图层
+    // （cells/routes 的 visibleCells/visibleRoutes）一样要跟着供应商筛选走，筛了 A 就只处理 A
+    // 自己的路由；这跟「路由难度」表格故意展示全量数据是两回事，那是独立于地图筛选的分析视图
+    const selected = new Set(page.selectedSupplierKeys)
+    const scopedRoutes = page.data.routes.filter((route) => selected.has(route.supplierKey))
+    if (scopedRoutes.length === 0) return []
+    const zipStatsForRoutes = aggregateZipStats({ cells: page.data.cells, zipRegions: page.data.zipRegions, metric: 'count' })
+    const routeRows = computeRouteDifficulty(scopedRoutes, zipStatsForRoutes, warehouseConfig)
+    return computeRouteMergeSuggestions(routeRows, zipStatsForRoutes, avgVolume.routeAvg, mergeParams)
+  }, [page.data, page.selectedSupplierKeys, avgVolume, warehouseConfig, mergeParams])
 
   // 排序跟着指标走：看利润时最赚钱的排前面，不然勾选面板和地图讲的是两件事
   const vendors = useMemo(() => {
@@ -178,10 +217,18 @@ export function VendorRegionMapTab({ page }: Props) {
           selectedSupplierKeys={page.selectedSupplierKeys}
           colorMap={page.vendorColorMap}
           metric={metric}
+          mergeGroups={mergeGroups}
         />
       </section>
 
-      <VendorRouteDifficultyTab page={page} />
+      <VendorRouteDifficultyTab page={page} avgVolume={avgVolume} />
+
+      <VendorRouteMergeTab
+        page={page}
+        mergeGroups={mergeGroups}
+        params={mergeParams}
+        onParamsChange={(patch) => setMergeParams((current) => ({ ...current, ...patch }))}
+      />
     </div>
   )
 }

@@ -25,8 +25,18 @@ function route(
   count: number,
   supplierKey = 'S1',
   deliveryStation = '',
+  courierProfit = 0,
 ): VendorRegionRouteCode {
-  return { zipCode, supplierKey, routeCode, count, deliveryStation }
+  return {
+    zipCode,
+    supplierKey,
+    routeCode,
+    count,
+    deliveryStation,
+    vendorProfit: 0,
+    courierProfit,
+    unpricedCount: 0,
+  } as VendorRegionRouteCode
 }
 
 /** 默认给一个大区主仓兜底（坐标沿用旧的 WAREHOUSE 常量，保持既有用例的距离数字不变），不配任何站点 */
@@ -49,6 +59,16 @@ test('同一路由码横跨多个邮编：单量要合并成总数，不能只�
     rows[0]!.zips.reduce((sum, z) => sum + z.count, 0),
     139,
   )
+})
+
+test('同一路由码跨多个邮编时，totalCourierProfit 是各邮编司机利润之和', () => {
+  const stats = [zipStat('5074', 0.1, 20), zipStat('5075', 0.12, 20)]
+  const routes = [
+    route('5074', 'FF106', 47, 'S1', '', 30),
+    route('5075', 'FF106', 59, 'S1', '', 45),
+  ]
+  const rows = computeRouteDifficulty(routes, stats, warehouseConfig())
+  assert.equal(rows[0]!.totalCourierProfit, 75)
 })
 
 test('距离越远，难度分越高（其余因子相同，且都在 150km 封顶以内）', () => {

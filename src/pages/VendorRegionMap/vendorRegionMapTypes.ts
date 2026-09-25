@@ -43,6 +43,12 @@ export type VendorRegionRouteCode = {
   /** 收件人城市/郊区（consigneeCity），同一邮区可能覆盖好几个郊区；没有值时为空字符串 */
   suburb: string
   count: number
+  /** 理论供应商利润 Σ(price - courierPrice)，口径同 VendorRegionCell */
+  vendorProfit: number
+  /** 理论司机利润 Σ courierPrice，口径同 VendorRegionCell */
+  courierProfit: number
+  /** 没在价格表里匹配到单价的票数 */
+  unpricedCount: number
   /** 派件站点（iMile deliveryStation），同一路由码下唯一稳定；没有值时为空字符串 */
   deliveryStation: string
   /** 郊区质心坐标；suburb 为空或 ABS 查不到匹配的郊区名时为 null，前端回落到邮区中心点 */

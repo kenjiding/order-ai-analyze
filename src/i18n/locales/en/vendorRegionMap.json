@@ -151,6 +151,28 @@
     "warehouseSourceRegionHint": "This route's delivery station has no coordinates configured yet — the distance falls back to the region's main warehouse and may be inaccurate. Configure the station's address under System > Warehouse/Station Addresses.",
     "noRegionWarehouse": "Your account's region has no main warehouse configured yet, so routes with unconfigured stations can't fall back to a distance and will show \"insufficient data\". Configure it under System > Warehouse/Station Addresses."
   },
+  "merge": {
+    "toggleButton": "Smart merge",
+    "noSuggestionsHint": "No low-volume routes to merge right now",
+    "clusterLabel": "{{memberCount}} merged · {{count}} parcels",
+    "popupTitle": "{{count}} routes merged",
+    "popupHint": "{{count}} parcels total",
+    "hint": "Clusters a supplier's own low-volume routes (below the threshold) that sit close together into merge suggestions — never across suppliers, since each supplier runs its own independent fleet/drivers and can't merge deliveries with another supplier's. The closest routes merge first; a group stops absorbing more routes as soon as its total volume hits the cap below — a real physical limit (what a van can carry, what a driver can finish in a day). There's no cap on profit: more profit is always better for the driver, so it's only used for ranking, never to block a merge. Ranked by combined courier profit: this answers \"do these routes, each too small on their own, add up to a trip worth running\" — merging itself doesn't create extra profit (courier profit is priced per parcel, independent of how many trips it takes).",
+    "volumeThresholdLabel": "Volume threshold (parcels/day)",
+    "clusterDistanceLabel": "Cluster distance (km)",
+    "maxGroupVolumeLabel": "Max merged group volume",
+    "empty": "No merge suggestions at the current thresholds — try raising the volume threshold or cluster distance",
+    "colMembers": "Routes merged",
+    "colSupplier": "Supplier",
+    "colTotalVolume": "Total volume",
+    "colTotalCourierProfit": "Combined courier profit",
+    "colRepresentative": "Representative route",
+    "memberColRoute": "Route code",
+    "memberColAvgVolume": "Avg daily volume",
+    "memberColVolume": "Total volume",
+    "memberColCourierProfit": "Courier profit",
+    "rowsTotal": "{{total}} merge suggestions"
+  },
   "presets": {
     "last14Days": "Last 14 days",
     "last30Days": "Last 30 days"

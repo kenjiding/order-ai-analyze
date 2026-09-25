@@ -151,6 +151,28 @@
     "warehouseSourceRegionHint": "这条路由的派件站点还没配坐标，距离用的是所属大区主仓的坐标退化算出来的，可能不准——去「系统管理 → 仓库/站点地址配置」把这个站点的地址配上",
     "noRegionWarehouse": "当前账号所属的大区还没配置主仓地址，站点坐标缺失时无法退化计算距离，这些路由会显示「数据不足」——去「系统管理 → 仓库/站点地址配置」配置一下"
   },
+  "merge": {
+    "toggleButton": "智能合并",
+    "noSuggestionsHint": "当前没有可合并的低单量路由码",
+    "clusterLabel": "{{memberCount}}条已合并 · {{count}}票",
+    "popupTitle": "{{count}}条路由已合并",
+    "popupHint": "合计 {{count}} 票",
+    "hint": "把同一供应商名下日均单量低于阈值、地理位置相近的路由码聚类成合并派送建议（不跨供应商——不同供应商是各自独立的车队/司机，谈不上合并派送）。合并时离得最近的路由优先拼在一起，总票量一旦碰到下面设的上限就不再继续吸收新路由——这是真实的物理约束（车装不下、司机一天送不完）；利润没有上限，因为利润越高对司机越好，只用来排序不用来拦截合并。按合并后总司机利润降序排列——这回答的是「这几条各自单量太小凑不成一趟，合起来总利润是否够格跑一趟」，不是合并带来了新增利润（司机利润按包裹单价算，跟走几趟车无关）。",
+    "volumeThresholdLabel": "单量阈值（件/天）",
+    "clusterDistanceLabel": "聚类距离（km）",
+    "maxGroupVolumeLabel": "合并后总票量上限",
+    "empty": "没有符合当前阈值的合并建议，试试调高单量阈值或聚类距离",
+    "colMembers": "合并路由数",
+    "colSupplier": "供应商",
+    "colTotalVolume": "总票量",
+    "colTotalCourierProfit": "合并后总司机利润",
+    "colRepresentative": "代表路由码",
+    "memberColRoute": "路由码",
+    "memberColAvgVolume": "日均单量",
+    "memberColVolume": "总票量",
+    "memberColCourierProfit": "司机利润",
+    "rowsTotal": "共 {{total}} 组合并建议"
+  },
   "presets": {
     "last14Days": "近 14 天",
     "last30Days": "近 30 天"
