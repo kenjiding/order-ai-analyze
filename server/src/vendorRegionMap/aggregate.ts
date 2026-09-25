@@ -71,7 +71,7 @@ export function aggregateVendorZipCells(input: {
     const priced = input.priceBook?.get(priceBookKey(scan.consigneeZipCode, scan.consigneeSuburb))
     if (!priced) unpricedPackages += 1
 
-    const routeCode = scan.routeCode.trim()
+    const routeCode = scan.routeCode.trim().toUpperCase()
     // 同一邮区常常覆盖好几个郊区（如 5114 邮区同时含 Craigmore 和 One Tree Hill），密度、柱体、
     // 路由码标签都按邮区+郊区一起分组，这样地图才能把这些东西摆在实际服务的那个郊区，而不是整个邮区共用一个点/一个面
     const suburb = scan.consigneeSuburb.trim().toUpperCase()

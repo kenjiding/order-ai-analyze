@@ -78,6 +78,7 @@
     "before11HubExitRate": "Before 11am hub exit rate",
     "signRate24h": "24h dispatch rate",
     "settling": "Settling",
+    "settleOverdue": "Overdue (retry window passed, won't auto-complete — check the scheduled job)",
     "signPendingHint": "Wait for the 24h window to close; the next day's scheduled job will fill it in",
     "exitMetSignUnmet": "On-time hub exit, dispatch overdue",
     "exitMetSignUnmetHint": "Handed to driver on time but not fully dispatched — driver side",

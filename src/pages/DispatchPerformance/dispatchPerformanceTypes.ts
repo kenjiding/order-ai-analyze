@@ -114,6 +114,8 @@ export type DispatchSettledBatch = {
   arrivalDate: string
   exitSettled: boolean
   dispatchSettled: boolean
+  /** 50h 补跑期已过仍未盖章——不会再自动完成，"结算中"会一直卡住，需要人工处理 */
+  dispatchOverdue: boolean
   waybillCount: number
 }
 

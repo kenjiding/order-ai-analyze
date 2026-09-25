@@ -9,7 +9,9 @@ import { getDb, schema } from '../db'
 import type { DispatchPerformanceConfig } from '../db/schema'
 import { LEGACY_GLOBAL_SUPPLIER_REGION_CODE, listSupplierPushConfigs, parsePushConfigIds } from '../supplierPushConfigs'
 import { buildSupplierUnitIndex } from '../vendorAnalysis/supplierScope'
+import type { AusTz } from '../imile/ausTimezone'
 import { toMetrics, type DispatchPerformanceMetrics } from './repository'
+import { dispatchBatchSettleMs, SETTLE_DUE_WINDOW_MS } from './settledArrivalDates'
 
 /** 该站点最近一个有数据的到件日及其汇总指标；从未结算过则为 null */
 export type DispatchPerformanceLatestSnapshot = {
@@ -312,8 +314,18 @@ export async function listDispatchPerformanceConfigViews(
 /** 最近 N 个已结算到件日（降序），供详情页展示「结算进度」 */
 export async function listRecentSettledBatches(
   stationCode: string,
+  tz: AusTz,
   limit = 10,
-): Promise<{ arrivalDate: string; exitSettled: boolean; dispatchSettled: boolean; waybillCount: number }[]> {
+): Promise<
+  {
+    arrivalDate: string
+    exitSettled: boolean
+    dispatchSettled: boolean
+    /** 派签窗口的 50h 补跑期已过、台账仍没盖章——不会再自动补，永远卡在"结算中"，需要人工介入 */
+    dispatchOverdue: boolean
+    waybillCount: number
+  }[]
+> {
   const db = getDb()
   const t = schema.dispatchPerformanceSettledBatches
   const rows = await db
@@ -322,10 +334,16 @@ export async function listRecentSettledBatches(
     .where(eq(t.stationCode, stationCode))
     .orderBy(desc(t.arrivalDate))
     .limit(limit)
-  return rows.map((r) => ({
-    arrivalDate: r.arrivalDate,
-    exitSettled: r.exitSettledAt != null,
-    dispatchSettled: r.dispatchSettledAt != null,
-    waybillCount: r.waybillCount,
-  }))
+  const nowMs = Date.now()
+  return rows.map((r) => {
+    const dispatchSettled = r.dispatchSettledAt != null
+    return {
+      arrivalDate: r.arrivalDate,
+      exitSettled: r.exitSettledAt != null,
+      dispatchSettled,
+      dispatchOverdue:
+        !dispatchSettled && nowMs > dispatchBatchSettleMs(r.arrivalDate, tz) + SETTLE_DUE_WINDOW_MS,
+      waybillCount: r.waybillCount,
+    }
+  })
 }

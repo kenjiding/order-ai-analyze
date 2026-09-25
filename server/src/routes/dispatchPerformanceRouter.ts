@@ -238,7 +238,7 @@ dispatchPerformanceRouter.get('/configs/:id/data', async (req: Request, res: Res
     )
     const [supplierOptions, recentBatches, exitSettled] = await Promise.all([
       listDispatchPerformanceSuppliers({ stationCode: config.stationCode, ...range }),
-      listRecentSettledBatches(config.stationCode),
+      listRecentSettledBatches(config.stationCode, tz),
       listSettledArrivalDates(config.stationCode, dueDates, 'exit'),
     ])
     const missingDates = dueDates.filter((d) => !exitSettled.has(d))

@@ -110,13 +110,25 @@ function SettleProgress({
               </div>
               <div>
                 {t('detail.dispatch')}
-                {batch.dispatchSettled ? t('detail.settled') : t('detail.settling')}
+                {batch.dispatchSettled
+                  ? t('detail.settled')
+                  : batch.dispatchOverdue
+                    ? t('detail.settleOverdue')
+                    : t('detail.settling')}
               </div>
             </div>
           }
         >
           <Tag
-            color={batch.dispatchSettled ? 'success' : batch.exitSettled ? 'processing' : 'default'}
+            color={
+              batch.dispatchSettled
+                ? 'success'
+                : batch.dispatchOverdue
+                  ? 'error'
+                  : batch.exitSettled
+                    ? 'processing'
+                    : 'default'
+            }
             className="m-0 font-mono text-xs"
           >
             {batch.arrivalDate.slice(5)}

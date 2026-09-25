@@ -147,6 +147,21 @@ test('同一路由码横跨两个郊区时按郊区拆成两行，不共用一�
   assert.equal(craigmore?.lng, null)
 })
 
+test('同一路由码大小写/首尾空格不同时要归一化合并，不能拆成两行', () => {
+  const result = aggregateVendorZipCells({
+    records: [
+      scan({ waybillNo: 'A1', zip: '2488', suburb: 'Cabarita Beach', vendorCode: 'SRM1', routeCode: 'AA011' }),
+      scan({ waybillNo: 'A2', zip: '2488', suburb: 'Cabarita Beach', vendorCode: 'SRM1', routeCode: ' aa011 ' }),
+    ],
+    configs: [config('SRM1')],
+    priceBook,
+  })
+
+  const aa011 = result.routes.filter((item) => item.routeCode === 'AA011')
+  assert.equal(aa011.length, 1, '大小写/空格不同的路由码要合并成一行，不能各算一行')
+  assert.equal(aa011[0]?.count, 2)
+})
+
 test('价格表缺省时全部票记为未计价，金额恒为 0', () => {
   const result = aggregateVendorZipCells({
     records: [scan({ waybillNo: 'A1', zip: '5000', suburb: 'Adelaide', vendorCode: 'SRM1' })],

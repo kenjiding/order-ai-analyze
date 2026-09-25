@@ -78,6 +78,7 @@
     "before11HubExitRate": "11点前出仓率",
     "signRate24h": "24小时派签率",
     "settling": "结算中",
+    "settleOverdue": "结算超时（补跑窗口已过，不会自动完成，请联系管理员核实定时任务）",
     "signPendingHint": "需等 24 小时窗口到期，次日定时任务补上",
     "exitMetSignUnmet": "准时出仓但派签超时",
     "exitMetSignUnmetHint": "货已按时交给司机，仍未派完 —— 司机侧",

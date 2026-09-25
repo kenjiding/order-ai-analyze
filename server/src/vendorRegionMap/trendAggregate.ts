@@ -67,7 +67,7 @@ export function aggregateVendorDailyVolume(input: {
       const unitKeys = matcher.resolveUnitKeys(scan)
       const assigned = unitKeys.length > 0 ? unitKeys : [UNMATCHED_SUPPLIER_KEY]
       if (unitKeys.length === 0) unmatchedNoVendor += 1
-      const routeCode = scan.routeCode.trim() || NO_ROUTE_CODE_LABEL
+      const routeCode = scan.routeCode.trim().toUpperCase() || NO_ROUTE_CODE_LABEL
 
       for (const supplierKey of assigned) {
         const unit = matcher.units.get(supplierKey)
