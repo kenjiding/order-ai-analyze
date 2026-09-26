@@ -287,11 +287,13 @@ export type SaveCellsInput = {
   /** 本次从 iMile 拉到的运单数，写进台账供排查「这天为什么没数据」 */
   waybillCount: number
   /**
-   * 临时值：数据照常落库，但**不在台账上标记派签那一趟跑过了**，好让到点的定时结算
-   * 到点再跑一次、把它覆盖成权威值。手动「立刻统计」的派签趟用它。
+   * 临时值：数据照常落库、台账照常盖章（dispatch_settled_at 会被写上），但打上
+   * dispatchSettledProvisional 标记——站点自己的定时任务据此识别出这行还没被权威结果覆盖过，
+   * 到点仍会重跑一次并转正。手动「立刻统计」的派签趟用它，让用户不用等定时任务也能看到「已结算」，
+   * 同时不影响定时任务后续追上来纠正。
    *
-   * 为什么仍标记出仓那一趟：派签趟重算出来的出仓数据本身是准确的（出仓阈值是硬时间点，
-   * 过了就定死），标记后出仓趟不会再跑来把派签结果清成 0。
+   * 为什么出仓那一趟不需要这个标记：派签趟重算出来的出仓数据本身是准确的（出仓阈值是硬时间点，
+   * 过了就定死，提前跑与到点跑结论一致），直接盖死即可，不存在「还需要被覆盖」的情况。
    */
   provisional?: boolean
 }
@@ -358,11 +360,12 @@ export async function saveDispatchPerformanceCells(input: SaveCellsInput): Promi
     }
   })
 
-  // 临时落库的派签趟按出仓趟的方式盖章：出仓算准了、就此定死，派签留 null 等定时任务覆盖
+  // 派签趟同样立刻盖章（不再留 dispatch_settled_at 为 null），只是打上 provisional 标记——
+  // 站点自己的定时任务到点后识别出这个标记，把它当「还没被权威结果覆盖」重新跑一次并转正
   const stageStamp =
-    stage === 'exit' || provisional
+    stage === 'exit'
       ? { exitSettledAt: now }
-      : { exitSettledAt: now, dispatchSettledAt: now }
+      : { exitSettledAt: now, dispatchSettledAt: now, dispatchSettledProvisional: provisional === true }
 
   await db.transaction(async (tx) => {
     await tx
@@ -401,11 +404,17 @@ export async function saveDispatchPerformanceCells(input: SaveCellsInput): Promi
  *
  * 判重必须看台账而不是日度表有没有行：不分拣的工作日 inbound/query 本就没数据、
  * 聚合出 0 个格子，按「有没有行」判会让这天每天被重新拉一遍直到滑出回看窗口。
+ *
+ * `excludeProvisional`：只给站点自己的定时任务用。派签趟被「立刻统计」手动盖过临时章
+ * （dispatchSettledProvisional=true）时，定时任务不能把它当「已完成」跳过——那样权威结果
+ * 永远没机会覆盖上去。除定时任务外的调用方（手动结算自己的判重、写库前的race复核）都不传，
+ * 语义是「有没有盖过章」，不关心是谁盖的。
  */
 export async function listSettledArrivalDates(
   stationCode: string,
   arrivalDates: string[],
   stage: SettleStage,
+  opts?: { excludeProvisional?: boolean },
 ): Promise<Set<string>> {
   if (arrivalDates.length === 0) return new Set()
   const db = getDb()
@@ -413,7 +422,9 @@ export async function listSettledArrivalDates(
   const stageDone =
     stage === 'exit'
       ? sql`${ledger.exitSettledAt} IS NOT NULL`
-      : sql`${ledger.dispatchSettledAt} IS NOT NULL`
+      : opts?.excludeProvisional
+        ? sql`${ledger.dispatchSettledAt} IS NOT NULL AND ${ledger.dispatchSettledProvisional} = false`
+        : sql`${ledger.dispatchSettledAt} IS NOT NULL`
   const rows = await db
     .select({ arrivalDate: ledger.arrivalDate })
     .from(ledger)

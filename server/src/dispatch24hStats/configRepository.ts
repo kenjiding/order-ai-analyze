@@ -31,6 +31,8 @@ export type DispatchPerformanceConfigView = {
   pushConfigIds: string[]
   /** 每天几点触发结算，HH:mm，按该站点所属州的本地时间 */
   settleTime: string
+  /** 「这天算不算开仓分拣」的到件量阈值覆盖；null = 沿用全局 MIN_SORTING_WAYBILLS */
+  minSortingWaybills: number | null
   /** 上面这些配置归并出的供应商单位数（同一家的多条配置算一家），实时算、不落库 */
   supplierCount: number
   /** 最近一个有数据的到件日（出仓率看它）。派签在这天多半还没结算 */
@@ -95,6 +97,8 @@ export async function createDispatchPerformanceConfig(input: {
   regionCode: string
   pushConfigIds: string[]
   settleTime: string
+  /** 为空 = 沿用全局 MIN_SORTING_WAYBILLS，见 schema 注释 */
+  minSortingWaybills?: number | null
   isEnabled: boolean
   userId: string | null
 }): Promise<DispatchPerformanceConfig> {
@@ -107,6 +111,7 @@ export async function createDispatchPerformanceConfig(input: {
       regionCode: input.regionCode,
       pushConfigIds: input.pushConfigIds,
       settleTime: input.settleTime,
+      minSortingWaybills: input.minSortingWaybills ?? null,
       isEnabled: input.isEnabled,
       createdBy: input.userId,
       updatedBy: input.userId,
@@ -122,6 +127,8 @@ export async function updateDispatchPerformanceConfig(
     stationName?: string
     pushConfigIds?: string[]
     settleTime?: string
+    /** undefined = 不改；null = 清空覆盖、改回沿用全局默认 */
+    minSortingWaybills?: number | null
     isEnabled?: boolean
     userId: string | null
   },
@@ -134,6 +141,9 @@ export async function updateDispatchPerformanceConfig(
       ...(input.stationName != null ? { stationName: input.stationName } : {}),
       ...(input.pushConfigIds != null ? { pushConfigIds: input.pushConfigIds } : {}),
       ...(input.settleTime != null ? { settleTime: input.settleTime } : {}),
+      ...(input.minSortingWaybills !== undefined
+        ? { minSortingWaybills: input.minSortingWaybills }
+        : {}),
       ...(input.isEnabled != null ? { isEnabled: input.isEnabled } : {}),
       updatedBy: input.userId,
       updatedAt: new Date(),
@@ -305,6 +315,7 @@ export async function listDispatchPerformanceConfigViews(
     updatedAt: new Date(config.updatedAt).toISOString(),
     pushConfigIds: parsePushConfigIds(config.pushConfigIds),
     settleTime: config.settleTime,
+    minSortingWaybills: config.minSortingWaybills,
     supplierCount: supplierCounts.get(config.id) ?? 0,
     latest: snapshots.get(config.stationCode) ?? null,
     latestDispatch: dispatchSnapshots.get(config.stationCode) ?? null,
@@ -341,8 +352,11 @@ export async function listRecentSettledBatches(
       arrivalDate: r.arrivalDate,
       exitSettled: r.exitSettledAt != null,
       dispatchSettled,
+      // 「立刻统计」的临时章过了补跑窗口还没被定时任务转正 = 永远不会再变了，
+      // 跟从没结算过一样都要报「结算超时」——只看 dispatchSettled 会把这种情况误判成正常
       dispatchOverdue:
-        !dispatchSettled && nowMs > dispatchBatchSettleMs(r.arrivalDate, tz) + SETTLE_DUE_WINDOW_MS,
+        (!dispatchSettled || r.dispatchSettledProvisional) &&
+        nowMs > dispatchBatchSettleMs(r.arrivalDate, tz) + SETTLE_DUE_WINDOW_MS,
       waybillCount: r.waybillCount,
     }
   })

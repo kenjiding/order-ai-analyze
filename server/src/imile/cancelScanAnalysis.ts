@@ -20,6 +20,13 @@ const BATCH_DELAY_MS = 400
 
 const CANCEL_SCAN_TYPE = '1504'
 
+/**
+ * 取消扫描报表（scanType=1504）里真正算「分错」的记录：响应里 record.scanType 文本字段。
+ * 实测该站点该分类下记录的 scanType 恒为「取消分配派件员」（不是「取消司机取件限制」——
+ * 那是 cancelScanReclassify.ts 里另一个按订单号查、不限分类的场景专用的文本，两者是不同的取消原因）。
+ */
+export const MISASSIGNED_COURIER_SCAN_TYPE = '取消分配派件员'
+
 export type CancelScanAnalysisSuccess = {
   ok: true
   cancelScanRecords: unknown[]
@@ -111,6 +118,25 @@ function buildSearchWaybillBody(input: {
     startTime: input.startTime,
     waybillNos: input.waybillNos,
   }
+}
+
+function isMisassignedCourierRecord(record: unknown): boolean {
+  if (!isRecord(record)) return false
+  return String(record.scanType ?? '').trim() === MISASSIGNED_COURIER_SCAN_TYPE
+}
+
+/** 调试用：统计原始记录里 scanType 文本的分布，帮助核对「过滤后为 0 条」是数据本身没有还是字段/参数不对。 */
+function summarizeScanTypes(records: unknown[]): string {
+  const counts = new Map<string, number>()
+  for (const record of records) {
+    const key = isRecord(record) ? String(record.scanType ?? '(无 scanType 字段)') : '(非对象记录)'
+    counts.set(key, (counts.get(key) ?? 0) + 1)
+  }
+  if (!counts.size) return '(无记录)'
+  return Array.from(counts.entries())
+    .sort((a, b) => b[1] - a[1])
+    .map(([type, count]) => `${type}=${count}`)
+    .join(', ')
 }
 
 function readScanNumber(record: unknown): string {
@@ -394,12 +420,18 @@ export async function analyzeCancelScan(input: {
     }
   }
 
-  const waybillNos = collectUniqueWaybillNos(cancelScanResult.records)
+  console.log(
+    `[cancel-scan-analysis] scanStationCode=${scanStationCode} startTime=${input.startTime} endTime=${input.endTime} 原始记录 scanType 分布: ${summarizeScanTypes(cancelScanResult.records)}`,
+  )
+
+  // 报表内只有 scanType=「取消分配派件员」的记录才算分错，其余取消扫描原因不计入。
+  const cancelScanRecords = cancelScanResult.records.filter(isMisassignedCourierRecord)
+  const waybillNos = collectUniqueWaybillNos(cancelScanRecords)
 
   if (!waybillNos.length) {
     return {
       ok: true,
-      cancelScanRecords: cancelScanResult.records,
+      cancelScanRecords,
       cancelScanTotal: cancelScanResult.totalResult,
       waybillNos: [],
       waybillRecords: [],
@@ -426,13 +458,13 @@ export async function analyzeCancelScan(input: {
 
   const waybillRouteMap = buildWaybillRouteCodeMap(waybillResult.records)
   const dailyRouteCodeCounts = buildDailyRouteCodeCounts({
-    cancelScanRecords: cancelScanResult.records,
+    cancelScanRecords,
     waybillRouteMap,
   })
 
   return {
     ok: true,
-    cancelScanRecords: cancelScanResult.records,
+    cancelScanRecords,
     cancelScanTotal: cancelScanResult.totalResult,
     waybillNos,
     waybillRecords: waybillResult.records,

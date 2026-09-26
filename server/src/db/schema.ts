@@ -1018,6 +1018,12 @@ export const dispatchPerformanceConfigs = pgTable(
      * 默认 16:00：出仓阈值 11:00 + 24h 窗口上界都已过，不会把「窗口还没到期」记成未达标。
      */
     settleTime: varchar('settle_time', { length: 5 }).notNull().default('16:00'),
+    /**
+     * 「这天算不算开仓分拣」的到件量阈值，覆盖全局 MIN_SORTING_WAYBILLS（见 imile/sortingWorkday.ts）。
+     * 为空 = 沿用全局默认。站点体量差得远——全局阈值是照大站点定的，
+     * 小站点正常营业日的到件量可能常年卡在阈值以下，被误判成「没开仓」而永久漏统计。
+     */
+    minSortingWaybills: integer('min_sorting_waybills'),
     isEnabled: boolean('is_enabled').notNull().default(true),
     createdBy: uuid('created_by').references(() => users.id, { onDelete: 'set null' }),
     updatedBy: uuid('updated_by').references(() => users.id, { onDelete: 'set null' }),
@@ -1048,6 +1054,12 @@ export const dispatchPerformanceSettledBatches = pgTable(
     exitSettledAt: timestamp('exit_settled_at', { withTimezone: true }),
     /** 派签那一趟（D+2）完成时刻；null = 还没跑 */
     dispatchSettledAt: timestamp('dispatch_settled_at', { withTimezone: true }),
+    /**
+     * 「立刻统计」手动跑出来的派签结果是临时值：true = 还等定时任务用权威结果覆盖一次。
+     * 只对 dispatchSettledAt 有意义，出仓那一趟没有这个概念（提前跑与到点跑结论一致）。
+     * 页面上不区分展示——统一显示「已结算」，定时任务追上后静默覆盖成权威值。
+     */
+    dispatchSettledProvisional: boolean('dispatch_settled_provisional').notNull().default(false),
     /** 最近一趟拉到的运单数与落库格子数，供排查「这天为什么没数据」 */
     waybillCount: integer('waybill_count').notNull().default(0),
     cellCount: integer('cell_count').notNull().default(0),

@@ -11,7 +11,7 @@ import { queryCancelScanRecordsByScanNumbers } from '../imile/cancelScanAnalysis
 import { isRecord } from '../imile/shared'
 import type { OrderAnalyzeResult, TrackFacts } from './types'
 
-const DRIVER_PICKUP_RESTRICTION_CANCEL_SCAN_TYPE = '取消司机取件限制'
+const DRIVER_PICKUP_RESTRICTION_SCAN_TYPE = '取消司机取件限制'
 /** operationResourceCode=2 表示库内真实扫描员操作（非司机/系统账号）。 */
 const REAL_SCANNER_OPERATION_RESOURCE_CODE = '2'
 
@@ -69,7 +69,7 @@ function isRealScannerCancelledDriverPickupRestriction(record: unknown): boolean
   if (!isRecord(record)) return false
   const resourceCode = String(record.operationResourceCode ?? '').trim()
   const scanType = String(record.scanType ?? '').trim()
-  return resourceCode === REAL_SCANNER_OPERATION_RESOURCE_CODE && scanType === DRIVER_PICKUP_RESTRICTION_CANCEL_SCAN_TYPE
+  return resourceCode === REAL_SCANNER_OPERATION_RESOURCE_CODE && scanType === DRIVER_PICKUP_RESTRICTION_SCAN_TYPE
 }
 
 export type MatchingScanRecord = {
@@ -154,7 +154,7 @@ export async function reclassifyOutWarehouseLossWithCancelScan(input: {
     if (!latestMatch || latestMatch.timestamp <= responsibilityStartTs) return result
 
     reclassifiedOrderNos.push(result.orderNo)
-    const hit = `取消扫描记录显示，库内扫描员在 ${latestMatch.raw} 执行「${DRIVER_PICKUP_RESTRICTION_CANCEL_SCAN_TYPE}」，晚于当前库外责任起算时间 ${responsibilityStartTime}，说明包裹实际仍由库内扫描员处理`
+    const hit = `取消扫描记录显示，库内扫描员在 ${latestMatch.raw} 执行「${DRIVER_PICKUP_RESTRICTION_SCAN_TYPE}」，晚于当前库外责任起算时间 ${responsibilityStartTime}，说明包裹实际仍由库内扫描员处理`
     return {
       ...result,
       lossScope: '库内丢失' as const,

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Alert, Button, Drawer, Space, TimePicker } from 'antd'
+import { Alert, Button, Drawer, InputNumber, Space, TimePicker } from 'antd'
 import dayjs from 'dayjs'
 import { Gauge, Save } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
@@ -42,6 +42,7 @@ export function DispatchPerformanceConfigDrawer({
   const [stationCode, setStationCode] = useState('')
   const [pushConfigIds, setPushConfigIds] = useState<string[]>([])
   const [settleTime, setSettleTime] = useState(DEFAULT_SETTLE_TIME)
+  const [minSortingWaybills, setMinSortingWaybills] = useState<number | null>(null)
   const [error, setError] = useState<string | null>(null)
 
   const catalogIdSet = new Set(catalogConfigs.map((config) => config.id))
@@ -52,6 +53,7 @@ export function DispatchPerformanceConfigDrawer({
     setStationCode(editing?.stationCode ?? '')
     setPushConfigIds(editing?.pushConfigIds ?? [])
     setSettleTime(editing?.settleTime || DEFAULT_SETTLE_TIME)
+    setMinSortingWaybills(editing?.minSortingWaybills ?? null)
     setError(null)
   }, [open, editing])
 
@@ -71,6 +73,7 @@ export function DispatchPerformanceConfigDrawer({
       stationName,
       pushConfigIds: scopedPushConfigIds,
       settleTime,
+      minSortingWaybills,
       isEnabled: editing?.isEnabled ?? true,
     })
   }
@@ -136,9 +139,18 @@ export function DispatchPerformanceConfigDrawer({
                   if (val) setSettleTime(val.format('HH:mm'))
                 }}
               />
-              <span className="text-xs text-slate-400">
-                {t('drawer.triggerTimeHint', { ns: 'dispatchPerformance' })}
+              <span className="text-xs font-medium text-slate-500">
+                {t('drawer.minSortingWaybills', { ns: 'dispatchPerformance' })}
               </span>
+              <InputNumber
+                value={minSortingWaybills}
+                min={1}
+                step={100}
+                placeholder={t('drawer.minSortingWaybillsPlaceholder', { ns: 'dispatchPerformance' })}
+                disabled={saving}
+                className="!w-32"
+                onChange={(val) => setMinSortingWaybills(typeof val === 'number' ? val : null)}
+              />
             </div>
           </div>
         </FormSection>

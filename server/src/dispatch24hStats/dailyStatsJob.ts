@@ -133,6 +133,8 @@ export type StationTarget = {
   settleTime: string
   scopes: Dispatch24hScope[]
   supplierUnits: SupplierUnitIndex
+  /** 「这天算不算开仓分拣」的到件量阈值，来自站点配置，未设置时沿用全局 MIN_SORTING_WAYBILLS */
+  minSortingWaybills: number
 }
 
 /**
@@ -186,6 +188,7 @@ export async function resolveStationTargets(): Promise<StationTarget[]> {
       settleTime: normalizeSettleTime(config.settleTime),
       scopes,
       supplierUnits,
+      minSortingWaybills: config.minSortingWaybills ?? MIN_SORTING_WAYBILLS,
     })
   }
   return targets
@@ -201,7 +204,7 @@ export type SettleOneResult = {
   cells: DispatchPerformanceCell[]
   /** 写库前复核发现这一趟已被另一条路径跑掉，本次什么都没做 */
   skipped: boolean
-  /** 到件量低于 MIN_SORTING_WAYBILLS：这天没开仓分拣，台账已盖章但一个格子都没写 */
+  /** 到件量低于该站点的开仓阈值：这天没开仓分拣，台账已盖章但一个格子都没写 */
   noBatch: boolean
 }
 
@@ -271,15 +274,17 @@ export async function settleOneArrivalDate(input: {
   target: StationTarget
   arrivalDate: string
   stage: SettleStage
-  /** 见 SaveCellsInput.provisional：落库但不给派签盖章，留给到点的定时结算覆盖 */
+  /** 见 SaveCellsInput.provisional：派签趟仍会落库盖章，但标记成临时值，留给到点的定时结算覆盖 */
   provisional?: boolean
 }): Promise<SettleOneResult> {
   const { target, arrivalDate, stage, provisional } = input
 
   // 写库前复核台账：cron 与「立刻统计」并行时，pending 列表是在对方写库之前算出来的。
-  // 若不复核，手动的出仓趟会把 cron 刚落的四象限 delete 掉重写成 0，而 dispatch_settled_at
-  // 已盖章、派签趟不会再跑 —— 那天的派签率就永远停在「结算中」。
-  const alreadyDone = await listSettledArrivalDates(target.stationCode, [arrivalDate], stage)
+  // 派签趟：本次是定时任务（非 provisional）时不能被「立刻统计」留下的临时章拦住——
+  // 那正是本次要覆盖的权威结果；本次仍是手动跑时才把临时章也算「已完成」，不重复跑。
+  const alreadyDone = await listSettledArrivalDates(target.stationCode, [arrivalDate], stage, {
+    excludeProvisional: stage === 'dispatch' && !provisional,
+  })
   if (alreadyDone.has(arrivalDate)) {
     return {
       stationCode: target.stationCode,
@@ -298,12 +303,12 @@ export async function settleOneArrivalDate(input: {
   // 这天没开仓分拣：到件量只有值班员工零星扫入库的几十单，两个率的分母小到毫无意义
   // （3 单里 1 单没出仓 = 33%），而结算不回补、落库即永久。落一条空台账把这天盖掉，
   // 不写任何格子 —— 下面那道「0 格子」检查也要让开，那几单碰巧属于所勾供应商时会有格子。
-  const noBatch = isNoSortingBatch(waybillCount)
+  const noBatch = isNoSortingBatch(waybillCount, target.minSortingWaybills)
   const cellsToSave = noBatch ? [] : cells
   if (noBatch) {
     console.warn(
       `${LABEL} station=${target.stationCode} date=${arrivalDate} 到件仅 ${waybillCount} 单` +
-        `（< ${MIN_SORTING_WAYBILLS}），判定当天未开仓分拣，不写入统计`,
+        `（< ${target.minSortingWaybills}），判定当天未开仓分拣，不写入统计`,
     )
   }
 
@@ -426,7 +431,11 @@ export async function runDispatchPerformanceDailyStats(): Promise<void> {
             : resolveExitSettledArrivalDates(nowMs, target.tz)
         if (settled.length === 0) continue
 
-        const done = await listSettledArrivalDates(target.stationCode, settled, stage)
+        // 派签趟：cron 是权威结算，「立刻统计」留下的临时章（provisional）不算已完成，
+        // 还在窗口内就要重跑一次覆盖成权威值——见 settleOneArrivalDate 的 alreadyDone 注释
+        const done = await listSettledArrivalDates(target.stationCode, settled, stage, {
+          excludeProvisional: stage === 'dispatch',
+        })
         const pending = settled.filter((date) => !done.has(date))
         if (pending.length === 0) continue
 

@@ -610,6 +610,20 @@
       "when": 1785700000065,
       "tag": "0086_region_package_price_route_codes",
       "breakpoints": true
+    },
+    {
+      "idx": 87,
+      "version": "7",
+      "when": 1785700000067,
+      "tag": "0087_dispatch_performance_min_sorting_waybills",
+      "breakpoints": true
+    },
+    {
+      "idx": 88,
+      "version": "7",
+      "when": 1785700000069,
+      "tag": "0088_dispatch_settled_provisional",
+      "breakpoints": true
     }
   ]
 }

@@ -139,6 +139,8 @@ export type DispatchPerformanceConfig = {
   pushConfigIds: string[]
   /** 每天几点触发结算，HH:mm，按该站点所属州的本地时间 */
   settleTime: string
+  /** 「这天算不算开仓分拣」的到件量阈值覆盖；null = 沿用全局默认（2000） */
+  minSortingWaybills: number | null
   /** 上面这些配置归并出的供应商单位数；为 0 时结算跑不出数据，列表要提示 */
   supplierCount: number
   /** 最近一个有数据的到件日（出仓率看它）。派签在这天多半还没结算 */
@@ -156,6 +158,8 @@ export type DispatchPerformanceConfigDraft = {
   pushConfigIds: string[]
   /** 触发统计时间 HH:mm，按站点所属州的本地时间 */
   settleTime: string
+  /** null = 沿用全局默认（2000） */
+  minSortingWaybills: number | null
   isEnabled: boolean
 }
 
@@ -194,7 +198,7 @@ export * from '../../../shared/dispatchPerformance/profitTrendAggregate'
 export type SettleNowArtifact = {
   stationCode: string
   settledExitDates: { arrivalDate: string; waybillCount: number; cellCount: number }[]
-  /** 已落库，但派签未在台账盖章：到了该站点的触发统计时间会重跑并覆盖成权威值 */
+  /** 已落库并显示「已结算」，但是临时值：到了该站点的触发统计时间会重跑并覆盖成权威值 */
   settledDispatchDates: {
     arrivalDate: string
     waybillCount: number

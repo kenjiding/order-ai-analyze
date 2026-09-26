@@ -70,6 +70,21 @@ function parseSupplierKeys(raw: unknown): string[] | undefined {
   return undefined
 }
 
+/**
+ * 未传该字段（key 缺失）= 不改；显式传 null = 清空覆盖、改回沿用全局默认；
+ * 非法数字报错，避免存进一个 0 或负数把这个站点的统计整体锁死（isNoSortingBatch 恒为 false/true）。
+ */
+function parseMinSortingWaybills(body: Record<string, unknown>): { value: number | null | undefined; error?: string } {
+  if (!('minSortingWaybills' in body)) return { value: undefined }
+  const raw = body.minSortingWaybills
+  if (raw === null) return { value: null }
+  const n = Number(raw)
+  if (!Number.isFinite(n) || n <= 0 || !Number.isInteger(n)) {
+    return { value: undefined, error: '开仓判定阈值应为正整数' }
+  }
+  return { value: n }
+}
+
 function requestRegionCode(req: Request): string {
   return (
     String((req as AuthenticatedRequest).authUser?.regionCode ?? '').trim() ||
@@ -117,6 +132,8 @@ dispatchPerformanceRouter.post('/configs', async (req: Request, res: Response) =
   if (pushConfigIds.length === 0) return res.status(400).json({ error: '请至少选择一个供应商' })
   const settleTime = body.settleTime == null ? DEFAULT_SETTLE_TIME : String(body.settleTime).trim()
   if (!isValidSettleTime(settleTime)) return res.status(400).json({ error: '触发统计时间格式应为 HH:mm' })
+  const minSortingWaybills = parseMinSortingWaybills(body)
+  if (minSortingWaybills.error) return res.status(400).json({ error: minSortingWaybills.error })
 
   try {
     // 站点全局唯一：结算产出的是共享数据，同一站点两条配置会重复结算、重复打 iMile
@@ -129,6 +146,7 @@ dispatchPerformanceRouter.post('/configs', async (req: Request, res: Response) =
       regionCode: requestRegionCode(req),
       pushConfigIds,
       settleTime,
+      minSortingWaybills: minSortingWaybills.value,
       isEnabled: body.isEnabled !== false,
       userId: requestUserId(req),
     })
@@ -152,6 +170,8 @@ dispatchPerformanceRouter.put('/configs/:id', async (req: Request, res: Response
   if (settleTime != null && !isValidSettleTime(settleTime)) {
     return res.status(400).json({ error: '触发统计时间格式应为 HH:mm' })
   }
+  const minSortingWaybills = parseMinSortingWaybills(body)
+  if (minSortingWaybills.error) return res.status(400).json({ error: minSortingWaybills.error })
 
   try {
     const existing = await findDispatchPerformanceConfig(id)
@@ -167,6 +187,7 @@ dispatchPerformanceRouter.put('/configs/:id', async (req: Request, res: Response
       stationName: body.stationName == null ? undefined : String(body.stationName).trim(),
       pushConfigIds,
       settleTime,
+      minSortingWaybills: minSortingWaybills.value,
       isEnabled: typeof body.isEnabled === 'boolean' ? body.isEnabled : undefined,
       userId: requestUserId(req),
     })

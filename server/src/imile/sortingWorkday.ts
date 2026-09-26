@@ -72,6 +72,6 @@ export const MIN_SORTING_WAYBILLS = (() => {
  * 没开仓的那天不影响前后批次：前一天到件的货当天照常出仓派送（仓库只是没有新货到，
  * 不是关门），所以出仓日推导（resolveExitDate）不受此判定影响，只有「这天自己那批」消失。
  */
-export function isNoSortingBatch(waybillCount: number): boolean {
-  return waybillCount < MIN_SORTING_WAYBILLS
+export function isNoSortingBatch(waybillCount: number, threshold: number = MIN_SORTING_WAYBILLS): boolean {
+  return waybillCount < threshold
 }
