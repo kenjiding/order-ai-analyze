@@ -186,7 +186,7 @@
     "whitelistFullTag": "白名单路由",
     "driver": "司机",
     "unassignedDriver": "未派件（无司机）",
-    "neverSigned": "从未签收",
+    "neverSigned": "窗口截止时点未签收",
     "lateSigned": "超时签收",
     "problemWaybill": "问题件",
     "before11Unmet": "未在11点前出仓",
@@ -287,7 +287,7 @@
     "colPriorityNextDaySignMet": "优先件次日派签达标数",
     "colPriorityNextDaySignRate": "优先件次日派签率(%)",
     "colProblemCount": "问题运单数",
-    "colNeverSignedCount": "从未签收数",
+    "colNeverSignedCount": "窗口截止时点未签收数",
     "colLateSignedCount": "迟签收数",
     "colVendorProfit": "供应商利润",
     "colCourierProfit": "司机利润",
@@ -299,7 +299,7 @@
     "listComplete": "是",
     "listTruncated": "否（仅前{{shown}}条，共{{total}}条，超出上限未导出）",
     "problemType": {
-      "neverSigned": "从未签收",
+      "neverSigned": "窗口截止时点未签收",
       "lateSigned": "超时签收",
       "problem": "问题件",
       "before11Unmet": "未在11点前出仓"
