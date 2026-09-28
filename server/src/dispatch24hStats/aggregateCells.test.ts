@@ -339,6 +339,44 @@ test('白名单路由：照常出格子并打标记，不再被整行剔除', ()
   assert.equal(byRoute.get('R2')?.neverSignedCount, 1)
 })
 
+test('priorityNeverSignedWaybillNos：只收「从未签收且优先件」的运单号，不含迟签收/非优先件', () => {
+  const rows: Dispatch24hWaybillRow[] = [
+    // 优先件，从未签收 → 应收录
+    { ...base, waybillNo: 'A', courierCode: 'C1', courier: 'D1', consigneeRouteCode: 'R1', clientCode: 'P1' },
+    // 非优先件，从未签收 → 不收录（应进 neverSignedWaybillNos 但不进 priorityNeverSignedWaybillNos）
+    { ...base, waybillNo: 'B', courierCode: 'C1', courier: 'D1', consigneeRouteCode: 'R1' },
+    // 优先件，迟签收（不是「从未签收」）→ 不收录
+    { ...base, waybillNo: 'C', courierCode: 'C1', courier: 'D1', consigneeRouteCode: 'R1', clientCode: 'P1', deliveryTime: '2024-06-25 09:00:00', signDate: '2024-06-26 10:00:00' },
+  ]
+  const [cell] = run(rows, [scope('U1', 'V1')])
+
+  assert.deepEqual(cell.neverSignedWaybillNos, ['A', 'B'])
+  assert.deepEqual(cell.priorityNeverSignedWaybillNos, ['A'])
+})
+
+test('nextDayUnmetWaybillNos：24H口径达标但次日口径未达标的单也要收录，两个口径不是一回事', () => {
+  const rows: Dispatch24hWaybillRow[] = [
+    // 24H 内签收（signMet=true，不进 late/never），但超过次日 23:59:59 才签 → 次日口径未达标
+    { ...base, waybillNo: 'A', courierCode: 'C1', courier: 'D1', consigneeRouteCode: 'R1', clientCode: 'P1', deliveryTime: '2024-06-25 09:00:00', signDate: '2024-06-26 08:00:00' },
+    // 双口径都达标
+    { ...base, waybillNo: 'B', courierCode: 'C1', courier: 'D1', consigneeRouteCode: 'R1', deliveryTime: '2024-06-25 09:00:00', signDate: '2024-06-25 10:00:00' },
+    // 从未签收：两个口径都未达标
+    { ...base, waybillNo: 'C', courierCode: 'C1', courier: 'D1', consigneeRouteCode: 'R1' },
+  ]
+  const [cell] = run(rows, [scope('U1', 'V1')])
+
+  // A 在 24H 口径里其实是达标的，不该出现在 neverSigned/lateSigned 里
+  assert.deepEqual(cell.neverSignedWaybillNos, ['C'])
+  assert.deepEqual(cell.lateSignedWaybillNos, [])
+  // 但次日口径里 A 和 C 都未达标
+  assert.deepEqual(cell.nextDayUnmetWaybillNos, ['A', 'C'])
+  assert.deepEqual(cell.priorityNextDayUnmetWaybillNos, ['A'])
+
+  // 出仓趟：次日是否达标还不知道，不该收录任何单号
+  const [exitCell] = runExitOnly(rows, [scope('U1', 'V1')])
+  assert.deepEqual(exitCell.nextDayUnmetWaybillNos, [])
+})
+
 // ── 利润 ───────────────────────────────────────────────────────────
 
 /** ADELAIDE 2.70/2.45（差 0.25），PROSPECT 3.10/2.80（差 0.30） */

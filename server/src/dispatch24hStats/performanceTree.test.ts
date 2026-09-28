@@ -242,6 +242,46 @@ test('利润跟着口径走：剔除口径下不含白名单的钱，全量口�
   )
 })
 
+test('异常报备剔除：24H/次日/优先件三个口径的剔除数各自独立扣减，互不混用，出仓率不受影响', () => {
+  const row = cell({
+    total: 10,
+    before11Met: 6, // 出仓率的分子分母都不该受剔除影响
+    exitMetSignMet: 4,
+    exitUnmetSignUnmet: 6,
+    neverSignedCount: 6,
+    nextDaySignMet: 4,
+    priorityTotal: 4,
+    priorityNextDaySignMet: 1,
+    // 三个数故意取不同值：24H 口径和次日口径的截止时间不同，同一批运单号在两边
+    // 「未达标」的判定可能不一致，剔除数绝不能共用一个——这正是本条测试要钉住的
+    excludedSignCount: 3,
+    excludedNextDaySignCount: 2,
+    excludedPriorityNextDaySignCount: 1,
+  })
+  const tree = buildDispatchPerformanceTree([row])
+  const s = tree.overall
+
+  assert.equal(s.total, 10, 'total 本身不变，仍是全量单量')
+  assert.equal(s.before11Rate, 60, '出仓率分母仍是 10，不受剔除影响')
+  assert.equal(s.signRate, Math.round((4 / 7) * 10000) / 100, 'signMet=4，分母 10-3=7')
+  assert.equal(
+    s.nextDaySignRate,
+    Math.round((4 / 8) * 10000) / 100,
+    'nextDaySignMet=4，分母 10-2=8——跟 signRate 的分母 7 不一样，不能共用 excludedSignCount',
+  )
+  assert.equal(s.priorityNextDaySignRate, Math.round((1 / 3) * 10000) / 100, '1 / (4-1)')
+  assert.equal(s.excludedCount, 3)
+  assert.equal(s.excludedNextDayCount, 2)
+  assert.equal(s.excludedPriorityCount, 1)
+})
+
+test('异常报备剔除：不传剔除字段的格子（现有单测/未命中报备的行）行为不变', () => {
+  const tree = buildDispatchPerformanceTree([met({ total: 10 })])
+  assert.equal(tree.overall.excludedCount, 0)
+  assert.equal(tree.overall.excludedNextDayCount, 0)
+  assert.equal(tree.overall.signRate, 100)
+})
+
 test('利润：区间混进未结算日时仍给出已结算部分的钱，不整段抹成 null', () => {
   const tree = buildDispatchPerformanceTree([
     met({ arrivalDate: '2024-06-24', routeCode: 'R1', total: 10, vendorProfit: 2.5, courierProfit: 24.5 }),

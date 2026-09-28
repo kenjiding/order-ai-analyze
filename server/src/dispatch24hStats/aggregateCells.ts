@@ -93,6 +93,17 @@ export type DispatchPerformanceCell = {
   lateSignedWaybillNos: string[]
   problemWaybillNos: string[]
   before11UnmetWaybillNos: string[]
+  /** neverSignedWaybillNos 的子集：其中命中「优先客户配置」的运单号，供异常报备剔除优先件分母时判断归属 */
+  priorityNeverSignedWaybillNos: string[]
+  /**
+   * 次日派签未达标的运单号（从未签收 + 迟签收都算，只看 nextDaySignMet 是否为 false）。
+   * 跟 neverSignedWaybillNos/lateSignedWaybillNos 是不同口径——次日截止是出仓日 23:59:59，
+   * 不是 24H 滚动窗口，同一运单号两边达标与否可能不一致，异常报备剔除次日派签率分母时必须
+   * 认这份名单，不能直接复用 24H 口径的未达标名单。
+   */
+  nextDayUnmetWaybillNos: string[]
+  /** nextDayUnmetWaybillNos 的子集：其中命中「优先客户配置」的运单号 */
+  priorityNextDayUnmetWaybillNos: string[]
 }
 
 function norm(code: unknown): string {
@@ -137,6 +148,9 @@ function newCell(
     lateSignedWaybillNos: [],
     problemWaybillNos: [],
     before11UnmetWaybillNos: [],
+    priorityNeverSignedWaybillNos: [],
+    nextDayUnmetWaybillNos: [],
+    priorityNextDayUnmetWaybillNos: [],
   }
 }
 
@@ -267,12 +281,18 @@ export function aggregateDispatchPerformanceCells(input: {
       if (neverSigned) {
         cell.neverSignedCount += 1
         if (wbNo) cell.neverSignedWaybillNos.push(wbNo)
+        if (wbNo && isPriority) cell.priorityNeverSignedWaybillNos.push(wbNo)
       }
       if (lateSigned) {
         cell.lateSignedCount += 1
         if (wbNo) cell.lateSignedWaybillNos.push(wbNo)
       }
       if (!exitMet && wbNo) cell.before11UnmetWaybillNos.push(wbNo)
+      // 只在派签趟判定：出仓趟 nextDaySignMet 恒为 false，此时判「未达标」没有意义
+      if (dispatchSettled && !nextDaySignMet && wbNo) {
+        cell.nextDayUnmetWaybillNos.push(wbNo)
+        if (isPriority) cell.priorityNextDayUnmetWaybillNos.push(wbNo)
+      }
     }
   }
 

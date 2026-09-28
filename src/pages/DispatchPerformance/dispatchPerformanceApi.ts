@@ -3,6 +3,8 @@ import type { PublicJob } from '../../api/jobsClient'
 import type {
   DispatchPerformanceConfig,
   DispatchPerformanceConfigDraft,
+  DispatchPerformanceException,
+  DispatchPerformanceExceptionDraft,
   DispatchPerformanceResult,
   DispatchProfitDailyRow,
   WhitelistMode,
@@ -113,5 +115,48 @@ export async function postSettleNow(
 ): Promise<{ job: PublicJob; reused: boolean }> {
   return request<{ job: PublicJob; reused: boolean }>(`/configs/${configId}/settle-now`, {
     method: 'POST',
+  })
+}
+
+// ── 派签异常报备 ──────────────────────────────────────────────────
+
+export async function createDispatchPerformanceException(
+  configId: string,
+  draft: DispatchPerformanceExceptionDraft,
+): Promise<DispatchPerformanceException> {
+  return request<DispatchPerformanceException>(`/configs/${configId}/exceptions`, {
+    method: 'POST',
+    body: JSON.stringify(draft),
+  })
+}
+
+export async function fetchDispatchPerformanceExceptions(
+  configId: string,
+  query: {
+    startDate: string
+    endDate: string
+    supplierKey?: string
+    routeCode?: string
+    courierCode?: string
+  },
+  signal?: AbortSignal,
+): Promise<DispatchPerformanceException[]> {
+  const params = new URLSearchParams({ startDate: query.startDate, endDate: query.endDate })
+  if (query.supplierKey) params.set('supplierKey', query.supplierKey)
+  if (query.routeCode) params.set('routeCode', query.routeCode)
+  if (query.courierCode) params.set('courierCode', query.courierCode)
+  const json = await request<{ exceptions: DispatchPerformanceException[] }>(
+    `/configs/${configId}/exceptions?${params}`,
+    { method: 'GET', signal },
+  )
+  return json.exceptions
+}
+
+export async function deleteDispatchPerformanceException(
+  configId: string,
+  exceptionId: string,
+): Promise<void> {
+  await request<{ ok: boolean }>(`/configs/${configId}/exceptions/${exceptionId}`, {
+    method: 'DELETE',
   })
 }

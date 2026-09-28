@@ -968,6 +968,17 @@ export const dispatchPerformanceDailyStats = pgTable(
     lateSignedWaybillNos: jsonb('late_signed_waybill_nos').notNull().default([]),
     problemWaybillNos: jsonb('problem_waybill_nos').notNull().default([]),
     before11UnmetWaybillNos: jsonb('before11_unmet_waybill_nos').notNull().default([]),
+    /** neverSignedWaybillNos 的子集：其中命中「优先客户配置」的运单号，供异常报备剔除优先件分母时判断归属 */
+    priorityNeverSignedWaybillNos: jsonb('priority_never_signed_waybill_nos').notNull().default([]),
+    /**
+     * 次日派签未达标的运单号（含从未签收 + 迟签收两类，只看 nextDaySignMet 是否为 false）。
+     * 24H 派签率用 neverSignedWaybillNos ∪ lateSignedWaybillNos 判断异常报备是否生效即可，
+     * 但次日派签率的截止时间不同（出仓日 23:59:59，不是 24H 滚动窗口），两个口径下同一运单号
+     * 「达标与否」可能不一致，必须单独存一份，否则异常报备剔除次日派签率分母时会算错。
+     */
+    nextDayUnmetWaybillNos: jsonb('next_day_unmet_waybill_nos').notNull().default([]),
+    /** nextDayUnmetWaybillNos 的子集：其中命中「优先客户配置」的运单号 */
+    priorityNextDayUnmetWaybillNos: jsonb('priority_next_day_unmet_waybill_nos').notNull().default([]),
 
     computedAt: timestamp('computed_at', { withTimezone: true }).notNull().defaultNow(),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
@@ -1077,6 +1088,50 @@ export const dispatchPerformanceSettledBatches = pgTable(
 export type DispatchPerformanceDailyStat = typeof dispatchPerformanceDailyStats.$inferSelect
 export type NewDispatchPerformanceDailyStat = typeof dispatchPerformanceDailyStats.$inferInsert
 export type DispatchPerformanceSettledBatch = typeof dispatchPerformanceSettledBatches.$inferSelect
+
+/**
+ * 派签异常报备：司机遇到事故/车坏等不可抗力，这批运单号在这天这个供应商×路由码×司机
+ * 下确实送不了，报备后从派送类指标（24H 派签率/次日派签率/优先件次日完成率）的分子分母剔除，
+ * 不影响出仓率。
+ *
+ * 用自然键 (stationCode, arrivalDate, supplierKey, routeCode, courierCode) 关联到
+ * dispatch_performance_daily_stats 的格子，不做外键——那张表每次结算都是先删后插整表覆盖
+ * （见 saveDispatchPerformanceCells 注释），外键会在重新结算后失联。
+ *
+ * 报备时刻通常早于结算（事故当天就要报，派签要 D+2 才结算），所以这张表本身不做
+ * 「运单号是否真的未签收」的校验——落库时格子可能还不存在。是否真的生效，
+ * 由查询汇总时把 waybillNos 与该格子当前的 neverSignedWaybillNos 求交集决定
+ * （见 repository.ts buildDispatchPerformanceTree），交集会随结算/后续数据修正自动变化。
+ */
+export const dispatchPerformanceExceptions = pgTable(
+  'dispatch_performance_exceptions',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    stationCode: varchar('station_code', { length: 64 }).notNull(),
+    arrivalDate: varchar('arrival_date', { length: 10 }).notNull(),
+    supplierKey: varchar('supplier_key', { length: 512 }).notNull(),
+    routeCode: varchar('route_code', { length: 128 }).notNull().default(''),
+    courierCode: varchar('courier_code', { length: 64 }).notNull().default(''),
+    waybillNos: jsonb('waybill_nos').notNull().default([]),
+    reason: varchar('reason', { length: 1000 }).notNull().default(''),
+    reportedBy: uuid('reported_by').references(() => users.id, { onDelete: 'set null' }),
+    /** 报备那一刻的操作人展示名快照，避免列表查询再关联 users 表 */
+    reportedByName: varchar('reported_by_name', { length: 255 }).notNull().default(''),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    index('dispatch_performance_exceptions_cell_idx').on(
+      table.stationCode,
+      table.arrivalDate,
+      table.supplierKey,
+      table.routeCode,
+      table.courierCode,
+    ),
+  ],
+)
+
+export type DispatchPerformanceException = typeof dispatchPerformanceExceptions.$inferSelect
+export type NewDispatchPerformanceException = typeof dispatchPerformanceExceptions.$inferInsert
 
 /** 优先客户配置：系统管理下人工维护的优先客户名单 */
 export const priorityClients = pgTable(

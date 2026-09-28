@@ -1,6 +1,9 @@
 import { Router, type Request, type Response } from 'express'
 import type { AuthenticatedRequest } from '../auth/middleware'
 import {
+  createDispatchPerformanceException,
+  deleteDispatchPerformanceException,
+  listDispatchPerformanceExceptions,
   listDispatchPerformanceSuppliers,
   listSettledArrivalDates,
   queryDispatchPerformance,
@@ -70,6 +73,16 @@ function parseSupplierKeys(raw: unknown): string[] | undefined {
   return undefined
 }
 
+/** 报备的运单号：数组或按行/逗号分隔的文本都接受，去重、去空白 */
+function parseWaybillNos(raw: unknown): string[] {
+  const list = Array.isArray(raw)
+    ? raw.map(String)
+    : typeof raw === 'string'
+      ? raw.split(/[\n,]/)
+      : []
+  return [...new Set(list.map((s) => s.trim()).filter(Boolean))]
+}
+
 /**
  * 未传该字段（key 缺失）= 不改；显式传 null = 清空覆盖、改回沿用全局默认；
  * 非法数字报错，避免存进一个 0 或负数把这个站点的统计整体锁死（isNoSortingBatch 恒为 false/true）。
@@ -94,6 +107,11 @@ function requestRegionCode(req: Request): string {
 
 function requestUserId(req: Request): string | null {
   return (req as AuthenticatedRequest).authUser?.id ?? null
+}
+
+function requestUserName(req: Request): string {
+  const user = (req as AuthenticatedRequest).authUser
+  return user?.displayName?.trim() || user?.username?.trim() || ''
 }
 
 /**
@@ -355,5 +373,97 @@ dispatchPerformanceRouter.post('/configs/:id/settle-now', async (req: Request, r
   } catch (err) {
     console.error('[dispatch-performance] 立刻统计入队失败:', err)
     return res.status(500).json({ error: (err as Error).message || '入队失败' })
+  }
+})
+
+// ── 派签异常报备：司机事故/车坏等不可抗力，按件剔除派送类指标 ──────────────────────
+
+/**
+ * 新增报备：不校验运单号是否真的「未签收」——报备时刻通常早于结算（事故当天就要报，
+ * 派签要 D+2 才结算），此时格子可能还没落库。是否生效交给查询侧的交集逻辑。
+ */
+dispatchPerformanceRouter.post('/configs/:id/exceptions', async (req: Request, res: Response) => {
+  const body = (req.body ?? {}) as Record<string, unknown>
+  const arrivalDate = parseDateKey(body.arrivalDate)
+  if (!arrivalDate) return res.status(400).json({ error: '日期格式应为 YYYY-MM-DD' })
+  const supplierKey = String(body.supplierKey ?? '').trim()
+  if (!supplierKey) return res.status(400).json({ error: '请选择供应商' })
+  const routeCode = String(body.routeCode ?? '').trim()
+  if (!routeCode) return res.status(400).json({ error: '请填写路由码' })
+  const courierCode = String(body.courierCode ?? '').trim()
+  if (!courierCode) return res.status(400).json({ error: '请填写司机' })
+  const waybillNos = parseWaybillNos(body.waybillNos)
+  if (waybillNos.length === 0) return res.status(400).json({ error: '请至少填写一个运单号' })
+  const reason = String(body.reason ?? '').trim()
+  if (!reason) return res.status(400).json({ error: '请填写报备原因' })
+
+  try {
+    const config = await findDispatchPerformanceConfig(String(req.params.id ?? '').trim())
+    if (!config) return res.status(404).json({ error: '配置不存在' })
+    if (!canAccessDispatchPerformanceConfig(config.regionCode, requestRegionCode(req))) {
+      return sendCrossRegionDenied(res, '编辑')
+    }
+    const row = await createDispatchPerformanceException({
+      stationCode: config.stationCode,
+      arrivalDate,
+      supplierKey,
+      routeCode,
+      courierCode,
+      waybillNos,
+      reason,
+      reportedBy: requestUserId(req),
+      reportedByName: requestUserName(req),
+    })
+    return res.status(201).json(row)
+  } catch (err) {
+    console.error('[dispatch-performance] 新增异常报备失败:', err)
+    return res.status(500).json({ error: '新增失败' })
+  }
+})
+
+/** 列出报备记录：默认按当前详情页选中的日期区间，可选按供应商/路由码/司机再窄一层 */
+dispatchPerformanceRouter.get('/configs/:id/exceptions', async (req: Request, res: Response) => {
+  const range = parseRange(req.query as Record<string, unknown>)
+  if ('error' in range) return res.status(400).json({ error: range.error })
+
+  try {
+    const config = await findDispatchPerformanceConfig(String(req.params.id ?? '').trim())
+    if (!config) return res.status(404).json({ error: '配置不存在' })
+    if (!canAccessDispatchPerformanceConfig(config.regionCode, requestRegionCode(req))) {
+      return sendCrossRegionDenied(res, '查看')
+    }
+    const supplierKey = typeof req.query.supplierKey === 'string' ? req.query.supplierKey.trim() : undefined
+    const routeCode = typeof req.query.routeCode === 'string' ? req.query.routeCode.trim() : undefined
+    const courierCode = typeof req.query.courierCode === 'string' ? req.query.courierCode.trim() : undefined
+    const exceptions = await listDispatchPerformanceExceptions({
+      stationCode: config.stationCode,
+      ...range,
+      supplierKey: supplierKey || undefined,
+      routeCode: routeCode || undefined,
+      courierCode: courierCode || undefined,
+    })
+    return res.json({ exceptions })
+  } catch (err) {
+    console.error('[dispatch-performance] 异常报备查询失败:', err)
+    return res.status(500).json({ error: '查询失败' })
+  }
+})
+
+dispatchPerformanceRouter.delete('/configs/:id/exceptions/:exceptionId', async (req: Request, res: Response) => {
+  try {
+    const config = await findDispatchPerformanceConfig(String(req.params.id ?? '').trim())
+    if (!config) return res.status(404).json({ error: '配置不存在' })
+    if (!canAccessDispatchPerformanceConfig(config.regionCode, requestRegionCode(req))) {
+      return sendCrossRegionDenied(res, '删除')
+    }
+    const ok = await deleteDispatchPerformanceException(
+      String(req.params.exceptionId ?? '').trim(),
+      config.stationCode,
+    )
+    if (!ok) return res.status(404).json({ error: '报备记录不存在' })
+    return res.json({ ok: true })
+  } catch (err) {
+    console.error('[dispatch-performance] 撤回异常报备失败:', err)
+    return res.status(500).json({ error: '撤回失败' })
   }
 })

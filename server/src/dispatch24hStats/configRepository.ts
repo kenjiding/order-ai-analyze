@@ -285,6 +285,10 @@ async function loadLatestSnapshots(
         courierProfit: row.courierProfit,
         pricedSignedCount: row.pricedSignedCount,
         unpricedSignedCount: row.unpricedSignedCount,
+        // 列表页只是站点概览小卡片，不按异常报备做剔除（那是详情页的口径），恒为 0
+        excludedSignCount: 0,
+        excludedNextDaySignCount: 0,
+        excludedPriorityNextDaySignCount: 0,
         dispatchSettled: row.dispatchSettled,
       }),
     })

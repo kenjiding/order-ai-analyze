@@ -31,6 +31,16 @@ export type DispatchMetrics = {
   /** 出仓率 - 派签率 */
   rateGap: number | null
   /**
+   * 异常报备剔除数：从 signRate 分母里扣掉了多少单（不影响 before11Rate）。见 DispatchPerformanceException。
+   * nextDaySignRate / priorityNextDaySignRate 各自有独立的剔除数（excludedNextDayCount /
+   * excludedPriorityCount），三者判定口径不同（24H 滚动窗口 vs 次日固定截止），不能共用同一个数。
+   */
+  excludedCount: number
+  /** 从 nextDaySignRate 分母里扣掉了多少单，跟 excludedCount 可能不一样 */
+  excludedNextDayCount: number
+  /** 从 priorityNextDaySignRate 分母里扣掉了多少单 */
+  excludedPriorityCount: number
+  /**
    * 派签是否已结算。两个指标结算时机差一天：出仓在到件日 D+1、派签在 D+2，
    * 所以最新一天只有出仓率，派签率要等次日的定时任务补上。
    */
@@ -107,6 +117,39 @@ export type DispatchPerformanceSupplierOption = {
   supplierKey: string
   supplierName: string
   vendorCode: string
+}
+
+/**
+ * 派签异常报备：司机事故/车坏等不可抗力，某天某供应商×路由码×司机下这些运单号确实送不了。
+ * 报备时刻通常早于结算，effectiveCount 可能小于 reportedCount（还没结算/结算后有的单其实已签收）。
+ */
+export type DispatchPerformanceException = {
+  id: string
+  stationCode: string
+  arrivalDate: string
+  supplierKey: string
+  routeCode: string
+  courierCode: string
+  waybillNos: string[]
+  reason: string
+  reportedBy: string | null
+  reportedByName: string
+  createdAt: string
+  /** 报备的运单号数 */
+  reportedCount: number
+  /** 与该格子当前的未签收运单号求交集后，真正生效的剔除数 */
+  effectiveCount: number
+  /** 该格子的派签是否已结算；未结算时 effectiveCount 恒为 0，代表「等结算后生效」而非「无效」 */
+  settled: boolean
+}
+
+export type DispatchPerformanceExceptionDraft = {
+  arrivalDate: string
+  supplierKey: string
+  routeCode: string
+  courierCode: string
+  waybillNos: string[]
+  reason: string
 }
 
 /** 某到件日两趟结算各自跑过没，供详情页展示结算进度 */

@@ -4,7 +4,7 @@
  * 表里只有最细粒度格子，供应商层/路由码层在这里 SUM 出来——所有百分比都由四象限导出，
  * 不在库里冗余存 rate，避免「存的率」和「重算的率」哪天对不上。
  */
-import { and, eq, gte, inArray, lte, sql } from 'drizzle-orm'
+import { and, desc, eq, gte, inArray, lte, sql } from 'drizzle-orm'
 import { getDb, schema } from '../db'
 import type { DispatchPerformanceCell } from './aggregateCells'
 import type { DispatchProfitDailyRow } from '../../../shared/dispatchPerformance/profitTrendAggregate'
@@ -42,6 +42,19 @@ export type DispatchPerformanceMetrics = {
   signRate: number | null
   /** 出仓率 - 派签率，两个指标的落差；任一为 null 时为 null */
   rateGap: number | null
+  /**
+   * 异常报备剔除数：从 signRate 的分母里扣掉了多少单（不影响 before11Rate/sameDayExitRate）。
+   * 判定依据是「24H 口径未达标」= neverSignedWaybillNos ∪ lateSignedWaybillNos。见 DispatchPerformanceException。
+   */
+  excludedCount: number
+  /**
+   * 从 nextDaySignRate 分母里扣掉了多少单。**跟 excludedCount 不是同一个数**——次日截止时间
+   * （出仓日 23:59:59）跟 24H 滚动窗口不是同一个口径，同一运单号两边达标与否可能不一致，
+   * 判定依据是单独存的 nextDayUnmetWaybillNos，不能直接复用 excludedCount。
+   */
+  excludedNextDayCount: number
+  /** 从 priorityNextDaySignRate 分母里扣掉了多少单，判定依据是 priorityNextDayUnmetWaybillNos */
+  excludedPriorityCount: number
   /**
    * 该聚合范围内派签是否已全部结算。
    * 跨天查询时若混了「已结算」和「结算中」的到件日，取 false —— 宁可显示结算中，
@@ -159,9 +172,20 @@ type Acc = {
   pricedSignedCount: number
   /** 签收但没匹配到区域价格的件数：一分钱没算进去，页面要标出来 */
   unpricedSignedCount: number
+  /**
+   * 异常报备剔除数，见 DispatchPerformanceMetrics 同名字段。三个口径各自独立：
+   * excludedSignCount 对应 24H 派签率（判定用 neverSignedWaybillNos ∪ lateSignedWaybillNos），
+   * excludedNextDaySignCount 对应次日派签率（判定用 nextDayUnmetWaybillNos，口径不同不能共用）,
+   * excludedPriorityNextDaySignCount 对应优先件次日完成率。
+   */
+  excludedSignCount: number
+  excludedNextDaySignCount: number
+  excludedPriorityNextDaySignCount: number
   /** 累加范围内是否每一行的派签都已结算；只要混进一行未结算就为 false */
   dispatchSettled: boolean
 }
+
+type ExcludedAccKey = 'excludedSignCount' | 'excludedNextDaySignCount' | 'excludedPriorityNextDaySignCount'
 
 function newAcc(): Acc {
   return {
@@ -185,11 +209,26 @@ function newAcc(): Acc {
     courierProfit: 0,
     pricedSignedCount: 0,
     unpricedSignedCount: 0,
+    excludedSignCount: 0,
+    excludedNextDaySignCount: 0,
+    excludedPriorityNextDaySignCount: 0,
     dispatchSettled: true,
   }
 }
 
-function addToAcc(acc: Acc, row: Omit<Acc, 'dispatchSettled'> & { dispatchSettled: boolean }): void {
+/**
+ * 三个 excluded* 字段在 row 上是可选的：纯函数单测（performanceTree.test.ts）构造的格子
+ * 不关心异常报备这个维度，只有 queryDispatchPerformance 按自然键关联报备记录后才会填上。
+ */
+function addToAcc(
+  acc: Acc,
+  row: Omit<Acc, 'dispatchSettled' | ExcludedAccKey> & {
+    dispatchSettled: boolean
+    excludedSignCount?: number
+    excludedNextDaySignCount?: number
+    excludedPriorityNextDaySignCount?: number
+  },
+): void {
   acc.total += row.total
   acc.before11Met += row.before11Met
   acc.exitMetSignMet += row.exitMetSignMet
@@ -210,6 +249,9 @@ function addToAcc(acc: Acc, row: Omit<Acc, 'dispatchSettled'> & { dispatchSettle
   acc.courierProfit += row.courierProfit
   acc.pricedSignedCount += row.pricedSignedCount
   acc.unpricedSignedCount += row.unpricedSignedCount
+  acc.excludedSignCount += row.excludedSignCount ?? 0
+  acc.excludedNextDaySignCount += row.excludedNextDaySignCount ?? 0
+  acc.excludedPriorityNextDaySignCount += row.excludedPriorityNextDaySignCount ?? 0
   acc.dispatchSettled &&= row.dispatchSettled
 }
 
@@ -225,7 +267,16 @@ function money(value: number): number {
 export function toMetrics(acc: Acc): DispatchPerformanceMetrics {
   const signMet = acc.exitMetSignMet + acc.exitUnmetSignMet
   const before11Rate = rate(acc.before11Met, acc.total)
-  const signRate = acc.dispatchSettled ? rate(signMet, acc.total) : null
+  /**
+   * 派送类指标（signRate/nextDaySignRate/priorityNextDaySignRate）用扣掉异常报备剔除数的分母，
+   * 出仓率继续用原始 total——剔除的是「司机侧确实送不了」，不改变货是否已经出仓这件事。
+   * 见 DispatchPerformanceException。三个分母各自独立扣减，不能共用同一个剔除数：
+   * 24H 窗口和次日窗口（出仓日 23:59:59）截止时间不同，同一运单号两边达标与否可能不一致。
+   */
+  const signTotal = Math.max(0, acc.total - acc.excludedSignCount)
+  const signRate = acc.dispatchSettled ? rate(signMet, signTotal) : null
+  const nextDaySignTotal = Math.max(0, acc.total - acc.excludedNextDaySignCount)
+  const prioritySignTotal = Math.max(0, acc.priorityTotal - acc.excludedPriorityNextDaySignCount)
   return {
     total: acc.total,
     before11Met: acc.before11Met,
@@ -236,15 +287,18 @@ export function toMetrics(acc: Acc): DispatchPerformanceMetrics {
       before11Rate == null || signRate == null
         ? null
         : Math.round((before11Rate - signRate) * 100) / 100,
+    excludedCount: acc.excludedSignCount,
+    excludedNextDayCount: acc.excludedNextDaySignCount,
+    excludedPriorityCount: acc.excludedPriorityNextDaySignCount,
     dispatchSettled: acc.dispatchSettled,
     sameDayExitMet: acc.sameDayExitMet,
     sameDayExitRate: rate(acc.sameDayExitMet, acc.total),
     nextDaySignMet: acc.nextDaySignMet,
-    nextDaySignRate: acc.dispatchSettled ? rate(acc.nextDaySignMet, acc.total) : null,
+    nextDaySignRate: acc.dispatchSettled ? rate(acc.nextDaySignMet, nextDaySignTotal) : null,
     priorityTotal: acc.priorityTotal,
     priorityNextDaySignMet: acc.priorityNextDaySignMet,
     priorityNextDaySignRate: acc.dispatchSettled
-      ? rate(acc.priorityNextDaySignMet, acc.priorityTotal)
+      ? rate(acc.priorityNextDaySignMet, prioritySignTotal)
       : null,
     exitMetNextDaySignMet: acc.exitMetNextDaySignMet,
     priorityBefore11Met: acc.priorityBefore11Met,
@@ -354,6 +408,9 @@ export async function saveDispatchPerformanceCells(input: SaveCellsInput): Promi
       lateSignedWaybillNos: cell.lateSignedWaybillNos,
       problemWaybillNos: cell.problemWaybillNos,
       before11UnmetWaybillNos: cell.before11UnmetWaybillNos,
+      priorityNeverSignedWaybillNos: cell.priorityNeverSignedWaybillNos,
+      nextDayUnmetWaybillNos: cell.nextDayUnmetWaybillNos,
+      priorityNextDayUnmetWaybillNos: cell.priorityNextDayUnmetWaybillNos,
       computedAt: now,
       createdAt: now,
       updatedAt: now,
@@ -455,7 +512,7 @@ function pushCapped(target: string[], value: unknown): void {
  * 累加所需的最小行形状：来自日度表，但只声明真正用到的列，
  * 好让 buildDispatchPerformanceTree 能脱离数据库单测。
  */
-export type DispatchPerformanceStatRow = Omit<Acc, 'dispatchSettled'> & {
+export type DispatchPerformanceStatRow = Omit<Acc, 'dispatchSettled' | ExcludedAccKey> & {
   arrivalDate: string
   supplierKey: string
   supplierName: string
@@ -465,6 +522,10 @@ export type DispatchPerformanceStatRow = Omit<Acc, 'dispatchSettled'> & {
   courierName: string
   isWhitelist: boolean
   dispatchSettled: boolean
+  /** 只有 queryDispatchPerformance 按自然键关联异常报备后才会填；纯函数单测不用管 */
+  excludedSignCount?: number
+  excludedNextDaySignCount?: number
+  excludedPriorityNextDaySignCount?: number
   neverSignedWaybillNos: unknown
   lateSignedWaybillNos: unknown
   problemWaybillNos: unknown
@@ -607,6 +668,65 @@ export function buildDispatchPerformanceTree(
   }
 }
 
+const CELL_KEY_SEP_EXC = '\t'
+
+/** 自然键：(到件日, 供应商, 路由码, 司机)，用于把异常报备关联到日度表的格子，不走外键 */
+function naturalCellKey(arrivalDate: string, supplierKey: string, routeCode: string, courierCode: string): string {
+  return [arrivalDate, supplierKey, routeCode, courierCode].join(CELL_KEY_SEP_EXC)
+}
+
+/** reportedSet 里有多少个号出现在 actualArr（该格子当前的未达标运单号数组）里 */
+function countInSet(reportedSet: Set<string>, actualArr: unknown): number {
+  let n = 0
+  for (const no of asStrings(actualArr)) if (reportedSet.has(no)) n++
+  return n
+}
+
+/**
+ * 同 countInSet，但「未达标」判定要看多个数组的并集——24H 口径下 neverSignedWaybillNos 和
+ * lateSignedWaybillNos 都算未达标（都保证 signMet=false），报备的号命中任意一个都该生效。
+ */
+function countInAnySet(reportedSet: Set<string>, ...actualArrs: unknown[]): number {
+  const union = new Set<string>()
+  for (const arr of actualArrs) for (const no of asStrings(arr)) union.add(no)
+  let n = 0
+  for (const no of reportedSet) if (union.has(no)) n++
+  return n
+}
+
+/**
+ * 按自然键把区间内的异常报备运单号合并起来，供 queryDispatchPerformance 在累加前
+ * 与每个格子的 neverSignedWaybillNos 求交集。同一格子可能有多条报备（多次事故），取并集。
+ */
+async function fetchExceptionWaybillsByCell(params: {
+  stationCode: string
+  startDate: string
+  endDate: string
+  supplierKeys?: string[]
+}): Promise<Map<string, Set<string>>> {
+  const db = getDb()
+  const e = schema.dispatchPerformanceExceptions
+  const conditions = [
+    eq(e.stationCode, params.stationCode),
+    gte(e.arrivalDate, params.startDate),
+    lte(e.arrivalDate, params.endDate),
+  ]
+  if (params.supplierKeys?.length) conditions.push(inArray(e.supplierKey, params.supplierKeys))
+  const rows = await db.select().from(e).where(and(...conditions))
+
+  const byCell = new Map<string, Set<string>>()
+  for (const row of rows) {
+    const key = naturalCellKey(row.arrivalDate, row.supplierKey, row.routeCode, row.courierCode)
+    let set = byCell.get(key)
+    if (!set) {
+      set = new Set()
+      byCell.set(key, set)
+    }
+    for (const no of asStrings(row.waybillNos)) set.add(no)
+  }
+  return byCell
+}
+
 /**
  * 查询区间内的三层结果。区间跨多天时同一 (supplier, route, courier) 会有多行，按维度累加。
  */
@@ -629,10 +749,29 @@ export async function queryDispatchPerformance(params: {
   ]
   if (supplierKeys?.length) conditions.push(inArray(t.supplierKey, supplierKeys))
 
-  const rows = await db
-    .select()
-    .from(t)
-    .where(and(...conditions))
+  const [rows, exceptionsByCell] = await Promise.all([
+    db.select().from(t).where(and(...conditions)),
+    fetchExceptionWaybillsByCell({ stationCode, startDate, endDate, supplierKeys }),
+  ])
+
+  // 报备只在这里生效一次：与该格子当前的 neverSignedWaybillNos 求交集，不信任报备时刻的快照——
+  // 报备早于结算时交集为空（剔除数为 0），结算跑完后下次查询自动生效；数据被纠正也会自动跟着变。
+  const enrichedRows = exceptionsByCell.size
+    ? rows.map((row) => {
+        const reported = exceptionsByCell.get(
+          naturalCellKey(row.arrivalDate, row.supplierKey, row.routeCode, row.courierCode),
+        )
+        if (!reported || reported.size === 0) return row
+        return {
+          ...row,
+          // 24H 派签率：从未签收 + 迟签收都算未达标，两个数组求并集再比对
+          excludedSignCount: countInAnySet(reported, row.neverSignedWaybillNos, row.lateSignedWaybillNos),
+          // 次日派签率的截止时间不同，必须认专门存的 nextDayUnmetWaybillNos，不能复用上面那个并集
+          excludedNextDaySignCount: countInSet(reported, row.nextDayUnmetWaybillNos),
+          excludedPriorityNextDaySignCount: countInSet(reported, row.priorityNextDayUnmetWaybillNos),
+        }
+      })
+    : rows
 
   return {
     stationCode,
@@ -642,7 +781,7 @@ export async function queryDispatchPerformance(params: {
     arrivalDates: [
       ...new Set(rows.filter((r) => includeWhitelist || !r.isWhitelist).map((r) => r.arrivalDate)),
     ].sort(),
-    ...buildDispatchPerformanceTree(rows, includeWhitelist),
+    ...buildDispatchPerformanceTree(enrichedRows, includeWhitelist),
   }
 }
 
@@ -750,4 +889,120 @@ export async function purgeOldDispatchPerformanceStats(
     .delete(schema.dispatchPerformanceSettledBatches)
     .where(sql`${schema.dispatchPerformanceSettledBatches.arrivalDate} < ${cutoff}`)
   return deleted.length
+}
+
+// ── 派签异常报备：司机不可抗力事件的按件剔除，见 schema.ts dispatchPerformanceExceptions ──────
+
+export type DispatchPerformanceExceptionInput = {
+  stationCode: string
+  arrivalDate: string
+  supplierKey: string
+  routeCode: string
+  courierCode: string
+  waybillNos: string[]
+  reason: string
+  reportedBy: string | null
+  reportedByName: string
+}
+
+/**
+ * 创建报备：不校验运单号是否已经是「未签收」——报备时刻通常早于结算（事故当天就要报，
+ * 派签要 D+2 才结算），此时格子可能压根还没落库。是否真的生效交给查询时的交集逻辑
+ * （见 queryDispatchPerformance），结算跑完后自动生效，不需要再操作一次。
+ */
+export async function createDispatchPerformanceException(input: DispatchPerformanceExceptionInput) {
+  const db = getDb()
+  const [row] = await db
+    .insert(schema.dispatchPerformanceExceptions)
+    .values({
+      stationCode: input.stationCode,
+      arrivalDate: input.arrivalDate,
+      supplierKey: input.supplierKey,
+      routeCode: input.routeCode,
+      courierCode: input.courierCode,
+      waybillNos: input.waybillNos,
+      reason: input.reason,
+      reportedBy: input.reportedBy,
+      reportedByName: input.reportedByName,
+    })
+    .returning()
+  return row
+}
+
+export type DispatchPerformanceExceptionView = typeof schema.dispatchPerformanceExceptions.$inferSelect & {
+  /** 报备的运单号数 */
+  reportedCount: number
+  /** 与该格子当前 neverSignedWaybillNos 求交集后，真正生效的剔除数；可能小于 reportedCount */
+  effectiveCount: number
+  /** 该格子的派签是否已结算；未结算时 effectiveCount 恒为 0，前端要提示「等结算后生效」而非「无效」 */
+  settled: boolean
+}
+
+/**
+ * 列出区间内的报备记录，并算出每条记录「当前实际生效多少件」——不能只回报备时提交了多少件，
+ * 那对不上 queryDispatchPerformance 实际剔除的数字，用户会怀疑报了没用。
+ */
+export async function listDispatchPerformanceExceptions(params: {
+  stationCode: string
+  startDate: string
+  endDate: string
+  supplierKey?: string
+  routeCode?: string
+  courierCode?: string
+}): Promise<DispatchPerformanceExceptionView[]> {
+  const db = getDb()
+  const e = schema.dispatchPerformanceExceptions
+  const conditions = [
+    eq(e.stationCode, params.stationCode),
+    gte(e.arrivalDate, params.startDate),
+    lte(e.arrivalDate, params.endDate),
+  ]
+  if (params.supplierKey) conditions.push(eq(e.supplierKey, params.supplierKey))
+  if (params.routeCode != null) conditions.push(eq(e.routeCode, params.routeCode))
+  if (params.courierCode != null) conditions.push(eq(e.courierCode, params.courierCode))
+
+  const exceptions = await db.select().from(e).where(and(...conditions)).orderBy(desc(e.createdAt))
+  if (exceptions.length === 0) return []
+
+  const dates = [...new Set(exceptions.map((x) => x.arrivalDate))]
+  const t = schema.dispatchPerformanceDailyStats
+  const statRows = await db
+    .select()
+    .from(t)
+    .where(and(eq(t.stationCode, params.stationCode), inArray(t.arrivalDate, dates)))
+  const statByCell = new Map<string, (typeof statRows)[number]>()
+  for (const row of statRows) {
+    statByCell.set(naturalCellKey(row.arrivalDate, row.supplierKey, row.routeCode, row.courierCode), row)
+  }
+
+  return exceptions.map((x) => {
+    const stat = statByCell.get(naturalCellKey(x.arrivalDate, x.supplierKey, x.routeCode, x.courierCode))
+    const reportedNos = asStrings(x.waybillNos)
+    // 面板里只展示一个「当前生效」数，认 24H 口径（从未签收 + 迟签收）这个最常用的口径；
+    // 次日/优先件口径各自的生效数可能略有差异，详细拆分交给三层汇总表格里的率变化去体现
+    const effectiveCount = stat
+      ? countInAnySet(new Set(reportedNos), stat.neverSignedWaybillNos, stat.lateSignedWaybillNos)
+      : 0
+    return {
+      ...x,
+      reportedCount: reportedNos.length,
+      effectiveCount,
+      settled: stat?.dispatchSettled ?? false,
+    }
+  })
+}
+
+/**
+ * 必须带 stationCode 一起校验，不能只按 id 删——否则任何能访问某一条配置的用户，
+ * 拿到别的站点的 exceptionId 就能越权删掉它。id 存在但 stationCode 对不上时，
+ * 跟「id 根本不存在」一样返回 false，不额外暴露「这个 id 其实存在，只是不是你的」。
+ */
+export async function deleteDispatchPerformanceException(id: string, stationCode: string): Promise<boolean> {
+  const db = getDb()
+  const e = schema.dispatchPerformanceExceptions
+  const deleted = await db
+    .delete(e)
+    .where(and(eq(e.id, id), eq(e.stationCode, stationCode)))
+    .returning({ id: e.id })
+  return deleted.length > 0
 }

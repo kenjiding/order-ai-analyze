@@ -1,9 +1,11 @@
+import { useState } from 'react'
 import { Alert, Button, DatePicker, Popconfirm, Segmented, Select, Tag, Tooltip } from 'antd'
-import { ArrowLeft, Download, RefreshCw, Zap } from 'lucide-react'
+import { AlertTriangle, ArrowLeft, Download, RefreshCw, Zap } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { useNavigate, useParams } from 'react-router-dom'
 import type { Dayjs } from 'dayjs'
 import { AttributionWaterfall } from './components/AttributionWaterfall'
+import { DispatchExceptionPanel } from './components/DispatchExceptionPanel'
 import { ProfitStabilityPanel } from './components/ProfitStabilityPanel'
 import { PerformanceBreakdownTable } from './components/PerformanceBreakdownTable'
 import { UnmetParetoChart } from './components/UnmetParetoChart'
@@ -153,6 +155,18 @@ export default function DispatchPerformanceDetailPage() {
 
   const config = v.result?.config
 
+  const [exceptionPanelOpen, setExceptionPanelOpen] = useState(false)
+  const [exceptionFilter, setExceptionFilter] = useState<
+    { supplierKey?: string; routeCode?: string; courierCode?: string } | undefined
+  >(undefined)
+
+  const openExceptionPanel = (
+    filter?: { supplierKey?: string; routeCode?: string; courierCode?: string },
+  ) => {
+    setExceptionFilter(filter)
+    setExceptionPanelOpen(true)
+  }
+
   return (
     <div className="admin-page space-y-5">
       <div className="admin-panel overflow-hidden">
@@ -225,6 +239,14 @@ export default function DispatchPerformanceDetailPage() {
             >
               {t('detail.exportButton', { ns: 'dispatchPerformance' })}
             </Button>
+            <Button
+              danger
+              icon={<AlertTriangle className="h-4 w-4" />}
+              disabled={!config}
+              onClick={() => openExceptionPanel()}
+            >
+              {t('exception.toolbarButton', { ns: 'dispatchPerformance' })}
+            </Button>
           </div>
         </div>
 
@@ -287,7 +309,11 @@ export default function DispatchPerformanceDetailPage() {
           />
           <SupplierRankingBoard suppliers={v.result.suppliers} />
           <div className="admin-panel p-4">
-            <PerformanceBreakdownTable suppliers={v.result.suppliers} loading={v.loading} />
+            <PerformanceBreakdownTable
+              suppliers={v.result.suppliers}
+              loading={v.loading}
+              onViewExceptions={openExceptionPanel}
+            />
           </div>
           <UnmetParetoChart
             suppliers={v.result.suppliers}
@@ -337,6 +363,18 @@ export default function DispatchPerformanceDetailPage() {
             </div>
           </section>
         </>
+      ) : null}
+
+      {config ? (
+        <DispatchExceptionPanel
+          open={exceptionPanelOpen}
+          onClose={() => setExceptionPanelOpen(false)}
+          configId={config.id}
+          range={v.range}
+          supplierOptions={v.result?.supplierOptions ?? []}
+          initialFilter={exceptionFilter}
+          onChanged={() => void v.reload()}
+        />
       ) : null}
     </div>
   )

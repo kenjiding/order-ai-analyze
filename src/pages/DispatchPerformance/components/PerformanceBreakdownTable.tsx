@@ -9,6 +9,9 @@ import type {
   DispatchSupplierNode,
 } from '../dispatchPerformanceTypes'
 
+/** 查看异常报备回调的上下文：由表格逐层把 supplierKey / routeCode 带到司机行 */
+type ExceptionRowContext = { supplierKey: string; routeCode: string; courierCode: string }
+
 const BEFORE11_ALERT_PCT = 95
 const BEFORE11_TARGET_PCT = 99
 const SIGN_ALERT_PCT = 92
@@ -230,6 +233,49 @@ function metricColumns<T extends DispatchMetrics>(
   ]
 }
 
+/** 「已剔除 N 件」徽标：点开异常报备记录面板并预筛选到这一行 */
+/**
+ * 徽标本身只显示 24H 派签率的剔除数（count）——这是最常被关心的口径。
+ * 但次日派签率 / 优先件次日完成率各自有独立算出来的剔除数，三者截止时间不同，
+ * 同一批报备在三边生效的件数可能不一样（甚至某个口径是 0），必须在 tooltip 里
+ * 把三个数都摆出来，不能让用户以为徽标上这一个数字就是全部指标共用的。
+ */
+function ExcludedTag({
+  count,
+  nextDayCount,
+  priorityCount,
+  onClick,
+  t,
+}: {
+  count: number
+  nextDayCount: number
+  priorityCount: number
+  onClick: () => void
+  t: (key: string, options?: Record<string, unknown>) => string
+}) {
+  if (count <= 0) return null
+  return (
+    <Tooltip
+      title={t('exception.excludedBreakdownTooltip', {
+        signCount: count,
+        nextDayCount,
+        priorityCount,
+      })}
+    >
+      <Tag
+        color="orange"
+        className="m-0 mt-0.5 cursor-pointer text-xs"
+        onClick={(e) => {
+          e.stopPropagation()
+          onClick()
+        }}
+      >
+        {t('exception.excludedTag', { count })}
+      </Tag>
+    </Tooltip>
+  )
+}
+
 function WaybillList({
   label,
   nos,
@@ -312,10 +358,16 @@ function DriverDetail({
 
 function DriverTable({
   drivers,
+  supplierKey,
+  routeCode,
   t,
+  onViewExceptions,
 }: {
   drivers: DispatchDriverNode[]
+  supplierKey: string
+  routeCode: string
   t: (key: string, options?: Record<string, unknown>) => string
+  onViewExceptions: (ctx: ExceptionRowContext) => void
 }) {
   const columns: ColumnsType<DispatchDriverNode> = [
     {
@@ -329,6 +381,13 @@ function DriverTable({
               {name}
             </div>
             <div className="font-mono text-xs text-slate-400">{row.courierCode}</div>
+            <ExcludedTag
+              count={row.excludedCount}
+              nextDayCount={row.excludedNextDayCount}
+              priorityCount={row.excludedPriorityCount}
+              onClick={() => onViewExceptions({ supplierKey, routeCode, courierCode: row.courierCode })}
+              t={t}
+            />
           </div>
         ) : (
           <span className="text-slate-500">{t('breakdown.unassignedDriver')}</span>
@@ -358,10 +417,14 @@ function DriverTable({
 
 function RouteTable({
   routes,
+  supplierKey,
   t,
+  onViewExceptions,
 }: {
   routes: DispatchRouteNode[]
+  supplierKey: string
   t: (key: string, options?: Record<string, unknown>) => string
+  onViewExceptions: (ctx: ExceptionRowContext) => void
 }) {
   const columns: ColumnsType<DispatchRouteNode> = [
     {
@@ -379,6 +442,13 @@ function RouteTable({
               <WhitelistTag whitelistTotal={row.whitelistTotal} total={row.total} t={t} />
             </div>
           ) : null}
+          <ExcludedTag
+            count={row.excludedCount}
+            nextDayCount={row.excludedNextDayCount}
+            priorityCount={row.excludedPriorityCount}
+            onClick={() => onViewExceptions({ supplierKey, routeCode, courierCode: '' })}
+            t={t}
+          />
         </div>
       ),
     },
@@ -393,7 +463,15 @@ function RouteTable({
       dataSource={routes}
       pagination={false}
       expandable={{
-        expandedRowRender: (route) => <DriverTable drivers={route.drivers} t={t} />,
+        expandedRowRender: (route) => (
+          <DriverTable
+            drivers={route.drivers}
+            supplierKey={supplierKey}
+            routeCode={route.routeCode}
+            t={t}
+            onViewExceptions={onViewExceptions}
+          />
+        ),
         rowExpandable: (route) => route.drivers.length > 0,
       }}
     />
@@ -403,9 +481,11 @@ function RouteTable({
 export function PerformanceBreakdownTable({
   suppliers,
   loading,
+  onViewExceptions,
 }: {
   suppliers: DispatchSupplierNode[]
   loading: boolean
+  onViewExceptions: (ctx: ExceptionRowContext) => void
 }) {
   const { t } = useTranslation('dispatchPerformance')
 
@@ -442,7 +522,12 @@ export function PerformanceBreakdownTable({
         }}
         expandable={{
           expandedRowRender: (supplier) => (
-            <RouteTable routes={supplier.routes} t={(key, options) => t(key, options)} />
+            <RouteTable
+              routes={supplier.routes}
+              supplierKey={supplier.supplierKey}
+              t={(key, options) => t(key, options)}
+              onViewExceptions={onViewExceptions}
+            />
           ),
           rowExpandable: (supplier) => supplier.routes.length > 0,
         }}
