@@ -141,15 +141,20 @@ function profitColumns<T extends DispatchMetrics>(
 
 function metricColumns<T extends DispatchMetrics>(
   t: (key: string, options?: Record<string, unknown>) => string,
+  dayCount: number,
 ): ColumnsType<T> {
   const settlingLabel = t('breakdown.settling')
   return [
     {
       title: t('breakdown.totalWaybills'),
       dataIndex: 'total',
-      width: 90,
+      width: 110,
       align: 'right',
-      render: (total: number) => <span className="tabular-nums">{total}</span>,
+      render: (total: number) => (
+        <span className="tabular-nums">
+          {dayCount > 0 ? Math.round(total / dayCount) : total}/{total}
+        </span>
+      ),
     },
     {
       title: t('breakdown.before11HubExitRate'),
@@ -360,12 +365,14 @@ function DriverTable({
   drivers,
   supplierKey,
   routeCode,
+  dayCount,
   t,
   onViewExceptions,
 }: {
   drivers: DispatchDriverNode[]
   supplierKey: string
   routeCode: string
+  dayCount: number
   t: (key: string, options?: Record<string, unknown>) => string
   onViewExceptions: (ctx: ExceptionRowContext) => void
 }) {
@@ -394,7 +401,7 @@ function DriverTable({
         ),
     },
     ...profitColumns<DispatchDriverNode>(t, ['courier']),
-    ...metricColumns<DispatchDriverNode>(t),
+    ...metricColumns<DispatchDriverNode>(t, dayCount),
   ]
 
   return (
@@ -418,11 +425,13 @@ function DriverTable({
 function RouteTable({
   routes,
   supplierKey,
+  dayCount,
   t,
   onViewExceptions,
 }: {
   routes: DispatchRouteNode[]
   supplierKey: string
+  dayCount: number
   t: (key: string, options?: Record<string, unknown>) => string
   onViewExceptions: (ctx: ExceptionRowContext) => void
 }) {
@@ -453,7 +462,7 @@ function RouteTable({
       ),
     },
     ...profitColumns<DispatchRouteNode>(t, ['vendor', 'courier']),
-    ...metricColumns<DispatchRouteNode>(t),
+    ...metricColumns<DispatchRouteNode>(t, dayCount),
   ]
 
   return (
@@ -468,6 +477,7 @@ function RouteTable({
             drivers={route.drivers}
             supplierKey={supplierKey}
             routeCode={route.routeCode}
+            dayCount={dayCount}
             t={t}
             onViewExceptions={onViewExceptions}
           />
@@ -481,10 +491,13 @@ function RouteTable({
 export function PerformanceBreakdownTable({
   suppliers,
   loading,
+  dayCount,
   onViewExceptions,
 }: {
   suppliers: DispatchSupplierNode[]
   loading: boolean
+  /** 区间内有数据的到件日天数，用来把「总单量」拆成「平均/总」两个数 */
+  dayCount: number
   onViewExceptions: (ctx: ExceptionRowContext) => void
 }) {
   const { t } = useTranslation('dispatchPerformance')
@@ -502,9 +515,9 @@ export function PerformanceBreakdownTable({
         ),
       },
       ...profitColumns<DispatchSupplierNode>((key, options) => t(key, options), ['vendor']),
-      ...metricColumns<DispatchSupplierNode>((key, options) => t(key, options)),
+      ...metricColumns<DispatchSupplierNode>((key, options) => t(key, options), dayCount),
     ],
-    [t],
+    [t, dayCount],
   )
 
   return (
@@ -525,6 +538,7 @@ export function PerformanceBreakdownTable({
             <RouteTable
               routes={supplier.routes}
               supplierKey={supplier.supplierKey}
+              dayCount={dayCount}
               t={(key, options) => t(key, options)}
               onViewExceptions={onViewExceptions}
             />

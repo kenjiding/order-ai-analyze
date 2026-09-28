@@ -17,7 +17,7 @@
     "noDataYet": "No data yet",
     "before11HubExitRate": "Before 11am hub exit rate",
     "signRate24h": "24h dispatch rate",
-    "quadrantDistribution": "Achievement distribution",
+    "priorityNextDaySignRate": "Priority next-day completion rate",
     "settling": "Settling",
     "enabled": "Enabled",
     "actions": "Actions",
@@ -166,7 +166,7 @@
     "allMet": "No missed waybills in this range"
   },
   "breakdown": {
-    "totalWaybills": "Total waybills",
+    "totalWaybills": "Avg/Total waybills",
     "before11HubExitRate": "Before 11am hub exit rate",
     "signRate24h": "24h dispatch rate",
     "sameDayExitRate": "Same-day hub exit rate",
@@ -279,13 +279,6 @@
     "excludedTag": "Exception report {{count}}",
     "excludedBreakdownTooltip": "24H dispatch rate: {{signCount}} excluded / next-day dispatch rate: {{nextDayCount}} excluded / priority next-day completion: {{priorityCount}} excluded — each has its own deadline rule, so these counts are computed independently and can differ",
     "excludedTooltip": "{{reported}} reported / {{effective}} currently effective"
-  },
-  "quadrant": {
-    "exitMetSignMet": "On-time exit · on-time dispatch",
-    "exitMetSignUnmet": "On-time exit · dispatch overdue (driver)",
-    "exitUnmetSignMet": "Late exit · dispatch still met",
-    "exitUnmetSignUnmet": "Late exit · dispatch overdue (cascade)",
-    "ariaLabel": "Quadrant distribution, {{total}} waybill(s) total"
   },
   "settleResult": {
     "title": "Settle now result",

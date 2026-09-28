@@ -312,6 +312,7 @@ export default function DispatchPerformanceDetailPage() {
             <PerformanceBreakdownTable
               suppliers={v.result.suppliers}
               loading={v.loading}
+              dayCount={v.result.arrivalDates.length}
               onViewExceptions={openExceptionPanel}
             />
           </div>

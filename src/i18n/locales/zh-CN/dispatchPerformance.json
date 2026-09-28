@@ -17,7 +17,7 @@
     "noDataYet": "尚无数据",
     "before11HubExitRate": "11点前出仓率",
     "signRate24h": "24H派签率",
-    "quadrantDistribution": "达成分布",
+    "priorityNextDaySignRate": "高优件次日达成率",
     "settling": "结算中",
     "enabled": "启用",
     "actions": "操作",
@@ -102,7 +102,7 @@
     "compositeScore": "综合分",
     "weightSettings": "权重设置",
     "resetDefault": "恢复默认",
-    "weightHint": "生效权重：{{weights}}。样本不足（出仓/派签分母 <30，优先件分母 <10）的分项不参与加权，权重按比例转移给其余分项。",
+    "weightHint": "生效权重：{{weights}}。样本不足（出仓/派签分母 <30，高优件分母 <10）的分项不参与加权，权重按比例转移给其余分项。",
     "breakdownTitle": "分项贡献（权重已按启用指标重归一化）",
     "sampleInsufficient": "样本不足",
     "sampleInsufficientHint": "样本不足，仅供参考",
@@ -110,7 +110,7 @@
     "weightPct": "权 {{pct}}%",
     "ticketsToTarget": "还差 {{count}} 票",
     "metrics": {
-      "dispatch.priorityNextDaySign": "优先件次日完成率",
+      "dispatch.priorityNextDaySign": "高优件次日完成率",
       "dispatch.sign24h": "24H派签达成率",
       "dispatch.before11Exit": "11点前出仓率",
       "dispatch.nextDaySign": "次日派签达成率",
@@ -120,7 +120,7 @@
   "attribution": {
     "title": "达成归因",
     "subtitle": "把没做到的单拆成两段：出仓就晚了（分拣出仓侧）和出仓准点却没派掉（司机与负载侧）。两段各自对应不同的动作。",
-    "priorityTitle": "优先件次日完成",
+    "priorityTitle": "高优件次日完成",
     "overallTitle": "次日派签（全量）",
     "barTotal": "总单量",
     "barExitLate": "出仓晚且没派掉",
@@ -145,7 +145,7 @@
     "title": "未达成集中在谁身上",
     "subtitle": "按未达成单量降序，排序即修复优先级。不按率排：3 单错 1 单 = 66% 看着刺眼，但 1000 单错 50 单才是该先修的。",
     "metric": {
-      "priority": "优先件次日完成",
+      "priority": "高优件次日完成",
       "nextDay": "次日派签（全量）"
     },
     "dimension": {
@@ -166,12 +166,12 @@
     "allMet": "该区间没有未达成的单"
   },
   "breakdown": {
-    "totalWaybills": "总单量",
+    "totalWaybills": "平均/总单量",
     "before11HubExitRate": "11点前出仓率",
     "signRate24h": "24H派签率",
     "sameDayExitRate": "当天出仓率",
     "nextDaySignRate": "次日派签率",
-    "priorityNextDaySignRate": "优先件次日完成率",
+    "priorityNextDaySignRate": "高优件次日完成率",
     "rateGap": "落差",
     "quadrantDistribution": "达成分布",
     "quadrantPending": "派签结算后可见",
@@ -277,15 +277,8 @@
       "reason": "请填写报备原因"
     },
     "excludedTag": "异常报备 {{count}} 件",
-    "excludedBreakdownTooltip": "24H派签率剔除 {{signCount}} 件 / 次日派签率剔除 {{nextDayCount}} 件 / 优先件次日完成率剔除 {{priorityCount}} 件——三个口径截止时间不同，剔除数各自独立计算，不是同一个数",
+    "excludedBreakdownTooltip": "24H派签率剔除 {{signCount}} 件 / 次日派签率剔除 {{nextDayCount}} 件 / 高优件次日完成率剔除 {{priorityCount}} 件——三个口径截止时间不同，剔除数各自独立计算，不是同一个数",
     "excludedTooltip": "已报备 {{reported}} 件 / 当前生效 {{effective}} 件"
-  },
-  "quadrant": {
-    "exitMetSignMet": "准时出仓·按时派签",
-    "exitMetSignUnmet": "准时出仓·派签超时（司机侧）",
-    "exitUnmetSignMet": "出仓超时·派签仍达标",
-    "exitUnmetSignUnmet": "出仓超时·派签超时（连锁）",
-    "ariaLabel": "四象限分布，共 {{total}} 单"
   },
   "settleResult": {
     "title": "立刻统计结果",
@@ -332,10 +325,10 @@
     "colSignRate": "24h派签率(%)",
     "colNextDaySignMet": "次日派签达标数",
     "colNextDaySignRate": "次日派签率(%)",
-    "colPriorityTotal": "优先件总数",
-    "colPriorityBefore11Met": "优先件11点前出仓达标数",
-    "colPriorityNextDaySignMet": "优先件次日派签达标数",
-    "colPriorityNextDaySignRate": "优先件次日派签率(%)",
+    "colPriorityTotal": "高优件总数",
+    "colPriorityBefore11Met": "高优件11点前出仓达标数",
+    "colPriorityNextDaySignMet": "高优件次日派签达标数",
+    "colPriorityNextDaySignRate": "高优件次日派签率(%)",
     "colProblemCount": "问题运单数",
     "colNeverSignedCount": "窗口截止时点未签收数",
     "colLateSignedCount": "迟签收数",

@@ -1,9 +1,8 @@
-import { Button, Empty, Popconfirm, Space, Switch, Table, Tag, Tooltip } from 'antd'
+import { Button, Dropdown, Empty, Popconfirm, Space, Switch, Table, Tag, Tooltip } from 'antd'
 import type { ColumnsType } from 'antd/es/table'
-import { BarChart3, Pencil, Trash2, Zap } from 'lucide-react'
+import { BarChart3, MoreHorizontal, Pencil, Trash2, Zap } from 'lucide-react'
 import { useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
-import { QuadrantBar } from './QuadrantBar'
 import type { DispatchPerformanceConfig } from '../dispatchPerformanceTypes'
 
 const BEFORE11_ALERT_PCT = 95
@@ -151,14 +150,17 @@ export function DispatchPerformanceConfigList({
         ),
       },
       {
-        title: t('list.quadrantDistribution', { ns: 'dispatchPerformance' }),
-        key: 'quadrant',
-        width: 180,
+        title: t('list.priorityNextDaySignRate', { ns: 'dispatchPerformance' }),
+        key: 'priorityRate',
+        width: 140,
+        align: 'right',
         render: (_, row) =>
-          row.latestDispatch ? (
-            <QuadrantBar
-              quadrant={row.latestDispatch.metrics.quadrant}
-              total={row.latestDispatch.metrics.total}
+          row.latestDispatch && row.latestDispatch.metrics.priorityTotal > 0 ? (
+            <LatestRate
+              rate={row.latestDispatch.metrics.priorityNextDaySignRate}
+              alertPct={SIGN_ALERT_PCT}
+              targetPct={SIGN_TARGET_PCT}
+              settlingLabel={t('list.settling', { ns: 'dispatchPerformance' })}
             />
           ) : (
             <span className="text-xs text-slate-400">—</span>
@@ -179,7 +181,7 @@ export function DispatchPerformanceConfigList({
       {
         title: t('list.actions', { ns: 'dispatchPerformance' }),
         key: 'actions',
-        width: 300,
+        width: 150,
         render: (_, row) => (
           <Space>
             <Tooltip
@@ -200,41 +202,68 @@ export function DispatchPerformanceConfigList({
                 {t('list.viewDetail', { ns: 'dispatchPerformance' })}
               </Button>
             </Tooltip>
-            <Popconfirm
-              title={t('list.settleNowConfirmTitle', { ns: 'dispatchPerformance' })}
-              description={
-                <div className="max-w-[320px] text-xs leading-relaxed">
-                  {t('list.settleNowConfirmDescPrefix', { ns: 'dispatchPerformance' })}
-                  <b>{t('list.settleNowConfirmDescBold', { ns: 'dispatchPerformance' })}</b>
-                  {t('list.settleNowConfirmDescSuffix', { ns: 'dispatchPerformance' })}
+            <Dropdown
+              trigger={['click']}
+              placement="bottomRight"
+              popupRender={() => (
+                <div className="flex w-48 flex-col gap-0.5 rounded-lg border border-slate-200 bg-white p-1 shadow-lg">
+                  <Popconfirm
+                    title={t('list.settleNowConfirmTitle', { ns: 'dispatchPerformance' })}
+                    description={
+                      <div className="max-w-[320px] text-xs leading-relaxed">
+                        {t('list.settleNowConfirmDescPrefix', { ns: 'dispatchPerformance' })}
+                        <b>{t('list.settleNowConfirmDescBold', { ns: 'dispatchPerformance' })}</b>
+                        {t('list.settleNowConfirmDescSuffix', { ns: 'dispatchPerformance' })}
+                      </div>
+                    }
+                    okText={t('list.startSettle', { ns: 'dispatchPerformance' })}
+                    cancelText={t('cancel', { ns: 'common' })}
+                    onConfirm={() => onSettleNow(row)}
+                  >
+                    <Tooltip
+                      placement="left"
+                      title={
+                        row.isEnabled
+                          ? t('list.settleNowTooltip', { ns: 'dispatchPerformance' })
+                          : t('list.settleNowDisabledTooltip', { ns: 'dispatchPerformance' })
+                      }
+                    >
+                      <Button
+                        type="text"
+                        block
+                        className="!justify-start"
+                        icon={<Zap className="h-4 w-4" />}
+                        loading={settlingId === row.id}
+                        disabled={!row.isEnabled || (settlingId != null && settlingId !== row.id)}
+                      >
+                        {t('list.settleNow', { ns: 'dispatchPerformance' })}
+                      </Button>
+                    </Tooltip>
+                  </Popconfirm>
+                  <Button
+                    type="text"
+                    block
+                    className="!justify-start"
+                    icon={<Pencil className="h-4 w-4" />}
+                    onClick={() => onEdit(row)}
+                  >
+                    {t('edit', { ns: 'common' })}
+                  </Button>
+                  <Button
+                    type="text"
+                    danger
+                    block
+                    className="!justify-start"
+                    icon={<Trash2 className="h-4 w-4" />}
+                    onClick={() => onDelete(row)}
+                  >
+                    {t('delete', { ns: 'common' })}
+                  </Button>
                 </div>
-              }
-              okText={t('list.startSettle', { ns: 'dispatchPerformance' })}
-              cancelText={t('cancel', { ns: 'common' })}
-              onConfirm={() => onSettleNow(row)}
+              )}
             >
-              <Tooltip
-                title={
-                  row.isEnabled
-                    ? t('list.settleNowTooltip', { ns: 'dispatchPerformance' })
-                    : t('list.settleNowDisabledTooltip', { ns: 'dispatchPerformance' })
-                }
-              >
-                <Button
-                  icon={<Zap className="h-4 w-4" />}
-                  loading={settlingId === row.id}
-                  disabled={!row.isEnabled || (settlingId != null && settlingId !== row.id)}
-                >
-                  {t('list.settleNow', { ns: 'dispatchPerformance' })}
-                </Button>
-              </Tooltip>
-            </Popconfirm>
-            <Tooltip title={t('edit', { ns: 'common' })}>
-              <Button icon={<Pencil className="h-4 w-4" />} onClick={() => onEdit(row)} />
-            </Tooltip>
-            <Tooltip title={t('delete', { ns: 'common' })}>
-              <Button danger icon={<Trash2 className="h-4 w-4" />} onClick={() => onDelete(row)} />
-            </Tooltip>
+              <Button icon={<MoreHorizontal className="h-4 w-4" />} />
+            </Dropdown>
           </Space>
         ),
       },
