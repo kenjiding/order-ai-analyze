@@ -21,7 +21,7 @@
   "empty": "Pick arrival dates and run a query",
   "kpi": {
     "total": "Inbound volume",
-    "sameDay": "Same-day exit rate",
+    "sameDay": "Dispatch on the day",
     "sameDayHint": "{{count}} exited by 23:59:59 on the arrival day",
     "nextMorning": "Next-day 0–11am rate",
     "nextMorningHint": "{{count}} exited between 00:00 and 11:00 the next day",
@@ -36,7 +36,7 @@
     "name": "Name",
     "total": "Inbound",
     "share": "Volume share",
-    "sameDay": "Same-day",
+    "sameDay": "Dispatch on the day",
     "nextMorning": "Next-day 0–11am",
     "cumulative": "By next-day 11am",
     "pending": "Not exited",

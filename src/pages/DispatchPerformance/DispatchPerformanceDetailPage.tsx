@@ -1,10 +1,16 @@
 import { useState } from 'react'
 import { Alert, Button, DatePicker, Popconfirm, Segmented, Select, Tag, Tooltip } from 'antd'
-import { AlertTriangle, ArrowLeft, Download, RefreshCw, Zap } from 'lucide-react'
+import { AlertTriangle, ArrowLeft, Download, RefreshCw, Send, Zap } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { useNavigate, useParams } from 'react-router-dom'
 import type { Dayjs } from 'dayjs'
+import { PERMISSION_KEYS, usePermission } from '../../hooks/usePermission'
+import {
+  DEFAULT_DISPATCH_RANKING_WEIGHTS,
+  type DispatchRankingMetricKey,
+} from '../../../shared/dispatchPerformance/rankingScore'
 import { AttributionWaterfall } from './components/AttributionWaterfall'
+import { DispatchDataPushModal } from './components/DispatchDataPushModal'
 import { DispatchExceptionPanel } from './components/DispatchExceptionPanel'
 import { ProfitStabilityPanel } from './components/ProfitStabilityPanel'
 import { PerformanceBreakdownTable } from './components/PerformanceBreakdownTable'
@@ -154,7 +160,11 @@ export default function DispatchPerformanceDetailPage() {
   })
 
   const config = v.result?.config
+  const canPush = usePermission(PERMISSION_KEYS.btnDispatchPerformancePush)
 
+  const [pushModalOpen, setPushModalOpen] = useState(false)
+  const [rankingWeights, setRankingWeights] =
+    useState<Record<DispatchRankingMetricKey, number>>(DEFAULT_DISPATCH_RANKING_WEIGHTS)
   const [exceptionPanelOpen, setExceptionPanelOpen] = useState(false)
   const [exceptionFilter, setExceptionFilter] = useState<
     { supplierKey?: string; routeCode?: string; courierCode?: string } | undefined
@@ -239,6 +249,15 @@ export default function DispatchPerformanceDetailPage() {
             >
               {t('detail.exportButton', { ns: 'dispatchPerformance' })}
             </Button>
+            <Tooltip title={!canPush ? t('push.noPermission', { ns: 'dispatchPerformance' }) : undefined}>
+              <Button
+                icon={<Send className="h-4 w-4" />}
+                disabled={!canPush || !v.result}
+                onClick={() => setPushModalOpen(true)}
+              >
+                {t('push.toolbarButton', { ns: 'dispatchPerformance' })}
+              </Button>
+            </Tooltip>
             <Button
               danger
               icon={<AlertTriangle className="h-4 w-4" />}
@@ -307,7 +326,12 @@ export default function DispatchPerformanceDetailPage() {
             overall={v.result.overall}
             t={(key, opts) => t(key, { ns: 'dispatchPerformance', ...opts })}
           />
-          <SupplierRankingBoard suppliers={v.result.suppliers} />
+          <SupplierRankingBoard
+            suppliers={v.result.suppliers}
+            weights={rankingWeights}
+            onWeightsChange={setRankingWeights}
+            onResetWeights={() => setRankingWeights(DEFAULT_DISPATCH_RANKING_WEIGHTS)}
+          />
           <div className="admin-panel p-4">
             <PerformanceBreakdownTable
               suppliers={v.result.suppliers}
@@ -375,6 +399,20 @@ export default function DispatchPerformanceDetailPage() {
           supplierOptions={v.result?.supplierOptions ?? []}
           initialFilter={exceptionFilter}
           onChanged={() => void v.reload()}
+        />
+      ) : null}
+
+      {config ? (
+        <DispatchDataPushModal
+          open={pushModalOpen}
+          onClose={() => setPushModalOpen(false)}
+          configId={config.id}
+          stationName={config.stationName}
+          startDate={v.range[0].format('YYYY-MM-DD')}
+          endDate={v.range[1].format('YYYY-MM-DD')}
+          suppliers={v.result?.suppliers ?? []}
+          dayCount={v.result?.arrivalDates.length ?? 0}
+          rankingWeights={rankingWeights}
         />
       ) : null}
     </div>

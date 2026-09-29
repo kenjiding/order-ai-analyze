@@ -3,7 +3,6 @@ import { ChevronDown, SlidersHorizontal, Trophy } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import {
-  DEFAULT_DISPATCH_RANKING_WEIGHTS,
   DISPATCH_RANKING_METRIC_KEYS,
   rankDispatchSuppliers,
   type DispatchRankingMetricKey,
@@ -14,6 +13,10 @@ import { toDispatchRankingInput } from '../toDispatchRankingInput'
 
 type Props = {
   suppliers: DispatchSupplierNode[]
+  /** 权重交给页面持有：数据推送弹层要读同一份「调整权重后」的排名，不能各算各的 */
+  weights: Record<DispatchRankingMetricKey, number>
+  onWeightsChange: (weights: Record<DispatchRankingMetricKey, number>) => void
+  onResetWeights: () => void
 }
 
 type Translate = (key: string, options?: Record<string, unknown>) => string
@@ -24,7 +27,7 @@ function scoreTone(score: number): string {
   return 'text-rose-600'
 }
 
-function RankBadge({ rank }: { rank: number }) {
+export function RankBadge({ rank }: { rank: number }) {
   const cls =
     rank === 1
       ? 'bg-amber-400 text-white'
@@ -150,10 +153,8 @@ function BreakdownPanel({ row, t }: { row: DispatchRankingResult; t: Translate }
 }
 
 /** 站点内供应商综合评分排名，权重默认值可手动调整（仅本次会话生效） */
-export function SupplierRankingBoard({ suppliers }: Props) {
+export function SupplierRankingBoard({ suppliers, weights, onWeightsChange, onResetWeights }: Props) {
   const { t } = useTranslation(['dispatchPerformance', 'common'])
-  const [weights, setWeights] =
-    useState<Record<DispatchRankingMetricKey, number>>(DEFAULT_DISPATCH_RANKING_WEIGHTS)
   const [expandedKey, setExpandedKey] = useState<string | null>(null)
   const [collapsed, setCollapsed] = useState(true)
 
@@ -171,8 +172,7 @@ export function SupplierRankingBoard({ suppliers }: Props) {
   }, [weights, t])
 
   const setWeight = (key: DispatchRankingMetricKey, value: number) =>
-    setWeights((prev) => ({ ...prev, [key]: value }))
-  const resetWeights = () => setWeights(DEFAULT_DISPATCH_RANKING_WEIGHTS)
+    onWeightsChange({ ...weights, [key]: value })
 
   if (pool.poolSize < 2) {
     return (
@@ -231,7 +231,7 @@ export function SupplierRankingBoard({ suppliers }: Props) {
             <Popover
               trigger="click"
               placement="bottomRight"
-              content={<WeightPanel weights={weights} onChange={setWeight} onReset={resetWeights} t={t} />}
+              content={<WeightPanel weights={weights} onChange={setWeight} onReset={onResetWeights} t={t} />}
             >
               <Button icon={<SlidersHorizontal className="h-4 w-4" />}>
                 {t('ranking.weightSettings', { ns: 'dispatchPerformance' })}

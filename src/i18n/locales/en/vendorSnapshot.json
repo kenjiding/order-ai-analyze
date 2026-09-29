@@ -43,14 +43,14 @@
     "rankPrefix": "#",
     "scoreUnit": "pts",
     "sampleInsufficient": "Insufficient sample — for reference only",
-    "weightHint": "Default ranking weights: complaints 28% / 24h dispatch 27% / pre-11am exit 20% / open tickets 15% / long-tail 10%. Counts use per-1k density; small samples are excluded from the weighted score."
+    "weightHint": "Default ranking weights: complaints 28% / Delivered within 24 27% / Before 11am dispatch 20% / open tickets 15% / long-tail 10%. Counts use per-1k density; small samples are excluded from the weighted score."
   },
   "legend": {
     "title": "Color key",
     "met": "On target",
     "warning": "Warning",
     "notMet": "Below target",
-    "thresholdHint": "Exit rate ≥99% / 24h dispatch ≥95% / complaint rate ≤0.025% = on target"
+    "thresholdHint": "Before 11am dispatch ≥99% / Delivered within 24 ≥95% / complaint rate ≤0.025% = on target"
   },
   "vendor": {
     "returnWarning": "Return alert {{count}}",
@@ -59,9 +59,9 @@
     "pushDisabled": "Push disabled"
   },
   "kpi": {
-    "before11ExitRate": "Exit rate by 11:00",
+    "before11ExitRate": "Before 11am dispatch",
     "asOfDate": "As of {{date}}",
-    "dispatch24h": "24h dispatch rate",
+    "dispatch24h": "Delivered within 24",
     "complaintRate": "Complaint rate",
     "complaintSub": "{{complaints}} complaints · {{waybills}} waybills",
     "unprocessedTickets": "Open tickets",
@@ -79,8 +79,8 @@
     "count": "{{count}} couriers",
     "courier": "Courier",
     "todayPickup": "Today's pickups",
-    "before11ExitRate": "Exit by 11:00",
-    "dispatch24h": "24h dispatch",
+    "before11ExitRate": "Before 11am dispatch",
+    "dispatch24h": "Delivered within 24",
     "returnWarning": "Return alert",
     "longTail": "Long-tail",
     "tooltip": {
@@ -98,7 +98,7 @@
       "formula": "Pickups completed within SLA / latest hub inbound volume"
     },
     "dispatch24h": {
-      "name": "24h dispatch rate",
+      "name": "Delivered within 24",
       "formula": "Successful sign-offs within SLA / same-day dispatch volume"
     },
     "complaintRate": {

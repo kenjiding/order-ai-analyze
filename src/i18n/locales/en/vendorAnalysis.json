@@ -45,7 +45,7 @@
   "noWebhookCount": "{{count}} without Webhook",
   "noSupplierConfig": "No vendor configs — maintain them under System → Supplier config.",
   "unknownVendor": "Unknown vendor",
-  "driverPerformanceHint": "Pickup (yesterday) · 24H dispatch (day before) · Return alert (48h+ since 14:00) · Long-tail",
+  "driverPerformanceHint": "Pickup (yesterday) · Delivered within 24 (day before) · Return alert (48h+ since 14:00) · Long-tail",
   "countOfTotal": "{{count}}/{{total}}",
   "metricCategory": {
     "vendor": "Vendor",
@@ -111,14 +111,14 @@
   "noVendorData": "No vendor data",
   "dataOverview": "Data overview",
   "sharedCodeBadge": "Shared code",
-  "sharedCodeTooltip": "Multiple vendors share vendor code {{code}} (split by route). Complaints and open tickets have no route — totals show combined code values. Pickup, before-11 exit, and 24H dispatch are split by route.",
+  "sharedCodeTooltip": "Multiple vendors share vendor code {{code}} (split by route). Complaints and open tickets have no route — totals show combined code values. Pickup, Before 11am dispatch, and Delivered within 24 are split by route.",
   "driverPerformance": "Driver dispatch performance",
   "allDriversSummary": "All drivers",
   "returnWarningBadge": "Return alert {{count}}",
   "dispatchUnmetBadge": "Dispatch below target · {{count}} drivers",
   "driverCount": "{{count}} drivers",
   "performanceWarning": "Recent performance alert",
-  "performanceWarningBody": "Driver {{name}} 24H dispatch sign {{rate}} — below 92% target{{others}}",
+  "performanceWarningBody": "Driver {{name}} Delivered within 24 {{rate}} — below 92% target{{others}}",
   "andOthers": " and {{count}} others",
   "noDriverData": "No driver data",
   "rankingNeedTwo": "Composite ranking needs at least 2 vendors selected",
@@ -159,14 +159,14 @@
     "resubmitSuccess": "Resubmitted successfully"
   },
   "metrics": {
-    "vendor.before11ExitRate": "Before-11 exit rate",
-    "vendor.dispatch24h": "24H dispatch sign rate",
+    "vendor.before11ExitRate": "Before 11am dispatch",
+    "vendor.dispatch24h": "Delivered within 24",
     "vendor.complaintRate": "Complaint rate",
     "vendor.unprocessedTickets": "Open tickets",
     "vendor.longTail": "Long-tail parcels",
     "driver.todayPickup": "Today's pickup",
-    "driver.dispatch24h": "24H dispatch sign rate",
-    "driver.before11ExitRate": "Before-11 exit rate",
+    "driver.dispatch24h": "Delivered within 24",
+    "driver.before11ExitRate": "Before 11am dispatch",
     "driver.returnWarning": "Return alert",
     "driver.longTail": "Long-tail parcels"
   },
@@ -180,8 +180,8 @@
     "unprocessedTicket": "Open ticket waybills"
   },
   "kpi": {
-    "before11Label": "Before-11 exit · through {{date}}",
-    "dispatch24hLabel": "24H dispatch · {{date}}",
+    "before11Label": "Before 11am dispatch · through {{date}}",
+    "dispatch24hLabel": "Delivered within 24 · {{date}}",
     "complaintLabel": "Complaint rate · {{start}}~{{end}}",
     "unprocessedLabel": "Open tickets (pcs)",
     "longTailLabel": "Long-tail (pcs)",
@@ -192,8 +192,8 @@
     "sharedCodeNote": "(by shared code)"
   },
   "rankingMetrics": {
-    "vendor.before11ExitRate": "Before-11 exit",
-    "vendor.dispatch24h": "24H dispatch",
+    "vendor.before11ExitRate": "Before 11am dispatch",
+    "vendor.dispatch24h": "Delivered within 24",
     "vendor.complaintRate": "Complaint rate",
     "vendor.unprocessedTickets": "Open tickets",
     "vendor.longTail": "Long-tail",

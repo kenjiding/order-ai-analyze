@@ -9,6 +9,7 @@ export const PUSH_API_SCOPES = [
   'fleet-supplier',
   'order-exception',
   'vendor-analysis',
+  'dispatch-performance',
 ] as const
 
 export type PushApiScope = (typeof PUSH_API_SCOPES)[number]
@@ -19,6 +20,7 @@ const PUSH_API_SCOPE_PERMISSION: Record<PushApiScope, string> = {
   'fleet-supplier': 'btn:push-notifications:fleet-supplier',
   'order-exception': 'btn:push-notifications:order-exception',
   'vendor-analysis': 'btn:vendor-analysis:push',
+  'dispatch-performance': 'btn:dispatch-performance:push',
 }
 
 export function parsePushApiScope(raw: unknown): PushApiScope | null {

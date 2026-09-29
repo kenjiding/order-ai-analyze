@@ -66,6 +66,14 @@ export const PERMISSION_REGISTRY: PermissionDefinition[] = [
     sortOrder: 39,
   },
   {
+    key: 'btn:dispatch-performance:push',
+    type: 'button',
+    label: '出仓派签数据推送',
+    description: '将供应商/路由维度的达成数据截图推送到供应商飞书群',
+    menuKey: 'dispatch-performance',
+    sortOrder: 40,
+  },
+  {
     key: 'menu:exit-rate-query',
     type: 'menu',
     label: '出仓率查询',

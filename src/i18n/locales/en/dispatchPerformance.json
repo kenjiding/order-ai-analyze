@@ -2,7 +2,7 @@
   "page": {
     "eyebrow": "SLA Analytics",
     "title": "Exit & Dispatch Performance",
-    "description": "One config per station; at each trigger time, auto-compute before-11am hub exit rate and 24h dispatch rate.",
+    "description": "One config per station; at each trigger time, auto-compute Before 11am dispatch and Delivered within 24.",
     "enabledTotal": "Enabled / total",
     "addStation": "Add station"
   },
@@ -15,9 +15,9 @@
     "triggerTime": "Trigger time",
     "latestSettle": "Latest settle",
     "noDataYet": "No data yet",
-    "before11HubExitRate": "Before 11am hub exit rate",
-    "signRate24h": "24h dispatch rate",
-    "priorityNextDaySignRate": "Priority next-day completion rate",
+    "before11HubExitRate": "Before 11am dispatch",
+    "signRate24h": "Delivered within 24",
+    "priorityNextDaySignRate": "Priority Next-day delivery completed",
     "settling": "Settling",
     "enabled": "Enabled",
     "actions": "Actions",
@@ -47,8 +47,8 @@
     "vendorFootnote": "Missing vendors mean permanently missing history (no backfill). Verify against this station's actual carriers.",
     "timingTitle": "Settlement timing",
     "timingIntro": "After saving, a daily job runs at the trigger time. The two metrics settle one day apart:",
-    "timingBefore11": "Before 11am hub exit rate — Mon–Thu: yesterday's arrivals; Fri/Sat/Sun arrivals close at next Monday 11:00",
-    "timingSign24h": "24h dispatch rate — settles the day-before-yesterday arrival batch; must wait for the 24h window to close",
+    "timingBefore11": "Before 11am dispatch — Mon–Thu: yesterday's arrivals; Fri/Sat/Sun arrivals close at next Monday 11:00",
+    "timingSign24h": "Delivered within 24 — settles the day-before-yesterday arrival batch; must wait for the 24h window to close",
     "timingFootnote": "Early dispatch settlement is wrong because re-dispatch after route return corrupts the data, so it waits an extra day. Do not set trigger time before 11:00, or in-window waybills may be marked unmet."
   },
   "validation": {
@@ -76,8 +76,8 @@
     "dispatch": "Dispatch:",
     "settled": "Settled",
     "notSettled": "Not settled",
-    "before11HubExitRate": "Before 11am hub exit rate",
-    "signRate24h": "24h dispatch rate",
+    "before11HubExitRate": "Before 11am dispatch",
+    "signRate24h": "Delivered within 24",
     "settling": "Settling",
     "settleOverdue": "Overdue (retry window passed, won't auto-complete — check the scheduled job)",
     "signPendingHint": "Wait for the 24h window to close; the next day's scheduled job will fill it in",
@@ -110,17 +110,17 @@
     "weightPct": "Weight {{pct}}%",
     "ticketsToTarget": "{{count}} more to target",
     "metrics": {
-      "dispatch.priorityNextDaySign": "Priority next-day completion rate",
-      "dispatch.sign24h": "24h dispatch rate",
-      "dispatch.before11Exit": "Before-11 hub exit rate",
-      "dispatch.nextDaySign": "Next-day dispatch rate",
-      "dispatch.sameDayExit": "Same-day hub exit rate"
+      "dispatch.priorityNextDaySign": "Priority Next-day delivery completed",
+      "dispatch.sign24h": "Delivered within 24",
+      "dispatch.before11Exit": "Before 11am dispatch",
+      "dispatch.nextDaySign": "Next-day delivery completed",
+      "dispatch.sameDayExit": "Dispatch on the day"
     }
   },
   "attribution": {
     "title": "Achievement attribution",
     "subtitle": "Splits every missed waybill into two causes: left the hub late (sorting/hub-exit side) and left on time but was not delivered (courier and workload side). Each points to a different action.",
-    "priorityTitle": "Priority next-day completion",
+    "priorityTitle": "Priority Next-day delivery completed",
     "overallTitle": "Next-day delivery (all)",
     "barTotal": "Total waybills",
     "barExitLate": "Late exit, not delivered",
@@ -167,11 +167,11 @@
   },
   "breakdown": {
     "totalWaybills": "Avg/Total waybills",
-    "before11HubExitRate": "Before 11am hub exit rate",
-    "signRate24h": "24h dispatch rate",
-    "sameDayExitRate": "Same-day hub exit rate",
-    "nextDaySignRate": "Next-day dispatch rate",
-    "priorityNextDaySignRate": "Priority next-day completion rate",
+    "before11HubExitRate": "Before 11am dispatch",
+    "signRate24h": "Delivered within 24",
+    "sameDayExitRate": "Dispatch on the day",
+    "nextDaySignRate": "Next-day delivery completed",
+    "priorityNextDaySignRate": "Priority Next-day delivery completed",
     "rateGap": "Gap",
     "quadrantDistribution": "Achievement distribution",
     "quadrantPending": "Visible after dispatch settles",
@@ -277,7 +277,7 @@
       "reason": "Please enter a reason"
     },
     "excludedTag": "Exception report {{count}}",
-    "excludedBreakdownTooltip": "24H dispatch rate: {{signCount}} excluded / next-day dispatch rate: {{nextDayCount}} excluded / priority next-day completion: {{priorityCount}} excluded — each has its own deadline rule, so these counts are computed independently and can differ",
+    "excludedBreakdownTooltip": "Delivered within 24: {{signCount}} excluded / Next-day delivery completed: {{nextDayCount}} excluded / Priority Next-day delivery completed: {{priorityCount}} excluded — each has its own deadline rule, so these counts are computed independently and can differ",
     "excludedTooltip": "{{reported}} reported / {{effective}} currently effective"
   },
   "settleResult": {
@@ -318,17 +318,17 @@
     "colCourierCode": "Driver code",
     "colTotal": "Total waybills",
     "colBefore11Met": "Before-11 hub exit met",
-    "colBefore11Rate": "Before-11 hub exit rate(%)",
+    "colBefore11Rate": "Before 11am dispatch(%)",
     "colSameDayExitMet": "Same-day hub exit met",
-    "colSameDayExitRate": "Same-day hub exit rate(%)",
+    "colSameDayExitRate": "Dispatch on the day(%)",
     "colSignMet": "24h dispatch met",
-    "colSignRate": "24h dispatch rate(%)",
+    "colSignRate": "Delivered within 24(%)",
     "colNextDaySignMet": "Next-day dispatch met",
-    "colNextDaySignRate": "Next-day dispatch rate(%)",
+    "colNextDaySignRate": "Next-day delivery completed(%)",
     "colPriorityTotal": "Priority total",
     "colPriorityBefore11Met": "Priority before-11 hub exit met",
     "colPriorityNextDaySignMet": "Priority next-day dispatch met",
-    "colPriorityNextDaySignRate": "Priority next-day dispatch rate(%)",
+    "colPriorityNextDaySignRate": "Priority Next-day delivery completed(%)",
     "colProblemCount": "Problem waybills",
     "colNeverSignedCount": "Never signed",
     "colLateSignedCount": "Late signed",
@@ -365,5 +365,30 @@
     "settleFailed": "Settlement failed: {{error}}",
     "unknownError": "Unknown error",
     "triggerSettleFailed": "Failed to trigger settlement"
+  },
+  "push": {
+    "toolbarButton": "Push data",
+    "noPermission": "No permission",
+    "modalTitle": "Push data · screenshot to supplier groups",
+    "metricsSectionTitle": "Metrics",
+    "metricsSectionDesc": "Choose which fields appear in the pushed image, all selected by default",
+    "supplierSectionTitle": "Suppliers to push",
+    "supplierSectionDesc": "Only suppliers with volume in this range are listed; those without a Webhook/Feishu group are greyed out until configured",
+    "noTargetTooltip": "This supplier has no push target (Webhook or Feishu chat_id) configured",
+    "rankValue": "Rank {{rank}}",
+    "scoreUnit": "pts",
+    "confirmButton": "Confirm push",
+    "loadCatalogError": "Failed to load push configs",
+    "sectionNotFound": "Could not find this supplier's preview section to capture",
+    "captureFailed": "Screenshot failed",
+    "noChannel": "No webhook or group chat_id configured",
+    "status": {
+      "capturing": "Capturing…",
+      "pushing": "Pushing…",
+      "ok": "Pushed",
+      "error": "Push failed",
+      "skipped": "No push target configured"
+    },
+    "summary": "Push finished: {{ok}} succeeded, {{err}} failed, {{skip}} skipped"
   }
 }

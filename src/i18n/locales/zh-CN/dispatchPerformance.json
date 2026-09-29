@@ -365,5 +365,30 @@
     "settleFailed": "统计失败：{{error}}",
     "unknownError": "未知错误",
     "triggerSettleFailed": "触发统计失败"
+  },
+  "push": {
+    "toolbarButton": "数据推送",
+    "noPermission": "无操作权限",
+    "modalTitle": "数据推送 · 截图发送到供应商群",
+    "metricsSectionTitle": "指标数据",
+    "metricsSectionDesc": "勾选要展示在推送图片里的字段，默认全选",
+    "supplierSectionTitle": "要推送的供应商",
+    "supplierSectionDesc": "只统计本区间内有单量的供应商；未配置 Webhook/飞书群的置灰不可勾，需先去供应商配置里补上",
+    "noTargetTooltip": "该供应商未配置推送目标（Webhook 或飞书群 chat_id），无法推送",
+    "rankValue": "第 {{rank}} 名",
+    "scoreUnit": "分",
+    "confirmButton": "确认推送",
+    "loadCatalogError": "加载推送配置失败",
+    "sectionNotFound": "找不到该供应商的预览区域，截图失败",
+    "captureFailed": "截图失败",
+    "noChannel": "未配置 webhook 或群 chat_id",
+    "status": {
+      "capturing": "截图中…",
+      "pushing": "推送中…",
+      "ok": "已推送",
+      "error": "推送失败",
+      "skipped": "未配置推送对象"
+    },
+    "summary": "推送完成：成功 {{ok}} 家，失败 {{err}} 家，跳过 {{skip}} 家"
   }
 }

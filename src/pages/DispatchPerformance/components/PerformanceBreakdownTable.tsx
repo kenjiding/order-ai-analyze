@@ -8,25 +8,19 @@ import type {
   DispatchRouteNode,
   DispatchSupplierNode,
 } from '../dispatchPerformanceTypes'
+import {
+  BEFORE11_ALERT_PCT,
+  BEFORE11_TARGET_PCT,
+  SIGN_ALERT_PCT,
+  SIGN_TARGET_PCT,
+  formatAvgTotal,
+  rateColor,
+} from '../dispatchMetricThresholds'
 
 /** 查看异常报备回调的上下文：由表格逐层把 supplierKey / routeCode 带到司机行 */
 type ExceptionRowContext = { supplierKey: string; routeCode: string; courierCode: string }
 
-const BEFORE11_ALERT_PCT = 95
-const BEFORE11_TARGET_PCT = 99
-const SIGN_ALERT_PCT = 92
-const SIGN_TARGET_PCT = 95
-
-function rateColor(rate: number | null, alertPct?: number, targetPct?: number): string {
-  if (rate == null) return 'text-slate-300'
-  // 没有考核目标的指标（当天出仓率）不着色
-  if (alertPct == null || targetPct == null) return 'text-slate-700'
-  if (rate < alertPct) return 'text-red-600'
-  if (rate < targetPct) return 'text-amber-600'
-  return 'text-emerald-600'
-}
-
-function RateCell({
+export function RateCell({
   rate,
   alertPct,
   targetPct,
@@ -85,7 +79,7 @@ function WhitelistTag({
  * - 区间里混了派签未结算的到件日 → 金额只是截至已结算日的累计；
  * - 有签收单没匹配到区域价格 → 那部分钱一分没算进来。
  */
-function ProfitCell({
+export function ProfitCell({
   amount,
   unpriced,
   settled,
@@ -151,9 +145,7 @@ function metricColumns<T extends DispatchMetrics>(
       width: 110,
       align: 'right',
       render: (total: number) => (
-        <span className="tabular-nums">
-          {dayCount > 0 ? Math.round(total / dayCount) : total}/{total}
-        </span>
+        <span className="tabular-nums">{formatAvgTotal(total, dayCount)}</span>
       ),
     },
     {
@@ -168,7 +160,7 @@ function metricColumns<T extends DispatchMetrics>(
     {
       title: t('breakdown.sameDayExitRate'),
       dataIndex: 'sameDayExitRate',
-      width: 110,
+      width: 140,
       align: 'right',
       render: (rate: number | null) => <RateCell rate={rate} />,
     },
@@ -203,7 +195,7 @@ function metricColumns<T extends DispatchMetrics>(
     {
       title: t('breakdown.priorityNextDaySignRate'),
       dataIndex: 'priorityNextDaySignRate',
-      width: 130,
+      width: 160,
       align: 'right',
       render: (rate: number | null, row) => (
         <div className="flex flex-col items-end">
@@ -507,6 +499,7 @@ export function PerformanceBreakdownTable({
       {
         title: t('breakdown.vendor'),
         dataIndex: 'supplierName',
+        width: 110,
         render: (name: string, row) => (
           <div className="min-w-0">
             <div className="truncate font-medium text-slate-900">{name}</div>
