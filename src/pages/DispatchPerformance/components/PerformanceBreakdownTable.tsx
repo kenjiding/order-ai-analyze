@@ -20,6 +20,15 @@ import {
 /** 查看异常报备回调的上下文：由表格逐层把 supplierKey / routeCode 带到司机行 */
 type ExceptionRowContext = { supplierKey: string; routeCode: string; courierCode: string }
 
+/** 表头文案超出列宽时省略号 + hover 显示全名，用于所有表头较长的列 */
+function HeaderTitle({ text }: { text: string }) {
+  return (
+    <Tooltip title={text}>
+      <span className="block truncate">{text}</span>
+    </Tooltip>
+  )
+}
+
 export function RateCell({
   rate,
   alertPct,
@@ -118,7 +127,9 @@ function profitColumns<T extends DispatchMetrics>(
   kinds: ('vendor' | 'courier')[],
 ): ColumnsType<T> {
   return kinds.map((kind) => ({
-    title: t(kind === 'vendor' ? 'breakdown.vendorProfit' : 'breakdown.courierProfit'),
+    title: (
+      <HeaderTitle text={t(kind === 'vendor' ? 'breakdown.vendorProfit' : 'breakdown.courierProfit')} />
+    ),
     key: `${kind}Profit`,
     width: 120,
     align: 'right' as const,
@@ -140,7 +151,7 @@ function metricColumns<T extends DispatchMetrics>(
   const settlingLabel = t('breakdown.settling')
   return [
     {
-      title: t('breakdown.totalWaybills'),
+      title: <HeaderTitle text={t('breakdown.totalWaybills')} />,
       dataIndex: 'total',
       width: 110,
       align: 'right',
@@ -149,7 +160,7 @@ function metricColumns<T extends DispatchMetrics>(
       ),
     },
     {
-      title: t('breakdown.before11HubExitRate'),
+      title: <HeaderTitle text={t('breakdown.before11HubExitRate')} />,
       dataIndex: 'before11Rate',
       width: 130,
       align: 'right',
@@ -158,14 +169,14 @@ function metricColumns<T extends DispatchMetrics>(
       ),
     },
     {
-      title: t('breakdown.sameDayExitRate'),
+      title: <HeaderTitle text={t('breakdown.sameDayExitRate')} />,
       dataIndex: 'sameDayExitRate',
       width: 140,
       align: 'right',
       render: (rate: number | null) => <RateCell rate={rate} />,
     },
     {
-      title: t('breakdown.signRate24h'),
+      title: <HeaderTitle text={t('breakdown.signRate24h')} />,
       dataIndex: 'signRate',
       width: 120,
       align: 'right',
@@ -179,7 +190,7 @@ function metricColumns<T extends DispatchMetrics>(
       ),
     },
     {
-      title: t('breakdown.nextDaySignRate'),
+      title: <HeaderTitle text={t('breakdown.nextDaySignRate')} />,
       dataIndex: 'nextDaySignRate',
       width: 110,
       align: 'right',
@@ -193,7 +204,7 @@ function metricColumns<T extends DispatchMetrics>(
       ),
     },
     {
-      title: t('breakdown.priorityNextDaySignRate'),
+      title: <HeaderTitle text={t('breakdown.priorityNextDaySignRate')} />,
       dataIndex: 'priorityNextDaySignRate',
       width: 160,
       align: 'right',
@@ -214,7 +225,7 @@ function metricColumns<T extends DispatchMetrics>(
       ),
     },
     {
-      title: t('breakdown.problemWaybills'),
+      title: <HeaderTitle text={t('breakdown.problemWaybills')} />,
       dataIndex: 'problemCount',
       width: 90,
       align: 'right',
@@ -370,7 +381,7 @@ function DriverTable({
 }) {
   const columns: ColumnsType<DispatchDriverNode> = [
     {
-      title: t('breakdown.driver'),
+      title: <HeaderTitle text={t('breakdown.driver')} />,
       dataIndex: 'courierName',
       width: 140,
       render: (name: string, row) =>
@@ -429,7 +440,7 @@ function RouteTable({
 }) {
   const columns: ColumnsType<DispatchRouteNode> = [
     {
-      title: t('breakdown.routeCode'),
+      title: <HeaderTitle text={t('breakdown.routeCode')} />,
       dataIndex: 'routeCode',
       render: (routeCode: string, row) => (
         <div className="min-w-0">
@@ -497,7 +508,7 @@ export function PerformanceBreakdownTable({
   const columns: ColumnsType<DispatchSupplierNode> = useMemo(
     () => [
       {
-        title: t('breakdown.vendor'),
+        title: <HeaderTitle text={t('breakdown.vendor')} />,
         dataIndex: 'supplierName',
         width: 110,
         render: (name: string, row) => (
