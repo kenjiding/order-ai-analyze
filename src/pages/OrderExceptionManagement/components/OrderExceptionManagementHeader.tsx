@@ -1,8 +1,9 @@
-import { ClipboardList, Layers, PackageSearch, Settings2, Warehouse } from 'lucide-react'
+import { BarChart3, ClipboardList, Layers, PackageSearch, Settings2, Warehouse } from 'lucide-react'
 import { useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 import { PageSectionTabs } from '../../../components/PageSectionTabs'
 import type { PageSectionTabItem } from '../../../components/PageSectionTabs'
+import { PERMISSION_KEYS, usePermission } from '../../../hooks/usePermission'
 import type { TabId } from '../useOrderExceptionManagementPage'
 
 type Props = {
@@ -17,6 +18,7 @@ export function OrderExceptionManagementHeader({
   activeJobCount,
 }: Props) {
   const { t } = useTranslation('orderException')
+  const canViewUsageStats = usePermission(PERMISSION_KEYS.btnOrderExceptionUsageStats)
 
   const tabItems: PageSectionTabItem[] = useMemo(
     () => [
@@ -30,8 +32,11 @@ export function OrderExceptionManagementHeader({
       },
       { id: 'warehouse-config', label: t('tabWarehouseConfig'), icon: Settings2 },
       { id: 'regression', label: t('tabRegression'), icon: ClipboardList },
+      ...(canViewUsageStats
+        ? [{ id: 'usage-analysis', label: t('tabUsageAnalysis'), icon: BarChart3 }]
+        : []),
     ],
-    [activeJobCount, t],
+    [activeJobCount, canViewUsageStats, t],
   )
 
   return (

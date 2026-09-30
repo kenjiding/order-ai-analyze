@@ -568,3 +568,34 @@ export async function postFeishuPushOrderException(payload: {
   if (!res.ok) throw new Error(await readHttpError(res, text))
   return JSON.parse(text) as OrderExceptionPushResult
 }
+
+// ─── 用户调用量埋点 ───────────────────────────────────────────────────────────
+
+export type OrderExceptionUsageMetric = 'orderClick' | 'exportExcel'
+
+/** 点击订单号 / 导出 Excel 的埋点上报；不影响主流程，失败静默丢弃即可。 */
+export function trackOrderExceptionUsage(metric: OrderExceptionUsageMetric): void {
+  backendFetch(`/api/order-exception/usage/track`, {
+    method: 'POST',
+    headers: JSON_HEADERS,
+    body: JSON.stringify({ metric }),
+  }).catch(() => {})
+}
+
+export type OrderExceptionUsageStatRow = {
+  userId: string
+  username: string
+  displayName: string | null
+  analyzedOrderCount: number
+  orderClickCount: number
+  exportCount: number
+  closureAddCount: number
+  updatedAt: string
+}
+
+export async function getOrderExceptionUsageStats(): Promise<{ rows: OrderExceptionUsageStatRow[] }> {
+  const res = await backendFetch(`/api/order-exception/usage/stats`)
+  const text = await res.text()
+  if (!res.ok) throw new Error(await readHttpError(res, text))
+  return JSON.parse(text) as { rows: OrderExceptionUsageStatRow[] }
+}

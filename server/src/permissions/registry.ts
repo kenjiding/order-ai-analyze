@@ -177,6 +177,14 @@ export const PERMISSION_REGISTRY: PermissionDefinition[] = [
     sortOrder: 330,
   },
   {
+    key: 'btn:order-exception:usage-stats',
+    type: 'button',
+    label: '用户调用量分析',
+    description: '查看所有用户在 AI 异常订单分析的调用量统计',
+    menuKey: 'order-exception',
+    sortOrder: 340,
+  },
+  {
     key: 'btn:push-notifications:warehouse-efficiency',
     type: 'button',
     label: '物流运营推送',

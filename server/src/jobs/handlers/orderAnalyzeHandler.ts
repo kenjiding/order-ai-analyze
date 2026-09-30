@@ -7,6 +7,7 @@ import { enrichTheftSuspectDriverVendor } from '../../orderAnalyze/driverVendorE
 import { runOrderAnalyzePipeline } from '../../orderAnalyze/pipeline'
 import { DEFAULT_WAREHOUSE_CONFIG, parseWarehouseConfigInput } from '../../orderAnalyze/warehouseProfiles'
 import { fetchOrderExceptionSourcesForAnalyze } from '../../routes/orderExceptionData'
+import { recordUsage } from '../../orderExceptionUsageStats'
 import type { JobHandler } from '../types'
 
 export const ORDER_ANALYZE_JOB_TYPE = 'order.analyze'
@@ -83,6 +84,8 @@ export const orderAnalyzeHandler: JobHandler = {
     })
 
     await ctx.reportProgress({ phase: 'writing', message: '写入结果', percent: 95 })
+
+    if (ctx.job.createdBy) recordUsage(ctx.job.createdBy, 'analyzedOrderCount', orderNos.length)
 
     const artifactPayload = {
       results,

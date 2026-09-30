@@ -13,8 +13,10 @@ import {
   postInHubWaybillQuery,
   getJobById,
   getJobArtifact,
+  getOrderExceptionUsageStats,
   runRegression,
   type PublicJob,
+  type OrderExceptionUsageStatRow,
   type OrderAnalyzeAiProvider,
   type OrderAnalyzeApiTiming,
   type OrderAnalyzeResultItem,
@@ -76,7 +78,7 @@ function readStoredBatchAnalyze(): boolean {
   }
 }
 
-export type TabId = 'analyze' | 'jobs' | 'regression' | 'warehouse-config' | 'in-hub'
+export type TabId = 'analyze' | 'jobs' | 'regression' | 'warehouse-config' | 'in-hub' | 'usage-analysis'
 
 export type InHubQueryMeta = {
   start: string
@@ -184,6 +186,9 @@ export function useOrderExceptionManagementPage() {
   const [jobsList, setJobsList] = useState<PublicJob[]>([])
   const [isJobsLoading, setIsJobsLoading] = useState(false)
   const jobsPollingRef = useRef<ReturnType<typeof setInterval> | null>(null)
+
+  const [usageStats, setUsageStats] = useState<OrderExceptionUsageStatRow[]>([])
+  const [isUsageStatsLoading, setIsUsageStatsLoading] = useState(false)
 
   const [regressionCases, setRegressionCases] = useState<RegressionCaseListItem[]>([])
   const [captureOrderNo, setCaptureOrderNo] = useState('')
@@ -299,6 +304,24 @@ export function useOrderExceptionManagementPage() {
     }
     return token
   }, [imileToken, t])
+
+  const loadUsageStats = useCallback(async () => {
+    setIsUsageStatsLoading(true)
+    try {
+      const { rows } = await getOrderExceptionUsageStats()
+      setUsageStats(rows)
+    } catch (e) {
+      showToast((e as Error).message || t('toast.usageStatsLoadFailed'), 'error')
+    } finally {
+      setIsUsageStatsLoading(false)
+    }
+  }, [t])
+
+  useEffect(() => {
+    if (activeTab === 'usage-analysis') {
+      void loadUsageStats()
+    }
+  }, [activeTab, loadUsageStats])
 
   const loadRegressionCases = useCallback(async () => {
     try {
@@ -860,6 +883,9 @@ export function useOrderExceptionManagementPage() {
     cancelJobById,
     deleteJobById,
     retryJob,
+    usageStats,
+    isUsageStatsLoading,
+    loadUsageStats,
     regressionCases,
     captureOrderNo,
     setCaptureOrderNo,

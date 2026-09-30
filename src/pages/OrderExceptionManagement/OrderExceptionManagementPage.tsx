@@ -2,6 +2,7 @@ import { AnalysisTabContent } from './components/AnalysisTabContent'
 import { InHubExceptionTabContent } from './components/InHubExceptionTabContent'
 import { JobsTabContent } from './components/JobsTabContent'
 import { RegressionTestTabContent } from './components/RegressionTestTabContent'
+import { UsageAnalysisTabContent } from './components/UsageAnalysisTabContent'
 import { WarehouseConfigTabContent } from './components/WarehouseConfigTabContent'
 import { OrderExceptionManagementHeader } from './components/OrderExceptionManagementHeader'
 import { useOrderExceptionManagementPage } from './useOrderExceptionManagementPage'
@@ -112,6 +113,14 @@ export default function OrderExceptionManagementPage() {
           regressionResults={v.regressionResults}
           regressionSummary={v.regressionSummary}
           regressionTokenUsage={v.regressionTokenUsage}
+        />
+      )}
+
+      {v.activeTab === 'usage-analysis' && (
+        <UsageAnalysisTabContent
+          rows={v.usageStats}
+          isLoading={v.isUsageStatsLoading}
+          onRefresh={() => void v.loadUsageStats()}
         />
       )}
     </div>

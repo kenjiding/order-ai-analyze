@@ -6,6 +6,7 @@
   "tabJobs": "Job queue",
   "tabWarehouseConfig": "Analysis config",
   "tabRegression": "Test cases",
+  "tabUsageAnalysis": "Usage analysis",
   "analyze": {
     "pendingOrdersTitle": "Waybills pending analysis",
     "analyzeModel": "Analysis model",
@@ -71,6 +72,17 @@
     "relativeMinutesAgo": "{{count}} min ago",
     "relativeHoursAgo": "{{count}} hr ago",
     "relativeDaysAgo": "{{count}} day(s) ago"
+  },
+  "usageAnalysis": {
+    "description": "Cumulative usage per user for AI exception analysis — one row per user, updated in place.",
+    "refresh": "Refresh",
+    "empty": "No usage data yet",
+    "colUser": "User",
+    "colAnalyzedOrderCount": "Analyzed orders",
+    "colOrderClickCount": "Clicks",
+    "colExportCount": "Exports",
+    "colClosureAddCount": "Closures added",
+    "colUpdatedAt": "Updated at"
   },
   "regression": {
     "captureTitle": "Capture test case",
@@ -391,6 +403,7 @@
     "missingImileTokenSettings": "Enter iMile Bearer Token in system settings (top-right)",
     "loadCasesFailed": "Failed to load test cases",
     "jobsLoadFailed": "Failed to load job list",
+    "usageStatsLoadFailed": "Failed to load usage stats",
     "jobNotFound": "Job not found",
     "jobNotFinished": "Job not finished yet",
     "loadedResults": "Loaded {{count}} analysis result(s)",

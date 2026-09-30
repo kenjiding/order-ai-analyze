@@ -86,6 +86,7 @@ export const PERMISSION_KEYS = {
   btnOrderExceptionAnalyze: 'btn:order-exception:analyze',
   btnOrderExceptionConfigEdit: 'btn:order-exception:config-edit',
   btnOrderExceptionClosureAdd: 'btn:order-exception:closure-add',
+  btnOrderExceptionUsageStats: 'btn:order-exception:usage-stats',
   btnPushNotificationsWarehouseEfficiency: 'btn:push-notifications:warehouse-efficiency',
   btnPushNotificationsAttendanceScheduling: 'btn:push-notifications:attendance-scheduling',
   btnPushNotificationsFleetSupplier: 'btn:push-notifications:fleet-supplier',

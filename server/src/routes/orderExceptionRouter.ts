@@ -25,6 +25,7 @@ import { DEFAULT_WAREHOUSE_CONFIG } from '../orderAnalyze/warehouseProfiles'
 import { requirePermission, type AuthenticatedRequest } from '../auth/middleware'
 import { enqueueJob } from '../jobs/queue'
 import { ORDER_ANALYZE_JOB_TYPE } from '../jobs/handlers'
+import { listUsageStats, recordUsage, type UsageStatField } from '../orderExceptionUsageStats'
 
 export const orderExceptionRouter = Router()
 
@@ -167,6 +168,9 @@ orderExceptionRouter.post(
         })
         return
       }
+
+      const authUserId = (req as AuthenticatedRequest).authUser?.id
+      if (authUserId) recordUsage(authUserId, 'closureAddCount', 1)
 
       res.json({ ok: true })
     } catch (e) {
@@ -503,6 +507,9 @@ orderExceptionRouter.post('/analyze', async (req: Request, res: Response) => {
       scanStationCode: body.scanStationCode,
     })
 
+    const analyzeAuthUserId = (req as AuthenticatedRequest).authUser?.id
+    if (analyzeAuthUserId) recordUsage(analyzeAuthUserId, 'analyzedOrderCount', orderNos.length)
+
     res.json({
       results,
       trackInfo: sourceResult.trackInfo,
@@ -564,3 +571,35 @@ orderExceptionRouter.post('/analyze-async', async (req: Request, res: Response) 
     res.status(500).json({ error: (e as Error).message || '提交分析任务失败' })
   }
 })
+
+const TRACKABLE_USAGE_FIELDS: Record<string, UsageStatField> = {
+  orderClick: 'orderClickCount',
+  exportExcel: 'exportCount',
+}
+
+/** 纯前端动作（点击订单号 / 导出 Excel）的埋点上报；不影响主流程，失败只记日志。 */
+orderExceptionRouter.post('/usage/track', (req: Request, res: Response) => {
+  const { metric } = readJson<{ metric?: string }>(req)
+  const field = TRACKABLE_USAGE_FIELDS[String(metric ?? '')]
+  if (!field) {
+    res.status(400).json({ error: '未知的 metric' })
+    return
+  }
+  const authUserId = (req as AuthenticatedRequest).authUser?.id
+  if (authUserId) recordUsage(authUserId, field, 1)
+  res.json({ ok: true })
+})
+
+/** 「用户调用量分析」Tab：所有用户的累计埋点数据 */
+orderExceptionRouter.get(
+  '/usage/stats',
+  requirePermission('btn:order-exception:usage-stats'),
+  async (_req: Request, res: Response) => {
+    try {
+      const rows = await listUsageStats()
+      res.json({ rows })
+    } catch (e) {
+      res.status(500).json({ error: (e as Error).message || '查询用户调用量失败' })
+    }
+  },
+)

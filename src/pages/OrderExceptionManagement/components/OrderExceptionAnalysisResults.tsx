@@ -9,6 +9,7 @@ import * as XLSX from 'xlsx-js-style'
 import { applySheetCenterAlignment } from '../../../utils/xlsxCenteredSheet'
 import { DataTable, ExportButton, type DataTableColumn } from '../../ScannerEfficiency/components/ui'
 import { networkDurationLabel, type AnalysisRow, type AnalyzeProgress, type SubmittedJobBanner } from '../analysisTypes'
+import { trackOrderExceptionUsage } from '../orderExceptionApi'
 import type { PostFilterConfig } from '../postFilter/types'
 import { AnalyzeProgressStrip } from './AnalyzeProgressStrip'
 import { OrderAnalysisDetailDrawer } from './OrderAnalysisDetailDrawer'
@@ -664,6 +665,7 @@ export function OrderExceptionAnalysisResults({
   }, [filteredRows, columnFilters])
 
   const handleOpenOrderDetail = useCallback((row: Row) => {
+    trackOrderExceptionUsage('orderClick')
     setVisitedOrders((prev) => {
       if (prev.has(row.orderNo)) return prev
       const next = new Set(prev)
@@ -731,6 +733,7 @@ export function OrderExceptionAnalysisResults({
     })
     const stamp = new Date().toISOString().slice(0, 19).replace(/-/g, '').replace(/:/g, '').replace(/T/g, '')
     saveAs(blob, `${t('results.exportFileNamePrefix')}${stamp}.xlsx`)
+    trackOrderExceptionUsage('exportExcel')
   }, [exportableRows, t])
 
   if (!showResultsSection) return null

@@ -141,6 +141,21 @@ export const orderExceptionWarehouseConfigs = pgTable(
   ],
 )
 
+/** AI异常订单分析埋点：每个用户一行累计计数，不记流水；用「用户调用量分析」Tab 展示。 */
+export const orderExceptionUsageStats = pgTable(
+  'order_exception_usage_stats',
+  {
+    userId: uuid('user_id')
+      .primaryKey()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    analyzedOrderCount: integer('analyzed_order_count').notNull().default(0),
+    orderClickCount: integer('order_click_count').notNull().default(0),
+    exportCount: integer('export_count').notNull().default(0),
+    closureAddCount: integer('closure_add_count').notNull().default(0),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+)
+
 /** 飞书效率推送快照：每个 region 保留最新一次手动推送的 sort_efficiency_v1 快照，供定时调度复用。 */
 export const feishuPushSnapshots = pgTable('feishu_push_snapshots', {
   regionCode: varchar('region_code', { length: 16 }).primaryKey(),

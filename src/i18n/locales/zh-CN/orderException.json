@@ -6,6 +6,7 @@
   "tabJobs": "任务队列",
   "tabWarehouseConfig": "分析配置",
   "tabRegression": "测试用例",
+  "tabUsageAnalysis": "用户调用量分析",
   "analyze": {
     "pendingOrdersTitle": "待分析订单",
     "analyzeModel": "分析模型",
@@ -71,6 +72,17 @@
     "relativeMinutesAgo": "{{count}} 分钟前",
     "relativeHoursAgo": "{{count}} 小时前",
     "relativeDaysAgo": "{{count}} 天前"
+  },
+  "usageAnalysis": {
+    "description": "记录每个用户在「AI异常订单分析」的累计调用量，一人一行，实时累加。",
+    "refresh": "刷新",
+    "empty": "暂无调用数据",
+    "colUser": "用户",
+    "colAnalyzedOrderCount": "分析订单量",
+    "colOrderClickCount": "点击量",
+    "colExportCount": "导出量",
+    "colClosureAddCount": "新增异常完结量",
+    "colUpdatedAt": "更新时间"
   },
   "regression": {
     "captureTitle": "录入测试用例",
@@ -391,6 +403,7 @@
     "missingImileTokenSettings": "请在右上角系统设置中填写 iMile Bearer Token",
     "loadCasesFailed": "加载用例失败",
     "jobsLoadFailed": "任务列表加载失败",
+    "usageStatsLoadFailed": "用户调用量加载失败",
     "jobNotFound": "任务不存在",
     "jobNotFinished": "任务尚未完成",
     "loadedResults": "已加载 {{count}} 单分析结果",
