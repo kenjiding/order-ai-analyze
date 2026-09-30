@@ -8,7 +8,7 @@ import type { TFunction } from 'i18next'
 import * as XLSX from 'xlsx-js-style'
 import { applySheetCenterAlignment } from '../../../utils/xlsxCenteredSheet'
 import { DataTable, ExportButton, type DataTableColumn } from '../../ScannerEfficiency/components/ui'
-import type { AnalysisRow, AnalyzeProgress, SubmittedJobBanner } from '../analysisTypes'
+import { networkDurationLabel, type AnalysisRow, type AnalyzeProgress, type SubmittedJobBanner } from '../analysisTypes'
 import type { PostFilterConfig } from '../postFilter/types'
 import { AnalyzeProgressStrip } from './AnalyzeProgressStrip'
 import { OrderAnalysisDetailDrawer } from './OrderAnalysisDetailDrawer'
@@ -331,6 +331,17 @@ function buildColumns(
           return <span className="text-slate-400">—</span>
         }
         return <span>{String(r.categoryName ?? '')}</span>
+      },
+    },
+    {
+      key: 'networkDuration',
+      title: t('results.colNetworkDuration'),
+      render: (row) => {
+        const r = row as unknown as Row
+        if (r.status === 'pending' || r.status === 'analyzing') {
+          return <span className="text-slate-400">—</span>
+        }
+        return <span>{networkDurationLabel(r)}</span>
       },
     },
     {

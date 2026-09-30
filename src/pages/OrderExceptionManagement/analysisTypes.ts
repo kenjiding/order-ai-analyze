@@ -46,3 +46,17 @@ export type SubmittedJobBanner = {
   jobId: string
   orderCount: number
 }
+
+/** 入网时长：从首条「转运」入站扫描记录到当前的天数；扫描前的揽收/下单记录不计入网络 */
+export function networkDurationLabel(row: AnalysisRow): string {
+  let earliest: number | null = null
+  for (const event of row.trackEvents ?? []) {
+    if ((event.trackStageTx ?? '').trim() !== '转运') continue
+    const ts = new Date(event.time).getTime()
+    if (Number.isNaN(ts)) continue
+    if (earliest === null || ts < earliest) earliest = ts
+  }
+  if (earliest === null) return '—'
+  const days = Math.floor((Date.now() - earliest) / 86400000)
+  return String(days)
+}

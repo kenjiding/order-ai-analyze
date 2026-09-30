@@ -42,6 +42,8 @@ export type OrderQueryInfo = {
   declaredValueUsd: string
   /** resultObject.consigneeInfo.consigneeRouteCode */
   consigneeRouteCode: string
+  /** resultObject.baseInfo.amName */
+  amName: string
 }
 
 export type OrderAnalyzeInterceptLog = {

@@ -56,6 +56,8 @@ export type OrderQueryInfo = {
   declaredValueUsd: string
   /** resultObject.consigneeInfo.consigneeRouteCode，供「路由码」列展示 */
   consigneeRouteCode: string
+  /** resultObject.baseInfo.amName */
+  amName: string
 }
 
 export type TrackQuerySuccess = {
@@ -315,6 +317,7 @@ export function extractOrderInfo(payload: unknown): OrderQueryInfo | null {
     customerDeclaredValueAud: readPlainField(sku?.customerDeclaredValue),
     declaredValueUsd: readPlainField(sku?.declaredValue),
     consigneeRouteCode: readPlainField(consignee?.consigneeRouteCode),
+    amName: readPlainField(base?.amName),
   }
 }
 

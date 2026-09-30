@@ -1,12 +1,18 @@
 import type { TFunction } from 'i18next'
 import * as XLSX from 'xlsx'
-import type { AnalysisRow } from './analysisTypes'
+import { networkDurationLabel, type AnalysisRow } from './analysisTypes'
 import type { OrderQueryInfo } from './orderExceptionApi'
 
 export const ANALYSIS_EXPORT_FIELDS = [
   'orderNo',
+  'merchantName',
+  'merchantCode',
+  'amName',
+  'totalWeight',
+  'customerDeclaredValueAud',
   'lossScope',
   'categoryName',
+  'networkDuration',
   'currentResponsibilityParty',
   'consigneeRouteCode',
   'confidence',
@@ -38,8 +44,14 @@ const CROSS_CHECKED_FROM_LABEL: Record<string, 'openai' | 'deepseek'> = {
 /** Legacy zh-CN headers for import compatibility and tests */
 export const ZH_ANALYSIS_EXPORT_LABELS: AnalysisExportLabels = {
   orderNo: '订单号',
+  merchantName: '商家',
+  merchantCode: '编码',
+  amName: 'AM',
+  totalWeight: '重量kg',
+  customerDeclaredValueAud: '上传申报AUD',
   lossScope: '异常类型',
   categoryName: '子类型',
+  networkDuration: '入网时长',
   currentResponsibilityParty: '当前责任站点',
   consigneeRouteCode: '路由码',
   confidence: '置信度',
@@ -55,8 +67,14 @@ export const ZH_ANALYSIS_EXPORT_LABELS: AnalysisExportLabels = {
 
 const EXPORT_HEADER_ALIASES: Record<AnalysisExportField, readonly string[]> = {
   orderNo: ['订单号', 'Waybill No.'],
+  merchantName: ['商家', 'Merchant'],
+  merchantCode: ['编码', 'Merchant code'],
+  amName: ['AM'],
+  totalWeight: ['重量kg', 'Weight (kg)'],
+  customerDeclaredValueAud: ['上传申报AUD', 'Declared AUD'],
   lossScope: ['异常类型', 'Exception type'],
   categoryName: ['子类型', 'Sub-type'],
+  networkDuration: ['入网时长', 'Days in network'],
   currentResponsibilityParty: ['当前责任站点', 'Current responsible hub'],
   consigneeRouteCode: ['路由码', 'Route code'],
   confidence: ['置信度', 'Confidence'],
@@ -87,8 +105,14 @@ const HEADER_TO_FIELD = new Map<string, AnalysisExportField>(
 export function getAnalysisExportLabels(t: TFunction): AnalysisExportLabels {
   return {
     orderNo: t('export.orderNo'),
+    merchantName: t('export.merchant'),
+    merchantCode: t('export.merchantCode'),
+    amName: t('export.amName'),
+    totalWeight: t('export.weightKg'),
+    customerDeclaredValueAud: t('export.declaredAud'),
     lossScope: t('export.exceptionType'),
     categoryName: t('export.subType'),
+    networkDuration: t('export.networkDuration'),
     currentResponsibilityParty: t('export.currentHub'),
     consigneeRouteCode: t('export.routeCode'),
     confidence: t('export.confidence'),
@@ -112,7 +136,9 @@ export type AnalysisExportRow = Record<string, string | number>
 /**
  * Column order matches ANALYSIS_EXPORT_FIELDS.
  */
-export const ANALYSIS_EXPORT_COLUMN_WIDTHS = [24, 14, 16, 28, 16, 10, 44, 80, 12, 16, 20, 20, 24, 14] as const
+export const ANALYSIS_EXPORT_COLUMN_WIDTHS = [
+  24, 18, 14, 10, 10, 14, 14, 16, 14, 28, 16, 10, 44, 80, 12, 16, 20, 20, 24, 14,
+] as const
 
 const REQUIRED_IMPORT_FIELDS: AnalysisExportField[] = ['orderNo', 'lossScope']
 
@@ -144,15 +170,8 @@ function isBlankDisplay(value: string): boolean {
   return !value || value === '—'
 }
 
-function emptyOrderInfo(consigneeRouteCode: string): OrderQueryInfo {
-  return {
-    merchantName: '',
-    merchantCode: '',
-    totalWeight: '',
-    customerDeclaredValueAud: '',
-    declaredValueUsd: '',
-    consigneeRouteCode,
-  }
+function emptyOrderInfo(fields: Omit<OrderQueryInfo, 'declaredValueUsd'>): OrderQueryInfo {
+  return { ...fields, declaredValueUsd: '' }
 }
 
 
@@ -174,8 +193,14 @@ export function toAnalysisExportRow(
   const no = t ? t('export.no') : '否'
   return {
     [labels.orderNo]: row.orderNo,
+    [labels.merchantName]: row.orderInfo?.merchantName || '—',
+    [labels.merchantCode]: row.orderInfo?.merchantCode || '—',
+    [labels.amName]: row.orderInfo?.amName || '—',
+    [labels.totalWeight]: row.orderInfo?.totalWeight || '—',
+    [labels.customerDeclaredValueAud]: row.orderInfo?.customerDeclaredValueAud || '—',
     [labels.lossScope]: row.lossScope,
     [labels.categoryName]: row.categoryName,
+    [labels.networkDuration]: networkDurationLabel(row),
     [labels.currentResponsibilityParty]: row.currentResponsibilityParty,
     [labels.consigneeRouteCode]: row.orderInfo?.consigneeRouteCode || '—',
     [labels.confidence]: row.confidence,
@@ -198,6 +223,18 @@ export function analysisRowFromExportRecord(raw: Record<string, unknown>): Analy
   if (!orderNo) return null
 
   const routeCode = cellToText(record.consigneeRouteCode)
+  const merchantName = cellToText(record.merchantName)
+  const merchantCode = cellToText(record.merchantCode)
+  const amName = cellToText(record.amName)
+  const totalWeight = cellToText(record.totalWeight)
+  const customerDeclaredValueAud = cellToText(record.customerDeclaredValueAud)
+  const hasOrderInfo =
+    !isBlankDisplay(routeCode) ||
+    !isBlankDisplay(merchantName) ||
+    !isBlankDisplay(merchantCode) ||
+    !isBlankDisplay(amName) ||
+    !isBlankDisplay(totalWeight) ||
+    !isBlankDisplay(customerDeclaredValueAud)
   const extraSummary = cellToText(record.extraData)
   const person = cellToText(record.latestResponsibilityPerson)
   const displayTime = cellToText(record.latestResponsibilityTime)
@@ -224,7 +261,9 @@ export function analysisRowFromExportRecord(raw: Record<string, unknown>): Analy
     trackEvents: [],
     interceptLogs: [],
     status: 'done',
-    orderInfo: isBlankDisplay(routeCode) ? null : emptyOrderInfo(routeCode),
+    orderInfo: hasOrderInfo
+      ? emptyOrderInfo({ merchantName, merchantCode, amName, totalWeight, customerDeclaredValueAud, consigneeRouteCode: routeCode })
+      : null,
     extraData:
       isBlankDisplay(extraSummary)
         ? undefined

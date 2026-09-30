@@ -130,6 +130,7 @@ function hasOrderInfoContent(orderInfo: OrderQueryInfo | null | undefined): bool
   return [
     orderInfo.merchantName,
     orderInfo.merchantCode,
+    orderInfo.amName,
     orderInfo.totalWeight,
     orderInfo.customerDeclaredValueAud,
     orderInfo.declaredValueUsd,
@@ -148,6 +149,7 @@ function OrderInfoMetaLine({
   const items: { label: string; value: string }[] = [
     { label: t('drawer.merchant'), value: formatOrderInfoField(orderInfo?.merchantName) },
     { label: t('drawer.merchantCode'), value: formatOrderInfoField(orderInfo?.merchantCode) },
+    { label: t('drawer.amName'), value: formatOrderInfoField(orderInfo?.amName) },
     { label: t('drawer.weightKg'), value: formatOrderInfoField(orderInfo?.totalWeight) },
     { label: t('drawer.declaredAud'), value: formatOrderInfoField(orderInfo?.customerDeclaredValueAud) },
     { label: t('drawer.declaredUsd'), value: formatOrderInfoField(orderInfo?.declaredValueUsd) },
@@ -156,14 +158,14 @@ function OrderInfoMetaLine({
   if (!items.length) return null
 
   return (
-    <p className="mt-2 flex flex-wrap items-center gap-x-2.5 gap-y-1 border-t border-white/10 pt-2.5 text-sm leading-snug text-white/85">
+    <p className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 border-t border-white/10 pt-2.5 text-sm leading-snug text-white/85">
       {items.map((item, index) => (
         <span key={item.label} className="inline-flex min-w-0 items-center gap-x-2">
-          {index > 0 ? <span className="text-white/25" aria-hidden>·</span> : null}
           <span className="min-w-0 truncate">
             <span className="text-white/50">{item.label}</span>{': '}
             <span className="font-semibold text-white/95">{item.value}</span>
           </span>
+          {index < items.length - 1 ? <span className="text-white/25" aria-hidden>·</span> : null}
         </span>
       ))}
     </p>
