@@ -629,26 +629,25 @@ export function buildDispatchPerformanceTree(
     pushCapped(driver.before11UnmetWaybillNos, row.before11UnmetWaybillNos)
   }
 
-  // 排序统一按「未达标数从多到少」：分析页要先看到最差的那几家/几条路由/几个司机
-  const byUnmet = (a: { acc: Acc }, b: { acc: Acc }) => {
-    const unmet = (x: Acc) => x.total - (x.exitMetSignMet + x.exitUnmetSignMet)
-    return unmet(b.acc) - unmet(a.acc) || b.acc.total - a.acc.total
+  // 排序统一按「高优件次日完成率从低到高」：分析页要先看到最差的那几家/几条路由/几个司机；
+  // 没有优先件或未结算时该率为 null，排不出差好，扔到最后不参与比较
+  const byPriorityRateAsc = (a: { priorityNextDaySignRate: number | null }, b: { priorityNextDaySignRate: number | null }) => {
+    if (a.priorityNextDaySignRate == null) return b.priorityNextDaySignRate == null ? 0 : 1
+    if (b.priorityNextDaySignRate == null) return -1
+    return a.priorityNextDaySignRate - b.priorityNextDaySignRate
   }
   const supplierNodes: DispatchPerformanceSupplierNode[] = [...suppliers.values()]
-    .sort(byUnmet)
     .map((supplier) => ({
       supplierKey: supplier.supplierKey,
       supplierName: supplier.supplierName,
       vendorCode: supplier.vendorCode,
       ...toMetrics(supplier.acc),
       routes: [...supplier.routes.values()]
-        .sort(byUnmet)
         .map((route) => ({
           routeCode: route.routeCode,
           whitelistTotal: route.whitelistTotal,
           ...toMetrics(route.acc),
           drivers: [...route.drivers.values()]
-            .sort(byUnmet)
             .map((driver) => ({
               courierCode: driver.courierCode,
               courierName: driver.courierName,
@@ -657,9 +656,12 @@ export function buildDispatchPerformanceTree(
               lateSignedWaybillNos: driver.lateSignedWaybillNos,
               problemWaybillNos: driver.problemWaybillNos,
               before11UnmetWaybillNos: driver.before11UnmetWaybillNos,
-            })),
-        })),
+            }))
+            .sort(byPriorityRateAsc),
+        }))
+        .sort(byPriorityRateAsc),
     }))
+    .sort(byPriorityRateAsc)
 
   return {
     overall: toMetrics(overallAcc),

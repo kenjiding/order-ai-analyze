@@ -5,7 +5,7 @@ import zhCN from 'antd/locale/zh_CN'
 import { AliveScope, KeepAlive } from 'react-activation'
 import { ThemeProvider, createTheme } from '@mui/material/styles'
 import { useTranslation } from 'react-i18next'
-import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom'
+import { BrowserRouter, Navigate, Route, Routes, useParams } from 'react-router-dom'
 import { antdTheme } from './theme/antdTheme'
 import { AppSettingsProvider } from './context/AppSettingsContext'
 import { I18nProvider } from './i18n/I18nProvider'
@@ -116,6 +116,18 @@ function KeptPage({
   return (
     <KeepAlive cacheKey={cacheKey} name={name} autoFreeze={false}>
       <LazyBoundary>{children}</LazyBoundary>
+    </KeepAlive>
+  )
+}
+
+/** 详情页按 :id 分别缓存，切走再切回同一个供应商配置时保留已选日期等状态 */
+function DispatchPerformanceDetailRoute() {
+  const { id } = useParams<{ id: string }>()
+  return (
+    <KeepAlive cacheKey={`page-dispatch-performance-detail-${id}`} name={`dispatch-performance-detail-${id}`} autoFreeze={false}>
+      <LazyBoundary>
+        <DispatchPerformanceDetailPage />
+      </LazyBoundary>
     </KeepAlive>
   )
 }
@@ -266,14 +278,7 @@ function AppRoutes() {
             }
           />
           {/* 子路由权限由 matchesSidebarActive 的前缀匹配自动继承 menu:dispatch-performance */}
-          <Route
-            path="/dispatch-performance/:id"
-            element={
-              <LazyBoundary>
-                <DispatchPerformanceDetailPage />
-              </LazyBoundary>
-            }
-          />
+          <Route path="/dispatch-performance/:id" element={<DispatchPerformanceDetailRoute />} />
           <Route
             path="/exit-rate-query"
             element={

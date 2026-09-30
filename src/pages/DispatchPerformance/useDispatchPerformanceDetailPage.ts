@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import dayjs, { type Dayjs } from 'dayjs'
 import { useTranslation } from 'react-i18next'
 import { fetchDispatchPerformanceData } from './dispatchPerformanceApi'
@@ -63,12 +63,6 @@ export function useDispatchPerformanceDetailPage(configId: string | undefined) {
 
   useEffect(() => () => abortRef.current?.abort(), [])
 
-  /** 区间内派签尚未结算（最新那天通常如此），用于提示「派签率还在结算中」 */
-  const pendingDispatch = useMemo(
-    () => result != null && result.overall.total > 0 && !result.overall.dispatchSettled,
-    [result],
-  )
-
   // 触发与轮询由共用 hook 承担；结算完刷新展示数据（出仓趟可能刚落库）
   const settle = useSettleNow({ onSettled: load })
 
@@ -83,7 +77,6 @@ export function useDispatchPerformanceDetailPage(configId: string | undefined) {
     // 服务端按结算台账算好的「真的漏跑」的天，不能在前端拿 arrivalDates 反推：
     // 周末没批次、不分拣的工作日 0 格子、供应商筛选，都会让有跑过的天看起来是空的
     missingDates: result?.missingDates ?? [],
-    pendingDispatch,
     loading,
     error,
     reload: load,

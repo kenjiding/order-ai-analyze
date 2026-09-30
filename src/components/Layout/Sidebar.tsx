@@ -59,6 +59,16 @@ export default function Sidebar({ collapsed, onCollapsedChange, mobileOpen = fal
   // Flat items for collapsed icon-only view
   const flatItems = useMemo(() => menuGroups.flatMap((g) => g.items), [menuGroups])
 
+  // 记住每个菜单项当前所在的完整子路径（如 /dispatch-performance/:id），
+  // 切到别的页面再点回来时跳回原位，而不是总是回到列表页
+  const [lastPaths, setLastPaths] = useState<Record<string, string>>({})
+  useEffect(() => {
+    const item = flatItems.find((it) => matchesSidebarActive(it.path, location.pathname))
+    if (!item) return
+    const full = location.pathname + location.search
+    setLastPaths((prev) => (prev[item.id] === full ? prev : { ...prev, [item.id]: full }))
+  }, [location.pathname, location.search, flatItems])
+
   const navContent = (isMobile: boolean) => {
     const isCollapsedDesktop = !isMobile && collapsed
 
@@ -139,7 +149,7 @@ export default function Sidebar({ collapsed, onCollapsedChange, mobileOpen = fal
                 return (
                   <NavLink
                     key={item.id}
-                    to={item.path}
+                    to={lastPaths[item.id] ?? item.path}
                     title={t(`items.${item.id}`)}
                     className={() =>
                       [
@@ -240,7 +250,7 @@ export default function Sidebar({ collapsed, onCollapsedChange, mobileOpen = fal
                               return (
                                 <NavLink
                                   key={item.id}
-                                  to={item.path}
+                                  to={lastPaths[item.id] ?? item.path}
                                   onClick={() => isMobile && onMobileOpenChange?.(false)}
                                   tabIndex={isExpanded ? undefined : -1}
                                   className={() =>

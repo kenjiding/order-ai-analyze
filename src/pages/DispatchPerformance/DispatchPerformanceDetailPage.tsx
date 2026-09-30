@@ -201,9 +201,6 @@ export default function DispatchPerformanceDetailPage() {
                 <Tag color="default">{t('detail.disabled', { ns: 'dispatchPerformance' })}</Tag>
               ) : null}
             </h2>
-            <p className="mt-1 text-sm text-slate-500">
-              {t('detail.subtitle', { ns: 'dispatchPerformance' })}
-            </p>
           </div>
           <div className="flex items-center gap-2">
             <Popconfirm
@@ -309,15 +306,6 @@ export default function DispatchPerformanceDetailPage() {
 
       {v.settleResult ? (
         <SettleNowResult artifact={v.settleResult} onDismiss={v.dismissSettleResult} />
-      ) : null}
-
-      {v.pendingDispatch ? (
-        <Alert
-          type="info"
-          showIcon
-          message={t('detail.pendingDispatchTitle', { ns: 'dispatchPerformance' })}
-          description={t('detail.pendingDispatchDesc', { ns: 'dispatchPerformance' })}
-        />
       ) : null}
 
       {v.result ? (
