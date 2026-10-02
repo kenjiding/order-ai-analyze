@@ -305,18 +305,23 @@ function extractShortEvidence(content: string): string {
 
 function isMerchantDestroyTerminalEvent(content: string): boolean {
   if (!content.includes('销毁')) return false
-  return (
+  if (
     content.includes('商家已反馈NDR处理意见') ||
     content.includes('商家反馈意见') ||
     content.includes('包裹确认派送结束') ||
     content.includes('按照商家反馈意见') ||
     content.includes('按商家反馈意见')
-  )
+  ) {
+    return true
+  }
+  // 操作员发起拦截，拦截原因为销毁：与商家反馈销毁同属终态方向信号，文案家族不同但语义等同
+  return content.includes('已发起拦截') && /拦截原因\[[^\]]*销毁[^\]]*]/.test(content)
 }
 
-/** 商家 Abandon 方向事件：退件/NDR处理意见[Abandon] */
+/** 商家 Abandon 方向事件：退件/NDR处理意见[Abandon]，或操作员发起拦截且拦截原因为 Abandon */
 function isMerchantAbandonFeedbackEvent(content: string): boolean {
-  return MERCHANT_ABANDON_FEEDBACK_RE.test(content)
+  if (MERCHANT_ABANDON_FEEDBACK_RE.test(content)) return true
+  return content.includes('已发起拦截') && /拦截原因\[[^\]]*Abandon[^\]]*]/i.test(content)
 }
 
 /** 物理销毁闭环事件：退件已销毁 */
