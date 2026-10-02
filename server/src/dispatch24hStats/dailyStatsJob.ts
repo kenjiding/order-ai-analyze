@@ -234,14 +234,11 @@ export async function computeOneArrivalDate(input: {
 
   // 强制重拉到件索引：缓存里那份可能是「到件日当天」被司机地图等写下的半截清单，
   // 之后永不刷新，直接用会让两个率的分母静默偏小且不回补。
-  // 强制重拉明细：已签收的单是终态、增量同步永远跳过它，而计价恰恰只算已签收的单——
-  // 缓存行里后加的 postcode/suburb 就永远是空的，金额会全额漏计（见 forceDetailRefresh 注释）。
   const fetched = await fetchDriverWaybills(token, {
     stationCode,
     dateStr: arrivalDate,
     regionCode,
     forceIndexRefresh: true,
-    forceDetailRefresh: true,
   })
   if (!fetched.ok) throw new Error(`运单查询失败: ${fetched.message}`)
 

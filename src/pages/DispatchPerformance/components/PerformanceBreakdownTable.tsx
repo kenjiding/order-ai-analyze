@@ -369,6 +369,7 @@ function DriverTable({
   supplierKey,
   routeCode,
   dayCount,
+  canViewProfit,
   t,
   onViewExceptions,
 }: {
@@ -376,6 +377,7 @@ function DriverTable({
   supplierKey: string
   routeCode: string
   dayCount: number
+  canViewProfit: boolean
   t: (key: string, options?: Record<string, unknown>) => string
   onViewExceptions: (ctx: ExceptionRowContext) => void
 }) {
@@ -403,7 +405,7 @@ function DriverTable({
           <span className="text-slate-500">{t('breakdown.unassignedDriver')}</span>
         ),
     },
-    ...profitColumns<DispatchDriverNode>(t, ['courier']),
+    ...(canViewProfit ? profitColumns<DispatchDriverNode>(t, ['courier']) : []),
     ...metricColumns<DispatchDriverNode>(t, dayCount),
   ]
 
@@ -429,12 +431,14 @@ function RouteTable({
   routes,
   supplierKey,
   dayCount,
+  canViewProfit,
   t,
   onViewExceptions,
 }: {
   routes: DispatchRouteNode[]
   supplierKey: string
   dayCount: number
+  canViewProfit: boolean
   t: (key: string, options?: Record<string, unknown>) => string
   onViewExceptions: (ctx: ExceptionRowContext) => void
 }) {
@@ -464,7 +468,7 @@ function RouteTable({
         </div>
       ),
     },
-    ...profitColumns<DispatchRouteNode>(t, ['vendor', 'courier']),
+    ...(canViewProfit ? profitColumns<DispatchRouteNode>(t, ['vendor', 'courier']) : []),
     ...metricColumns<DispatchRouteNode>(t, dayCount),
   ]
 
@@ -481,6 +485,7 @@ function RouteTable({
             supplierKey={supplierKey}
             routeCode={route.routeCode}
             dayCount={dayCount}
+            canViewProfit={canViewProfit}
             t={t}
             onViewExceptions={onViewExceptions}
           />
@@ -495,12 +500,14 @@ export function PerformanceBreakdownTable({
   suppliers,
   loading,
   dayCount,
+  canViewProfit,
   onViewExceptions,
 }: {
   suppliers: DispatchSupplierNode[]
   loading: boolean
   /** 区间内有数据的到件日天数，用来把「总单量」拆成「平均/总」两个数 */
   dayCount: number
+  canViewProfit: boolean
   onViewExceptions: (ctx: ExceptionRowContext) => void
 }) {
   const { t } = useTranslation('dispatchPerformance')
@@ -518,10 +525,12 @@ export function PerformanceBreakdownTable({
           </div>
         ),
       },
-      ...profitColumns<DispatchSupplierNode>((key, options) => t(key, options), ['vendor']),
+      ...(canViewProfit
+        ? profitColumns<DispatchSupplierNode>((key, options) => t(key, options), ['vendor'])
+        : []),
       ...metricColumns<DispatchSupplierNode>((key, options) => t(key, options), dayCount),
     ],
-    [t, dayCount],
+    [t, dayCount, canViewProfit],
   )
 
   return (
@@ -543,6 +552,7 @@ export function PerformanceBreakdownTable({
               routes={supplier.routes}
               supplierKey={supplier.supplierKey}
               dayCount={dayCount}
+              canViewProfit={canViewProfit}
               t={(key, options) => t(key, options)}
               onViewExceptions={onViewExceptions}
             />

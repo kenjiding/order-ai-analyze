@@ -74,6 +74,14 @@ export const PERMISSION_REGISTRY: PermissionDefinition[] = [
     sortOrder: 40,
   },
   {
+    key: 'btn:dispatch-performance:view-profit',
+    type: 'button',
+    label: '查看利润数据',
+    description: '明细数据中的利润列与利润稳定性区块',
+    menuKey: 'dispatch-performance',
+    sortOrder: 41,
+  },
+  {
     key: 'menu:exit-rate-query',
     type: 'menu',
     label: '出仓率查询',

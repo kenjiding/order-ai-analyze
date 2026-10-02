@@ -1,44 +1,33 @@
 /**
- * 站点日到件 waybillNo 索引：inbound/query 预取 + DB 缓存 + 分批 searchWaybill。
+ * 站点日到件 waybillNo 索引：inbound/query 预取 + DB 缓存 + 明细查询。
  *
  * 五个业务共享同一份索引（谁先跑谁去打 inbound/query，其余命中缓存）：
  * 11点前出仓告警、24小时派签告警、出仓派签达成分析、供应商数据分析、司机地图。
- * 索引之后的 searchWaybill 明细则分两条路：出仓侧全量重拉，派签侧走增量 + 明细缓存
- * （见 fetchWaybillDetailsByInboundIndex 与 fetchWaybillDetailsIncremental）。
+ * 索引之后的明细查询（原 searchWaybill，已改走 waybillDetailsDb 的数据库查询）
+ * 统一走 fetchWaybillDetailsByInboundIndex。
  */
 
 import { and, eq, lt } from 'drizzle-orm'
 import { getDb, schema } from '../db'
-import {
-  resolveDispatch24hWindowRule,
-  selectWaybillNosNeedingRefresh,
-  type Dispatch24hWaybillRow,
-} from '../vendorAnalysis/dispatch24hAggregate'
 import { requestImileApi } from './client'
 import { fetchPaginatedResultRows } from './paginatedQuery'
 import {
   buildImilePortalHeaders,
   IMILE_DC_SCAN_QUERY_PORTAL,
-  IMILE_DS_SAAS_TMS_PORTAL,
 } from './portal'
-import { envFirstOr, isRecord, normalizeImileToken, sleep } from './shared'
+import { envFirstOr, isRecord, normalizeImileToken } from './shared'
 import { AUS_TZ, type AusTz } from './ausTimezone'
+import { queryWaybillDetailsByNos } from './waybillDetailsDb'
 
-const DEFAULT_DS_WAYBILL_URL = 'https://ds.imile.com/saastms/v1/biz/waybillInfo/searchWaybill'
 const DEFAULT_INBOUND_URL = 'https://ds.imile.com/lm/express/ops/v1/biz/inbound/query'
 
 export const INBOUND_INDEX_ADELAIDE_TZ = 'Australia/Adelaide'
 export const INBOUND_INDEX_MELBOURNE_TZ = 'Australia/Melbourne'
-/** 索引保留天数（仅 waybillNo 列表，不含 searchWaybill 明细） */
+/** 索引保留天数（仅 waybillNo 列表，不含运单明细） */
 export const INBOUND_INDEX_RETENTION_DAYS = 14
 
 const INBOUND_PAGE_SHOW_COUNT = 1000
 const INBOUND_PAGE_DELAY_MS = 400
-const WAYBILL_PAGE_SHOW_COUNT = 1000
-const WAYBILL_PAGE_DELAY_MS = 300
-/** iMile 硬限制：查询单号不能超过 1000 条 */
-export const SEARCH_WAYBILL_BATCH_SIZE = 1000
-const WAYBILL_BATCH_DELAY_MS = 300
 
 const INBOUND_QUERY_DEFAULTS = {
   isLatest: 1,
@@ -72,15 +61,6 @@ export type InboundWaybillFetchError = {
   message: string
 }
 
-function chunkArray<T>(items: T[], size: number): T[][] {
-  if (size <= 0) return [items]
-  const chunks: T[][] = []
-  for (let i = 0; i < items.length; i += size) {
-    chunks.push(items.slice(i, i + size))
-  }
-  return chunks
-}
-
 function makeInboundHeaders(token: string, stationCode: string): Record<string, string> {
   return buildImilePortalHeaders({
     token,
@@ -88,16 +68,6 @@ function makeInboundHeaders(token: string, stationCode: string): Record<string, 
     defaults: IMILE_DC_SCAN_QUERY_PORTAL,
     sharedEnvPrefixes: ['IMILE_TRACK'],
     injectUserCode: true,
-    overrides: { hubcode: stationCode },
-  })
-}
-
-function makeWaybillHeaders(token: string, stationCode: string): Record<string, string> {
-  return buildImilePortalHeaders({
-    token,
-    envPrefix: 'IMILE_VENDOR_DS_WAYBILL',
-    defaults: IMILE_DS_SAAS_TMS_PORTAL,
-    sharedEnvPrefixes: ['IMILE_VENDOR_LONG_TAIL', 'IMILE_CANCEL_SCAN', 'IMILE_TRACK'],
     overrides: { hubcode: stationCode },
   })
 }
@@ -194,16 +164,6 @@ export function getRegionNow(tz: AusTz = AUS_TZ.Adelaide, now: Date = new Date()
   const dayBeforeDateStr = utcMsToLocalStr(todayStartMs - 24 * 60 * 60 * 1000 - 60_000, tz).slice(0, 10)
 
   return { weekday, timeHHmm, dateStr, prevDateStr, dayBeforeDateStr }
-}
-
-export function regionDateToMelbourneRange(
-  dateStr: string,
-  tz: AusTz = AUS_TZ.Adelaide,
-): { startTime: string; endTime: string } {
-  return {
-    startTime: utcMsToLocalStr(localToUtcMs(`${dateStr} 00:00:00`, tz), INBOUND_INDEX_MELBOURNE_TZ),
-    endTime: utcMsToLocalStr(localToUtcMs(`${dateStr} 23:59:59`, tz), INBOUND_INDEX_MELBOURNE_TZ),
-  }
 }
 
 export async function loadInboundWaybillIndex(
@@ -373,6 +333,7 @@ export async function getOrFetchInboundWaybillNos(input: {
   return { ok: true, waybillNos: inbound.waybillNos, fromCache: false }
 }
 
+/** 按运单号查明细（原 searchWaybill），现改为直接查数据库，不再需要分批/限流 */
 export async function fetchSearchWaybillByNos(input: {
   token: string
   stationCode: string
@@ -385,61 +346,30 @@ export async function fetchSearchWaybillByNos(input: {
     return { ok: true, records: [], waybillNos: [] }
   }
 
-  const normalizedToken = normalizeImileToken(input.token)
-  const url = envFirstOr(['IMILE_VENDOR_DS_WAYBILL_URL'], DEFAULT_DS_WAYBILL_URL)
-  const headers = makeWaybillHeaders(normalizedToken, input.stationCode)
-  const { startTime, endTime } = regionDateToMelbourneRange(input.dateStr, input.tz)
-  const batches = chunkArray(input.waybillNos, SEARCH_WAYBILL_BATCH_SIZE)
-  const allRecords: InboundWaybillRow[] = []
-
-  for (let i = 0; i < batches.length; i += 1) {
-    const batch = batches[i]
-    const result = await fetchPaginatedResultRows({
-      label: input.label,
-      pageShowCount: WAYBILL_PAGE_SHOW_COUNT,
-      pageDelayMs: WAYBILL_PAGE_DELAY_MS,
-      buildPageBody: ({ currentPage, showCount }) => ({
-        actualReceiveStation: '',
-        currentPage,
-        dateSearchType: 'firstCountry',
-        startTime,
-        endTime,
-        lastScanStationCode: input.stationCode,
-        labelOrderCodes: [] as string[],
-        mainWaybillNos: [] as string[],
-        platformNos: [] as string[],
-        referenceNos: [] as string[],
-        showCount,
-        waybillNos: batch,
-      }),
-      requestPage: (pageBody) =>
-        requestImileApi({ url, method: 'POST', headers, body: pageBody, label: input.label }),
-    })
-
-    if (!result.ok) {
-      return { ok: false, status: result.status, message: result.message }
-    }
-
-    allRecords.push(...(result.records as InboundWaybillRow[]))
-    if (i < batches.length - 1) await sleep(WAYBILL_BATCH_DELAY_MS)
-  }
-
-  return { ok: true, records: allRecords, waybillNos: input.waybillNos }
+  const records = await queryWaybillDetailsByNos(input.waybillNos)
+  return { ok: true, records, waybillNos: input.waybillNos }
 }
 
-/** 索引 + 分批 searchWaybill；索引优先读 DB 缓存，缺失时现场 inbound 拉取并写回（不再依赖 06:00 定时任务先跑过） */
+/** 索引 + 明细查询；索引优先读 DB 缓存，缺失时现场 inbound 拉取并写回（不再依赖 06:00 定时任务先跑过） */
 export async function fetchWaybillDetailsByInboundIndex(input: {
   token: string
   stationCode: string
   dateStr: string
   label: string
   tz?: AusTz
+  /**
+   * 强制重拉到件索引，忽略 DB 缓存。
+   * 缓存里的索引可能是「到件日当天」被别的功能（司机地图查今天）写下的半截清单，
+   * 之后永不刷新。要求分母准确的场景（出仓派签达成分析的结算）必须传 true。
+   */
+  forceIndexRefresh?: boolean
 }): Promise<InboundWaybillFetchSuccess | InboundWaybillFetchError> {
   const indexResult = await getOrFetchInboundWaybillNos({
     token: input.token,
     stationCode: input.stationCode,
     dateStr: input.dateStr,
     label: `${input.label} 到件索引`,
+    forceRefresh: input.forceIndexRefresh,
   })
   if (!indexResult.ok) return indexResult
 
@@ -451,83 +381,4 @@ export async function fetchWaybillDetailsByInboundIndex(input: {
     label: input.label,
     tz: input.tz,
   })
-}
-
-export type IncrementalWaybillFetchSuccess = {
-  ok: true
-  /** 到件索引全量单号（含本次跳过未重拉的终态单） */
-  waybillNos: string[]
-  /** 本次实际重新 searchWaybill 的单号数 */
-  fetchedCount: number
-  /** 因已达标/已超窗口而跳过的单号数 */
-  skippedCount: number
-  fetchedRecords: InboundWaybillRow[]
-}
-
-/**
- * 24H 派签增量拉数：到件索引仍全量（可走 DB 缓存），searchWaybill 只拉「未终态」单号。
- * 已达标或已拿到签收时间的单复用 cachedByWaybillNo，供告警多时段推送与司机地图刷新共用。
- * 唯一调用方（stationDayWaybillSync）只消费 fetchedRecords，不需要把跳过的缓存行合并回一份
- * 全量 records 数组——大站点几万条时那份合并数组是纯粹的内存浪费，故不再构建。
- *
- * 传 forceDetailRefresh 则退化成全量重拉（见该字段注释），供结算这类要求字段完整的调用方使用。
- */
-export async function fetchWaybillDetailsIncremental(input: {
-  token: string
-  stationCode: string
-  dateStr: string
-  label: string
-  tz: AusTz
-  cachedByWaybillNo: Map<string, Dispatch24hWaybillRow>
-  /**
-   * 强制重拉到件索引，忽略 DB 缓存。
-   * 缓存里的索引可能是「到件日当天」被别的功能（司机地图查今天）写下的半截清单，
-   * 之后永不刷新。要求分母准确的场景（出仓派签达成分析的结算）必须传 true。
-   */
-  forceIndexRefresh?: boolean
-  /**
-   * 强制重拉全部明细，忽略终态跳过。理由与 forceIndexRefresh 同源：缓存行只保证「当时关心的字段」
-   * 是对的，后来新增的列（如 postcode/suburb）在旧行里是空的，而终态单永远不会被重拉，缺的列就
-   * 永远补不上。要求字段完整的场景（出仓派签达成分析的结算要按收件地址查价）必须传 true。
-   *
-   * 注意这里**不是**放宽终态判定——isDispatch24hTerminal 仍然只看签收时间，是调用方声明
-   * 「这一趟我不吃缓存」。重拉已签收的单拿回的是同一份 signDate，两个率的结论不受影响。
-   */
-  forceDetailRefresh?: boolean
-}): Promise<IncrementalWaybillFetchSuccess | InboundWaybillFetchError> {
-  const indexResult = await getOrFetchInboundWaybillNos({
-    token: input.token,
-    stationCode: input.stationCode,
-    dateStr: input.dateStr,
-    label: `${input.label} 到件索引`,
-    forceRefresh: input.forceIndexRefresh,
-  })
-  if (!indexResult.ok) return indexResult
-
-  // 窗口规则按「到件日」定，dateStr 就是该批次的到件日
-  const needNos = input.forceDetailRefresh
-    ? indexResult.waybillNos
-    : selectWaybillNosNeedingRefresh(
-        indexResult.waybillNos,
-        input.cachedByWaybillNo,
-        resolveDispatch24hWindowRule(input.dateStr, input.tz),
-      )
-
-  const fetched = await fetchSearchWaybillByNos({
-    token: input.token,
-    stationCode: input.stationCode,
-    dateStr: input.dateStr,
-    waybillNos: needNos,
-    label: input.label,
-    tz: input.tz,
-  })
-  if (!fetched.ok) return fetched
-
-  return {
-    ok: true,
-    waybillNos: indexResult.waybillNos,
-    fetchedCount: needNos.length,
-    skippedCount: indexResult.waybillNos.length - needNos.length,
-    fetchedRecords: fetched.records,
-  }
 }

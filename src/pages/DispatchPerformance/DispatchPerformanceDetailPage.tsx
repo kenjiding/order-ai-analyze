@@ -161,6 +161,7 @@ export default function DispatchPerformanceDetailPage() {
 
   const config = v.result?.config
   const canPush = usePermission(PERMISSION_KEYS.btnDispatchPerformancePush)
+  const canViewProfit = usePermission(PERMISSION_KEYS.btnDispatchPerformanceViewProfit)
 
   const [pushModalOpen, setPushModalOpen] = useState(false)
   const [rankingWeights, setRankingWeights] =
@@ -325,6 +326,7 @@ export default function DispatchPerformanceDetailPage() {
               suppliers={v.result.suppliers}
               loading={v.loading}
               dayCount={v.result.arrivalDates.length}
+              canViewProfit={canViewProfit}
               onViewExceptions={openExceptionPanel}
             />
           </div>
@@ -332,17 +334,19 @@ export default function DispatchPerformanceDetailPage() {
             suppliers={v.result.suppliers}
             settled={v.result.overall.dispatchSettled}
           />
-          <ProfitStabilityPanel
-            result={profitTrend.result}
-            loading={profitTrend.loading}
-            dimension={profitTrend.dimension}
-            onDimensionChange={profitTrend.setDimension}
-            granularity={profitTrend.granularity}
-            onGranularityChange={profitTrend.setGranularity}
-            supplierOptions={v.result.supplierOptions}
-            supplierKeys={profitTrend.supplierKeys}
-            onSupplierKeysChange={profitTrend.setSupplierKeys}
-          />
+          {canViewProfit ? (
+            <ProfitStabilityPanel
+              result={profitTrend.result}
+              loading={profitTrend.loading}
+              dimension={profitTrend.dimension}
+              onDimensionChange={profitTrend.setDimension}
+              granularity={profitTrend.granularity}
+              onGranularityChange={profitTrend.setGranularity}
+              supplierOptions={v.result.supplierOptions}
+              supplierKeys={profitTrend.supplierKeys}
+              onSupplierKeysChange={profitTrend.setSupplierKeys}
+            />
+          ) : null}
           <section className="admin-panel space-y-4 p-4">
             <div>
               <h3 className="admin-title text-xl">

@@ -36,8 +36,6 @@ export type Dispatch24hWaybillRow = {
   /** 收件 suburb（iMile consigneeCity） */
   suburb?: string
   lastProblemDate?: string
-  /** 该行数据最后一次真正从 searchWaybill 同步的时间；仅缓存行携带，用于终态判定 */
-  syncedAtMs?: number
   /** 多到件日合并统计时，该行所属到件日的窗口规则；不设则用聚合传入的 rule（单到件日的常规情况） */
   windowRule?: Dispatch24hWindowRule
 }
@@ -203,39 +201,6 @@ export function isDispatch24hWindowExpired(
 ): boolean {
   const deadlineMs = getDispatch24hDeadlineMs(row, rule)
   return deadlineMs != null && nowMs > deadlineMs
-}
-
-/**
- * 终态：已达标 —— 永久成立，无需再拉。
- * 或者已经拿到签收时间（不论是否超窗口）—— signDate 一旦写入就不会再变化，达标/超时的结论已经确定。
- * 窗口已过但仍未拿到签收时间时，**不能**视为终态：iMile 侧的签收记录可能在窗口过后才姗姗来迟写入
- * （即「签收超时」而非「未签收」），必须持续重新拉取直到真正拿到 signDate，否则会把「当时还没签收」
- * 永久误判成「永远不会签收」。
- * 供「24小时派签告警」多时段推送与「司机地图」手动刷新共用，避免已确认结果重复拉数。
- */
-export function isDispatch24hTerminal(row: Dispatch24hWaybillRow, rule: Dispatch24hWindowRule): boolean {
-  return isDispatch24hMet(row, rule) || Boolean(row.signDate)
-}
-
-/**
- * 从到件索引中筛出仍需重新 searchWaybill 的单号：
- * - 缓存中不存在 → 需要拉
- * - 缓存存在但未终态（未达标且尚未拿到签收时间）→ 需要拉
- * - 已达标 / 已拿到签收时间 → 跳过
- */
-export function selectWaybillNosNeedingRefresh(
-  indexWaybillNos: string[],
-  cachedByWaybillNo: Map<string, Dispatch24hWaybillRow>,
-  rule: Dispatch24hWindowRule,
-): string[] {
-  const need: string[] = []
-  for (const waybillNo of indexWaybillNos) {
-    const no = waybillNo.trim()
-    if (!no) continue
-    const cached = cachedByWaybillNo.get(no)
-    if (!cached || !isDispatch24hTerminal(cached, rule)) need.push(no)
-  }
-  return need
 }
 
 /**

@@ -1,6 +1,6 @@
 /**
  * 司机地图：从站点日运单缓存读点位（签收/未签收/问题件）。
- * 数据日与「11点前出仓」一致（before11Date）；分析任务首次同步，手动「刷新」对未终态增量再拉。
+ * 数据日与「11点前出仓」一致（before11Date）；分析任务首次同步，手动「刷新」重新全量拉取明细。
  * 坐标来源：iMile 分拣坐标查询（sorting/pageList），按运单号直接取，见 ../imile/sortingGeocoding。
  */
 import { and, eq, inArray, isNotNull, isNull, lt, ne, or, sql } from 'drizzle-orm'
@@ -386,8 +386,6 @@ export type DriverMapRefreshResult = {
   dataDate: string
   stationCode: string
   indexCount: number
-  fetchedCount: number
-  skippedCount: number
   geocodedUpdated: number
   points: DriverMapPointsResult
 }
@@ -519,8 +517,6 @@ export async function populateDriverMapCache(input: {
       dataDate,
       stationCode,
       indexCount: synced.indexCount,
-      fetchedCount: synced.fetchedCount,
-      skippedCount: synced.skippedCount,
       geocodedUpdated,
       points: points.data,
     },

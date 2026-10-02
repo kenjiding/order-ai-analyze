@@ -37,8 +37,6 @@ export type DriverMapRefreshResponse = {
   dataDate: string
   stationCode: string
   indexCount: number
-  fetchedCount: number
-  skippedCount: number
   geocodedUpdated: number
   points: DriverMapPointsResponse
 }

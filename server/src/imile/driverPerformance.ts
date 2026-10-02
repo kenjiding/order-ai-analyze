@@ -39,8 +39,7 @@ export type DriverReturnRow = {
 type ApiError = { ok: false; status: number; message: string; rawText?: string }
 
 /**
- * 24小时派签率运单查询：增量同步站点日缓存，直接复用同步结果里已在内存中的全量行。
- * 已达标 / 已超 24H 窗口的单号不会再次 searchWaybill；同步结果不再需要额外整表 SELECT 一次。
+ * 24小时派签率运单查询：同步站点日缓存，直接复用同步结果里已在内存中的全量行。
  */
 export async function fetchDriverWaybills(
   token: string,
@@ -48,10 +47,8 @@ export async function fetchDriverWaybills(
     stationCode: string
     dateStr: string
     regionCode?: string | null
-    /** 见 fetchWaybillDetailsIncremental.forceIndexRefresh：结算类调用必须传 true */
+    /** 见 fetchWaybillDetailsByInboundIndex.forceIndexRefresh：结算类调用必须传 true */
     forceIndexRefresh?: boolean
-    /** 见 fetchWaybillDetailsIncremental.forceDetailRefresh：要求字段完整的结算类调用必须传 true */
-    forceDetailRefresh?: boolean
   },
 ): Promise<{ ok: true; data: DriverWaybillRow[] } | ApiError> {
   const tz = resolveRegionTz(params.regionCode)
@@ -62,7 +59,6 @@ export async function fetchDriverWaybills(
     tz,
     label: '24H派签率运单查询',
     forceIndexRefresh: params.forceIndexRefresh,
-    forceDetailRefresh: params.forceDetailRefresh,
   })
   if (!synced.ok) return { ok: false, status: 502, message: synced.message }
   return { ok: true, data: synced.rows as DriverWaybillRow[] }

@@ -7,7 +7,7 @@ import { sendSupplierPushCard } from './sendSupplierPushCard'
 import { recordFeishuPushMessage } from './pushMessageRepository'
 import { envFirst } from '../imile/shared'
 import { getGlobalImileToken } from './globalImileToken'
-import { fetchWaybillDetailsByInboundIndex } from '../imile/inboundWaybillIndex'
+import { syncStationDayWaybillsIncremental } from '../imile/stationDayWaybillSync'
 import { resolveRegionTz, type AusTz } from '../imile/ausTimezone'
 import { computeThresholdMsOnDate } from '../imile/before11Exit'
 import {
@@ -163,15 +163,23 @@ export async function executeExitAlarmPush(params: {
 
   if (dates.length === 0) return { error: '未指定到件扫描日期' }
 
-  // 多到件日：逐日拉数后按运单号去重合并（同一单可能在多天的到件索引里出现），后续统计口径不变
+  // 多到件日：逐日拉数后按运单号去重合并（同一单可能在多天的到件索引里出现），后续统计口径不变。
+  // 同步共用 driver_map_waybill_points 缓存表，与 24H 派签告警/司机地图共用同一份到件索引，
+  // 谁先查了同一 station+date，另一边直接命中，省一次到件索引查询。
   const byWaybillNo = new Map<string, Record<string, unknown>>()
   for (const dateStr of dates) {
-    const result = await fetchWaybillDetailsByInboundIndex({ token, stationCode, dateStr, tz, label })
+    const result = await syncStationDayWaybillsIncremental({
+      token,
+      stationCode,
+      dataDate: dateStr,
+      tz,
+      label,
+    })
     if (!result.ok) {
       console.error(`${label} 到件日 ${dateStr} 运单查询失败: ${result.message}`)
       return { error: `到件日 ${dateStr} 运单查询失败: ${result.message}` }
     }
-    for (const record of result.records as Array<Record<string, unknown>>) {
+    for (const record of result.rows as Array<Record<string, unknown>>) {
       const no = typeof record.waybillNo === 'string' ? record.waybillNo.trim() : ''
       byWaybillNo.set(no || `__idx_${byWaybillNo.size}`, record)
     }

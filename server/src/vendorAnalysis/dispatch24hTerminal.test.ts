@@ -7,11 +7,8 @@ import {
   getDispatch24hDeadlineMs,
   isDispatch24hMet,
   isDispatch24hProblem,
-  isDispatch24hTerminal,
   dispatchExitThresholdMs,
-  isDispatch24hWindowExpired,
   resolveDispatch24hWindowRule,
-  selectWaybillNosNeedingRefresh,
   type Dispatch24hScope,
   type Dispatch24hWaybillRow,
 } from './dispatch24hAggregate'
@@ -20,84 +17,6 @@ const tz = AUS_TZ.Adelaide
 // 本文件的样例 deliveryTime 都落在工作日、且批次到件日在周一~周四，走滚动 24h 窗口。
 // 到件日 → 窗口规则的日历推导另见 resolveDispatch24hWindowRule 的专项用例。
 const rule = resolveDispatch24hWindowRule('2024-06-24', tz) // 周一到件 → rolling24h
-
-test('isDispatch24hTerminal：已达标视为终态，无需再拉', () => {
-  const row: Dispatch24hWaybillRow = {
-    waybillNo: 'W1',
-    deliveryTime: '2024-06-24 10:00:00',
-    signDate: '2024-06-24 12:00:00',
-  }
-  assert.equal(isDispatch24hMet(row, rule), true)
-  assert.equal(isDispatch24hTerminal(row, rule), true)
-})
-
-test('isDispatch24hTerminal：未拿到签收时间时，即使窗口已过、缓存已是窗口后同步的，也不能锁定终态；signDate 一旦写入即为终态', () => {
-  const row: Dispatch24hWaybillRow = {
-    waybillNo: 'W2',
-    deliveryTime: '2024-06-24 10:00:00',
-  }
-  const deadline = getDispatch24hDeadlineMs(row, rule)
-  assert.ok(deadline != null)
-  const withinWindow = deadline - 60_000
-  const afterWindow = deadline + 60_000
-
-  assert.equal(isDispatch24hWindowExpired(row, rule, withinWindow), false)
-  assert.equal(isDispatch24hTerminal(row, rule), false)
-  assert.equal(isDispatch24hMet(row, rule), false)
-  assert.equal(isDispatch24hWindowExpired(row, rule, afterWindow), true)
-
-  // 窗口已过，但 signDate 仍为空：iMile 可能之后才补上签收记录（签收超时），不能锁定终态，必须继续拉
-  const staleSynced: Dispatch24hWaybillRow = { ...row, syncedAtMs: afterWindow }
-  assert.equal(isDispatch24hTerminal(staleSynced, rule), false)
-
-  // 窗口过后才补上的签收记录（签收超时）：signDate 一旦写入就不会再变，视为终态
-  const lateSigned: Dispatch24hWaybillRow = {
-    ...row,
-    signDate: '2024-06-26 09:00:00',
-    syncedAtMs: afterWindow,
-  }
-  assert.equal(isDispatch24hMet(lateSigned, rule), false)
-  assert.equal(isDispatch24hTerminal(lateSigned, rule), true)
-})
-
-test('selectWaybillNosNeedingRefresh：只返回未终态单号', () => {
-  const met: Dispatch24hWaybillRow = {
-    waybillNo: 'A',
-    deliveryTime: '2024-06-24 10:00:00',
-    signDate: '2024-06-24 12:00:00',
-  }
-  const open: Dispatch24hWaybillRow = {
-    waybillNo: 'B',
-    deliveryTime: '2024-06-24 10:00:00',
-  }
-  const deadline = getDispatch24hDeadlineMs(open, rule)!
-  // 窗口已过、缓存也是窗口后同步的，但 signDate 仍为空：不能锁定终态，仍需刷新（防止漏掉签收超时的单）
-  const expiredSynced: Dispatch24hWaybillRow = {
-    waybillNo: 'C',
-    deliveryTime: '2024-06-24 10:00:00',
-    syncedAtMs: deadline + 10_000,
-  }
-  // 窗口过后才补上的签收记录：signDate 已写入，视为终态，无需再刷新
-  const lateSigned: Dispatch24hWaybillRow = {
-    waybillNo: 'E',
-    deliveryTime: '2024-06-24 10:00:00',
-    signDate: '2024-06-26 09:00:00',
-    syncedAtMs: deadline + 10_000,
-  }
-  const cached = new Map<string, Dispatch24hWaybillRow>([
-    ['A', met],
-    ['B', open],
-    ['C', expiredSynced],
-    ['E', lateSigned],
-  ])
-
-  assert.deepEqual(selectWaybillNosNeedingRefresh(['A', 'B', 'C', 'D'], cached, rule), ['B', 'C', 'D'])
-  assert.deepEqual(selectWaybillNosNeedingRefresh(['A', 'B', 'C', 'D', 'E'], cached, rule), [
-    'B',
-    'C',
-    'D',
-  ])
-})
 
 test('isDispatch24hProblem：问题件时间需晚于派件时间才算本次派送产生的问题件', () => {
   // 第一次派送 10:00 上报问题件 18:00，未被重新派送：问题件有效

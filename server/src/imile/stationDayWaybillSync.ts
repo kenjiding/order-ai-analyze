@@ -1,12 +1,11 @@
 /**
- * 站点日运单增量同步：写入 driver_map_waybill_points，供 24H 派签告警与司机地图共用。
- * 已达标 / 已超窗口的单号跳过 searchWaybill，只拉未终态子集。
+ * 站点日运单同步：写入 driver_map_waybill_points，供 24H 派签告警与司机地图共用。
  */
-import { and, eq, sql } from 'drizzle-orm'
+import { sql } from 'drizzle-orm'
 import { getDb, schema } from '../db'
 import type { AusTz } from './ausTimezone'
 import {
-  fetchWaybillDetailsIncremental,
+  fetchWaybillDetailsByInboundIndex,
   type InboundWaybillRow,
 } from './inboundWaybillIndex'
 import type { Dispatch24hWaybillRow } from '../vendorAnalysis/dispatch24hAggregate'
@@ -98,27 +97,7 @@ function toCacheRow(row: CacheableWaybillPoint): Dispatch24hWaybillRow {
     deliveryTime: row.deliveryTime ?? undefined,
     signDate: row.signDate ?? undefined,
     lastProblemDate: row.lastProblemDate ?? undefined,
-    syncedAtMs: row.updatedAt?.getTime() ?? Date.now(),
   }
-}
-
-export async function loadStationDayWaybillCache(
-  stationCode: string,
-  dataDate: string,
-): Promise<Map<string, Dispatch24hWaybillRow>> {
-  const db = getDb()
-  const rows = await db
-    .select()
-    .from(schema.driverMapWaybillPoints)
-    .where(
-      and(
-        eq(schema.driverMapWaybillPoints.stationCode, stationCode),
-        eq(schema.driverMapWaybillPoints.dataDate, dataDate),
-      ),
-    )
-  const map = new Map<string, Dispatch24hWaybillRow>()
-  for (const row of rows) map.set(row.waybillNo, toCacheRow(row))
-  return map
 }
 
 export type StationDayWaybillSyncResult = {
@@ -126,15 +105,13 @@ export type StationDayWaybillSyncResult = {
   stationCode: string
   dataDate: string
   indexCount: number
-  fetchedCount: number
-  skippedCount: number
   upsertedCount: number
-  /** 本次同步后，该站点该日的全量运单行（刚 upsert 的 + 复用未变的缓存行），供聚合直接使用，避免同步完再整表 SELECT 一次 */
+  /** 本次同步后，该站点该日的全量运单行，供聚合直接使用，避免同步完再整表 SELECT 一次 */
   rows: Dispatch24hWaybillRow[]
 }
 
 /**
- * 增量同步某站点某日运单到缓存表。仅更新本次新拉到的明细；终态单保留原行。
+ * 同步某站点某日运单到缓存表：按到件索引的全量 waybillNo 查询明细并整表 upsert。
  * 不负责地理编码（司机地图刷新在此之后单独 geocode）。
  */
 export async function syncStationDayWaybillsIncremental(input: {
@@ -143,23 +120,18 @@ export async function syncStationDayWaybillsIncremental(input: {
   dataDate: string
   tz: AusTz
   label: string
-  /** 见 fetchWaybillDetailsIncremental.forceIndexRefresh：结算类调用必须传 true */
+  /** 见 fetchWaybillDetailsByInboundIndex.forceIndexRefresh：结算类调用必须传 true */
   forceIndexRefresh?: boolean
-  /** 见 fetchWaybillDetailsIncremental.forceDetailRefresh：要求字段完整的结算类调用必须传 true */
-  forceDetailRefresh?: boolean
 }): Promise<StationDayWaybillSyncResult | { ok: false; message: string }> {
-  const { token, stationCode, dataDate, tz, label, forceIndexRefresh, forceDetailRefresh } = input
-  const cachedByWaybillNo = await loadStationDayWaybillCache(stationCode, dataDate)
+  const { token, stationCode, dataDate, tz, label, forceIndexRefresh } = input
 
-  const fetched = await fetchWaybillDetailsIncremental({
+  const fetched = await fetchWaybillDetailsByInboundIndex({
     token,
     stationCode,
     dateStr: dataDate,
     label,
     tz,
-    cachedByWaybillNo,
     forceIndexRefresh,
-    forceDetailRefresh,
   })
   if (!fetched.ok) return { ok: false, message: fetched.message }
 
@@ -168,7 +140,7 @@ export async function syncStationDayWaybillsIncremental(input: {
 
   // 同批内同单号去重（保留后出现的行）：同一条 INSERT 内重复冲突键会报 "cannot affect row a second time"
   const rowsByWaybillNo = new Map<string, typeof schema.driverMapWaybillPoints.$inferInsert>()
-  for (const row of fetched.fetchedRecords) {
+  for (const row of fetched.records) {
     const waybillNo = readText(row, 'waybillNo')
     if (!waybillNo) continue
     const signDate = readText(row, 'signDate') || null
@@ -241,20 +213,14 @@ export async function syncStationDayWaybillsIncremental(input: {
   }
 
   console.log(
-    `[waybill-sync] ${label} station=${stationCode} date=${dataDate} index=${fetched.waybillNos.length} fetched=${fetched.fetchedCount} skipped=${fetched.skippedCount} upserted=${upsertedCount}`,
+    `[waybill-sync] ${label} station=${stationCode} date=${dataDate} index=${fetched.waybillNos.length} upserted=${upsertedCount}`,
   )
 
-  // 合并本次 upsert 的新行 + 未变动、复用旧值的缓存行，拼出与「同步后整表 SELECT」等价的全量结果——
-  // 这两部分数据本次调用里都已经在内存中，不需要为拿全量行再回读一次数据库。
+  // 本次查询到的全部行都已在内存中（rowsByWaybillNo），直接拼出结果，不需要再回读一次数据库。
   const rows: Dispatch24hWaybillRow[] = []
   for (const waybillNo of fetched.waybillNos) {
     const upserted = rowsByWaybillNo.get(waybillNo)
-    if (upserted) {
-      rows.push(toCacheRow(upserted))
-      continue
-    }
-    const cached = cachedByWaybillNo.get(waybillNo)
-    if (cached) rows.push(cached)
+    if (upserted) rows.push(toCacheRow(upserted))
   }
 
   return {
@@ -262,8 +228,6 @@ export async function syncStationDayWaybillsIncremental(input: {
     stationCode,
     dataDate,
     indexCount: fetched.waybillNos.length,
-    fetchedCount: fetched.fetchedCount,
-    skippedCount: fetched.skippedCount,
     upsertedCount,
     rows,
   }
