@@ -376,6 +376,11 @@ export function withSettleLock<T>(fn: () => Promise<T>): Promise<T> {
 
 let isRunning = false
 
+/** 供「立刻统计」路由判断 cron 是否正在结算，命中时直接拒绝而非排队等待（见 dispatchPerformanceRouter）。 */
+export function isDailyStatsJobRunning(): boolean {
+  return isRunning
+}
+
 /**
  * 由 scheduler 每分钟调用：只跑「此刻命中自己触发统计时间」的站点，把已到期但尚未落库的批次补齐。
  *

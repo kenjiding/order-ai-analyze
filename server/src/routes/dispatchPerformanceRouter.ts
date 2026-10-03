@@ -18,7 +18,7 @@ import {
   listRecentSettledBatches,
   updateDispatchPerformanceConfig,
 } from '../dispatch24hStats/configRepository'
-import { resolveStationTz } from '../dispatch24hStats/dailyStatsJob'
+import { isDailyStatsJobRunning, resolveStationTz } from '../dispatch24hStats/dailyStatsJob'
 import { DEFAULT_SETTLE_TIME, isValidSettleTime } from '../dispatch24hStats/settleTime'
 import { resolveExitSettledArrivalDates } from '../dispatch24hStats/settledArrivalDates'
 import { resolveRegionTz } from '../imile/ausTimezone'
@@ -344,6 +344,11 @@ dispatchPerformanceRouter.post('/configs/:id/settle-now', async (req: Request, r
       return sendCrossRegionDenied(res, '触发')
     }
     if (!config.isEnabled) return res.status(400).json({ error: '该站点统计已停用，请先启用' })
+
+    // cron 结算不走 job 队列，下面的排队检查看不到它，必须单独拦一道
+    if (isDailyStatsJobRunning()) {
+      return res.status(409).json({ error: '当前有定时任务正在统计，请稍后再试' })
+    }
 
     // 同一站点已有排队/执行中的任务就复用，避免连点打出多份 iMile 请求
     const { rows } = await listJobs({ type: DISPATCH_PERFORMANCE_SETTLE_JOB_TYPE, limit: 100 })
