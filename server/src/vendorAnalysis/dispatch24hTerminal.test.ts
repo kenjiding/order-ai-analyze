@@ -487,6 +487,49 @@ test('aggregateDispatch24hByScopes：路由码白名单剔除在单次遍历下�
   assert.deepEqual(result.get('cfg-v1')?.drivers[0]?.total, 1)
 })
 
+test('aggregateDispatch24hByScopes：courierVendorCode 精确匹配但路由不在该供应商任何子配置名单里——兜底计入，不再整单丢弃', () => {
+  const rows: Dispatch24hWaybillRow[] = [
+    // 借调场景：承运商确实是 V1，但 BB009 没配进 V1 的任何一条子配置（city/lu 都没有）
+    {
+      waybillNo: 'K1',
+      courierCode: 'C9',
+      courierVendorCode: 'V1',
+      lastScanSiteCode: 'S1',
+      consigneeRouteCode: 'BB009',
+      deliveryTime: '2024-06-24 10:00:00',
+      signDate: '2024-06-24 12:00:00',
+    },
+  ]
+  const scopes: Dispatch24hScope[] = [
+    { key: 'cfg-city', vendorCode: 'V1', routeCodes: new Set(['R-CITY']) },
+    { key: 'cfg-lu', vendorCode: 'V1', routeCodes: new Set(['R-LU']) },
+  ]
+  const result = aggregateDispatch24hByScopes({ rows, stationCodes: ['S1'], rule, scopes })
+
+  assert.equal(result.size, 1, '只落一个桶，不能两条子配置都算一遍导致重复计数')
+  assert.equal(result.get('cfg-city')?.total, 1, '兜底落到 vendorCode 匹配的第一条')
+  assert.equal(result.get('cfg-lu'), undefined)
+})
+
+test('aggregateDispatch24hByScopes：兜底命中的供应商若把这条路由配进了自己的白名单，兜底结果也要被剔除', () => {
+  const rows: Dispatch24hWaybillRow[] = [
+    {
+      waybillNo: 'K2',
+      courierCode: 'C9',
+      courierVendorCode: 'V1',
+      lastScanSiteCode: 'S1',
+      consigneeRouteCode: 'BB009',
+      deliveryTime: '2024-06-24 10:00:00',
+      signDate: '2024-06-24 12:00:00',
+    },
+  ]
+  const scopes: Dispatch24hScope[] = [
+    { key: 'cfg-v1', vendorCode: 'V1', routeCodes: new Set(['R1']), routeCodeWhitelist: new Set(['BB009']) },
+  ]
+  const result = aggregateDispatch24hByScopes({ rows, stationCodes: ['S1'], rule, scopes })
+  assert.equal(result.size, 0, '不能因为走了兜底分支就绕开白名单剔除')
+})
+
 test('aggregateDispatch24hByScopes：与 aggregateDispatch24hByVendor 逐配置调用结果等价（同一份 rows，含共享路由/独立路由范围混合场景）', () => {
   const rows: Dispatch24hWaybillRow[] = [
     { waybillNo: 'E1', courierCode: 'C1', courierVendorCode: 'V1', lastScanSiteCode: 'S1', consigneeRouteCode: 'R-A', deliveryTime: '2024-06-24 10:00:00', signDate: '2024-06-24 12:00:00' },

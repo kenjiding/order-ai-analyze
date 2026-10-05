@@ -10,9 +10,9 @@
 import { isBefore11Exit } from '../imile/before11Exit'
 import {
   buildRouteCodeVendorsMap,
-  isRowInConfigScopeIgnoringWhitelist,
   isRowInVendorScope,
   normCode,
+  resolveConfigScopesForRow,
   resolveVendorCodesByRouteCode,
   type ConfigScope,
   type VendorScopeMaps,
@@ -190,15 +190,27 @@ export function aggregateBefore11ByScopes(input: {
 }): Map<string, Before11ScopedStat> {
   const { rows, scopes, priorityClientCodes } = input
   const result = new Map<string, Before11ScopedStat>()
+  /** 同一 (vendorCode, routeCode) 的兜底只告警一次，避免整批同路由运单刷屏 */
+  const foreignRouteWarned = new Set<string>()
 
   for (const row of rows) {
     const explicitVendorCode = row.courierVendorCode
     const routeCode = row.consigneeRouteCode
     const isPriority = isPriorityRow(row, priorityClientCodes)
 
-    for (const scope of scopes) {
-      // 白名单命中的行下面要单独计入 whitelistStat，故这里用不含白名单剔除的判定
-      if (!isRowInConfigScopeIgnoringWhitelist(scope, explicitVendorCode, routeCode)) continue
+    // 白名单命中的行下面要单独计入 whitelistStat，故这里用不含白名单剔除的判定；
+    // 归属判定 + 路由被收窄时兜底落到承运商名下，唯一实现见 resolveConfigScopesForRow，不重抄
+    const matches = resolveConfigScopesForRow(scopes, explicitVendorCode, routeCode, { ignoreWhitelist: true })
+    for (const { scope, isForeignRoute } of matches) {
+      if (isForeignRoute) {
+        const warnKey = `${explicitVendorCode}\t${routeCode}`
+        if (!foreignRouteWarned.has(warnKey)) {
+          foreignRouteWarned.add(warnKey)
+          console.warn(
+            `[滞留数据告警] 供应商 ${explicitVendorCode} 的路由 ${routeCode} 未配置在任何子单元名单内，已兜底计入 ${scope.key}`,
+          )
+        }
+      }
 
       let stat = result.get(scope.key)
       if (!stat) {

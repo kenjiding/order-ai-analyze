@@ -175,15 +175,17 @@ test('24H派签：routeCode 纳入筛选后只统计配置路由；白名单再�
     }),
   )
 
-  // 仅 R-B 的 B1 计入（R-A 被白名单剔除，R-C 未纳入）
-  assert.equal(v.dispatch24hTotal, 1)
-  assert.equal(v.dispatch24hCount, 1)
+  // R-A 被白名单剔除；R-C 不在纳入名单里，但 courierVendorCode 精确等于 V1 且 V1 确有配置，
+  // 按 resolveConfigScopesForRow 的兜底规则计入 V1（routeCodes 收窄只用来在「同 vendorCode 多个
+  // 子配置」间分桶，不是「该不该算这个供应商」的闸门），所以 R-B 的 B1 与 R-C 的 C1 都计入
+  assert.equal(v.dispatch24hTotal, 2)
+  assert.equal(v.dispatch24hCount, 2)
   assert.deepEqual(v.dispatch24hUnmetWaybillNos, [])
 
   const driver = v.drivers.find((d) => d.courierCode === 'C1')
   assert.ok(driver)
-  assert.equal(driver.totalDispatchCount, 1)
-  assert.equal(driver.dispatch24hCount, 1)
+  assert.equal(driver.totalDispatchCount, 2)
+  assert.equal(driver.dispatch24hCount, 2)
 })
 
 test('同 vendorCode 不同路由码的两家（ADL-City / ADL-Lu）各自独立成行，数据不混算', () => {

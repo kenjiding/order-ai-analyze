@@ -296,3 +296,56 @@ test('利润：区间混进未结算日时仍给出已结算部分的钱，不�
   assert.equal(supplier.courierProfit, 24.5)
   assert.equal(supplier.before11Rate, 100, '出仓率不受影响，它出仓那趟就定死了')
 })
+
+// ── 「所属供应商」标注：对应 aggregateCells 的兜底计入场景 ──────────────────
+
+/** 构造一个供应商单位索引：vendorCode 随便填，测试只关心 supplierKey/supplierName/routeCodes */
+function unitsMap(
+  units: Array<{ supplierKey: string; supplierName: string; routeCodes: string[] }>,
+): Map<string, { supplierKey: string; supplierName: string; vendorCode: string; routeCodes: Set<string>; routeCodeWhitelist: Set<string> }> {
+  return new Map(
+    units.map((u) => [
+      u.supplierKey,
+      { ...u, vendorCode: u.supplierKey, routeCodes: new Set(u.routeCodes), routeCodeWhitelist: new Set<string>() },
+    ]),
+  )
+}
+
+test('路由不在本供应商配置名单里、但在别家名下：标注 foreignVendorName', () => {
+  const owners = unitsMap([
+    { supplierKey: 'V2::B供应商', supplierName: 'B供应商', routeCodes: ['R2'] },
+    { supplierKey: 'V1::A供应商', supplierName: 'A供应商', routeCodes: ['BB009'] },
+  ])
+  const tree = buildDispatchPerformanceTree(
+    [met({ supplierKey: 'V2::B供应商', supplierName: 'B供应商', routeCode: 'BB009', total: 1 })],
+    false,
+    owners,
+  )
+  const [route] = tree.suppliers[0].routes
+  assert.equal(route.foreignVendorName, 'A供应商')
+})
+
+test('路由就在本供应商自己的配置名单里：不标注', () => {
+  const owners = unitsMap([{ supplierKey: 'V2::B供应商', supplierName: 'B供应商', routeCodes: ['R2'] }])
+  const tree = buildDispatchPerformanceTree(
+    [met({ supplierKey: 'V2::B供应商', supplierName: 'B供应商', routeCode: 'R2', total: 1 })],
+    false,
+    owners,
+  )
+  assert.equal(tree.suppliers[0].routes[0].foreignVendorName, undefined)
+})
+
+test('不传 routeOwnerUnits（单测/未接配置场景）：行为不变，不标注', () => {
+  const tree = buildDispatchPerformanceTree([met({ routeCode: 'BB009', total: 1 })])
+  assert.equal(tree.suppliers[0].routes[0].foreignVendorName, undefined)
+})
+
+test('没有任何单位配了这条路由（真正的配置缺失，不是借调）：不瞎标一个供应商名', () => {
+  const owners = unitsMap([{ supplierKey: 'V2::B供应商', supplierName: 'B供应商', routeCodes: ['R2'] }])
+  const tree = buildDispatchPerformanceTree(
+    [met({ supplierKey: 'V2::B供应商', supplierName: 'B供应商', routeCode: 'BB009', total: 1 })],
+    false,
+    owners,
+  )
+  assert.equal(tree.suppliers[0].routes[0].foreignVendorName, undefined)
+})

@@ -181,6 +181,8 @@
     "whitelistFullTooltip": "该路由在供应商配置的路由码白名单里、本不参与考核。当前是全量口径，它的单量与达成照常计入上面的各项指标；切到「剔除白名单」这条路由就不会出现。",
     "whitelistPartialTag": "白名单 · {{count}} 单",
     "whitelistFullTag": "白名单路由",
+    "foreignVendorTag": "所属供应商{{vendorName}}",
+    "foreignVendorTooltip": "这条路由不在本供应商的配置名单里，是按实际承运商兜底计入的（例如临时借调了{{vendorName}}的司机）。配置表里它仍归属{{vendorName}}。",
     "driver": "司机",
     "unassignedDriver": "未派件（无司机）",
     "neverSigned": "窗口截止时点未签收",

@@ -82,6 +82,24 @@ function WhitelistTag({
   )
 }
 
+/** 「所属供应商X」徽标：这条路由是靠实际承运商兜底计入的，配置表里仍划给另一家 */
+function ForeignVendorTag({
+  vendorName,
+  t,
+}: {
+  vendorName: string | undefined
+  t: (key: string, options?: Record<string, unknown>) => string
+}) {
+  if (!vendorName) return null
+  return (
+    <Tooltip title={t('breakdown.foreignVendorTooltip', { vendorName })}>
+      <Tag color="orange" className="m-0 mt-0.5 text-xs">
+        {t('breakdown.foreignVendorTag', { vendorName })}
+      </Tag>
+    </Tooltip>
+  )
+}
+
 /**
  * 利润单元格。金额恒是数值，但有两种「这个数不是全部」的情况必须当场说清楚，
  * 否则一个偏小的金额看上去和正常值毫无区别：
@@ -454,6 +472,7 @@ function RouteTable({
               <WhitelistTag whitelistTotal={row.whitelistTotal} total={row.total} t={t} />
             </div>
           ) : null}
+          <ForeignVendorTag vendorName={row.foreignVendorName} t={t} />
           <ExcludedTag
             count={row.excludedCount}
             nextDayCount={row.excludedNextDayCount}

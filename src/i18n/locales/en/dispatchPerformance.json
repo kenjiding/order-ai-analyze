@@ -181,6 +181,8 @@
     "whitelistFullTooltip": "This route is on the vendor's route whitelist and is normally not scored. The page is in \"All data\" mode, so its volume and achievement count toward every metric above; switch to \"Exclude whitelist\" and this route disappears.",
     "whitelistPartialTag": "Whitelist · {{count}}",
     "whitelistFullTag": "Whitelist route",
+    "foreignVendorTag": "Owned by {{vendorName}}",
+    "foreignVendorTooltip": "This route isn't on this vendor's own route list — it was counted here based on the actual carrier (e.g. a driver borrowed from {{vendorName}}). The config still lists it under {{vendorName}}.",
     "driver": "Driver",
     "unassignedDriver": "Unassigned (no driver)",
     "neverSigned": "Never signed",

@@ -104,6 +104,12 @@ export type DispatchRouteNode = DispatchMetrics & {
    */
   whitelistTotal: number
   drivers: DispatchDriverNode[]
+  /**
+   * 该路由在当前供应商推送配置里实际归属的另一家供应商展示名；有值说明这条路由不在
+   * 本供应商自己的配置名单里，是靠实际承运商兜底计入的（例如临时借调别家司机跑了这条路由）。
+   * 按当前配置实时算，配置改了这个标记当天就会消失，不是历史快照。
+   */
+  foreignVendorName?: string
 }
 
 export type DispatchSupplierNode = DispatchMetrics & {

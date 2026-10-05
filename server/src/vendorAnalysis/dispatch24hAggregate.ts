@@ -12,8 +12,8 @@ import { iMileStrToMs, localDateTimeToMs, type AusTz } from '../imile/ausTimezon
 import { isSortingWorkday, nextSortingWorkdayAfter } from '../imile/sortingWorkday'
 import {
   buildRouteCodeVendorsMap,
-  isRowInConfigScope,
   isRowInVendorScope,
+  resolveConfigScopesForRow,
   resolveVendorCodesByRouteCode,
   type ConfigScope,
 } from './supplierScope'
@@ -441,6 +441,8 @@ export function aggregateDispatch24hByScopes(input: {
 
   const result = new Map<string, Dispatch24hVendorStat>()
   const driverMapByKey = new Map<string, Map<string, Dispatch24hDriverStat>>()
+  /** 同一 (vendorCode, routeCode) 的兜底只告警一次，避免整批同路由运单刷屏 */
+  const foreignRouteWarned = new Set<string>()
 
   for (const row of rows) {
     if (!inStation(row.lastScanSiteCode)) continue
@@ -454,8 +456,22 @@ export function aggregateDispatch24hByScopes(input: {
     const courierCode = norm(row.courierCode)
     const isPriority = isPriorityRow(row, priorityClientCodes)
 
-    for (const scope of scopes) {
-      if (!isRowInConfigScope(scope, explicitVendorCode, consigneeRouteCode)) continue
+    // 归属判定 + 路由被收窄时兜底落到承运商名下，唯一实现见 resolveConfigScopesForRow，不重抄。
+    // ignoreWhitelist: false —— 本告警按 isRowInConfigScope 口径剔除白名单路由（excludeWhitelist
+    // 开关由上游 scopes 是否带 routeCodeWhitelist 决定，这里不用关心）
+    const matches = resolveConfigScopesForRow(scopes, explicitVendorCode, consigneeRouteCode, {
+      ignoreWhitelist: false,
+    })
+    for (const { scope, isForeignRoute } of matches) {
+      if (isForeignRoute) {
+        const warnKey = `${explicitVendorCode}\t${consigneeRouteCode}`
+        if (!foreignRouteWarned.has(warnKey)) {
+          foreignRouteWarned.add(warnKey)
+          console.warn(
+            `[24H派签告警] 供应商 ${explicitVendorCode} 的路由 ${consigneeRouteCode} 未配置在任何子单元名单内，已兜底计入 ${scope.key}`,
+          )
+        }
+      }
 
       let stat = result.get(scope.key)
       if (!stat) {

@@ -11,7 +11,7 @@ import { fetchSearchWaybillByNos } from '../imile/inboundWaybillIndex'
 import { fetchSortingGeocodingByWaybillNos } from '../imile/sortingGeocoding'
 import { envFirst } from '../imile/shared'
 import { getGlobalImileToken } from '../feishu/globalImileToken'
-import { isRowInConfigScope } from '../vendorAnalysis/supplierScope'
+import { resolveConfigScopesForRow } from '../vendorAnalysis/supplierScope'
 
 export type DriverMapPointDto = {
   waybillNo: string
@@ -49,8 +49,9 @@ export type DriverMapPointsQueryOutcome =
 /**
  * 供应商取数范围：同一 vendorCode 可能对应多条供应商配置（ADL-City / ADL-Lu 共用编码、
  * 各管一批路由码），只按 vendorCode 筛会把两家的单混在一起，必须带路由码一起收窄。
- * 判定口径与 24H 派签告警的统计完全一致（都走 supplierScope.isRowInConfigScope），
- * 保证卡片上的单量与地图上的派送单量对得上。
+ * 判定口径与 24H 派签告警的统计完全一致（都走 supplierScope.resolveConfigScopesForRow），
+ * 保证卡片上的单量与地图上的派送单量对得上；vendorCode 精确匹配但路由被收窄时同样兜底，
+ * 不会出现「卡片上有这单、地图上点位却凭空消失」的不一致。
  */
 export type DriverMapVendorScope = {
   vendorCode: string
@@ -60,9 +61,9 @@ export type DriverMapVendorScope = {
   routeCodeWhitelist?: string[]
 }
 
-type ScopeRow = { vendorCode: string; consigneeRouteCode: string }
+export type ScopeRow = { vendorCode: string; consigneeRouteCode: string }
 
-type ScopeFilter = {
+export type ScopeFilter = {
   /** SQL 粗筛：把整站数据砍到「该 vendorCode」+「承运商未回填」两类，精筛仍在内存做 */
   sqlWhere: ReturnType<typeof or> | undefined
   accept: (row: ScopeRow) => boolean
@@ -70,7 +71,8 @@ type ScopeFilter = {
   label: string
 }
 
-function buildScopeFilter(scope?: DriverMapVendorScope): ScopeFilter {
+/** 导出供单测直接验证 accept 的归属判定（不碰数据库，sqlWhere 只是构造 drizzle 表达式对象） */
+export function buildScopeFilter(scope?: DriverMapVendorScope): ScopeFilter {
   const p = schema.driverMapWaybillPoints
   const vendorCode = scope?.vendorCode?.trim() ?? ''
   const routeCodes = scope?.routeCodes?.map((c) => c.trim()).filter(Boolean) ?? []
@@ -90,7 +92,10 @@ function buildScopeFilter(scope?: DriverMapVendorScope): ScopeFilter {
     // vendorCode 为空的行是「尚未派件、iMile 未回填承运商」，要留给 routeCode 兜底归属，不能在 SQL 阶段剔除；
     // 未选供应商的配置本身就没有 vendorCode 可粗筛，整站拉进来后靠 accept 精筛
     sqlWhere: vendorCode ? or(eq(p.vendorCode, vendorCode), eq(p.vendorCode, '')) : undefined,
-    accept: (row) => isRowInConfigScope(configScope, row.vendorCode, row.consigneeRouteCode),
+    accept: (row) =>
+      resolveConfigScopesForRow([configScope], row.vendorCode, row.consigneeRouteCode, {
+        ignoreWhitelist: false,
+      }).length > 0,
     label: `${vendorCode || '*'}${routeCodes.length > 0 ? `/[${routeCodes.join(',')}]` : ''}`,
   }
 }

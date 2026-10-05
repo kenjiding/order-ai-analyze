@@ -193,6 +193,29 @@ test('一个路由码归属两家供应商时各自独立计入，不是互斥�
   for (const c of cells) assert.equal(c.total, 1)
 })
 
+test('vendorCode 匹配但路由不在该供应商任何子配置名单里：兜底计入该供应商，不丢弃', () => {
+  const rows: Dispatch24hWaybillRow[] = [
+    // courierVendorCode=V2，但 V2 的配置只认 R2，不认 BB009——借调司机跑了别家的路由
+    { waybillNo: 'A', lastScanSiteCode: 'S1', courierVendorCode: 'V2', courierCode: 'C9', courier: 'D9', consigneeRouteCode: 'BB009', deliveryTime: '2024-06-25 09:00:00', signDate: '2024-06-25 15:00:00' },
+  ]
+  // V1 配了 BB009（原本归属方），V2 没配 BB009（实际执行方）
+  const cells = run(rows, [scope('U1', 'V1', ['BB009']), scope('U2', 'V2', ['R2'])])
+
+  assert.equal(cells.length, 1, '不该两头丢弃，也不该两头都算')
+  assert.equal(cells[0].scopeKey, 'U2', '按实际承运商 V2 兜底计入，不计入原配置方 V1')
+  assert.equal(cells[0].routeCode, 'BB009')
+  assert.equal(cells[0].courierCode, 'C9')
+  assert.equal(cells[0].total, 1)
+})
+
+test('vendorCode 不在任何供应商配置里时，兜底也找不到落点，维持原样不计入任何格子', () => {
+  const rows: Dispatch24hWaybillRow[] = [
+    { waybillNo: 'A', lastScanSiteCode: 'S1', courierVendorCode: 'V9', courierCode: 'C9', courier: 'D9', consigneeRouteCode: 'BB009', deliveryTime: '2024-06-25 09:00:00', signDate: '2024-06-25 15:00:00' },
+  ]
+  const cells = run(rows, [scope('U1', 'V1', ['BB009'])])
+  assert.equal(cells.length, 0)
+})
+
 test('与告警侧 aggregateDispatch24hByScopes 口径一致：达标数、问题件数逐 scope 对齐', () => {
   const rows: Dispatch24hWaybillRow[] = [
     { ...base, waybillNo: 'A', courierCode: 'C1', courier: 'D1', consigneeRouteCode: 'R1', deliveryTime: '2024-06-25 09:00:00', signDate: '2024-06-25 15:00:00' },

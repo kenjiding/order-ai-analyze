@@ -18,9 +18,9 @@ import {
   fetchStagnantWaybillRouteCodes,
   fetchStagnantWaybills,
   isStagnationBucket,
-  type StagnantWaybillRow,
   type StagnationBucket,
 } from '../imile/stagnantWaybills'
+import { resolveConfigScopesForRow } from '../vendorAnalysis/supplierScope'
 import { aggregateVendorStagnation, type BucketResult } from '../imile/chaseDispatchAggregate'
 import { filterWaybillsWithExistingTicket } from '../imile/chaseDispatchTicketCheck'
 import {
@@ -73,6 +73,39 @@ export type ChaseDispatchPushResult = {
   pushedCount: number
   totalConfigs: number
   errors: string[]
+}
+
+export type ChaseDispatchConfigScope = { configId: string; vendorCode: string; routeCodes?: Set<string> }
+
+/** 把全部参与本次推送的配置一次性建成 scope 列表——归属判定必须按「全部配置」一起判，见下方函数注释 */
+export function buildChaseDispatchConfigScopes(
+  configs: Pick<FleetSupplierPushConfig, 'id' | 'vendorCode' | 'routeCode'>[],
+): ChaseDispatchConfigScope[] {
+  return configs.map((c) => {
+    const routeCodes = new Set(parseRouteCodes(c.routeCode))
+    return { configId: c.id, vendorCode: c.vendorCode.trim(), routeCodes: routeCodes.size > 0 ? routeCodes : undefined }
+  })
+}
+
+/**
+ * 这一单归属全部配置里的哪几个（通常 0 或 1 个，两家不同 vendorCode 共担同一路由码时可能多个）：
+ * 归属判定 + 路由被收窄时兜底落到承运商名下，唯一实现见 supplierScope 的 resolveConfigScopesForRow，
+ * 不重抄。本功能不用路由码白名单，ignoreWhitelist 恒为 true。
+ *
+ * **必须传全部 configs 建出的 scopes，不能只传「当前正在处理的这一条」**——否则同 vendorCode 下的
+ * 两条配置（ADL-City / ADL-Lu）各自独立判定时会各自触发一次兜底，同一单被两边重复计入、重复推送。
+ * 抽成纯函数供单测验证，不用 mock 整条拉数/推送的 I/O 链路。
+ */
+export function resolveChaseDispatchConfigIds(
+  allScopes: ChaseDispatchConfigScope[],
+  driverVendorCode: unknown,
+  routeCode: string,
+): { configIds: Set<string>; isForeignRoute: boolean } {
+  const matches = resolveConfigScopesForRow(allScopes, driverVendorCode, routeCode, { ignoreWhitelist: true })
+  return {
+    configIds: new Set(matches.map((m) => m.scope.configId)),
+    isForeignRoute: matches.some((m) => m.isForeignRoute),
+  }
 }
 
 /**
@@ -150,31 +183,40 @@ export async function executeChaseDispatchPush(params: {
   const { routeCodeByWaybillNo, clientCodeByWaybillNo } = routeCodeResult.data
   const priorityClientCodes = await loadPriorityClientCodes()
   const priorityLookup = { clientCodeByWaybillNo, priorityClientCodes }
-
-  const filterRowsByRouteCode = (rows: StagnantWaybillRow[], allowed: Set<string>): StagnantWaybillRow[] => {
-    if (allowed.size === 0) return []
-    return rows.filter((row) => {
-      const routeCode = routeCodeByWaybillNo.get((row.waybillNo ?? '').trim()) ?? ''
-      return allowed.has(routeCode)
-    })
-  }
+  /** 同一 (vendorCode, routeCode) 的兜底只告警一次，避免整批同路由运单刷屏 */
+  const foreignRouteWarned = new Set<string>()
+  // 归属判定必须按「全部配置」一起判（见 resolveChaseDispatchConfigIds 注释），不能逐 config 各自独立判定
+  const allConfigScopes = buildChaseDispatchConfigScopes(configs)
 
   let pushedCount = 0
   const errors: string[] = []
 
   for (const config of configs) {
-    const vendorCode = config.vendorCode.trim()
     const vendorName = supplierDisplayName(config)
 
-    const allowedRouteCodes = new Set(parseRouteCodes(config.routeCode))
-    // 该供应商明细：vendorCode 归属 → routeCode 纳入（不用路由码白名单）；
-    // 未选供应商的配置跳过承运商归属，只按路由码纳入
-    const configBucketResults = bucketResults.map((b) => {
-      const byVendor = vendorCode
-        ? b.rows.filter((row) => (row.driverVendorCode ?? '').trim() === vendorCode)
-        : b.rows
-      return { bucket: b.bucket, rows: filterRowsByRouteCode(byVendor, allowedRouteCodes) }
-    })
+    const configBucketResults = bucketResults.map((b) => ({
+      bucket: b.bucket,
+      rows: b.rows.filter((row) => {
+        const routeCode = routeCodeByWaybillNo.get((row.waybillNo ?? '').trim()) ?? ''
+        const { configIds, isForeignRoute } = resolveChaseDispatchConfigIds(
+          allConfigScopes,
+          row.driverVendorCode,
+          routeCode,
+        )
+        if (!configIds.has(config.id)) return false
+        if (isForeignRoute) {
+          const driverVendorCode = (row.driverVendorCode ?? '').trim()
+          const warnKey = `${driverVendorCode}\t${routeCode}`
+          if (!foreignRouteWarned.has(warnKey)) {
+            foreignRouteWarned.add(warnKey)
+            console.warn(
+              `${label} 供应商 ${driverVendorCode} 的路由 ${routeCode} 未配置在路由名单内，已兜底计入 ${vendorName}`,
+            )
+          }
+        }
+        return true
+      }),
+    }))
     const summary = aggregateVendorStagnation(
       configBucketResults,
       config.vendorCode,

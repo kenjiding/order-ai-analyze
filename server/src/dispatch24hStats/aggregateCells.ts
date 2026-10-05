@@ -23,7 +23,7 @@ import {
   type Dispatch24hWaybillRow,
   type Dispatch24hWindowRule,
 } from '../vendorAnalysis/dispatch24hAggregate'
-import { isRowInConfigScopeIgnoringWhitelist } from '../vendorAnalysis/supplierScope'
+import { resolveConfigScopesForRow } from '../vendorAnalysis/supplierScope'
 
 /** 未派件的单没有司机可归，用空串占位，使司机行加总仍等于供应商总数 */
 export const NO_COURIER_CODE = ''
@@ -199,6 +199,8 @@ export function aggregateDispatchPerformanceCells(input: {
   const inStation = (code: string | undefined) => stationSet.size === 0 || stationSet.has(norm(code))
 
   const cells = new Map<string, DispatchPerformanceCell>()
+  /** 同一 (vendorCode, routeCode) 的兜底只告警一次，避免整批同路由运单刷屏 */
+  const foreignRouteWarned = new Set<string>()
 
   for (const row of rows) {
     if (!inStation(row.lastScanSiteCode)) continue
@@ -226,8 +228,7 @@ export function aggregateDispatchPerformanceCells(input: {
       ? priceBook?.get(priceBookKey(row.postcode ?? '', row.suburb ?? ''))
       : undefined
 
-    for (const scope of scopes) {
-      if (!isRowInConfigScopeIgnoringWhitelist(scope, explicitVendorCode, routeCode)) continue
+    const applyToScope = (scope: Dispatch24hScope) => {
       // 白名单只影响「算不算进率」，不影响归属。判定与出仓告警的 whitelistStat 同一写法
       // （before11Aggregate）；同一 (scope, routeCode) 的标记恒定，故不必进格子主键
       const isWhitelist = scope.routeCodeWhitelist?.has(routeCode) ?? false
@@ -293,6 +294,23 @@ export function aggregateDispatchPerformanceCells(input: {
         cell.nextDayUnmetWaybillNos.push(wbNo)
         if (isPriority) cell.priorityNextDayUnmetWaybillNos.push(wbNo)
       }
+    }
+
+    // 归属判定 + 路由被收窄时兜底落到承运商名下，唯一实现见 supplierScope.resolveConfigScopesForRow，
+    // 不在这里重抄一遍（兜底场景：临时借调其他供应商的司机跑了这条路由，运单上的实际承运商
+    // 回填成了借调方，但这条路由不在借调方任何一条子配置的 routeCodes 名单里）。
+    const matches = resolveConfigScopesForRow(scopes, explicitVendorCode, routeCode, { ignoreWhitelist: true })
+    for (const { scope, isForeignRoute } of matches) {
+      if (isForeignRoute) {
+        const warnKey = `${explicitVendorCode}${CELL_KEY_SEP}${routeCode}`
+        if (!foreignRouteWarned.has(warnKey)) {
+          foreignRouteWarned.add(warnKey)
+          console.warn(
+            `[出仓派签达成分析] 供应商 ${explicitVendorCode} 的路由 ${routeCode} 未配置在任何子单元名单内，已兜底计入 ${scope.key}`,
+          )
+        }
+      }
+      applyToScope(scope)
     }
   }
 

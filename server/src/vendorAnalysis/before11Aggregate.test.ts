@@ -130,10 +130,43 @@ test('aggregateBefore11ByScopes: 同 vendorCode 两条配置各自不同 routeCo
     { key: 'cfg-region-2', vendorCode: 'V1', routeCodes: new Set(['R2']) },
   ]
   const result = aggregateBefore11ByScopes({ rows: taggedAll, scopes })
-  // cfg-region-1 只收 R1：命中 W1、W2（V1/R1），V9 的 W4 不算，RW 的 W5 路由不在收窄范围内
-  assert.equal(result.get('cfg-region-1')?.totalWaybills, 2)
-  // cfg-region-2 只收 R2：命中 W3
+  // cfg-region-1 收 R1：命中 W1、W2（V1/R1）；V9 的 W4 不算（承运商不对，不兜底到别家头上）；
+  // W5（V1/RW）两条子配置都没配 RW——vendorCode 精确匹配但路由被两边都收窄掉，按兜底落到
+  // 第一条子配置（cfg-region-1），不再像以前那样两条子配置都不要、数据凭空消失
+  assert.equal(result.get('cfg-region-1')?.totalWaybills, 3)
+  // cfg-region-2 只收 R2：命中 W3，不受兜底影响（兜底只会落到 vendorCode 匹配的第一条）
   assert.equal(result.get('cfg-region-2')?.totalWaybills, 1)
+})
+
+test('aggregateBefore11ByScopes: 只有一条子配置时，路由超出它收窄的范围仍兜底落到它自己身上，不会凭空消失', () => {
+  const scopes: Before11Scope[] = [{ key: 'cfg-region-1', vendorCode: 'V1', routeCodes: new Set(['R1']) }]
+  const result = aggregateBefore11ByScopes({ rows: taggedAll, scopes })
+  // routeCodes 收窄的作用只是「同一 vendorCode 下多个子配置时分给谁」，不是「该不该算这个供应商」——
+  // 只有这一条配置时，W3（V1/R2）、W5（V1/RW）一样兜底落回它，不会因为路由不在收窄名单里就消失
+  assert.equal(result.get('cfg-region-1')?.totalWaybills, 4, 'W1、W2、W3、W5 都算，只有 W4（V9）被排除')
+})
+
+test('aggregateBefore11ByScopes: vendorCode 在任何 scope 里都查不到——真正的配置缺失，不兜底，数据不计入任何供应商', () => {
+  const unknownVendorRows: Array<Record<string, unknown>> = [
+    { waybillNo: 'U1', courierVendorCode: 'V9', consigneeRouteCode: 'R9', deliveryTime: null, courierCode: 'C9', courier: '' },
+  ]
+  const tagged = tagBefore11Rows({ rows: unknownVendorRows, before11ThresholdMs: thresholdMs })
+  const scopes: Before11Scope[] = [{ key: 'cfg-region-1', vendorCode: 'V1', routeCodes: new Set(['R1']) }]
+  const result = aggregateBefore11ByScopes({ rows: tagged, scopes })
+  assert.equal(result.size, 0, 'V9 不是任何已配置供应商，不兜底、不计入')
+})
+
+test('aggregateBefore11ByScopes: 兜底命中的子配置若把这条路由配进了自己的白名单，仍按白名单分桶，不计入主统计', () => {
+  const scopes: Before11Scope[] = [
+    { key: 'cfg-region-1', vendorCode: 'V1', routeCodes: new Set(['R1']), routeCodeWhitelist: new Set(['RW']) },
+    { key: 'cfg-region-2', vendorCode: 'V1', routeCodes: new Set(['R2']) },
+  ]
+  const result = aggregateBefore11ByScopes({ rows: taggedAll, scopes })
+  const stat = result.get('cfg-region-1')
+  // W5（V1/RW）兜底落到 cfg-region-1（第一条 vendorCode 匹配的子配置），但它自己把 RW 配进了白名单，
+  // 所以不计入主统计 totalWaybills，而是按既有口径单列进 whitelistStat——兜底不能绕开白名单规则
+  assert.equal(stat?.totalWaybills, 2, '主统计仍只有 W1、W2')
+  assert.equal(stat?.whitelistStat?.totalWaybills, 1, 'W5 单列进白名单分桶')
 })
 
 test('aggregateBefore11ByScopes: 两个不同 vendorCode 共担同一路由码时，一次遍历下依然各自独立计入', () => {

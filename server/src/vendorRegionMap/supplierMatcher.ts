@@ -1,11 +1,6 @@
 import type { FleetSupplierPushConfig } from '../db/schema'
 import { parseRouteCodes, supplierDisplayName } from '../supplierPushConfigs'
-import {
-  buildRouteCodeVendorsMap,
-  isRouteCodeAllowed,
-  normCode,
-  resolveVendorCodesByRouteCode,
-} from '../vendorAnalysis/supplierScope'
+import { normCode, resolveConfigScopesForRow } from '../vendorAnalysis/supplierScope'
 
 /** 有邮编但路由码对不上任何供应商配置时，仍上图，便于发现漏配 */
 export const UNMATCHED_SUPPLIER_KEY = '__unmatched__'
@@ -63,37 +58,29 @@ function buildSupplierUnits(configs: ScopeConfig[]): Map<string, SupplierUnit> {
   return units
 }
 
+type MatchScope = { supplierKey: string; vendorCode: string; routeCodes?: Set<string> }
+
 /**
  * courierVendorCode 只能定位到 vendorCode，落到哪个单位还得靠路由码收窄；
- * iMile 尚未回填承运商时退回纯路由码归属。判定本身仍走 supplierScope 的函数，
- * 这里只是把它的键从 vendorCode 换成 supplierKey。
+ * iMile 尚未回填承运商时退回纯路由码归属。归属判定唯一实现见 supplierScope 的
+ * resolveConfigScopesForRow（含 vendorCode 精确匹配但路由被收窄时的兜底），
+ * 这里只是把它的 key 从 scope 换成 supplierKey，不重抄判定逻辑。
+ * 本功能不支持路由码白名单（ScopeConfig 没有这个字段），ignoreWhitelist 恒为 true。
  */
 export function buildSupplierMatcher(configs: ScopeConfig[]): SupplierMatcher {
   const units = buildSupplierUnits(configs)
-
-  const unitKeysByVendorCode = new Map<string, string[]>()
-  const routeCodesByUnit = new Map<string, Set<string>>()
-  for (const unit of units.values()) {
-    const list = unitKeysByVendorCode.get(unit.vendorCode) ?? []
-    list.push(unit.supplierKey)
-    unitKeysByVendorCode.set(unit.vendorCode, list)
-    // 与 supplierScope 一致：路由码为空 = 不收窄，故不建条目
-    if (unit.routeCodes.size > 0) routeCodesByUnit.set(unit.supplierKey, unit.routeCodes)
-  }
-  const routeCodeUnitsMap = buildRouteCodeVendorsMap(routeCodesByUnit)
+  const matchScopes: MatchScope[] = [...units.values()].map((unit) => ({
+    supplierKey: unit.supplierKey,
+    vendorCode: unit.vendorCode,
+    routeCodes: unit.routeCodes.size > 0 ? unit.routeCodes : undefined,
+  }))
 
   return {
     units,
     resolveUnitKeys(scan: ScanForMatch): string[] {
-      const courier = normCode(scan.courierVendorCode)
-      const byCourier = courier ? unitKeysByVendorCode.get(courier) : undefined
-      const candidates =
-        byCourier && byCourier.length > 0
-          ? byCourier
-          : resolveVendorCodesByRouteCode(scan.routeCode, routeCodeUnitsMap)
-      return candidates.filter((supplierKey) =>
-        isRouteCodeAllowed(supplierKey, scan.routeCode, routeCodesByUnit),
-      )
+      return resolveConfigScopesForRow(matchScopes, scan.courierVendorCode, scan.routeCode, {
+        ignoreWhitelist: true,
+      }).map((m) => m.scope.supplierKey)
     },
   }
 }

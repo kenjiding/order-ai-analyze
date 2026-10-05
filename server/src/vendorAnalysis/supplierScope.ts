@@ -2,9 +2,14 @@
  * 供应商范围归属 —— 「这单属于哪个供应商的统计范围」的唯一权威。
  *
  * 判定链：courierVendorCode 归属 → routeCode 纳入名单收窄 → 路由码白名单剔除。
- * 「供应商数据分析」「11点前出仓告警」「24小时派签告警」共用同一份供应商配置
- * （fleet_supplier_push_configs），也必须共用这里的同一套判定；业务侧不允许重抄
- * 过滤条件，改口径只改这个文件。
+ * 「出仓派签达成分析」「滞留数据告警」「24小时派签告警」「司机地图」「区域地图」「催派推送」
+ * 共用同一份供应商配置（fleet_supplier_push_configs），也必须共用这里的同一套判定；业务侧
+ * 不允许重抄过滤条件，改口径只改这个文件。
+ *
+ * 「遍历 scopes、挑出这一行属于哪个/哪几个」这件事唯一走 resolveConfigScopesForRow——它在
+ * isRowInConfigScope(IgnoringWhitelist) 之上额外处理了「vendorCode 精确匹配但路由被收窄」
+ * 的兜底归属（典型场景：临时借调别家供应商的司机跑了这条路由），不建 scopes 循环的业务不需要
+ * 关心这个兜底，但只要是「for scope of scopes 判定归属」的写法，一律用它，不要手写循环。
  */
 import type { FleetSupplierPushConfig } from '../db/schema'
 import { parseRouteCodes, supplierDisplayName } from '../supplierPushConfigs'
@@ -108,6 +113,53 @@ export function isRowInConfigScopeIgnoringWhitelist(
   // 纳入名单收窄（兜底分支上面已确认命中，这里恒真，保留是为了单一实现来源）
   if (scope.routeCodes && !scope.routeCodes.has(routeCode)) return false
   return true
+}
+
+export type ScopeMatch<S> = {
+  scope: S
+  /** true = 正常判定零命中，是凭 vendorCode 精确匹配兜底落下来的（见下方函数注释） */
+  isForeignRoute: boolean
+}
+
+/**
+ * 「这一行落在 scopes 里的哪一个/哪几个」的唯一入口：逐 scope 遍历判定都走这里，不许各业务自己写循环。
+ *
+ * 正常情况下返回所有命中的 scope（可能 0 个、1 个，或多个——两家供应商共担同一路由码时业务上允许
+ * 同时命中多个，各自独立统计，见 isRowInConfigScopeIgnoringWhitelist 的归属语义）。
+ *
+ * **兜底**：如果一个都没命中、但这一行的 courierVendorCode 精确等于某个 scope 的 vendorCode——
+ * 说明承运商确实是这家供应商，只是这条路由没配进它任何一条子配置的 routeCodes 名单里（典型场景：
+ * 临时借调别家供应商的司机跑了这条路由）。原逻辑会把这一整行丢弃、两头供应商都统计不到；这里改成
+ * 落到该 vendorCode 下**第一条**匹配的 scope（scopes 顺序来自配置创建时间，同一批次内稳定，不会
+ * 在不同供应商子配置间抖动），并用 isForeignRoute=true 告诉调用方「这是兜底命中，不是这行本来该在
+ * 的位置」，由调用方决定要不要打日志、要不要在前端标注。
+ *
+ * 兜底与「未派件按路由码兜底归属」（isRowInConfigScopeIgnoringWhitelist 内部 !scope.vendorCode 分支）
+ * 是两回事：这里只在 vendorCode 非空时触发，不会与未派件场景混淆。
+ *
+ * ignoreWhitelist=false（对应 isRowInConfigScope）时，兜底落到的 scope 如果把这条路由配进了自己的
+ * routeCodeWhitelist，兜底结果也要被白名单剔除——不能因为走了兜底分支就绕开白名单规则。
+ * ignoreWhitelist=true 时原样返回 scope，调用方自己按 scope.routeCodeWhitelist 分桶（如滞留数据告警）。
+ */
+export function resolveConfigScopesForRow<
+  S extends Pick<ConfigScope, 'vendorCode' | 'routeCodes' | 'routeCodeWhitelist'>,
+>(
+  scopes: S[],
+  rowVendorCode: unknown,
+  rowRouteCode: unknown,
+  opts: { ignoreWhitelist: boolean },
+): ScopeMatch<S>[] {
+  const matchFn = opts.ignoreWhitelist ? isRowInConfigScopeIgnoringWhitelist : isRowInConfigScope
+  const hits = scopes.filter((scope) => matchFn(scope, rowVendorCode, rowRouteCode))
+  if (hits.length > 0) return hits.map((scope) => ({ scope, isForeignRoute: false }))
+
+  const vendorCode = normCode(rowVendorCode)
+  if (!vendorCode) return []
+  const fallback = scopes.find((scope) => scope.vendorCode === vendorCode)
+  if (!fallback) return []
+  const routeCode = normCode(rowRouteCode)
+  if (!opts.ignoreWhitelist && fallback.routeCodeWhitelist?.has(routeCode)) return []
+  return [{ scope: fallback, isForeignRoute: true }]
 }
 
 /**

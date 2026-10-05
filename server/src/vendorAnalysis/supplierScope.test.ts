@@ -9,10 +9,12 @@ import {
   buildSupplierUnitKey,
   isRowInConfigScope,
   parseSupplierUnits,
+  resolveConfigScopesForRow,
   serializeSupplierUnits,
   supplierUnitsToScopes,
   isRowInVendorScope,
   resolveVendorCodesByRouteCode,
+  type ConfigScope,
   type VendorScopeMaps,
 } from './supplierScope'
 
@@ -243,4 +245,73 @@ test('选了供应商的配置：口径不变，仍按承运商归属', () => {
   assert.equal(isRowInConfigScope(scope, 'SRM99', 'R1'), false)
   // 承运商为空 → 按路由码兜底
   assert.equal(isRowInConfigScope(scope, '', 'R1'), true)
+})
+
+// ── resolveConfigScopesForRow：归属判定 + 路由被收窄时兜底落到承运商名下 ──────────
+
+function cfgScope(key: string, vendorCode: string, routeCodes?: string[], whitelist?: string[]): ConfigScope {
+  return {
+    key,
+    vendorCode,
+    routeCodes: routeCodes ? new Set(routeCodes) : undefined,
+    routeCodeWhitelist: whitelist ? new Set(whitelist) : undefined,
+  }
+}
+
+test('resolveConfigScopesForRow: 正常命中一个 scope，不触发兜底', () => {
+  const scopes = [cfgScope('U1', 'V1', ['R1'])]
+  const result = resolveConfigScopesForRow(scopes, 'V1', 'R1', { ignoreWhitelist: false })
+  assert.equal(result.length, 1)
+  assert.equal(result[0].scope.key, 'U1')
+  assert.equal(result[0].isForeignRoute, false)
+})
+
+test('resolveConfigScopesForRow: 两家供应商共担同一路由码，正常判定应返回两个命中，不是只认一个', () => {
+  const scopes = [cfgScope('U1', 'V1', ['R9']), cfgScope('U2', 'V2', ['R9'])]
+  // 承运商未回填，靠路由码兜底归属（既有语义），两家各自独立命中
+  const result = resolveConfigScopesForRow(scopes, '', 'R9', { ignoreWhitelist: false })
+  assert.deepEqual(result.map((m) => m.scope.key).sort(), ['U1', 'U2'])
+  assert.ok(result.every((m) => m.isForeignRoute === false))
+})
+
+test('resolveConfigScopesForRow: vendorCode 精确匹配但路由不在该供应商任何子配置名单里——兜底落到该供应商，标记 isForeignRoute', () => {
+  // 同 vendorCode 下两条子配置（ADL-City / ADL-Lu 场景），都没配 BB009
+  const scopes = [cfgScope('U1-City', 'V2', ['R2']), cfgScope('U1-Lu', 'V2', ['R3'])]
+  const result = resolveConfigScopesForRow(scopes, 'V2', 'BB009', { ignoreWhitelist: false })
+  assert.equal(result.length, 1, '只能落一个桶，不能两条子配置都给它算一遍导致重复计数')
+  assert.equal(result[0].scope.key, 'U1-City', '落到 vendorCode 匹配的第一条（数组顺序=配置创建顺序）')
+  assert.equal(result[0].isForeignRoute, true)
+})
+
+test('resolveConfigScopesForRow: vendorCode 在任何 scope 里都查不到——真正的配置缺失，不兜底，返回空', () => {
+  const scopes = [cfgScope('U1', 'V1', ['BB009'])]
+  const result = resolveConfigScopesForRow(scopes, 'V9', 'BB009', { ignoreWhitelist: false })
+  assert.deepEqual(result, [])
+})
+
+test('resolveConfigScopesForRow: 未派件（vendorCode为空）零命中时不触发兜底——那是另一套既有逻辑，不在这里处理', () => {
+  const scopes = [cfgScope('U1', 'V1', ['R1'])]
+  const result = resolveConfigScopesForRow(scopes, '', 'R9', { ignoreWhitelist: false })
+  assert.deepEqual(result, [])
+})
+
+test('resolveConfigScopesForRow: ignoreWhitelist=false 时，兜底命中的供应商若把这条路由配进了自己的白名单，兜底结果也要被剔除', () => {
+  const scopes = [cfgScope('U1', 'V2', ['R2'], ['BB009'])]
+  const result = resolveConfigScopesForRow(scopes, 'V2', 'BB009', { ignoreWhitelist: false })
+  assert.deepEqual(result, [], '不能因为走了兜底分支就绕开白名单剔除')
+})
+
+test('resolveConfigScopesForRow: ignoreWhitelist=true 时，兜底正常返回 scope，白名单分桶交给调用方自己处理', () => {
+  const scopes = [cfgScope('U1', 'V2', ['R2'], ['BB009'])]
+  const result = resolveConfigScopesForRow(scopes, 'V2', 'BB009', { ignoreWhitelist: true })
+  assert.equal(result.length, 1)
+  assert.equal(result[0].isForeignRoute, true)
+  // 调用方自己按 scope.routeCodeWhitelist 分桶（如滞留数据告警），这里只保证拿到了真实的 scope 对象
+  assert.equal(result[0].scope.routeCodeWhitelist?.has('BB009'), true)
+})
+
+test('resolveConfigScopesForRow: 不要求 scope 带 key 字段，兼容司机地图现场拼的字面量 scope', () => {
+  const literalScope = { vendorCode: 'V1', routeCodes: new Set(['R1']) }
+  const result = resolveConfigScopesForRow([literalScope], 'V1', 'R1', { ignoreWhitelist: false })
+  assert.equal(result.length, 1)
 })

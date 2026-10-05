@@ -6,8 +6,11 @@
  */
 import { and, desc, eq, gte, inArray, lte, sql } from 'drizzle-orm'
 import { getDb, schema } from '../db'
+import type { FleetSupplierPushConfig } from '../db/schema'
 import type { DispatchPerformanceCell } from './aggregateCells'
 import type { DispatchProfitDailyRow } from '../../../shared/dispatchPerformance/profitTrendAggregate'
+import { listSupplierPushConfigs, parsePushConfigIds } from '../supplierPushConfigs'
+import { buildSupplierUnitIndex, type SupplierUnit } from '../vendorAnalysis/supplierScope'
 
 /** 日度指标保留天数：日度表体积很小，留半年支撑趋势对比 */
 export const DISPATCH_PERFORMANCE_RETENTION_DAYS = 180
@@ -118,6 +121,13 @@ export type DispatchPerformanceRouteNode = DispatchPerformanceMetrics & {
    */
   whitelistTotal: number
   drivers: DispatchPerformanceDriverNode[]
+  /**
+   * 该路由码在当前供应商推送配置里实际归属的另一家供应商展示名。
+   * 只在「这条路由不在本供应商任何配置名单里、但能在别家名下查到」时才有值——
+   * 对应 aggregateCells 的兜底计入场景（如临时借调司机跑了别家的路由）。
+   * 按**当前**配置实时算，不随历史落库数据变化；配置改了，这个标记当天就会消失。
+   */
+  foreignVendorName?: string
 }
 
 export type DispatchPerformanceSupplierNode = DispatchPerformanceMetrics & {
@@ -533,6 +543,25 @@ export type DispatchPerformanceStatRow = Omit<Acc, 'dispatchSettled' | ExcludedA
 }
 
 /**
+ * 这条路由在当前配置里是否「名不副实」：落在 supplierKey 名下，但 supplierKey 自己配置的
+ * routeCodes 不含这条路由（即 aggregateCells 的兜底计入），而别的供应商单位配了它。
+ * 找不到 routeOwnerUnits（未传）、路由码为空、或 supplierKey 自己就配了这条路由，一律不标注。
+ */
+function resolveForeignVendorName(
+  routeOwnerUnits: Map<string, SupplierUnit> | undefined,
+  supplierKey: string,
+  routeCode: string,
+): string | undefined {
+  if (!routeOwnerUnits || !routeCode) return undefined
+  const ownUnit = routeOwnerUnits.get(supplierKey)
+  if (!ownUnit || ownUnit.routeCodes.size === 0 || ownUnit.routeCodes.has(routeCode)) return undefined
+  const owner = [...routeOwnerUnits.values()].find(
+    (u) => u.supplierKey !== supplierKey && u.routeCodes.has(routeCode),
+  )
+  return owner?.supplierName
+}
+
+/**
  * 把日度格子累加成「站点 → 供应商 → 路由码 → 司机」四层结果。纯函数，不碰数据库。
  *
  * **白名单是一个口径开关，不是逐指标的特例**（`includeWhitelist`）：
@@ -547,6 +576,8 @@ export type DispatchPerformanceStatRow = Omit<Acc, 'dispatchSettled' | ExcludedA
 export function buildDispatchPerformanceTree(
   rows: DispatchPerformanceStatRow[],
   includeWhitelist = false,
+  /** 供应商单位索引（当前配置，非落库快照），用于给路由标注「所属供应商」；缺省 = 不标注 */
+  routeOwnerUnits?: Map<string, SupplierUnit>,
 ): {
   overall: DispatchPerformanceMetrics
   whitelistTotal: number
@@ -647,6 +678,7 @@ export function buildDispatchPerformanceTree(
           routeCode: route.routeCode,
           whitelistTotal: route.whitelistTotal,
           ...toMetrics(route.acc),
+          foreignVendorName: resolveForeignVendorName(routeOwnerUnits, supplier.supplierKey, route.routeCode),
           drivers: [...route.drivers.values()]
             .map((driver) => ({
               courierCode: driver.courierCode,
@@ -751,9 +783,10 @@ export async function queryDispatchPerformance(params: {
   ]
   if (supplierKeys?.length) conditions.push(inArray(t.supplierKey, supplierKeys))
 
-  const [rows, exceptionsByCell] = await Promise.all([
+  const [rows, exceptionsByCell, routeOwnerUnits] = await Promise.all([
     db.select().from(t).where(and(...conditions)),
     fetchExceptionWaybillsByCell({ stationCode, startDate, endDate, supplierKeys }),
+    resolveRouteOwnerUnits(stationCode),
   ])
 
   // 报备只在这里生效一次：与该格子当前的 neverSignedWaybillNos 求交集，不信任报备时刻的快照——
@@ -783,8 +816,31 @@ export async function queryDispatchPerformance(params: {
     arrivalDates: [
       ...new Set(rows.filter((r) => includeWhitelist || !r.isWhitelist).map((r) => r.arrivalDate)),
     ].sort(),
-    ...buildDispatchPerformanceTree(enrichedRows, includeWhitelist),
+    ...buildDispatchPerformanceTree(enrichedRows, includeWhitelist, routeOwnerUnits),
   }
+}
+
+/**
+ * 该站点当前勾选的供应商单位索引，供「所属供应商」标注用实时配置、不是落库快照。
+ * 与 dailyStatsJob.resolveStationTargets 同一套取数方式（listSupplierPushConfigs 全量 + 按
+ * pushConfigIds 过滤 + 要求 vendorCode 非空），没有配置或站点未启用统计时返回空索引。
+ */
+async function resolveRouteOwnerUnits(stationCode: string): Promise<Map<string, SupplierUnit>> {
+  const db = getDb()
+  const configRows = await db
+    .select({ pushConfigIds: schema.dispatchPerformanceConfigs.pushConfigIds })
+    .from(schema.dispatchPerformanceConfigs)
+    .where(eq(schema.dispatchPerformanceConfigs.stationCode, stationCode))
+    .limit(1)
+  const pushConfigIds = parsePushConfigIds(configRows[0]?.pushConfigIds)
+  if (!pushConfigIds.length) return new Map()
+
+  const supplierConfigs = await listSupplierPushConfigs()
+  const byId = new Map(supplierConfigs.map((c) => [c.id, c]))
+  const stationConfigs = pushConfigIds
+    .map((id) => byId.get(id))
+    .filter((c): c is FleetSupplierPushConfig => c != null && Boolean(c.vendorCode?.trim()))
+  return buildSupplierUnitIndex(stationConfigs).units
 }
 
 /** 区间内有数据的供应商列表，供前端筛选器用 */
