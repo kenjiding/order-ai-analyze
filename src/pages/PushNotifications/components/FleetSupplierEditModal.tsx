@@ -71,19 +71,22 @@ export function FleetSupplierEditModal({
   const effectiveChatId = secretsVisibility === 'full' ? watchedChatId : (editing?.chatId ?? '')
 
   const webhookRules = useMemo(() => webhookFieldRules(false), [t])
+  const watchedVendorCode = Form.useWatch('vendorCode', form)
+  // 选了供应商：路由码选填（不填 = 该供应商全路由通吃）。未选供应商（纯路由码口径）：
+  // 路由码必填，否则这条配置匹配不到任何运单，与后端 validateSupplierPushConfigCreate/Update 口径一致
   const routeCodeRules = useMemo(
     () => [
-      { required: true, message: t('fleetEdit.routeCodeRequired') },
       {
         validator: async (_: unknown, value: unknown) => {
+          if (watchedVendorCode) return
           const raw = typeof value === 'string' ? value : ''
           if (!parseFleetRouteCodes(raw).length) {
-            throw new Error(t('fleetEdit.routeCodeInvalid'))
+            throw new Error(t('fleetEdit.routeCodeRequiredWithoutVendor'))
           }
         },
       },
     ],
-    [t],
+    [t, watchedVendorCode],
   )
 
   useEffect(() => {

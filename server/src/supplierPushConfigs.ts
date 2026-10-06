@@ -72,7 +72,7 @@ export function extractSupplierPushConfigFields(body: SupplierPushConfigBody) {
 export function validateSupplierPushConfigCreate(body: SupplierPushConfigBody): string | null {
   const fields = extractSupplierPushConfigFields(body)
   if (!fields.supplierNickname) return '缺少必填字段: supplierNickname'
-  if (!fields.routeCode.trim()) return '缺少必填字段: routeCode'
+  if (!fields.vendorCode && !fields.routeCode.trim()) return '未选择供应商时必须填写路由编码'
   if (!fields.chatId && !fields.webhookUrl) return '缺少必填字段: chatId 或 webhookUrl（至少填一项）'
   return null
 }
