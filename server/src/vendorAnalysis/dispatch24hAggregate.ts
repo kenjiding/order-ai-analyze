@@ -9,7 +9,12 @@
  * 一批货同属一个到件批次，不能因为其中一单出仓晚了一天就换一套截止规则。
  */
 import { iMileStrToMs, localDateTimeToMs, type AusTz } from '../imile/ausTimezone'
-import { isSortingWorkday, nextSortingWorkdayAfter } from '../imile/sortingWorkday'
+import {
+  isDispatchDay,
+  nextDispatchDayAfter,
+  nextSortingWorkdayAfter,
+  type RegionCalendarOverrides,
+} from '../imile/sortingWorkday'
 import {
   buildRouteCodeVendorsMap,
   isRowInVendorScope,
@@ -111,10 +116,21 @@ export function isPriorityRow(row: Dispatch24hWaybillRow, priorityClientCodes?: 
 /**
  * 24H 派签窗口规则，**按到件日 D 判定**（不是按 deliveryTime 的星期）。
  *
- * 一批货的窗口口径由它「哪天到件」决定，而不是由某一单碰巧哪天出仓决定：
- * - D ∈ 周一~周四 → 出仓日 O = D+1，每单各自 deliveryTime + 24h
- * - D ∈ 周五/周六/周日 → 出仓日 O = 下周一 11:00（见 resolveExitDate），但周日不派送，
- *   整批派签共用一个固定截止时刻：D 之后第一个周一 23:59:59（本地时区）
+ * 一批货的窗口口径由它「哪天到件」决定，而不是由某一单碰巧哪天出仓决定，且只问一句话：
+ * D 的次日（D+1）是不是派送日历上的「能派送」日？
+ * - 能 → 每单各自 deliveryTime + 24h（滚动窗口，目标日天然就是 D+1）
+ * - 不能 → 整批派签共用一个固定截止时刻：从 D+1 往后找第一个能派送的日子，23:59:59（本地时区）
+ *
+ * 这一句话覆盖所有日历组合，不用为「周五」「周末临时开仓」「假期」各写一条特殊分支：
+ * - 平时周一到周四：D+1 正常能派送 → 滚动 24h，与接入假期表之前完全一致
+ * - 周五到件：D+1=周六不能派送 → 固定延到下周一（假期表为空时与接入前一致）
+ * - 周六/周日到件（含临时开仓分拣）：只要司机没有跟着加派（派送日历默认 false），
+ *   固定延到下一个真正能派送的日子——不管出仓日历是否因临时开仓而覆盖成 true，
+ *   两套日历互不牵连（出仓日历见 resolveExitDate）
+ * - 周日到件且 D+1=周一本就能派送：直接走滚动 24h，与「平时周一到周四」同口径，
+ *   不需要为周日临时开仓单独加例外
+ * - 法定假日落在平日：假期表把那天的派送日历覆盖成 false，`nextDispatchDayAfter` 的
+ *   循环会自动多跳过去，顺延到下一个真正能派送的日子（公共假期紧邻周末时同样自动叠加）
  *
  * 一次聚合只解析一次日期，逐行判定复用同一个 rule，避免每行重复解析时区。
  */
@@ -122,42 +138,49 @@ export type Dispatch24hWindowRule =
   | { kind: 'rolling24h' }
   | { kind: 'fixedDeadline'; deadlineMs: number }
 
-/** 到件日 D 之后第一个周一（含跨周），返回 YYYY-MM-DD */
-function nextMondayAfter(dateStr: string): string {
-  const [y, m, d] = dateStr.split('-').map(Number)
-  const cur = new Date(Date.UTC(y, m - 1, d))
-  do {
-    cur.setUTCDate(cur.getUTCDate() + 1)
-  } while (cur.getUTCDay() !== 1)
-  return cur.toISOString().slice(0, 10)
-}
-
 /** 按到件日 D（YYYY-MM-DD，账号州时区的本地日历日）解析本批次的 24H 派签窗口规则 */
-export function resolveDispatch24hWindowRule(arrivalDateStr: string, tz: AusTz): Dispatch24hWindowRule {
-  // 周五/周末到件：周日不派送，派签整批顺延到下周一；其余工作日到件走滚动 24h。
-  // 周末到件（周末不开仓分拣，理论上无批次）同样压到下周一兜底。
-  const [y, m, d] = arrivalDateStr.split('-').map(Number)
-  const dow = new Date(Date.UTC(y, m - 1, d)).getUTCDay() // 0=周日 … 6=周六
-  if (isSortingWorkday(arrivalDateStr) && dow !== 5) return { kind: 'rolling24h' }
+export function resolveDispatch24hWindowRule(
+  arrivalDateStr: string,
+  tz: AusTz,
+  overrides: RegionCalendarOverrides = new Map(),
+): Dispatch24hWindowRule {
+  const nextDay = shiftDateStr(arrivalDateStr, 1)
+  if (isDispatchDay(nextDay, overrides)) return { kind: 'rolling24h' }
   return {
     kind: 'fixedDeadline',
-    deadlineMs: localDateTimeToMs(`${nextMondayAfter(arrivalDateStr)} 23:59:59`, tz),
+    deadlineMs: localDateTimeToMs(`${nextDispatchDayAfter(arrivalDateStr, overrides)} 23:59:59`, tz),
   }
 }
 
 /**
- * 到件日 D 的出仓日 O = 下一个分拣工作日（nextSortingWorkdayAfter）。
+ * 到件日 D 的出仓日 O = 下一个出仓日历工作日（nextSortingWorkdayAfter）。
  *
- * 周一～周四：O = D+1。周五/周六/周日：O = 下周一。「11点前出仓」截止即 O 当天 11:00。
- * 与 computeBefore11ThresholdMs（供应商数据分析）同口径。
+ * 默认（无假期表覆盖）周一～周四：O = D+1；周五/周六/周日：O = 下周一。
+ * 「11点前出仓」截止即 O 当天 11:00，与 computeBefore11ThresholdMs（供应商数据分析）同口径。
+ *
+ * 法定假日默认不覆盖出仓日历（早取服务照常，见 RegionCalendarOverrides 注释），
+ * 只有周末临时开仓分拣这类需要让 O 提前时才需要显式把 isExitDay 覆盖成 true。
  */
-export function resolveExitDate(arrivalDateStr: string): string {
-  return nextSortingWorkdayAfter(arrivalDateStr)
+export function resolveExitDate(arrivalDateStr: string, overrides: RegionCalendarOverrides = new Map()): string {
+  return nextSortingWorkdayAfter(arrivalDateStr, overrides)
+}
+
+/** 到件日 D 之后第 days 天（可负）的日历日，YYYY-MM-DD */
+function shiftDateStr(dateStr: string, days: number): string {
+  const [y, m, d] = dateStr.split('-').map(Number)
+  const cur = new Date(Date.UTC(y, m - 1, d))
+  cur.setUTCDate(cur.getUTCDate() + days)
+  return cur.toISOString().slice(0, 10)
 }
 
 /** 到件日 D 的出仓日 O 当天 hh:mm 对应的 UTC 毫秒——出仓阈值与结算时机共用 */
-export function dispatchExitThresholdMs(arrivalDateStr: string, tz: AusTz, timeHHmm = '11:00'): number {
-  return localDateTimeToMs(`${resolveExitDate(arrivalDateStr)} ${timeHHmm}:00`, tz)
+export function dispatchExitThresholdMs(
+  arrivalDateStr: string,
+  tz: AusTz,
+  timeHHmm = '11:00',
+  overrides: RegionCalendarOverrides = new Map(),
+): number {
+  return localDateTimeToMs(`${resolveExitDate(arrivalDateStr, overrides)} ${timeHHmm}:00`, tz)
 }
 
 /**

@@ -38,6 +38,7 @@ const SupplierConfigPage = lazy(() => import('./pages/SupplierConfig/SupplierCon
 const RegionPackagePricePage = lazy(() => import('./pages/RegionPackagePrice/RegionPackagePricePage'))
 const WarehouseSettingsPage = lazy(() => import('./pages/WarehouseSettings/WarehouseSettingsPage'))
 const PriorityClientsPage = lazy(() => import('./pages/PriorityClients/PriorityClientsPage'))
+const RegionCalendarPage = lazy(() => import('./pages/RegionCalendar/RegionCalendarPage'))
 const LoginPage = lazy(() => import('./pages/Login/LoginPage'))
 const VendorSnapshotPage = lazy(() => import('./pages/VendorAnalysis/VendorSnapshotPage'))
 const VendorPortalPage = lazy(() => import('./pages/VendorPortal/VendorPortalPage'))
@@ -412,6 +413,14 @@ function AppRoutes() {
             element={
               <KeptPage cacheKey="page-warehouse-settings" name="warehouse-settings">
                 <WarehouseSettingsPage />
+              </KeptPage>
+            }
+          />
+          <Route
+            path="/system/region-calendar"
+            element={
+              <KeptPage cacheKey="page-region-calendar" name="region-calendar">
+                <RegionCalendarPage />
               </KeptPage>
             }
           />

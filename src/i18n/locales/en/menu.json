@@ -49,6 +49,7 @@
     "supplier-configs": "Vendor config",
     "priority-clients": "Priority clients",
     "region-package-prices": "Region package prices",
-    "warehouse-settings": "Warehouse/station addresses"
+    "warehouse-settings": "Warehouse/station addresses",
+    "region-calendar": "Holiday/ad-hoc opening calendar"
   }
 }

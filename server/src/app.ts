@@ -36,6 +36,7 @@ import { packageLossMonitorRouter } from './routes/packageLossMonitorRouter'
 import { supplierConfigScopeRouter } from './routes/supplierConfigScopeRouter'
 import { userPreferencesRouter } from './routes/userPreferencesRouter'
 import { priorityClientsRouter } from './routes/priorityClientsRouter'
+import { regionCalendarOverrideRouter } from './routes/regionCalendarOverrideRouter'
 import { regionPackagePriceRouter } from './routes/regionPackagePriceRouter'
 import { regionWarehouseRouter } from './routes/regionWarehouseRouter'
 import { stationCoordinateRouter } from './routes/stationCoordinateRouter'
@@ -92,6 +93,7 @@ app.use('/api/fleet-supplier-push', requireAuth, fleetSupplierPushRouter)
 app.use('/api/supplier-config-scopes', requireAuth, supplierConfigScopeRouter)
 app.use('/api/user-preferences', requireAuth, userPreferencesRouter)
 app.use('/api/priority-clients', requireAuth, priorityClientsRouter)
+app.use('/api/region-calendar-overrides', requireAuth, regionCalendarOverrideRouter)
 app.use('/api/region-package-prices', requireAuth, regionPackagePriceRouter)
 app.use('/api/region-warehouses', requireAuth, regionWarehouseRouter)
 app.use('/api/station-coordinates', requireAuth, stationCoordinateRouter)

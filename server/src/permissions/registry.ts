@@ -142,6 +142,13 @@ export const PERMISSION_REGISTRY: PermissionDefinition[] = [
     sortOrder: 67,
   },
   {
+    key: 'menu:region-calendar',
+    type: 'menu',
+    label: '假期/临时开仓日历',
+    description: '按州维护出仓/派送日历的例外日期（公共假期停摆、周末临时开仓分拣等），供出仓派签达成分析等功能结算时使用',
+    sortOrder: 68,
+  },
+  {
     key: 'btn:wage-salary:export',
     type: 'button',
     label: '导出工资',
@@ -323,6 +330,14 @@ export const PERMISSION_REGISTRY: PermissionDefinition[] = [
 export const ASSIGNABLE_PERMISSION_REGISTRY = PERMISSION_REGISTRY.filter(
   (item) => item.key !== 'menu:system-users',
 )
+
+/**
+ * 默认全员开放的权限 key：新建用户时自动带上（见 userService.createUser），
+ * 已有用户由 db/seed.ts 的 grantDefaultPermissionsToAllUsers 在每次启动时补齐。
+ * 只影响「默认是否勾选/补发」，之后仍可在「用户管理」里对单个账号收回——
+ * 不是绕过权限系统，只是省得每次新建用户都要记得手动勾。
+ */
+export const DEFAULT_GRANTED_PERMISSION_KEYS: string[] = ['menu:region-calendar']
 
 export type UserRole = 'super_admin' | 'user'
 

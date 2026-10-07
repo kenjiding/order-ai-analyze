@@ -19,6 +19,7 @@
  *   过期即弃、不回补（原因见该常量的注释）。
  */
 import { localDateTimeToMs, type AusTz } from '../imile/ausTimezone'
+import type { RegionCalendarOverrides } from '../imile/sortingWorkday'
 import { resolveDispatch24hWindowRule, resolveExitDate } from '../vendorAnalysis/dispatch24hAggregate'
 
 const DAY_MS = 24 * 60 * 60 * 1000
@@ -40,8 +41,12 @@ export const DEFAULT_SETTLE_LOOKBACK_DAYS = 10
 export const SETTLE_DUE_WINDOW_MS = 50 * 60 * 60 * 1000
 
 /** 出仓指标定终值的时刻：出仓日 O 当天 11:00 */
-export function exitBatchSettleMs(arrivalDateStr: string, tz: AusTz): number {
-  return localDateTimeToMs(`${resolveExitDate(arrivalDateStr)} 11:00:00`, tz)
+export function exitBatchSettleMs(
+  arrivalDateStr: string,
+  tz: AusTz,
+  overrides: RegionCalendarOverrides = new Map(),
+): number {
+  return localDateTimeToMs(`${resolveExitDate(arrivalDateStr, overrides)} 11:00:00`, tz)
 }
 
 /**
@@ -50,10 +55,14 @@ export function exitBatchSettleMs(arrivalDateStr: string, tz: AusTz): number {
  * 滚动批次用 `出仓日 11:00 + 24h` 作为上界——出仓晚于 11 点的单本就违反「11点前出仓」，
  * 其真实窗口会更晚，这里按上界结算意味着它们被记为未达标，与该指标的约束方向一致。
  */
-export function dispatchBatchSettleMs(arrivalDateStr: string, tz: AusTz): number {
-  const rule = resolveDispatch24hWindowRule(arrivalDateStr, tz)
+export function dispatchBatchSettleMs(
+  arrivalDateStr: string,
+  tz: AusTz,
+  overrides: RegionCalendarOverrides = new Map(),
+): number {
+  const rule = resolveDispatch24hWindowRule(arrivalDateStr, tz, overrides)
   if (rule.kind === 'fixedDeadline') return rule.deadlineMs
-  return exitBatchSettleMs(arrivalDateStr, tz) + DAY_MS
+  return exitBatchSettleMs(arrivalDateStr, tz, overrides) + DAY_MS
 }
 
 function shiftDate(dateStr: string, days: number): string {
@@ -77,7 +86,8 @@ function collectSettled(
   nowMs: number,
   tz: AusTz,
   lookbackDays: number,
-  settleMsOf: (arrivalDate: string, tz: AusTz) => number,
+  settleMsOf: (arrivalDate: string, tz: AusTz, overrides: RegionCalendarOverrides) => number,
+  overrides: RegionCalendarOverrides,
   /** 给定时只保留 settle 时刻落在最近这段时间内的批次（结算任务用），不给则返回全部已到期的 */
   dueWithinMs?: number,
 ): string[] {
@@ -85,7 +95,7 @@ function collectSettled(
   const settled: string[] = []
   for (let back = lookbackDays; back >= 1; back -= 1) {
     const arrivalDate = shiftDate(today, -back)
-    const settleMs = settleMsOf(arrivalDate, tz)
+    const settleMs = settleMsOf(arrivalDate, tz, overrides)
     if (nowMs <= settleMs) continue
     if (dueWithinMs != null && nowMs - settleMs > dueWithinMs) continue
     settled.push(arrivalDate)
@@ -101,8 +111,9 @@ export function resolveExitSettledArrivalDates(
   nowMs: number,
   tz: AusTz,
   lookbackDays: number = DEFAULT_SETTLE_LOOKBACK_DAYS,
+  overrides: RegionCalendarOverrides = new Map(),
 ): string[] {
-  return collectSettled(nowMs, tz, lookbackDays, exitBatchSettleMs)
+  return collectSettled(nowMs, tz, lookbackDays, exitBatchSettleMs, overrides)
 }
 
 /**
@@ -113,8 +124,9 @@ export function resolveSettledArrivalDates(
   nowMs: number,
   tz: AusTz,
   lookbackDays: number = DEFAULT_SETTLE_LOOKBACK_DAYS,
+  overrides: RegionCalendarOverrides = new Map(),
 ): string[] {
-  return collectSettled(nowMs, tz, lookbackDays, dispatchBatchSettleMs)
+  return collectSettled(nowMs, tz, lookbackDays, dispatchBatchSettleMs, overrides)
 }
 
 /**
@@ -125,8 +137,9 @@ export function resolveExitDueArrivalDates(
   nowMs: number,
   tz: AusTz,
   lookbackDays: number = DEFAULT_SETTLE_LOOKBACK_DAYS,
+  overrides: RegionCalendarOverrides = new Map(),
 ): string[] {
-  return collectSettled(nowMs, tz, lookbackDays, exitBatchSettleMs, SETTLE_DUE_WINDOW_MS)
+  return collectSettled(nowMs, tz, lookbackDays, exitBatchSettleMs, overrides, SETTLE_DUE_WINDOW_MS)
 }
 
 /** 派签窗口**刚到期**的到件日：结算任务真正该跑的那一批。 */
@@ -134,6 +147,7 @@ export function resolveDispatchDueArrivalDates(
   nowMs: number,
   tz: AusTz,
   lookbackDays: number = DEFAULT_SETTLE_LOOKBACK_DAYS,
+  overrides: RegionCalendarOverrides = new Map(),
 ): string[] {
-  return collectSettled(nowMs, tz, lookbackDays, dispatchBatchSettleMs, SETTLE_DUE_WINDOW_MS)
+  return collectSettled(nowMs, tz, lookbackDays, dispatchBatchSettleMs, overrides, SETTLE_DUE_WINDOW_MS)
 }

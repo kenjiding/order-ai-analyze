@@ -1,6 +1,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { AUS_TZ, iMileStrToMs, localDateTimeToMs } from '../imile/ausTimezone'
+import type { RegionCalendarOverrides } from '../imile/sortingWorkday'
 import {
   aggregateDispatch24hByScopes,
   aggregateDispatch24hByVendor,
@@ -11,6 +12,7 @@ import {
   dispatchExitThresholdMs,
   isDispatch24hWindowExpired,
   resolveDispatch24hWindowRule,
+  resolveExitDate,
   selectWaybillNosNeedingRefresh,
   type Dispatch24hScope,
   type Dispatch24hWaybillRow,
@@ -583,17 +585,55 @@ test('aggregateDispatch24hByScopes：与 aggregateDispatch24hByVendor 逐配置�
   }
 })
 
-test('resolveDispatch24hWindowRule：周一~周四到件走滚动24h，周五/周六/周日到件统一压到下周一23:59:59', () => {
+test('resolveDispatch24hWindowRule：按「D+1 是否可派送」判定，周一~周四/周日到件走滚动24h，周五/周六到件压到下周一23:59:59', () => {
   // 2024-06-24 周一 … 2024-06-30 周日
-  for (const d of ['2024-06-24', '2024-06-25', '2024-06-26', '2024-06-27']) {
+  // 规则只问一句话：D 的次日是否可派送。周一~周四的次日是正常工作日，周日的次日是周一——
+  // 同样是正常工作日，因此和周一~周四同口径走滚动 24h（与「周日临时开仓分拣时按平时逻辑算」一致）。
+  for (const d of ['2024-06-24', '2024-06-25', '2024-06-26', '2024-06-27', '2024-06-30']) {
     assert.deepEqual(resolveDispatch24hWindowRule(d, tz), { kind: 'rolling24h' }, d)
   }
 
-  // 周五/周六/周日三批的截止时刻必须是同一个：下周一 07-01 23:59:59（本地）
+  // 周五/周六的次日（周六/周日）都不可派送 → 固定延到下周一 07-01 23:59:59（本地）
   const expected = localDateTimeToMs('2024-07-01 23:59:59', tz)
-  for (const d of ['2024-06-28', '2024-06-29', '2024-06-30']) {
+  for (const d of ['2024-06-28', '2024-06-29']) {
     assert.deepEqual(resolveDispatch24hWindowRule(d, tz), { kind: 'fixedDeadline', deadlineMs: expected }, d)
   }
+})
+
+test('resolveDispatch24hWindowRule：假期覆盖派送日历后自动多顺延一天，与周末叠加时继续往后找', () => {
+  // 2024-07-01（周一）是假期：司机不派送。上周五/周六/周日三批原本固定延到周一，
+  // 现在都要继续顺延到周二 07-02 23:59:59 —— 不用分别为「紧邻周末的假期」写特殊分支，
+  // nextDispatchDayAfter 的循环会自动多跳一天。
+  const overrides: RegionCalendarOverrides = new Map([['2024-07-01', { isDispatchDay: false }]])
+  const expected = localDateTimeToMs('2024-07-02 23:59:59', tz)
+  for (const d of ['2024-06-28', '2024-06-29', '2024-06-30']) {
+    assert.deepEqual(resolveDispatch24hWindowRule(d, tz, overrides), { kind: 'fixedDeadline', deadlineMs: expected }, d)
+  }
+  // 周二(07-02)本身不受影响：它的次日周三仍是正常派送日
+  assert.deepEqual(resolveDispatch24hWindowRule('2024-07-02', tz, overrides), { kind: 'rolling24h' })
+})
+
+test('resolveDispatch24hWindowRule：假期覆盖周五的派送日历后，周四到件的窗口从「周五滚动」改判固定延期到下周一', () => {
+  // 2024-06-28（周五）假期：司机不派送。周四 06-27 到件的次日本是周五，默认可派送 → 滚动24h；
+  // 覆盖后周五不可派送，必须整体改判固定延期，顺着假期+周末一路找到下周一。
+  const overrides: RegionCalendarOverrides = new Map([['2024-06-28', { isDispatchDay: false }]])
+  assert.deepEqual(resolveDispatch24hWindowRule('2024-06-27', tz, overrides), {
+    kind: 'fixedDeadline',
+    deadlineMs: localDateTimeToMs('2024-07-01 23:59:59', tz),
+  })
+  // 周三 06-26 到件不受影响：它的次日周四不是假期
+  assert.deepEqual(resolveDispatch24hWindowRule('2024-06-26', tz, overrides), { kind: 'rolling24h' })
+})
+
+test('resolveDispatch24hWindowRule / resolveExitDate：出仓日历与派送日历互不牵连', () => {
+  // 周六 06-29 临时开仓分拣+出仓：isExitDay 覆盖成 true，出仓结算日提前到当天；
+  // 但司机没有跟着加派（isDispatchDay 维持默认 false），派签窗口仍按原规则固定延到下周一。
+  const overrides: RegionCalendarOverrides = new Map([['2024-06-29', { isExitDay: true }]])
+  assert.equal(resolveExitDate('2024-06-28', overrides), '2024-06-29', '周五的出仓结算日提前到新开的周六，不用等到下周一')
+  assert.deepEqual(resolveDispatch24hWindowRule('2024-06-28', tz, overrides), {
+    kind: 'fixedDeadline',
+    deadlineMs: localDateTimeToMs('2024-07-01 23:59:59', tz),
+  }, '出仓日历的覆盖不影响派送日历的判定')
 })
 
 test('resolveDispatch24hWindowRule：周四到件的批次不因「周五出仓」被误判成周末顺延', () => {

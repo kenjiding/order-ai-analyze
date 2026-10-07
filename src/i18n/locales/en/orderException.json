@@ -290,7 +290,10 @@
     "trackStageDelivery": "Last-mile delivery",
     "trackTypeSchedule": "Scheduled delivery",
     "trackTypeProblem": "Problem parcel",
-    "trackTypeDelivery": "Out for delivery"
+    "trackTypeDelivery": "Out for delivery",
+    "viewProofModalTitle": "Problem parcel proof photos",
+    "viewProofLoading": "Loading images...",
+    "viewProofError": "Failed to load images"
   },
   "push": {
     "title": "Feishu push",

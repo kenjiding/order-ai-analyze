@@ -18,10 +18,9 @@ import {
   listRecentSettledBatches,
   updateDispatchPerformanceConfig,
 } from '../dispatch24hStats/configRepository'
-import { resolveStationTz } from '../dispatch24hStats/dailyStatsJob'
+import { resolveStationCalendar } from '../dispatch24hStats/dailyStatsJob'
 import { DEFAULT_SETTLE_TIME, isValidSettleTime } from '../dispatch24hStats/settleTime'
 import { resolveExitSettledArrivalDates } from '../dispatch24hStats/settledArrivalDates'
-import { resolveRegionTz } from '../imile/ausTimezone'
 import { resolveEnqueueRegionCode, sendJobAccessDenied } from '../jobs/access'
 import { DISPATCH_PERFORMANCE_SETTLE_JOB_TYPE } from '../jobs/handlers'
 import { enqueueJob, listJobs } from '../jobs/queue'
@@ -263,21 +262,15 @@ dispatchPerformanceRouter.get('/configs/:id/data', async (req: Request, res: Res
       // 口径开关：缺省（含老链接）= 剔除白名单，只有显式要全量才带 whitelist=include
       includeWhitelist: req.query.whitelist === 'include',
     })
-    // 时区必须与结算任务一致；本行 regionCode 就是结算取的那个州，只有空/global 才需要
-    // 回落到 resolveStationTargets 那条重路径（全量供应商配置 + 建索引）
-    const configRegion = config.regionCode?.trim()
-    const tz =
-      configRegion && configRegion !== LEGACY_GLOBAL_SUPPLIER_REGION_CODE
-        ? resolveRegionTz(configRegion)
-        : await resolveStationTz(config.stationCode)
+    const { tz, overrides } = await resolveStationCalendar(config)
 
     // 周末也照常结算（没开仓的日子台账记「跑过」、不写格子），所以不再按星期几排除
-    const dueDates = resolveExitSettledArrivalDates(Date.now(), tz, MAX_RANGE_DAYS).filter(
+    const dueDates = resolveExitSettledArrivalDates(Date.now(), tz, MAX_RANGE_DAYS, overrides).filter(
       (d) => d >= range.startDate && d <= range.endDate,
     )
     const [supplierOptions, recentBatches, exitSettled] = await Promise.all([
       listDispatchPerformanceSuppliers({ stationCode: config.stationCode, ...range }),
-      listRecentSettledBatches(config.stationCode, tz),
+      listRecentSettledBatches(config.stationCode, tz, overrides),
       listSettledArrivalDates(config.stationCode, dueDates, 'exit'),
     ])
     const missingDates = dueDates.filter((d) => !exitSettled.has(d))

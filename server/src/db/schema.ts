@@ -1065,6 +1065,39 @@ export type DispatchPerformanceConfig = typeof dispatchPerformanceConfigs.$infer
 export type NewDispatchPerformanceConfig = typeof dispatchPerformanceConfigs.$inferInsert
 
 /**
+ * 出仓/派送日历的例外表——只存「跟默认规则不一样」的那一天，不存完整日历。
+ * 默认规则：周一到周五能出仓/能派送，周六周日都不能（见 imile/sortingWorkday.ts）。
+ *
+ * 两列各自独立、互不牵连，覆盖两类真实场景：
+ * - 公共假期：分拣/派送都停摆，但早取服务照常 → 只需插 isDispatchDay=false，isExitDay 留空沿用默认(true)
+ * - 周末因货量大临时开仓分拣：出仓跟着开，但司机未必加派 → 只需插 isExitDay=true，isDispatchDay 留空沿用默认(false)
+ *
+ * 按 (regionCode, date) 查——公共假期按澳洲各州各自的法定假日表，不是全国统一。
+ */
+export const regionCalendarOverrides = pgTable(
+  'region_calendar_overrides',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    regionCode: varchar('region_code', { length: 32 }).notNull(),
+    date: varchar('date', { length: 10 }).notNull(),
+    /** null = 不覆盖，沿用默认（周一到周五 true） */
+    isExitDay: boolean('is_exit_day'),
+    /** null = 不覆盖，沿用默认（周一到周五 true） */
+    isDispatchDay: boolean('is_dispatch_day'),
+    note: varchar('note', { length: 255 }).notNull().default(''),
+    createdBy: uuid('created_by').references(() => users.id, { onDelete: 'set null' }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    uniqueIndex('region_calendar_overrides_region_date_unique').on(table.regionCode, table.date),
+  ],
+)
+
+export type RegionCalendarOverride = typeof regionCalendarOverrides.$inferSelect
+export type NewRegionCalendarOverride = typeof regionCalendarOverrides.$inferInsert
+
+/**
  * 结算台账：记录「某站点某到件日的两趟结算各自跑过没」，与「跑出来有没有数据」分开。
  *
  * 不分拣的工作日 inbound/query 本就没数据、聚合出 0 个格子；若靠日度表有没有行判重，

@@ -392,6 +392,25 @@ export async function getClosureVendors(payload: { imileToken: string }): Promis
   }
 }
 
+/** 问题件轨迹 viewPic 的 data-pic 文件 key → 真实图片地址，点击「View Proof」时调用。 */
+export async function getTrackProofImageUrl(payload: {
+  imileToken: string
+  fileKey: string
+}): Promise<{ url: string }> {
+  const res = await backendFetch(
+    `/api/order-exception/track/proof-image?fileKey=${encodeURIComponent(payload.fileKey)}`,
+    {
+      method: 'GET',
+      headers: {
+        Authorization: `Bearer ${payload.imileToken}`,
+      },
+    },
+  )
+  const text = await res.text()
+  if (!res.ok) throw new Error(await readHttpError(res, text))
+  return JSON.parse(text) as { url: string }
+}
+
 export async function postClosureDriverVendor(payload: {
   imileToken: string
   driverId: string

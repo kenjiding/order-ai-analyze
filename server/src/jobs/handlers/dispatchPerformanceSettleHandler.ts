@@ -31,6 +31,7 @@ import {
   resolveSettledArrivalDates,
 } from '../../dispatch24hStats/settledArrivalDates'
 import type { DispatchPerformanceCell } from '../../dispatch24hStats/aggregateCells'
+import type { RegionCalendarOverrides } from '../../imile/sortingWorkday'
 import type { JobHandler, JobHandlerResult } from '../types'
 
 export const DISPATCH_PERFORMANCE_SETTLE_JOB_TYPE = 'dispatch-performance.settle-now'
@@ -82,22 +83,23 @@ async function splitPending(input: {
   stationCode: string
   nowMs: number
   tz: Parameters<typeof resolveExitDueArrivalDates>[1]
+  overrides: RegionCalendarOverrides
   stage: 'exit' | 'dispatch'
 }): Promise<{ toRun: string[]; skipped: string[] }> {
-  const { stationCode, nowMs, tz, stage } = input
+  const { stationCode, nowMs, tz, overrides, stage } = input
   // 与定时结算一致：不按星期几筛，开没开仓由到件量判定
   const settled =
     stage === 'dispatch'
-      ? resolveSettledArrivalDates(nowMs, tz)
-      : resolveExitSettledArrivalDates(nowMs, tz)
+      ? resolveSettledArrivalDates(nowMs, tz, undefined, overrides)
+      : resolveExitSettledArrivalDates(nowMs, tz, undefined, overrides)
   if (settled.length === 0) return { toRun: [], skipped: [] }
 
   const done = await listSettledArrivalDates(stationCode, settled, stage)
   const pending = settled.filter((date) => !done.has(date))
   const due = new Set(
     stage === 'dispatch'
-      ? resolveDispatchDueArrivalDates(nowMs, tz)
-      : resolveExitDueArrivalDates(nowMs, tz),
+      ? resolveDispatchDueArrivalDates(nowMs, tz, undefined, overrides)
+      : resolveExitDueArrivalDates(nowMs, tz, undefined, overrides),
   )
   return {
     toRun: pending.filter((date) => due.has(date)),
@@ -126,12 +128,19 @@ export const dispatchPerformanceSettleHandler: JobHandler = {
     }
 
     const nowMs = Date.now()
-    const exitSplit = await splitPending({ stationCode, nowMs, tz: target.tz, stage: 'exit' })
+    const exitSplit = await splitPending({
+      stationCode,
+      nowMs,
+      tz: target.tz,
+      overrides: target.overrides,
+      stage: 'exit',
+    })
     // 派签趟同样只处理「窗口已到期」的批次——窗口没关就算，会把归班盘点重派的单算乱
     const dispatchSplit = await splitPending({
       stationCode,
       nowMs,
       tz: target.tz,
+      overrides: target.overrides,
       stage: 'dispatch',
     })
 

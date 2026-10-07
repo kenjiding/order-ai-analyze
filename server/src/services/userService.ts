@@ -14,6 +14,7 @@ import {
 } from '../regions/registry'
 import {
   ASSIGNABLE_PERMISSION_REGISTRY,
+  DEFAULT_GRANTED_PERMISSION_KEYS,
   SUPER_ADMIN_ROLE,
   USER_ROLE,
   type UserRole,
@@ -153,13 +154,16 @@ export async function createUser(req: AuthenticatedRequest, res: Response): Prom
     return
   }
 
-  await setUserPermissionKeys(created.id, permissionKeys)
+  // 默认全员开放的权限（见 DEFAULT_GRANTED_PERMISSION_KEYS）新建时直接带上，不用管理员记得手动勾；
+  // 之后仍可在「编辑用户权限」里单独收回——那条路径不会再补发，收回是永久的
+  const grantedKeys = [...new Set([...permissionKeys, ...DEFAULT_GRANTED_PERMISSION_KEYS])]
+  await setUserPermissionKeys(created.id, grantedKeys)
 
   const publicUser = await loadPublicUser(created.id)
   res.status(201).json({
     user: {
       ...toPublicUser(publicUser!),
-      permissions: permissionKeys,
+      permissions: grantedKeys,
     },
   })
 }

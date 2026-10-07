@@ -16,6 +16,7 @@ import {
   prefetchOrderExceptionData,
   queryTracksWithCache,
 } from './orderExceptionData'
+import { getTrackProofImageUrl } from '../imile/track'
 import { computeInHubStockRange, fetchInHubWaybillInventory } from '../imile/inHubWaybillInventory'
 import { registerOrderExceptionRegressionRoutes } from './orderExceptionRegressionRouter'
 import { readImileTokenFromRequest } from './imileAuth'
@@ -216,6 +217,36 @@ orderExceptionRouter.post('/track', async (req: Request, res: Response) => {
     })
   } catch (e) {
     res.status(500).json({ error: (e as Error).message || '轨迹查询失败' })
+  }
+})
+
+/** 问题件轨迹 viewPic 的 data-pic 文件 key → 真实图片地址，供前端「View Proof」点击预览用。 */
+orderExceptionRouter.get('/track/proof-image', async (req: Request, res: Response) => {
+  try {
+    const token = readImileToken(req, undefined)
+    const fileKey = String(req.query.fileKey ?? '').trim()
+    if (!token) {
+      res.status(400).json({ error: '缺少 imileToken' })
+      return
+    }
+    if (!fileKey) {
+      res.status(400).json({ error: '缺少 fileKey' })
+      return
+    }
+
+    const result = await getTrackProofImageUrl(token, fileKey)
+    if (!result.ok) {
+      res.status(502).json({
+        error: result.message,
+        status: result.status,
+        rawText: result.rawText,
+      })
+      return
+    }
+
+    res.json({ url: result.url })
+  } catch (e) {
+    res.status(500).json({ error: (e as Error).message || '图片地址获取失败' })
   }
 })
 

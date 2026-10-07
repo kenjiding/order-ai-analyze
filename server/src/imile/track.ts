@@ -45,6 +45,8 @@ export type TrackEvent = {
   time: string
   trackStageTx?: string
   trackType?: string
+  /** 问题件轨迹文案里 viewPic 的 data-pic 文件 key 列表，用于前端点击查看证明图片 */
+  proofFileKeys?: string[]
 }
 
 /** 与 iMile track/query 的 resultObject.baseInfo、skuInfo、consigneeInfo 对齐，供异常订单 Drawer 展示。 */
@@ -354,6 +356,18 @@ function extractTrackInfo(payload: unknown): Record<string, TrackEvent[]> {
   return out
 }
 
+const PROOF_DATA_PIC_RE = /data-pic=(['"])([\s\S]*?)\1/i
+
+/** 从原始轨迹文案里取出 viewPic 的 data-pic（逗号分隔的文件 key），标签本身仍会被 stripHtmlToPlainText 砍掉。 */
+function extractProofFileKeys(rawContent: string): string[] {
+  const match = PROOF_DATA_PIC_RE.exec(rawContent)
+  if (!match) return []
+  return match[2]
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean)
+}
+
 /** 去掉轨迹文案里的 HTML 标签；保留 `<important>...</important>`，其余标签删除（与前端 stripHtmlToPlainText 一致）。 */
 function stripHtmlToPlainText(html: string): string {
   return html
@@ -384,14 +398,63 @@ function normalizeTrackTime(raw: string): string {
 /** 与路由层、入参归一化共用：保留完整业务文本，仅去除 HTML 标签。 */
 export function normalizeTrackEvent(raw: unknown): TrackEvent {
   const row = raw as { content?: string; time?: string; trackStageTx?: string; trackType?: string }
+  const rawContent = String(row?.content ?? '')
   const txRaw = row?.trackStageTx != null ? String(row.trackStageTx) : ''
   const tx = txRaw ? sanitizeTrackPlainText(txRaw) : ''
   const typeRaw = row?.trackType != null ? String(row.trackType) : ''
   const type = typeRaw ? sanitizeTrackPlainText(typeRaw) : ''
+  const proofFileKeys = extractProofFileKeys(rawContent)
   return {
-    content: sanitizeTrackPlainText(String(row?.content ?? '')),
+    content: sanitizeTrackPlainText(rawContent),
     time: normalizeTrackTime(String(row?.time ?? '')),
     trackStageTx: tx || undefined,
     trackType: type || undefined,
+    proofFileKeys: proofFileKeys.length ? proofFileKeys : undefined,
   }
+}
+
+const OSS_GET_URL_BY_FILE_KEY = 'https://ds.imile.com/ipep/oss/get_url_by_file_key'
+
+export type TrackProofImageResult =
+  | { ok: true; url: string }
+  | { ok: false; status: number; message: string; rawText?: string }
+
+/** 问题件轨迹 viewPic 的 data-pic 文件 key → 真实图片地址（resultObject）。 */
+export async function getTrackProofImageUrl(
+  imileToken: string,
+  fileKey: string,
+): Promise<TrackProofImageResult> {
+  const token = normalizeImileToken(imileToken)
+  const url = `${OSS_GET_URL_BY_FILE_KEY}?fileKey=${encodeURIComponent(fileKey)}&bucketType=1`
+  const headers = buildImileAuthHeaders({
+    token,
+    resourceCode: envFirstOr(['IMILE_TRACK_PROOF_RESOURCE_CODE'], 'ossGetUrlByFileKey'),
+    sysName: envFirstOr(['IMILE_TRACK_SYS_NAME'], 'DS'),
+    sysPortal: envFirstOr(['IMILE_TRACK_SYS_PORTAL'], 'DS'),
+    origin: envFirstOr(['IMILE_TRACK_ORIGIN'], 'https://ds.imile.com'),
+    referer: envFirstOr(['IMILE_TRACK_REFERER'], 'https://ds.imile.com/'),
+    frontSecEnvKeys: ['IMILE_TRACK_FRONT_SEC'],
+    hubcodeEnvKeys: ['IMILE_TRACK_HUBCODE'],
+    langEnvKeys: ['IMILE_TRACK_LANG'],
+    timezoneEnvKeys: ['IMILE_TRACK_TIMEZONE'],
+    cookieEnvKeys: ['IMILE_TRACK_COOKIE'],
+  })
+
+  const result = await requestImileApi({
+    url,
+    method: 'GET',
+    headers,
+    label: '问题件图片地址查询',
+    retryBusy: true,
+  })
+
+  if (!result.ok) {
+    return { ok: false, status: result.status, message: result.message, rawText: result.rawText }
+  }
+
+  const imageUrl = String((result.json as { resultObject?: unknown })?.resultObject ?? '').trim()
+  if (!imageUrl) {
+    return { ok: false, status: 200, message: '图片地址为空' }
+  }
+  return { ok: true, url: imageUrl }
 }

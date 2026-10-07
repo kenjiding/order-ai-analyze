@@ -8,50 +8,83 @@
  * 与前端 src/pages/VendorAnalysis/sortingWorkday.ts 是各自独立的两份实现（前端算供应商
  * 分析页目标日、后端算告警目标日），口径保持一致。
  *
- * 目前只跳周末；`isSortingWorkday` 是唯一扩展点——日后接入各州法定假日表时只在此函数内
- * 按 (regionCode, date) 查表即可，调用方无需改动。
+ * **两套独立日历**，默认都是「周一到周五 true」，但彼此会独立出现例外（见
+ * `RegionCalendarOverrides` 的注释）：
+ * - 出仓日历（`isSortingWorkday`/`nextSortingWorkdayAfter`/`lastSortingWorkdayOnOrBefore`）：
+ *   这天能不能把已分拣的货扫描出仓。公共假期这天默认仍是 true（早取服务照常），
+ *   周末临时开仓分拣时需要显式覆盖成 true。
+ * - 派送日历（`isDispatchDay`/`nextDispatchDayAfter`）：这天司机会不会出车派送。
+ *   公共假期需要显式覆盖成 false；周末临时开仓分拣但司机未必跟着出车，默认沿用 false。
+ *
+ * 不传 `overrides`（或传空表）时两套日历都退化成纯周末判断，与接入假期表之前的行为完全一致。
  */
 
 import { envFirst } from './shared'
 
-/**
- * dateStr: YYYY-MM-DD。是否为分拣工作日。
- * 当前仅排除周六(6)、周日(0)；预留法定假日扩展点（见文件头注释）。
- */
-export function isSortingWorkday(dateStr: string): boolean {
+/** (regionCode, date) → 该日的出仓/派送例外覆盖，null/未命中 = 不覆盖，沿用默认（周一到周五 true） */
+export type RegionCalendarOverrides = Map<string, { isExitDay?: boolean | null; isDispatchDay?: boolean | null }>
+
+function isWeekday(dateStr: string): boolean {
   const [y, m, d] = dateStr.split('-').map(Number)
   const dow = new Date(Date.UTC(y, m - 1, d)).getUTCDay() // 0=周日 … 6=周六
   return dow !== 0 && dow !== 6
 }
 
-/**
- * 返回 <= dateStr 的第一个工作日（含 dateStr 本身）。入参/出参均为 YYYY-MM-DD。
- * 例：周日 → 上周五；周一（工作日）→ 周一。
- */
-export function lastSortingWorkdayOnOrBefore(dateStr: string): string {
+function shiftDateStr(dateStr: string, days: number): string {
   const [y, m, d] = dateStr.split('-').map(Number)
   const cur = new Date(Date.UTC(y, m - 1, d))
-  let s = cur.toISOString().slice(0, 10)
-  while (!isSortingWorkday(s)) {
-    cur.setUTCDate(cur.getUTCDate() - 1)
-    s = cur.toISOString().slice(0, 10)
-  }
+  cur.setUTCDate(cur.getUTCDate() + days)
+  return cur.toISOString().slice(0, 10)
+}
+
+/**
+ * dateStr: YYYY-MM-DD。这天能不能把已分拣的货扫描出仓（出仓日历）。
+ * 默认仅排除周六(6)、周日(0)；`overrides` 命中时按表里的值覆盖。
+ */
+export function isSortingWorkday(dateStr: string, overrides: RegionCalendarOverrides = new Map()): boolean {
+  const override = overrides.get(dateStr)?.isExitDay
+  return override ?? isWeekday(dateStr)
+}
+
+/** 这天司机会不会出车派送（派送日历）。默认仅排除周六、周日；`overrides` 命中时按表里的值覆盖。 */
+export function isDispatchDay(dateStr: string, overrides: RegionCalendarOverrides = new Map()): boolean {
+  const override = overrides.get(dateStr)?.isDispatchDay
+  return override ?? isWeekday(dateStr)
+}
+
+/**
+ * 返回 <= dateStr 的第一个出仓日历工作日（含 dateStr 本身）。入参/出参均为 YYYY-MM-DD。
+ * 例：周日 → 上周五；周一（工作日）→ 周一。
+ */
+export function lastSortingWorkdayOnOrBefore(
+  dateStr: string,
+  overrides: RegionCalendarOverrides = new Map(),
+): string {
+  let s = dateStr
+  while (!isSortingWorkday(s, overrides)) s = shiftDateStr(s, -1)
   return s
 }
 
 /**
- * 返回 > dateStr 的第一个工作日（不含 dateStr 本身）。入参/出参均为 YYYY-MM-DD。
+ * 返回 > dateStr 的第一个出仓日历工作日（不含 dateStr 本身）。入参/出参均为 YYYY-MM-DD。
  * 例：周四 → 周五；周五 → 下周一；周六 → 下周一。
  *
  * 出仓日也用它：周五/六/日到件的 11 点前出仓截止是下周一 11:00，见 resolveExitDate。
  */
-export function nextSortingWorkdayAfter(dateStr: string): string {
-  const [y, m, d] = dateStr.split('-').map(Number)
-  const cur = new Date(Date.UTC(y, m - 1, d))
-  do {
-    cur.setUTCDate(cur.getUTCDate() + 1)
-  } while (!isSortingWorkday(cur.toISOString().slice(0, 10)))
-  return cur.toISOString().slice(0, 10)
+export function nextSortingWorkdayAfter(dateStr: string, overrides: RegionCalendarOverrides = new Map()): string {
+  let s = shiftDateStr(dateStr, 1)
+  while (!isSortingWorkday(s, overrides)) s = shiftDateStr(s, 1)
+  return s
+}
+
+/**
+ * 返回 > dateStr 的第一个派送日历工作日（不含 dateStr 本身），用途与 nextSortingWorkdayAfter
+ * 相同但查的是派送日历——resolveDispatch24hWindowRule 的固定延期目标用它。
+ */
+export function nextDispatchDayAfter(dateStr: string, overrides: RegionCalendarOverrides = new Map()): string {
+  let s = shiftDateStr(dateStr, 1)
+  while (!isDispatchDay(s, overrides)) s = shiftDateStr(s, 1)
+  return s
 }
 
 /**

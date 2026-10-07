@@ -6,12 +6,74 @@
  */
 import { and, asc, desc, eq, inArray, ne, or, sql } from 'drizzle-orm'
 import { getDb, schema } from '../db'
-import type { DispatchPerformanceConfig } from '../db/schema'
+import type { DispatchPerformanceConfig, RegionCalendarOverride } from '../db/schema'
 import { LEGACY_GLOBAL_SUPPLIER_REGION_CODE, listSupplierPushConfigs, parsePushConfigIds } from '../supplierPushConfigs'
 import { buildSupplierUnitIndex } from '../vendorAnalysis/supplierScope'
 import type { AusTz } from '../imile/ausTimezone'
+import type { RegionCalendarOverrides } from '../imile/sortingWorkday'
 import { toMetrics, type DispatchPerformanceMetrics } from './repository'
 import { dispatchBatchSettleMs, SETTLE_DUE_WINDOW_MS } from './settledArrivalDates'
+
+/**
+ * 某 regionCode 的全部出仓/派送例外覆盖，结算/展示按需查一次即可——表很小，没必要做缓存。
+ * 查不到任何例外时返回空表，isSortingWorkday/isDispatchDay 会据此退化成纯周末判断。
+ */
+export async function loadRegionCalendarOverrides(regionCode: string | null): Promise<RegionCalendarOverrides> {
+  const db = getDb()
+  const t = schema.regionCalendarOverrides
+  const rows = await db.select().from(t).where(eq(t.regionCode, regionCode ?? ''))
+  return new Map(rows.map((r) => [r.date, { isExitDay: r.isExitDay, isDispatchDay: r.isDispatchDay }]))
+}
+
+/** 管理用：某 regionCode 的全部例外行（含 id，供编辑/删除），按日期升序 */
+export async function listRegionCalendarOverrides(regionCode: string): Promise<RegionCalendarOverride[]> {
+  const db = getDb()
+  const t = schema.regionCalendarOverrides
+  return db.select().from(t).where(eq(t.regionCode, regionCode)).orderBy(asc(t.date))
+}
+
+/** 新增/修改某天的覆盖，按 (regionCode, date) upsert——同一天重复插入即覆盖旧值，不会重复建行 */
+export async function upsertRegionCalendarOverride(input: {
+  regionCode: string
+  date: string
+  isExitDay?: boolean | null
+  isDispatchDay?: boolean | null
+  note?: string
+  userId: string | null
+}): Promise<RegionCalendarOverride> {
+  const db = getDb()
+  const t = schema.regionCalendarOverrides
+  const rows = await db
+    .insert(t)
+    .values({
+      regionCode: input.regionCode,
+      date: input.date,
+      isExitDay: input.isExitDay ?? null,
+      isDispatchDay: input.isDispatchDay ?? null,
+      note: input.note ?? '',
+      createdBy: input.userId,
+    })
+    .onConflictDoUpdate({
+      target: [t.regionCode, t.date],
+      set: {
+        isExitDay: input.isExitDay ?? null,
+        isDispatchDay: input.isDispatchDay ?? null,
+        note: input.note ?? '',
+        updatedAt: new Date(),
+      },
+    })
+    .returning()
+  return rows[0]
+}
+
+export async function deleteRegionCalendarOverride(id: string): Promise<boolean> {
+  const db = getDb()
+  const rows = await db
+    .delete(schema.regionCalendarOverrides)
+    .where(eq(schema.regionCalendarOverrides.id, id))
+    .returning({ id: schema.regionCalendarOverrides.id })
+  return rows.length > 0
+}
 
 /** 该站点最近一个有数据的到件日及其汇总指标；从未结算过则为 null */
 export type DispatchPerformanceLatestSnapshot = {
@@ -330,6 +392,7 @@ export async function listDispatchPerformanceConfigViews(
 export async function listRecentSettledBatches(
   stationCode: string,
   tz: AusTz,
+  overrides: RegionCalendarOverrides = new Map(),
   limit = 10,
 ): Promise<
   {
@@ -360,7 +423,7 @@ export async function listRecentSettledBatches(
       // 跟从没结算过一样都要报「结算超时」——只看 dispatchSettled 会把这种情况误判成正常
       dispatchOverdue:
         (!dispatchSettled || r.dispatchSettledProvisional) &&
-        nowMs > dispatchBatchSettleMs(r.arrivalDate, tz) + SETTLE_DUE_WINDOW_MS,
+        nowMs > dispatchBatchSettleMs(r.arrivalDate, tz, overrides) + SETTLE_DUE_WINDOW_MS,
       waybillCount: r.waybillCount,
     }
   })

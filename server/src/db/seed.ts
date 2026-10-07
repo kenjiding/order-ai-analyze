@@ -3,6 +3,7 @@ import { eq, notInArray, and, ne, inArray } from 'drizzle-orm'
 import { AU_REGIONS, SYSTEM_REGION, SYSTEM_REGION_CODE } from '../regions/registry'
 import {
   ASSIGNABLE_PERMISSION_REGISTRY,
+  DEFAULT_GRANTED_PERMISSION_KEYS,
   PERMISSION_REGISTRY,
   SUPER_ADMIN_ROLE,
 } from '../permissions/registry'
@@ -81,6 +82,23 @@ async function migrateLegacyPushSendPermission(): Promise<void> {
   await db.delete(userPermissions).where(eq(userPermissions.permissionKey, legacyKey))
 }
 
+/**
+ * 补齐「默认全员开放」权限（见 DEFAULT_GRANTED_PERMISSION_KEYS 的注释）——这里只负责
+ * 已有用户：每次启动把缺失的授权行补齐。新建用户走的是另一条路径（userService.createUser
+ * 会把这份列表并进新建时提交的 permissionKeys），两处都要改才完整，不是只改这一处就够。
+ * 真要收紧某个 key 时从 DEFAULT_GRANTED_PERMISSION_KEYS 里删掉即可，两处同时失效。
+ */
+async function grantDefaultPermissionsToAllUsers(): Promise<void> {
+  if (DEFAULT_GRANTED_PERMISSION_KEYS.length === 0) return
+  const db = getDb()
+  const allUsers = await db.select({ id: users.id }).from(users)
+  if (allUsers.length === 0) return
+  const rows = allUsers.flatMap(({ id }) =>
+    DEFAULT_GRANTED_PERMISSION_KEYS.map((permissionKey) => ({ userId: id, permissionKey })),
+  )
+  await db.insert(userPermissions).values(rows).onConflictDoNothing()
+}
+
 async function cleanupInvalidUserPermissions(): Promise<void> {
   const db = getDb()
   const rows = await db
@@ -130,6 +148,7 @@ export async function seedDatabase(): Promise<void> {
 
   await syncPermissionRegistry()
   await migrateLegacyPushSendPermission()
+  await grantDefaultPermissionsToAllUsers()
   await cleanupInvalidUserPermissions()
   await syncSuperAdminRegion()
 

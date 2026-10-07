@@ -1,4 +1,4 @@
-import { Button, Drawer, Form, Input, Select, Tag, Timeline } from 'antd'
+import { Button, Drawer, Form, Image, Input, Modal, Select, Spin, Tag, Timeline } from 'antd'
 import {
   AlertTriangle,
   ClipboardCheck,
@@ -15,6 +15,7 @@ import { PERMISSION_KEYS, usePermission } from '../../../hooks/usePermission'
 import { showToast } from '../../../utils/toast'
 import {
   getClosureVendors,
+  getTrackProofImageUrl,
   postClosureDriverVendor,
   postClosureExceptionAdd,
   type ClosureExceptionTypeOption,
@@ -43,7 +44,7 @@ const TRACK_TYPE_COLORS: Record<string, string> = {
 
 let closureVendorMemoryCache: ClosureVendorOption[] | null = null
 
-const TRACK_DRIVER_ID_RE = /\bID\s*[:：]\s*(D[0-9A-Za-z-]+)/gi
+const TRACK_INLINE_ACTION_RE = /\bID\s*[:：]\s*(D[0-9A-Za-z-]+)|(【View Proof】)/gi
 
 function sortTrackEventsDesc(events: TrackEvent[]): TrackEvent[] {
   return [...events].sort((a, b) => b.time.localeCompare(a.time))
@@ -86,30 +87,44 @@ function renderTrackContentWithDriverIdClickable(
   content: string,
   onPickDriverId: (driverId: string) => void,
   fillCourierTitle: (id: string) => string,
+  proofFileKeys: string[] | undefined,
+  onViewProof: (fileKeys: string[]) => void,
 ): ReactNode {
   const nodes: ReactNode[] = []
   let lastIndex = 0
   let matched = false
 
-  for (const match of content.matchAll(TRACK_DRIVER_ID_RE)) {
+  for (const match of content.matchAll(TRACK_INLINE_ACTION_RE)) {
     const index = match.index ?? 0
     const fullText = match[0]
     const driverId = match[1]?.trim() ?? ''
-    if (!driverId) continue
+    const isViewProofMarker = Boolean(match[2]) && Boolean(proofFileKeys?.length)
+    if (!driverId && !isViewProofMarker) continue
     matched = true
 
     if (index > lastIndex) nodes.push(content.slice(lastIndex, index))
 
     nodes.push(
-      <button
-        key={`${index}-${driverId}`}
-        type="button"
-        onClick={() => onPickDriverId(driverId)}
-        className="mx-0.5 inline-flex items-center rounded px-1 py-0.5 font-mono text-[12px] font-semibold text-[#1f6f68] underline decoration-dotted underline-offset-2 hover:bg-emerald-50 hover:text-[#2f8f87] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#2f8f87]/30"
-        title={fillCourierTitle(driverId)}
-      >
-        {fullText}
-      </button>
+      driverId ? (
+        <button
+          key={`${index}-${driverId}`}
+          type="button"
+          onClick={() => onPickDriverId(driverId)}
+          className="mx-0.5 inline-flex items-center rounded px-1 py-0.5 font-mono text-[12px] font-semibold text-[#1f6f68] underline decoration-dotted underline-offset-2 hover:bg-emerald-50 hover:text-[#2f8f87] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#2f8f87]/30"
+          title={fillCourierTitle(driverId)}
+        >
+          {fullText}
+        </button>
+      ) : (
+        <button
+          key={`${index}-view-proof`}
+          type="button"
+          onClick={() => onViewProof(proofFileKeys ?? [])}
+          className="mx-0.5 inline-flex items-center rounded px-1 py-0.5 text-[13px] font-semibold text-blue-600 underline decoration-dotted underline-offset-2 hover:bg-blue-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-300"
+        >
+          {fullText}
+        </button>
+      )
     )
 
     lastIndex = index + fullText.length
@@ -236,6 +251,12 @@ export function OrderAnalysisDetailDrawer({ row, onClose }: Props) {
   const [isLoadingVendors, setIsLoadingVendors] = useState(false)
   const [isResolvingVendor, setIsResolvingVendor] = useState(false)
   const [isSubmittingClosure, setIsSubmittingClosure] = useState(false)
+  const [proofPreview, setProofPreview] = useState<{
+    open: boolean
+    loading: boolean
+    urls: string[]
+    error: string
+  }>({ open: false, loading: false, urls: [], error: '' })
 
   const closureExceptionTypeOptions = useMemo(
     () => [
@@ -375,6 +396,30 @@ export function OrderAnalysisDetailDrawer({ row, onClose }: Props) {
       } finally {
         setIsResolvingVendor(false)
       }
+    },
+    [imileToken, t],
+  )
+
+  const handleViewProof = useCallback(
+    async (fileKeys: string[]) => {
+      const token = imileToken.trim()
+      setProofPreview({ open: true, loading: true, urls: [], error: '' })
+      if (!token || !fileKeys.length) {
+        setProofPreview({ open: true, loading: false, urls: [], error: t('drawer.viewProofError') })
+        return
+      }
+      const results = await Promise.allSettled(
+        fileKeys.map((fileKey) => getTrackProofImageUrl({ imileToken: token, fileKey })),
+      )
+      const urls = results
+        .filter((r): r is PromiseFulfilledResult<{ url: string }> => r.status === 'fulfilled')
+        .map((r) => r.value.url)
+      setProofPreview({
+        open: true,
+        loading: false,
+        urls,
+        error: urls.length ? '' : t('drawer.viewProofError'),
+      })
     },
     [imileToken, t],
   )
@@ -720,6 +765,8 @@ export function OrderAnalysisDetailDrawer({ row, onClose }: Props) {
                                   evt.content,
                                   handleTrackDriverIdPick,
                                   fillCourierTitle,
+                                  evt.proofFileKeys,
+                                  handleViewProof,
                                 )}
                               </p>
                             </div>
@@ -817,6 +864,29 @@ export function OrderAnalysisDetailDrawer({ row, onClose }: Props) {
           </div>
         </div>
       ) : null}
+      <Modal
+        open={proofPreview.open}
+        onCancel={() => setProofPreview((prev) => ({ ...prev, open: false }))}
+        footer={null}
+        title={t('drawer.viewProofModalTitle')}
+      >
+        {proofPreview.loading ? (
+          <div className="flex items-center justify-center py-10">
+            <Spin />
+            <span className="ml-2 text-sm text-slate-500">{t('drawer.viewProofLoading')}</span>
+          </div>
+        ) : proofPreview.error ? (
+          <div className="py-6 text-center text-sm text-red-500">{proofPreview.error}</div>
+        ) : (
+          <Image.PreviewGroup>
+            <div className="grid grid-cols-3 gap-2">
+              {proofPreview.urls.map((url) => (
+                <Image key={url} src={url} alt="" style={{ width: '100%', aspectRatio: '1 / 1', objectFit: 'cover' }} />
+              ))}
+            </div>
+          </Image.PreviewGroup>
+        )}
+      </Modal>
     </Drawer>
   )
 }

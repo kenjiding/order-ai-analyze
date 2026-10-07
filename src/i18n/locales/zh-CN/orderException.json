@@ -290,7 +290,10 @@
     "trackStageDelivery": "派送",
     "trackTypeSchedule": "预约派送",
     "trackTypeProblem": "问题件",
-    "trackTypeDelivery": "派送中"
+    "trackTypeDelivery": "派送中",
+    "viewProofModalTitle": "问题件证明图片",
+    "viewProofLoading": "图片加载中...",
+    "viewProofError": "图片加载失败"
   },
   "push": {
     "title": "飞书推送",

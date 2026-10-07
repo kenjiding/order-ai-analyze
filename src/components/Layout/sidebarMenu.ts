@@ -6,6 +6,7 @@ import {
   Building2,
   BarChart2,
   Calculator,
+  CalendarDays,
   ClipboardCheck,
   ClipboardList,
   DollarSign,
@@ -337,6 +338,14 @@ const systemGroup: SidebarMenuGroup = {
       label: '仓库/站点地址配置',
       icon: Warehouse,
       description: '维护各州主仓地址与站点坐标，供供应商区域地图的路由难易程度计算距离',
+    },
+    {
+      id: 'region-calendar',
+      path: '/system/region-calendar',
+      permissionKey: 'menu:region-calendar',
+      label: '假期/临时开仓日历',
+      icon: CalendarDays,
+      description: '按州维护出仓/派送日历的例外日期：公共假期停摆、周末临时开仓分拣等',
     },
   ],
 }

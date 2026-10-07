@@ -19,13 +19,14 @@
  */
 import { eq } from 'drizzle-orm'
 import { getDb, schema } from '../db'
+import type { DispatchPerformanceConfig } from '../db/schema'
 import { localDateTimeToMs, resolveRegionTz, type AusTz } from '../imile/ausTimezone'
 import { loadPriorityClientCodes } from '../priorityClients'
 import { isSettleTriggerDue, normalizeSettleTime } from './settleTime'
 import { fetchDriverWaybills } from '../imile/driverPerformance'
 import { getGlobalImileToken } from '../feishu/globalImileToken'
 import { envFirst, normalizeImileToken } from '../imile/shared'
-import { isNoSortingBatch, MIN_SORTING_WAYBILLS } from '../imile/sortingWorkday'
+import { isNoSortingBatch, MIN_SORTING_WAYBILLS, type RegionCalendarOverrides } from '../imile/sortingWorkday'
 import {
   dispatchExitThresholdMs,
   resolveDispatch24hWindowRule,
@@ -43,7 +44,7 @@ import {
   listSupplierPushConfigs,
   parsePushConfigIds,
 } from '../supplierPushConfigs'
-import { listEnabledDispatchPerformanceConfigs } from './configRepository'
+import { listEnabledDispatchPerformanceConfigs, loadRegionCalendarOverrides } from './configRepository'
 import {
   aggregateDispatchPerformanceCells,
   type DispatchPerformanceCell,
@@ -135,6 +136,8 @@ export type StationTarget = {
   supplierUnits: SupplierUnitIndex
   /** 「这天算不算开仓分拣」的到件量阈值，来自站点配置，未设置时沿用全局 MIN_SORTING_WAYBILLS */
   minSortingWaybills: number
+  /** 该站点所属州的出仓/派送日历例外（公共假期、周末临时开仓分拣），见 regionCalendarOverrides */
+  overrides: RegionCalendarOverrides
 }
 
 /**
@@ -152,39 +155,85 @@ export type StationTarget = {
  * 勾中的配置按 supplierKey（vendorCode::展示名）归并成单位——ADL-City 与 ADL-Lu
  * 共用 vendorCode、靠路由码分家，按 vendorCode 合并会混算（见 supplierScope 的注释）。
  */
+type SupplierPushConfigRow = Awaited<ReturnType<typeof listSupplierPushConfigs>>[number]
+
+/** 站点勾选的供应商配置（只要求有 vendorCode：统计不推送，不需要 webhook/chatId） */
+function pickStationSupplierConfigs(
+  pushConfigIds: unknown,
+  supplierConfigs: SupplierPushConfigRow[],
+): SupplierPushConfigRow[] {
+  const byId = new Map(supplierConfigs.map((c) => [c.id, c]))
+  return parsePushConfigIds(pushConfigIds)
+    .map((id) => byId.get(id))
+    .filter((c): c is SupplierPushConfigRow => c != null && Boolean(c.vendorCode?.trim()))
+}
+
+/**
+ * 站点的生效州：配置自己的州优先；为空/global 时回落到所选供应商里第一个非 global 的州。
+ * 结算任务、详情页、立刻统计都走这一处，不允许各写一份。
+ */
+export function pickStationRegionCode(
+  configRegionCode: string | null | undefined,
+  supplierRegionCodes: (string | null | undefined)[],
+): string | null {
+  const normalize = (code: string | null | undefined) => {
+    const v = code?.trim()
+    return v && v !== LEGACY_GLOBAL_SUPPLIER_REGION_CODE ? v : null
+  }
+  return normalize(configRegionCode) ?? supplierRegionCodes.map(normalize).find((r) => r != null) ?? null
+}
+
+/** 时区与假期例外表必须一起从同一个 regionCode 取，只能经由这里构造 */
+export type StationCalendar = {
+  regionCode: string | null
+  tz: AusTz
+  overrides: RegionCalendarOverrides
+}
+
+async function buildStationCalendar(regionCode: string | null): Promise<StationCalendar> {
+  return {
+    regionCode,
+    tz: resolveRegionTz(regionCode),
+    overrides: await loadRegionCalendarOverrides(regionCode),
+  }
+}
+
+/**
+ * 单个站点配置对应的时区 + 假期表。配置自己有州时不用拉供应商配置（快路径）；
+ * 否则按与结算任务完全相同的规则回落到供应商的州。
+ */
+export async function resolveStationCalendar(
+  config: Pick<DispatchPerformanceConfig, 'regionCode' | 'pushConfigIds'>,
+): Promise<StationCalendar> {
+  const own = pickStationRegionCode(config.regionCode, [])
+  if (own) return buildStationCalendar(own)
+  const picked = pickStationSupplierConfigs(config.pushConfigIds, await listSupplierPushConfigs())
+  return buildStationCalendar(pickStationRegionCode(config.regionCode, picked.map((c) => c.regionCode)))
+}
+
 export async function resolveStationTargets(): Promise<StationTarget[]> {
   const enabled = await listEnabledDispatchPerformanceConfigs()
   if (enabled.length === 0) return []
 
   const supplierConfigs = await listSupplierPushConfigs()
-  const byId = new Map(supplierConfigs.map((c) => [c.id, c]))
 
   const targets: StationTarget[] = []
   for (const config of enabled) {
     const stationCode = config.stationCode.trim()
-    // 统计不推送，所以不要求供应商配了 webhook/chatId（isSupplierPushConfigured 那道门槛
-    // 是推送专用的），只要求它有 vendorCode。
-    const stationConfigs = parsePushConfigIds(config.pushConfigIds)
-      .map((id) => byId.get(id))
-      .filter((c): c is (typeof supplierConfigs)[number] => c != null && Boolean(c.vendorCode?.trim()))
+    const stationConfigs = pickStationSupplierConfigs(config.pushConfigIds, supplierConfigs)
     if (stationConfigs.length === 0) {
       console.warn(`${LABEL} station=${stationCode} 已启用统计，但没有勾选任何供应商，跳过`)
       continue
     }
-    // 时区取配置自己的州；为空时回落到所选供应商配置里第一个非 global 的州
-    const regionCode =
-      config.regionCode?.trim() && config.regionCode.trim() !== LEGACY_GLOBAL_SUPPLIER_REGION_CODE
-        ? config.regionCode.trim()
-        : (stationConfigs
-            .map((c) => c.regionCode?.trim())
-            .find((r) => !!r && r !== LEGACY_GLOBAL_SUPPLIER_REGION_CODE) ?? null)
+    const calendar = await buildStationCalendar(
+      pickStationRegionCode(config.regionCode, stationConfigs.map((c) => c.regionCode)),
+    )
     const supplierUnits = buildSupplierUnitIndex(stationConfigs)
     const scopes = supplierUnitsToScopes(supplierUnits)
     if (scopes.length === 0) continue
     targets.push({
       stationCode,
-      regionCode,
-      tz: resolveRegionTz(regionCode),
+      ...calendar,
       settleTime: normalizeSettleTime(config.settleTime),
       scopes,
       supplierUnits,
@@ -230,7 +279,7 @@ export async function computeOneArrivalDate(input: {
   waybillCount: number
 }> {
   const { token, target, arrivalDate, stage } = input
-  const { stationCode, tz, regionCode, scopes, supplierUnits } = target
+  const { stationCode, tz, regionCode, scopes, supplierUnits, overrides } = target
 
   // 强制重拉到件索引：缓存里那份可能是「到件日当天」被司机地图等写下的半截清单，
   // 之后永不刷新，直接用会让两个率的分母静默偏小且不回补。
@@ -249,11 +298,11 @@ export async function computeOneArrivalDate(input: {
   const cells = aggregateDispatchPerformanceCells({
     rows,
     stationCodes: [stationCode],
-    rule: stage === 'dispatch' ? resolveDispatch24hWindowRule(arrivalDate, tz) : null,
-    before11ThresholdMs: dispatchExitThresholdMs(arrivalDate, tz),
+    rule: stage === 'dispatch' ? resolveDispatch24hWindowRule(arrivalDate, tz, overrides) : null,
+    before11ThresholdMs: dispatchExitThresholdMs(arrivalDate, tz, '11:00', overrides),
     sameDayExitThresholdMs: localDateTimeToMs(`${arrivalDate} 23:59:59`, tz),
-    // 派签趟的结算时刻（O+1 11:00 / 周五批次下周一 23:59:59）恒不早于这个截止，无需另开一趟
-    nextDayDeadlineMs: localDateTimeToMs(`${resolveExitDate(arrivalDate)} 23:59:59`, tz),
+    // 派签趟的结算时刻（O+1 11:00 / 固定延期批次下周一 23:59:59）恒不早于这个截止，无需另开一趟
+    nextDayDeadlineMs: localDateTimeToMs(`${resolveExitDate(arrivalDate, overrides)} 23:59:59`, tz),
     scopes,
     priorityClientCodes: await loadPriorityClientCodes(),
     // 出仓趟不算钱（见 aggregateCells），省掉这一次查询
@@ -345,16 +394,6 @@ export async function settleOneArrivalDate(input: {
   }
 }
 
-/**
- * 某站点的结算时区：由该站点供应商配置的 regionCode 决定，与结算任务完全一致。
- * 路由层判断「这天是否已结算」必须用它，不能用登录用户所属州——两者在跨日边界可能差一天，
- * 会让尚未到期的批次被当成最终值算进去。站点未配置供应商时回落到默认时区。
- */
-export async function resolveStationTz(stationCode: string): Promise<AusTz> {
-  const targets = await resolveStationTargets()
-  return targets.find((t) => t.stationCode === stationCode)?.tz ?? resolveRegionTz(null)
-}
-
 let settleChain: Promise<unknown> = Promise.resolve()
 
 /**
@@ -427,8 +466,8 @@ export async function runDispatchPerformanceDailyStats(): Promise<void> {
         // 不按星期几筛：周六/日临时开仓也是一批。开没开仓由到件量判定（见 settleOneArrivalDate 的 noBatch）
         const settled =
           stage === 'dispatch'
-            ? resolveSettledArrivalDates(nowMs, target.tz)
-            : resolveExitSettledArrivalDates(nowMs, target.tz)
+            ? resolveSettledArrivalDates(nowMs, target.tz, undefined, target.overrides)
+            : resolveExitSettledArrivalDates(nowMs, target.tz, undefined, target.overrides)
         if (settled.length === 0) continue
 
         // 派签趟：cron 是权威结算，「立刻统计」留下的临时章（provisional）不算已完成，
@@ -443,8 +482,8 @@ export async function runDispatchPerformanceDailyStats(): Promise<void> {
         // 退回仓库后重新派送的单会把第二次派送的司机和时间记进原到件日。
         const due = new Set(
           stage === 'dispatch'
-            ? resolveDispatchDueArrivalDates(nowMs, target.tz)
-            : resolveExitDueArrivalDates(nowMs, target.tz),
+            ? resolveDispatchDueArrivalDates(nowMs, target.tz, undefined, target.overrides)
+            : resolveExitDueArrivalDates(nowMs, target.tz, undefined, target.overrides),
         )
         const toSettle = pending.filter((date) => due.has(date))
         const skipped = pending.filter((date) => !due.has(date))

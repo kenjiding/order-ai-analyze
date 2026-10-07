@@ -3,6 +3,8 @@ export type TrackEvent = {
   time: string
   trackStageTx?: string
   trackType?: string
+  /** 问题件轨迹文案里 viewPic 的 data-pic 文件 key 列表，用于点击查看证明图片 */
+  proofFileKeys?: string[]
 }
 
 /** 用户可选的异常责任范围；退返/暂存等闭环统一归入「暂无异常」子类型。 */
