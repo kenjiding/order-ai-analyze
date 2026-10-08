@@ -18,11 +18,16 @@ import {
   listRecentSettledBatches,
   updateDispatchPerformanceConfig,
 } from '../dispatch24hStats/configRepository'
-import { resolveStationCalendar } from '../dispatch24hStats/dailyStatsJob'
+import { readDispatchPerformanceImileToken, resolveStationCalendar } from '../dispatch24hStats/dailyStatsJob'
 import { DEFAULT_SETTLE_TIME, isValidSettleTime } from '../dispatch24hStats/settleTime'
-import { resolveExitSettledArrivalDates } from '../dispatch24hStats/settledArrivalDates'
+import { dispatchBatchSettleMs, resolveExitSettledArrivalDates } from '../dispatch24hStats/settledArrivalDates'
+import { getOrFetchInboundWaybillNos, loadInboundWaybillIndex } from '../imile/inboundWaybillIndex'
+import { upsertStationDayWaybillRecords } from '../imile/stationDayWaybillSync'
 import { resolveEnqueueRegionCode, sendJobAccessDenied } from '../jobs/access'
-import { DISPATCH_PERFORMANCE_SETTLE_JOB_TYPE } from '../jobs/handlers'
+import {
+  DISPATCH_PERFORMANCE_SETTLE_JOB_TYPE,
+  DISPATCH_PERFORMANCE_UPLOAD_SETTLE_JOB_TYPE,
+} from '../jobs/handlers'
 import { enqueueJob, listJobs } from '../jobs/queue'
 import { toPublicJob } from '../jobs/types'
 import { LEGACY_GLOBAL_SUPPLIER_REGION_CODE, parsePushConfigIds } from '../supplierPushConfigs'
@@ -366,6 +371,153 @@ dispatchPerformanceRouter.post('/configs/:id/settle-now', async (req: Request, r
   } catch (err) {
     console.error('[dispatch-performance] 立刻统计入队失败:', err)
     return res.status(500).json({ error: (err as Error).message || '入队失败' })
+  }
+})
+
+/** 上传表格里允许落缓存的字段（searchWaybill 的字段名，由前端从中心运单查询表的中文列转来） */
+const UPLOAD_RECORD_FIELDS = [
+  'waybillNo',
+  'deliveryTime',
+  'signDate',
+  'lastProblemDate',
+  'problemReason',
+  'courier',
+  'courierCode',
+  'courierVendorCode',
+  'clientCode',
+  'consigneeRouteCode',
+  'consigneeZipCode',
+  'consigneeCity',
+  'consigneeProvince',
+  'consigneeAddress',
+] as const
+
+/**
+ * 「上传运单表结算」：iMile 拦截 searchWaybill（网关 429）时，用中心运单查询导出的表格补某个到件日。
+ *
+ * 只替换「拉明细」这一步：表格明细按 searchWaybill 的字段写进运单缓存，再入队一个作业，
+ * 由 worker 以 fromUpload 模式走与定时结算相同的 settleOneArrivalDate（见 dispatchPerformanceUploadSettleHandler）。
+ *
+ * 写缓存前必须全部通过，任何一条不过都不动数据库：
+ * 1. 派签窗口已关闭 —— 窗口没到期就结算会把还在派送的单记成未达标，且这里落的是权威值
+ * 2. 这天没被权威结算过 —— 已结算的历史不覆盖（临时值除外，权威结果本就该覆盖它）
+ * 3. 到件索引 100% 被表格覆盖 —— 缺单直接拒绝并返回缺失单号；结算不回补，残缺数据写进去就永久偏了
+ */
+dispatchPerformanceRouter.post('/configs/:id/upload-settle', async (req: Request, res: Response) => {
+  const body = (req.body ?? {}) as Record<string, unknown>
+  const arrivalDate = parseDateKey(body.arrivalDate)
+  if (!arrivalDate) return res.status(400).json({ error: '日期格式应为 YYYY-MM-DD' })
+  if (!Array.isArray(body.records) || body.records.length === 0) {
+    return res.status(400).json({ error: '没有解析到任何运单，请上传「中心运单查询」导出的表格' })
+  }
+
+  try {
+    const config = await findDispatchPerformanceConfig(String(req.params.id ?? '').trim())
+    if (!config) return res.status(404).json({ error: '配置不存在' })
+    if (!canAccessDispatchPerformanceConfig(config.regionCode, requestRegionCode(req))) {
+      return sendCrossRegionDenied(res, '触发')
+    }
+    if (!config.isEnabled) return res.status(400).json({ error: '该站点统计已停用，请先启用' })
+    const stationCode = config.stationCode
+
+    const calendar = await resolveStationCalendar(config)
+    const windowCloseMs = dispatchBatchSettleMs(arrivalDate, calendar.tz, calendar.overrides)
+    if (Date.now() <= windowCloseMs) {
+      const closeAt = new Intl.DateTimeFormat('sv-SE', {
+        timeZone: calendar.tz,
+        dateStyle: 'short',
+        timeStyle: 'short',
+      }).format(new Date(windowCloseMs))
+      return res.status(400).json({ error: `${arrivalDate} 的派签窗口要到 ${closeAt}（站点当地时间）才关闭，之后才能上传结算` })
+    }
+
+    const settled = await listSettledArrivalDates(stationCode, [arrivalDate], 'dispatch', {
+      excludeProvisional: true,
+    })
+    if (settled.has(arrivalDate)) {
+      return res.status(400).json({ error: `${arrivalDate} 已经结算过，不再覆盖` })
+    }
+
+    // 上传写缓存与 worker 读缓存之间不能再插进一次上传
+    const { rows: jobRows } = await listJobs({ type: DISPATCH_PERFORMANCE_UPLOAD_SETTLE_JOB_TYPE, limit: 100 })
+    const busy = jobRows.some(
+      (row) =>
+        (row.status === 'pending' || row.status === 'running') &&
+        (row.payload as { stationCode?: unknown } | null)?.stationCode === stationCode,
+    )
+    if (busy) return res.status(409).json({ error: '该站点已有上传结算任务在跑，请等它完成' })
+
+    // 到件索引（分母）：优先现拉最新的；iMile 拦截时退回本地缓存
+    const token = await readDispatchPerformanceImileToken(requestUserId(req))
+    let indexNos: string[] | null = null
+    let indexError = '缺少 iMile token'
+    if (token) {
+      const fetched = await getOrFetchInboundWaybillNos({
+        token,
+        stationCode,
+        dateStr: arrivalDate,
+        label: '上传运单表结算 到件索引',
+        forceRefresh: true,
+      })
+      if (fetched.ok) indexNos = fetched.waybillNos
+      else indexError = fetched.message
+    }
+    if (!indexNos || indexNos.length === 0) indexNos = await loadInboundWaybillIndex(stationCode, arrivalDate)
+    if (!indexNos || indexNos.length === 0) {
+      return res.status(400).json({ error: `拿不到 ${arrivalDate} 的到件索引（${indexError}），本地也没有缓存` })
+    }
+
+    const recordsByNo = new Map<string, Record<string, string>>()
+    for (const raw of body.records) {
+      if (raw == null || typeof raw !== 'object') continue
+      const src = raw as Record<string, unknown>
+      const record: Record<string, string> = {}
+      for (const key of UPLOAD_RECORD_FIELDS) {
+        const v = src[key]
+        record[key] = v == null ? '' : String(v).trim()
+      }
+      if (!record.waybillNo) continue
+      // 与 searchWaybill 的 lastScanStationCode 过滤对齐：最新扫描已不在本站的单落缓存但不计入统计
+      // （聚合按 lastScanSiteCode 过滤）。表格里只有网点名，按站点配置的展示名比对。
+      const siteName = src.lastScanSiteName == null ? '' : String(src.lastScanSiteName).trim()
+      const isHere = !siteName || !config.stationName || siteName.toLowerCase() === config.stationName.trim().toLowerCase()
+      record.lastScanSiteCode = isHere ? stationCode : siteName
+      recordsByNo.set(record.waybillNo, record)
+    }
+
+    const missingWaybillNos = indexNos.filter((no) => !recordsByNo.has(no))
+    if (missingWaybillNos.length > 0) {
+      return res.status(400).json({
+        error: `到件 ${indexNos.length} 单，表格只覆盖 ${indexNos.length - missingWaybillNos.length} 单，缺 ${missingWaybillNos.length} 单，请补导后重新上传`,
+        indexCount: indexNos.length,
+        missingWaybillNos,
+      })
+    }
+
+    // 只落索引内的单：表格常按首次到件时间导出，会混进不属于这天到件的单
+    await upsertStationDayWaybillRecords({
+      stationCode,
+      dataDate: arrivalDate,
+      records: indexNos.map((no) => recordsByNo.get(no)!),
+    })
+
+    const regionCode = resolveEnqueueRegionCode(req as AuthenticatedRequest, null)
+    if (regionCode === 'forbidden' || regionCode === 'invalid') {
+      sendJobAccessDenied(res)
+      return
+    }
+    const job = await enqueueJob({
+      type: DISPATCH_PERFORMANCE_UPLOAD_SETTLE_JOB_TYPE,
+      regionCode,
+      payload: { stationCode, arrivalDate },
+      createdBy: requestUserId(req),
+      // 只读缓存、不打 iMile，重试安全：已落库会被台账挡掉
+      maxAttempts: 2,
+    })
+    return res.status(201).json({ job: toPublicJob(job), indexCount: indexNos.length })
+  } catch (err) {
+    console.error('[dispatch-performance] 上传运单表结算失败:', err)
+    return res.status(500).json({ error: (err as Error).message || '上传结算失败' })
   }
 })
 

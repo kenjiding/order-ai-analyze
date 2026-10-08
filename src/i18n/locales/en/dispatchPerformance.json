@@ -32,7 +32,9 @@
     "settleNowConfirmDescBold": "temporary value",
     "settleNowConfirmDescSuffix": " — the 24h window may not have truly closed; settling now may look stricter. The scheduled job at trigger time will re-run and overwrite with the authoritative value.",
     "startSettle": "Start settle",
-    "empty": "No stations configured yet. Click \"Add station\" above to get started."
+    "empty": "No stations configured yet. Click \"Add station\" above to get started.",
+    "uploadSettle": "Settle from upload",
+    "uploadSettleTooltip": "When iMile blocks the API, settle an arrival date from exported waybill sheets"
   },
   "drawer": {
     "editTitle": "Edit settlement config",
@@ -389,5 +391,16 @@
       "skipped": "No push target configured"
     },
     "summary": "Push finished: {{ok}} succeeded, {{err}} failed, {{skip}} skipped"
+  },
+  "uploadSettle": {
+    "title": "Settle from upload · {{station}}",
+    "description": "Use when iMile blocks the searchWaybill API. Upload one or more waybill query exports; they are converted to API data and settled through the normal flow. Requires: the 24h dispatch window has closed, the date is not yet settled, and the sheets cover every arrived waybill of that date. The result is final and cannot be overwritten.",
+    "fieldDate": "Arrival date",
+    "dropHint": "Click or drop waybill query xlsx exports (multiple allowed)",
+    "submit": "Validate & settle",
+    "noFile": "Please choose at least one sheet",
+    "copyMissing": "Copy missing waybills ({{count}})",
+    "copied": "Copied {{count}} missing waybills",
+    "copyFailed": "Copy failed, please retry"
   }
 }

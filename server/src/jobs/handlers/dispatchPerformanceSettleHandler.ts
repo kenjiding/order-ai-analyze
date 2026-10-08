@@ -54,9 +54,11 @@ export type DispatchPerformanceSettleArtifact = {
   skipped: { stage: 'exit' | 'dispatch'; arrivalDate: string }[]
   /** 两趟都没有可处理的批次时，给前端一句能直接展示的原因 */
   message: string
+  /** 派签落的是权威值而非临时值（上传运单表结算），前端据此不标「临时值」 */
+  dispatchFinal?: boolean
 }
 
-function summarizeCells(cells: DispatchPerformanceCell[]): {
+export function summarizeCells(cells: DispatchPerformanceCell[]): {
   total: number
   before11Met: number
   signMet: number

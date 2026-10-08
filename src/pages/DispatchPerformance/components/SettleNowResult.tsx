@@ -76,11 +76,15 @@ export function SettleNowResult({
         <div>
           <div className="mb-2 text-sm font-medium text-slate-700">
             {t('settleResult.dispatchSettled')}
-            <Tag color="warning" className="ml-2 m-0 text-xs">
-              {t('settleResult.temporaryValue')}
-            </Tag>
+            {artifact.dispatchFinal ? null : (
+              <Tag color="warning" className="ml-2 m-0 text-xs">
+                {t('settleResult.temporaryValue')}
+              </Tag>
+            )}
           </div>
-          <p className="mb-2 text-xs text-slate-500">{t('settleResult.dispatchSettledHint')}</p>
+          {artifact.dispatchFinal ? null : (
+            <p className="mb-2 text-xs text-slate-500">{t('settleResult.dispatchSettledHint')}</p>
+          )}
           <div className="overflow-x-auto">
             <table className="w-full min-w-[520px] text-sm">
               <thead>

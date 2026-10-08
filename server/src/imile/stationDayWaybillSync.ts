@@ -134,41 +134,24 @@ export type StationDayWaybillSyncResult = {
 }
 
 /**
- * 增量同步某站点某日运单到缓存表。仅更新本次新拉到的明细；终态单保留原行。
- * 不负责地理编码（司机地图刷新在此之后单独 geocode）。
+ * 把 searchWaybill 形状的明细记录写进缓存表。增量同步与「上传运单表结算」共用这一套字段映射——
+ * 上传的表格先被前端转成 searchWaybill 的字段名，再从这里落缓存，后续聚合与接口拉取完全同路。
  */
-export async function syncStationDayWaybillsIncremental(input: {
-  token: string
+export async function upsertStationDayWaybillRecords(input: {
   stationCode: string
   dataDate: string
-  tz: AusTz
-  label: string
-  /** 见 fetchWaybillDetailsIncremental.forceIndexRefresh：结算类调用必须传 true */
-  forceIndexRefresh?: boolean
-  /** 见 fetchWaybillDetailsIncremental.forceDetailRefresh：要求字段完整的结算类调用必须传 true */
-  forceDetailRefresh?: boolean
-}): Promise<StationDayWaybillSyncResult | { ok: false; message: string }> {
-  const { token, stationCode, dataDate, tz, label, forceIndexRefresh, forceDetailRefresh } = input
-  const cachedByWaybillNo = await loadStationDayWaybillCache(stationCode, dataDate)
-
-  const fetched = await fetchWaybillDetailsIncremental({
-    token,
-    stationCode,
-    dateStr: dataDate,
-    label,
-    tz,
-    cachedByWaybillNo,
-    forceIndexRefresh,
-    forceDetailRefresh,
-  })
-  if (!fetched.ok) return { ok: false, message: fetched.message }
-
+  records: InboundWaybillRow[]
+}): Promise<{
+  rowsByWaybillNo: Map<string, typeof schema.driverMapWaybillPoints.$inferInsert>
+  upsertedCount: number
+}> {
+  const { stationCode, dataDate } = input
   const db = getDb()
   const now = new Date()
 
   // 同批内同单号去重（保留后出现的行）：同一条 INSERT 内重复冲突键会报 "cannot affect row a second time"
   const rowsByWaybillNo = new Map<string, typeof schema.driverMapWaybillPoints.$inferInsert>()
-  for (const row of fetched.fetchedRecords) {
+  for (const row of input.records) {
     const waybillNo = readText(row, 'waybillNo')
     if (!waybillNo) continue
     const signDate = readText(row, 'signDate') || null
@@ -239,6 +222,48 @@ export async function syncStationDayWaybillsIncremental(input: {
         },
       })
   }
+
+  return { rowsByWaybillNo, upsertedCount }
+}
+
+/**
+ * 增量同步某站点某日运单到缓存表。仅更新本次新拉到的明细；终态单保留原行。
+ * 不负责地理编码（司机地图刷新在此之后单独 geocode）。
+ */
+export async function syncStationDayWaybillsIncremental(input: {
+  token: string
+  stationCode: string
+  dataDate: string
+  tz: AusTz
+  label: string
+  /** 见 fetchWaybillDetailsIncremental.forceIndexRefresh：结算类调用必须传 true */
+  forceIndexRefresh?: boolean
+  /** 见 fetchWaybillDetailsIncremental.forceDetailRefresh：要求字段完整的结算类调用必须传 true */
+  forceDetailRefresh?: boolean
+  /** 见 fetchWaybillDetailsIncremental.skipDetailFetch */
+  skipDetailFetch?: boolean
+}): Promise<StationDayWaybillSyncResult | { ok: false; message: string }> {
+  const { token, stationCode, dataDate, tz, label, forceIndexRefresh, forceDetailRefresh, skipDetailFetch } = input
+  const cachedByWaybillNo = await loadStationDayWaybillCache(stationCode, dataDate)
+
+  const fetched = await fetchWaybillDetailsIncremental({
+    token,
+    stationCode,
+    dateStr: dataDate,
+    label,
+    tz,
+    cachedByWaybillNo,
+    forceIndexRefresh,
+    forceDetailRefresh,
+    skipDetailFetch,
+  })
+  if (!fetched.ok) return { ok: false, message: fetched.message }
+
+  const { rowsByWaybillNo, upsertedCount } = await upsertStationDayWaybillRecords({
+    stationCode,
+    dataDate,
+    records: fetched.fetchedRecords,
+  })
 
   console.log(
     `[waybill-sync] ${label} station=${stationCode} date=${dataDate} index=${fetched.waybillNos.length} fetched=${fetched.fetchedCount} skipped=${fetched.skippedCount} upserted=${upsertedCount}`,

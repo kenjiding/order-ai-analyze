@@ -494,6 +494,11 @@ export async function fetchWaybillDetailsIncremental(input: {
    * 「这一趟我不吃缓存」。重拉已签收的单拿回的是同一份 signDate，两个率的结论不受影响。
    */
   forceDetailRefresh?: boolean
+  /**
+   * 完全不调 searchWaybill，明细只用缓存。供「上传运单表结算」：iMile 拦截接口时，
+   * 用户上传的中心运单查询表已先写进缓存（见 upsertStationDayWaybillRecords），这里不能再去拉。
+   */
+  skipDetailFetch?: boolean
 }): Promise<IncrementalWaybillFetchSuccess | InboundWaybillFetchError> {
   const indexResult = await getOrFetchInboundWaybillNos({
     token: input.token,
@@ -505,7 +510,9 @@ export async function fetchWaybillDetailsIncremental(input: {
   if (!indexResult.ok) return indexResult
 
   // 窗口规则按「到件日」定，dateStr 就是该批次的到件日
-  const needNos = input.forceDetailRefresh
+  const needNos = input.skipDetailFetch
+    ? []
+    : input.forceDetailRefresh
     ? indexResult.waybillNos
     : selectWaybillNosNeedingRefresh(
         indexResult.waybillNos,

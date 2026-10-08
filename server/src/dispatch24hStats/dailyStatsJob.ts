@@ -273,12 +273,17 @@ export async function computeOneArrivalDate(input: {
   target: StationTarget
   arrivalDate: string
   stage: SettleStage
+  /**
+   * 「上传运单表结算」：iMile 拦截接口时，到件索引与明细都已由上传入口写进缓存
+   * （见 dispatchPerformanceRouter 的 upload-settle），这里只读缓存、一个 iMile 请求都不发。
+   */
+  fromUpload?: boolean
 }): Promise<{
   cells: DispatchPerformanceCell[]
   supplierMeta: Map<string, { supplierName: string; vendorCode: string }>
   waybillCount: number
 }> {
-  const { token, target, arrivalDate, stage } = input
+  const { token, target, arrivalDate, stage, fromUpload } = input
   const { stationCode, tz, regionCode, scopes, supplierUnits, overrides } = target
 
   // 强制重拉到件索引：缓存里那份可能是「到件日当天」被司机地图等写下的半截清单，
@@ -289,8 +294,9 @@ export async function computeOneArrivalDate(input: {
     stationCode,
     dateStr: arrivalDate,
     regionCode,
-    forceIndexRefresh: true,
-    forceDetailRefresh: true,
+    forceIndexRefresh: !fromUpload,
+    forceDetailRefresh: !fromUpload,
+    skipDetailFetch: fromUpload,
   })
   if (!fetched.ok) throw new Error(`运单查询失败: ${fetched.message}`)
 
@@ -325,6 +331,8 @@ export async function settleOneArrivalDate(input: {
   stage: SettleStage
   /** 见 SaveCellsInput.provisional：派签趟仍会落库盖章，但标记成临时值，留给到点的定时结算覆盖 */
   provisional?: boolean
+  /** 见 computeOneArrivalDate.fromUpload */
+  fromUpload?: boolean
 }): Promise<SettleOneResult> {
   const { target, arrivalDate, stage, provisional } = input
 

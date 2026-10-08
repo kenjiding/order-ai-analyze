@@ -259,4 +259,6 @@ export type SettleNowArtifact = {
   }[]
   skipped: { stage: 'exit' | 'dispatch'; arrivalDate: string }[]
   message: string
+  /** 派签落的是权威值（上传运单表结算），不标「临时值」 */
+  dispatchFinal?: boolean
 }

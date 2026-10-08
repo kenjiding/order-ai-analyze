@@ -48,6 +48,42 @@ export function useSettleNow(options?: { onSettled?: () => void | Promise<void> 
 
   useEffect(() => stopPolling, [stopPolling])
 
+  /** 轮询作业直到结束；立刻统计与上传运单表结算共用，结果都是 SettleNowArtifact */
+  const trackJob = useCallback(
+    (jobId: string) => {
+      stopPolling()
+      let ticks = 0
+      pollTimerRef.current = window.setInterval(async () => {
+        if ((ticks += 1) > JOB_POLL_MAX_TICKS) {
+          stopPolling()
+          setSettlingId(null)
+          showToast(toast.jobPollTimeout, 'warning')
+          return
+        }
+        try {
+          const current = await getJobById(jobId)
+          if (current.status === 'succeeded') {
+            stopPolling()
+            setSettlingId(null)
+            setArtifact(await getJobArtifact<SettleNowArtifact>(jobId))
+            await onSettledRef.current?.()
+            showToast(toast.settleComplete, 'success')
+          } else if (current.status === 'failed' || current.status === 'cancelled') {
+            stopPolling()
+            setSettlingId(null)
+            showToast(
+              t('toast.settleFailed', { error: current.error ?? toast.unknownError }),
+              'error',
+            )
+          }
+        } catch (err) {
+          console.warn('[dispatch-performance] poll settle job failed', err)
+        }
+      }, JOB_POLL_INTERVAL_MS)
+    },
+    [stopPolling, t, toast],
+  )
+
   const settleNow = useCallback(
     async (configId: string) => {
       if (settlingId) return
@@ -56,42 +92,23 @@ export function useSettleNow(options?: { onSettled?: () => void | Promise<void> 
       try {
         const { job, reused } = await postSettleNow(configId)
         if (reused) showToast(toast.jobAlreadyRunning, 'warning')
-
-        stopPolling()
-        let ticks = 0
-        pollTimerRef.current = window.setInterval(async () => {
-          if ((ticks += 1) > JOB_POLL_MAX_TICKS) {
-            stopPolling()
-            setSettlingId(null)
-            showToast(toast.jobPollTimeout, 'warning')
-            return
-          }
-          try {
-            const current = await getJobById(job.id)
-            if (current.status === 'succeeded') {
-              stopPolling()
-              setSettlingId(null)
-              setArtifact(await getJobArtifact<SettleNowArtifact>(job.id))
-              await onSettledRef.current?.()
-              showToast(toast.settleComplete, 'success')
-            } else if (current.status === 'failed' || current.status === 'cancelled') {
-              stopPolling()
-              setSettlingId(null)
-              showToast(
-                t('toast.settleFailed', { error: current.error ?? toast.unknownError }),
-                'error',
-              )
-            }
-          } catch (err) {
-            console.warn('[dispatch-performance] poll settle job failed', err)
-          }
-        }, JOB_POLL_INTERVAL_MS)
+        trackJob(job.id)
       } catch (err) {
         setSettlingId(null)
         showToast(err instanceof Error ? err.message : toast.triggerSettleFailed, 'error')
       }
     },
-    [settlingId, stopPolling, t, toast],
+    [settlingId, trackJob, toast],
+  )
+
+  /** 上传运单表结算：作业已由上传弹窗入队，这里只接管轮询与结果展示 */
+  const trackUploadJob = useCallback(
+    (configId: string, jobId: string) => {
+      setSettlingId(configId)
+      setArtifact(null)
+      trackJob(jobId)
+    },
+    [trackJob],
   )
 
   return {
@@ -99,6 +116,7 @@ export function useSettleNow(options?: { onSettled?: () => void | Promise<void> 
     settling: settlingId != null,
     artifact,
     settleNow,
+    trackUploadJob,
     dismissArtifact: useCallback(() => setArtifact(null), []),
   }
 }

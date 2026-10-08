@@ -109,7 +109,7 @@ export function resolveChaseDispatchConfigIds(
 }
 
 /**
- * 催派推送核心：按滞留区间拉数 → searchWaybill 查路由码 → 按供应商 vendorCode + routeCode 筛选后推送。
+ * 催派推送核心：按滞留区间拉数 → inbound/query 查路由码 → 按供应商 vendorCode + routeCode 筛选后推送。
  * 供定时任务复用。不使用路由码白名单。
  */
 export async function executeChaseDispatchPush(params: {
@@ -163,7 +163,7 @@ export async function executeChaseDispatchPush(params: {
     }
   }
 
-  // 先按启用供应商的 vendorCode 收窄，再收集运单号查 searchWaybill 路由码。
+  // 先按启用供应商的 vendorCode 收窄，再收集运单号查 inbound/query 路由码。
   // 存在「未选供应商」的配置时不能按 vendorCode 预筛——那类配置的归属只看路由码，
   // 而路由码正是这次查询的结果，预筛掉就永远查不到，只能整批送去查。
   const enabledVendorCodes = new Set(
@@ -180,7 +180,15 @@ export async function executeChaseDispatchPush(params: {
     console.error(`${label} 路由码查询失败: ${routeCodeResult.message}`)
     return { error: `路由码查询失败: ${routeCodeResult.message}` }
   }
-  const { routeCodeByWaybillNo, clientCodeByWaybillNo } = routeCodeResult.data
+  const routeCodeByWaybillNo = routeCodeResult.data
+  const clientCodeByWaybillNo = new Map<string, string>()
+  for (const b of bucketResults) {
+    for (const row of b.rows) {
+      const no = (row.waybillNo ?? '').trim()
+      const clientCode = (row.clientCode ?? '').trim()
+      if (no && clientCode) clientCodeByWaybillNo.set(no, clientCode)
+    }
+  }
   const priorityClientCodes = await loadPriorityClientCodes()
   const priorityLookup = { clientCodeByWaybillNo, priorityClientCodes }
   /** 同一 (vendorCode, routeCode) 的兜底只告警一次，避免整批同路由运单刷屏 */

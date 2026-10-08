@@ -1,6 +1,6 @@
 import { Button, Dropdown, Empty, Popconfirm, Space, Switch, Table, Tag, Tooltip } from 'antd'
 import type { ColumnsType } from 'antd/es/table'
-import { BarChart3, MoreHorizontal, Pencil, Trash2, Zap } from 'lucide-react'
+import { BarChart3, MoreHorizontal, Pencil, Trash2, Upload, Zap } from 'lucide-react'
 import { useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 import type { DispatchPerformanceConfig } from '../dispatchPerformanceTypes'
@@ -48,6 +48,7 @@ type Props = {
   onToggleEnabled: (config: DispatchPerformanceConfig, enabled: boolean) => void
   settlingId: string | null
   onSettleNow: (config: DispatchPerformanceConfig) => void
+  onUploadSettle: (config: DispatchPerformanceConfig) => void
 }
 
 export function DispatchPerformanceConfigList({
@@ -60,6 +61,7 @@ export function DispatchPerformanceConfigList({
   onToggleEnabled,
   settlingId,
   onSettleNow,
+  onUploadSettle,
 }: Props) {
   const { t } = useTranslation(['dispatchPerformance', 'common'])
 
@@ -240,6 +242,18 @@ export function DispatchPerformanceConfigList({
                       </Button>
                     </Tooltip>
                   </Popconfirm>
+                  <Tooltip placement="left" title={t('list.uploadSettleTooltip', { ns: 'dispatchPerformance' })}>
+                    <Button
+                      type="text"
+                      block
+                      className="!justify-start"
+                      icon={<Upload className="h-4 w-4" />}
+                      onClick={() => onUploadSettle(row)}
+                      disabled={!row.isEnabled || settlingId != null}
+                    >
+                      {t('list.uploadSettle', { ns: 'dispatchPerformance' })}
+                    </Button>
+                  </Tooltip>
                   <Button
                     type="text"
                     block
@@ -273,6 +287,7 @@ export function DispatchPerformanceConfigList({
       onEdit,
       onSettleNow,
       onToggleEnabled,
+      onUploadSettle,
       onView,
       settlingId,
       t,

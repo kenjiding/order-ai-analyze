@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import { Button, Modal } from 'antd'
 import { Plus, TrendingUp } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
@@ -5,6 +6,8 @@ import { useNavigate } from 'react-router-dom'
 import { DispatchPerformanceConfigDrawer } from './components/DispatchPerformanceConfigDrawer'
 import { DispatchPerformanceConfigList } from './components/DispatchPerformanceConfigList'
 import { SettleNowResult } from './components/SettleNowResult'
+import { UploadSettleModal } from './components/UploadSettleModal'
+import type { DispatchPerformanceConfig } from './dispatchPerformanceTypes'
 import { useDispatchPerformancePage } from './useDispatchPerformancePage'
 import { useSettleNow } from './useSettleNow'
 
@@ -13,6 +16,7 @@ export default function DispatchPerformancePage() {
   const v = useDispatchPerformancePage()
   const navigate = useNavigate()
   const settle = useSettleNow({ onSettled: v.reload })
+  const [uploadTarget, setUploadTarget] = useState<DispatchPerformanceConfig | null>(null)
 
   const enabledCount = v.configs.filter((c) => c.isEnabled).length
 
@@ -53,6 +57,13 @@ export default function DispatchPerformancePage() {
         onToggleEnabled={(config, enabled) => void v.toggleEnabled(config, enabled)}
         settlingId={settle.settlingId}
         onSettleNow={(config) => void settle.settleNow(config.id)}
+        onUploadSettle={setUploadTarget}
+      />
+
+      <UploadSettleModal
+        config={uploadTarget}
+        onClose={() => setUploadTarget(null)}
+        onEnqueued={settle.trackUploadJob}
       />
 
       <Modal

@@ -32,7 +32,9 @@
     "settleNowConfirmDescBold": "临时值",
     "settleNowConfirmDescSuffix": "——24 小时窗口可能还没真正关闭，此刻定格会偏严；到了触发统计时间定时任务会重跑并覆盖成权威值。",
     "startSettle": "开始统计",
-    "empty": "还没有配置任何站点，点击右上角「添加统计站点」开始"
+    "empty": "还没有配置任何站点，点击右上角「添加统计站点」开始",
+    "uploadSettle": "上传运单表结算",
+    "uploadSettleTooltip": "iMile 拦截接口时，上传「中心运单查询」导出的表格来结算某个到件日"
   },
   "drawer": {
     "editTitle": "编辑统计配置",
@@ -389,5 +391,16 @@
       "skipped": "未配置推送对象"
     },
     "summary": "推送完成：成功 {{ok}} 家，失败 {{err}} 家，跳过 {{skip}} 家"
+  },
+  "uploadSettle": {
+    "title": "上传运单表结算 · {{station}}",
+    "description": "iMile 拦截 searchWaybill 接口时使用。上传「中心运单查询」导出的表格（可多个），系统转换成接口数据后按正常流程结算该到件日。要求：派签窗口已关闭、这天尚未结算、表格覆盖该日全部到件单号，否则拒绝。结果为正式值，写入后不可覆盖。",
+    "fieldDate": "到件日",
+    "dropHint": "点击或拖入中心运单查询导出的 xlsx，可多选",
+    "submit": "校验并结算",
+    "noFile": "请先选择表格文件",
+    "copyMissing": "复制缺失单号（{{count}}）",
+    "copied": "已复制 {{count}} 个缺失单号",
+    "copyFailed": "复制失败，请重试"
   }
 }

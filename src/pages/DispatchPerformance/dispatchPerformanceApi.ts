@@ -9,6 +9,7 @@ import type {
   DispatchProfitDailyRow,
   WhitelistMode,
 } from './dispatchPerformanceTypes'
+import type { UploadWaybillRecord } from './parseWaybillExport'
 
 const JSON_HEADERS = { 'Content-Type': 'application/json' } as const
 const BASE = '/api/dispatch-performance'
@@ -116,6 +117,44 @@ export async function postSettleNow(
   return request<{ job: PublicJob; reused: boolean }>(`/configs/${configId}/settle-now`, {
     method: 'POST',
   })
+}
+
+/** 上传的表格没覆盖全到件索引：带回缺失单号，供页面一键复制去门户补导 */
+export class UploadCoverageError extends Error {
+  readonly indexCount: number
+  readonly missingWaybillNos: string[]
+
+  constructor(message: string, indexCount: number, missingWaybillNos: string[]) {
+    super(message)
+    this.indexCount = indexCount
+    this.missingWaybillNos = missingWaybillNos
+  }
+}
+
+export async function postUploadSettle(
+  configId: string,
+  body: { arrivalDate: string; records: UploadWaybillRecord[] },
+): Promise<{ job: PublicJob; indexCount: number }> {
+  const res = await backendFetch(`${BASE}/configs/${configId}/upload-settle`, {
+    method: 'POST',
+    headers: JSON_HEADERS,
+    body: JSON.stringify(body),
+  })
+  const text = await res.text()
+  if (!res.ok) {
+    let json: { missingWaybillNos?: string[]; indexCount?: number } = {}
+    try {
+      json = JSON.parse(text)
+    } catch {
+      /* ignore */
+    }
+    const message = await readHttpError(res, text)
+    if (json.missingWaybillNos?.length) {
+      throw new UploadCoverageError(message, json.indexCount ?? 0, json.missingWaybillNos)
+    }
+    throw new Error(message)
+  }
+  return JSON.parse(text) as { job: PublicJob; indexCount: number }
 }
 
 // ── 派签异常报备 ──────────────────────────────────────────────────

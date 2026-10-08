@@ -1,19 +1,16 @@
 import { requestImileApi } from './client'
 import { fetchPaginatedResultRows } from './paginatedQuery'
-import { buildImilePortalHeaders, IMILE_DS_SAAS_TMS_PORTAL } from './portal'
-import { envFirstOr, isRecord, normalizeImileToken, resolveImileCountry, sleep } from './shared'
+import { buildImilePortalHeaders, IMILE_DC_SCAN_QUERY_PORTAL, IMILE_DS_SAAS_TMS_PORTAL } from './portal'
+import { envFirstOr, isRecord, normalizeImileToken, resolveImileCountry } from './shared'
 
 const DEFAULT_STAGNANT_URL =
   'https://ds.imile.com/saastms/v1/report/stock/daWaybillInventory'
-const DEFAULT_SEARCH_WAYBILL_URL = 'https://ds.imile.com/saastms/v1/biz/waybillInfo/searchWaybill'
+const DEFAULT_INBOUND_URL = 'https://dc.imile.com/lm/express/ops/v1/biz/inbound/query'
 
 const STAGNANT_PAGE_SHOW_COUNT = 1000
 
-/** iMile 硬限制：单次查询单号不超过 1000 条 */
 const ROUTE_CODE_QUERY_BATCH_SIZE = 1000
 const ROUTE_CODE_PAGE_SHOW_COUNT = 1000
-const ROUTE_CODE_PAGE_DELAY_MS = 300
-const ROUTE_CODE_BATCH_DELAY_MS = 300
 
 function makeStagnantHeaders(token: string, hubcode: string): Record<string, string> {
   return buildImilePortalHeaders({
@@ -87,6 +84,8 @@ export type StagnantWaybillRow = {
   driverCode?: string
   driverVendorName?: string
   driverVendorCode?: string
+  /** 商家编码，供催派按「优先客户配置」打标 */
+  clientCode?: string
   ofdDate?: string
   [key: string]: unknown
 }
@@ -154,9 +153,9 @@ function makeRouteCodeHeaders(token: string, hubcode: string): Record<string, st
   return buildImilePortalHeaders({
     token,
     envPrefix: 'IMILE_CHASE_DISPATCH_ROUTE_CODE',
-    defaults: IMILE_DS_SAAS_TMS_PORTAL,
-    sharedEnvPrefixes: ['IMILE_STAGNANT_WAYBILL', 'IMILE_CANCEL_SCAN', 'IMILE_TRACK'],
-    // hubcode 必须与查询站点一致，否则接口成功但 results 为空（默认 hub 是阿德莱德）；
+    defaults: IMILE_DC_SCAN_QUERY_PORTAL,
+    sharedEnvPrefixes: ['IMILE_INBOUND', 'IMILE_TRACK'],
+    injectUserCode: true,
     // 定时任务无 HTTP 请求上下文，不能依赖 getRequestImileHubcode() 兜底
     overrides: { hubcode },
   })
@@ -169,7 +168,7 @@ function chunkArray<T>(items: T[], size: number): T[][] {
   return chunks
 }
 
-/** 查询窗口足够宽，覆盖任意滞留单的下单日期，不依赖滞留区间本身的起止日期 */
+/** 查询窗口足够宽，覆盖任意滞留单的到件时间，不依赖滞留区间本身的起止日期 */
 function wideRouteCodeSearchWindow(): { startTime: string; endTime: string } {
   const tomorrow = new Date(Date.now() + 24 * 60 * 60 * 1000)
   const pad = (n: number) => String(n).padStart(2, '0')
@@ -177,54 +176,41 @@ function wideRouteCodeSearchWindow(): { startTime: string; endTime: string } {
   return { startTime: '2018-01-01 00:00:00', endTime: `${endDate} 23:59:59` }
 }
 
-export type StagnantWaybillLookupMaps = {
-  routeCodeByWaybillNo: Map<string, string>
-  /** searchWaybill 的 clientCode，供催派按「优先客户配置」打标 */
-  clientCodeByWaybillNo: Map<string, string>
-}
-
-function emptyLookupMaps(): StagnantWaybillLookupMaps {
-  return { routeCodeByWaybillNo: new Map(), clientCodeByWaybillNo: new Map() }
-}
-
 /**
- * 按 waybillNo 批量查询 searchWaybill，提取路由码（consigneeRouteCode）与商家编码（clientCode）。
- * 路由码供催派按供应商 routeCode 二次筛选；clientCode 供「本地件优先客户」打标。
- * 查不到的单号不出现在对应映射里。
+ * 按 waybillNo 批量查询到件扫描 inbound/query（searchNoList），提取路由码（routeCode）。
+ * 该接口不限流，替代会被网关 429 的 searchWaybill。查不到的单号不出现在映射里。
  */
 export async function fetchStagnantWaybillRouteCodes(
   token: string,
   waybillNos: string[],
   stationCode: string,
-): Promise<{ ok: true; data: StagnantWaybillLookupMaps } | ApiError> {
+): Promise<{ ok: true; data: Map<string, string> } | ApiError> {
   const uniqueNos = [...new Set(waybillNos.filter((no) => typeof no === 'string' && no.trim().length > 0))]
-  const result = emptyLookupMaps()
+  const result = new Map<string, string>()
   if (uniqueNos.length === 0) return { ok: true, data: result }
 
   const normalizedToken = normalizeImileToken(token)
-  const url = envFirstOr(['IMILE_CHASE_DISPATCH_ROUTE_CODE_URL'], DEFAULT_SEARCH_WAYBILL_URL)
+  const url = envFirstOr(['IMILE_CHASE_DISPATCH_ROUTE_CODE_URL'], DEFAULT_INBOUND_URL)
   const headers = makeRouteCodeHeaders(normalizedToken, stationCode)
   const { startTime, endTime } = wideRouteCodeSearchWindow()
   const batches = chunkArray(uniqueNos, ROUTE_CODE_QUERY_BATCH_SIZE)
 
-  for (let i = 0; i < batches.length; i += 1) {
-    const batch = batches[i]
+  for (const batch of batches) {
     const pageResult = await fetchPaginatedResultRows({
       label: '催派滞留单路由码查询',
       pageShowCount: ROUTE_CODE_PAGE_SHOW_COUNT,
-      pageDelayMs: ROUTE_CODE_PAGE_DELAY_MS,
+      pageDelayMs: 0,
       buildPageBody: ({ currentPage, showCount }) => ({
-        actualReceiveStation: '',
-        currentPage,
-        dateSearchType: 'waybill',
+        isLatest: 1,
+        orderScopeNew: '',
+        receiveType: 'All',
+        scanTypeList: ['100', '300', '2500', '600'],
+        searchNoList: batch,
+        vehicleUuid: '',
         startTime,
         endTime,
-        labelOrderCodes: [] as string[],
-        mainWaybillNos: [] as string[],
-        platformNos: [] as string[],
-        referenceNos: [] as string[],
+        currentPage,
         showCount,
-        waybillNos: batch,
       }),
       requestPage: (body) =>
         requestImileApi({ url, method: 'POST', headers, body, label: '催派滞留单路由码查询' }),
@@ -235,14 +221,9 @@ export async function fetchStagnantWaybillRouteCodes(
     for (const row of pageResult.records) {
       if (!isRecord(row)) continue
       const waybillNo = typeof row.waybillNo === 'string' ? row.waybillNo.trim() : ''
-      if (!waybillNo) continue
-      const consigneeRouteCode = typeof row.consigneeRouteCode === 'string' ? row.consigneeRouteCode.trim() : ''
-      if (consigneeRouteCode) result.routeCodeByWaybillNo.set(waybillNo, consigneeRouteCode)
-      const clientCode = typeof row.clientCode === 'string' ? row.clientCode.trim() : ''
-      if (clientCode) result.clientCodeByWaybillNo.set(waybillNo, clientCode)
+      const routeCode = typeof row.routeCode === 'string' ? row.routeCode.trim() : ''
+      if (waybillNo && routeCode) result.set(waybillNo, routeCode)
     }
-
-    if (i < batches.length - 1) await sleep(ROUTE_CODE_BATCH_DELAY_MS)
   }
 
   return { ok: true, data: result }
