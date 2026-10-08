@@ -271,13 +271,13 @@ export async function purgeOldInboundWaybillIndex(keepDays = INBOUND_INDEX_RETEN
   return deleted.length
 }
 
-/** 到件扫描 inbound/query，提取 waybillNo 列表 */
-export async function fetchInboundWaybillNos(input: {
+/** 到件扫描 inbound/query 原始记录（含 routeCode / clientCode），同一单可能多条 */
+export async function fetchInboundRecords(input: {
   token: string
   stationCode: string
   dateStr: string
   label?: string
-}): Promise<{ ok: true; waybillNos: string[] } | InboundWaybillFetchError> {
+}): Promise<{ ok: true; records: unknown[] } | InboundWaybillFetchError> {
   const normalizedToken = normalizeImileToken(input.token)
   const url = envFirstOr(['IMILE_INBOUND_URL'], DEFAULT_INBOUND_URL)
   const headers = makeInboundHeaders(normalizedToken, input.stationCode)
@@ -302,6 +302,18 @@ export async function fetchInboundWaybillNos(input: {
     return { ok: false, status: result.status, message: result.message }
   }
 
+  return { ok: true, records: result.records }
+}
+
+/** 到件扫描 inbound/query，提取 waybillNo 列表 */
+export async function fetchInboundWaybillNos(input: {
+  token: string
+  stationCode: string
+  dateStr: string
+  label?: string
+}): Promise<{ ok: true; waybillNos: string[] } | InboundWaybillFetchError> {
+  const result = await fetchInboundRecords(input)
+  if (!result.ok) return result
   return { ok: true, waybillNos: extractWaybillNos(result.records) }
 }
 

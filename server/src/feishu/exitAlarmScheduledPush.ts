@@ -7,7 +7,7 @@ import { sendSupplierPushCard } from './sendSupplierPushCard'
 import { recordFeishuPushMessage } from './pushMessageRepository'
 import { envFirst } from '../imile/shared'
 import { getGlobalImileToken } from './globalImileToken'
-import { fetchWaybillDetailsByInboundIndex } from '../imile/inboundWaybillIndex'
+import { fetchExitAlarmWaybillRecords } from '../imile/ofdReport'
 import { resolveRegionTz, type AusTz } from '../imile/ausTimezone'
 import { computeThresholdMsOnDate } from '../imile/before11Exit'
 import {
@@ -166,12 +166,12 @@ export async function executeExitAlarmPush(params: {
   // 多到件日：逐日拉数后按运单号去重合并（同一单可能在多天的到件索引里出现），后续统计口径不变
   const byWaybillNo = new Map<string, Record<string, unknown>>()
   for (const dateStr of dates) {
-    const result = await fetchWaybillDetailsByInboundIndex({ token, stationCode, dateStr, tz, label })
+    const result = await fetchExitAlarmWaybillRecords({ token, stationCode, dateStr, label })
     if (!result.ok) {
       console.error(`${label} 到件日 ${dateStr} 运单查询失败: ${result.message}`)
       return { error: `到件日 ${dateStr} 运单查询失败: ${result.message}` }
     }
-    for (const record of result.records as Array<Record<string, unknown>>) {
+    for (const record of result.records) {
       const no = typeof record.waybillNo === 'string' ? record.waybillNo.trim() : ''
       byWaybillNo.set(no || `__idx_${byWaybillNo.size}`, record)
     }
