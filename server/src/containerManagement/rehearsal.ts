@@ -161,7 +161,7 @@ async function main() {
   expect('Step 0', 'A 台账', 0, await balanceOf(A.id))
 
   // ── Step 1：B 借 100 给 A ───────────────────────────────────────────
-  const [t1] = await createTransfersBatch(
+  const { ids: [t1] } = await createTransfersBatch(
     [{ kind: 'LEND', fromAccountId: B.id, toAccountId: A.id, lineItems: [{ containerType: SILVER, quantity: 100 }] }],
     null,
   )
@@ -182,7 +182,7 @@ async function main() {
   )
 
   // ── Step 2：A 归还 12 ───────────────────────────────────────────────
-  const [t2] = await createTransfersBatch(
+  const { ids: [t2] } = await createTransfersBatch(
     [{ kind: 'RETURN', fromAccountId: A.id, toAccountId: B.id, lineItems: [{ containerType: SILVER, quantity: 12 }] }],
     null,
   )
@@ -197,7 +197,7 @@ async function main() {
   )
 
   // ── Step 3：差异场景 —— B 发 50，A 只收到 45 ────────────────────────
-  const [t3] = await createTransfersBatch(
+  const { ids: [t3] } = await createTransfersBatch(
     [{ kind: 'LEND', fromAccountId: B.id, toAccountId: A.id, lineItems: [{ containerType: SILVER, quantity: 50 }] }],
     null,
   )
@@ -244,7 +244,7 @@ async function main() {
   )
 
   // ── Step 5：外部方代确认 ────────────────────────────────────────────
-  const [t5] = await createTransfersBatch(
+  const { ids: [t5] } = await createTransfersBatch(
     [{ kind: 'LEND', fromAccountId: A.id, toAccountId: C.id, lineItems: [{ containerType: SILVER, quantity: 30 }] }],
     null,
   )
@@ -273,7 +273,7 @@ async function main() {
   expect('Step 5', 'A 视角 对C net(C欠我30)', 30, await netOf(A.id, C.id))
 
   // ── Step 6：外部方余额转负 ──────────────────────────────────────────
-  const [t6] = await createTransfersBatch(
+  const { ids: [t6] } = await createTransfersBatch(
     [{ kind: 'RETURN', fromAccountId: C.id, toAccountId: A.id, lineItems: [{ containerType: SILVER, quantity: 40 }] }],
     null,
   )
@@ -311,7 +311,7 @@ async function main() {
   expect('Step 9', '新品类被认作可用品类(1=是)', 1, isActiveType(REHEARSAL_TYPE) ? 1 : 0)
 
   await createBalance({ accountId: B.id, containerType: REHEARSAL_TYPE, quantity: 60, actorUserId: null })
-  const [t9] = await createTransfersBatch(
+  const { ids: [t9] } = await createTransfersBatch(
     [{ kind: 'LEND', fromAccountId: B.id, toAccountId: A.id, lineItems: [{ containerType: REHEARSAL_TYPE, quantity: 20 }] }],
     null,
   )

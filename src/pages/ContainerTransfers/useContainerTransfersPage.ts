@@ -351,6 +351,7 @@ export function useContainerTransfersPage() {
         editing ? t('toast.transferUpdated') : t('toast.transferCreated', { count: drafts.length }),
         'success',
       )
+      if (res.warnings?.length) showToast(res.warnings.join('；'), 'warning', 8)
       setFormOpen(false)
       setEditing(null)
       await refresh()
@@ -384,6 +385,9 @@ export function useContainerTransfersPage() {
         return false
       }
       showToast(t('toast.importSuccess', { count: res.data.created }), 'success')
+      if (res.warnings?.length) {
+        showToast(res.warnings.map((w) => mapImportErrorRowNo(w, rowNos)).join('；'), 'warning', 8)
+      }
       setImportOpen(false)
       await refresh()
       return true

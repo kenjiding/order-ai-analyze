@@ -217,19 +217,7 @@ export async function updateBalance(
     const existing = locked[0]
     if (!existing) throw new ContainerBusinessError('台账记录不存在', 404)
 
-    // 调低到低于已承诺出去的数量，会让待确认的流转永远无法入账
-    if (input.quantity < existing.quantity) {
-      const pending = await sumPendingOutbound(
-        tx,
-        existing.accountId,
-        existing.containerType as ContainerType,
-      )
-      if (input.quantity < pending) {
-        throw new ContainerBusinessError(
-          `「${labelOf(existing.containerType)}」有 ${pending} 个已被待确认的流转占用，数量不能调低到 ${pending} 以下`,
-        )
-      }
-    }
+    // 不按待确认流转的占用量设下限：盘点数就是实物数，流转入账允许扣成负数，见 transferService.applyBalances
 
     await tx
       .update(schema.containerBalances)

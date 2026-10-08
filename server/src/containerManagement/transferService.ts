@@ -119,8 +119,8 @@ function normalizeLineItems(lineItems: TransferLineInput[]): TransferLineInput[]
  * 外部方（清关行、客户、CSP）的余额是衍生推算量，不是我们能核实的实物数：
  * 系统上线前就借出去的存量、走系统外补的货，都会让它天然偏低。
  * 用这个数去拦「容器已经回到我方仓库」的既成事实，结果是我方的真实入库反而记不进账。
- * 所以他们作为转出方时不做可用量校验，余额允许为负 —— 负数正是「有多少借出没进系统」的对账信号。
- * 我方仓库的余额是真实库存，校验一律照旧。
+ * 所以他们作为转出方时不做可用量提示 —— 负数正是「有多少借出没进系统」的对账信号。
+ * 我方站点的余额是真实库存，不足时新建/修改会返回提示（同样放行）。
  */
 async function isExternalAccount(tx: Tx, accountId: string): Promise<boolean> {
   const rows = await tx
@@ -158,7 +158,7 @@ async function lockBalance(tx: Tx, accountId: string, containerType: string) {
 
 /**
  * 把一个品类的数量从转出方划到接收方，并写双边台账审计。
- * 转出方余额行先加行锁再校验，避免并发下双方各自读到足额而超扣。
+ * 余额允许扣成负数：不足只在新建/修改时提示（collectShortages），不拦截既成的实物流转。
  */
 async function applyBalances(
   tx: Tx,
@@ -172,8 +172,6 @@ async function applyBalances(
     toQuantity: number
     transferId: number
     actorUserId: string | null
-    /** 转出方是外部方：余额是推算量，扣成负数也要放行，见 isExternalAccount */
-    allowNegativeFrom?: boolean
     /** 作废冲回：方向已由调用方对调，这里只改台账审计的原因口径，别读成又流转了一次 */
     voiding?: boolean
   },
@@ -201,12 +199,6 @@ async function applyBalances(
   const secondRow = await lockBalance(tx, secondId, containerType)
   const fromRow = firstId === fromAccountId ? firstRow : secondRow
   const toRow = firstId === fromAccountId ? secondRow : firstRow
-
-  if (!params.allowNegativeFrom && fromRow.quantity < fromQuantity) {
-    throw new ContainerBusinessError(
-      `转出方「${labelOf(containerType)}」余额不足：当前 ${fromRow.quantity}，需要 ${fromQuantity}`,
-    )
-  }
 
   const fromNext = fromRow.quantity - fromQuantity
   const toNext = toRow.quantity + toQuantity
@@ -283,16 +275,18 @@ async function applyBalances(
 }
 
 /**
- * 校验转出方可用量：在库数量减去已被待确认流转占用的数量。
- * 外部方直接放行，理由见 isExternalAccount。
+ * 检查转出方可用量（在库数量减去已被待确认流转占用的数量），不足时返回提示而不拦截：
+ * 站点实物已经发出去了，账上不够说明台账本身少记了，拦下来只会让这一趟也进不了账。
+ * 外部方余额本就是推算量、负数是常态，不提示，理由见 isExternalAccount。
  */
-async function assertAvailable(
+async function collectShortages(
   tx: Tx,
   fromAccountId: string,
   lineItems: TransferLineInput[],
   excludeTransferId?: number,
-): Promise<void> {
-  if (await isExternalAccount(tx, fromAccountId)) return
+): Promise<string[]> {
+  if (await isExternalAccount(tx, fromAccountId)) return []
+  const warnings: string[] = []
   for (const item of lineItems) {
     const balance = await lockBalance(tx, fromAccountId, item.containerType)
     const conditions = [
@@ -315,11 +309,12 @@ async function assertAvailable(
       .where(and(...conditions))
     const available = balance.quantity - (pendingRow?.total ?? 0)
     if (available < item.quantity) {
-      throw new ContainerBusinessError(
-        `转出方「${labelOf(item.containerType)}」可用数量不足：可用 ${available}，需要 ${item.quantity}（已扣除待确认的流转）`,
+      warnings.push(
+        `转出方「${labelOf(item.containerType)}」可用数量不足：可用 ${available}，需要 ${item.quantity}（已扣除待确认的流转），确认后余额将为负`,
       )
     }
   }
+  return warnings
 }
 
 export type TransferCreateInput = {
@@ -334,30 +329,26 @@ export type TransferCreateInput = {
 
 /**
  * 单笔落库，调用方负责开事务。
- * 批量新增时多组共用一个事务，assertAvailable 能看到同事务内前几组已占用的量，
- * 「两组都从同一站点转出、加起来超库存」这种情况才拦得住。
+ * 批量新增时多组共用一个事务，collectShortages 能看到同事务内前几组已占用的量，
+ * 「两组都从同一站点转出、加起来超库存」这种情况才提示得出来。
  */
 async function createTransferInTx(
   tx: Tx,
   input: TransferCreateInput,
   actorUserId: string | null,
-): Promise<number> {
+): Promise<{ id: number; warnings: string[] }> {
   const lineItems = normalizeLineItems(input.lineItems)
   if (input.fromAccountId === input.toAccountId) {
     throw new ContainerBusinessError('转出方与接收方不能相同')
   }
   const accounts = await tx
-    .select({ id: schema.containerAccounts.id, isExternal: schema.containerAccounts.isExternal })
+    .select({ id: schema.containerAccounts.id })
     .from(schema.containerAccounts)
     .where(inArray(schema.containerAccounts.id, [input.fromAccountId, input.toAccountId]))
   if (accounts.length !== 2) throw new ContainerBusinessError('站点账户不存在', 404)
-  const fromIsExternal =
-    accounts.find((account) => account.id === input.fromAccountId)?.isExternal === true
 
   const needsConfirm = transferKindNeedsReceiverConfirmation(input.kind)
-  if (needsConfirm) {
-    await assertAvailable(tx, input.fromAccountId, lineItems)
-  }
+  const warnings = needsConfirm ? await collectShortages(tx, input.fromAccountId, lineItems) : []
 
   const [created] = await tx
     .insert(schema.containerTransfers)
@@ -394,12 +385,11 @@ async function createTransferInTx(
         toQuantity: item.quantity,
         transferId,
         actorUserId,
-        allowNegativeFrom: fromIsExternal,
       })
     }
   }
 
-  return transferId
+  return { id: transferId, warnings }
 }
 
 /**
@@ -412,14 +402,19 @@ export async function createTransfersBatch(
   items: TransferCreateInput[],
   actorUserId: string | null,
   unitLabel = '组',
-): Promise<number[]> {
+): Promise<{ ids: number[]; warnings: string[] }> {
   if (items.length === 0) throw new ContainerBusinessError(`至少需要一${unitLabel}流转记录`)
 
   const ids: number[] = []
+  const warnings: string[] = []
   await getDb().transaction(async (tx) => {
     for (const [index, item] of items.entries()) {
       try {
-        ids.push(await createTransferInTx(tx, item, actorUserId))
+        const created = await createTransferInTx(tx, item, actorUserId)
+        ids.push(created.id)
+        for (const warning of created.warnings) {
+          warnings.push(items.length > 1 ? `第 ${index + 1} ${unitLabel}：${warning}` : warning)
+        }
       } catch (error) {
         if (error instanceof ContainerBusinessError) {
           throw new ContainerBusinessError(`第 ${index + 1} ${unitLabel}：${error.message}`, error.status)
@@ -428,7 +423,7 @@ export async function createTransfersBatch(
       }
     }
   })
-  return ids
+  return { ids, warnings }
 }
 
 async function loadTransferForUpdate(tx: Tx, transferId: number) {
@@ -470,7 +465,6 @@ export async function confirmTransfer(input: {
     if (transfer.status !== 'PENDING_RECEIVER') {
       throw new ContainerBusinessError('仅待接收方确认的记录可确认收货')
     }
-    const allowNegativeFrom = await isExternalAccount(tx, transfer.fromAccountId)
     for (const item of items) {
       await applyBalances(tx, {
         fromAccountId: transfer.fromAccountId,
@@ -480,7 +474,6 @@ export async function confirmTransfer(input: {
         toQuantity: item.declaredQuantity,
         transferId: transfer.id,
         actorUserId: input.actorUserId,
-        allowNegativeFrom,
       })
       await tx
         .update(schema.containerTransferItems)
@@ -604,7 +597,6 @@ export async function acceptSettlement(input: {
       return
     }
 
-    const allowNegativeFrom = await isExternalAccount(tx, transfer.fromAccountId)
     for (const item of items) {
       const received = item.receivedQuantity ?? 0
       await applyBalances(tx, {
@@ -616,7 +608,6 @@ export async function acceptSettlement(input: {
         toQuantity: received,
         transferId: transfer.id,
         actorUserId: input.actorUserId,
-        allowNegativeFrom,
       })
       await tx
         .update(schema.containerTransferItems)
@@ -665,7 +656,8 @@ export async function updateTransfer(input: {
   note?: string | null
   reason?: string
   actorUserId: string | null
-}): Promise<void> {
+}): Promise<{ warnings: string[] }> {
+  let warnings: string[] = []
   await getDb().transaction(async (tx) => {
     const { transfer, items } = await loadTransferForUpdate(tx, input.transferId)
     if (
@@ -682,7 +674,7 @@ export async function updateTransfer(input: {
         throw new ContainerBusinessError('仅待接收方确认的记录可修改流转明细')
       }
       const lineItems = normalizeLineItems(input.lineItems)
-      await assertAvailable(tx, transfer.fromAccountId, lineItems, transfer.id)
+      warnings = await collectShortages(tx, transfer.fromAccountId, lineItems, transfer.id)
       await tx
         .delete(schema.containerTransferItems)
         .where(eq(schema.containerTransferItems.transferId, transfer.id))
@@ -715,6 +707,7 @@ export async function updateTransfer(input: {
       actorUserId: input.actorUserId,
     })
   })
+  return { warnings }
 }
 
 export async function deleteTransfer(input: {
@@ -789,7 +782,6 @@ export async function voidTransfer(input: {
         toQuantity: item.declaredQuantity,
         transferId: transfer.id,
         actorUserId: input.actorUserId,
-        allowNegativeFrom: true,
         voiding: true,
       })
     }

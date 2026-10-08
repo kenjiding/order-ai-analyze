@@ -17,7 +17,8 @@ import type {
   TransferKind,
 } from './types'
 
-export type ApiResult<T> = { ok: true; data: T } | { ok: false; error: string }
+/** warnings：操作已成功但需要提醒的事项（如转出方余额不足、确认后将为负） */
+export type ApiResult<T> = { ok: true; data: T; warnings?: string[] } | { ok: false; error: string }
 
 const BASE = '/api/container-management'
 
@@ -27,9 +28,9 @@ async function apiFetch<T>(path: string, options?: RequestInit): Promise<ApiResu
       headers: { 'Content-Type': 'application/json' },
       ...options,
     })
-    type Wire = { ok?: boolean; data?: T; error?: string }
+    type Wire = { ok?: boolean; data?: T; error?: string; warnings?: string[] }
     const json = (await res.json()) as Wire
-    if (json.ok === true) return { ok: true, data: json.data as T }
+    if (json.ok === true) return { ok: true, data: json.data as T, warnings: json.warnings }
     return { ok: false, error: typeof json.error === 'string' ? json.error : '请求失败' }
   } catch {
     return { ok: false, error: `无法访问后端 (${path})` }

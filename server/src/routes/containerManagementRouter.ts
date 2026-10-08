@@ -597,11 +597,11 @@ containerManagementRouter.post('/transfers', async (req: AuthenticatedRequest, r
   try {
     const denied = await assertCanActAsFrom(req, parsed, '组')
     if (denied) return fail(res, 403, denied)
-    const ids = await createTransfersBatch(parsed, req.authUser?.id ?? null, '组')
+    const { ids, warnings } = await createTransfersBatch(parsed, req.authUser?.id ?? null, '组')
     const created = (await Promise.all(ids.map((id) => getTransfer(id)))).filter(
       (item): item is NonNullable<typeof item> => item !== null,
     )
-    res.status(201).json({ ok: true, data: created })
+    res.status(201).json({ ok: true, data: created, warnings })
     fireTransferBatchNotify(req, created)
   } catch (error) {
     handleError(res, error, '创建流转记录失败')
@@ -629,8 +629,8 @@ containerManagementRouter.post('/transfers/import', async (req: AuthenticatedReq
   try {
     const denied = await assertCanActAsFrom(req, parsed, '行')
     if (denied) return fail(res, 403, denied)
-    const ids = await createTransfersBatch(parsed, req.authUser?.id ?? null, '行')
-    res.status(201).json({ ok: true, data: { created: ids.length } })
+    const { ids, warnings } = await createTransfersBatch(parsed, req.authUser?.id ?? null, '行')
+    res.status(201).json({ ok: true, data: { created: ids.length }, warnings })
     fireTransferBatchNotifyByIds(req, ids)
   } catch (error) {
     handleError(res, error, '导入流转记录失败')
@@ -750,7 +750,7 @@ containerManagementRouter.patch('/transfers/:id', async (req: AuthenticatedReque
   try {
     const loaded = await loadTransferWithRole(req, res, 'from')
     if (!loaded) return
-    await updateTransfer({
+    const { warnings } = await updateTransfer({
       transferId: loaded.transfer.id,
       lineItems,
       occurredAt,
@@ -758,7 +758,7 @@ containerManagementRouter.patch('/transfers/:id', async (req: AuthenticatedReque
       reason: body.reason === undefined ? '' : String(body.reason),
       actorUserId: req.authUser?.id ?? null,
     })
-    res.json({ ok: true, data: await getTransfer(loaded.transfer.id) })
+    res.json({ ok: true, data: await getTransfer(loaded.transfer.id), warnings })
   } catch (error) {
     handleError(res, error, '修改流转记录失败')
   }
