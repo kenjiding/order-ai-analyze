@@ -47,3 +47,41 @@ test('OFD 命中 = 已出仓；重派取有效那次；只剩失效记录仍算�
   assert.deepEqual(pick('C'), [true, 'V3', 'R-OFD', 'C-OFD'])
   assert.deepEqual(pick('D'), [false, '', 'R-D', 'C-D'])
 })
+
+test('24H 明细：派件=OFD scanTime、签收=OFD deliveredTime、问题件取最后一次登记；未出仓单路由码/商家/邮编取到件记录', async () => {
+  const { buildDispatchWaybillRecords, indexLastProblems } = await import('./ofdReport')
+  const { isDispatch24hMet, isDispatch24hProblem } = await import('../vendorAnalysis/dispatch24hAggregate')
+  const ofdByNo = indexOfdRows([
+    { ...ofd('S', '2026-10-06 17:39:19', 'V1'), deliveredTime: '2026-10-07 12:46:39', consigneeZipCode: '5074', consigneeCity: 'NEWTON' },
+    { ...ofd('P', '2026-10-06 17:02:55', 'V1'), deliveredTime: null },
+  ])
+  // P 报过两次问题件：取最晚那次（第一次在派件前，不算本次派送）
+  const problemByNo = indexLastProblems([
+    { waybillNo: 'P', registerDate: '2026-10-07 17:30:11', problemReasonDesc: '地址错误' },
+    { waybillNo: 'P', registerDate: '2026-10-08 09:05:47', problemReasonDesc: '没有联系上', lastScanStationCode: 'S210431701' },
+    // 错发件：已转运到外站，最新扫描网点不是本站
+    { waybillNo: 'N', registerDate: '2026-10-06 15:56:24', problemReasonDesc: '错发件', lastScanStationCode: 'S210319' },
+  ])
+  const records = buildDispatchWaybillRecords({
+    waybillNos: ['S', 'P', 'N'],
+    ofdByNo,
+    problemByNo,
+    inboundRows: [{ waybillNo: 'N', routeCode: 'R-N', clientCode: 'C-N', consigneeZipCode: '5000', consigneeCity: 'ADELAIDE', city: 'GILLMAN' }],
+  })
+  const [s, p, n] = records as any[]
+  assert.deepEqual(
+    [s.deliveryTime, s.signDate, s.courierVendorCode, s.consigneeZipCode, s.consigneeCity, s.lastProblemDate],
+    ['2026-10-06 17:39:19', '2026-10-07 12:46:39', 'V1', '5074', 'NEWTON', null],
+  )
+  assert.deepEqual([p.signDate, p.lastProblemDate, p.problemReason], [null, '2026-10-08 09:05:47', '没有联系上'])
+  assert.deepEqual([s.lastScanSiteCode, p.lastScanSiteCode, n.lastScanSiteCode], ['', 'S210431701', 'S210319'])
+  assert.deepEqual(
+    [n.deliveryTime, n.courierVendorCode, n.consigneeRouteCode, n.clientCode, n.consigneeZipCode, n.consigneeCity],
+    [null, '', 'R-N', 'C-N', '5000', 'ADELAIDE'],
+  )
+  // 接上原有 24H 判定：S 24h 内签收达标；P 是本次派送的问题件；N 未出仓不达标
+  const rule = { kind: 'rolling24h' } as const
+  assert.equal(isDispatch24hMet(s, rule), true)
+  assert.equal(isDispatch24hProblem(p), true)
+  assert.equal(isDispatch24hMet(n, rule), false)
+})

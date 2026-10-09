@@ -1,6 +1,6 @@
 /**
  * 站点日运单增量同步：写入 driver_map_waybill_points，供 24H 派签告警与司机地图共用。
- * 已达标 / 已超窗口的单号跳过 searchWaybill，只拉未终态子集。
+ * 已达标 / 已超窗口的单号跳过明细拉取（OFD 报表 + 问题件），只拉未终态子集。
  */
 import { and, eq, sql } from 'drizzle-orm'
 import { getDb, schema } from '../db'

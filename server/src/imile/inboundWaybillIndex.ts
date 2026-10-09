@@ -23,6 +23,7 @@ import {
 } from './portal'
 import { envFirstOr, isRecord, normalizeImileToken, sleep } from './shared'
 import { AUS_TZ, type AusTz } from './ausTimezone'
+import { fetchDispatchWaybillDetails } from './ofdReport'
 
 const DEFAULT_DS_WAYBILL_URL = 'https://ds.imile.com/saastms/v1/biz/waybillInfo/searchWaybill'
 const DEFAULT_INBOUND_URL = 'https://ds.imile.com/lm/express/ops/v1/biz/inbound/query'
@@ -305,6 +306,41 @@ export async function fetchInboundRecords(input: {
   return { ok: true, records: result.records }
 }
 
+/**
+ * 按单号查到件扫描 inbound/query（searchNoList），取回原始记录（含 routeCode / clientCode / 邮编）。
+ * 时间窗放宽到 2018 至明天，覆盖任意到件日；查不到的单号不出现在结果里。
+ */
+export async function fetchInboundRecordsByNos(input: {
+  token: string
+  stationCode: string
+  waybillNos: string[]
+  label: string
+}): Promise<{ ok: true; records: unknown[] } | InboundWaybillFetchError> {
+  const url = envFirstOr(['IMILE_INBOUND_URL'], DEFAULT_INBOUND_URL)
+  const headers = makeInboundHeaders(normalizeImileToken(input.token), input.stationCode)
+  const endDate = utcMsToLocalStr(Date.now() + 24 * 60 * 60 * 1000, INBOUND_INDEX_MELBOURNE_TZ).slice(0, 10)
+  const records: unknown[] = []
+  for (const batch of chunkArray(input.waybillNos, SEARCH_WAYBILL_BATCH_SIZE)) {
+    const result = await fetchPaginatedResultRows({
+      label: input.label,
+      pageShowCount: INBOUND_PAGE_SHOW_COUNT,
+      pageDelayMs: INBOUND_PAGE_DELAY_MS,
+      buildPageBody: ({ currentPage, showCount }) => ({
+        ...INBOUND_QUERY_DEFAULTS,
+        searchNoList: batch,
+        startTime: '2018-01-01 00:00:00',
+        endTime: `${endDate} 23:59:59`,
+        currentPage,
+        showCount,
+      }),
+      requestPage: (body) => requestImileApi({ url, method: 'POST', headers, body, label: input.label }),
+    })
+    if (!result.ok) return { ok: false, status: result.status, message: result.message }
+    records.push(...result.records)
+  }
+  return { ok: true, records }
+}
+
 /** 到件扫描 inbound/query，提取 waybillNo 列表 */
 export async function fetchInboundWaybillNos(input: {
   token: string
@@ -469,7 +505,7 @@ export type IncrementalWaybillFetchSuccess = {
   ok: true
   /** 到件索引全量单号（含本次跳过未重拉的终态单） */
   waybillNos: string[]
-  /** 本次实际重新 searchWaybill 的单号数 */
+  /** 本次实际重新拉明细的单号数 */
   fetchedCount: number
   /** 因已达标/已超窗口而跳过的单号数 */
   skippedCount: number
@@ -477,7 +513,7 @@ export type IncrementalWaybillFetchSuccess = {
 }
 
 /**
- * 24H 派签增量拉数：到件索引仍全量（可走 DB 缓存），searchWaybill 只拉「未终态」单号。
+ * 24H 派签增量拉数：到件索引仍全量（可走 DB 缓存），明细（OFD 报表 + 问题件）只拉「未终态」单号。
  * 已达标或已拿到签收时间的单复用 cachedByWaybillNo，供告警多时段推送与司机地图刷新共用。
  * 唯一调用方（stationDayWaybillSync）只消费 fetchedRecords，不需要把跳过的缓存行合并回一份
  * 全量 records 数组——大站点几万条时那份合并数组是纯粹的内存浪费，故不再构建。
@@ -507,7 +543,7 @@ export async function fetchWaybillDetailsIncremental(input: {
    */
   forceDetailRefresh?: boolean
   /**
-   * 完全不调 searchWaybill，明细只用缓存。供「上传运单表结算」：iMile 拦截接口时，
+   * 完全不拉明细，只用缓存。供「上传运单表结算」：iMile 拦截接口时，
    * 用户上传的中心运单查询表已先写进缓存（见 upsertStationDayWaybillRecords），这里不能再去拉。
    */
   skipDetailFetch?: boolean
@@ -532,13 +568,12 @@ export async function fetchWaybillDetailsIncremental(input: {
         resolveDispatch24hWindowRule(input.dateStr, input.tz),
       )
 
-  const fetched = await fetchSearchWaybillByNos({
+  // searchWaybill 被 iMile 限流后改走 OFD 报表 + 问题件（字段映射成 searchWaybill 同名，下游缓存/聚合不变）
+  const fetched = await fetchDispatchWaybillDetails({
     token: input.token,
     stationCode: input.stationCode,
-    dateStr: input.dateStr,
     waybillNos: needNos,
     label: input.label,
-    tz: input.tz,
   })
   if (!fetched.ok) return fetched
 
@@ -547,6 +582,6 @@ export async function fetchWaybillDetailsIncremental(input: {
     waybillNos: indexResult.waybillNos,
     fetchedCount: needNos.length,
     skippedCount: indexResult.waybillNos.length - needNos.length,
-    fetchedRecords: fetched.records,
+    fetchedRecords: fetched.records as InboundWaybillRow[],
   }
 }
