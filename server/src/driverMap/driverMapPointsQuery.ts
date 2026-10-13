@@ -3,7 +3,7 @@
  * 数据日与「11点前出仓」一致（before11Date）；分析任务首次同步，手动「刷新」对未终态增量再拉。
  * 坐标来源：iMile 分拣坐标查询（sorting/pageList），按运单号直接取，见 ../imile/sortingGeocoding。
  */
-import { and, eq, inArray, isNotNull, isNull, lt, ne, or, sql } from 'drizzle-orm'
+import { and, desc, eq, inArray, isNotNull, isNull, lt, ne, or, sql } from 'drizzle-orm'
 import { getDb, schema } from '../db'
 import { AUS_TZ, iMileStrToMs, localDateInTz, type AusTz } from '../imile/ausTimezone'
 import { syncStationDayWaybillsIncremental } from '../imile/stationDayWaybillSync'
@@ -111,6 +111,7 @@ export async function readDriverMapImileToken(): Promise<string> {
     .select({ imileToken: schema.dispatchAlarmSchedules.imileToken, userId: schema.dispatchAlarmSchedules.userId })
     .from(schema.dispatchAlarmSchedules)
     .where(and(isNotNull(schema.dispatchAlarmSchedules.imileToken), ne(schema.dispatchAlarmSchedules.imileToken, '')))
+    .orderBy(desc(schema.dispatchAlarmSchedules.updatedAt))
     .limit(1)
   const row = rows[0]
   if (row?.userId) {

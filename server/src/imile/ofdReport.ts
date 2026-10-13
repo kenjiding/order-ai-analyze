@@ -1,16 +1,16 @@
 /**
- * 滞留数据告警取数：到件 inbound/query 全量 + OFD 出仓报表（ofd/report/list）。
+ * 滞留数据告警（11点前出仓告警）取数：到件 inbound/query 全量 + OFD 出仓报表（ofd/report/list）。
  *
  * iMile 繁忙后 searchWaybill 不能再用，改为：拿到件清单的单号去 OFD 报表里查，
  * 查得到 = 已有司机取货出仓（scanTime 即派件时间）；查不到 = 还没出仓。
  * 输出与 searchWaybill 同名字段的记录，下游 tagBefore11Rows / aggregateBefore11ByScopes 口径不变：
  * 已出仓单的路由码/供应商/商家取 OFD 报表；未出仓单没有承运商与派件时间，路由码/商家取到件扫描记录。
  *
- * 24H 派签告警同样走 OFD：scanTime = 派件时间，deliveredTime = 签收时间（与 delivered/list 的 scanTime 同值）；
- * 问题件时间/原因另走 problem/search（见 fetchDispatchWaybillDetails）。
+ * 24H 派签明细（出仓派签达成分析）原先同样走 OFD + 问题件拼凑，现已换成 Janus 智能取数单接口直查，
+ * 见 inboundWaybillIndex.ts 的 fetchDispatchWaybillDetailsViaJanus；本文件此后只服务 11 点前出仓告警。
  */
 import { requestImileApi } from './client'
-import { fetchInboundRecords, fetchInboundRecordsByNos } from './inboundWaybillIndex'
+import { fetchInboundRecords } from './inboundWaybillIndex'
 import { buildImilePortalHeaders, IMILE_DC_SCAN_QUERY_PORTAL, IMILE_DS_SAAS_TMS_PORTAL } from './portal'
 import { fetchPaginatedResultRows } from './paginatedQuery'
 import { envFirstOr, isRecord, normalizeImileToken, sleep } from './shared'
@@ -232,70 +232,3 @@ export async function fetchLastProblemsByNos(input: {
   return { ok: true, data }
 }
 
-/**
- * OFD + 问题件 + 到件记录 → searchWaybill 形状的明细（字段名与 upsertStationDayWaybillRecords 读取的一致）。
- * 每个单号恰好一条：未出仓单没有承运商/派件/签收时间，路由码/商家/邮编取到件扫描记录。
- */
-export function buildDispatchWaybillRecords(input: {
-  waybillNos: string[]
-  ofdByNo: Map<string, OfdReportRow>
-  problemByNo: Map<string, LastProblem>
-  inboundRows: unknown[]
-}): Array<Record<string, unknown>> {
-  const inboundByNo = new Map<string, Record<string, unknown>>()
-  for (const row of input.inboundRows) {
-    if (!isRecord(row)) continue
-    const no = str(row.waybillNo)
-    if (no && !inboundByNo.has(no)) inboundByNo.set(no, row)
-  }
-  return input.waybillNos.map((waybillNo) => {
-    const ofd = input.ofdByNo.get(waybillNo)
-    const inbound = inboundByNo.get(waybillNo)
-    const problem = input.problemByNo.get(waybillNo)
-    return {
-      waybillNo,
-      deliveryTime: ofd?.scanTime || null,
-      signDate: ofd?.deliveredTime || null,
-      courierCode: ofd?.driverCode ?? '',
-      courierVendorCode: ofd?.driverVendorCode ?? '',
-      courier: ofd?.driverName ?? '',
-      consigneeRouteCode: ofd?.consigneeRouteCode || str(inbound?.routeCode),
-      clientCode: ofd?.clientCode || str(inbound?.clientCode),
-      consigneeZipCode: ofd?.consigneeZipCode || str(inbound?.consigneeZipCode),
-      consigneeCity: ofd?.consigneeCity || str(inbound?.consigneeCity),
-      lastProblemDate: problem?.registerDate || null,
-      // 空串时落缓存默认本站（upsertStationDayWaybillRecords）；没报过问题件的单拿不到最新扫描网点
-      lastScanSiteCode: problem?.lastScanStationCode ?? '',
-      problemReason: problem?.reason ?? '',
-    }
-  })
-}
-
-/** 24H 派签明细取数（替代 searchWaybill）：OFD 报表 → 问题件 → 未出仓单补查到件记录 */
-export async function fetchDispatchWaybillDetails(input: {
-  token: string
-  stationCode: string
-  waybillNos: string[]
-  label: string
-}): Promise<{ ok: true; records: Array<Record<string, unknown>> } | { ok: false; status: number; message: string }> {
-  const { token, stationCode, waybillNos, label } = input
-  if (waybillNos.length === 0) return { ok: true, records: [] }
-
-  const ofd = await fetchOfdReportByNos({ token, stationCode, waybillNos, label: `${label} OFD报表` })
-  if (!ofd.ok) return ofd
-  const problems = await fetchLastProblemsByNos({ token, stationCode, waybillNos, label: `${label} 问题件` })
-  if (!problems.ok) return problems
-
-  const notExited = waybillNos.filter((no) => !ofd.data.has(no))
-  let inboundRows: unknown[] = []
-  if (notExited.length > 0) {
-    const inbound = await fetchInboundRecordsByNos({ token, stationCode, waybillNos: notExited, label: `${label} 未出仓到件` })
-    if (!inbound.ok) return { ok: false, status: inbound.status ?? 502, message: inbound.message }
-    inboundRows = inbound.records
-  }
-
-  console.log(
-    `${label} 明细 ${waybillNos.length} 单：已出仓 ${ofd.data.size}，问题件 ${problems.data.size}，未出仓 ${notExited.length}`,
-  )
-  return { ok: true, records: buildDispatchWaybillRecords({ waybillNos, ofdByNo: ofd.data, problemByNo: problems.data, inboundRows }) }
-}
