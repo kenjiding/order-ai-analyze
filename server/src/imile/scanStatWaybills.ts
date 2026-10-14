@@ -2,14 +2,8 @@
  * PDA 扫描统计：按运单号走 Janus 智能取数 AUS 运单查询（ausops/waybillInfo/query），取出商家编码。
  * 原先走中心运单查询（searchWaybill）会被网关限流（429），改走 Janus 单接口直查；
  * Janus 数仓按单号查，不需要 hubcode。
- *
- * Janus 的响应只有 client_code，没有商家名称，名称再用 track（轨迹查询）接口按运单号换——
- * 每个商家只挑一个代表运单号去查，调用量只随「不同商家数」增长，不随运单数增长，
- * 不会重新引入 searchWaybill 那种按全量运单查询被限流的问题。查名称失败不影响主流程，
- * 静默回退成只显示编码（见 resolveClientNames）。
  */
 import { fetchJanusAusWaybills } from './janusClient'
-import { queryImileTracks } from './track'
 
 /** 单次查询单号上限，超出直接拒绝，不在 PDA 这条路上做分批。 */
 export const SCAN_STAT_MAX_WAYBILLS = 1000
@@ -104,33 +98,6 @@ export function buildScanStatSummaryText(stationName: string, groups: ScanStatGr
   return lines.join('\n')
 }
 
-/** 按 clientCode 分组各挑一个代表运单号，用 track 接口换真实商家名称，原地填回 hits。 */
-async function resolveClientNames(token: string, hits: ScanStatHit[]): Promise<void> {
-  const representativeByCode = new Map<string, string>()
-  for (const hit of hits) {
-    if (hit.clientCode && !representativeByCode.has(hit.clientCode)) {
-      representativeByCode.set(hit.clientCode, hit.waybillNo)
-    }
-  }
-  if (representativeByCode.size === 0) return
-
-  const result = await queryImileTracks(token, [...representativeByCode.values()])
-  if (!result.ok) {
-    console.error(`扫描统计查商家名称失败，回退为只显示编码: ${result.message}`)
-    return
-  }
-
-  const nameByCode = new Map<string, string>()
-  for (const [code, waybillNo] of representativeByCode) {
-    const name = result.orderInfo[waybillNo]?.merchantName?.trim()
-    if (name) nameByCode.set(code, name)
-  }
-  for (const hit of hits) {
-    const name = nameByCode.get(hit.clientCode)
-    if (name) hit.clientName = name
-  }
-}
-
 export async function fetchScanStatWaybills(input: {
   token: string
   waybillNos: string[]
@@ -151,6 +118,5 @@ export async function fetchScanStatWaybills(input: {
       clientName: '',
     })
   }
-  await resolveClientNames(input.token, hits)
   return { ok: true, hits }
 }
