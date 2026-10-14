@@ -1,22 +1,27 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { mapJanusRowToWaybillRecord, mergeJanusWaybillResults } from './inboundWaybillIndex'
+import { buildDispatchWaybillRecord } from './inboundWaybillIndex'
 
-test('Janus 行 → searchWaybill 同名字段：deliveryTime 取最新派件优先，signDate 取签收，未签收为 null', () => {
-  const row = mapJanusRowToWaybillRecord({
-    waybill_no: 'W1',
-    first_delivery_date: '2026-10-08 08:00:00',
-    last_delivery_date: '2026-10-08 09:00:00',
-    delivered_date: '2026-10-08 12:00:00',
-    courier_code: 'D1',
-    courier: '张三',
-    dispatch_vendor_code: 'V1',
-    consignee_route_code: 'R1',
-    client_code: 'C1',
-    consignee_zip_code: '5000',
-    consignee_city: 'ADELAIDE',
-    last_problem_date: '',
-  })
+test('三报表拼字段：OFD 给 deliveryTime/承运商，delivered/query 优先给 signDate，problem/search 给问题件', () => {
+  const row = buildDispatchWaybillRecord(
+    'W1',
+    {
+      waybillNo: 'W1',
+      consigneeRouteCode: 'R1',
+      driverVendorCode: 'V1',
+      driverCode: 'D1',
+      driverName: '张三',
+      clientCode: 'C1',
+      scanTime: '2026-10-08 09:00:00',
+      deliveredTime: '2026-10-08 20:00:00',
+      consigneeZipCode: '5000',
+      consigneeCity: 'ADELAIDE',
+      valid: true,
+    },
+    { deliveredDate: '2026-10-08 12:00:00', daCode: 'D1', daName: '张三', clientCode: 'C1', routeCode: 'R1' },
+    { registerDate: '', reason: '', lastScanStationCode: '' },
+    { routeCode: 'R0', clientCode: 'C0' },
+  )
   assert.deepEqual(
     [row.waybillNo, row.deliveryTime, row.signDate, row.courierCode, row.courier, row.courierVendorCode],
     ['W1', '2026-10-08 09:00:00', '2026-10-08 12:00:00', 'D1', '张三', 'V1'],
@@ -25,23 +30,32 @@ test('Janus 行 → searchWaybill 同名字段：deliveryTime 取最新派件优
   assert.equal(row.lastProblemDate, null)
 })
 
-test('没有 last_delivery_date 时回退 first_delivery_date；两者都空则 deliveryTime 为 null', () => {
-  const withFirstOnly = mapJanusRowToWaybillRecord({ waybill_no: 'W2', first_delivery_date: '2026-10-08 08:00:00' })
-  assert.equal(withFirstOnly.deliveryTime, '2026-10-08 08:00:00')
-
-  const withNeither = mapJanusRowToWaybillRecord({ waybill_no: 'W3' })
-  assert.equal(withNeither.deliveryTime, null)
-  assert.equal(withNeither.signDate, null)
+test('未出仓单：OFD 查不到时路由码/商家码退回到件记录兜底，deliveryTime/signDate 仍为空', () => {
+  const row = buildDispatchWaybillRecord('W2', undefined, undefined, undefined, { routeCode: 'R0', clientCode: 'C0' })
+  assert.equal(row.deliveryTime, null)
+  assert.equal(row.signDate, null)
+  assert.equal(row.consigneeRouteCode, 'R0')
+  assert.equal(row.clientCode, 'C0')
 })
 
-test('Janus 还没同步到的单号用占位行兜底，不能从结果里整条消失（否则会被 selectWaybillNosNeedingRefresh/聚合悄悄漏计）', () => {
-  const janusByNo = new Map([['W1', { waybill_no: 'W1', last_delivery_date: '2026-10-08 09:00:00' }]])
-  const records = mergeJanusWaybillResults(['W1', 'W2'], janusByNo)
-  assert.equal(records.length, 2)
-  assert.equal(records[0].waybillNo, 'W1')
-  assert.equal(records[0].deliveryTime, '2026-10-08 09:00:00')
-  // W2 没在 Janus 结果里：仍要占一条位，deliveryTime/signDate 为空、不是「终态」，下一轮会继续重拉
-  assert.equal(records[1].waybillNo, 'W2')
-  assert.equal(records[1].deliveryTime, null)
-  assert.equal(records[1].signDate, null)
+test('三份明细都查不到时仍产出空壳行，不从结果里消失（否则会被 selectWaybillNosNeedingRefresh/聚合悄悄漏计）', () => {
+  const row = buildDispatchWaybillRecord('W3', undefined, undefined, undefined, undefined)
+  assert.equal(row.waybillNo, 'W3')
+  assert.equal(row.deliveryTime, null)
+  assert.equal(row.signDate, null)
+  assert.equal(row.consigneeRouteCode, '')
+  assert.equal(row.clientCode, '')
+})
+
+test('问题件：registerDate/reason/lastScanStationCode 原样透传到 lastProblemDate/problemReason/lastScanSiteCode', () => {
+  const row = buildDispatchWaybillRecord(
+    'W4',
+    undefined,
+    undefined,
+    { registerDate: '2026-10-08 10:00:00', reason: '地址不详', lastScanStationCode: 'S1' },
+    undefined,
+  )
+  assert.equal(row.lastProblemDate, '2026-10-08 10:00:00')
+  assert.equal(row.problemReason, '地址不详')
+  assert.equal(row.lastScanSiteCode, 'S1')
 })

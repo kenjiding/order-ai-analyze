@@ -2,7 +2,6 @@ import { fetchFeishuJson } from './feishuHttpClient'
 
 const FEISHU_CHATS_URL = 'https://open.feishu.cn/open-apis/im/v1/chats'
 const FEISHU_MESSAGES_URL = 'https://open.feishu.cn/open-apis/im/v1/messages'
-const FEISHU_FILES_URL = 'https://open.feishu.cn/open-apis/im/v1/files'
 
 const MAX_PAGES = 20
 
@@ -76,41 +75,6 @@ export async function listFeishuBotChats(
  * receiveIdType 决定 receiveId 的含义：chat_id 发群、open_id 私聊到人。
  * @see https://open.feishu.cn/document/server-docs/im-v1/message/create
  */
-/**
- * 上传文件拿到 file_key，再以 msg_type=file 发出。xlsx 的 file_type 用 xls，飞书才会当表格预览。
- * @see https://open.feishu.cn/document/server-docs/im-v1/file/create
- */
-export async function uploadFeishuFile(
-  tenantToken: string,
-  fileName: string,
-  bytes: Buffer,
-): Promise<{ ok: true; fileKey: string } | { ok: false; error: string }> {
-  const form = new FormData()
-  form.append('file_type', 'xls')
-  form.append('file_name', fileName)
-  form.append(
-    'file',
-    new Blob([new Uint8Array(bytes)], {
-      type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-    }),
-    fileName,
-  )
-  const result = await fetchFeishuJson(FEISHU_FILES_URL, {
-    method: 'POST',
-    headers: { Authorization: `Bearer ${tenantToken}` },
-    body: form,
-  })
-  if (!result.ok) return { ok: false, error: result.error }
-  const obj = asRecord(result.json)
-  const code = obj && typeof obj.code === 'number' ? obj.code : NaN
-  const data = asRecord(obj?.data)
-  const fileKey = data && typeof data.file_key === 'string' ? data.file_key : ''
-  if (code !== 0 || !fileKey) {
-    return { ok: false, error: feishuErrorMessage(result.json, result.httpStatus, '飞书上传表格失败') }
-  }
-  return { ok: true, fileKey }
-}
-
 export async function sendFeishuAppMessage(
   tenantToken: string,
   receiveId: string,

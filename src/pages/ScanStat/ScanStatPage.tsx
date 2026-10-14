@@ -17,7 +17,6 @@ import {
 import { GlobalCountrySelector } from '../../components/Layout/GlobalCountrySelector'
 import { GlobalStationSelector } from '../../components/Layout/GlobalStationSelector'
 import { useGlobalStationBootstrap } from '../../components/Layout/useGlobalStationBootstrap'
-import { useAppSettings } from '../../context/AppSettingsContext'
 import { useGlobalFilterStore } from '../../stores/globalFilterStore'
 import {
   fetchFeishuAppBotChats,
@@ -25,7 +24,7 @@ import {
   type FeishuBotChatOption,
   type FeishuChatMemberOption,
 } from '../PushNotifications/feishuWebhookTestApi'
-import { lookupScanStat, pushScanStat, type ScanStatGroup } from './scanStatApi'
+import { lookupScanStat, sendScanStatNos, type ScanStatGroup } from './scanStatApi'
 
 const CHAT_KEY = 'scan-stat-chat-id'
 const OPEN_KEY = 'scan-stat-open-id'
@@ -39,7 +38,6 @@ export default function ScanStatPage({
   onUnauthorized: () => void
   onLogout: () => void
 }) {
-  const { imileToken, settingsLoaded } = useAppSettings()
   useGlobalStationBootstrap()
   const { selectedStations, stations } = useGlobalFilterStore()
   const stationCode = selectedStations[0] ?? ''
@@ -50,9 +48,9 @@ export default function ScanStatPage({
   const [scanHint, setScanHint] = useState('')
   const [groups, setGroups] = useState<ScanStatGroup[] | null>(null)
   const [lookedUpKey, setLookedUpKey] = useState('')
-  const [busy, setBusy] = useState<'lookup' | 'push' | null>(null)
+  const [busy, setBusy] = useState<'lookup' | 'send' | null>(null)
   const [errorMsg, setErrorMsg] = useState('')
-  const [pushedTo, setPushedTo] = useState('')
+  const [sentTo, setSentTo] = useState('')
   const [menuOpen, setMenuOpen] = useState(false)
   const [chats, setChats] = useState<FeishuBotChatOption[]>([])
   const [chatError, setChatError] = useState('')
@@ -122,7 +120,7 @@ export default function ScanStatPage({
     const value = inputValue.trim()
     setInputValue('')
     if (!value) return
-    setPushedTo('')
+    setSentTo('')
     setScannedList((prev) => {
       if (prev.includes(value)) {
         setScanHint(`${value} 已在列表中`)
@@ -134,30 +132,11 @@ export default function ScanStatPage({
   }
 
   const handleLookup = async () => {
-    if (scannedList.length === 0 || !stationCode || !imileToken.trim()) return
+    if (scannedList.length === 0 || !stationCode || !openId) return
     setBusy('lookup')
     setErrorMsg('')
-    setPushedTo('')
-    const res = await lookupScanStat({ imileToken, stationCode, waybillNos: scannedList })
-    setBusy(null)
-    if (!res.ok) {
-      if (res.unauthorized) onUnauthorized()
-      else setErrorMsg(res.error)
-      return
-    }
-    setGroups(res.data.groups)
-    setLookedUpKey(scanKey)
-    inputRef.current?.focus()
-  }
-
-  const handlePush = async () => {
-    if (!lookupFresh || !openId || !stationCode || !imileToken.trim()) return
-    setBusy('push')
-    setErrorMsg('')
-    setPushedTo('')
-    const res = await pushScanStat({
-      imileToken,
-      stationCode,
+    setSentTo('')
+    const res = await lookupScanStat({
       stationName: stationLabel,
       waybillNos: scannedList,
       openId,
@@ -171,19 +150,38 @@ export default function ScanStatPage({
     }
     setGroups(res.data.groups)
     setLookedUpKey(scanKey)
-    setPushedTo(recipientName || openId)
+    setSentTo(recipientName || openId)
+    inputRef.current?.focus()
+  }
+
+  const handleSendNos = async () => {
+    if (scannedList.length === 0 || !stationCode || !openId) return
+    setBusy('send')
+    setErrorMsg('')
+    setSentTo('')
+    const res = await sendScanStatNos({
+      stationName: stationLabel,
+      waybillNos: scannedList,
+      openId,
+      recipientName,
+    })
+    setBusy(null)
+    if (!res.ok) {
+      if (res.unauthorized) onUnauthorized()
+      else setErrorMsg(res.error)
+      return
+    }
+    setSentTo(recipientName || openId)
     inputRef.current?.focus()
   }
 
   const disabledReason = !stationCode
     ? '请先在右上角菜单中选择责任站点'
-    : !imileToken.trim()
-      ? '请先在电脑端「系统设置」中配置 iMile Token'
-      : scannedList.length === 0
-        ? '请先扫描运单号'
-        : lookupFresh && !openId
-          ? '请选择飞书群和接收人'
-          : ''
+    : scannedList.length === 0
+      ? '请先扫描运单号'
+      : !openId
+        ? '请选择飞书群和接收人'
+        : ''
 
   const merchantCount = groups?.filter((g) => g.kind === 'merchant').length ?? 0
 
@@ -243,13 +241,6 @@ export default function ScanStatPage({
             </div>
           </div>
         </>
-      )}
-
-      {settingsLoaded && !imileToken.trim() && (
-        <div className="flex shrink-0 items-center gap-1.5 border-b border-amber-200 bg-amber-50 px-2.5 py-1.5">
-          <TriangleAlert className="h-3.5 w-3.5 shrink-0 text-amber-600" aria-hidden strokeWidth={2} />
-          <span className="text-xs font-medium text-amber-700">未配置 iMile Token，请在电脑端「系统设置」中配置</span>
-        </div>
       )}
 
       <main className="min-h-0 flex-1 space-y-2.5 overflow-y-auto px-2.5 pb-2.5 pt-2.5">
@@ -346,7 +337,7 @@ export default function ScanStatPage({
           />
           {chatError ? <p className="text-xs text-red-600">{chatError}</p> : null}
           {memberError ? <p className="text-xs text-red-600">{memberError}</p> : null}
-          <p className="text-[11px] leading-relaxed text-zinc-400">先选机器人所在的群，再选群里的人。Excel 发到对方私聊，不发到群里。</p>
+          <p className="text-[11px] leading-relaxed text-zinc-400">先选机器人所在的群，再选群里的人。运单号发到对方私聊，不发到群里。</p>
         </div>
 
         {lookupFresh && groups && (
@@ -385,32 +376,37 @@ export default function ScanStatPage({
             {errorMsg}
           </div>
         )}
-        {pushedTo && (
+        {sentTo && (
           <div className="flex items-center gap-1.5 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-medium text-emerald-800">
             <CircleCheck className="h-3.5 w-3.5 shrink-0" aria-hidden strokeWidth={2} />
-            已私聊推送给 {pushedTo}
+            已私聊发送给 {sentTo}
           </div>
         )}
       </main>
 
       <div className="z-20 shrink-0 border-t border-zinc-200/80 bg-white/95 px-2.5 pb-[max(env(safe-area-inset-bottom),0.5rem)] pt-2 backdrop-blur-sm">
         {disabledReason ? <p className="mb-1 text-center text-[11px] text-zinc-400">{disabledReason}</p> : null}
-        <Button
-          type="primary"
-          block
-          loading={busy !== null}
-          disabled={!!disabledReason || busy !== null}
-          nativeType="button"
-          onClick={() => void (lookupFresh ? handlePush() : handleLookup())}
-        >
-          {busy === 'lookup'
-            ? '查询中...'
-            : busy === 'push'
-              ? '推送中...'
-              : lookupFresh
-                ? `推送给${recipientName || '接收人'}（${scannedList.length}）`
-                : `查询商家（${scannedList.length}）`}
-        </Button>
+        <div className="flex gap-2">
+          <Button
+            className="flex-1"
+            loading={busy === 'lookup'}
+            disabled={!!disabledReason || busy !== null}
+            nativeType="button"
+            onClick={() => void handleLookup()}
+          >
+            {busy === 'lookup' ? '查询中...' : `查询商家（${scannedList.length}）`}
+          </Button>
+          <Button
+            type="primary"
+            className="flex-1"
+            loading={busy === 'send'}
+            disabled={!!disabledReason || busy !== null}
+            nativeType="button"
+            onClick={() => void handleSendNos()}
+          >
+            {busy === 'send' ? '发送中...' : `发送订单号（${scannedList.length}）`}
+          </Button>
+        </div>
       </div>
     </div>
   )

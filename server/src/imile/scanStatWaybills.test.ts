@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { buildScanStatXlsx, groupScanStatWaybills } from './scanStatWaybills'
+import { buildScanStatSummaryText, groupScanStatWaybills } from './scanStatWaybills'
 
 test('按商家编码归组，大小写合并，未识别和未查到分开', () => {
   const groups = groupScanStatWaybills(
@@ -24,18 +24,14 @@ test('按商家编码归组，大小写合并，未识别和未查到分开', ()
   assert.deepEqual(groups[2]?.waybillNos, ['W4'])
 })
 
-test('表格一行一个运单，带商家编码和名称', () => {
-  const buf = buildScanStatXlsx([
+test('发飞书的文本带站点、总数、商家数，每组一行', () => {
+  const text = buildScanStatSummaryText('深圳站', [
     { kind: 'merchant', clientCode: 'C01', clientName: '商家甲', waybillNos: ['W1', 'W2'] },
     { kind: 'unknown', clientCode: '', clientName: '未识别商家', waybillNos: ['W3'] },
     { kind: 'unmatched', clientCode: '', clientName: '未查到', waybillNos: ['W9'] },
   ])
-  assert.equal(buf.subarray(0, 2).toString(), 'PK')
-  const xml = buf.toString('utf8')
-  assert.match(xml, /商家编码/)
-  assert.match(xml, /商家甲/)
-  assert.match(xml, /未识别商家/)
-  assert.match(xml, />W1</)
-  assert.match(xml, />W9</)
-  assert.match(xml, /<c r="A4"[^>]*>[^<]*<is><t><\/t>/)
+  assert.match(text, /^深圳站 查询商家（共 4 单，1 个商家）：/)
+  assert.match(text, /C01 商家甲（2）：W1、W2/)
+  assert.match(text, /未识别商家（1）：W3/)
+  assert.match(text, /未查到（1）：W9/)
 })

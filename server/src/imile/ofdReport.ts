@@ -1,22 +1,30 @@
 /**
- * 滞留数据告警（11点前出仓告警）取数：到件 inbound/query 全量 + OFD 出仓报表（ofd/report/list）。
+ * 滞留数据告警（11点前出仓告警）与 24H 派签告警共用的取数：
+ * 到件 inbound/query 全量 + OFD 出仓报表（ofd/report/list）+ 签收查询（delivered/query）+ 问题件（problem/search）。
  *
- * iMile 繁忙后 searchWaybill 不能再用，改为：拿到件清单的单号去 OFD 报表里查，
- * 查得到 = 已有司机取货出仓（scanTime 即派件时间）；查不到 = 还没出仓。
- * 输出与 searchWaybill 同名字段的记录，下游 tagBefore11Rows / aggregateBefore11ByScopes 口径不变：
+ * iMile 繁忙后 searchWaybill 不能再用，改为：拿到件清单的单号去这几个报表接口里查，
+ * 查得到 OFD = 已有司机取货出仓（scanTime 即派件时间）；查不到 = 还没出仓。
+ * 输出与 searchWaybill 同名字段的记录：
  * 已出仓单的路由码/供应商/商家取 OFD 报表；未出仓单没有承运商与派件时间，路由码/商家取到件扫描记录。
  *
- * 24H 派签明细（出仓派签达成分析）原先同样走 OFD + 问题件拼凑，现已换成 Janus 智能取数单接口直查，
- * 见 inboundWaybillIndex.ts 的 fetchDispatchWaybillDetailsViaJanus；本文件此后只服务 11 点前出仓告警。
+ * 24H 派签明细原先走 Janus 智能取数单接口直查，但 Janus 数仓约小时级同步，推送時效跟不上，
+ * 现改回 OFD 报表 + delivered/query（签收时效更好）+ problem/search 三接口拼，见 inboundWaybillIndex.ts
+ * 的 fetchDispatchWaybillDetailsViaReports。
  */
 import { requestImileApi } from './client'
 import { fetchInboundRecords } from './inboundWaybillIndex'
-import { buildImilePortalHeaders, IMILE_DC_SCAN_QUERY_PORTAL, IMILE_DS_SAAS_TMS_PORTAL } from './portal'
+import {
+  buildImilePortalHeaders,
+  IMILE_DC_SCAN_QUERY_PORTAL,
+  IMILE_DELIVERED_QUERY_PORTAL,
+  IMILE_DS_SAAS_TMS_PORTAL,
+} from './portal'
 import { fetchPaginatedResultRows } from './paginatedQuery'
 import { envFirstOr, isRecord, normalizeImileToken, sleep } from './shared'
 
 const DEFAULT_OFD_REPORT_URL = 'https://ds.imile.com/lm/express/ops/v1/biz/ofd/report/list'
 const DEFAULT_PROBLEM_SEARCH_URL = 'https://ds.imile.com/saastms/v1/biz/problem/search'
+const DEFAULT_DELIVERED_QUERY_URL = 'https://ds.imile.com/dms/migrate/report/delivered/query'
 /** iMile 限制：单次最多 1000 单 */
 const OFD_BATCH_SIZE = 1000
 const OFD_BATCH_DELAY_MS = 300
@@ -227,6 +235,94 @@ export async function fetchLastProblemsByNos(input: {
     if (!res.ok) return { ok: false, status: res.status, message: res.message }
 
     indexLastProblems(res.records, data)
+    if (i + OFD_BATCH_SIZE < input.waybillNos.length) await sleep(OFD_BATCH_DELAY_MS)
+  }
+  return { ok: true, data }
+}
+
+/**
+ * 签收查询单条（delivered/query，只取用到的字段）。
+ * 实测抓包确认：响应字段是 deliveredDate/daCode/daName/routeCode，不是文档示例里的
+ * deliveredTime/driverCode/driverName；接口本身不返回承运商编码（只有 daVendorName/vendorShortName
+ * 两个「名称」字段，没有 code），courierVendorCode 仍只能靠 OFD 报表的 driverVendorCode。
+ */
+export type DeliveredQueryRow = {
+  deliveredDate: string
+  daCode: string
+  daName: string
+  clientCode: string
+  routeCode: string
+}
+
+/**
+ * delivered/query 原始行 → waybillNo 索引，取每单最晚一次签收记录（同一单可能有补登记/线下补录
+ * 等多条记录，见响应里的 offlineDeliveredDate/hasDeliveredReason 字段）；查不到 = 还没签收。
+ * 与 indexOfdRows/indexLastProblems 同口径，都要「取最新那条」而不是数组里随便一条。
+ */
+export function indexDeliveredRows(
+  rows: unknown[],
+  into = new Map<string, DeliveredQueryRow>(),
+): Map<string, DeliveredQueryRow> {
+  for (const row of rows) {
+    if (!isRecord(row)) continue
+    const waybillNo = str(row.waybillNo)
+    const deliveredDate = str(row.deliveredDate)
+    if (!waybillNo || !deliveredDate) continue
+    const prev = into.get(waybillNo)
+    if (prev && prev.deliveredDate >= deliveredDate) continue
+    into.set(waybillNo, {
+      deliveredDate,
+      daCode: str(row.daCode),
+      daName: str(row.daName),
+      clientCode: str(row.clientCode),
+      routeCode: str(row.routeCode),
+    })
+  }
+  return into
+}
+
+/**
+ * 按单号批量查签收情况（delivered/query）；比 Janus 数仓时效更好（Janus 约小时级同步），
+ * 24H 派签告警的 signDate 改用这个接口。查不到 = 还没签收。
+ *
+ * 实测确认：请求字段是 waybillNoList（不是文档示例的 waybillNos，那个字段名不生效、
+ * 接口会退化成按 deliveredStartTime/deliveredEndTime 查全站全部签收记录）；
+ * 传 waybillNoList 时不需要再带日期范围，否则没传日期会报「时间范围最大允许选择31天」。
+ */
+export async function fetchDeliveredByNos(input: {
+  token: string
+  stationCode: string
+  waybillNos: string[]
+  label: string
+}): Promise<{ ok: true; data: Map<string, DeliveredQueryRow> } | { ok: false; status: number; message: string }> {
+  const url = envFirstOr(['IMILE_DELIVERED_QUERY_URL'], DEFAULT_DELIVERED_QUERY_URL)
+  const headers = buildImilePortalHeaders({
+    token: normalizeImileToken(input.token),
+    envPrefix: 'IMILE_DELIVERED_QUERY',
+    defaults: IMILE_DELIVERED_QUERY_PORTAL,
+    sharedEnvPrefixes: ['IMILE_VENDOR_LONG_TAIL', 'IMILE_CANCEL_SCAN', 'IMILE_TRACK'],
+    overrides: { hubcode: input.stationCode },
+  })
+
+  const data = new Map<string, DeliveredQueryRow>()
+  for (let i = 0; i < input.waybillNos.length; i += OFD_BATCH_SIZE) {
+    const batch = input.waybillNos.slice(i, i + OFD_BATCH_SIZE)
+    const res = await fetchPaginatedResultRows({
+      label: input.label,
+      pageShowCount: OFD_BATCH_SIZE,
+      pageDelayMs: OFD_BATCH_DELAY_MS,
+      buildPageBody: ({ currentPage, showCount }) => ({
+        certificateId: '',
+        consigneeTaxIdNo: '',
+        currentPage,
+        showCount,
+        waybillNoList: batch,
+      }),
+      requestPage: (body) => requestImileApi({ url, method: 'POST', headers, body, label: input.label }),
+    })
+    if (!res.ok) return { ok: false, status: res.status, message: res.message }
+
+    indexDeliveredRows(res.records, data)
     if (i + OFD_BATCH_SIZE < input.waybillNos.length) await sleep(OFD_BATCH_DELAY_MS)
   }
   return { ok: true, data }

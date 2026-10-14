@@ -4,8 +4,9 @@
  * 五个业务共享同一份索引（谁先跑谁去打 inbound/query，其余命中缓存）：
  * 11点前出仓告警、24小时派签告警、出仓派签达成分析、供应商数据分析、司机地图。
  * 索引之后的明细拉取分两条路：出仓侧全量重拉 searchWaybill（见 fetchWaybillDetailsByInboundIndex），
- * 派签侧走增量 + Janus 智能取数明细缓存（见 fetchWaybillDetailsIncremental）——
- * 派签侧原先因 searchWaybill 被网关限流改走 OFD 报表拼凑，现已换成 Janus 单接口直查（见 janusClient.ts）。
+ * 派签侧走增量 + OFD 报表/签收查询/问题件明细缓存（见 fetchWaybillDetailsIncremental）——
+ * 派签侧原先因 searchWaybill 被网关限流改走 Janus 智能取数单接口，但 Janus 数仓约小时级同步、
+ * 推送时效跟不上，现改回 OFD 报表 + delivered/query + problem/search 三接口拼（见 ofdReport.ts）。
  */
 
 import { and, eq, lt } from 'drizzle-orm'
@@ -24,7 +25,14 @@ import {
 } from './portal'
 import { envFirstOr, isRecord, normalizeImileToken, sleep } from './shared'
 import { AUS_TZ, type AusTz } from './ausTimezone'
-import { fetchJanusAusWaybills, type JanusAusWaybillRow, type JanusClientError } from './janusClient'
+import {
+  fetchDeliveredByNos,
+  fetchLastProblemsByNos,
+  fetchOfdReportByNos,
+  type DeliveredQueryRow,
+  type LastProblem,
+  type OfdReportRow,
+} from './ofdReport'
 
 const DEFAULT_DS_WAYBILL_URL = 'https://ds.imile.com/saastms/v1/biz/waybillInfo/searchWaybill'
 const DEFAULT_INBOUND_URL = 'https://ds.imile.com/lm/express/ops/v1/biz/inbound/query'
@@ -112,6 +120,27 @@ function extractWaybillNos(records: unknown[]): string[] {
     if (no) nos.add(no)
   }
   return [...nos]
+}
+
+export type InboundRouteInfo = { routeCode: string; clientCode: string }
+
+/**
+ * inbound/query 原始记录里的 routeCode/clientCode，按 waybillNo 建索引。
+ * 24H 派签明细（OFD 报表/delivered/query/problem/search）都只对出仓/签收/报问题过的单才有数据，
+ * 未出仓单的路由码只能从这里兜底（Janus 换掉后唯一还能拿到未出仓单路由码的地方）。
+ */
+function extractInboundRouteInfo(records: unknown[]): Map<string, InboundRouteInfo> {
+  const map = new Map<string, InboundRouteInfo>()
+  for (const row of records) {
+    if (!isRecord(row)) continue
+    const no = typeof row.waybillNo === 'string' ? row.waybillNo.trim() : ''
+    if (!no || map.has(no)) continue
+    map.set(no, {
+      routeCode: typeof row.routeCode === 'string' ? row.routeCode.trim() : '',
+      clientCode: typeof row.clientCode === 'string' ? row.clientCode.trim() : '',
+    })
+  }
+  return map
 }
 
 function normalizeWaybillNos(raw: unknown): string[] | null {
@@ -343,7 +372,10 @@ export async function getOrFetchInboundWaybillNos(input: {
   label?: string
   persist?: boolean
   forceRefresh?: boolean
-}): Promise<{ ok: true; waybillNos: string[]; fromCache: boolean } | InboundWaybillFetchError> {
+}): Promise<
+  | { ok: true; waybillNos: string[]; fromCache: boolean; routeInfoByNo?: Map<string, InboundRouteInfo> }
+  | InboundWaybillFetchError
+> {
   if (!input.forceRefresh) {
     const cached = await loadInboundWaybillIndex(input.stationCode, input.dateStr)
     // 空数组也是「有行」：曾在到件尚未入库时被写入 count=0，之后会永久短路真实 inbound。
@@ -356,23 +388,26 @@ export async function getOrFetchInboundWaybillNos(input: {
         count: cached.length,
         fromCache: true,
       })
+      // 缓存只存了 waybillNo 列表，没有 routeCode——命中缓存时拿不到未出仓单的路由码兜底。
       return { ok: true, waybillNos: cached, fromCache: true }
     }
   }
 
-  const inbound = await fetchInboundWaybillNos({
+  const inbound = await fetchInboundRecords({
     token: input.token,
     stationCode: input.stationCode,
     dateStr: input.dateStr,
     label: input.label,
   })
   if (!inbound.ok) return inbound
+  const waybillNos = extractWaybillNos(inbound.records)
+  const routeInfoByNo = extractInboundRouteInfo(inbound.records)
 
   if (input.persist !== false) {
     await saveInboundWaybillIndex({
       stationCode: input.stationCode,
       dataDate: input.dateStr,
-      waybillNos: inbound.waybillNos,
+      waybillNos,
     })
   }
 
@@ -380,11 +415,11 @@ export async function getOrFetchInboundWaybillNos(input: {
     label: input.label,
     stationCode: input.stationCode,
     dateStr: input.dateStr,
-    count: inbound.waybillNos.length,
+    count: waybillNos.length,
     fromCache: false,
   })
 
-  return { ok: true, waybillNos: inbound.waybillNos, fromCache: false }
+  return { ok: true, waybillNos, fromCache: false, routeInfoByNo }
 }
 
 export async function fetchSearchWaybillByNos(input: {
@@ -534,7 +569,13 @@ export async function fetchWaybillDetailsIncremental(input: {
         resolveDispatch24hWindowRule(input.dateStr, input.tz),
       )
 
-  const fetched = await fetchDispatchWaybillDetailsViaJanus(needNos, input.label)
+  const fetched = await fetchDispatchWaybillDetailsViaReports(
+    needNos,
+    input.token,
+    input.stationCode,
+    input.label,
+    indexResult.routeInfoByNo,
+  )
   if (!fetched.ok) return fetched
 
   return {
@@ -547,82 +588,72 @@ export async function fetchWaybillDetailsIncremental(input: {
 }
 
 /**
- * Janus 原始行 → searchWaybill 同名字段的记录，upsertStationDayWaybillRecords 按字段名原样读取。
- * dispatch_station/last_scan_site 与 searchWaybill 的 lastScanSiteCode 对应关系 Janus 文档未确认，
- * 不强行映射，留空走下游「空则按当前站点」的既有兜底；problem_info_problem_type 是问题件类型编码，
- * 不是文案，searchWaybill 的 problemReason 文案 Janus 未提供，同样留空。
+ * 三份明细（OFD 报表/delivered/query/problem/search）+ 到件兜底路由码 → searchWaybill 同名字段的记录，
+ * upsertStationDayWaybillRecords 按字段名原样读取。三份都查不到时仍返回空壳行（见下方说明），
+ * signDate/lastProblemDate 为空即代表未终态，由 isDispatch24hTerminal 继续判断是否要下一轮重拉。
  */
-export function mapJanusRowToWaybillRecord(row: JanusAusWaybillRow): InboundWaybillRow {
-  return {
-    waybillNo: row.waybill_no,
-    deliveryTime: row.last_delivery_date || row.first_delivery_date || null,
-    signDate: row.delivered_date || null,
-    courierCode: row.courier_code || '',
-    courierVendorCode: row.dispatch_vendor_code || '',
-    courier: row.courier || '',
-    consigneeRouteCode: row.consignee_route_code || '',
-    clientCode: row.client_code || '',
-    consigneeZipCode: row.consignee_zip_code || '',
-    consigneeCity: row.consignee_city || '',
-    lastProblemDate: row.last_problem_date || null,
-    lastScanSiteCode: '',
-    problemReason: '',
-  }
-}
-
-/** 空壳占位行：Janus 还没同步到的单号（4 小时批次窗口内刚到件）不能从结果里消失——
- *  下游 selectWaybillNosNeedingRefresh/isDispatch24hTerminal 用 signDate 判断终态，占位行 signDate
- *  为空不会被误判为已完结，下一轮增量会继续重拉，直到 Janus 同步到为止。 */
-function placeholderWaybillRecord(waybillNo: string): InboundWaybillRow {
+export function buildDispatchWaybillRecord(
+  waybillNo: string,
+  ofd: OfdReportRow | undefined,
+  delivered: DeliveredQueryRow | undefined,
+  problem: LastProblem | undefined,
+  routeInfo: InboundRouteInfo | undefined,
+): InboundWaybillRow {
   return {
     waybillNo,
-    deliveryTime: null,
-    signDate: null,
-    courierCode: '',
-    courierVendorCode: '',
-    courier: '',
-    consigneeRouteCode: '',
-    clientCode: '',
-    consigneeZipCode: '',
-    consigneeCity: '',
-    lastProblemDate: null,
-    lastScanSiteCode: '',
-    problemReason: '',
+    // 派件时间只有 OFD 出仓报表有（未出仓单没有，deliveryTime 留空）
+    deliveryTime: ofd?.scanTime || null,
+    // 签收时间优先用 delivered/query（时效优于 OFD，OFD 的 deliveredTime 兜底）
+    signDate: delivered?.deliveredDate || ofd?.deliveredTime || null,
+    courierCode: ofd?.driverCode || delivered?.daCode || '',
+    // delivered/query 不返回承运商编码（只有 daVendorName/vendorShortName 两个名称字段），
+    // courierVendorCode 只能靠 OFD 报表；未出仓单两边都没有，留空走路由码兜底归属
+    courierVendorCode: ofd?.driverVendorCode || '',
+    courier: ofd?.driverName || delivered?.daName || '',
+    // 未出仓单 OFD 没有路由码，依次退回 delivered/query、inbound/query 的到件记录兜底
+    consigneeRouteCode: ofd?.consigneeRouteCode || delivered?.routeCode || routeInfo?.routeCode || '',
+    clientCode: ofd?.clientCode || delivered?.clientCode || routeInfo?.clientCode || '',
+    consigneeZipCode: ofd?.consigneeZipCode || '',
+    consigneeCity: ofd?.consigneeCity || '',
+    lastProblemDate: problem?.registerDate || null,
+    lastScanSiteCode: problem?.lastScanStationCode || '',
+    problemReason: problem?.reason || '',
   }
 }
 
 /**
- * 按请求的 waybillNos 逐一产出一条记录（Janus 查不到的用占位行兜底），
- * 不能只返回 Janus 命中的子集——否则这些单会从 syncStationDayWaybillsIncremental 的
+ * 24H 派签明细取数（替代 Janus 单接口直查）：OFD 报表（出仓/派件时间+承运商）
+ * + delivered/query（签收，时效优于 OFD/Janus）+ problem/search（问题件）三接口拼。
+ * 不能只返回命中的子集——否则查不到的单会从 syncStationDayWaybillsIncremental 的
  * 全量 rows 里彻底消失，违反 selectWaybillNosNeedingRefresh 旁注明的
  * 「未派件的单也要计入 total，不能因为拿不到 deliveryTime 就当它不存在」。
  */
-export function mergeJanusWaybillResults(
+async function fetchDispatchWaybillDetailsViaReports(
   waybillNos: string[],
-  janusByNo: Map<string, JanusAusWaybillRow>,
-): InboundWaybillRow[] {
-  return waybillNos.map((no) => {
-    const row = janusByNo.get(no)
-    return row ? mapJanusRowToWaybillRecord(row) : placeholderWaybillRecord(no)
-  })
-}
-
-/** 24H 派签明细取数（替代 searchWaybill/OFD 拼凑）：Janus AUS 运单查询单接口直查 */
-async function fetchDispatchWaybillDetailsViaJanus(
-  waybillNos: string[],
+  token: string,
+  stationCode: string,
   label: string,
-): Promise<{ ok: true; records: InboundWaybillRow[] } | JanusClientError> {
+  routeInfoByNo?: Map<string, InboundRouteInfo>,
+): Promise<{ ok: true; records: InboundWaybillRow[] } | { ok: false; status: number; message: string }> {
   if (waybillNos.length === 0) return { ok: true, records: [] }
 
-  const janus = await fetchJanusAusWaybills(waybillNos, `${label} Janus运单查询`)
-  if (!janus.ok) return janus
+  const [ofd, delivered, problem] = await Promise.all([
+    fetchOfdReportByNos({ token, stationCode, waybillNos, label: `${label} OFD报表` }),
+    fetchDeliveredByNos({ token, stationCode, waybillNos, label: `${label} 签收查询` }),
+    fetchLastProblemsByNos({ token, stationCode, waybillNos, label: `${label} 问题件` }),
+  ])
+  if (!ofd.ok) return ofd
+  if (!delivered.ok) return delivered
+  if (!problem.ok) return problem
 
-  const missing = waybillNos.length - janus.data.size
-  if (missing > 0) {
-    // Janus 数仓约 4 小时同步一次，刚到件/刚更新的单可能还没同步到——用占位行兜底不丢单，
-    // 但这批单本轮拿不到路由码/派件信息，数量偏多时值得关注同步是否卡住。
-    console.log(`${label} Janus运单查询 ${waybillNos.length} 单中有 ${missing} 单暂未同步到，已用占位行兜底`)
-  }
-
-  return { ok: true, records: mergeJanusWaybillResults(waybillNos, janus.data) }
+  const records = waybillNos.map((no) =>
+    buildDispatchWaybillRecord(
+      no,
+      ofd.data.get(no),
+      delivered.data.get(no),
+      problem.data.get(no),
+      routeInfoByNo?.get(no),
+    ),
+  )
+  return { ok: true, records }
 }

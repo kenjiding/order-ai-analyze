@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { buildExitAlarmWaybillRecords, indexOfdRows } from './ofdReport'
+import { buildExitAlarmWaybillRecords, indexDeliveredRows, indexOfdRows } from './ofdReport'
 import { tagBefore11Rows } from '../vendorAnalysis/before11Aggregate'
 import { computeThresholdMsOnDate } from './before11Exit'
 
@@ -46,4 +46,15 @@ test('OFD 命中 = 已出仓；重派取有效那次；只剩失效记录仍算�
   assert.deepEqual(pick('B'), [true, 'V-NEW', 'R-OFD', 'C-OFD'])
   assert.deepEqual(pick('C'), [true, 'V3', 'R-OFD', 'C-OFD'])
   assert.deepEqual(pick('D'), [false, '', 'R-D', 'C-D'])
+})
+
+test('indexDeliveredRows：同一单多条签收记录（补登记/线下补录）取 deliveredDate 最晚那条，不是数组顺序里的最后一条', () => {
+  const byNo = indexDeliveredRows([
+    { waybillNo: 'A', deliveredDate: '2026-10-09 09:00:00', daCode: 'D-OLD', daName: 'old', routeCode: 'R1' },
+    // 补登记时间更早但在数组里出现在后面：不能覆盖掉已经更晚的那条
+    { waybillNo: 'A', deliveredDate: '2026-10-08 10:00:00', daCode: 'D-OFFLINE', daName: 'offline', routeCode: 'R1' },
+  ])
+  const row = byNo.get('A')
+  assert.equal(row?.deliveredDate, '2026-10-09 09:00:00')
+  assert.equal(row?.daCode, 'D-OLD')
 })

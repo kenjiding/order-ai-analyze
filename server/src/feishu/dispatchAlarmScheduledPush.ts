@@ -139,7 +139,7 @@ export async function executeDispatchAlarmPush(params: {
   // 再按运单号去重合并（同一单出现在多天索引时以较早到件日的批次为准）
   const rowByWaybillNo = new Map<string, Dispatch24hWaybillRow>()
   for (const dateStr of dates) {
-    const result = await fetchDriverWaybills(token, { stationCode, dateStr, regionCode })
+    const result = await fetchDriverWaybills(token, { stationCode, dateStr, regionCode, forceIndexRefresh: true })
     if (!result.ok) {
       console.error(`${label} 到件日 ${dateStr} 运单查询失败: ${result.message}`)
       return { error: `到件日 ${dateStr} 运单查询失败: ${result.message}` }

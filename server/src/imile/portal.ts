@@ -203,6 +203,18 @@ export const IMILE_STATION_LIST_PORTAL: ImilePortalDefaults = {
   path: '/DSMonitor/DSInventory/DAInventory',
 }
 
+/**
+ * ds.imile.com 签收查询（delivered/query）门户默认配置。
+ * resourceCode/path 未经抓包确认，如鉴权失败用 IMILE_DELIVERED_QUERY_RESOURCE_CODE / IMILE_DELIVERED_QUERY_PATH 勘误。
+ */
+export const IMILE_DELIVERED_QUERY_PORTAL: ImilePortalDefaults = {
+  resourceCode: 'deliveredQuery',
+  sysName: 'DS',
+  sysPortal: 'DS',
+  origin: 'https://ds.imile.com',
+  referer: 'https://ds.imile.com/',
+}
+
 /** ds.imile.com saastms 报表 / 运单查询门户默认配置 */
 export const IMILE_DS_SAAS_TMS_PORTAL: ImilePortalDefaults = {
   resourceCode: 'cancelScanQuery',

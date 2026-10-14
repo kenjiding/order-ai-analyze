@@ -7,30 +7,28 @@ export type ScanStatGroup = {
   waybillNos: string[]
 }
 
-export type ScanStatData = {
+export type ScanStatLookupData = {
   total: number
   groups: ScanStatGroup[]
   recipientName?: string
 }
 
+export type ScanStatSendData = {
+  total: number
+  recipientName?: string
+}
+
 type Fail = { ok: false; error: string; unauthorized?: boolean }
 
-async function postScanStat(
-  path: string,
-  imileToken: string,
-  body: Record<string, unknown>,
-): Promise<{ ok: true; data: ScanStatData } | Fail> {
+async function postScanStat<T>(path: string, body: Record<string, unknown>): Promise<{ ok: true; data: T } | Fail> {
   try {
     const res = await backendFetch(path, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${imileToken}`,
-      },
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body),
     })
     if (res.status === 401) return { ok: false, error: '登录已过期，请重新登录', unauthorized: true }
-    const parsed = (await res.json()) as { ok?: boolean; data?: ScanStatData; error?: string }
+    const parsed = (await res.json()) as { ok?: boolean; data?: T; error?: string }
     if (parsed.ok === true && parsed.data) return { ok: true, data: parsed.data }
     return { ok: false, error: typeof parsed.error === 'string' ? parsed.error : '请求失败' }
   } catch {
@@ -38,27 +36,29 @@ async function postScanStat(
   }
 }
 
+/** 查商家：查到的商家分组直接发给飞书接收人。 */
 export function lookupScanStat(params: {
-  imileToken: string
-  stationCode: string
-  waybillNos: string[]
-}) {
-  return postScanStat('/api/scan-stat/lookup', params.imileToken, {
-    stationCode: params.stationCode,
-    waybillNos: params.waybillNos,
-  })
-}
-
-export function pushScanStat(params: {
-  imileToken: string
-  stationCode: string
   stationName: string
   waybillNos: string[]
   openId: string
   recipientName: string
 }) {
-  return postScanStat('/api/scan-stat/push', params.imileToken, {
-    stationCode: params.stationCode,
+  return postScanStat<ScanStatLookupData>('/api/scan-stat/lookup', {
+    stationName: params.stationName,
+    waybillNos: params.waybillNos,
+    openId: params.openId,
+    recipientName: params.recipientName,
+  })
+}
+
+/** 单纯把扫到的运单号发给飞书接收人，不查商家。 */
+export function sendScanStatNos(params: {
+  stationName: string
+  waybillNos: string[]
+  openId: string
+  recipientName: string
+}) {
+  return postScanStat<ScanStatSendData>('/api/scan-stat/send-nos', {
     stationName: params.stationName,
     waybillNos: params.waybillNos,
     openId: params.openId,
