@@ -163,6 +163,38 @@ export function resolveConfigScopesForRow<
 }
 
 /**
+ * 路由归属优先的判定：仅供「滞留数据告警」使用，不要在其它业务里复用。
+ *
+ * 背景：正常判定（isRowInConfigScope 系列）是 courierVendorCode 精确匹配优先——如果这一单已经被
+ * 别家供应商的司机扫出仓（典型场景：代清货/借调），即使路由码配在本供应商名下，也会被挡在外面。
+ * 滞留数据告警统计的是"这条路由底下还有多少件没处理完"，路由本身的归属不该因为谁家司机帮忙跑了
+ * 一趟就变了，所以这里反过来：**路由码命中哪些供应商的纳入名单，就算给那些供应商，不看
+ * courierVendorCode**；一个都没命中（没人把这条路由配进名单）时，才退回"courierVendorCode 精确
+ * 匹配"的老规则，兜底"本供应商司机跑了路由名单外的路由"的场景。
+ *
+ * 必须整批 scopes 一起判断、不能逐个 scope 单独调用：如果路由已经命中了 A 供应商的名单，就不能再
+ * 因为"这一单的承运商恰好是 B 供应商自己"而让 B 也兜底命中一遍——否则一单会被两家供应商重复计数
+ * （B 的兜底规则本意是"B 自己的司机跑了 B 名单外的路由"，不该在路由已经有名义归属时触发）。
+ *
+ * 不要用在「出仓派签达成分析」「24H派签告警」「司机地图」「区域地图」「催派推送」：那几个关心的是
+ * "这一单实际是谁在送/该催谁"，必须按实际承运商算，按路由码优先反而会把别家司机的派签成绩/轨迹
+ * 记到路由配置的供应商头上。
+ */
+export function resolveConfigScopesForRowByRoutePriority<
+  S extends Pick<ConfigScope, 'vendorCode' | 'routeCodes' | 'routeCodeWhitelist'>,
+>(scopes: S[], rowVendorCode: unknown, rowRouteCode: unknown, opts: { ignoreWhitelist: boolean }): S[] {
+  const routeCode = normCode(rowRouteCode)
+  const routeHits = scopes.filter((scope) => scope.routeCodes?.has(routeCode))
+  const vendorCode = normCode(rowVendorCode)
+  const candidates =
+    routeHits.length > 0
+      ? routeHits
+      : scopes.filter((scope) => Boolean(vendorCode) && Boolean(scope.vendorCode) && vendorCode === scope.vendorCode)
+  if (opts.ignoreWhitelist) return candidates
+  return candidates.filter((scope) => !scope.routeCodeWhitelist?.has(routeCode))
+}
+
+/**
  * routeCode → 配置了该路由码的供应商列表：从 routeCodesByVendor 反转而来，
  * 供 courierVendorCode 为空时（尚未派件，iMile 还没回填承运商）按路由码兜底归属使用。
  * 一个路由码可能同时配置在多个供应商名下（两家供应商共担同一路由，业务上正常）——

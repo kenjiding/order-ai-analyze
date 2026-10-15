@@ -7,6 +7,7 @@
   "menu:efficiency-records": "效率考勤记录",
   "menu:wage-salary": "工资结算",
   "menu:order-exception": "AI订单异常分析",
+  "menu:address-verify": "收件地址校验",
   "menu:new-merchant-monitor": "新商家数据监控",
   "menu:problem-package-audit": "AI问题件审核",
   "menu:vendor-analysis": "供应商数据分析",

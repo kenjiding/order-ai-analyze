@@ -60,6 +60,14 @@ export type OrderQueryInfo = {
   consigneeRouteCode: string
   /** resultObject.baseInfo.amName */
   amName: string
+  /** resultObject.consigneeInfo.consigneeProvince */
+  consigneeProvince: string
+  /** resultObject.consigneeInfo.consigneeCity */
+  consigneeCity: string
+  /** resultObject.consigneeInfo.consigneeAddress */
+  consigneeAddress: string
+  /** resultObject.consigneeInfo.consigneeZipCode */
+  consigneeZipCode: string
 }
 
 export type TrackQuerySuccess = {
@@ -320,6 +328,10 @@ export function extractOrderInfo(payload: unknown): OrderQueryInfo | null {
     declaredValueUsd: readPlainField(sku?.declaredValue),
     consigneeRouteCode: readPlainField(consignee?.consigneeRouteCode),
     amName: readPlainField(base?.amName),
+    consigneeProvince: readPlainField(consignee?.consigneeProvince),
+    consigneeCity: readPlainField(consignee?.consigneeCity),
+    consigneeAddress: readPlainField(consignee?.consigneeAddress),
+    consigneeZipCode: readPlainField(consignee?.consigneeZipCode),
   }
 }
 

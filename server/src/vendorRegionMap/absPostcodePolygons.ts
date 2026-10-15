@@ -79,3 +79,44 @@ export async function fetchAbsPostcodePolygons(zipCodes: string[]): Promise<AbsP
   }
   return out
 }
+
+type AbsQueryFeatureResponse = {
+  features?: Array<{ attributes?: { poa_code_2021?: string } }>
+}
+
+/**
+ * 反查：给定经纬度点，返回它落在哪个 ABS 官方邮区（POA）边界内。
+ * 查不到或请求失败时返回 null，由调用方决定如何提示（不是异常路径，老边界/离岸坐标本就可能查不到）。
+ */
+export async function reverseLookupPostcodeByPoint(lat: number, lng: number): Promise<string | null> {
+  const body = new URLSearchParams({
+    geometry: JSON.stringify({ x: lng, y: lat, spatialReference: { wkid: 4326 } }),
+    geometryType: 'esriGeometryPoint',
+    inSR: '4326',
+    spatialRel: 'esriSpatialRelIntersects',
+    outFields: 'poa_code_2021',
+    returnGeometry: 'false',
+    f: 'json',
+  })
+
+  try {
+    const response = await fetch(ABS_POA_QUERY_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body,
+      signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+    })
+    if (!response.ok) {
+      console.warn(`[vendor-region-map] ABS 坐标反查邮编失败 HTTP ${response.status}`)
+      return null
+    }
+    const json = (await response.json()) as AbsQueryFeatureResponse
+    const zip = normalizeZipCode(json.features?.[0]?.attributes?.poa_code_2021)
+    return zip || null
+  } catch (error) {
+    console.warn('[vendor-region-map] ABS 坐标反查邮编异常', {
+      message: error instanceof Error ? error.message : String(error),
+    })
+    return null
+  }
+}

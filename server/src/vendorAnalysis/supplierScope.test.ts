@@ -10,6 +10,7 @@ import {
   isRowInConfigScope,
   parseSupplierUnits,
   resolveConfigScopesForRow,
+  resolveConfigScopesForRowByRoutePriority,
   serializeSupplierUnits,
   supplierUnitsToScopes,
   isRowInVendorScope,
@@ -314,4 +315,60 @@ test('resolveConfigScopesForRow: 不要求 scope 带 key 字段，兼容司机�
   const literalScope = { vendorCode: 'V1', routeCodes: new Set(['R1']) }
   const result = resolveConfigScopesForRow([literalScope], 'V1', 'R1', { ignoreWhitelist: false })
   assert.equal(result.length, 1)
+})
+
+// ── resolveConfigScopesForRowByRoutePriority ──
+// 仅供「滞留数据告警」：路由码命中纳入名单就算，不因 courierVendorCode 是别家供应商就剔除
+// （代清货/借调场景，对应 BPE N 的 610 路由被 Mad Unicorn 司机扫出仓的真实案例）。
+
+test('路由优先：路由命中纳入名单，即便 courierVendorCode 是别家供应商，也算到路由配置的供应商头上', () => {
+  const scopes = [cfgScope('BPE-N', 'SRM2403094', ['610'])]
+  const result = resolveConfigScopesForRowByRoutePriority(scopes, 'SRM2604621', '610', { ignoreWhitelist: false })
+  assert.deepEqual(result.map((s) => s.key), ['BPE-N'])
+})
+
+test('路由优先：未派件（courierVendorCode 为空）、路由命中纳入名单，照常算', () => {
+  const scopes = [cfgScope('BPE-N', 'SRM2403094', ['610'])]
+  const result = resolveConfigScopesForRowByRoutePriority(scopes, '', '610', { ignoreWhitelist: false })
+  assert.deepEqual(result.map((s) => s.key), ['BPE-N'])
+})
+
+test('路由优先：路由不在任何供应商的纳入名单里，但 courierVendorCode 精确等于本供应商——退回承运商匹配兜底', () => {
+  const scopes = [cfgScope('BPE-N', 'SRM2403094', ['B-204'])]
+  const result = resolveConfigScopesForRowByRoutePriority(scopes, 'SRM2403094', '610', { ignoreWhitelist: false })
+  assert.deepEqual(result.map((s) => s.key), ['BPE-N'])
+})
+
+test('路由优先：路由不在任何供应商的纳入名单里，courierVendorCode 也对不上——不匹配', () => {
+  const scopes = [cfgScope('BPE-N', 'SRM2403094', ['B-204'])]
+  const result = resolveConfigScopesForRowByRoutePriority(scopes, 'SRM2604621', '610', { ignoreWhitelist: false })
+  assert.deepEqual(result, [])
+})
+
+test('路由优先：未配纳入名单（纯承运商口径）、courierVendorCode 不匹配——不匹配，不会吃下整站', () => {
+  const scopes = [cfgScope('BPE-N', 'SRM2403094')]
+  const result = resolveConfigScopesForRowByRoutePriority(scopes, 'SRM2604621', '610', { ignoreWhitelist: false })
+  assert.deepEqual(result, [])
+})
+
+test('路由优先：路由命中但也在白名单里，ignoreWhitelist=false 时要被剔除；=true 时原样返回交调用方分桶', () => {
+  const scopes = [cfgScope('BPE-N', 'SRM2403094', ['610'], ['610'])]
+  assert.deepEqual(resolveConfigScopesForRowByRoutePriority(scopes, 'SRM2604621', '610', { ignoreWhitelist: false }), [])
+  assert.deepEqual(
+    resolveConfigScopesForRowByRoutePriority(scopes, 'SRM2604621', '610', { ignoreWhitelist: true }).map((s) => s.key),
+    ['BPE-N'],
+  )
+})
+
+test('resolveConfigScopesForRowByRoutePriority: 还原 BPE N / Mad Unicorn 真实案例——610 算给 BPE N 一家，不会因为承运商正好是 Mad Unicorn 自己而重复计入 Mad Unicorn', () => {
+  const scopes = [cfgScope('BPE-N', 'SRM2403094', ['610']), cfgScope('MAD-E', 'SRM2604621', ['409', '868'])]
+  const result = resolveConfigScopesForRowByRoutePriority(scopes, 'SRM2604621', '610', { ignoreWhitelist: true })
+  assert.equal(result.length, 1, '路由已经命中 BPE N，不该再触发 Mad Unicorn 自己的承运商兜底，否则一单算两家')
+  assert.equal(result[0].key, 'BPE-N')
+})
+
+test('路由优先：两家供应商都把这条路由配进了纳入名单——两家各自独立命中（共担路由，业务上允许）', () => {
+  const scopes = [cfgScope('U1', 'V1', ['R9']), cfgScope('U2', 'V2', ['R9'])]
+  const result = resolveConfigScopesForRowByRoutePriority(scopes, '', 'R9', { ignoreWhitelist: false })
+  assert.deepEqual(result.map((s) => s.key).sort(), ['U1', 'U2'])
 })

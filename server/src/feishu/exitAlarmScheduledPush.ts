@@ -217,7 +217,9 @@ export async function executeExitAlarmPush(params: {
   const scopes: Before11Scope[] = configs.map((config) => buildConfigScope(config.id, config))
   // 「本地件优先客户」名单来自「优先客户配置」页面，每次推送读一次即可（配置量小）
   const priorityClientCodes = await loadPriorityClientCodes()
-  const statsByConfigId = aggregateBefore11ByScopes({ rows: taggedRows, scopes, priorityClientCodes })
+  // 路由归属优先：代清货/借调司机跑了这条路由，也算到路由配置所属的供应商头上，
+  // 不因承运商不是自己就把这条路由底下的滞留量漏统计（见 supplierScope.resolveConfigScopesForRowByRoutePriority）
+  const statsByConfigId = aggregateBefore11ByScopes({ rows: taggedRows, scopes, priorityClientCodes, routePriority: true })
 
   for (const config of configs) {
     const vendorName = supplierDisplayName(config)

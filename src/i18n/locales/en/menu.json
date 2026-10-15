@@ -28,6 +28,7 @@
     "return-to-merchant-finish": "Return-to-merchant closeout",
     "scan-stat": "Scan tally",
     "order-exception": "Waybill exception AI",
+    "address-verify": "Address verification",
     "new-merchant-monitor": "New merchant monitor",
     "problem-package-audit": "Exception-parcel AI audit",
     "vendor-analysis": "Vendor analytics",

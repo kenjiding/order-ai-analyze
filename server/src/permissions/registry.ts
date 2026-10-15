@@ -20,6 +20,13 @@ export const PERMISSION_REGISTRY: PermissionDefinition[] = [
   },
   { key: 'menu:wage-salary', type: 'menu', label: '工资结算', description: '员工工资计算与管理', sortOrder: 20 },
   { key: 'menu:order-exception', type: 'menu', label: 'AI订单异常分析', description: '轨迹样本与异常分类分析', sortOrder: 30 },
+  {
+    key: 'menu:address-verify',
+    type: 'menu',
+    label: '收件地址校验',
+    description: '批量校验运单收件地址与系统邮编是否一致（iMile 分拣坐标 + ABS 邮区边界反查）',
+    sortOrder: 31,
+  },
   { key: 'menu:new-merchant-monitor', type: 'menu', label: '新商家数据监控', description: '新商家货量与签收指标看板', sortOrder: 35 },
   { key: 'menu:problem-package-audit', type: 'menu', label: 'AI问题件审核', description: '问题件图片AI智能审核', sortOrder: 37 },
   {

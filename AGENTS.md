@@ -98,6 +98,19 @@
 3. 若页面内有需要单独控权的操作按钮（导出、推送等），追加 `btn:<page-id>:<action>` 权限项，并用 `PermissionGate` / `PermissionButton`（`src/hooks/usePermission.tsx`）包裹该操作入口。
 4. 后端路由本身沿用仓库现状：只挂 `requireAuth`（登录态），不额外挂路由级 `requirePermission` 中间件——菜单可见性即权限边界，与 `vendorAnalysisRouter` 保持一致。
 
+### 菜单多语言接入（本仓库约定，强制）
+
+**`sidebarMenu.ts` 里每个菜单项的 `label`/`description` 字段只是兜底占位，不会被直接渲染。** 侧边栏实际显示的文案来自 `useTranslation('menu')` 按 `id` 动态取 key（`src/components/Layout/Sidebar.tsx`），权限分配页的文案来自 `useTranslation('permission')` 按权限 `key` 动态取 key（`src/pages/SystemUsers/components/PermissionCheckboxGroup.tsx`）。只写 `sidebarMenu.ts` 不补翻译 key，菜单会显示未翻译的原始 key 字符串（如 `items.address-verify`），权限分配页则会退化成显示 `label` 里写死的中文（英文界面下也不会变成英文）。
+
+新增菜单项时，除了上面的路由/权限接入四步，必须同步在以下 4 个文件各加一行（key 用菜单 `id` 或权限 `key:<page-id>`，与 `sidebarMenu.ts`/`registry.ts` 保持一致）：
+
+1. `src/i18n/locales/zh-CN/menu.json` 的 `items.<page-id>`
+2. `src/i18n/locales/en/menu.json` 的 `items.<page-id>`
+3. `src/i18n/locales/zh-CN/permission.json` 的 `menu:<page-id>`
+4. `src/i18n/locales/en/permission.json` 的 `menu:<page-id>`
+
+此外，若页面本身需要 i18n 文案（表单、列表、按钮文案等），按 `src/i18n/index.ts` 顶部注释的流程在 `I18N_NAMESPACES` 注册新 namespace，并补齐 `locales/zh-CN/<ns>.json` 与 `locales/en/<ns>.json`。
+
 ## 后端工程规范
 
 - 路由 / 控制器层只处理协议适配、参数解析和响应组装。

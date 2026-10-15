@@ -13,6 +13,7 @@ import {
   isRowInVendorScope,
   normCode,
   resolveConfigScopesForRow,
+  resolveConfigScopesForRowByRoutePriority,
   resolveVendorCodesByRouteCode,
   type ConfigScope,
   type VendorScopeMaps,
@@ -187,8 +188,15 @@ export function aggregateBefore11ByScopes(input: {
   scopes: Before11Scope[]
   /** 「优先客户配置」商家编码（大写）；缺省 = 不统计优先件 */
   priorityClientCodes?: Set<string>
+  /**
+   * 路由归属优先于承运商归属：代清货/借调司机跑了这条路由，也算到路由配置所属的供应商头上。
+   * 仅供「滞留数据告警」传 true；其余调用方（如「供应商数据分析」出仓率）不传，保持原口径
+   * （courierVendorCode 精确匹配优先），因为那些场景要看的是实际承运商，不是路由名义归属。
+   * 见 supplierScope.resolveConfigScopesForRowByRoutePriority 的使用边界说明。
+   */
+  routePriority?: boolean
 }): Map<string, Before11ScopedStat> {
-  const { rows, scopes, priorityClientCodes } = input
+  const { rows, scopes, priorityClientCodes, routePriority } = input
   const result = new Map<string, Before11ScopedStat>()
   /** 同一 (vendorCode, routeCode) 的兜底只告警一次，避免整批同路由运单刷屏 */
   const foreignRouteWarned = new Set<string>()
@@ -200,7 +208,11 @@ export function aggregateBefore11ByScopes(input: {
 
     // 白名单命中的行下面要单独计入 whitelistStat，故这里用不含白名单剔除的判定；
     // 归属判定 + 路由被收窄时兜底落到承运商名下，唯一实现见 resolveConfigScopesForRow，不重抄
-    const matches = resolveConfigScopesForRow(scopes, explicitVendorCode, routeCode, { ignoreWhitelist: true })
+    const matches = routePriority
+      ? resolveConfigScopesForRowByRoutePriority(scopes, explicitVendorCode, routeCode, {
+          ignoreWhitelist: true,
+        }).map((scope) => ({ scope, isForeignRoute: false }))
+      : resolveConfigScopesForRow(scopes, explicitVendorCode, routeCode, { ignoreWhitelist: true })
     for (const { scope, isForeignRoute } of matches) {
       if (isForeignRoute) {
         const warnKey = `${explicitVendorCode}\t${routeCode}`

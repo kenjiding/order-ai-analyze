@@ -26,6 +26,7 @@ export const I18N_NAMESPACES = [
   'warehouseSafety',
   'attendanceWorkTime',
   'orderException',
+  'addressVerify',
   'newMerchant',
   'problemPackage',
   'vendorAnalysis',

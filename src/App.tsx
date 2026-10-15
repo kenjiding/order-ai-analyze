@@ -18,6 +18,7 @@ import { ToastBridge } from './utils/toast'
 // 各页面按路由懒加载，避免所有页面的代码被打进同一个入口 chunk
 const NewMerchantMonitorPage = lazy(() => import('./pages/NewMerchantMonitor/NewMerchantMonitorPage'))
 const OrderExceptionManagementPage = lazy(() => import('./pages/OrderExceptionManagement/OrderExceptionManagementPage'))
+const AddressVerifyPage = lazy(() => import('./pages/AddressVerify/AddressVerifyPage'))
 const ProblemPackageAuditPage = lazy(() => import('./pages/ProblemPackageAudit/ProblemPackageAuditPage'))
 const ReturnToMerchantFinishPage = lazy(
   () => import('./pages/ReturnToMerchantFinish/ReturnToMerchantFinishPage'),
@@ -211,6 +212,14 @@ function AppRoutes() {
             element={
               <KeptPage cacheKey="page-order-exception" name="order-exception">
                 <OrderExceptionManagementPage />
+              </KeptPage>
+            }
+          />
+          <Route
+            path="/address-verify"
+            element={
+              <KeptPage cacheKey="page-address-verify" name="address-verify">
+                <AddressVerifyPage />
               </KeptPage>
             }
           />

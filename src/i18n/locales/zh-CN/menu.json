@@ -28,6 +28,7 @@
     "return-to-merchant-finish": "退返商家完结",
     "scan-stat": "扫描统计",
     "order-exception": "AI订单异常分析",
+    "address-verify": "收件地址校验",
     "new-merchant-monitor": "新商家数据监控",
     "problem-package-audit": "AI问题件审核",
     "vendor-analysis": "供应商数据分析",

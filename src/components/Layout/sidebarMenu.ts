@@ -14,6 +14,7 @@ import {
   Gauge,
   Globe,
   History,
+  MapPin,
   MapPinned,
   Megaphone,
   HammerIcon,
@@ -126,6 +127,14 @@ const groups: SidebarMenuGroup[] = [
         label: 'AI订单异常分析',
         icon: PackageSearch,
         description: '轨迹样本与异常分类分析',
+      },
+      {
+        id: 'address-verify',
+        path: '/address-verify',
+        permissionKey: 'menu:address-verify',
+        label: '收件地址校验',
+        icon: MapPin,
+        description: '批量校验运单收件地址与系统邮编是否一致',
       },
       {
         id: 'new-merchant-monitor',
