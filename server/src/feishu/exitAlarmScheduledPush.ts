@@ -19,8 +19,8 @@ import { buildConfigScope } from '../vendorAnalysis/supplierScope'
 import { loadPriorityClientCodes } from '../priorityClients'
 import {
   isNoSortingBatch,
-  lastSortingWorkdayOnOrBefore,
   MIN_SORTING_WAYBILLS,
+  sortingWorkdayCatchUpDates,
 } from '../imile/sortingWorkday'
 import {
   listPushableSupplierPushConfigsForSchedule,
@@ -361,17 +361,18 @@ async function runOneScheduledPush(schedule: ExitAlarmSchedule, regionCode: stri
       continue
     }
 
-    // 目标日避开周末（周六/日不分拣、无数据）：从前一日往前取第一个工作日。
+    // 目标日避开周末（周六/日不分拣、无数据）：从前一日往前取第一个工作日，中间跳过的周末日
+    // 一并带上（见 sortingWorkdayCatchUpDates）——没开仓就是没数据，真开仓时不漏算。
     // 周六/周日推送照样落在周五那批：阈值锚在「今天的推送时刻」（见下方 before11ThresholdMs），
     // 推的是「截至此刻还剩多少没出仓」的进度，与那批考核终值在下周一 11:00 并不冲突 ——
     // 很多仓库周六早上照常开仓取货，就是要看这条。这天没开仓分拣的情形由量判定接手（见 execute）。
-    const targetDate = lastSortingWorkdayOnOrBefore(prevDateStr)
-    console.log(`${label} 命中推送时间 weekday=${weekday} time=${timeHHmm} date=${targetDate}`)
+    const targetDates = sortingWorkdayCatchUpDates(prevDateStr)
+    console.log(`${label} 命中推送时间 weekday=${weekday} time=${timeHHmm} dates=${targetDates.join(',')}`)
 
     const result = await executeExitAlarmPush({
       token: rawToken,
       stationCode,
-      dates: [targetDate],
+      dates: targetDates,
       todayDateStr,
       pushTime: timeHHmm,
       configs,

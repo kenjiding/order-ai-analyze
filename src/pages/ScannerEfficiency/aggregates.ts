@@ -1,5 +1,5 @@
 import type { ScanSettings } from './constants'
-import { isCainiaoWaybill } from './cainiaoWaybill'
+import { isCainiaoWaybill, isShopClientCode, SHEIN_CLIENT_CODE, TEMU_CLIENT_CODE } from './cainiaoWaybill'
 import { dayjs } from './dayjsSetup'
 import { formatDateKey } from './formatAndParse'
 import { COARSE_STAGE_SPAN_SPLIT_THRESHOLD_MINUTES } from './coarseStageHours'
@@ -184,7 +184,14 @@ export type ParsedAllocationRow = {
 export const buildScanAggregate = (rows: ParsedScanRow[]) => {
   const dailyMap = new Map<
     string,
-    { date: string; uniqueSet: Set<string>; cainiaoSet: Set<string>; scannerSet: Set<string> }
+    {
+      date: string
+      uniqueSet: Set<string>
+      cainiaoSet: Set<string>
+      sheinSet: Set<string>
+      temuSet: Set<string>
+      scannerSet: Set<string>
+    }
   >()
 
   rows.forEach((row, index) => {
@@ -196,6 +203,8 @@ export const buildScanAggregate = (rows: ParsedScanRow[]) => {
         date: dateKey,
         uniqueSet: new Set(),
         cainiaoSet: new Set(),
+        sheinSet: new Set(),
+        temuSet: new Set(),
         scannerSet: new Set(),
       })
     }
@@ -206,6 +215,12 @@ export const buildScanAggregate = (rows: ParsedScanRow[]) => {
     if (isCainiaoWaybill(volumeKey)) {
       bucket.cainiaoSet.add(volumeKey)
     }
+    if (isShopClientCode(row.clientCode, SHEIN_CLIENT_CODE)) {
+      bucket.sheinSet.add(volumeKey)
+    }
+    if (isShopClientCode(row.clientCode, TEMU_CLIENT_CODE)) {
+      bucket.temuSet.add(volumeKey)
+    }
     if (row.scanner) {
       bucket.scannerSet.add(row.scanner)
     }
@@ -215,11 +230,17 @@ export const buildScanAggregate = (rows: ParsedScanRow[]) => {
     .map((row) => {
       const volume = row.uniqueSet.size
       const cainiaoVolume = row.cainiaoSet.size
+      const sheinVolume = row.sheinSet.size
+      const temuVolume = row.temuSet.size
       return {
         date: row.date,
         volume,
         cainiaoVolume,
         cainiaoShare: volume > 0 ? cainiaoVolume / volume : 0,
+        sheinVolume,
+        sheinShare: volume > 0 ? sheinVolume / volume : 0,
+        temuVolume,
+        temuShare: volume > 0 ? temuVolume / volume : 0,
         scannerCount: row.scannerSet.size,
       }
     })
@@ -227,6 +248,8 @@ export const buildScanAggregate = (rows: ParsedScanRow[]) => {
 
   const totalVolume = dailyRows.reduce((sum, row) => sum + row.volume, 0)
   const totalCainiaoVolume = dailyRows.reduce((sum, row) => sum + row.cainiaoVolume, 0)
+  const totalSheinVolume = dailyRows.reduce((sum, row) => sum + row.sheinVolume, 0)
+  const totalTemuVolume = dailyRows.reduce((sum, row) => sum + row.temuVolume, 0)
 
   return {
     dailyRows,
@@ -235,6 +258,10 @@ export const buildScanAggregate = (rows: ParsedScanRow[]) => {
       totalVolume,
       totalCainiaoVolume,
       cainiaoShareWindow: totalVolume > 0 ? totalCainiaoVolume / totalVolume : 0,
+      totalSheinVolume,
+      sheinShareWindow: totalVolume > 0 ? totalSheinVolume / totalVolume : 0,
+      totalTemuVolume,
+      temuShareWindow: totalVolume > 0 ? totalTemuVolume / totalVolume : 0,
       totalDays: dailyRows.length,
       hasScanner: rows.some((row) => Boolean(row.scanner)),
     },
@@ -319,6 +346,10 @@ export function buildAttendanceEfficiency(
       volume: scanDay.volume,
       cainiaoVolume: scanDay.cainiaoVolume,
       cainiaoShare: scanDay.cainiaoShare,
+      sheinVolume: scanDay.sheinVolume,
+      sheinShare: scanDay.sheinShare,
+      temuVolume: scanDay.temuVolume,
+      temuShare: scanDay.temuShare,
       sorterCount,
       totalHours,
       isOpenDay,
@@ -337,6 +368,10 @@ export function buildAttendanceEfficiency(
       volume: 0,
       cainiaoVolume: 0,
       cainiaoShare: 0,
+      sheinVolume: 0,
+      sheinShare: 0,
+      temuVolume: 0,
+      temuShare: 0,
       sorterCount: row.sorterCount,
       totalHours: row.totalHours,
       isOpenDay: row.isOpenDay,
@@ -372,15 +407,27 @@ export function buildAttendanceEfficiency(
   const uploadedVolume = scanAggregate.summary.totalVolume
   const totalCainiaoVolume = scanAggregate.summary.totalCainiaoVolume
   const cainiaoShareWindow = scanAggregate.summary.cainiaoShareWindow
+  const totalSheinVolume = scanAggregate.summary.totalSheinVolume
+  const sheinShareWindow = scanAggregate.summary.sheinShareWindow
+  const totalTemuVolume = scanAggregate.summary.totalTemuVolume
+  const temuShareWindow = scanAggregate.summary.temuShareWindow
   let openDayCainiaoVolume = 0
   let openDayVolumeForCainiao = 0
+  let openDaySheinVolume = 0
+  let openDayTemuVolume = 0
   for (const row of matchedRows) {
     if (!row.isOpenDay) continue
     openDayCainiaoVolume += row.cainiaoVolume
     openDayVolumeForCainiao += row.volume
+    openDaySheinVolume += row.sheinVolume
+    openDayTemuVolume += row.temuVolume
   }
   const cainiaoShareOpenDays =
     openDayVolumeForCainiao > 0 ? openDayCainiaoVolume / openDayVolumeForCainiao : 0
+  const sheinShareOpenDays =
+    openDayVolumeForCainiao > 0 ? openDaySheinVolume / openDayVolumeForCainiao : 0
+  const temuShareOpenDays =
+    openDayVolumeForCainiao > 0 ? openDayTemuVolume / openDayVolumeForCainiao : 0
 
   const personMap = new Map<
     string,
@@ -473,6 +520,12 @@ export function buildAttendanceEfficiency(
       totalCainiaoVolume,
       cainiaoShareWindow,
       cainiaoShareOpenDays,
+      totalSheinVolume,
+      sheinShareWindow,
+      sheinShareOpenDays,
+      totalTemuVolume,
+      temuShareWindow,
+      temuShareOpenDays,
     },
   }
 }
@@ -493,20 +546,34 @@ export function computeAttendanceDailyMatchAverages(dailyRows: AttendanceDailyMa
       avgCainiaoVolume: 0,
       cainiaoShareFromTotals: null as number | null,
       avgCainiaoShare: null as number | null,
+      totalSheinVolume: 0,
+      avgSheinVolume: 0,
+      sheinShareFromTotals: null as number | null,
+      avgSheinShare: null as number | null,
+      totalTemuVolume: 0,
+      avgTemuVolume: 0,
+      temuShareFromTotals: null as number | null,
+      avgTemuShare: null as number | null,
       totalHoursSum: 0,
       efficiencyFromTotals: null as number | null,
     }
   }
   let sumVolume = 0
   let sumCainiao = 0
+  let sumShein = 0
+  let sumTemu = 0
   let sumHours = 0
   let effSum = 0
   let effCount = 0
   let shareSum = 0
+  let sheinShareSum = 0
+  let temuShareSum = 0
   let shareCount = 0
   for (const row of dailyRows) {
     sumVolume += row.volume
     sumCainiao += row.cainiaoVolume
+    sumShein += row.sheinVolume
+    sumTemu += row.temuVolume
     sumHours += row.totalHours
     if (row.dayEfficiency != null) {
       effSum += row.dayEfficiency
@@ -514,6 +581,8 @@ export function computeAttendanceDailyMatchAverages(dailyRows: AttendanceDailyMa
     }
     if (row.volume > 0) {
       shareSum += row.cainiaoShare
+      sheinShareSum += row.sheinShare
+      temuShareSum += row.temuShare
       shareCount += 1
     }
   }
@@ -527,6 +596,14 @@ export function computeAttendanceDailyMatchAverages(dailyRows: AttendanceDailyMa
     avgCainiaoVolume: sumCainiao / n,
     cainiaoShareFromTotals: sumVolume > 0 ? sumCainiao / sumVolume : null,
     avgCainiaoShare: shareCount > 0 ? shareSum / shareCount : null,
+    totalSheinVolume: sumShein,
+    avgSheinVolume: sumShein / n,
+    sheinShareFromTotals: sumVolume > 0 ? sumShein / sumVolume : null,
+    avgSheinShare: shareCount > 0 ? sheinShareSum / shareCount : null,
+    totalTemuVolume: sumTemu,
+    avgTemuVolume: sumTemu / n,
+    temuShareFromTotals: sumVolume > 0 ? sumTemu / sumVolume : null,
+    avgTemuShare: shareCount > 0 ? temuShareSum / shareCount : null,
     totalHoursSum: sumHours,
     efficiencyFromTotals: sumHours > 0 ? sumVolume / sumHours : null,
   }

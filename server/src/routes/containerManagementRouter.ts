@@ -54,6 +54,9 @@ import {
   updateContainerType,
 } from '../containerManagement/containerTypeService'
 import { readImage, saveImageFromDataUrl } from '../containerManagement/imageStorage'
+import { getFeishuTenantAccessToken } from '../feishuServerEnv'
+import { uploadFeishuImageFromBase64 } from '../feishu/feishuImageUpload'
+import { fetchFeishuJson } from '../feishu/feishuHttpClient'
 import {
   normalizeAccountPushNotify,
   type AccountPushNotify,
@@ -947,4 +950,38 @@ containerManagementRouter.get('/images/:name', async (req: AuthenticatedRequest,
   } catch (error) {
     handleError(res, error, '读取图片失败')
   }
+})
+
+// ---------------------------------------------------------------- 图片推送（飞书）
+
+/** 流转记录快填页「图片推送」固定群，不接受前端传任意地址 */
+const IMAGE_PUSH_WEBHOOK_URL = 'https://open.feishu.cn/open-apis/bot/v2/hook/38ba290e-0e05-4507-a4a7-e906c3f36b24'
+
+/** 备注文字已由前端画进图片，这里只管上传取 image_key 再发 webhook */
+containerManagementRouter.post('/image-push', async (req: AuthenticatedRequest, res: Response) => {
+  const imageBase64 = String((req.body as { imageBase64?: unknown }).imageBase64 ?? '')
+  if (!imageBase64) return fail(res, 400, '请选择图片')
+
+  const tenantRes = await getFeishuTenantAccessToken()
+  if (!tenantRes.ok) {
+    return fail(
+      res,
+      tenantRes.reason === 'not_configured' ? 400 : 502,
+      tenantRes.reason === 'not_configured'
+        ? '服务器未配置飞书开放接口凭证（FEISHU_APP_ID / FEISHU_APP_SECRET），无法上传图片'
+        : tenantRes.error || '获取飞书凭证失败',
+    )
+  }
+
+  const upload = await uploadFeishuImageFromBase64(tenantRes.token, imageBase64)
+  if (!upload.ok) return fail(res, 502, upload.error)
+
+  const pushResult = await fetchFeishuJson(IMAGE_PUSH_WEBHOOK_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ msg_type: 'image', content: { image_key: upload.imageKey } }),
+  })
+  if (!pushResult.ok) return fail(res, 502, pushResult.error)
+
+  res.json({ ok: true, data: null })
 })

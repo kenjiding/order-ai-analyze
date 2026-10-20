@@ -785,6 +785,8 @@ export function restoreEfficiencyAttendancePage(
 
   const totalVolume = dailyRows.reduce((sum, row) => sum + row.volume, 0)
   const totalCainiaoVolume = dailyRows.reduce((sum, row) => sum + row.cainiaoVolume, 0)
+  const totalSheinVolume = dailyRows.reduce((sum, row) => sum + (row.sheinVolume ?? 0), 0)
+  const totalTemuVolume = dailyRows.reduce((sum, row) => sum + (row.temuVolume ?? 0), 0)
   const rangeStart = dates[0]!
   const rangeEnd = dates[dates.length - 1]!
 
@@ -794,6 +796,10 @@ export function restoreEfficiencyAttendancePage(
       volume: row.volume,
       cainiaoVolume: row.cainiaoVolume,
       cainiaoShare: row.cainiaoShare,
+      sheinVolume: row.sheinVolume ?? 0,
+      sheinShare: row.sheinShare ?? 0,
+      temuVolume: row.temuVolume ?? 0,
+      temuShare: row.temuShare ?? 0,
       scannerCount: row.sorterCount,
     })),
     dailyMap: new Map(),
@@ -801,6 +807,10 @@ export function restoreEfficiencyAttendancePage(
       totalVolume,
       totalCainiaoVolume,
       cainiaoShareWindow: totalVolume > 0 ? totalCainiaoVolume / totalVolume : 0,
+      totalSheinVolume,
+      sheinShareWindow: totalVolume > 0 ? totalSheinVolume / totalVolume : 0,
+      totalTemuVolume,
+      temuShareWindow: totalVolume > 0 ? totalTemuVolume / totalVolume : 0,
       totalDays: dailyRows.length,
       hasScanner: dailyRows.some((row) => row.sorterCount > 0),
     },
@@ -813,6 +823,8 @@ export function restoreEfficiencyAttendancePage(
   const openDayVolume = openRows.reduce((sum, row) => sum + row.volume, 0)
   const openDayCainiaoVolume = openRows.reduce((sum, row) => sum + row.cainiaoVolume, 0)
   const openDayVolumeForCainiao = openRows.reduce((sum, row) => sum + row.volume, 0)
+  const openDaySheinVolume = openRows.reduce((sum, row) => sum + (row.sheinVolume ?? 0), 0)
+  const openDayTemuVolume = openRows.reduce((sum, row) => sum + (row.temuVolume ?? 0), 0)
 
   const attendanceResult: AttendanceEfficiencyResult = {
     dailyRows,
@@ -844,6 +856,12 @@ export function restoreEfficiencyAttendancePage(
       cainiaoShareWindow: scanAggregate.summary.cainiaoShareWindow,
       cainiaoShareOpenDays:
         openDayVolumeForCainiao > 0 ? openDayCainiaoVolume / openDayVolumeForCainiao : 0,
+      totalSheinVolume,
+      sheinShareWindow: scanAggregate.summary.sheinShareWindow,
+      sheinShareOpenDays: openDayVolumeForCainiao > 0 ? openDaySheinVolume / openDayVolumeForCainiao : 0,
+      totalTemuVolume,
+      temuShareWindow: scanAggregate.summary.temuShareWindow,
+      temuShareOpenDays: openDayVolumeForCainiao > 0 ? openDayTemuVolume / openDayVolumeForCainiao : 0,
     },
   }
 

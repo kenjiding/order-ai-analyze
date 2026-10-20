@@ -25,6 +25,7 @@ import {
   type FeishuChatMemberOption,
 } from '../PushNotifications/feishuWebhookTestApi'
 import { lookupScanStat, sendScanStatNos, type ScanStatGroup } from './scanStatApi'
+import MatchOrdersPanel from './MatchOrdersPanel'
 
 const CHAT_KEY = 'scan-stat-chat-id'
 const OPEN_KEY = 'scan-stat-open-id'
@@ -43,6 +44,7 @@ export default function ScanStatPage({
   const stationCode = selectedStations[0] ?? ''
   const stationLabel = stations.find((s) => s.value === stationCode)?.label ?? stationCode
 
+  const [activeTab, setActiveTab] = useState<'scan' | 'match'>('scan')
   const [inputValue, setInputValue] = useState('')
   const [scannedList, setScannedList] = useState<string[]>([])
   const [scanHint, setScanHint] = useState('')
@@ -161,6 +163,7 @@ export default function ScanStatPage({
     setSentTo('')
     const res = await sendScanStatNos({
       stationName: stationLabel,
+      stationCode,
       waybillNos: scannedList,
       openId,
       recipientName,
@@ -243,7 +246,38 @@ export default function ScanStatPage({
         </>
       )}
 
-      <main className="min-h-0 flex-1 space-y-2.5 overflow-y-auto px-2.5 pb-2.5 pt-2.5">
+      <div className="z-10 flex shrink-0 gap-1 border-b border-zinc-200/80 bg-white px-2.5 py-1.5">
+        <button
+          type="button"
+          onClick={() => setActiveTab('scan')}
+          className={
+            activeTab === 'scan'
+              ? 'flex-1 rounded-lg bg-blue-50 py-1.5 text-xs font-semibold text-blue-700'
+              : 'flex-1 rounded-lg py-1.5 text-xs font-medium text-zinc-500'
+          }
+        >
+          扫描统计
+        </button>
+        <button
+          type="button"
+          onClick={() => setActiveTab('match')}
+          className={
+            activeTab === 'match'
+              ? 'flex-1 rounded-lg bg-blue-50 py-1.5 text-xs font-semibold text-blue-700'
+              : 'flex-1 rounded-lg py-1.5 text-xs font-medium text-zinc-500'
+          }
+        >
+          匹配订单
+        </button>
+      </div>
+
+      {activeTab === 'match' && (
+        <main className="min-h-0 flex-1 overflow-y-auto px-2.5 pb-2.5 pt-2.5">
+          <MatchOrdersPanel />
+        </main>
+      )}
+
+      <main className={activeTab === 'scan' ? 'min-h-0 flex-1 space-y-2.5 overflow-y-auto px-2.5 pb-2.5 pt-2.5' : 'hidden'}>
         {!stationCode && (
           <div className="flex items-center gap-1.5 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-medium text-amber-800">
             <TriangleAlert className="h-3.5 w-3.5 shrink-0" aria-hidden strokeWidth={2} />
@@ -384,30 +418,32 @@ export default function ScanStatPage({
         )}
       </main>
 
-      <div className="z-20 shrink-0 border-t border-zinc-200/80 bg-white/95 px-2.5 pb-[max(env(safe-area-inset-bottom),0.5rem)] pt-2 backdrop-blur-sm">
-        {disabledReason ? <p className="mb-1 text-center text-[11px] text-zinc-400">{disabledReason}</p> : null}
-        <div className="flex gap-2">
-          <Button
-            className="flex-1"
-            loading={busy === 'lookup'}
-            disabled={!!disabledReason || busy !== null}
-            nativeType="button"
-            onClick={() => void handleLookup()}
-          >
-            {busy === 'lookup' ? '查询中...' : `查询商家（${scannedList.length}）`}
-          </Button>
-          <Button
-            type="primary"
-            className="flex-1"
-            loading={busy === 'send'}
-            disabled={!!disabledReason || busy !== null}
-            nativeType="button"
-            onClick={() => void handleSendNos()}
-          >
-            {busy === 'send' ? '发送中...' : `发送订单号（${scannedList.length}）`}
-          </Button>
+      {activeTab === 'scan' && (
+        <div className="z-20 shrink-0 border-t border-zinc-200/80 bg-white/95 px-2.5 pb-[max(env(safe-area-inset-bottom),0.5rem)] pt-2 backdrop-blur-sm">
+          {disabledReason ? <p className="mb-1 text-center text-[11px] text-zinc-400">{disabledReason}</p> : null}
+          <div className="flex gap-2">
+            <Button
+              className="flex-1"
+              loading={busy === 'lookup'}
+              disabled={!!disabledReason || busy !== null}
+              nativeType="button"
+              onClick={() => void handleLookup()}
+            >
+              {busy === 'lookup' ? '查询中...' : `查询商家（${scannedList.length}）`}
+            </Button>
+            <Button
+              type="primary"
+              className="flex-1"
+              loading={busy === 'send'}
+              disabled={!!disabledReason || busy !== null}
+              nativeType="button"
+              onClick={() => void handleSendNos()}
+            >
+              {busy === 'send' ? '发送中...' : `发送订单号（${scannedList.length}）`}
+            </Button>
+          </div>
         </div>
-      </div>
+      )}
     </div>
   )
 }

@@ -8,6 +8,7 @@ import {
   MIN_SORTING_WAYBILLS,
   nextDispatchDayAfter,
   nextSortingWorkdayAfter,
+  sortingWorkdayCatchUpDates,
   type RegionCalendarOverrides,
 } from './sortingWorkday'
 
@@ -36,6 +37,17 @@ test('lastSortingWorkdayOnOrBefore: 告警目标日 —— 周末回退到周五
     '2026-07-08',
     '周三没开仓分拣时也不回退 —— 那天有没有批次由到件量判定，不由日历判',
   )
+})
+
+test('sortingWorkdayCatchUpDates：周一回溯目标日把中间跳过的周末也带上', () => {
+  // 2026-07-06 周一 … 2026-07-12 周日
+  assert.deepEqual(
+    sortingWorkdayCatchUpDates('2026-07-12'),
+    ['2026-07-10', '2026-07-11', '2026-07-12'],
+    '周日 → 周五、周六、周日三天都要',
+  )
+  assert.deepEqual(sortingWorkdayCatchUpDates('2026-07-11'), ['2026-07-10', '2026-07-11'], '周六 → 周五、周六')
+  assert.deepEqual(sortingWorkdayCatchUpDates('2026-07-08'), ['2026-07-08'], '工作日本身不回溯，退化成单日')
 })
 
 test('isSortingWorkday / isDispatchDay：不传 overrides 时都退化成纯周末判断，互不影响', () => {

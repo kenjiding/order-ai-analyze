@@ -88,6 +88,26 @@ export function nextDispatchDayAfter(dateStr: string, overrides: RegionCalendarO
 }
 
 /**
+ * 返回 lastSortingWorkdayOnOrBefore(dateStr) 到 dateStr 本身的全部日历日（含两端），供告警目标日
+ * 的「到件日」参数用——工作日（如周一推送目标日=周五）回退跳过的周末顺带一起拉：没开仓那天 inbound
+ * 本来就接近 0，带上不影响统计；真遇到周末临时开仓分拣时不会漏算那批数据。
+ * dateStr 本身就是工作日时退化成单日 [dateStr]，与原逻辑一致。
+ */
+export function sortingWorkdayCatchUpDates(
+  dateStr: string,
+  overrides: RegionCalendarOverrides = new Map(),
+): string[] {
+  const start = lastSortingWorkdayOnOrBefore(dateStr, overrides)
+  const dates: string[] = []
+  let s = start
+  while (s <= dateStr) {
+    dates.push(s)
+    s = shiftDateStr(s, 1)
+  }
+  return dates
+}
+
+/**
  * 到件量低于此数视为「这天没开仓分拣」。
  *
  * 不能用「有没有数据」判：没开仓那天值班员工照样会零星扫几十单入库，inbound 接口返回的

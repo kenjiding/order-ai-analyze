@@ -51,15 +51,17 @@ export function lookupScanStat(params: {
   })
 }
 
-/** 单纯把扫到的运单号发给飞书接收人，不查商家。 */
+/** 发送订单号：按路由码匹配供应商配置分组统计，发飞书卡片给接收人。 */
 export function sendScanStatNos(params: {
   stationName: string
+  stationCode: string
   waybillNos: string[]
   openId: string
   recipientName: string
 }) {
   return postScanStat<ScanStatSendData>('/api/scan-stat/send-nos', {
     stationName: params.stationName,
+    stationCode: params.stationCode,
     waybillNos: params.waybillNos,
     openId: params.openId,
     recipientName: params.recipientName,

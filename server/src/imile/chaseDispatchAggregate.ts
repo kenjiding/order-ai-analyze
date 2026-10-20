@@ -1,4 +1,5 @@
 import {
+  STAGNATION_BUCKETS,
   stagnationBucketLabel,
   type StagnationBucket,
   type StagnantWaybillRow,
@@ -123,6 +124,9 @@ export function aggregateVendorStagnation(
 
     buckets.push({ bucket, label: stagnationBucketLabel(bucket), count: bucketSeen.size, drivers })
   }
+
+  // 入参 bucketResults 顺序取决于前端勾选顺序（非固定），这里按区间固定顺序重排，保证展示从 0-1 到 7+
+  buckets.sort((a, b) => STAGNATION_BUCKETS.indexOf(a.bucket) - STAGNATION_BUCKETS.indexOf(b.bucket))
 
   return { totalStagnant: totalSeen.size, priorityTotal: totalPrioritySeen.size, buckets }
 }

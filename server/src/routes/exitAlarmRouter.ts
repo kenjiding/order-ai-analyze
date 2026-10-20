@@ -7,7 +7,7 @@ import { readImileTokenFromRequest } from './imileAuth'
 import { normalizeImileToken } from '../imile/shared'
 import { fetchWaybillDetailsByInboundIndex, getRegionNow } from '../imile/inboundWaybillIndex'
 import { resolveRegionTz } from '../imile/ausTimezone'
-import { lastSortingWorkdayOnOrBefore } from '../imile/sortingWorkday'
+import { sortingWorkdayCatchUpDates } from '../imile/sortingWorkday'
 import {
   executeExitAlarmPush,
   hasExitAlarmImileToken,
@@ -362,7 +362,7 @@ exitAlarmRouter.post('/schedules/:id/push-now', async (req: AuthenticatedRequest
     // 已保存到件扫描日期则按这些日期逐日拉数合并（用户手动指定，不做工作日兜底）；否则沿用自动计算的最近工作日。
     // todayDateStr 仍是今天：阈值锚点=此刻，选历史到件日就是看那批件到现在还滞留多少未出仓。
     const savedDates = (schedule.arrivalScanDates as string[] | null) ?? []
-    const dates = savedDates.length > 0 ? savedDates : [lastSortingWorkdayOnOrBefore(prevDateStr)]
+    const dates = savedDates.length > 0 ? savedDates : sortingWorkdayCatchUpDates(prevDateStr)
 
     const result = await executeExitAlarmPush({
       token,

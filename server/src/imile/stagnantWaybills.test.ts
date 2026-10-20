@@ -71,6 +71,17 @@ test('aggregateVendorStagnation 按 driverVendorCode 过滤并跨区间去重', 
   )
 })
 
+test('aggregateVendorStagnation 输出按固定区间顺序排序，不受入参（前端勾选）顺序影响', () => {
+  // 入参故意打乱顺序（如前端 Checkbox.Group 按勾选顺序回传），模拟用户先勾 2-3、再勾 0-1、最后勾 7+
+  const bucketResults: BucketResult[] = [
+    { bucket: '2-3', rows: [{ waybillNo: 'W1', driverVendorCode: 'V1', driverCode: 'D1', driverName: '张三' }] },
+    { bucket: '0-1', rows: [{ waybillNo: 'W2', driverVendorCode: 'V1', driverCode: 'D1', driverName: '张三' }] },
+    { bucket: '7+', rows: [{ waybillNo: 'W3', driverVendorCode: 'V1', driverCode: 'D1', driverName: '张三' }] },
+  ]
+  const summary = aggregateVendorStagnation(bucketResults, 'V1')
+  assert.deepEqual(summary.buckets.map((b) => b.bucket), ['0-1', '2-3', '7+'])
+})
+
 test('aggregateVendorStagnation 按 routeCodeByWaybillNo 附加路由码，未命中回退未知路由', () => {
   const bucketResults: BucketResult[] = [
     {

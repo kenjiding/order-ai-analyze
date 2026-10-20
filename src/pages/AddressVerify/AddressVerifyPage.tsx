@@ -1,11 +1,17 @@
-import { useCallback, useMemo, useState } from 'react'
-import { Alert, Button, Input, Table, Tag } from 'antd'
+import { lazy, Suspense, useCallback, useMemo, useState } from 'react'
+import { Alert, Button, Input, Spin, Table, Tag } from 'antd'
 import type { ColumnsType } from 'antd/es/table'
 import { MapPin, Search } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { backendFetch } from '../../api/httpClient'
 import { useAppSettings } from '../../context/AppSettingsContext'
 import { parseOrderNumbersUnique } from '../../utils/orderNoInput'
+import type { AddressVerifyMapPoint } from './AddressVerifyMapView'
+
+/** maplibre-gl 体积较大，懒加载避免未用到地图的场景也被迫下载（做法与司机地图一致） */
+const AddressVerifyMapView = lazy(() =>
+  import('./AddressVerifyMapView').then((m) => ({ default: m.AddressVerifyMapView })),
+)
 
 const MAX_ORDERS = 200
 
@@ -36,6 +42,26 @@ export default function AddressVerifyPage() {
   const [rows, setRows] = useState<AddressVerifyRow[]>([])
 
   const orderNos = useMemo(() => parseOrderNumbersUnique(raw), [raw])
+
+  const mapPoints = useMemo<AddressVerifyMapPoint[]>(
+    () =>
+      rows
+        .filter(
+          (r): r is AddressVerifyRow & { latitude: number; longitude: number } =>
+            r.latitude != null && r.longitude != null && r.status !== 'no_coordinate',
+        )
+        .map((r) => ({
+          orderNo: r.orderNo,
+          latitude: r.latitude,
+          longitude: r.longitude,
+          status: r.status as 'match' | 'mismatch' | 'unresolved',
+          merchantName: r.merchantName,
+          consigneeAddress: r.consigneeAddress,
+          consigneeZipCode: r.consigneeZipCode,
+          resolvedPostcode: r.resolvedPostcode,
+        })),
+    [rows],
+  )
 
   const handleCheck = async () => {
     const token = imileToken.trim()
@@ -175,6 +201,20 @@ export default function AddressVerifyPage() {
         </div>
         {error ? <Alert type="error" showIcon message={error} /> : null}
       </section>
+
+      {mapPoints.length > 0 ? (
+        <section className="admin-panel p-5">
+          <Suspense
+            fallback={
+              <div className="flex items-center justify-center py-16">
+                <Spin />
+              </div>
+            }
+          >
+            <AddressVerifyMapView points={mapPoints} />
+          </Suspense>
+        </section>
+      ) : null}
 
       <section className="admin-panel overflow-hidden">
         <Table<AddressVerifyRow>

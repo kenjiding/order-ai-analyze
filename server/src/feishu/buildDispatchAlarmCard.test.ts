@@ -31,6 +31,8 @@ const baseParams = {
   pushTime: '14:45',
   tz: AUS_TZ.Sydney,
   problemCount: 0,
+  // 默认当 lateSignedCount=0 的场景用，neverSignedCount 需要各测试按自己的 total/met/drivers 口径覆盖
+  lateSignedCount: 0,
   priorityTotal: 0,
   priorityUnsigned: 0,
   alertThresholdPct: 92,
@@ -42,6 +44,7 @@ test('未达标的单全部未派件（无司机）时，不能显示「全部�
       ...baseParams,
       total: 16,
       met: 0,
+      neverSignedCount: 16,
       drivers: [],
       unassigned: unassignedBucket(16),
     }),
@@ -55,10 +58,34 @@ test('未达标的单全部未派件（无司机）时，不能显示「全部�
 
 test('真正全部达标时仍显示「全部已签收」', () => {
   const text = bodyText(
-    buildDispatchAlarmCard({ ...baseParams, total: 16, met: 16, drivers: [], unassigned: null }),
+    buildDispatchAlarmCard({
+      ...baseParams,
+      total: 16,
+      met: 16,
+      neverSignedCount: 0,
+      drivers: [],
+      unassigned: null,
+    }),
   )
 
   assert.match(text, /All waybills signed within 24H/)
+})
+
+test('全部已签收但部分超时（neverSignedCount=0，lateSignedCount>0）时，不展示「XX not signed」，而是汇总提示签收但超时的数量', () => {
+  const text = bodyText(
+    buildDispatchAlarmCard({
+      ...baseParams,
+      total: 16,
+      met: 12,
+      neverSignedCount: 0,
+      lateSignedCount: 4,
+      drivers: [],
+      unassigned: null,
+    }),
+  )
+
+  assert.doesNotMatch(text, /Waybills not signed within 24H/)
+  assert.match(text, /All waybills signed\. 12 signed within 24H, 4 signed late/)
 })
 
 test('司机行展示「本地件优先客户」包裹数，不再展示问题件数', () => {
@@ -78,7 +105,15 @@ test('司机行展示「本地件优先客户」包裹数，不再展示问题�
     problemWaybills: [],
   }
   const text = bodyText(
-    buildDispatchAlarmCard({ ...baseParams, total: 132, met: 131, problemCount: 4, drivers: [driver], unassigned: null }),
+    buildDispatchAlarmCard({
+      ...baseParams,
+      total: 132,
+      met: 131,
+      problemCount: 4,
+      neverSignedCount: 1,
+      drivers: [driver],
+      unassigned: null,
+    }),
   )
 
   assert.match(text, /TIRTH THAKAR\*\* \(D21021044801\).*1 not signed.*\/ 132 total\. .*<.*1.*\/34 Priorities>/)
@@ -104,7 +139,14 @@ test('优先件全部已处理（未签数为 0）时不展示 Priorities 数据
     problemWaybills: [],
   }
   const text = bodyText(
-    buildDispatchAlarmCard({ ...baseParams, total: 100, met: 90, drivers: [driver], unassigned: null }),
+    buildDispatchAlarmCard({
+      ...baseParams,
+      total: 100,
+      met: 90,
+      neverSignedCount: 10,
+      drivers: [driver],
+      unassigned: null,
+    }),
   )
 
   assert.doesNotMatch(text, /Priorities/)
@@ -118,6 +160,7 @@ test('KPI 行用「Priority Packages」磁贴取代问题件磁贴，展示未�
       total: 900,
       met: 890,
       problemCount: 7,
+      neverSignedCount: 10,
       priorityTotal: 590,
       priorityUnsigned: 439,
       drivers: [],
@@ -217,6 +260,7 @@ test('未派件（无司机）那行也要标出「本地件优先客户」件�
       ...baseParams,
       total: 252,
       met: 180,
+      neverSignedCount: 72,
       priorityTotal: 252,
       priorityUnsigned: 26,
       drivers: [driver],

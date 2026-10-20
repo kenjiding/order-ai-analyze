@@ -14,9 +14,9 @@ const DEFAULT_SORTING_PAGE_LIST_URL = 'https://oc.imile.com/cornerstone/sorting/
 /**
  * 查询窗口以 dataDate（点位所属的业务日期，非查询时的“今天”）为锚点，不是相对当前时间。
  * 实测同一 dataDate 下 ORDER_CREATE/ORDER_CHANGE 的 lastUpdDate 普遍比 dataDate 早 5~8 天
- * （订单创建到签收/出问题之间有正常时间差），回溯 14 天留足余量；向后 2 天覆盖同日晚间变更。
+ * （订单创建到签收/出问题之间有正常时间差），回溯 90 天（约 3 个月）留足余量；向后 2 天覆盖同日晚间变更。
  */
-const SORTING_LOOKBACK_DAYS = 14
+const SORTING_LOOKBACK_DAYS = 90
 const SORTING_LOOKAHEAD_DAYS = 2
 
 /** iMile 硬限制参考 searchWaybill：单次查询单号不超过 1000 条 */

@@ -6,7 +6,8 @@ import {
   Route,
   ShieldAlert,
 } from 'lucide-react'
-import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
+import JsBarcode from 'jsbarcode'
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 import { DrawerCloseButton } from '../../../components/Drawer/DrawerCloseButton'
 import { useAppSettings } from '../../../context/AppSettingsContext'
@@ -257,6 +258,8 @@ export function OrderAnalysisDetailDrawer({ row, onClose }: Props) {
     urls: string[]
     error: string
   }>({ open: false, loading: false, urls: [], error: '' })
+  const [barcodeOpen, setBarcodeOpen] = useState(false)
+  const barcodeSvgRef = useRef<SVGSVGElement | null>(null)
 
   const closureExceptionTypeOptions = useMemo(
     () => [
@@ -324,6 +327,7 @@ export function OrderAnalysisDetailDrawer({ row, onClose }: Props) {
       setDetectedDriverId('')
       setPendingAutoResolveDriverId('')
       setVendorAutoFillTip('')
+      setBarcodeOpen(false)
       return
     }
 
@@ -449,6 +453,11 @@ export function OrderAnalysisDetailDrawer({ row, onClose }: Props) {
     setPendingAutoResolveDriverId('')
   }, [row, pendingAutoResolveDriverId, stationCode, resolveVendorByDriver])
 
+  const drawBarcode = useCallback(() => {
+    if (!row || !barcodeSvgRef.current) return
+    JsBarcode(barcodeSvgRef.current, row.orderNo, { format: 'CODE128', height: 60, displayValue: true })
+  }, [row])
+
   const sortedTrackEvents = useMemo(() => (row ? sortTrackEventsDesc(row.trackEvents) : []), [row])
   const sortedInterceptLogs = useMemo(() => (row ? sortInterceptLogsDesc(row.interceptLogs) : []), [row])
   const latestResponsibilityMarker = row?.latestResponsibility ?? null
@@ -565,7 +574,14 @@ export function OrderAnalysisDetailDrawer({ row, onClose }: Props) {
                     </div>
                     <div>
                       <p className="text-[11px] font-medium uppercase tracking-[0.12em] text-white/70">{t('drawer.orderNo')}</p>
-                      <p className="font-mono text-xl font-semibold tracking-wide text-white sm:text-2xl">{row.orderNo}</p>
+                      <button
+                        type="button"
+                        onClick={() => setBarcodeOpen(true)}
+                        title={t('drawer.orderNoBarcodeHint')}
+                        className="font-mono text-xl font-semibold tracking-wide text-white underline decoration-dotted decoration-white/40 underline-offset-4 hover:decoration-white sm:text-2xl"
+                      >
+                        {row.orderNo}
+                      </button>
                     </div>
                   </div>
                   <div className="hidden h-8 w-px bg-white/20 sm:block" aria-hidden />
@@ -886,6 +902,19 @@ export function OrderAnalysisDetailDrawer({ row, onClose }: Props) {
             </div>
           </Image.PreviewGroup>
         )}
+      </Modal>
+      <Modal
+        open={barcodeOpen}
+        onCancel={() => setBarcodeOpen(false)}
+        footer={null}
+        title={t('drawer.barcodeModalTitle')}
+        afterOpenChange={(visible) => {
+          if (visible) drawBarcode()
+        }}
+      >
+        <div className="flex items-center justify-center py-4">
+          <svg ref={barcodeSvgRef} />
+        </div>
       </Modal>
     </Drawer>
   )

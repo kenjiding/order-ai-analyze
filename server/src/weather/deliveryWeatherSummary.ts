@@ -38,31 +38,48 @@ function rainAmountText(day: BomDailyForecast): string | null {
   return min && min !== max ? `${min}-${max}${units}` : `${max}${units}`
 }
 
-/** 依据图标 + 降雨概率/雨量判定派送影响等级 */
+const LEVEL_RANK: Record<WeatherImpactLevel, number> = { normal: 0, mild: 1, moderate: 2, severe: 3 }
+
+/** 高温预警：35/38/40°C 三级，对齐 BOM 及各州 Heat Health Alert 常用口径 */
+function assessHeat(day: BomDailyForecast): { level: WeatherImpactLevel; label: string } | null {
+  const tempMax = day.temp_max
+  if (tempMax == null) return null
+  if (tempMax >= 40) return { level: 'severe', label: 'Extreme heat · limit sun exposure, heatstroke risk' }
+  if (tempMax >= 38) return { level: 'moderate', label: 'High heat · stay hydrated, take more breaks' }
+  if (tempMax >= 35) return { level: 'mild', label: 'Hot day · stay hydrated' }
+  return null
+}
+
+/** 依据图标 + 降雨概率/雨量判定派送影响等级，再叠加高温判断取更高等级 */
 function assessImpact(day: BomDailyForecast): { level: WeatherImpactLevel; label: string } {
   const icon = (day.icon_descriptor ?? '').toLowerCase()
   const chance = day.rain?.chance ?? 0
   const maxAmount = day.rain?.amount?.max ?? 0
 
+  let result: { level: WeatherImpactLevel; label: string }
   if (/storm|cyclone|hail/.test(icon)) {
-    return { level: 'severe', label: 'Thunderstorm/Hail · stay safe, delays likely' }
+    result = { level: 'severe', label: 'Thunderstorm/Hail · stay safe, delays likely' }
+  } else if (/heavy/.test(icon) || ((/rain|shower/.test(icon)) && (chance >= 70 || maxAmount >= 15))) {
+    result = { level: 'severe', label: 'Heavy rain · keep the shipping label dry, efficiency will drop' }
+  } else if (/wind/.test(icon)) {
+    result = { level: 'moderate', label: 'Strong wind · handle parcels carefully' }
+  } else if (/rain|shower/.test(icon)) {
+    result = chance >= 50 || maxAmount >= 5
+      ? { level: 'moderate', label: 'Rain · keep the shipping label dry, may slow delivery' }
+      : { level: 'mild', label: 'Light showers · keep the label dry, minor impact' }
+  } else if (/fog|frost|snow|dust/.test(icon)) {
+    result = { level: 'moderate', label: 'Low visibility / poor road conditions' }
+  } else {
+    result = { level: 'normal', label: 'Good for delivery' }
   }
-  if (/heavy/.test(icon) || ((/rain|shower/.test(icon)) && (chance >= 70 || maxAmount >= 15))) {
-    return { level: 'severe', label: 'Heavy rain · keep the shipping label dry, efficiency will drop' }
+
+  const heat = assessHeat(day)
+  if (!heat) return result
+  if (LEVEL_RANK[heat.level] > LEVEL_RANK[result.level]) return heat
+  if (LEVEL_RANK[heat.level] === LEVEL_RANK[result.level] && result.level !== 'normal') {
+    return { level: result.level, label: `${result.label} · ${heat.label}` }
   }
-  if (/wind/.test(icon)) {
-    return { level: 'moderate', label: 'Strong wind · handle parcels carefully' }
-  }
-  if (/rain|shower/.test(icon)) {
-    if (chance >= 50 || maxAmount >= 5) {
-      return { level: 'moderate', label: 'Rain · keep the shipping label dry, may slow delivery' }
-    }
-    return { level: 'mild', label: 'Light showers · keep the label dry, minor impact' }
-  }
-  if (/fog|frost|snow|dust/.test(icon)) {
-    return { level: 'moderate', label: 'Low visibility / poor road conditions' }
-  }
-  return { level: 'normal', label: 'Good for delivery' }
+  return result
 }
 
 function toDeliveryDay(day: BomDailyForecast, prefix: string, tz: string): DeliveryWeatherDay {

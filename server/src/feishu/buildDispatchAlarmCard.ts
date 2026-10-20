@@ -218,6 +218,10 @@ export function buildDispatchAlarmCard(params: {
   met: number
   /** 问题件数：见 aggregateDispatch24hByVendor 的 isDispatch24hProblem 口径；仅用于判断是否给出落地页链接，卡片不再展示 */
   problemCount: number
+  /** 真正从未签收的件数（不含「已签收但超过 24H 窗口」）；卡片上「not signed」只认这个口径，见 Dispatch24hVendorStat.neverSignedCount */
+  neverSignedCount: number
+  /** 已签收但超过 24H 窗口才签收的件数；卡片不逐行展示（磁贴宽度有限），仅在「全部已签收」文案里汇总提示，完整明细见落地页 */
+  lateSignedCount: number
   /** 「本地件优先客户」包裹数 */
   priorityTotal: number
   /** 「本地件优先客户」包裹中尚未签收的件数；本次派送已上报问题件视同已签收，与 24H 派签口径一致 */
@@ -242,6 +246,8 @@ export function buildDispatchAlarmCard(params: {
     total,
     met,
     problemCount,
+    neverSignedCount,
+    lateSignedCount,
     priorityTotal,
     priorityUnsigned,
     drivers,
@@ -278,7 +284,12 @@ export function buildDispatchAlarmCard(params: {
   elements.push(
     columnSet([
       summaryTile('24H delivery rate', rateText, `Threshold ${alertThresholdPct}%`, 'blue'),
-      summaryTile('Not signed', `${unmet}`, `${total} waybills total`, unmet > 0 ? 'red' : 'green'),
+      summaryTile(
+        'Not signed',
+        `${neverSignedCount}`,
+        `${total} waybills total`,
+        neverSignedCount > 0 ? 'red' : 'green',
+      ),
       // 问题件磁贴换成「本地件优先客户」派送进度：未签收优先件 / 优先件总数
       summaryTile(
         'Priority Packages',
@@ -291,30 +302,39 @@ export function buildDispatchAlarmCard(params: {
 
   elements.push(hr())
 
-  const unmetDrivers = drivers.filter((d) => d.total - d.met > 0)
-  const unassignedUnmet = unassigned ? unassigned.total - unassigned.met : 0
-  // 结论必须按供应商级 unmet 判定：未派件的单没有 courierCode，不会出现在 drivers 里，
+  const unmetDrivers = drivers.filter((d) => d.neverSignedCount > 0)
+  const unassignedNeverSigned = unassigned?.neverSignedCount ?? 0
+  // 结论必须按供应商级 neverSignedCount 判定：未派件的单没有 courierCode，不会出现在 drivers 里，
   // 用 unmetDrivers.length 判断会把「16 单未签收」说成「全部已签收」。
-  if (unmet === 0) {
-    elements.push(md(colored('✅ All waybills signed within 24H', 'green')))
+  if (neverSignedCount === 0) {
+    // 全部已签收，但可能部分超时（lateSignedCount > 0）——率磁贴仍会显示未达标，这里补一句说明，
+    // 避免「✅ All signed」看起来跟上面「Alert」标题自相矛盾；超时明细不逐条展示，完整清单见落地页
+    elements.push(
+      md(
+        colored(
+          lateSignedCount > 0
+            ? `✅ All waybills signed. ${met} signed within 24H, ${lateSignedCount} signed late`
+            : '✅ All waybills signed within 24H',
+          'green',
+        ),
+      ),
+    )
   } else {
     const shown = unmetDrivers.slice(0, MAX_DRIVER_LINES)
     const lines = shown.map((d) => {
-      // 不再展示 signed late 明细，司机行统一按未达标数（含逾期签收）标「not signed」
-      const unmetCount = d.total - d.met
-      const unmetPart = colored(`${unmetCount} not signed`, 'red')
+      const unmetPart = colored(`${d.neverSignedCount} not signed`, 'red')
       return `· **${shortDriverName(d.courierName)}** (${d.courierCode}) ${unmetPart} / ${d.total} total${prioritySuffix(d)}`
     })
     if (unmetDrivers.length > MAX_DRIVER_LINES) {
       lines.push(`及其他 ${unmetDrivers.length - MAX_DRIVER_LINES} 位司机`)
     }
-    if (unassignedUnmet > 0) {
+    if (unassignedNeverSigned > 0) {
       lines.push(
-        `· **Not dispatched (no driver assigned)** ${colored(`${unassignedUnmet} not signed`, 'red')} / ${unassigned!.total} total${prioritySuffix(unassigned!)}`,
+        `· **Not dispatched (no driver assigned)** ${colored(`${unassignedNeverSigned} not signed`, 'red')} / ${unassigned!.total} total${prioritySuffix(unassigned!)}`,
       )
     }
     elements.push(
-      md(`🚨 **Waybills not signed within 24H (${unmet})**`, {
+      md(`🚨 **Waybills not signed within 24H (${neverSignedCount})**`, {
         text_size: 'heading',
       }),
     )

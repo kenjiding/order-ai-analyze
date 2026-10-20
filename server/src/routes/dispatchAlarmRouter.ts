@@ -7,7 +7,7 @@ import { readImileTokenFromRequest } from './imileAuth'
 import { normalizeImileToken } from '../imile/shared'
 import { getRegionNow } from '../imile/inboundWaybillIndex'
 import { resolveRegionTz } from '../imile/ausTimezone'
-import { lastSortingWorkdayOnOrBefore } from '../imile/sortingWorkday'
+import { sortingWorkdayCatchUpDates } from '../imile/sortingWorkday'
 import { listPushableSupplierPushConfigsForSchedule, parsePushConfigIds, validatePushConfigIdsForSchedule } from '../supplierPushConfigs'
 import {
   executeDispatchAlarmPush,
@@ -386,7 +386,7 @@ dispatchAlarmRouter.post('/schedules/:id/push-now', async (req: AuthenticatedReq
     const { prevDateStr, timeHHmm: pushTime } = getRegionNow(tz)
     // 已保存到件扫描日期则按这些日期逐日拉数合并（用户手动指定，不做工作日兜底）；否则沿用自动计算的最近工作日
     const savedDates = (schedule.arrivalScanDates as string[] | null) ?? []
-    const dates = savedDates.length > 0 ? savedDates : [lastSortingWorkdayOnOrBefore(prevDateStr)]
+    const dates = savedDates.length > 0 ? savedDates : sortingWorkdayCatchUpDates(prevDateStr)
 
     const result = await executeDispatchAlarmPush({
       token,

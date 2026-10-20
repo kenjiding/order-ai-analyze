@@ -243,6 +243,8 @@
     "needsReview": "Manual review required",
     "outOfHubResponsibility": "Last-mile responsibility",
     "orderNo": "Waybill No.",
+    "orderNoBarcodeHint": "Click to generate barcode",
+    "barcodeModalTitle": "Waybill barcode",
     "exceptionCategory": "Exception category",
     "currentHub": "Current responsible hub",
     "confidence": "Confidence",

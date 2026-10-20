@@ -25,8 +25,8 @@ import {
 } from '../vendorAnalysis/dispatch24hAggregate'
 import {
   isNoSortingBatch,
-  lastSortingWorkdayOnOrBefore,
   MIN_SORTING_WAYBILLS,
+  sortingWorkdayCatchUpDates,
 } from '../imile/sortingWorkday'
 import {
   claimScheduledSlot,
@@ -266,6 +266,8 @@ export async function executeDispatchAlarmPush(params: {
         total: stat.total,
         met: stat.met,
         problemCount: stat.problemCount,
+        neverSignedCount: stat.neverSignedCount,
+        lateSignedCount: stat.lateSignedCount,
         priorityTotal: stat.priorityTotal,
         priorityUnsigned: stat.priorityUnsigned,
         drivers: stat.drivers,
@@ -391,16 +393,17 @@ async function runOneScheduledPush(schedule: DispatchAlarmSchedule, regionCode: 
       continue
     }
 
-    // 目标日避开周末（周六/日不分拣、无数据）：从前一日往前取第一个工作日。
+    // 目标日避开周末（周六/日不分拣、无数据）：从前一日往前取第一个工作日，中间跳过的周末日
+    // 一并带上（见 sortingWorkdayCatchUpDates）——没开仓就是没数据，真开仓时不漏算。
     // 周六/周日推的仍是周五那批的实时进度（那批派签截止在下周一 23:59:59）。
     // 这天没开仓分拣的情形由量判定接手（见 execute）。
-    const targetDate = lastSortingWorkdayOnOrBefore(prevDateStr)
-    console.log(`${label} 命中推送时间 weekday=${weekday} time=${timeHHmm} date=${targetDate}`)
+    const targetDates = sortingWorkdayCatchUpDates(prevDateStr)
+    console.log(`${label} 命中推送时间 weekday=${weekday} time=${timeHHmm} dates=${targetDates.join(',')}`)
 
     const result = await executeDispatchAlarmPush({
       token,
       stationCode,
-      dates: [targetDate],
+      dates: targetDates,
       pushTime: timeHHmm,
       alertThresholdPct: schedule.alertThresholdPct,
       configs,

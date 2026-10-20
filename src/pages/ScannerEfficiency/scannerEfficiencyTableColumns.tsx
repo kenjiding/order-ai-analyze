@@ -129,6 +129,14 @@ type MatchFooterStats = {
   avgCainiaoVolume: number
   cainiaoShareFromTotals: number | null
   avgCainiaoShare: number | null
+  totalSheinVolume: number
+  avgSheinVolume: number
+  sheinShareFromTotals: number | null
+  avgSheinShare: number | null
+  totalTemuVolume: number
+  avgTemuVolume: number
+  temuShareFromTotals: number | null
+  avgTemuShare: number | null
   totalHoursSum: number
   avgTotalHours: number
   efficiencyFromTotals: number | null
@@ -186,15 +194,22 @@ export function buildDailyVolumeColumns(): DataTableColumn[] {
     { key: 'date', title: t('columns.date') },
     { key: 'volume', title: t('columns.totalVolume'), render: (row: DataTableRow) => formatInteger(Number(row.volume)) },
     {
-      key: 'cainiaoVolume',
-      title: t('columns.cainiaoVolume'),
-      render: (row: DataTableRow) => formatInteger(Number(row.cainiaoVolume)),
-    },
-    {
       key: 'cainiaoShare',
       title: t('columns.cainiaoShare'),
       render: (row: DataTableRow) =>
         formatCainiaoSharePercent(Number(row.volume) > 0 ? Number(row.cainiaoShare) : null),
+    },
+    {
+      key: 'sheinShare',
+      title: t('columns.sheinShare'),
+      render: (row: DataTableRow) =>
+        formatCainiaoSharePercent(Number(row.volume) > 0 ? Number(row.sheinShare) : null),
+    },
+    {
+      key: 'temuShare',
+      title: t('columns.temuShare'),
+      render: (row: DataTableRow) =>
+        formatCainiaoSharePercent(Number(row.volume) > 0 ? Number(row.temuShare) : null),
     },
     {
       key: 'scannerCount',
@@ -295,6 +310,44 @@ export function buildAttendanceMatchColumns(options?: {
         return (
           <span className="tabular-nums text-slate-700">
             {formatCainiaoSharePercent(Number(row.cainiaoShare))}
+          </span>
+        )
+      },
+    },
+    {
+      key: 'sheinShare',
+      title: t('columns.sheinShare'),
+      render: (row: DataTableRow) => {
+        if (row.matchFooterStats && (row.isWeekGroupFooter || row.isAttendanceMatchFooter)) {
+          const s = row.matchFooterStats as MatchFooterStats
+          return attendanceMatchFooterCell(formatCainiaoSharePercent(s.sheinShareFromTotals))
+        }
+        if (row.isWeekGroupHeader) return '—'
+        if (row.isAttendanceOnly || !(Number(row.volume) > 0)) {
+          return <span className="tabular-nums text-slate-400">-</span>
+        }
+        return (
+          <span className="tabular-nums text-slate-700">
+            {formatCainiaoSharePercent(Number(row.sheinShare))}
+          </span>
+        )
+      },
+    },
+    {
+      key: 'temuShare',
+      title: t('columns.temuShare'),
+      render: (row: DataTableRow) => {
+        if (row.matchFooterStats && (row.isWeekGroupFooter || row.isAttendanceMatchFooter)) {
+          const s = row.matchFooterStats as MatchFooterStats
+          return attendanceMatchFooterCell(formatCainiaoSharePercent(s.temuShareFromTotals))
+        }
+        if (row.isWeekGroupHeader) return '—'
+        if (row.isAttendanceOnly || !(Number(row.volume) > 0)) {
+          return <span className="tabular-nums text-slate-400">-</span>
+        }
+        return (
+          <span className="tabular-nums text-slate-700">
+            {formatCainiaoSharePercent(Number(row.temuShare))}
           </span>
         )
       },

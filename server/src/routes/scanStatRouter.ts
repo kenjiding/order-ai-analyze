@@ -4,6 +4,9 @@ import { getFeishuTenantAccessToken } from '../feishuServerEnv'
 import { getGlobalImileToken } from '../feishu/globalImileToken'
 import { sendFeishuAppMessage } from '../feishu/feishuAppMessage'
 import { normalizeImileToken } from '../imile/shared'
+import { fetchStagnantWaybillRouteCodes } from '../imile/stagnantWaybills'
+import { buildScanStatRouteText, buildScanStatSupplierRouteStats } from '../imile/scanStatSupplierRouteStats'
+import { listSupplierPushConfigs } from '../supplierPushConfigs'
 import {
   buildScanStatSummaryText,
   fetchScanStatWaybills,
@@ -97,8 +100,16 @@ scanStatRouter.post('/lookup', async (req: AuthenticatedRequest, res: Response) 
   })
 })
 
-/** 单纯把扫到的运单号发给飞书接收人，不查商家。 */
+/**
+ * 发送订单号：按单号查路由码，匹配当前账号可见的供应商配置（同州 + 历史全局），
+ * 按供应商分组统计各路由码件数，发飞书文本给接收人；查不到路由码/未匹配供应商的单号仍计数展示，不丢弹。
+ */
 scanStatRouter.post('/send-nos', async (req: AuthenticatedRequest, res: Response) => {
+  const userId = req.authUser?.id
+  if (!userId) {
+    res.status(401).json({ ok: false, error: '未登录' })
+    return
+  }
   const waybillNos = readWaybillNos((req.body as { waybillNos?: unknown }).waybillNos)
   if ('error' in waybillNos) {
     res.status(400).json({ ok: false, error: waybillNos.error })
@@ -109,11 +120,28 @@ scanStatRouter.post('/send-nos', async (req: AuthenticatedRequest, res: Response
     res.status(400).json({ ok: false, error: target.error })
     return
   }
+  const stationCode = typeof (req.body as { stationCode?: unknown }).stationCode === 'string'
+    ? ((req.body as { stationCode: string }).stationCode).trim()
+    : ''
+  if (!stationCode) {
+    res.status(400).json({ ok: false, error: '缺少必填字段: stationCode' })
+    return
+  }
+  const token = normalizeImileToken(await getGlobalImileToken(userId))
+  if (!token) {
+    res.status(400).json({ ok: false, error: '请先在电脑端「系统设置」中配置 iMile Token' })
+    return
+  }
 
-  const text = [
-    target.stationName ? `${target.stationName} 运单号（${waybillNos.length}）：` : `运单号（${waybillNos.length}）：`,
-    ...waybillNos,
-  ].join('\n')
+  const routeCodes = await fetchStagnantWaybillRouteCodes(token, waybillNos, stationCode)
+  if (!routeCodes.ok) {
+    res.status(routeCodes.status >= 400 ? routeCodes.status : 502).json({ ok: false, error: `路由码查询失败: ${routeCodes.message}` })
+    return
+  }
+  const configs = await listSupplierPushConfigs(req.authUser?.regionCode ?? undefined)
+  const stats = buildScanStatSupplierRouteStats(waybillNos, routeCodes.data, configs)
+
+  const text = buildScanStatRouteText(target.stationName, waybillNos.length, stats)
   const sent = await sendFeishuText(target.openId, text)
   if (!sent.ok) {
     res.status(sent.status).json({ ok: false, error: sent.error })

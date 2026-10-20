@@ -400,13 +400,13 @@ export function useScannerEfficiencyPage() {
       {
         label: String(i18n.t('metrics.openEfficiency', { ns: 'scannerEfficiency' })),
         value: String(i18n.t('metrics.ticketsPerHour', { ns: 'scannerEfficiency', value: formatNumber(attendanceResult.summary.openEfficiency, 2) })),
-        hint: String(i18n.t('metrics.openEffHint', { ns: 'scannerEfficiency', volume: formatInteger(attendanceResult.summary.uploadedVolume), hours: formatNumber(attendanceResult.summary.openHours, 2), share: formatCainiaoSharePercent(attendanceResult.summary.cainiaoShareOpenDays) })),
+        hint: String(i18n.t('metrics.openEffHint', { ns: 'scannerEfficiency', volume: formatInteger(attendanceResult.summary.uploadedVolume), hours: formatNumber(attendanceResult.summary.openHours, 2), share: formatCainiaoSharePercent(attendanceResult.summary.cainiaoShareOpenDays), sheinShare: formatCainiaoSharePercent(attendanceResult.summary.sheinShareOpenDays), temuShare: formatCainiaoSharePercent(attendanceResult.summary.temuShareOpenDays) })),
         tone: 'dark' as const,
       },
       {
         label: String(i18n.t('metrics.overallEfficiency', { ns: 'scannerEfficiency' })),
         value: String(i18n.t('metrics.ticketsPerHour', { ns: 'scannerEfficiency', value: formatNumber(attendanceResult.summary.overallEfficiency, 2) })),
-        hint: String(i18n.t('metrics.overallEffHint', { ns: 'scannerEfficiency', volume: formatInteger(attendanceResult.summary.uploadedVolume), hours: formatNumber(attendanceResult.summary.allHours, 2), share: formatCainiaoSharePercent(attendanceResult.summary.cainiaoShareWindow) })),
+        hint: String(i18n.t('metrics.overallEffHint', { ns: 'scannerEfficiency', volume: formatInteger(attendanceResult.summary.uploadedVolume), hours: formatNumber(attendanceResult.summary.allHours, 2), share: formatCainiaoSharePercent(attendanceResult.summary.cainiaoShareWindow), sheinShare: formatCainiaoSharePercent(attendanceResult.summary.sheinShareWindow), temuShare: formatCainiaoSharePercent(attendanceResult.summary.temuShareWindow) })),
       },
     ]
   }, [scanAggregate, attendanceResult, i18n.language])

@@ -42,8 +42,30 @@ textarea{resize:vertical;min-height:64px}
 #msg{position:fixed;left:16px;right:16px;top:64px;padding:12px 14px;border-radius:10px;font-size:15px;text-align:center;display:none;z-index:9}
 #msg.ok{display:block;background:#e7f6f3;color:#166a60;border:1px solid #b6e3da}
 #msg.bad{display:block;background:#fee7ec;color:#9f1239;border:1px solid #f8c3ce}
-.hint{font-size:13px;color:var(--muted);margin-top:10px}
 [hidden]{display:none!important}
+/* 图片推送：紧跟录入表单的提示文案，折叠态是一条说明条，展开后与下方内容拼成一张完整卡片。
+   挂在 main#vform 里，水平方向交给 main 自己的 16px 内边距，这里只管纵向间距 */
+.ipcard{margin-top:20px}
+.ip-toggle{width:100%;background:#fff;border:1px solid #e6ecea;border-radius:12px;
+  padding:13px 14px;display:flex;align-items:center;justify-content:space-between;gap:10px;
+  box-shadow:0 1px 2px rgba(24,80,74,.04)}
+.ip-toggle[aria-expanded="true"]{border-radius:12px 12px 0 0;border-bottom-color:transparent}
+.ip-head{display:block;text-align:left;min-width:0}
+.ip-title{display:block;font-size:14px;font-weight:600;color:#12312e}
+.ip-sub{display:block;font-size:12px;color:#5f7370;margin-top:2px;overflow:hidden;
+  text-overflow:ellipsis;white-space:nowrap}
+.ip-toggle .car{flex-shrink:0;color:#9fb0ae;font-size:15px;transition:transform .2s,color .2s}
+.ip-toggle[aria-expanded="true"] .car{transform:rotate(90deg);color:var(--c)}
+#ipBody{background:#fff;border:1px solid #e6ecea;border-top:1px solid #eef3f2;
+  border-radius:0 0 12px 12px;padding:2px 14px 16px;box-shadow:0 1px 2px rgba(24,80,74,.04)}
+/* 选图按钮：原生 file input 在各平台样式都很丑，隐藏它，让这个 label 当可点的按钮 */
+.ip-filebtn{display:flex;align-items:center;justify-content:center;gap:8px;
+  border:1px solid var(--line);border-radius:10px;background:#fff;color:#3f5754;
+  font-size:14px;padding:13px 12px;cursor:pointer}
+.ip-filebtn:active{background:#f7faf9}
+.ip-filebtn svg{width:18px;height:18px;flex-shrink:0;fill:none;stroke:#5f7370;
+  stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
+#ipPreview{display:block;max-width:100%;border-radius:10px;margin-top:10px;border:1px solid var(--line)}
 /* 两个视图各自干净：录入是主动作，待确认是纠错动作，混一页会互相打架 */
 .tabs{display:flex;background:#fff;border-bottom:1px solid var(--line);position:sticky;top:0;z-index:8}
 .tab{flex:1;background:none;border:0;border-bottom:2px solid transparent;border-radius:0;padding:13px 8px;
@@ -243,7 +265,23 @@ textarea{resize:vertical;min-height:64px}
   <label for="note" data-i="note">备注</label>
   <textarea id="note" maxlength="2000"></textarea>
 
-  <p class="hint" data-i="hint">提交后保留日期与站点，只清空数量，方便连续录入。</p>
+  <div class="ipcard">
+    <button type="button" class="ip-toggle" id="ipToggle" aria-expanded="false" aria-controls="ipBody">
+      <span class="ip-head">
+        <span class="ip-title" data-i="ipToggle">图片推送</span>
+        <span class="ip-sub" data-i="ipHint">日期、接收方、数量品类与备注会拼成一行加粗红字印在图片上，随「提交」一起推送</span>
+      </span>
+      <span class="car" aria-hidden="true">▸</span>
+    </button>
+    <div id="ipBody" hidden>
+      <label class="ip-filebtn" for="ipFile">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3.3" y="5.3" width="17.4" height="13.4" rx="2.2"/><circle cx="8.6" cy="9.6" r="1.6"/><path d="M4 16.3l5-4.6 3.4 3 3.1-3.4 4.5 4.3"/></svg>
+        <span data-i="ipImage">选择图片</span>
+      </label>
+      <input type="file" id="ipFile" accept="image/*" class="sr" />
+      <img id="ipPreview" hidden />
+    </div>
+  </div>
 </main>
 <main id="vlist" hidden>
   <div class="seg">
@@ -325,7 +363,6 @@ var I18N = {
     date: '日期', kind: '类型', LEND: '借出', RETURN: '归还', from: '转出方', to: '接收方',
     loading: '加载中…', pick: '请选择', lines: '品类与数量', addLine: '+ 加一行', note: '备注',
     qty: '数量', rmLine: '删除这一行',
-    hint: '提交后保留日期与站点，只清空数量，方便连续录入。',
     submit: '提交', submitting: '提交中…', submitted: '已提交 ', errSubmit: '提交失败',
     errQty: '数量必须为正整数', errDupType: '同一笔记录中品类不能重复', errNoLine: '至少填一行数量',
     errDate: '请选日期', errFrom: '请选转出方', errTo: '请选接收方',
@@ -348,7 +385,9 @@ var I18N = {
     errSame: '实收与申报一致，请直接确认收货', reported: '已申报差异 ', errAction: '操作失败',
     outTitle: '退出登录', signOut: '退出', signingOut: '退出中…',
     outSum: '当前登录：{n}。退出后未提交的内容会清空。',
-    sep: '　', comma: '，'
+    sep: '　', comma: '，',
+    ipToggle: '图片推送', ipHint: '日期、接收方、数量品类与备注会拼成一行加粗红字印在图片上，随「提交」一起推送', ipImage: '选择图片',
+    ipPushed: '图片已推送', ipErrPush: '图片推送失败'
   },
   en: {
     langBtn: '中文', langAria: '切换到中文',
@@ -359,7 +398,6 @@ var I18N = {
     date: 'Date', kind: 'Type', LEND: 'Loan', RETURN: 'Return', from: 'From', to: 'To',
     loading: 'Loading…', pick: 'Select', lines: 'Line items', addLine: '+ Add line', note: 'Note',
     qty: 'Qty', rmLine: 'Remove line',
-    hint: 'Date and sites stay after submit; only quantities clear.',
     submit: 'Submit', submitting: 'Submitting…', submitted: 'Submitted ', errSubmit: 'Submit failed',
     errQty: 'Quantity must be a positive integer', errDupType: 'Each type can appear only once',
     errNoLine: 'Enter at least one quantity',
@@ -384,7 +422,11 @@ var I18N = {
     errSame: 'Received matches declared, use Confirm receipt', reported: 'Discrepancy reported ', errAction: 'Action failed',
     outTitle: 'Sign out', signOut: 'Sign out', signingOut: 'Signing out…',
     outSum: 'Signed in as {n}. Unsubmitted input will be cleared.',
-    sep: ' ', comma: ', '
+    sep: ' ', comma: ', ',
+    ipToggle: 'Image push',
+    ipHint: 'Date, recipient, quantity/type and note are joined into one line, printed bold red on the image, pushed together with Submit',
+    ipImage: 'Choose image',
+    ipPushed: 'Image pushed', ipErrPush: 'Image push failed'
   }
 }
 function T(k) {
@@ -467,7 +509,7 @@ function addLine() {
   del.type = 'button'
   del.textContent = '×'
   del.setAttribute('aria-label', T('rmLine'))
-  del.onclick = function () { if ($('lines').children.length > 1) row.remove() }
+  del.onclick = function () { if ($('lines').children.length > 1) { row.remove(); refreshIpPreview() } }
   row.appendChild(sel); row.appendChild(qty); row.appendChild(del)
   $('lines').appendChild(row)
 }
@@ -498,6 +540,7 @@ function submit() {
   if (!to) return say(T('errTo'))
   var lines = readLines()
   if (lines.error) return say(lines.error)
+  var noteText = $('note').value.trim()
 
   var btn = $('submit')
   btn.disabled = true
@@ -513,7 +556,7 @@ function submit() {
         toAccountId: to,
         lineItems: lines.items,
         occurredAt: occurredAt,
-        note: $('note').value.trim() || null,
+        note: noteText || null,
       }],
     }),
   })
@@ -522,18 +565,29 @@ function submit() {
       return r.json()
     })
     .then(function (json) {
-      if (json && json.ok) {
-        var id = json.data && json.data[0] ? json.data[0].id : 0
-        // 单号口径与主站一致：TR- + 6 位补零（server constants.ts formatTransferNo）
-        say(T('submitted') + (id ? no(id) : ''), true)
-        // 站点/日期/类型都留着，现场通常连着录同一批，只清数量与备注
-        $('note').value = ''
-        $('lines').innerHTML = ''
-        addLine()
-        listed = false
-      } else {
+      if (!(json && json.ok)) {
         say((json && json.error) || T('errSubmit'))
+        return
       }
+      var id = json.data && json.data[0] ? json.data[0].id : 0
+      // 单号口径与主站一致：TR- + 6 位补零（server constants.ts formatTransferNo）
+      var submittedText = T('submitted') + (id ? no(id) : '')
+      // 站点/日期/类型都留着，现场通常连着录同一批，只清数量与备注
+      $('note').value = ''
+      $('lines').innerHTML = ''
+      addLine()
+      listed = false
+
+      var imgFile = $('ipFile').files[0]
+      if (!imgFile) { say(submittedText, true); return }
+      // 选了图就跟着这次提交一起推，没有单独的「推送」按钮；
+      // lines.items/noteText 是提交前读出的普通值，上面清空的是 DOM，两者不是一回事，这里仍能取到这一笔的数据
+      var watermarkLines = buildWatermarkLines(occurredAt, to, lines.items, noteText)
+      return pushImageWithWatermark(imgFile, watermarkLines).then(function (pushed) {
+        say(submittedText + T('sep') + (pushed.ok ? T('ipPushed') : pushed.error), pushed.ok)
+        $('ipFile').value = ''
+        $('ipPreview').hidden = true
+      })
     })
     .catch(function (e) { if (e.message !== '401') say(T('errNet')) })
     .then(function () { btn.disabled = false; btn.textContent = T('submit') })
@@ -544,6 +598,141 @@ $('occurredAt').value = new Date().toLocaleDateString('sv')
 $('addLine').onclick = addLine
 $('from').onchange = syncTo
 $('submit').onclick = submit
+
+// ---------------------------------------------------------------- 图片推送
+// 日期+备注直接画进 canvas 再导出，后端只管上传取 image_key 发 webhook，不碰图片处理；
+// 没有单独的推送按钮，选了图就跟着「提交」一起发（见 submit() 里的 pushImageWithWatermark）
+$('ipToggle').onclick = function () {
+  var opening = $('ipBody').hidden
+  $('ipBody').hidden = !opening
+  $('ipToggle').setAttribute('aria-expanded', String(opening))
+}
+
+/** 中文无空格分词，按字符累加测宽，超出就换行 */
+function wrapCanvasText(ctx, text, maxWidth) {
+  var lines = [], cur = ''
+  for (var i = 0; i < text.length; i++) {
+    var test = cur + text[i]
+    if (cur && ctx.measureText(test).width > maxWidth) {
+      lines.push(cur)
+      cur = text[i]
+    } else {
+      cur = test
+    }
+  }
+  if (cur) lines.push(cur)
+  return lines
+}
+
+/**
+ * 打印内容：日期、接收方、各品类的「数量 品类」、图片备注，按这个固定顺序用空格拼成一行，
+ * 不加字段名——值为空的字段直接跳过。品类/数量取的是 readLines() 的结果，不是 DOM 实时值，
+ * 提交成功后表单已清空也不受影响（见 submit() 里的调用）。
+ */
+function buildWatermarkLines(occurredAt, toAccountId, lineItems, imageNote) {
+  var parts = []
+  if (occurredAt) parts.push(occurredAt)
+  var toName = ''
+  for (var i = 0; i < others.length; i++) {
+    if (others[i].id === toAccountId) { toName = others[i].name; break }
+  }
+  if (toName) parts.push(toName)
+  ;(lineItems || []).forEach(function (it) {
+    parts.push(String(it.quantity))
+    parts.push(typeName(it.containerType))
+  })
+  if (imageNote) parts.push(imageNote)
+  // 拼成一行交给 composeImagePush 按宽度换行，不是每个字段单独占一行
+  return parts.length ? [parts.join(' ')] : []
+}
+
+/** 表单当前状态对应的水印文案，供「选图/填备注/改数量」时的实时预览用 */
+function currentWatermarkLines() {
+  var parsed = readLines()
+  return buildWatermarkLines($('occurredAt').value, $('to').value, parsed.items, $('note').value.trim())
+}
+
+/** 每一行按字符量宽度各自换行，保证不超出图片；缩到最大边 1600px 控制体积，callback(dataUrl) */
+function composeImagePush(file, textLines, callback) {
+  var reader = new FileReader()
+  reader.onload = function () {
+    var img = new Image()
+    img.onload = function () {
+      // 2400 加 0.95 质量：单张照片通常在 2-4MB，仍在飞书 9MB 上传上限内；
+      // 缩小前把插值质量提到 high，不然浏览器默认的低质量缩放会比缩小本身更糊
+      var MAX = 2400
+      var scale = Math.min(1, MAX / Math.max(img.width, img.height))
+      var w = Math.round(img.width * scale)
+      var h = Math.round(img.height * scale)
+      var canvas = document.createElement('canvas')
+      canvas.width = w
+      canvas.height = h
+      var ctx = canvas.getContext('2d')
+      ctx.imageSmoothingEnabled = true
+      ctx.imageSmoothingQuality = 'high'
+      ctx.drawImage(img, 0, 0, w, h)
+      var fontSize = Math.max(16, Math.round(w / 20))
+      ctx.font = 'bold ' + fontSize + 'px -apple-system,PingFang SC,"Microsoft YaHei",sans-serif'
+      ctx.textAlign = 'center'
+      ctx.textBaseline = 'top'
+      var wrapped = []
+      textLines.forEach(function (line) {
+        if (line) wrapped = wrapped.concat(wrapCanvasText(ctx, line, w * 0.92))
+      })
+      var y = Math.round(h * 0.04)
+      wrapped.forEach(function (line, i) {
+        var ly = y + i * fontSize * 1.25
+        ctx.lineWidth = Math.max(3, fontSize / 8)
+        ctx.strokeStyle = 'rgba(255,255,255,.9)'
+        ctx.strokeText(line, w / 2, ly)
+        ctx.fillStyle = '#e02020'
+        ctx.fillText(line, w / 2, ly)
+      })
+      callback(canvas.toDataURL('image/jpeg', 0.95))
+    }
+    img.src = reader.result
+  }
+  reader.readAsDataURL(file)
+}
+
+function refreshIpPreview() {
+  var file = $('ipFile').files[0]
+  if (!file) { $('ipPreview').hidden = true; return }
+  composeImagePush(file, currentWatermarkLines(), function (dataUrl) {
+    $('ipPreview').src = dataUrl
+    $('ipPreview').hidden = false
+  })
+}
+$('ipFile').onchange = refreshIpPreview
+$('note').oninput = refreshIpPreview
+$('occurredAt').addEventListener('change', refreshIpPreview)
+$('to').addEventListener('change', refreshIpPreview)
+$('lines').addEventListener('input', refreshIpPreview)
+$('lines').addEventListener('change', refreshIpPreview)
+
+/** submit() 里在流转提交成功后调用：画水印、上传、发 webhook，resolve({ok, error}) 而不抛错 */
+function pushImageWithWatermark(file, textLines) {
+  return new Promise(function (resolve) {
+    composeImagePush(file, textLines, function (dataUrl) {
+      fetch(API + '/image-push', {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ imageBase64: dataUrl }),
+      })
+        .then(function (r) {
+          if (r.status === 401) { showGate(); throw new Error('401') }
+          return r.json()
+        })
+        .then(function (json) {
+          resolve(json && json.ok ? { ok: true } : { ok: false, error: (json && json.error) || T('ipErrPush') })
+        })
+        .catch(function (e) {
+          resolve({ ok: false, error: e.message === '401' ? T('ipErrPush') : T('errNet') })
+        })
+    })
+  })
+}
 
 function boot() {
   return Promise.all([
