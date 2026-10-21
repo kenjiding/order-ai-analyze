@@ -431,7 +431,9 @@ function DriverTable({
       columns={columns}
       dataSource={drivers}
       pagination={false}
+      scroll={{ x: 'max-content' }}
       expandable={{
+        columnWidth: 32,
         expandedRowRender: (driver) => <DriverDetail driver={driver} t={t} />,
         rowExpandable: (driver) =>
           driver.neverSignedWaybillNos.length > 0 ||
@@ -493,7 +495,9 @@ function RouteTable({
       columns={columns}
       dataSource={routes}
       pagination={false}
+      scroll={{ x: 'max-content' }}
       expandable={{
+        columnWidth: 32,
         expandedRowRender: (route) => (
           <DriverTable
             drivers={route.drivers}
@@ -551,12 +555,14 @@ export function PerformanceBreakdownTable({
         dataSource={suppliers}
         loading={loading}
         pagination={false}
+        scroll={{ x: 'max-content' }}
         locale={{
           emptyText: (
             <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={t('breakdown.empty')} />
           ),
         }}
         expandable={{
+          columnWidth: 32,
           expandedRowRender: (supplier) => (
             <RouteTable
               routes={supplier.routes}
