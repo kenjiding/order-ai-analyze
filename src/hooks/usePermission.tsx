@@ -103,6 +103,7 @@ export const PERMISSION_KEYS = {
   menuDispatchPerformance: 'menu:dispatch-performance',
   btnDispatchPerformancePush: 'btn:dispatch-performance:push',
   menuExitRateQuery: 'menu:exit-rate-query',
+  menuWeightStat: 'menu:weight-stat',
   menuChaseDispatch: 'menu:chase-dispatch',
   menuWorkOrderPush: 'menu:work-order-push',
   menuAttendanceWorkTime: 'menu:attendance-work-time',

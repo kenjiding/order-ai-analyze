@@ -1,0 +1,56 @@
+{
+  "page": {
+    "eyebrow": "Weight analysis",
+    "title": "Package weight stats"
+  },
+  "filter": {
+    "inboundRange": "Arrival dates",
+    "rangeHint": "Up to 7 days; each day is aligned to its own arrival date",
+    "query": "Query",
+    "querying": "Fetching inbound and weight data — large stations may take a few minutes"
+  },
+  "toast": {
+    "selectStation": "Select a station in the top bar first",
+    "selectDate": "Select an arrival date range",
+    "maxRange": "Arrival date range cannot exceed 7 days",
+    "done": "Done, {{count}} waybills",
+    "rangeInvalid": "Enter a valid min and max, with min less than max",
+    "rangeDuplicate": "This range already exists"
+  },
+  "empty": "Pick arrival dates and run a query",
+  "kpi": {
+    "total": "Inbound volume",
+    "withWeight": "Waybills with weight",
+    "missing": "Missing weight",
+    "missingHint": "{{count}} waybills have no trusted weight and are excluded from stats",
+    "mean": "Mean weight (kg)",
+    "stdDev": "Std deviation (kg)"
+  },
+  "rangeEditor": {
+    "title": "Custom weight ranges",
+    "subtitle": "Enter min and max (kg, inclusive). Added ranges are counted below",
+    "addLabel": "Add a range",
+    "min": "Min",
+    "max": "Max",
+    "add": "Add",
+    "empty": "No ranges yet. Add one to see its count",
+    "added": "{{count}} ranges added",
+    "removeLabel": "Remove this range"
+  },
+  "dimension": {
+    "title": "Supplier / route code weight range breakdown",
+    "subtitle": "Grouped by the selected dimension, count of waybills in each weight range.",
+    "bySupplier": "By supplier",
+    "byRoute": "By route code",
+    "axisCount": "Count",
+    "name": "Name",
+    "total": "Total",
+    "tooltipRange": "Weight range",
+    "tooltipCount": "Count",
+    "tooltipPct": "Share of this group's total",
+    "truncated": "{{total}} groups total, chart shows only the top {{shown}} by total count, see the full breakdown below",
+    "unassigned": "Unassigned",
+    "needRanges": "Add a weight range above first to see counts and shares by supplier / route code",
+    "empty": "No data"
+  }
+}

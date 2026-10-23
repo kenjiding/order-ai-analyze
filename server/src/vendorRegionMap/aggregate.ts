@@ -163,6 +163,8 @@ export function aggregateVendorZipCells(input: {
   const routes: VendorRegionRouteCode[] = [...routeBuckets.entries()]
     .map(([key, bucket]) => {
       const [supplierKey, zipCode, suburb, routeCode] = key.split('\0') as [string, string, string, string]
+      // 价格表按 zipCode+suburb 查，同一路由码恒属于同一个 zipCode+suburb，这里直接复用同一个 priceBook 再查一次即可
+      const priced = input.priceBook?.get(priceBookKey(zipCode, suburb))
       return {
         zipCode,
         supplierKey,
@@ -176,6 +178,7 @@ export function aggregateVendorZipCells(input: {
         // 郊区质心坐标要查 ABS（异步、需要外部请求），这个函数是同步纯聚合，交给调用方（router）补上
         lat: null,
         lng: null,
+        price: priced?.price ?? null,
       }
     })
     .sort((a, b) => b.count - a.count || a.routeCode.localeCompare(b.routeCode))

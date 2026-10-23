@@ -31,7 +31,7 @@ export default function AppLayout() {
         }`}
       >
         <header className="admin-topbar">
-          <div className="mx-auto flex max-w-[1680px] items-center">
+          <div className="mx-auto flex max-w-[1680px] flex-wrap items-center gap-y-2">
             <div className="flex shrink-0 items-center gap-3">
               {/* 移动端汉堡按钮 */}
               <button

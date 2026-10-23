@@ -53,6 +53,7 @@ const DispatchPerformanceDetailPage = lazy(
   () => import('./pages/DispatchPerformance/DispatchPerformanceDetailPage'),
 )
 const ExitRateQueryPage = lazy(() => import('./pages/ExitRateQuery/ExitRateQueryPage'))
+const WeightStatPage = lazy(() => import('./pages/WeightStat/WeightStatPage'))
 const ChaseDispatchPage = lazy(() => import('./pages/ChaseDispatch/ChaseDispatchPage'))
 const WorkOrderPushPage = lazy(() => import('./pages/WorkOrderPush/WorkOrderPushPage'))
 const AttendanceWorkTimePage = lazy(() => import('./pages/AttendanceWorkTime/AttendanceWorkTimePage'))
@@ -294,6 +295,14 @@ function AppRoutes() {
             element={
               <KeptPage cacheKey="page-exit-rate-query" name="exit-rate-query">
                 <ExitRateQueryPage />
+              </KeptPage>
+            }
+          />
+          <Route
+            path="/weight-stat"
+            element={
+              <KeptPage cacheKey="page-weight-stat" name="weight-stat">
+                <WeightStatPage />
               </KeptPage>
             }
           />

@@ -48,12 +48,36 @@ async function callJanusService<T>(
 }
 
 /**
- * AUS 运单查询（ausops/waybillInfo/query）原始响应行，只取 PDA 扫描统计用到的商家字段。
- * 实测抓包确认：响应只有 client_code，没有商家名称字段。
+ * AUS 运单查询（ausops/waybillInfo/query）原始响应行，取 PDA 扫描统计用到的商家字段，
+ * 以及包裹重量统计用到的三个重量字段。
  */
 export type JanusAusWaybillRow = {
   waybill_no: string
   client_code?: string
+  consignee_route_code?: string
+  dispatch_vendor_code?: string
+  dispatch_vender_name?: string
+  total_weight?: number | string | null
+  order_detail_total_weight?: number | string | null
+  upload_weight?: number | string | null
+}
+
+function toFiniteWeight(v: unknown): number | null {
+  const n = typeof v === 'string' ? Number(v) : v
+  return typeof n === 'number' && Number.isFinite(n) && n > 0 ? n : null
+}
+
+/**
+ * 可信重量取值优先级：实测 180 单样本，total_weight 覆盖率 100% 且与
+ * order_detail_total_weight 逐单完全相等（同一数据源的冗余字段），upload_weight
+ * （称重设备/人工上传）在抽样站点全部为空，只作兜底占位，不能指望它提供覆盖率。
+ */
+export function resolveTrustedWeight(row: JanusAusWaybillRow): number | null {
+  return (
+    toFiniteWeight(row.total_weight) ??
+    toFiniteWeight(row.order_detail_total_weight) ??
+    toFiniteWeight(row.upload_weight)
+  )
 }
 
 /** 按单号批量查 AUS 运单的商家信息，1000 单/批，批间等待 300ms。查不到的单号不在 Map 里 */

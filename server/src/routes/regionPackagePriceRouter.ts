@@ -3,7 +3,7 @@ import { and, asc, eq, inArray, sql } from 'drizzle-orm'
 import type { AuthenticatedRequest } from '../auth/middleware'
 import { getDb, schema } from '../db'
 import { queryImileInboundScans } from '../imile/inbound'
-import { fetchVendorWaybills, fetchVendors } from '../imile/vendorAnalysis'
+import { fetchJanusAusWaybills, type JanusAusWaybillRow } from '../imile/janusClient'
 import { dedupeScansByWaybill } from '../vendorRegionMap/parseInbound'
 import { readImileTokenFromRequest } from './imileAuth'
 
@@ -42,39 +42,22 @@ function routeCodeTripleKey(postcode: string, suburb: string, routeCode: string)
   return `${postcode}\0${suburb}\0${routeCode}`
 }
 
-type WaybillVendorRouteInfo = { vendorCode: string; routeCode: string }
+type WaybillVendorRouteInfo = { vendorCode: string; vendorName: string; routeCode: string }
 
 /**
- * 中心运单查询（searchWaybill）单条记录里挑出供应商编码 + 路由码。这两个字段是运单当前状态，
- * 比到件扫描那一刻的快照权威——到件时供应商经常还没回填（见 supplierMatcher.ts 的说明）。
+ * Janus 数仓（ausops/waybillInfo/query）按单号查运单的供应商编码/名称 + 路由码，取代会被网关
+ * 限流（429）的中心运单查询（searchWaybill）——跟 scanStatWaybills.ts / weightStat/query.ts
+ * 迁走的原因一样。这两个字段仍比到件扫描那一刻的快照权威——到件时供应商经常还没回填
+ * （见 supplierMatcher.ts 的说明）。fetchJanusAusWaybills 已按单号去重，这里不用再处理重复行。
  */
-function parseWaybillVendorRoute(raw: unknown): { waybillNo: string; info: WaybillVendorRouteInfo } | null {
-  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null
-  const row = raw as Record<string, unknown>
-  const waybillNo = String(row.waybillNo ?? '').trim()
-  if (!waybillNo) return null
-  return {
-    waybillNo,
-    info: {
-      vendorCode: String(row.courierVendorCode ?? '').trim(),
-      routeCode: String(row.consigneeRouteCode ?? '').trim(),
-    },
-  }
-}
-
-/** 同一运单理论上只有一行，仍按「先到先得、缺的字段用后面的补齐」处理，跟到件扫描去重同口径 */
-function dedupeWaybillVendorRoutes(records: unknown[]): Map<string, WaybillVendorRouteInfo> {
+function buildWaybillVendorRouteMap(rows: Map<string, JanusAusWaybillRow>): Map<string, WaybillVendorRouteInfo> {
   const byWaybill = new Map<string, WaybillVendorRouteInfo>()
-  for (const raw of records) {
-    const parsed = parseWaybillVendorRoute(raw)
-    if (!parsed) continue
-    const existing = byWaybill.get(parsed.waybillNo)
-    if (!existing) {
-      byWaybill.set(parsed.waybillNo, parsed.info)
-      continue
-    }
-    if (!existing.vendorCode && parsed.info.vendorCode) existing.vendorCode = parsed.info.vendorCode
-    if (!existing.routeCode && parsed.info.routeCode) existing.routeCode = parsed.info.routeCode
+  for (const [waybillNo, row] of rows) {
+    byWaybill.set(waybillNo, {
+      vendorCode: String(row.dispatch_vendor_code ?? '').trim(),
+      vendorName: String(row.dispatch_vender_name ?? '').trim(),
+      routeCode: String(row.consignee_route_code ?? '').trim(),
+    })
   }
   return byWaybill
 }
@@ -333,15 +316,17 @@ regionPackagePriceRouter.post('/bulk', async (req: AuthenticatedRequest, res: Re
 
 /**
  * 对齐路由码 + 供应商：用户选的窗口先查到件记录拿每个运单的 postcode+suburb（收件地址只有到件
- * 接口有），再拿这批运单号去中心运单查询（searchWaybill）查运单当前的供应商编码 + 路由码——
- * 运单查询是权威口径，到件扫描那一刻供应商经常还没回填（不能直接信到件记录自带的 courierVendorCode）。
+ * 接口有），再拿这批运单号去 Janus 数仓（ausops/waybillInfo/query）查供应商编码/名称 + 路由码——
+ * 这两个字段仍比到件扫描那一刻的快照权威（不能直接信到件记录自带的 courierVendorCode），
+ * Janus 不限流，取代会被网关限流（429）的中心运单查询（searchWaybill）。
  * 只对齐价格表里已经存在的 postcode+suburb，到件记录里出现但价格表没配的区域不在维护范围内，忽略。
  *
  * 路由码是一对多（子表全量 diff），供应商是价格表上的单值列——窗口内同一区域如果查到不止一个供应商，
- * 取出现次数最多的那个写回，供应商名称按编码去查一遍 iMile 供应商列表，跟手动编辑走的是同一份数据源。
+ * 取出现次数最多的那个写回，供应商名称直接取 Janus 该运单的 dispatch_vender_name，不用再反查
+ * 一遍 iMile 供应商列表。
  *
  * 安全阀：路由码和供应商各自独立判断「这次有没有查到有效数据」，没查到就完全不碰对应的表/列——
- * 不会因为运单查询这次没返回供应商数据，就把路由码也一起清空，反之亦然。
+ * 不会因为 Janus 这次没返回供应商数据，就把路由码也一起清空，反之亦然。
  */
 regionPackagePriceRouter.post('/align-route-code', async (req: Request, res: Response) => {
   const authReq = req as AuthenticatedRequest
@@ -390,17 +375,9 @@ regionPackagePriceRouter.post('/align-route-code', async (req: Request, res: Res
     const priceByArea = new Map(priceRows.map((r) => [`${r.postcode}|${r.suburb.toUpperCase()}`, r]))
 
     const timeRange = { startTime: `${startDate} 00:00:00`, endTime: `${endDate} 23:59:59` }
-    const [scanResult, waybillResult, vendorsResult] = await Promise.all([
-      queryImileInboundScans({ imileToken: token, ...timeRange }),
-      fetchVendorWaybills(token, timeRange),
-      fetchVendors(token),
-    ])
+    const scanResult = await queryImileInboundScans({ imileToken: token, ...timeRange })
     if (!scanResult.ok) {
       res.status(502).json({ ok: false, error: `到件查询失败：${scanResult.message}`, status: scanResult.status })
-      return
-    }
-    if (!waybillResult.ok) {
-      res.status(502).json({ ok: false, error: `运单查询失败：${waybillResult.message}`, status: waybillResult.status })
       return
     }
 
@@ -409,18 +386,18 @@ regionPackagePriceRouter.post('/align-route-code', async (req: Request, res: Res
       res.status(400).json({ ok: false, error: '该时间段内没有查到到件记录，未执行任何变更' })
       return
     }
-    const waybillInfoByNo = dedupeWaybillVendorRoutes(waybillResult.data)
-
-    // 供应商编码 → 展示名称；查失败不影响路由码对齐，供应商名称退回编码本身，跟手动编辑表单同一个兜底口径
-    const vendorNameByCode = new Map<string, string>()
-    if (vendorsResult.ok) {
-      for (const raw of vendorsResult.data) {
-        const row = raw as Record<string, unknown>
-        const code = String(row.vendorCode ?? '').trim()
-        const name = String(row.vendorNameEn ?? '').trim()
-        if (code && name) vendorNameByCode.set(code, name)
-      }
+    const janusResult = await fetchJanusAusWaybills(
+      token,
+      scans.map((s) => s.waybillNo),
+      '区域价格对齐路由码',
+    )
+    if (!janusResult.ok) {
+      res.status(502).json({ ok: false, error: `运单查询失败：${janusResult.message}`, status: janusResult.status })
+      return
     }
+    const waybillInfoByNo = buildWaybillVendorRouteMap(janusResult.data)
+    // 供应商编码 → 展示名称；窗口内按编码取第一个遇到的非空名称，供应商名称拿不到就退回编码本身
+    const vendorNameByCode = new Map<string, string>()
 
     // seen：postcode+suburb+routeCode 组合，postcode/suburb 取价格表原始大小写，跟子表现有记录同口径比较
     const seen = new Map<string, { postcode: string; suburb: string; routeCode: string }>()
@@ -448,6 +425,9 @@ regionPackagePriceRouter.post('/align-route-code', async (req: Request, res: Res
         const votes = vendorVotes.get(areaKey) ?? new Map<string, number>()
         votes.set(info.vendorCode, (votes.get(info.vendorCode) ?? 0) + 1)
         vendorVotes.set(areaKey, votes)
+        if (info.vendorName && !vendorNameByCode.has(info.vendorCode)) {
+          vendorNameByCode.set(info.vendorCode, info.vendorName)
+        }
       }
     }
 

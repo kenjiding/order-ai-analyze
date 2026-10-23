@@ -19,7 +19,9 @@ const INBOUND_QUERY_DEFAULTS = {
   vehicleUuid: '',
 }
 
-const PAGE_SHOW_COUNT = 5000
+// iMile inbound/query 硬限制：showCount 超过 1000 直接业务报错「最多显示1,000条数据」
+// （inboundWaybillIndex.ts 对同一接口已验证过这个上限，这里保持一致）
+const PAGE_SHOW_COUNT = 1000
 const PAGE_DELAY_MS = 400
 
 export type InboundQuerySuccess = {

@@ -32,6 +32,7 @@ import {
   Truck,
   Users,
   Warehouse,
+  Weight,
   type LucideIcon,
 } from 'lucide-react'
 
@@ -199,6 +200,14 @@ const groups: SidebarMenuGroup[] = [
         label: '出仓率查询',
         icon: Timer,
         description: '按到件日查询当天出仓率、次日11点出仓率及分时段占比',
+      },
+      {
+        id: 'weight-stat',
+        path: '/weight-stat',
+        permissionKey: 'menu:weight-stat',
+        label: '包裹重量统计',
+        icon: Weight,
+        description: '按到件日统计包裹重量分布，支持自定义重量区间与正态分布对比',
       },
       {
         id: 'chase-dispatch',

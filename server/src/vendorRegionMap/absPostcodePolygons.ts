@@ -2,6 +2,7 @@ import type { PostcodeGeometry } from './types'
 import { normalizeZipCode } from './parseInbound'
 
 const ABS_POA_QUERY_URL = 'https://geo.abs.gov.au/arcgis/rest/services/ASGS2021/POA/MapServer/0/query'
+const ABS_SAL_QUERY_URL = 'https://geo.abs.gov.au/arcgis/rest/services/ASGS2021/SAL/MapServer/0/query'
 const BATCH_SIZE = 80
 const REQUEST_TIMEOUT_MS = 20_000
 
@@ -115,6 +116,49 @@ export async function reverseLookupPostcodeByPoint(lat: number, lng: number): Pr
     return zip || null
   } catch (error) {
     console.warn('[vendor-region-map] ABS 坐标反查邮编异常', {
+      message: error instanceof Error ? error.message : String(error),
+    })
+    return null
+  }
+}
+
+type AbsSalQueryFeatureResponse = {
+  features?: Array<{ attributes?: { sal_name_2021?: string } }>
+}
+
+/**
+ * 反查：给定经纬度点，返回它落在哪个 ABS 官方地名边界（SAL, Suburb and Locality）内。
+ * 比邮编→地名静态表更准：SAL 是地名粒度的官方边界（一个邮编常覆盖多个地名），直接查边界不存在
+ * 「一个邮编只能固定映射一个地名」的歧义，也不依赖本地维护的静态文件。
+ * 查不到或请求失败时返回 null（老边界/离岸坐标本就可能查不到），由调用方决定如何提示。
+ */
+export async function reverseLookupSuburbByPoint(lat: number, lng: number): Promise<string | null> {
+  const body = new URLSearchParams({
+    geometry: JSON.stringify({ x: lng, y: lat, spatialReference: { wkid: 4326 } }),
+    geometryType: 'esriGeometryPoint',
+    inSR: '4326',
+    spatialRel: 'esriSpatialRelIntersects',
+    outFields: 'sal_name_2021',
+    returnGeometry: 'false',
+    f: 'json',
+  })
+
+  try {
+    const response = await fetch(ABS_SAL_QUERY_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body,
+      signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+    })
+    if (!response.ok) {
+      console.warn(`[vendor-region-map] ABS 坐标反查地名失败 HTTP ${response.status}`)
+      return null
+    }
+    const json = (await response.json()) as AbsSalQueryFeatureResponse
+    const name = json.features?.[0]?.attributes?.sal_name_2021?.trim()
+    return name || null
+  } catch (error) {
+    console.warn('[vendor-region-map] ABS 坐标反查地名异常', {
       message: error instanceof Error ? error.message : String(error),
     })
     return null

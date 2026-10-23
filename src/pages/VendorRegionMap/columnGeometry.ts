@@ -188,7 +188,13 @@ export function aggregateZipStats(input: {
 }
 
 /** 同一 (邮区, 郊区) 下按票量排好序的路由码，count 用于挑选碰撞时优先显示谁；supplierKey 用来给标签上色 */
-export type RouteCodeLabelGroup = { routeCode: string; count: number; supplierKey: string }
+export type RouteCodeLabelGroup = {
+  routeCode: string
+  count: number
+  supplierKey: string
+  /** 区域包裹价格配置里的单价，价格表没覆盖这个邮区+郊区时为 null */
+  price: number | null
+}
 
 /**
  * 一个郊区级摆放点：anchor 优先用该郊区自己的质心（后端查 ABS 郊区边界算出来的），
@@ -236,6 +242,8 @@ export function buildRouteCodeLabelCollection(
           count: route.count,
           sortKey: -route.count,
           color: colorOf(route.supplierKey),
+          price: route.price,
+          priceLabel: route.price != null ? `$${route.price.toFixed(2)}` : '',
         },
         geometry: { type: 'Point', coordinates: [lng, lat] },
       })

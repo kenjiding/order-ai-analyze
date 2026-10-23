@@ -50,6 +50,8 @@ export type VendorRegionRouteCode = {
    */
   lat: number | null
   lng: number | null
+  /** 区域包裹价格配置里的单价（按 zipCode+suburb 查到），价格表没覆盖这个邮区+郊区时为 null */
+  price: number | null
 }
 
 export type PolygonGeometry = {

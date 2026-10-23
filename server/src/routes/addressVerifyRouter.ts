@@ -4,7 +4,7 @@ import { readImileTokenFromRequest } from './imileAuth'
 import { queryImileTracks } from '../imile/track'
 import { fetchSortingGeocodingByWaybillNos } from '../imile/sortingGeocoding'
 import { AUS_TZ, localDateInTz } from '../imile/ausTimezone'
-import { reverseLookupPostcodeByPoint } from '../vendorRegionMap/absPostcodePolygons'
+import { reverseLookupPostcodeByPoint, reverseLookupSuburbByPoint } from '../vendorRegionMap/absPostcodePolygons'
 import { mapWithConcurrency } from '../orderAnalyze/runtime'
 
 export const addressVerifyRouter = Router()
@@ -22,6 +22,7 @@ export type AddressVerifyRow = {
   consigneeAddress: string
   consigneeZipCode: string
   resolvedPostcode: string
+  resolvedCity: string
   latitude: number | null
   longitude: number | null
   status: AddressVerifyStatus
@@ -119,6 +120,7 @@ addressVerifyRouter.post('/check', async (req: AuthenticatedRequest, res: Respon
         return {
           ...base,
           resolvedPostcode: '',
+          resolvedCity: '',
           latitude: null,
           longitude: null,
           status: 'no_coordinate',
@@ -128,12 +130,19 @@ addressVerifyRouter.post('/check', async (req: AuthenticatedRequest, res: Respon
         }
       }
 
-      const postcode = await reverseLookupPostcodeByPoint(coord.latitude, coord.longitude)
+      // 邮编（POA）与地名（SAL）是两套独立的 ABS 官方边界，各自反查：SAL 是地名粒度边界，
+      // 不经过「邮编→固定地名」的静态表，避免一个邮编覆盖多个地名时取错（如 5062 下 Netherby/Mitcham 等 11 个地名）
+      const [postcode, resolvedCity] = await Promise.all([
+        reverseLookupPostcodeByPoint(coord.latitude, coord.longitude),
+        reverseLookupSuburbByPoint(coord.latitude, coord.longitude),
+      ])
+
       if (!postcode) {
         const auPost = assessAuPostUndeliverable(base.consigneeAddress, '')
         return {
           ...base,
           resolvedPostcode: '',
+          resolvedCity: resolvedCity ?? '',
           latitude: coord.latitude,
           longitude: coord.longitude,
           status: 'unresolved',
@@ -148,6 +157,7 @@ addressVerifyRouter.post('/check', async (req: AuthenticatedRequest, res: Respon
       return {
         ...base,
         resolvedPostcode: postcode,
+        resolvedCity: resolvedCity ?? '',
         latitude: coord.latitude,
         longitude: coord.longitude,
         status: match ? 'match' : 'mismatch',

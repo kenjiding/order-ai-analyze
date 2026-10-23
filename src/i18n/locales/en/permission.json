@@ -15,6 +15,7 @@
   "menu:exit-alarm": "Dwell alert",
   "menu:dispatch-alarm": "24h dispatch alert",
   "menu:dispatch-performance": "Exit & dispatch performance",
+  "menu:weight-stat": "Package weight stats",
   "menu:chase-dispatch": "Chase dispatch",
   "menu:work-order-push": "Ticket push",
   "menu:package-loss-monitor": "Lost parcel monitor",

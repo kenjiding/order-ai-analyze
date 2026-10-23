@@ -34,6 +34,7 @@
   "distanceRings": "距离圈",
   "toggleColumns": "柱体",
   "toggleRouteCodes": "路由码",
+  "toggleRoutePrices": "路由码价格",
   "noVendorsSelected": "供应商已全部取消勾选，<strong>地图上暂不显示柱体</strong>",
   "noScanData": "当前日期区间<strong>没有可上图的到件扫描</strong>，换个日期再查询",
   "legendToggle": "图例",

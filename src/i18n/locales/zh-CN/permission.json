@@ -15,6 +15,7 @@
   "menu:exit-alarm": "滞留数据告警",
   "menu:dispatch-alarm": "24小时派签告警",
   "menu:dispatch-performance": "出仓派签达成分析",
+  "menu:weight-stat": "包裹重量统计",
   "menu:chase-dispatch": "催派推送",
   "menu:work-order-push": "工单推送",
   "menu:package-loss-monitor": "丢包监控",

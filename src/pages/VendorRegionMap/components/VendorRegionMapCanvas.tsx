@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { ChevronDown, ChevronUp, Columns3, Compass, Radar, Route, Warehouse, Waypoints } from 'lucide-react'
+import { ChevronDown, ChevronUp, Columns3, Compass, Radar, Route, Tag, Warehouse, Waypoints } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { i18n } from '../../../i18n'
 import { VendorRegionMapLoading } from './VendorRegionMapLoading'
@@ -62,6 +62,7 @@ const REGIONS_LINE = 'vrm-regions-line'
 const COLUMNS_EXTRUSION = 'vrm-columns-extrusion'
 const ROUTE_CODES_SOURCE = 'vrm-routecodes'
 const ROUTE_CODES_LABEL = 'vrm-routecodes-label'
+const ROUTE_PRICE_LABEL = 'vrm-routecodes-price-label'
 const ROUTE_MERGE_SOURCE = 'vrm-routemerge'
 const ROUTE_MERGE_LABEL = 'vrm-routemerge-label'
 const WAREHOUSE_PAD_SOURCE = 'vrm-wh-pad'
@@ -112,6 +113,23 @@ const ROUTE_LABEL_TEXT_SIZE: maplibregl.ExpressionSpecification = [
   'interpolate', ['linear'], ['zoom'],
   7, 8,
   14, 17,
+]
+
+/**
+ * 路由码价格标签：挂在路由码文字正下方的次要信息，不能跟路由码一起挤出来——否则缩小时
+ * 路由码本身都快挤不开，价格还要再占一份位置。比路由码晚 3 档才淡入（放大到接近郊区/街道级才看），
+ * 字号也压得比路由码小一档，视觉上明显是"附属信息"而不是同级标签。
+ */
+const ROUTE_PRICE_LABEL_MIN_ZOOM = ROUTE_LABEL_MIN_ZOOM + 3
+const ROUTE_PRICE_LABEL_OPACITY: maplibregl.ExpressionSpecification = [
+  'interpolate', ['linear'], ['zoom'],
+  ROUTE_PRICE_LABEL_MIN_ZOOM, 0,
+  ROUTE_PRICE_LABEL_MIN_ZOOM + 1.5, 1,
+]
+const ROUTE_PRICE_LABEL_TEXT_SIZE: maplibregl.ExpressionSpecification = [
+  'interpolate', ['linear'], ['zoom'],
+  ROUTE_PRICE_LABEL_MIN_ZOOM, 10,
+  14, 14,
 ]
 
 /** worldScale 按 5 m/px 取整再入 state，避免每次微小缩放都重建几何 */
@@ -284,6 +302,8 @@ export function VendorRegionMapCanvas({
   const [ringsVisible, setRingsVisible] = useState(true)
   const [columnsVisible, setColumnsVisible] = useState(true)
   const [routeCodesVisible, setRouteCodesVisible] = useState(true)
+  // 默认关闭：价格标签是路由码的附属信息，默认开着容易让刚进页面的地图显得更挤
+  const [routePricesVisible, setRoutePricesVisible] = useState(false)
   const [mergeModeEnabled, setMergeModeEnabled] = useState(false)
   const [topDown, setTopDown] = useState(false)
   const [legendExpanded, setLegendExpanded] = useState(false)
@@ -359,6 +379,7 @@ export function VendorRegionMapCanvas({
       routeCode: string
       supplierKey: string
       count: number
+      price: number | null
       anchor: [number, number] | null
     }
     const points: RoutePoint[] = visibleRoutes.map((route) => ({
@@ -367,6 +388,7 @@ export function VendorRegionMapCanvas({
       routeCode: route.routeCode,
       supplierKey: route.supplierKey,
       count: route.count,
+      price: route.price,
       anchor: route.lat != null && route.lng != null ? [route.lng, route.lat] : zipCenterByCode.get(route.zipCode) ?? null,
     }))
 
@@ -403,7 +425,7 @@ export function VendorRegionMapCanvas({
       zipCode: string
       suburb: string
       anchor: [number, number] | null
-      routes: Map<string, { count: number; supplierKey: string }>
+      routes: Map<string, { count: number; supplierKey: string; price: number | null }>
     }
     const areas = new Map<string, AreaAcc>()
     for (const point of mergedPoints) {
@@ -413,17 +435,18 @@ export function VendorRegionMapCanvas({
         area = { zipCode: point.zipCode, suburb: point.suburb, anchor: point.anchor, routes: new Map() }
         areas.set(areaKey, area)
       }
-      // 极少数场景下同一路由码字符串被两家供应商共用，标签颜色跟着票量占优的那家走
+      // 极少数场景下同一路由码字符串被两家供应商共用，标签颜色跟着票量占优的那家走；价格按 zipCode+suburb
+      // 查表，同一个 area 内恒定，不需要跟着票量合并
       const existing = area.routes.get(point.routeCode)
       if (existing) existing.count += point.count
-      else area.routes.set(point.routeCode, { count: point.count, supplierKey: point.supplierKey })
+      else area.routes.set(point.routeCode, { count: point.count, supplierKey: point.supplierKey, price: point.price })
     }
     return [...areas.values()].map((area) => ({
       zipCode: area.zipCode,
       suburb: area.suburb,
       anchor: area.anchor,
       routes: [...area.routes.entries()]
-        .map(([routeCode, { count, supplierKey }]) => ({ routeCode, count, supplierKey }))
+        .map(([routeCode, { count, supplierKey, price }]) => ({ routeCode, count, supplierKey, price }))
         .sort((a, b) => b.count - a.count || a.routeCode.localeCompare(b.routeCode)),
     }))
   }, [visibleRoutes, zipCenterByCode])
@@ -637,6 +660,33 @@ export function VendorRegionMapCanvas({
             'text-opacity': ROUTE_LABEL_OPACITY,
           },
         })
+        // 价格标签跟路由码共用同一个数据源（省得再建一个 source），用 filter 跳过价格表没覆盖的点；
+        // 挂在路由码正下方（text-offset），字号更小、颜色更淡，一眼看出是附属信息而不是同级标签
+        map.addLayer({
+          id: ROUTE_PRICE_LABEL,
+          type: 'symbol',
+          source: ROUTE_CODES_SOURCE,
+          minzoom: ROUTE_PRICE_LABEL_MIN_ZOOM,
+          filter: ['!=', ['get', 'price'], null],
+          layout: {
+            visibility: 'none',
+            'text-field': ['get', 'priceLabel'],
+            'text-font': ['Noto Sans Regular'],
+            'text-size': ROUTE_PRICE_LABEL_TEXT_SIZE,
+            'text-offset': [0, 1.1],
+            'text-anchor': 'top',
+            'text-padding': 2,
+            'text-allow-overlap': true,
+            'text-ignore-placement': true,
+            'symbol-sort-key': ['get', 'sortKey'],
+          },
+          paint: {
+            'text-color': '#475569',
+            'text-halo-color': 'rgba(255,255,255,0.92)',
+            'text-halo-width': 1.2,
+            'text-opacity': ROUTE_PRICE_LABEL_OPACITY,
+          },
+        })
         // 智能合并簇标签：默认隐藏，跟 ROUTE_CODES_LABEL 共用同一套随 zoom 渐变的字号/透明度曲线，
         // 加一圈描边跟普通路由码标签区分开——一眼看出这是个合并簇而不是单条路由
         map.addLayer({
@@ -822,6 +872,13 @@ export function VendorRegionMapCanvas({
 
   useEffect(() => {
     const map = mapRef.current
+    if (!map?.getLayer(ROUTE_PRICE_LABEL)) return
+    const visibility = routePricesVisible && routeCodesVisible ? 'visible' : 'none'
+    map.setLayoutProperty(ROUTE_PRICE_LABEL, 'visibility', visibility)
+  }, [routePricesVisible, routeCodesVisible])
+
+  useEffect(() => {
+    const map = mapRef.current
     const apply = () => {
       ;(map?.getSource(REGIONS_SOURCE) as maplibregl.GeoJSONSource | undefined)?.setData(regionCollection)
       ;(map?.getSource(COLUMNS_SOURCE) as maplibregl.GeoJSONSource | undefined)?.setData(columnCollection)
@@ -931,6 +988,17 @@ export function VendorRegionMapCanvas({
         >
           <Route className="h-4 w-4" aria-hidden />
           {t('toggleRouteCodes')}
+        </button>
+        <button
+          type="button"
+          className="vrm-tool"
+          aria-pressed={routePricesVisible}
+          disabled={!routeCodesVisible}
+          title={routeCodesVisible ? undefined : t('toggleRouteCodes')}
+          onClick={() => setRoutePricesVisible((current) => !current)}
+        >
+          <Tag className="h-4 w-4" aria-hidden />
+          {t('toggleRoutePrices')}
         </button>
         <button
           type="button"

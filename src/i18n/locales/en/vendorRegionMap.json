@@ -34,6 +34,7 @@
   "distanceRings": "Distance rings",
   "toggleColumns": "Columns",
   "toggleRouteCodes": "Route codes",
+  "toggleRoutePrices": "Route prices",
   "noVendorsSelected": "All vendors deselected — <strong>columns hidden on map</strong>",
   "noScanData": "No mappable arrival scans for this date range — try other dates",
   "legendToggle": "Legend",

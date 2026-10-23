@@ -87,6 +87,13 @@ export const PERMISSION_REGISTRY: PermissionDefinition[] = [
     description: '按到件日查询当天出仓率、次日11点出仓率及分时段占比',
     sortOrder: 39,
   },
+  {
+    key: 'menu:weight-stat',
+    type: 'menu',
+    label: '包裹重量统计',
+    description: '按到件日统计包裹重量分布，支持自定义重量区间与正态分布对比',
+    sortOrder: 39,
+  },
   { key: 'menu:chase-dispatch', type: 'menu', label: '催派推送', description: '按滞留时间统计供应商滞留订单并定时推送催派', sortOrder: 39 },
   { key: 'menu:work-order-push', type: 'menu', label: '工单推送', description: '未处理工单定时推送提醒供应商', sortOrder: 39 },
   {

@@ -54,6 +54,8 @@ export type VendorRegionRouteCode = {
   /** 郊区质心坐标；suburb 为空或 ABS 查不到匹配的郊区名时为 null，前端回落到邮区中心点 */
   lat: number | null
   lng: number | null
+  /** 区域包裹价格配置里的单价（按 zipCode+suburb 查到），价格表没覆盖时为 null */
+  price: number | null
 }
 
 export type VendorRegionMapMeta = {

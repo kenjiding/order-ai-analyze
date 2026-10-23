@@ -16,6 +16,7 @@ export const I18N_NAMESPACES = [
   'dispatchAlarm',
   'dispatchPerformance',
   'exitRateQuery',
+  'weightStat',
   'chaseDispatch',
   'chaseDispatchShare',
   'workOrderPush',

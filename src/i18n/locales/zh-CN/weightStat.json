@@ -1,0 +1,56 @@
+{
+  "page": {
+    "eyebrow": "重量分析",
+    "title": "包裹重量统计"
+  },
+  "filter": {
+    "inboundRange": "到件日期",
+    "rangeHint": "最多 7 天，按每天各自的到件日对齐",
+    "query": "查询",
+    "querying": "正在拉取到件与重量数据，大站点可能需要几分钟"
+  },
+  "toast": {
+    "selectStation": "请先在顶部选择站点",
+    "selectDate": "请选择到件日期区间",
+    "maxRange": "到件日期最多 7 天",
+    "done": "查询完成，共 {{count}} 单",
+    "rangeInvalid": "请输入有效的最小值与最大值，且最小值需小于最大值",
+    "rangeDuplicate": "该区间已存在"
+  },
+  "empty": "选择到件日期后点击查询",
+  "kpi": {
+    "total": "到件总量",
+    "withWeight": "有效重量件数",
+    "missing": "缺失重量",
+    "missingHint": "{{count}} 单取不到可信重量，不计入统计",
+    "mean": "平均重量 (kg)",
+    "stdDev": "标准差 (kg)"
+  },
+  "rangeEditor": {
+    "title": "自定义重量区间",
+    "subtitle": "输入最小值与最大值（单位 kg，闭区间），添加后统计命中件数",
+    "addLabel": "添加区间",
+    "min": "最小",
+    "max": "最大",
+    "add": "添加",
+    "empty": "暂未添加区间，添加后会显示命中件数",
+    "added": "已添加 {{count}} 个区间",
+    "removeLabel": "删除该区间"
+  },
+  "dimension": {
+    "title": "供应商 / 路由码在各重量区间的分布",
+    "subtitle": "按选中维度，统计每个分组落在各重量区间的件数。",
+    "bySupplier": "按供应商",
+    "byRoute": "按路由码",
+    "axisCount": "件数",
+    "name": "名称",
+    "total": "总件数",
+    "tooltipRange": "重量区间",
+    "tooltipCount": "件数",
+    "tooltipPct": "占该分组总件数比例",
+    "truncated": "共 {{total}} 项，图表仅显示总件数最高的前 {{shown}} 项，完整数据见下方表格",
+    "unassigned": "未分配",
+    "needRanges": "请先在上方添加重量区间，再查看各供应商 / 路由码在区间内的件数与占比",
+    "empty": "暂无数据"
+  }
+}
