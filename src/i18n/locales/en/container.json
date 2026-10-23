@@ -340,7 +340,16 @@
     "importDownloadTemplate": "Download template",
     "importDropTitle": "Drop file here or click to browse",
     "importDropHint": ".xlsx / .xls / .csv, max {{max}} rows per upload",
-    "proxyEvidenceRequired": "Proxy confirmation signs on the other party’s behalf, so a receipt or signed slip is required"
+    "proxyEvidenceRequired": "Proxy confirmation signs on the other party’s behalf, so a receipt or signed slip is required",
+    "exportDetail": "Export detail",
+    "exportSheetName": "Transfer detail",
+    "exportFileNamePrefix": "transfer-detail_",
+    "exportEmpty": "No transfers to export for the current filters",
+    "exportFailed": "Export failed, please try again later",
+    "exportColType": "Container type",
+    "exportColDeclared": "Declared qty",
+    "exportColReceived": "Received qty",
+    "exportColSettled": "Settled qty"
   },
   "reconciliation": {
     "loadingLabel": "Loading reconciliation",

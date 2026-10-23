@@ -340,7 +340,16 @@
     "importDownloadTemplate": "下载模板",
     "importDropTitle": "将文件拖到此处，或点击选择",
     "importDropHint": "支持 .xlsx / .xls / .csv，单次最多 {{max}} 行",
-    "proxyEvidenceRequired": "代确认是替对方签字，必须上传回单或签收单作为依据"
+    "proxyEvidenceRequired": "代确认是替对方签字，必须上传回单或签收单作为依据",
+    "exportDetail": "导出明细",
+    "exportSheetName": "流转明细",
+    "exportFileNamePrefix": "流转明细_",
+    "exportEmpty": "当前筛选条件下没有可导出的流转记录",
+    "exportFailed": "导出失败，请稍后重试",
+    "exportColType": "品类",
+    "exportColDeclared": "发出数量",
+    "exportColReceived": "实收数量",
+    "exportColSettled": "入账数量"
   },
   "reconciliation": {
     "loadingLabel": "对账数据载入中",

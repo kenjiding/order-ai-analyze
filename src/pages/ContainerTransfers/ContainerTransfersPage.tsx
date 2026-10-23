@@ -1,4 +1,5 @@
-import { ArrowLeftRight, History, Plus, Repeat, Upload } from 'lucide-react'
+import { useCallback, useState } from 'react'
+import { ArrowLeftRight, Download, History, Plus, Repeat, Upload } from 'lucide-react'
 import { Button, Space, Tooltip } from 'antd'
 import { useTranslation } from 'react-i18next'
 import { PageSectionTabs } from '../../components/PageSectionTabs'
@@ -12,12 +13,23 @@ import { TransferFilterBar } from './components/TransferFilterBar'
 import { TransferFormModal } from './components/TransferFormModal'
 import { TransferImportModal } from './components/TransferImportModal'
 import { TransferTable } from './components/TransferTable'
+import { exportTransfersToXlsx } from './exportTransfers'
 import { useContainerTransfersPage } from './useContainerTransfersPage'
 
 export default function ContainerTransfersPage() {
   const { t } = useTranslation('container')
   const page = useContainerTransfersPage()
   const noActableAccount = page.ownAccounts.length === 0
+  const [exporting, setExporting] = useState(false)
+
+  const handleExport = useCallback(async () => {
+    setExporting(true)
+    try {
+      await exportTransfersToXlsx(page.filters, t)
+    } finally {
+      setExporting(false)
+    }
+  }, [page.filters, t])
 
   return (
     <div className="admin-page space-y-5">
@@ -34,6 +46,15 @@ export default function ContainerTransfersPage() {
           </div>
           {page.tab === 'transfers' ? (
             <Space>
+              <Button
+                color="cyan"
+                variant="solid"
+                icon={<Download className="h-4 w-4" aria-hidden />}
+                loading={exporting}
+                onClick={handleExport}
+              >
+                {t('transfers.exportDetail')}
+              </Button>
               <Tooltip title={noActableAccount ? t('transfers.noAccountHint') : ''}>
                 <Button
                   icon={<Upload className="h-4 w-4" aria-hidden />}
