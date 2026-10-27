@@ -10,7 +10,7 @@ import type { DispatchPerformanceConfig, RegionCalendarOverride } from '../db/sc
 import { LEGACY_GLOBAL_SUPPLIER_REGION_CODE, listSupplierPushConfigs, parsePushConfigIds } from '../supplierPushConfigs'
 import { buildSupplierUnitIndex } from '../vendorAnalysis/supplierScope'
 import type { AusTz } from '../imile/ausTimezone'
-import type { RegionCalendarOverrides } from '../imile/sortingWorkday'
+import { MIN_SORTING_WAYBILLS, type RegionCalendarOverrides } from '../imile/sortingWorkday'
 import { toMetrics, type DispatchPerformanceMetrics } from './repository'
 import { dispatchBatchSettleMs, SETTLE_DUE_WINDOW_MS } from './settledArrivalDates'
 
@@ -141,6 +141,22 @@ export async function findDispatchPerformanceConfig(
   const t = schema.dispatchPerformanceConfigs
   const rows = await db.select().from(t).where(eq(t.id, id)).limit(1)
   return rows[0] ?? null
+}
+
+/**
+ * 「这天算不算开仓分拣」的到件量阈值：站点有覆盖配置则用它，否则沿用全局 MIN_SORTING_WAYBILLS。
+ * 与 isEnabled 无关——覆盖值是站点体量的客观事实，不随「出仓派签达成分析」功能是否启用而失效。
+ * 24H 派签告警、滞留数据告警（exit-alarm）与本模块共用同一份覆盖，见 db/schema.ts 字段注释。
+ */
+export async function resolveMinSortingWaybills(stationCode: string): Promise<number> {
+  const db = getDb()
+  const t = schema.dispatchPerformanceConfigs
+  const rows = await db
+    .select({ minSortingWaybills: t.minSortingWaybills })
+    .from(t)
+    .where(eq(t.stationCode, stationCode))
+    .limit(1)
+  return rows[0]?.minSortingWaybills ?? MIN_SORTING_WAYBILLS
 }
 
 /** 站点是否已被别的配置占用（新增时 excludeId 为空，编辑时排除自己） */

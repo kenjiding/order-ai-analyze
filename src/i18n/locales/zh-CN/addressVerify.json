@@ -45,5 +45,8 @@
   "noRouteCodeSelected": "请先选择路由码",
   "noRouteCodeData": "请先拉取入站数据",
   "startAnalyze": "开始分析",
-  "analyzing": "分析中…"
+  "analyzing": "分析中…",
+  "exportSelected": "导出选中（{{count}}）",
+  "exportSheetName": "导入模板",
+  "exportFileNamePrefix": "收件地址校验导入_"
 }

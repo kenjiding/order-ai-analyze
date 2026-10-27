@@ -79,6 +79,16 @@ function getOffsetMs(utcDate: Date, tz: string): number {
 }
 
 /**
+ * 某时区在当前时刻的 UTC 偏移，格式化成 iMile timezone 请求头用的 "+H" 字符串
+ * （整点偏移，自动识别夏令时）。供 shared.ts 的 resolveImileTimezone 用，
+ * 取代原来写死的 "+10"/"+12"——那两个值只在各自的非夏令时期间是对的。
+ */
+export function imileTimezoneOffsetHeader(tz: AusTz, now: Date = new Date()): string {
+  const hours = Math.round(getOffsetMs(now, tz) / 3_600_000)
+  return hours >= 0 ? `+${hours}` : `${hours}`
+}
+
+/**
  * 把本地时间字符串（"YYYY-MM-DD HH:mm:ss"，无时区信息）解析为该时区的 UTC 毫秒数。
  * 原理：以本地时间作为 UTC 探针，计算出实际偏移后修正。
  */

@@ -25,9 +25,9 @@ import {
 } from '../vendorAnalysis/dispatch24hAggregate'
 import {
   isNoSortingBatch,
-  MIN_SORTING_WAYBILLS,
   sortingWorkdayCatchUpDates,
 } from '../imile/sortingWorkday'
+import { resolveMinSortingWaybills } from '../dispatch24hStats/configRepository'
 import {
   claimScheduledSlot,
   countClaimedSlots,
@@ -155,9 +155,12 @@ export async function executeDispatchAlarmPush(params: {
 
   // 这天没开仓分拣：值班员工零星扫入库的几十单不构成批次，派签率的分母毫无意义。
   // 不 claim 时间槽，日志留量便于核对阈值。
-  if (isNoSortingBatch(rows.length)) {
+  // 阈值按站点覆盖（见 dispatch24hStats/configRepository.ts resolveMinSortingWaybills）：
+  // 全局阈值是照大站点定的，小站点正常营业量可能常年卡在阈值以下，需要各站点自己的数。
+  const minSortingWaybills = await resolveMinSortingWaybills(stationCode)
+  if (isNoSortingBatch(rows.length, minSortingWaybills)) {
     console.log(
-      `${label} 到件日 ${dates.join(',')} 仅 ${rows.length} 单（< ${MIN_SORTING_WAYBILLS}），` +
+      `${label} 到件日 ${dates.join(',')} 仅 ${rows.length} 单（< ${minSortingWaybills}），` +
         '判定当天未开仓分拣，跳过推送',
     )
     return { pushedCount: 0, totalConfigs: configs.length, errors: [], stationCode, dates, noBatch: true }

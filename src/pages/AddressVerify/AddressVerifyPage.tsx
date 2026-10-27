@@ -10,13 +10,14 @@ import { parseOrderNumbersUnique } from '../../utils/orderNoInput'
 import { fetchFleetPendingSplitBox } from '../PushNotifications/fleetPendingSplitBoxApi'
 import type { FleetScanRow } from '../PushNotifications/fleetSupplierPushTypes'
 import type { AddressVerifyMapPoint } from './AddressVerifyMapView'
+import { exportAddressVerifyTemplate } from './exportAddressVerifyTemplate'
 
 /** maplibre-gl 体积较大，懒加载避免未用到地图的场景也被迫下载（做法与司机地图一致） */
 const AddressVerifyMapView = lazy(() =>
   import('./AddressVerifyMapView').then((m) => ({ default: m.AddressVerifyMapView })),
 )
 
-const MAX_ORDERS = 200
+const MAX_ORDERS = 500
 
 type AddressVerifySourceMode = 'manual' | 'route'
 
@@ -65,6 +66,7 @@ export default function AddressVerifyPage() {
   const [pendingBoxSummary, setPendingBoxSummary] = useState('')
   const [scanRows, setScanRows] = useState<FleetScanRow[]>([])
   const [selectedRouteCodes, setSelectedRouteCodes] = useState<string[]>([])
+  const [selectedOrderNos, setSelectedOrderNos] = useState<string[]>([])
 
   const orderNos = useMemo(() => parseOrderNumbersUnique(raw), [raw])
 
@@ -182,12 +184,30 @@ export default function AddressVerifyPage() {
         return
       }
       setRows(json.rows ?? [])
+      setSelectedOrderNos([])
     } catch {
       setError(t('backendUnreachable'))
       setRows([])
+      setSelectedOrderNos([])
     } finally {
       setLoading(false)
     }
+  }
+
+  const handleExport = async () => {
+    const selected = new Set(selectedOrderNos)
+    const exportRows = rows
+      .filter((row) => selected.has(row.orderNo))
+      .map((row) => ({
+        orderNo: row.orderNo,
+        resolvedCity: row.resolvedCity,
+        resolvedPostcode: row.resolvedPostcode,
+      }))
+    if (!exportRows.length) return
+    await exportAddressVerifyTemplate(exportRows, {
+      sheetName: t('exportSheetName'),
+      fileNamePrefix: t('exportFileNamePrefix'),
+    })
   }
 
   const statusTag = useCallback((status: AddressVerifyStatus) => {
@@ -390,11 +410,24 @@ export default function AddressVerifyPage() {
       ) : null}
 
       <section className="admin-panel overflow-hidden">
+        <div className="flex items-center justify-end p-3">
+          <Button
+            icon={<CloudDownload className="h-4 w-4" aria-hidden />}
+            disabled={!selectedOrderNos.length}
+            onClick={() => void handleExport()}
+          >
+            {t('exportSelected', { count: selectedOrderNos.length })}
+          </Button>
+        </div>
         <Table<AddressVerifyRow>
           rowKey="orderNo"
           columns={columns}
           dataSource={rows}
           loading={loading}
+          rowSelection={{
+            selectedRowKeys: selectedOrderNos,
+            onChange: (keys) => setSelectedOrderNos(keys as string[]),
+          }}
           pagination={{ pageSize: 20, showSizeChanger: false }}
           scroll={{ x: 1460 }}
           locale={{ emptyText: t('emptyText') }}

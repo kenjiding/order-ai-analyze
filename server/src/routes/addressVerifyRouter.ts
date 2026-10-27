@@ -9,7 +9,7 @@ import { mapWithConcurrency } from '../orderAnalyze/runtime'
 
 export const addressVerifyRouter = Router()
 
-const MAX_ORDER_COUNT = 200
+const MAX_ORDER_COUNT = 500
 const ABS_LOOKUP_CONCURRENCY = 5
 
 export type AddressVerifyStatus = 'match' | 'mismatch' | 'unresolved' | 'no_coordinate'

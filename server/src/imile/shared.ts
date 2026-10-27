@@ -1,6 +1,7 @@
 /** iMile 开放平台 HTTP 调用公共能力（轨迹、阻断日志等接口共用）。业务模块请通过 client.requestImileApi 发请求，勿直接调用 imileRequestJson。 */
 
 import { AsyncLocalStorage } from 'node:async_hooks'
+import { AUS_TZ, imileTimezoneOffsetHeader, type AusTz } from './ausTimezone'
 
 export const IMILE_DEFAULT_FRONT_SEC = JSON.stringify({
   orgId: 10,
@@ -16,13 +17,14 @@ export const IMILE_DEFAULT_LANG = 'zh_CN'
 export const IMILE_DEFAULT_TIMEZONE = '+10'
 
 /**
- * 正式 iMile 切国家时同步切换的时区偏移（见浏览器抓包）：
- * AUS → timezone=+10 / TIMEZONE_COUNTRY=AUS
- * NZL → timezone=+12 / TIMEZONE_COUNTRY=NZL
+ * 正式 iMile 切国家时同步切换的时区偏移（见浏览器抓包，当时抓的是非夏令时期间）：
+ * AUS → timezone=+10/+11（墨尔本，夏令时期间 +11）/ TIMEZONE_COUNTRY=AUS
+ * NZL → timezone=+12/+13（奥克兰，夏令时期间 +13）/ TIMEZONE_COUNTRY=NZL
+ * 两地都有夏令时，不能写死偏移量——resolveImileTimezone 按当前时刻动态算。
  */
-export const IMILE_COUNTRY_TIMEZONE: Record<string, string> = {
-  AUS: '+10',
-  NZL: '+12',
+export const IMILE_COUNTRY_REFERENCE_TZ: Record<string, AusTz> = {
+  AUS: AUS_TZ.Melbourne,
+  NZL: AUS_TZ.Auckland,
 }
 
 /** 前端国家选择器允许的值 */
@@ -127,7 +129,8 @@ export function resolveImileCountry(override?: string): string {
 /** 国家选择器对应的 timezone 请求头（与正式站切国家行为一致） */
 export function resolveImileTimezone(country?: string): string {
   const code = resolveImileCountry(country)
-  return IMILE_COUNTRY_TIMEZONE[code] ?? IMILE_DEFAULT_TIMEZONE
+  const tz = IMILE_COUNTRY_REFERENCE_TZ[code]
+  return tz ? imileTimezoneOffsetHeader(tz) : IMILE_DEFAULT_TIMEZONE
 }
 
 /** 写入 / 覆盖 cookie 中的单个键（不影响其它键） */

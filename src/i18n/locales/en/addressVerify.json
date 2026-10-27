@@ -45,5 +45,8 @@
   "noRouteCodeSelected": "Please select a route code first",
   "noRouteCodeData": "Please fetch inbound data first",
   "startAnalyze": "Start Analysis",
-  "analyzing": "Analyzing…"
+  "analyzing": "Analyzing…",
+  "exportSelected": "Export Selected ({{count}})",
+  "exportSheetName": "Import Template",
+  "exportFileNamePrefix": "address_verify_import_"
 }
