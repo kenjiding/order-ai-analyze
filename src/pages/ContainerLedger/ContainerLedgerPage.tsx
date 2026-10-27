@@ -1,9 +1,10 @@
 import { useCallback, useMemo } from 'react'
 import { Boxes, Download, History, PackageSearch, Pencil, Plus, Scale, Trash2, Warehouse } from 'lucide-react'
-import { Button, Table, Tag, Tooltip } from 'antd'
+import { Button, Select, Table, Tag, Tooltip } from 'antd'
 import type { ColumnsType } from 'antd/es/table'
 import { useTranslation } from 'react-i18next'
 import { PageSectionTabs } from '../../components/PageSectionTabs'
+import { AU_REGIONS } from '../../containerManagement/constants'
 import { exportBalancesToXlsx } from './exportBalances'
 import type { ContainerBalance } from '../../containerManagement/types'
 import { BalanceAuditPanel } from './components/BalanceAuditPanel'
@@ -18,8 +19,46 @@ export default function ContainerLedgerPage() {
   const { t: tc } = useTranslation('common')
   const page = useContainerLedgerPage()
 
+  /** 按所属州排序+分组：先按州（未分类排最后）、再按站点名排序，同州行用 rowSpan 合并首列，省去折叠/切换 */
+  const groupedBalances = useMemo(() => {
+    const filtered = page.regionFilter
+      ? page.balances.filter((row) => row.accountRegionCode === page.regionFilter)
+      : page.balances
+    const sorted = [...filtered].sort((a, b) => {
+      const oa = AU_REGIONS.find((r) => r.code === a.accountRegionCode)?.sortOrder ?? Infinity
+      const ob = AU_REGIONS.find((r) => r.code === b.accountRegionCode)?.sortOrder ?? Infinity
+      if (oa !== ob) return oa - ob
+      return a.accountName.localeCompare(b.accountName, 'zh-CN')
+    })
+    const rowSpans: number[] = []
+    let i = 0
+    while (i < sorted.length) {
+      let j = i + 1
+      while (j < sorted.length && sorted[j].accountRegionCode === sorted[i].accountRegionCode) j++
+      rowSpans[i] = j - i
+      for (let k = i + 1; k < j; k++) rowSpans[k] = 0
+      i = j
+    }
+    return sorted.map((row, index) => ({ row, rowSpan: rowSpans[index] }))
+  }, [page.balances, page.regionFilter])
+
   const columns: ColumnsType<ContainerBalance> = useMemo(
     () => [
+      {
+        title: t('ledger.colRegion'),
+        dataIndex: 'accountRegionCode',
+        key: 'accountRegionCode',
+        width: 120,
+        render: (value: ContainerBalance['accountRegionCode']) =>
+          value ? (
+            AU_REGIONS.find((region) => region.code === value)?.name ?? value
+          ) : (
+            <span className="text-slate-400">{t('ledger.regionUnset')}</span>
+          ),
+        onCell: (_: ContainerBalance, index?: number) => ({
+          rowSpan: index === undefined ? 1 : groupedBalances[index]?.rowSpan ?? 1,
+        }),
+      },
       {
         title: t('ledger.colAccount'),
         dataIndex: 'accountName',
@@ -89,7 +128,7 @@ export default function ContainerLedgerPage() {
         ),
       },
     ],
-    [page, t, tc],
+    [page, t, tc, groupedBalances],
   )
 
   /** 在库合计按品类拆开：混在一起的总数对不上任何一次实物盘点，看了也没法用 */
@@ -162,19 +201,32 @@ export default function ContainerLedgerPage() {
         />
         <div className="p-4 sm:p-5">
           {page.tab === 'balances' ? (
-            <Table<ContainerBalance>
-              rowKey="id"
-              columns={columns}
-              dataSource={page.balances}
-              loading={page.loading}
-              pagination={{
-                pageSize: 10,
-                showSizeChanger: false,
-                showTotal: (total) => t('tableTotal', { total }),
-              }}
-              scroll={{ x: 780 }}
-              locale={{ emptyText: t('ledger.emptyBalances') }}
-            />
+            <div className="space-y-3">
+              <label className="flex flex-col gap-1.5">
+                <span className="text-xs text-slate-500">{t('ledger.filterRegion')}</span>
+                <Select
+                  className="w-44"
+                  placeholder={tc('all')}
+                  allowClear
+                  value={page.regionFilter || undefined}
+                  onChange={(value) => page.setRegionFilter(value ?? '')}
+                  options={AU_REGIONS.map((region) => ({
+                    value: region.code,
+                    label: region.name,
+                  }))}
+                />
+              </label>
+              <Table<ContainerBalance>
+                rowKey="id"
+                columns={columns}
+                dataSource={groupedBalances.map((group) => group.row)}
+                loading={page.loading}
+                /** 按州合并了行，分页会把同一州拆到不同页、合并单元格就错位，数据量小所以直接展示全部 */
+                pagination={false}
+                scroll={{ x: 780 }}
+                locale={{ emptyText: t('ledger.emptyBalances') }}
+              />
+            </div>
           ) : page.tab === 'audits' ? (
             <BalanceAuditPanel
               accounts={page.accounts}

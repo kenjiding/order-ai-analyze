@@ -10,6 +10,7 @@ import { Alert, Button, Input, Modal, Select, Switch } from 'antd'
 import { useTranslation } from 'react-i18next'
 import {
   ACCOUNT_KINDS,
+  AU_REGIONS,
   defaultIsExternal,
 } from '../../../containerManagement/constants'
 import {
@@ -80,6 +81,7 @@ export function AccountFormModal({ open, editing, users, submitting, onCancel, o
   const [name, setName] = useState('')
   const [kind, setKind] = useState<AccountKind>('CUSTOMER')
   const [isExternal, setIsExternal] = useState(false)
+  const [regionCode, setRegionCode] = useState<string | null>(null)
   /** 用户手动动过开关后就别再跟着类型跑，否则他改一下类型勾选被无声冲掉 */
   const [externalTouched, setExternalTouched] = useState(false)
   const [userIds, setUserIds] = useState<string[]>([])
@@ -92,6 +94,7 @@ export function AccountFormModal({ open, editing, users, submitting, onCancel, o
     setKind(editing?.kind ?? 'CUSTOMER')
     setIsExternal(editing ? editing.isExternal : defaultIsExternal('CUSTOMER'))
     setExternalTouched(false)
+    setRegionCode(editing?.regionCode ?? null)
     setUserIds(editing?.boundUserIds ?? [])
     setPushNotify(editing?.pushNotify ?? DEFAULT_ACCOUNT_PUSH_NOTIFY)
     setError(null)
@@ -108,7 +111,7 @@ export function AccountFormModal({ open, editing, users, submitting, onCancel, o
       return
     }
     setError(null)
-    await onSubmit({ name: trimmed, kind, isExternal, userIds, pushNotify })
+    await onSubmit({ name: trimmed, kind, isExternal, regionCode, userIds, pushNotify })
   }
 
   return (
@@ -159,6 +162,18 @@ export function AccountFormModal({ open, editing, users, submitting, onCancel, o
                 options={ACCOUNT_KINDS.map((item) => ({
                   value: item,
                   label: t(`accountKind.${item}`),
+                }))}
+              />
+            </Field>
+            <Field label={t('accounts.colRegion')}>
+              <Select
+                allowClear
+                placeholder={t('accounts.regionPlaceholder')}
+                value={regionCode ?? undefined}
+                onChange={(next) => setRegionCode(next ?? null)}
+                options={AU_REGIONS.map((region) => ({
+                  value: region.code,
+                  label: region.name,
                 }))}
               />
             </Field>

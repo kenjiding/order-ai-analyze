@@ -3,7 +3,7 @@ import { BellRing, BellOff, Building2, Pencil, Plus, Trash2 } from 'lucide-react
 import { Button, Input, Select, Table, Tag, Tooltip } from 'antd'
 import type { ColumnsType } from 'antd/es/table'
 import { useTranslation } from 'react-i18next'
-import { ACCOUNT_KINDS } from '../../containerManagement/constants'
+import { ACCOUNT_KINDS, AU_REGIONS } from '../../containerManagement/constants'
 import type { AccountKind, ContainerAccount } from '../../containerManagement/types'
 import { AccountFormModal } from './components/AccountFormModal'
 import { useContainerAccountsPage } from './useContainerAccountsPage'
@@ -36,6 +36,18 @@ export default function ContainerAccountsPage() {
         render: (value: ContainerAccount['kind']) => (
           <Tag color={KIND_COLOR[value] ?? 'default'}>{t(`accountKind.${value}`)}</Tag>
         ),
+      },
+      {
+        title: t('accounts.colRegion'),
+        dataIndex: 'regionCode',
+        key: 'regionCode',
+        width: 130,
+        render: (value: ContainerAccount['regionCode']) =>
+          value ? (
+            AU_REGIONS.find((region) => region.code === value)?.name ?? value
+          ) : (
+            <span className="text-slate-400">{t('accounts.regionUnset')}</span>
+          ),
       },
       {
         title: t('accounts.colBoundUsers'),
@@ -158,6 +170,20 @@ export default function ContainerAccountsPage() {
               options={ACCOUNT_KINDS.map((kind) => ({
                 value: kind,
                 label: t(`accountKind.${kind}`),
+              }))}
+            />
+          </label>
+          <label className="flex flex-col gap-1.5">
+            <span className="text-xs text-slate-500">{t('accounts.filterRegion')}</span>
+            <Select
+              className="w-44"
+              placeholder={tc('all')}
+              allowClear
+              value={page.regionFilter || undefined}
+              onChange={(value) => page.setRegionFilter(value ?? '')}
+              options={AU_REGIONS.map((region) => ({
+                value: region.code,
+                label: region.name,
               }))}
             />
           </label>

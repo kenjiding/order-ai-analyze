@@ -14,6 +14,8 @@ export type AccountRow = {
   kind: string
   /** 该账户方在本系统没有登录账号，需要我方代为确认收货 / 代录归还 */
   isExternal: boolean
+  /** 所属州代码（AU_REGIONS），存量账户可能为空，待补录 */
+  regionCode: string | null
   boundUserIds: string[]
   pushNotify: AccountPushNotify
   createdAt: string
@@ -36,6 +38,7 @@ async function attachBoundUsers(
     name: string
     kind: string
     isExternal: boolean
+    regionCode: string | null
     pushNotify: unknown
     createdAt: Date
   }[],
@@ -64,6 +67,7 @@ async function attachBoundUsers(
     name: row.name,
     kind: row.kind,
     isExternal: row.isExternal,
+    regionCode: row.regionCode,
     boundUserIds: byAccount.get(row.id) ?? [],
     pushNotify: normalizeAccountPushNotify(row.pushNotify),
     createdAt: row.createdAt.toISOString(),
@@ -87,6 +91,7 @@ export async function listAccounts(
       name: schema.containerAccounts.name,
       kind: schema.containerAccounts.kind,
       isExternal: schema.containerAccounts.isExternal,
+      regionCode: schema.containerAccounts.regionCode,
       pushNotify: schema.containerAccounts.pushNotify,
       createdAt: schema.containerAccounts.createdAt,
     })
@@ -131,6 +136,7 @@ export async function createAccount(input: {
   name: string
   kind: AccountKind
   isExternal?: boolean
+  regionCode?: string | null
   userIds?: string[]
   pushNotify?: AccountPushNotify
   createdBy: string | null
@@ -138,6 +144,7 @@ export async function createAccount(input: {
   await assertNameAvailable(input.name)
   const userIds = await assertUsersExist(input.userIds ?? [])
   const pushNotify = normalizeAccountPushNotify(input.pushNotify ?? DEFAULT_ACCOUNT_PUSH_NOTIFY)
+  const regionCode = input.regionCode ?? null
 
   // 建账与绑定放同一个事务：否则绑定失败会留下一个没人能看见的孤儿站点
   const row = await getDb().transaction(async (tx) => {
@@ -147,6 +154,7 @@ export async function createAccount(input: {
         name: input.name,
         kind: input.kind,
         isExternal: input.isExternal === true,
+        regionCode,
         pushNotify,
         createdBy: input.createdBy,
       })
@@ -164,6 +172,7 @@ export async function createAccount(input: {
     name: row.name,
     kind: row.kind,
     isExternal: row.isExternal,
+    regionCode: row.regionCode,
     boundUserIds: userIds,
     pushNotify,
     createdAt: row.createdAt.toISOString(),
@@ -176,6 +185,7 @@ export async function updateAccount(
     name?: string
     kind?: AccountKind
     isExternal?: boolean
+    regionCode?: string | null
     userIds?: string[]
     pushNotify?: AccountPushNotify
   },
@@ -194,6 +204,7 @@ export async function updateAccount(
         ...(input.name === undefined ? {} : { name: input.name }),
         ...(input.kind === undefined ? {} : { kind: input.kind }),
         ...(input.isExternal === undefined ? {} : { isExternal: input.isExternal }),
+        ...(input.regionCode === undefined ? {} : { regionCode: input.regionCode }),
         ...(input.pushNotify === undefined
           ? {}
           : { pushNotify: normalizeAccountPushNotify(input.pushNotify) }),

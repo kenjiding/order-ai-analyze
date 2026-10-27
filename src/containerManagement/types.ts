@@ -48,6 +48,8 @@ export type ContainerAccount = {
   kind: AccountKind
   /** 该账户方在本系统没有登录账号，需要我方代确认收货 / 代录归还单 */
   isExternal: boolean
+  /** 所属州代码（AU_REGIONS），存量账户可能为空，待补录 */
+  regionCode: string | null
   boundUserIds: string[]
   pushNotify: AccountPushNotify
   createdAt: string
@@ -66,6 +68,7 @@ export type ContainerBalance = {
   accountId: string
   accountName: string
   accountKind: AccountKind
+  accountRegionCode: string | null
   containerType: ContainerType
   quantity: number
   updatedAt: string

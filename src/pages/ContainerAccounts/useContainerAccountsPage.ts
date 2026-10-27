@@ -18,6 +18,7 @@ export type AccountDraft = {
   name: string
   kind: AccountKind
   isExternal: boolean
+  regionCode: string | null
   userIds: string[]
   pushNotify: AccountPushNotify
 }
@@ -33,6 +34,7 @@ export function useContainerAccountsPage() {
 
   const [keyword, setKeyword] = useState('')
   const [kindFilter, setKindFilter] = useState<AccountKind | ''>('')
+  const [regionFilter, setRegionFilter] = useState<string>('')
 
   const [formOpen, setFormOpen] = useState(false)
   const [editing, setEditing] = useState<ContainerAccount | null>(null)
@@ -66,9 +68,10 @@ export function useContainerAccountsPage() {
     return accounts.filter(
       (item) =>
         (!kw || item.name.toLowerCase().includes(kw)) &&
-        (!kindFilter || item.kind === kindFilter),
+        (!kindFilter || item.kind === kindFilter) &&
+        (!regionFilter || item.regionCode === regionFilter),
     )
-  }, [accounts, keyword, kindFilter])
+  }, [accounts, keyword, kindFilter, regionFilter])
 
   const openCreate = useCallback(() => {
     setEditing(null)
@@ -133,6 +136,8 @@ export function useContainerAccountsPage() {
       setKeyword,
       kindFilter,
       setKindFilter,
+      regionFilter,
+      setRegionFilter,
       users,
       loading,
       submitting,
@@ -150,6 +155,7 @@ export function useContainerAccountsPage() {
       filteredAccounts,
       keyword,
       kindFilter,
+      regionFilter,
       users,
       loading,
       submitting,

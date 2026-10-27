@@ -681,6 +681,11 @@ export const containerAccounts = pgTable(
      * 置 true 后，它作为接收方的流转由转出方凭线下回单代确认，作为转出方的流转可由内部人员代录。
      */
     isExternal: boolean('is_external').notNull().default(false),
+    /**
+     * 所属州（复用 server/src/regions/registry.ts 的 AU_REGIONS，只做展示分类，不接入按州隔离数据的权限逻辑）。
+     * 暂时可空：存量账户还没补录，补齐后再收紧为必填。
+     */
+    regionCode: varchar('region_code', { length: 16 }),
     /** 流转变更时的飞书通知配置 { enabled, chatId, mentions }：选群仅用于拉成员名单，实际按 openId 私聊 */
     pushNotify: jsonb('push_notify').notNull().default({ enabled: false, chatId: '', mentions: [] }),
     createdBy: uuid('created_by').references(() => users.id, { onDelete: 'set null' }),

@@ -1,4 +1,6 @@
 /** 容器管理：状态配色、选项列表与编号工具（标签走 i18n container 命名空间） */
+/** 所属州选项，与用户管理等页面共用同一份 AU_REGIONS，不新建枚举 */
+export { AU_REGIONS } from '../pages/ExitAlarm/exitAlarmTypes'
 import type {
   AccountKind,
   BalanceAuditAction,

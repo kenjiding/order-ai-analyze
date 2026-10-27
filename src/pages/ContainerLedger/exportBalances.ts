@@ -3,10 +3,11 @@ import { saveAs } from 'file-saver'
 import type { TFunction } from 'i18next'
 import * as XLSX from 'xlsx-js-style'
 import { applySheetCenterAlignment } from '../../utils/xlsxCenteredSheet'
+import { AU_REGIONS } from '../../containerManagement/constants'
 import type { ContainerBalance } from '../../containerManagement/types'
 import { showToast } from '../../utils/toast'
 
-const COLUMN_WIDTHS = [24, 14, 16, 10, 20]
+const COLUMN_WIDTHS = [14, 24, 14, 16, 10, 20]
 
 function timestamp(): string {
   return new Date().toISOString().replace(/\D/g, '').slice(0, 14)
@@ -18,6 +19,9 @@ export function exportBalancesToXlsx(rows: ContainerBalance[], t: TFunction<'con
     return
   }
   const data = rows.map((row) => ({
+    [t('ledger.colRegion')]: row.accountRegionCode
+      ? AU_REGIONS.find((region) => region.code === row.accountRegionCode)?.name ?? row.accountRegionCode
+      : t('ledger.regionUnset'),
     [t('ledger.colAccount')]: row.accountName,
     [t('ledger.colAccountKind')]: t(`accountKind.${row.accountKind}`),
     [t('ledger.colType')]: t(`containerType.${row.containerType}`),

@@ -15,6 +15,7 @@ export type BalanceRow = {
   accountId: string
   accountName: string
   accountKind: string
+  accountRegionCode: string | null
   containerType: string
   quantity: number
   updatedAt: string
@@ -61,6 +62,7 @@ export async function listBalances(visibleAccountIds: string[] | null): Promise<
       accountId: schema.containerBalances.accountId,
       accountName: schema.containerAccounts.name,
       accountKind: schema.containerAccounts.kind,
+      accountRegionCode: schema.containerAccounts.regionCode,
       containerType: schema.containerBalances.containerType,
       quantity: schema.containerBalances.quantity,
       updatedAt: schema.containerBalances.updatedAt,
@@ -183,6 +185,7 @@ async function listBalancesByIds(ids: string[]): Promise<BalanceRow[]> {
       accountId: schema.containerBalances.accountId,
       accountName: schema.containerAccounts.name,
       accountKind: schema.containerAccounts.kind,
+      accountRegionCode: schema.containerAccounts.regionCode,
       containerType: schema.containerBalances.containerType,
       quantity: schema.containerBalances.quantity,
       updatedAt: schema.containerBalances.updatedAt,

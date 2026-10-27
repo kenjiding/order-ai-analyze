@@ -44,6 +44,7 @@ import {
   parseTransferNo,
   type TransferStatus,
 } from '../containerManagement/constants'
+import { isAssignableRegionCode } from '../regions/registry'
 import {
   createContainerType,
   deleteContainerType,
@@ -268,6 +269,7 @@ containerManagementRouter.post('/accounts', async (req: AuthenticatedRequest, re
     name?: unknown
     kind?: unknown
     isExternal?: unknown
+    regionCode?: unknown
     userIds?: unknown
     pushNotify?: unknown
   }
@@ -275,6 +277,10 @@ containerManagementRouter.post('/accounts', async (req: AuthenticatedRequest, re
   if (!name) return fail(res, 400, '请填写站点名称')
   if (name.length > 200) return fail(res, 400, '站点名称过长')
   if (!isAccountKind(body.kind)) return fail(res, 400, '站点类型不合法')
+  const regionCode = body.regionCode == null || body.regionCode === '' ? null : String(body.regionCode)
+  if (regionCode !== null && !isAssignableRegionCode(regionCode)) {
+    return fail(res, 400, '所属州不合法')
+  }
   if (body.userIds !== undefined && !Array.isArray(body.userIds)) {
     return fail(res, 400, '绑定用户格式不正确')
   }
@@ -283,6 +289,7 @@ containerManagementRouter.post('/accounts', async (req: AuthenticatedRequest, re
       name,
       kind: body.kind as AccountKind,
       isExternal: body.isExternal === true,
+      regionCode,
       userIds: Array.isArray(body.userIds) ? body.userIds.map((item) => String(item)) : [],
       pushNotify: normalizeAccountPushNotify(body.pushNotify),
       createdBy: req.authUser?.id ?? null,
@@ -299,6 +306,7 @@ containerManagementRouter.patch('/accounts/:id', async (req: AuthenticatedReques
     name?: unknown
     kind?: unknown
     isExternal?: unknown
+    regionCode?: unknown
     userIds?: unknown
     pushNotify?: unknown
   }
@@ -306,6 +314,7 @@ containerManagementRouter.patch('/accounts/:id', async (req: AuthenticatedReques
     name?: string
     kind?: AccountKind
     isExternal?: boolean
+    regionCode?: string | null
     userIds?: string[]
     pushNotify?: AccountPushNotify
   } = {}
@@ -321,6 +330,13 @@ containerManagementRouter.patch('/accounts/:id', async (req: AuthenticatedReques
   }
   if (body.isExternal !== undefined) {
     patch.isExternal = body.isExternal === true
+  }
+  if (body.regionCode !== undefined) {
+    const regionCode = body.regionCode == null || body.regionCode === '' ? null : String(body.regionCode)
+    if (regionCode !== null && !isAssignableRegionCode(regionCode)) {
+      return fail(res, 400, '所属州不合法')
+    }
+    patch.regionCode = regionCode
   }
   if (body.userIds !== undefined) {
     if (!Array.isArray(body.userIds)) return fail(res, 400, '绑定用户格式不正确')

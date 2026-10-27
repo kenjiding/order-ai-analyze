@@ -96,6 +96,7 @@ export function createAccount(body: {
   name: string
   kind: string
   isExternal: boolean
+  regionCode: string | null
   userIds: string[]
   pushNotify: AccountPushNotify
 }): Promise<ApiResult<ContainerAccount>> {
@@ -108,6 +109,7 @@ export function updateAccount(
     name?: string
     kind?: string
     isExternal?: boolean
+    regionCode?: string | null
     userIds?: string[]
     pushNotify?: AccountPushNotify
   },
