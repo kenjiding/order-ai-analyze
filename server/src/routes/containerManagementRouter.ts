@@ -466,7 +466,7 @@ containerManagementRouter.post('/balances', async (req: AuthenticatedRequest, re
   await refreshTypes().catch(() => {})
   if (!isActiveType(body.containerType)) return fail(res, 400, '品类不合法或已停用')
   const quantity = Number(body.quantity)
-  if (!Number.isInteger(quantity) || quantity < 0) return fail(res, 400, '数量必须为 0 或正整数')
+  if (!Number.isInteger(quantity)) return fail(res, 400, '数量必须为整数')
   try {
     const visible = await resolveVisibleAccountIds(req)
     if (!canActAsAccount(visible, accountId)) return fail(res, 403, '无权操作该站点账户')
@@ -487,7 +487,7 @@ containerManagementRouter.patch('/balances/:id', async (req: AuthenticatedReques
   if (!hasContainerPermission(req, EDIT_LEDGER)) return fail(res, 403, '无修改台账数量的权限')
   const body = req.body as { quantity?: unknown; reasonType?: unknown; reason?: unknown }
   const quantity = Number(body.quantity)
-  if (!Number.isInteger(quantity) || quantity < 0) return fail(res, 400, '数量必须为 0 或正整数')
+  if (!Number.isInteger(quantity)) return fail(res, 400, '数量必须为整数')
   if (!isManualBalanceReasonType(body.reasonType)) return fail(res, 400, '请选择原因类型')
   const reason = String(body.reason ?? '').trim()
   if (!reason) return fail(res, 400, '请填写变更原因')

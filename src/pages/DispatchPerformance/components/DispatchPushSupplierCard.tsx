@@ -54,7 +54,7 @@ function RankingStat({ ranking, t }: { ranking: DispatchRankingResult; t: Transl
   )
 }
 
-function MetricValue({
+export function MetricValue({
   metricKey,
   row,
   dayCount,
@@ -118,7 +118,7 @@ const STATUS_TAG_COLOR: Record<Exclude<DispatchPushCardStatus, 'idle'>, string> 
   skipped: 'default',
 }
 
-function StatusTag({ status, error, t }: { status?: DispatchPushCardStatus; error?: string; t: Translate }) {
+export function StatusTag({ status, error, t }: { status?: DispatchPushCardStatus; error?: string; t: Translate }) {
   if (!status || status === 'idle') return null
   const text = status === 'error' ? error || t('push.status.error') : t(`push.status.${status}`)
   return (

@@ -247,6 +247,8 @@
     "colTotalPrice": "总价格",
     "colTotal": "合计",
     "colEmployeeId": "人员编号",
+    "colSupplierCode": "供应商编码",
+    "colSupplierName": "供应商名称",
     "colPositionTitle": "职位名称",
     "colDate": "日期",
     "colWorkday": "工作日",

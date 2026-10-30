@@ -134,7 +134,8 @@ export function BalanceFormModal({
           name="quantity"
           rules={[{ required: true, message: t('ledger.enterQuantity') }]}
         >
-          <InputNumber className="w-full" min={0} step={1} precision={0} />
+          {/* 不设 min：盘点纠偏/初始库存都可能是负数（借出超过在库，实物盘点为负），下限交给后端整数校验 */}
+          <InputNumber className="w-full" step={1} precision={0} />
         </Form.Item>
         {isEdit ? (
           <>

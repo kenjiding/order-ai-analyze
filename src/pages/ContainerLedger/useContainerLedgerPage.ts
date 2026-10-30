@@ -56,7 +56,6 @@ export function useContainerLedgerPage() {
   const [tab, setTab] = useState<'balances' | 'audits' | 'reconciliation' | 'types'>('balances')
   const [accounts, setAccounts] = useState<ContainerAccount[]>([])
   const [balances, setBalances] = useState<ContainerBalance[]>([])
-  const [regionFilter, setRegionFilter] = useState<string>('')
   const [loading, setLoading] = useState(false)
   const [submitting, setSubmitting] = useState(false)
 
@@ -197,8 +196,6 @@ export function useContainerLedgerPage() {
       setTab,
       accounts,
       balances,
-      regionFilter,
-      setRegionFilter,
       loading,
       submitting,
       createOpen,
@@ -228,7 +225,6 @@ export function useContainerLedgerPage() {
       tab,
       accounts,
       balances,
-      regionFilter,
       loading,
       submitting,
       createOpen,

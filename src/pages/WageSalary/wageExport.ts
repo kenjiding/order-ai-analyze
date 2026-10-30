@@ -38,6 +38,8 @@ export function buildDailyRawAttendanceExportRows(
 ): Record<string, string>[] {
   return uploadedData.map((record) => ({
     [wt('export.colEmployeeId')]: String(record.employeeId ?? ''),
+    [wt('export.colSupplierCode')]: String(record.supplierCode ?? ''),
+    [wt('export.colSupplierName')]: String(record.supplierName ?? ''),
     [wt('export.colName')]: String(record.name ?? ''),
     [wt('export.colSurname')]: String(record.surname ?? ''),
     [wt('export.colNickname')]: String(record.nickname ?? ''),

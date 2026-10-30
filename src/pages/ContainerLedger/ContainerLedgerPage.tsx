@@ -1,6 +1,6 @@
-import { useCallback, useMemo } from 'react'
+import { useCallback, useMemo, useState, type Key } from 'react'
 import { Boxes, Download, History, PackageSearch, Pencil, Plus, Scale, Trash2, Warehouse } from 'lucide-react'
-import { Button, Select, Table, Tag, Tooltip } from 'antd'
+import { Button, Table, Tag, Tooltip } from 'antd'
 import type { ColumnsType } from 'antd/es/table'
 import { useTranslation } from 'react-i18next'
 import { PageSectionTabs } from '../../components/PageSectionTabs'
@@ -14,121 +14,172 @@ import { ContainerTypePanel } from './components/ContainerTypePanel'
 import { ReconciliationPanel } from './components/ReconciliationPanel'
 import { useContainerLedgerPage } from './useContainerLedgerPage'
 
+/** 未分类州的分组键，不会和任何真实州代码撞车 */
+const UNSET_REGION_KEY = '__unset__'
+
+type RegionGroupRow = {
+  id: string
+  isGroupRow: true
+  regionLabel: string
+  /** 站点数按 accountId 去重——一个站点在两个品类各有一行台账，不能直接数行数 */
+  stationCount: number
+  /** 按品类汇总在库量，顺序沿用 page.balances 本身已排好的品类顺序 */
+  typeTotals: [string, number][]
+  children: ContainerBalance[]
+}
+
+/** 顶层永远是分组行，二级永远是台账行——两层级联，不会再深一层 */
+type LedgerRow = ContainerBalance | RegionGroupRow
+
+function isGroupRow(record: LedgerRow): record is RegionGroupRow {
+  return 'isGroupRow' in record
+}
+
+function regionSortOrder(code: string): number {
+  if (code === UNSET_REGION_KEY) return Infinity
+  return AU_REGIONS.find((r) => r.code === code)?.sortOrder ?? Infinity
+}
+
 export default function ContainerLedgerPage() {
   const { t } = useTranslation('container')
   const { t: tc } = useTranslation('common')
   const page = useContainerLedgerPage()
 
-  /** 按所属州排序+分组：先按州（未分类排最后）、再按站点名排序，同州行用 rowSpan 合并首列，省去折叠/切换 */
-  const groupedBalances = useMemo(() => {
-    const filtered = page.regionFilter
-      ? page.balances.filter((row) => row.accountRegionCode === page.regionFilter)
-      : page.balances
-    const sorted = [...filtered].sort((a, b) => {
-      const oa = AU_REGIONS.find((r) => r.code === a.accountRegionCode)?.sortOrder ?? Infinity
-      const ob = AU_REGIONS.find((r) => r.code === b.accountRegionCode)?.sortOrder ?? Infinity
-      if (oa !== ob) return oa - ob
-      return a.accountName.localeCompare(b.accountName, 'zh-CN')
-    })
-    const rowSpans: number[] = []
-    let i = 0
-    while (i < sorted.length) {
-      let j = i + 1
-      while (j < sorted.length && sorted[j].accountRegionCode === sorted[i].accountRegionCode) j++
-      rowSpans[i] = j - i
-      for (let k = i + 1; k < j; k++) rowSpans[k] = 0
-      i = j
+  /** 按所属州分组成两层数据：顶层是州分组行（带 children），用 antd Table 原生的级联展开支持，不用再手搓合并单元格 */
+  const regionGroups = useMemo<RegionGroupRow[]>(() => {
+    const groups = new Map<string, ContainerBalance[]>()
+    for (const row of page.balances) {
+      const code = row.accountRegionCode ?? UNSET_REGION_KEY
+      const list = groups.get(code)
+      if (list) list.push(row)
+      else groups.set(code, [row])
     }
-    return sorted.map((row, index) => ({ row, rowSpan: rowSpans[index] }))
-  }, [page.balances, page.regionFilter])
+    return [...groups.keys()]
+      .sort((a, b) => regionSortOrder(a) - regionSortOrder(b))
+      .map((code) => {
+        const children = groups.get(code) ?? []
+        const typeTotalsMap = new Map<string, number>()
+        for (const row of children) {
+          typeTotalsMap.set(row.containerType, (typeTotalsMap.get(row.containerType) ?? 0) + row.quantity)
+        }
+        return {
+          id: `group:${code}`,
+          isGroupRow: true as const,
+          regionLabel:
+            code === UNSET_REGION_KEY ? t('ledger.regionUnset') : AU_REGIONS.find((r) => r.code === code)?.name ?? code,
+          stationCount: new Set(children.map((row) => row.accountId)).size,
+          typeTotals: [...typeTotalsMap.entries()],
+          children,
+        }
+      })
+  }, [page.balances, t])
 
-  const columns: ColumnsType<ContainerBalance> = useMemo(
+  /** 记录用户手动收起过的分组；没被记录的分组默认展开——这样切换州筛选后新出现的分组也是展开的 */
+  const [collapsedRegionKeys, setCollapsedRegionKeys] = useState<Set<string>>(new Set())
+  const expandedRowKeys = useMemo(
+    () => regionGroups.map((group) => group.id).filter((id) => !collapsedRegionKeys.has(id)),
+    [regionGroups, collapsedRegionKeys],
+  )
+  const handleExpandedRowsChange = useCallback(
+    (keys: readonly Key[]) => {
+      const expanded = new Set(keys.map(String))
+      setCollapsedRegionKeys(new Set(regionGroups.map((group) => group.id).filter((id) => !expanded.has(id))))
+    },
+    [regionGroups],
+  )
+
+  const columns: ColumnsType<LedgerRow> = useMemo(
     () => [
       {
-        title: t('ledger.colRegion'),
-        dataIndex: 'accountRegionCode',
-        key: 'accountRegionCode',
-        width: 120,
-        render: (value: ContainerBalance['accountRegionCode']) =>
-          value ? (
-            AU_REGIONS.find((region) => region.code === value)?.name ?? value
-          ) : (
-            <span className="text-slate-400">{t('ledger.regionUnset')}</span>
-          ),
-        onCell: (_: ContainerBalance, index?: number) => ({
-          rowSpan: index === undefined ? 1 : groupedBalances[index]?.rowSpan ?? 1,
-        }),
-      },
-      {
         title: t('ledger.colAccount'),
-        dataIndex: 'accountName',
         key: 'accountName',
-        render: (value: string) => <span className="font-medium text-slate-900">{value}</span>,
+        render: (_, record) =>
+          isGroupRow(record) ? (
+            <div className="flex flex-wrap items-baseline divide-x divide-zinc-300">
+              <span className="pr-2.5 font-semibold text-zinc-800">{record.regionLabel}</span>
+              <span className="px-2.5 text-xs text-zinc-500">
+                {t('ledger.groupStationCount', { count: record.stationCount })}
+              </span>
+              {record.typeTotals.map(([type, total]) => (
+                <span key={type} className="px-2.5 text-xs tabular-nums text-zinc-500">
+                  {t('ledger.totalInStockByType', { type: t(`containerType.${type}`), total })}
+                </span>
+              ))}
+            </div>
+          ) : (
+            <span className="font-medium text-slate-900">{record.accountName}</span>
+          ),
       },
       {
         title: t('ledger.colAccountKind'),
-        dataIndex: 'accountKind',
         key: 'accountKind',
         width: 130,
-        render: (value: ContainerBalance['accountKind']) => (
-          <span className="text-slate-600">{t(`accountKind.${value}`)}</span>
-        ),
+        render: (_, record) =>
+          isGroupRow(record) ? null : (
+            <span className="text-slate-600">{t(`accountKind.${record.accountKind}`)}</span>
+          ),
       },
       {
         title: t('ledger.colType'),
-        dataIndex: 'containerType',
         key: 'containerType',
         width: 120,
-        render: (value: ContainerBalance['containerType']) => (
-          <Tag color={value === 'BIG_BASKET' ? 'geekblue' : 'cyan'}>{t(`containerType.${value}`)}</Tag>
-        ),
+        render: (_, record) =>
+          isGroupRow(record) ? null : (
+            <Tag color={record.containerType === 'BIG_BASKET' ? 'geekblue' : 'cyan'}>
+              {t(`containerType.${record.containerType}`)}
+            </Tag>
+          ),
       },
       {
         title: t('ledger.colQuantity'),
-        dataIndex: 'quantity',
         key: 'quantity',
         width: 110,
         align: 'right',
-        render: (value: number) =>
-          value < 0 ? (
+        render: (_, record) => {
+          if (isGroupRow(record)) return null
+          return record.quantity < 0 ? (
             <Tooltip title={t('ledger.negativeTooltip')}>
-              <span className="tabular-nums font-medium text-rose-600">{value}</span>
+              <span className="tabular-nums font-medium text-rose-600">{record.quantity}</span>
             </Tooltip>
           ) : (
-            <span className="tabular-nums font-medium">{value}</span>
-          ),
+            <span className="tabular-nums font-medium">{record.quantity}</span>
+          )
+        },
       },
       {
         title: tc('actions'),
         key: 'actions',
         width: 120,
         fixed: 'right',
-        render: (_, record) => (
-          <div className="flex items-center gap-1">
-            <Tooltip title={page.canEdit ? t('ledger.editQuantity') : t('ledger.noEditPermission')}>
-              <Button
-                type="text"
-                disabled={!page.canEdit}
-                icon={<Pencil className="h-4 w-4" aria-hidden />}
-                onClick={() => page.openEdit(record)}
-                aria-label={tc('edit')}
-              />
-            </Tooltip>
-            <Tooltip title={page.canDelete ? tc('delete') : t('ledger.noDeletePermission')}>
-              <Button
-                type="text"
-                danger
-                disabled={!page.canDelete}
-                icon={<Trash2 className="h-4 w-4" aria-hidden />}
-                onClick={() => page.openDelete(record)}
-                aria-label={tc('delete')}
-              />
-            </Tooltip>
-          </div>
-        ),
+        render: (_, record) => {
+          if (isGroupRow(record)) return null
+          return (
+            <div className="flex items-center gap-1">
+              <Tooltip title={page.canEdit ? t('ledger.editQuantity') : t('ledger.noEditPermission')}>
+                <Button
+                  type="text"
+                  disabled={!page.canEdit}
+                  icon={<Pencil className="h-4 w-4" aria-hidden />}
+                  onClick={() => page.openEdit(record)}
+                  aria-label={tc('edit')}
+                />
+              </Tooltip>
+              <Tooltip title={page.canDelete ? tc('delete') : t('ledger.noDeletePermission')}>
+                <Button
+                  type="text"
+                  danger
+                  disabled={!page.canDelete}
+                  icon={<Trash2 className="h-4 w-4" aria-hidden />}
+                  onClick={() => page.openDelete(record)}
+                  aria-label={tc('delete')}
+                />
+              </Tooltip>
+            </div>
+          )
+        },
       },
     ],
-    [page, t, tc, groupedBalances],
+    [page, t, tc],
   )
 
   /** 在库合计按品类拆开：混在一起的总数对不上任何一次实物盘点，看了也没法用 */
@@ -201,32 +252,22 @@ export default function ContainerLedgerPage() {
         />
         <div className="p-4 sm:p-5">
           {page.tab === 'balances' ? (
-            <div className="space-y-3">
-              <label className="flex flex-col gap-1.5">
-                <span className="text-xs text-slate-500">{t('ledger.filterRegion')}</span>
-                <Select
-                  className="w-44"
-                  placeholder={tc('all')}
-                  allowClear
-                  value={page.regionFilter || undefined}
-                  onChange={(value) => page.setRegionFilter(value ?? '')}
-                  options={AU_REGIONS.map((region) => ({
-                    value: region.code,
-                    label: region.name,
-                  }))}
-                />
-              </label>
-              <Table<ContainerBalance>
-                rowKey="id"
-                columns={columns}
-                dataSource={groupedBalances.map((group) => group.row)}
-                loading={page.loading}
-                /** 按州合并了行，分页会把同一州拆到不同页、合并单元格就错位，数据量小所以直接展示全部 */
-                pagination={false}
-                scroll={{ x: 780 }}
-                locale={{ emptyText: t('ledger.emptyBalances') }}
-              />
-            </div>
+            <Table<LedgerRow>
+              rowKey="id"
+              columns={columns}
+              dataSource={regionGroups}
+              loading={page.loading}
+              /** 按州分组展示，分页会把同一州拆到不同页，数据量小所以直接展示全部 */
+              pagination={false}
+              expandable={{
+                expandedRowKeys,
+                onExpandedRowsChange: handleExpandedRowsChange,
+                expandRowByClick: true,
+              }}
+              rowClassName={(record) => (isGroupRow(record) ? 'bg-zinc-50 cursor-pointer' : '')}
+              scroll={{ x: 780 }}
+              locale={{ emptyText: t('ledger.emptyBalances') }}
+            />
           ) : page.tab === 'audits' ? (
             <BalanceAuditPanel
               accounts={page.accounts}

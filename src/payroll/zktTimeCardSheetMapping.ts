@@ -16,6 +16,8 @@ export function mapZktTimeCardToAttendanceSheetRows(records: unknown[]): Record<
 
     rows.push({
       人员编号: readZktField(record, 'emp_code'),
+      供应商编码: readZktField(record, 'supplier_code'),
+      供应商名称: readZktField(record, 'supplier_name'),
       姓名: readZktField(record, 'first_name'),
       姓氏: readZktField(record, 'last_name'),
       昵称: readZktField(record, 'nick_name'),

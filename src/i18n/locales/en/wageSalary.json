@@ -247,6 +247,8 @@
     "colTotalPrice": "Total amount",
     "colTotal": "Total",
     "colEmployeeId": "Employee ID",
+    "colSupplierCode": "Supplier code",
+    "colSupplierName": "Supplier name",
     "colPositionTitle": "Position",
     "colDate": "Date",
     "colWorkday": "Workday",

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
-import { App, Alert, Button, Checkbox, Empty, Modal, Tooltip } from 'antd'
-import { ListChecks, Truck } from 'lucide-react'
+import { App, Alert, Button, Checkbox, Empty, Modal, Segmented, Tooltip } from 'antd'
+import { Layers, ListChecks, Truck } from 'lucide-react'
 import { toJpeg } from 'html-to-image'
 import { useTranslation } from 'react-i18next'
 import { FormSection } from '../../../components/FormSection'
@@ -20,10 +20,12 @@ import type { DispatchSupplierNode } from '../dispatchPerformanceTypes'
 import { formatAvgTotal } from '../dispatchMetricThresholds'
 import { DISPATCH_PUSH_METRIC_ALL_KEYS, dispatchPushMetricLabelKey, type DispatchPushMetricKey } from '../dispatchPushMetrics'
 import { matchSupplierPushTargets } from '../dispatchPushTargets'
-import { pushSectionId } from '../dispatchPushCapture'
+import { PUSH_MERGED_RANKING_SECTION_ID, pushSectionId } from '../dispatchPushCapture'
 import { toDispatchRankingInput } from '../toDispatchRankingInput'
-import { DispatchPushSupplierCard, type DispatchPushCardStatus } from './DispatchPushSupplierCard'
+import { DispatchPushSupplierCard, StatusTag, type DispatchPushCardStatus } from './DispatchPushSupplierCard'
+import { DispatchPushMergedRankingTable } from './DispatchPushMergedRankingTable'
 
+type PushMode = 'individual' | 'merged'
 type PushState = Record<string, { status: DispatchPushCardStatus; error?: string }>
 type Translate = (key: string, options?: Record<string, unknown>) => string
 
@@ -34,6 +36,56 @@ function buildPushCaption(params: {
   supplierName: string
 }): string {
   return `**${params.stationName} 出仓派签达成分析**\n${params.startDate} ~ ${params.endDate}\n供应商：${params.supplierName}`
+}
+
+/** 合并排名推送模式下的文案：不点名单个供应商，因为这张图要发给多家群 */
+function buildMergedPushCaption(params: { stationName: string; startDate: string; endDate: string }): string {
+  return `**${params.stationName} 出仓派签达成分析 · 供应商综合排名**\n${params.startDate} ~ ${params.endDate}`
+}
+
+/** 把已经截好的一张图推给某供应商匹配到的全部目标（webhook/飞书群），两种推送模式共用这段 */
+async function sendCapturedImageToTargets(params: {
+  supplier: DispatchSupplierNode
+  targets: SupplierPushConfig[]
+  dataUrl: string
+  content: string
+  setPushState: (updater: (s: PushState) => PushState) => void
+  t: Translate
+}): Promise<'ok' | 'error'> {
+  const { supplier, targets, dataUrl, content, setPushState, t } = params
+  setPushState((s) => ({ ...s, [supplier.supplierKey]: { status: 'pushing' } }))
+  const results = await Promise.all(
+    targets.map((cfg) => {
+      if (cfg.webhookUrl.trim()) {
+        return postFeishuPushRichMessage({
+          pushScope: 'dispatch-performance',
+          webhookUrl: cfg.webhookUrl,
+          signingSecret: cfg.signingSecret || undefined,
+          content,
+          images: [dataUrl],
+        })
+      }
+      if (cfg.chatId.trim()) {
+        return postFeishuPushRichMessageViaAppBot({
+          pushScope: 'dispatch-performance',
+          chatId: cfg.chatId,
+          content,
+          images: [dataUrl],
+        })
+      }
+      return Promise.resolve({ ok: false as const, error: t('push.noChannel', { ns: 'dispatchPerformance' }) })
+    }),
+  )
+  const failed = results.filter((r) => !r.ok)
+  if (failed.length === 0) {
+    setPushState((s) => ({ ...s, [supplier.supplierKey]: { status: 'ok' } }))
+    return 'ok'
+  }
+  const errText = failed
+    .map((r) => ('error' in r ? r.error : t('push.status.error', { ns: 'dispatchPerformance' })))
+    .join('; ')
+  setPushState((s) => ({ ...s, [supplier.supplierKey]: { status: 'error', error: errText } }))
+  return 'error'
 }
 
 /** 「要推送的供应商」多选网格：样式与 SupplierPushSelectionGrid 保持一致，未配置推送目标的置灰不可勾 */
@@ -132,6 +184,7 @@ export function DispatchDataPushModal({
   const [catalogLoading, setCatalogLoading] = useState(false)
   const [catalogError, setCatalogError] = useState<string | null>(null)
 
+  const [pushMode, setPushMode] = useState<PushMode>('individual')
   const [selectedMetricKeys, setSelectedMetricKeys] = useState<DispatchPushMetricKey[]>(DISPATCH_PUSH_METRIC_ALL_KEYS)
   const [selectedSupplierKeys, setSelectedSupplierKeys] = useState<string[]>([])
   const [pushState, setPushState] = useState<PushState>({})
@@ -159,6 +212,7 @@ export function DispatchDataPushModal({
     let cancelled = false
     setCatalogLoading(true)
     setCatalogError(null)
+    setPushMode('individual')
     setSelectedMetricKeys(DISPATCH_PUSH_METRIC_ALL_KEYS)
     setSelectedSupplierKeys([])
     setPushState({})
@@ -216,79 +270,90 @@ export function DispatchDataPushModal({
     let errCount = 0
     let skipCount = 0
 
-    for (const supplier of previewSuppliers) {
-      const targets = matchSupplierPushTargets(supplier.vendorCode, pushConfigIds, catalog)
-      if (targets.length === 0) {
-        setPushState((s) => ({ ...s, [supplier.supplierKey]: { status: 'skipped' } }))
-        skipCount += 1
-        continue
-      }
-
-      setPushState((s) => ({ ...s, [supplier.supplierKey]: { status: 'capturing' } }))
-      const el = document.getElementById(pushSectionId(supplier.supplierKey))
+    if (pushMode === 'merged') {
+      // 合并模式：只截一次图，同一张图依次发给本次勾选的每个供应商各自匹配到的目标
+      const el = document.getElementById(PUSH_MERGED_RANKING_SECTION_ID)
+      let dataUrl: string | undefined
+      let captureError: string | undefined
       if (!el) {
-        setPushState((s) => ({
-          ...s,
-          [supplier.supplierKey]: { status: 'error', error: t('push.sectionNotFound', { ns: 'dispatchPerformance' }) },
-        }))
-        errCount += 1
-        continue
-      }
-
-      let dataUrl: string
-      try {
-        dataUrl = await toJpeg(el, {
-          pixelRatio: FEISHU_PUSH_CAPTURE_PIXEL_RATIO,
-          quality: FEISHU_PUSH_JPEG_QUALITY,
-          backgroundColor: '#ffffff',
-        })
-      } catch (err) {
-        setPushState((s) => ({
-          ...s,
-          [supplier.supplierKey]: {
-            status: 'error',
-            error: err instanceof Error ? err.message : t('push.captureFailed', { ns: 'dispatchPerformance' }),
-          },
-        }))
-        errCount += 1
-        continue
-      }
-
-      setPushState((s) => ({ ...s, [supplier.supplierKey]: { status: 'pushing' } }))
-      const content = buildPushCaption({ stationName, startDate, endDate, supplierName: supplier.supplierName })
-      const results = await Promise.all(
-        targets.map((cfg) => {
-          if (cfg.webhookUrl.trim()) {
-            return postFeishuPushRichMessage({
-              pushScope: 'dispatch-performance',
-              webhookUrl: cfg.webhookUrl,
-              signingSecret: cfg.signingSecret || undefined,
-              content,
-              images: [dataUrl],
-            })
-          }
-          if (cfg.chatId.trim()) {
-            return postFeishuPushRichMessageViaAppBot({
-              pushScope: 'dispatch-performance',
-              chatId: cfg.chatId,
-              content,
-              images: [dataUrl],
-            })
-          }
-          return Promise.resolve({ ok: false as const, error: t('push.noChannel', { ns: 'dispatchPerformance' }) })
-        }),
-      )
-
-      const failed = results.filter((r) => !r.ok)
-      if (failed.length === 0) {
-        setPushState((s) => ({ ...s, [supplier.supplierKey]: { status: 'ok' } }))
-        okCount += 1
+        captureError = t('push.sectionNotFound', { ns: 'dispatchPerformance' })
       } else {
-        const errText = failed
-          .map((r) => ('error' in r ? r.error : t('push.status.error', { ns: 'dispatchPerformance' })))
-          .join('; ')
-        setPushState((s) => ({ ...s, [supplier.supplierKey]: { status: 'error', error: errText } }))
-        errCount += 1
+        try {
+          dataUrl = await toJpeg(el, {
+            pixelRatio: FEISHU_PUSH_CAPTURE_PIXEL_RATIO,
+            quality: FEISHU_PUSH_JPEG_QUALITY,
+            backgroundColor: '#ffffff',
+          })
+        } catch (err) {
+          captureError = err instanceof Error ? err.message : t('push.captureFailed', { ns: 'dispatchPerformance' })
+        }
+      }
+
+      if (!dataUrl) {
+        for (const supplier of previewSuppliers) {
+          setPushState((s) => ({ ...s, [supplier.supplierKey]: { status: 'error', error: captureError } }))
+        }
+        errCount += previewSuppliers.length
+      } else {
+        const content = buildMergedPushCaption({ stationName, startDate, endDate })
+        for (const supplier of previewSuppliers) {
+          const targets = matchSupplierPushTargets(supplier.vendorCode, pushConfigIds, catalog)
+          if (targets.length === 0) {
+            setPushState((s) => ({ ...s, [supplier.supplierKey]: { status: 'skipped' } }))
+            skipCount += 1
+            continue
+          }
+          const result = await sendCapturedImageToTargets({ supplier, targets, dataUrl, content, setPushState, t })
+          if (result === 'ok') okCount += 1
+          else errCount += 1
+        }
+      }
+    } else {
+      for (const supplier of previewSuppliers) {
+        const targets = matchSupplierPushTargets(supplier.vendorCode, pushConfigIds, catalog)
+        if (targets.length === 0) {
+          setPushState((s) => ({ ...s, [supplier.supplierKey]: { status: 'skipped' } }))
+          skipCount += 1
+          continue
+        }
+
+        setPushState((s) => ({ ...s, [supplier.supplierKey]: { status: 'capturing' } }))
+        const el = document.getElementById(pushSectionId(supplier.supplierKey))
+        if (!el) {
+          setPushState((s) => ({
+            ...s,
+            [supplier.supplierKey]: {
+              status: 'error',
+              error: t('push.sectionNotFound', { ns: 'dispatchPerformance' }),
+            },
+          }))
+          errCount += 1
+          continue
+        }
+
+        let dataUrl: string
+        try {
+          dataUrl = await toJpeg(el, {
+            pixelRatio: FEISHU_PUSH_CAPTURE_PIXEL_RATIO,
+            quality: FEISHU_PUSH_JPEG_QUALITY,
+            backgroundColor: '#ffffff',
+          })
+        } catch (err) {
+          setPushState((s) => ({
+            ...s,
+            [supplier.supplierKey]: {
+              status: 'error',
+              error: err instanceof Error ? err.message : t('push.captureFailed', { ns: 'dispatchPerformance' }),
+            },
+          }))
+          errCount += 1
+          continue
+        }
+
+        const content = buildPushCaption({ stationName, startDate, endDate, supplierName: supplier.supplierName })
+        const result = await sendCapturedImageToTargets({ supplier, targets, dataUrl, content, setPushState, t })
+        if (result === 'ok') okCount += 1
+        else errCount += 1
       }
     }
 
@@ -318,6 +383,22 @@ export function DispatchDataPushModal({
         {catalogError ? <Alert type="error" showIcon message={catalogError} /> : null}
 
         <FormSection
+          icon={Layers}
+          title={t('push.modeSectionTitle', { ns: 'dispatchPerformance' })}
+          description={t('push.modeSectionDesc', { ns: 'dispatchPerformance' })}
+        >
+          <Segmented
+            value={pushMode}
+            onChange={(value) => setPushMode(value as PushMode)}
+            disabled={pushing}
+            options={[
+              { label: t('push.mode.individualLabel', { ns: 'dispatchPerformance' }), value: 'individual' },
+              { label: t('push.mode.mergedLabel', { ns: 'dispatchPerformance' }), value: 'merged' },
+            ]}
+          />
+        </FormSection>
+
+        <FormSection
           icon={ListChecks}
           title={t('push.metricsSectionTitle', { ns: 'dispatchPerformance' })}
           description={t('push.metricsSectionDesc', { ns: 'dispatchPerformance' })}
@@ -337,7 +418,10 @@ export function DispatchDataPushModal({
         <FormSection
           icon={Truck}
           title={t('push.supplierSectionTitle', { ns: 'dispatchPerformance' })}
-          description={t('push.supplierSectionDesc', { ns: 'dispatchPerformance' })}
+          description={t(
+            pushMode === 'merged' ? 'push.supplierSectionDescMerged' : 'push.supplierSectionDesc',
+            { ns: 'dispatchPerformance' },
+          )}
           action={
             <div className="flex items-center gap-2">
               <Button
@@ -374,7 +458,46 @@ export function DispatchDataPushModal({
         </div>
 
         <div className="max-h-[50vh] space-y-3 overflow-y-auto pr-1">
-          {previewSuppliers.length === 0 ? (
+          {pushMode === 'merged' ? (
+            <>
+              <DispatchPushMergedRankingTable
+                suppliers={pushableSuppliers}
+                rankingPool={rankingPool}
+                metricKeys={selectedMetricKeys}
+                dayCount={dayCount}
+                weights={rankingWeights}
+              />
+              {previewSuppliers.length === 0 ? (
+                <Empty
+                  image={Empty.PRESENTED_IMAGE_SIMPLE}
+                  description={t('breakdown.empty', { ns: 'dispatchPerformance' })}
+                />
+              ) : (
+                <div className="space-y-1.5">
+                  {previewSuppliers.map((supplier) => (
+                    <div
+                      key={supplier.supplierKey}
+                      className="flex items-center justify-between gap-2 rounded-lg border border-[var(--admin-line)] bg-white px-3 py-2"
+                    >
+                      <span className="truncate text-sm text-slate-700">
+                        {supplier.supplierName}
+                        <span className="ml-1.5 font-mono text-xs text-slate-400">{supplier.vendorCode}</span>
+                      </span>
+                      {!hasTargetMap.get(supplier.supplierKey) ? (
+                        <StatusTag status="skipped" t={t} />
+                      ) : (
+                        <StatusTag
+                          status={pushState[supplier.supplierKey]?.status}
+                          error={pushState[supplier.supplierKey]?.error}
+                          t={t}
+                        />
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </>
+          ) : previewSuppliers.length === 0 ? (
             <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={t('breakdown.empty', { ns: 'dispatchPerformance' })} />
           ) : (
             previewSuppliers.map((supplier) => (

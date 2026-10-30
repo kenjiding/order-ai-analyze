@@ -2,3 +2,6 @@
 export function pushSectionId(supplierKey: string): string {
   return `dispatch-push-section-${supplierKey}`
 }
+
+/** 合并排名推送模式下，全部供应商共用这一张截图区域——固定 id，不会跟上面按 supplierKey 生成的 id 撞 */
+export const PUSH_MERGED_RANKING_SECTION_ID = 'dispatch-push-merged-ranking'

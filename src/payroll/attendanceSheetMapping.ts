@@ -21,6 +21,8 @@ const SURNAME_KEYS = ['姓氏/Surname', '姓氏', 'Surname', 'surname'] as const
 const NICKNAME_KEYS = ['昵称/Nickname', '昵称', 'Nickname', 'nickname'] as const
 const DEPARTMENT_KEYS = ['部门/Department', '部门', 'Department', 'department'] as const
 const EMPLOYEE_ID_KEYS = ['人员编号/Employee ID', '人员编号', 'Employee ID', 'employeeId'] as const
+const SUPPLIER_CODE_KEYS = ['供应商编码', 'Supplier Code', 'supplierCode', 'supplier_code'] as const
+const SUPPLIER_NAME_KEYS = ['供应商名称', 'Supplier Name', 'supplierName', 'supplier_name'] as const
 const DATE_KEYS = ['日期/Date', '日期', 'Date', 'date'] as const
 const WORKDAY_KEYS = ['工作日/Workday', '工作日', 'Workday', 'workday'] as const
 const CLOCK_IN_KEYS = ['实际签到时间', '实际签到', '首次打卡', 'First Clock In', 'firstClockIn'] as const
@@ -139,6 +141,8 @@ export function transformSheetRowsToUploadedData(
 
     return {
       employeeId,
+      supplierCode: cellString(row, SUPPLIER_CODE_KEYS),
+      supplierName: cellString(row, SUPPLIER_NAME_KEYS),
       /** 考勤表「姓名」，仅展示/导出用，不参与校验 */
       name:
         cellString(row, NAME_KEYS) ||
