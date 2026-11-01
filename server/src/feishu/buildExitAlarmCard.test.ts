@@ -59,7 +59,7 @@ test('KPI 行在 Exit rate 右侧展示「Priority Packages」磁贴，取各路
   )
   assert.match(text, /\*\*Priority Packages\*\*/)
   // 主数字为未出仓优先件 (34+22)-(30+20)=6，副行为优先件总数 56
-  assert.match(text, /\*\*6 Not exited\*\*/)
+  assert.match(text, /\*\*6 Not dispatched\*\*/)
   assert.match(text, /56 total/)
 })
 
@@ -72,21 +72,21 @@ test('Priority Packages 是全部优先件：白名单路由的优先件也计�
     }),
   )
   // 未出仓 (34+4)-(30+1)=7，总数 38
-  assert.match(text, /\*\*7 Not exited\*\*/)
+  assert.match(text, /\*\*7 Not dispatched\*\*/)
   assert.match(text, /38 total/)
-  // 其余磁贴仍不含白名单：Not exited 100 / 300 total
+  // 其余磁贴仍不含白名单：Not dispatched 100 / 300 total
   assert.match(text, /\*\*100\*\*/)
   assert.match(text, /300 total/)
   assert.doesNotMatch(text, /Whitelisted Routes/)
 })
 
-test('KPI 行恒为三块：无清货费用时保留 Not exited 磁贴，有清货费用时并入 Exit rate 副行', () => {
+test('KPI 行恒为三块：无清货费用时保留 Not dispatched 磁贴，有清货费用时并入 Dispatch rate 副行', () => {
   const plain = bodyText(buildExitAlarmCard(baseParams))
-  assert.match(plain, /\*\*Not exited\*\*/)
-  assert.match(plain, /200 exited on time/)
+  assert.match(plain, /\*\*Not dispatched\*\*/)
+  assert.match(plain, /200 dispatched on time/)
 
   const withCost = bodyText(buildExitAlarmCard({ ...baseParams, clearancePrice: 1.25 }))
-  assert.doesNotMatch(withCost, /\*\*Not exited\*\*/)
+  assert.doesNotMatch(withCost, /\*\*Not dispatched\*\*/)
   assert.match(withCost, /200 \/ 300 total/)
   assert.match(withCost, /\*\*Clearance cost\*\*/)
 })

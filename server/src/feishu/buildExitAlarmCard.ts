@@ -124,15 +124,15 @@ function buildWhitelistPanel(whitelistStat: WhitelistStat, pushTime: string): Ca
 
   const panelElements: CardEl[] = [
     columnSet([
-      summaryTile(`Exited by ${pushTime}`, `${exited}`, `${totalWaybills} waybills total`, 'blue'),
-      summaryTile('Whitelisted exit rate', `${exitRate}%`, `${exited} / ${totalWaybills} exited`, rateColor),
+      summaryTile(`Dispatched by ${pushTime}`, `${exited}`, `${totalWaybills} waybills total`, 'blue'),
+      summaryTile('Whitelisted dispatch rate', `${exitRate}%`, `${exited} / ${totalWaybills} dispatched`, rateColor),
     ]),
   ]
 
   // 只隐藏全部出仓的路由——跟主统计的路由明细磁贴口径保持一致
   const pendingZones = filterNonCompliantZones(zoneBreakdown)
   if (pendingZones.length === 0) {
-    panelElements.push(md(colored('✅ All whitelisted routes meet exit target', 'green')))
+    panelElements.push(md(colored('✅ All whitelisted routes meet dispatch target', 'green')))
   } else {
     for (let i = 0; i < pendingZones.length; i += 2) {
       const pair = pendingZones.slice(i, i + 2)
@@ -227,18 +227,18 @@ export function buildExitAlarmCard(params: {
   const totalPriority = priorityZones.reduce((sum, zone) => sum + zone.priority, 0)
   const exitedPriority = priorityZones.reduce((sum, zone) => sum + zone.priorityExited, 0)
   const pendingPriority = totalPriority - exitedPriority
-  // 始终三块：有清货费用时让位——Not exited 并入 Exit rate 副行；没有则单列 Not exited
+  // 始终三块：有清货费用时让位——Not dispatched 并入 Dispatch rate 副行；没有则单列 Not dispatched
   const showClearance = Boolean(clearancePrice && clearancePrice > 0 && totalPending > 0)
   const kpiTiles = [
     ...(showClearance
-      ? [summaryTile('Exit rate', `${exitRate}%`, `${exited} / ${totalWaybills} total`, 'blue')]
+      ? [summaryTile('Dispatch rate', `${exitRate}%`, `${exited} / ${totalWaybills} total`, 'blue')]
       : [
-          summaryTile('Not exited', `${totalPending}`, `${totalWaybills} total`, totalPending > 0 ? 'red' : 'green'),
-          summaryTile('Exit rate', `${exitRate}%`, `${exited} exited on time`, 'blue'),
+          summaryTile('Not dispatched', `${totalPending}`, `${totalWaybills} total`, totalPending > 0 ? 'red' : 'green'),
+          summaryTile('Dispatch rate', `${exitRate}%`, `${exited} dispatched on time`, 'blue'),
         ]),
     summaryTile(
       'Priority Packages',
-      `${pendingPriority} Not exited`,
+      `${pendingPriority} Not dispatched`,
       `${totalPriority} total`,
       pendingPriority > 0 ? 'orange' : 'green',
     ),
@@ -254,9 +254,9 @@ export function buildExitAlarmCard(params: {
   const pendingZones = filterNonCompliantZones(zoneBreakdown)
 
   if (pendingZones.length === 0) {
-    elements.push(md(colored(`✅ All routes meet ${pushTime} exit target`, 'green')))
+    elements.push(md(colored(`✅ All routes meet ${pushTime} dispatch target`, 'green')))
   } else {
-    elements.push(md(`🚨 **Routes not exited by ${pushTime} (${pendingZones.length})** — Notify drivers now!`))
+    elements.push(md(`🚨 **Routes not dispatched by ${pushTime} (${pendingZones.length})** — Notify drivers now!`))
     for (let i = 0; i < pendingZones.length; i += 2) {
       const pair = pendingZones.slice(i, i + 2)
       const cols = pair.map(([code, { pending, total, priority }]) => zoneTile(code, pending, total, priority))
