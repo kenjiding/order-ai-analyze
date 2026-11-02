@@ -9,8 +9,11 @@ import { useAppSettings } from '../../context/AppSettingsContext'
 import { parseOrderNumbersUnique } from '../../utils/orderNoInput'
 import { fetchFleetPendingSplitBox } from '../PushNotifications/fleetPendingSplitBoxApi'
 import type { FleetScanRow } from '../PushNotifications/fleetSupplierPushTypes'
+import { useGlobalFilterStore } from '../../stores/globalFilterStore'
+import type { OrderTrackEvent } from '../../components/OrderTrack/OrderTrackTimeline'
 import type { AddressVerifyMapPoint } from './AddressVerifyMapView'
 import { exportAddressVerifyTemplate } from './exportAddressVerifyTemplate'
+import { ProblemReportDrawer } from './ProblemReportDrawer'
 
 /** maplibre-gl 体积较大，懒加载避免未用到地图的场景也被迫下载（做法与司机地图一致） */
 const AddressVerifyMapView = lazy(() =>
@@ -47,15 +50,21 @@ type AddressVerifyRow = {
   error: string
   auPostBlocked: boolean
   auPostReason: string
+  auPostReported: boolean
+  trackEvents: OrderTrackEvent[]
 }
 
 export default function AddressVerifyPage() {
   const { t } = useTranslation('addressVerify')
   const { imileToken } = useAppSettings()
+  const { selectedCountry } = useGlobalFilterStore()
   const [mode, setMode] = useState<AddressVerifySourceMode>('manual')
+  const [problemDrawerOpen, setProblemDrawerOpen] = useState(false)
+  const [problemOrderNo, setProblemOrderNo] = useState('')
   const [raw, setRaw] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
+  const [auPostSearchWarning, setAuPostSearchWarning] = useState('')
   const [rows, setRows] = useState<AddressVerifyRow[]>([])
 
   const [pendingBoxRange, setPendingBoxRange] = useState<[Dayjs, Dayjs]>(() => [
@@ -171,13 +180,19 @@ export default function AddressVerifyPage() {
 
     setLoading(true)
     setError('')
+    setAuPostSearchWarning('')
     try {
       const res = await backendFetch('/api/address-verify/check', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ orderNos: effectiveOrderNos, imileToken: token }),
       })
-      const json = (await res.json()) as { ok?: boolean; rows?: AddressVerifyRow[]; error?: string }
+      const json = (await res.json()) as {
+        ok?: boolean
+        rows?: AddressVerifyRow[]
+        error?: string
+        auPostSearchError?: string
+      }
       if (!res.ok || json.ok !== true) {
         setError(json.error || t('requestFailed'))
         setRows([])
@@ -185,6 +200,7 @@ export default function AddressVerifyPage() {
       }
       setRows(json.rows ?? [])
       setSelectedOrderNos([])
+      setAuPostSearchWarning(json.auPostSearchError || '')
     } catch {
       setError(t('backendUnreachable'))
       setRows([])
@@ -258,9 +274,18 @@ export default function AddressVerifyPage() {
         title: t('colAuPost'),
         key: 'auPost',
         width: 140,
+        fixed: 'right',
         render: (_, row) =>
           row.auPostBlocked ? (
-            <Tag color="red" title={row.auPostReason}>
+            <Tag
+              color={row.auPostReported ? 'green' : 'red'}
+              title={row.auPostReason}
+              className="cursor-pointer"
+              onClick={() => {
+                setProblemOrderNo(row.orderNo)
+                setProblemDrawerOpen(true)
+              }}
+            >
               {t('auPostBlocked')}
             </Tag>
           ) : (
@@ -393,6 +418,7 @@ export default function AddressVerifyPage() {
           </div>
         ) : null}
         {error ? <Alert type="error" showIcon message={error} /> : null}
+        {auPostSearchWarning ? <Alert type="warning" showIcon message={auPostSearchWarning} /> : null}
       </section>
 
       {mapPoints.length > 0 ? (
@@ -433,6 +459,16 @@ export default function AddressVerifyPage() {
           locale={{ emptyText: t('emptyText') }}
         />
       </section>
+
+      <ProblemReportDrawer
+        key={problemOrderNo}
+        open={problemDrawerOpen}
+        orderNo={problemOrderNo}
+        country={selectedCountry}
+        imileToken={imileToken}
+        trackEvents={rows.find((r) => r.orderNo === problemOrderNo)?.trackEvents ?? []}
+        onClose={() => setProblemDrawerOpen(false)}
+      />
     </div>
   )
 }

@@ -30,3 +30,5 @@
 - **Menu i18n (mandatory)**: `sidebarMenu.ts`'s `label`/`description` are placeholders only — never rendered. The sidebar reads `menu.json`'s `items.<page-id>` (both locales); the permission-assignment UI reads `permission.json`'s `menu:<page-id>` (both locales). Skip either and the menu either shows a raw untranslated key or silently falls back to the Chinese label in English mode. Every new menu item needs all 4 keys added: `src/i18n/locales/{zh-CN,en}/menu.json` → `items.<page-id>`, and `src/i18n/locales/{zh-CN,en}/permission.json` → `menu:<page-id>`. Full flow: `AGENTS.md` §菜单多语言接入.
 
 - **Page content i18n is opt-in**: the mandatory menu i18n above only covers the sidebar entry and permission label. For a page's own content (labels, table columns, button text, etc.), do NOT add i18n unless the user explicitly asks for that page to support multiple languages. Default to hardcoded Chinese text in new/changed pages.
+
+- **调试/验证脚本用后即删（mandatory）**：为排查问题、验证假设临时写的脚本（例如 `server/src/tmp-*.ts` 这类对比真实数据、调用 iMile/Janus 接口核实字段的脚本），跑完拿到结论后必须立即删除，不得留在仓库里，也不能提交。每次这类调试结束前，用 `git status` 核对一遍，确认没有遗留的临时文件。

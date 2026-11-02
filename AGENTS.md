@@ -160,3 +160,5 @@ Same 12 rules as `CLAUDE.md`, filename change for Codex-style tooling that looks
 ## Project specifics
 
 - **UI control size**: Use Ant Design / MUI default middle (medium) only. Omit `size` on `Button`, `Input`, `Select`, `DatePicker`, `Table`, `Form`, `IconButton`, etc. Never use `size="small"` or `size="large"`. See `.cursor/rules/ui-component-size.mdc`.
+
+- **调试/验证脚本用后即删**：排查问题时写的临时脚本（如 `server/src/tmp-*.ts`）跑完得出结论后必须立即删除，不得留在仓库或提交。结束前用 `git status` 核对无遗留文件。
