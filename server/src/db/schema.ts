@@ -749,6 +749,36 @@ export const containerBalances = pgTable(
   ],
 )
 
+/**
+ * 容器管理：容器数量水位线告警配置（站点账户 × 品类）。
+ *
+ * minQty/maxQty 任一为空表示不检查该方向。lastAlertDirection 记录「当前是否正处于越界状态」
+ * （'low' | 'high' | null），只在这个方向发生变化（越界 / 恢复正常）时才发通知，
+ * 避免台账每次小变动都对着同一个越界状态刷屏。
+ */
+export const containerBalanceThresholds = pgTable(
+  'container_balance_thresholds',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    accountId: uuid('account_id')
+      .notNull()
+      .references(() => containerAccounts.id, { onDelete: 'cascade' }),
+    containerType: varchar('container_type', { length: 32 }).notNull(),
+    minQty: integer('min_qty'),
+    maxQty: integer('max_qty'),
+    lastAlertDirection: varchar('last_alert_direction', { length: 8 }),
+    lastAlertAt: timestamp('last_alert_at', { withTimezone: true }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    uniqueIndex('container_balance_thresholds_account_type_unique').on(
+      table.accountId,
+      table.containerType,
+    ),
+  ],
+)
+
 /** 容器管理：流转记录主表。数量不落在这里，全部收敛到 container_transfer_items */
 export const containerTransfers = pgTable(
   'container_transfers',
@@ -886,6 +916,8 @@ export type NewContainerAccount = typeof containerAccounts.$inferInsert
 export type ContainerAccountUser = typeof containerAccountUsers.$inferSelect
 export type ContainerBalance = typeof containerBalances.$inferSelect
 export type NewContainerBalance = typeof containerBalances.$inferInsert
+export type ContainerBalanceThreshold = typeof containerBalanceThresholds.$inferSelect
+export type NewContainerBalanceThreshold = typeof containerBalanceThresholds.$inferInsert
 export type ContainerBalanceAudit = typeof containerBalanceAudits.$inferSelect
 export type NewContainerBalanceAudit = typeof containerBalanceAudits.$inferInsert
 export type ContainerTransfer = typeof containerTransfers.$inferSelect

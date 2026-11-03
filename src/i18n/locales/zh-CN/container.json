@@ -168,6 +168,13 @@
     "pushHintNoRecipients": "尚未选择接收人，开启后也不会推送。",
     "pushFetchGroupsFailed": "获取机器人所在群列表失败：{{error}}",
     "pushFetchMembersFailed": "获取群成员列表失败：{{error}}",
+    "sectionThresholds": "容器水位线告警",
+    "thresholdHint": "某品类数量低于下限或高于上限时，按上方「流转通知」配置的群推送一次提醒；留空表示不检查该方向。",
+    "thresholdMin": "下限",
+    "thresholdMax": "上限",
+    "thresholdCreateFirst": "创建站点后才能配置水位线告警",
+    "thresholdMinGreaterThanMax": "{{type}}：下限不能大于上限",
+    "thresholdSaveFailed": "保存水位线告警配置失败：{{error}}",
     "confirmDeleteTitle": "确认删除站点「{{name}}」？",
     "confirmDeleteContent": "若该站点已有容器台账或流转记录，删除会被拒绝。"
   },

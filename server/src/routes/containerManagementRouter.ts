@@ -84,6 +84,11 @@ import {
   notifyTransferEvent,
   type TransferNotifyEvent,
 } from '../containerManagement/transferNotify'
+import {
+  checkTransferThresholds,
+  listThresholds,
+  replaceThresholds,
+} from '../containerManagement/balanceThresholdAlert'
 
 export const containerManagementRouter = Router()
 
@@ -384,6 +389,42 @@ containerManagementRouter.put('/accounts/:id/users', async (req: AuthenticatedRe
     res.json({ ok: true, data: await listAccountBoundUsers(String(req.params.id ?? '').trim()) })
   } catch (error) {
     handleError(res, error, '保存绑定关系失败')
+  }
+})
+
+containerManagementRouter.get('/accounts/:id/thresholds', async (req: AuthenticatedRequest, res) => {
+  if (!hasContainerPermission(req, MANAGE_ACCOUNTS)) return fail(res, 403, '无操作权限')
+  try {
+    res.json({ ok: true, data: await listThresholds(String(req.params.id ?? '').trim()) })
+  } catch (error) {
+    handleError(res, error, '获取水位线告警配置失败')
+  }
+})
+
+containerManagementRouter.put('/accounts/:id/thresholds', async (req: AuthenticatedRequest, res) => {
+  if (!hasContainerPermission(req, MANAGE_ACCOUNTS)) return fail(res, 403, '无操作权限')
+  const body = req.body as { items?: unknown }
+  if (!Array.isArray(body.items)) return fail(res, 400, '请提供阈值配置列表')
+  const toNullableInt = (value: unknown): number | null | 'invalid' => {
+    if (value === null || value === undefined || value === '') return null
+    const num = Number(value)
+    return Number.isInteger(num) ? num : 'invalid'
+  }
+  const items: { containerType: string; minQty: number | null; maxQty: number | null }[] = []
+  for (const raw of body.items) {
+    const item = (raw ?? {}) as { containerType?: unknown; minQty?: unknown; maxQty?: unknown }
+    const containerType = String(item.containerType ?? '').trim()
+    if (!containerType) return fail(res, 400, '阈值配置缺少容器品类')
+    const minQty = toNullableInt(item.minQty)
+    const maxQty = toNullableInt(item.maxQty)
+    if (minQty === 'invalid' || maxQty === 'invalid') return fail(res, 400, '阈值必须是整数')
+    items.push({ containerType, minQty, maxQty })
+  }
+  try {
+    const accountId = String(req.params.id ?? '').trim()
+    res.json({ ok: true, data: await replaceThresholds(accountId, items) })
+  } catch (error) {
+    handleError(res, error, '保存水位线告警配置失败')
   }
 })
 
@@ -706,6 +747,7 @@ function fireTransferNotify(
   if (!transfer) return
   const actor = req.authUser?.displayName?.trim() || req.authUser?.username || ''
   void notifyTransferEvent(transfer, event, actor, extra)
+  checkTransferThresholds(transfer)
 }
 
 /**
@@ -716,6 +758,7 @@ function fireTransferBatchNotify(req: AuthenticatedRequest, transfers: TransferV
   if (transfers.length === 0) return
   const actor = req.authUser?.displayName?.trim() || req.authUser?.username || ''
   void notifyTransferBatchCreated(transfers, actor)
+  for (const transfer of transfers) checkTransferThresholds(transfer)
 }
 
 /**
@@ -725,7 +768,10 @@ function fireTransferBatchNotifyByIds(req: AuthenticatedRequest, ids: number[]):
   if (ids.length === 0) return
   const actor = req.authUser?.displayName?.trim() || req.authUser?.username || ''
   void getTransfersByIds(ids)
-    .then((transfers) => notifyTransferBatchCreated(transfers, actor))
+    .then((transfers) => {
+      void notifyTransferBatchCreated(transfers, actor)
+      for (const transfer of transfers) checkTransferThresholds(transfer)
+    })
     .catch((error) => {
       console.error(`[container-transfer-notify] 批量 ${ids.length} 笔加载流转失败，已跳过推送`, error)
     })

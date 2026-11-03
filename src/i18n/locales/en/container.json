@@ -168,6 +168,13 @@
     "pushHintNoRecipients": "No recipients selected — nothing will push even when enabled.",
     "pushFetchGroupsFailed": "Failed to load bot groups: {{error}}",
     "pushFetchMembersFailed": "Failed to load members: {{error}}",
+    "sectionThresholds": "Stock level alerts",
+    "thresholdHint": "When a type's quantity drops below the min or exceeds the max, one alert pushes to the group configured above. Leave blank to skip that direction.",
+    "thresholdMin": "Min",
+    "thresholdMax": "Max",
+    "thresholdCreateFirst": "Create the station first to configure stock level alerts",
+    "thresholdMinGreaterThanMax": "{{type}}: min cannot exceed max",
+    "thresholdSaveFailed": "Failed to save stock level alerts: {{error}}",
     "confirmDeleteTitle": "Delete station \"{{name}}\"?",
     "confirmDeleteContent": "Rejected if this station has ledger rows or transfers."
   },

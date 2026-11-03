@@ -3,6 +3,7 @@ import { and, asc, count, desc, eq, gte, inArray, lte, sql } from 'drizzle-orm'
 import { getDb, schema } from '../db'
 import { ContainerBusinessError } from './accountService'
 import { labelOf } from './containerTypeService'
+import { checkBalanceThreshold } from './balanceThresholdAlert'
 import {
   PENDING_OUTBOUND_STATUSES,
   type BalanceAuditAction,
@@ -174,6 +175,7 @@ export async function createBalance(input: {
   })
 
   const [withAccount] = await listBalancesByIds([row.id])
+  void checkBalanceThreshold(withAccount.accountId, withAccount.containerType, withAccount.quantity)
   return withAccount
 }
 
@@ -241,6 +243,7 @@ export async function updateBalance(
     })
   })
   const [row] = await listBalancesByIds([id])
+  void checkBalanceThreshold(row.accountId, row.containerType, row.quantity)
   return row
 }
 

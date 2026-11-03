@@ -63,6 +63,16 @@ export type AssignableUser = {
 
 export type BoundUser = AssignableUser & { isActive: boolean }
 
+/** 容器数量水位线告警配置：越界方向变化时才推送一次，见 lastAlertDirection */
+export type BalanceThreshold = {
+  accountId: string
+  containerType: ContainerType
+  minQty: number | null
+  maxQty: number | null
+  lastAlertDirection: 'low' | 'high' | 'normal' | null
+  lastAlertAt: string | null
+}
+
 export type ContainerBalance = {
   id: string
   accountId: string

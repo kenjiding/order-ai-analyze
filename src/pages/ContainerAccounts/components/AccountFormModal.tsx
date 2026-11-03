@@ -17,9 +17,12 @@ import {
   DEFAULT_ACCOUNT_PUSH_NOTIFY,
   type AccountPushNotify,
 } from '../../../containerManagement/pushNotify'
+import { fetchAccountThresholds, saveAccountThresholds } from '../../../containerManagement/api'
 import type { AccountKind, AssignableUser, ContainerAccount } from '../../../containerManagement/types'
 import type { AccountDraft } from '../useContainerAccountsPage'
+import { showToast } from '../../../utils/toast'
 import { AccountPushNotifyFields } from './AccountPushNotifyFields'
+import { AccountThresholdFields, type ThresholdDraftMap } from './AccountThresholdFields'
 
 function Section({
   title,
@@ -86,6 +89,7 @@ export function AccountFormModal({ open, editing, users, submitting, onCancel, o
   const [externalTouched, setExternalTouched] = useState(false)
   const [userIds, setUserIds] = useState<string[]>([])
   const [pushNotify, setPushNotify] = useState<AccountPushNotify>(DEFAULT_ACCOUNT_PUSH_NOTIFY)
+  const [thresholds, setThresholds] = useState<ThresholdDraftMap>({})
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
@@ -97,7 +101,21 @@ export function AccountFormModal({ open, editing, users, submitting, onCancel, o
     setRegionCode(editing?.regionCode ?? null)
     setUserIds(editing?.boundUserIds ?? [])
     setPushNotify(editing?.pushNotify ?? DEFAULT_ACCOUNT_PUSH_NOTIFY)
+    setThresholds({})
     setError(null)
+    if (editing) {
+      void fetchAccountThresholds(editing.id).then((res) => {
+        if (!res.ok) return
+        setThresholds(
+          Object.fromEntries(
+            res.data.map((row) => [
+              row.containerType,
+              { minQty: row.minQty === null ? '' : String(row.minQty), maxQty: row.maxQty === null ? '' : String(row.maxQty) },
+            ]),
+          ),
+        )
+      })
+    }
   }, [open, editing])
 
   const handleOk = async () => {
@@ -110,8 +128,25 @@ export function AccountFormModal({ open, editing, users, submitting, onCancel, o
       setError(t('accounts.nameMax'))
       return
     }
+    const thresholdItems = Object.entries(thresholds)
+      .map(([containerType, row]) => ({
+        containerType,
+        minQty: row.minQty === '' ? null : Number(row.minQty),
+        maxQty: row.maxQty === '' ? null : Number(row.maxQty),
+      }))
+      .filter((item) => item.minQty !== null || item.maxQty !== null)
+    const overLimit = thresholdItems.find(
+      (item) => item.minQty !== null && item.maxQty !== null && item.minQty > item.maxQty,
+    )
+    if (overLimit) {
+      setError(t('accounts.thresholdMinGreaterThanMax', { type: t(`containerType.${overLimit.containerType}`) }))
+      return
+    }
     setError(null)
-    await onSubmit({ name: trimmed, kind, isExternal, regionCode, userIds, pushNotify })
+    const ok = await onSubmit({ name: trimmed, kind, isExternal, regionCode, userIds, pushNotify })
+    if (!ok || !editing) return
+    const res = await saveAccountThresholds(editing.id, thresholdItems)
+    if (!res.ok) showToast(t('accounts.thresholdSaveFailed', { error: res.error }), 'error')
   }
 
   return (
@@ -239,6 +274,16 @@ export function AccountFormModal({ open, editing, users, submitting, onCancel, o
             />
           </div>
         </Section>
+
+        {isEditing ? (
+          <Section title={t('accounts.sectionThresholds')}>
+            <div className="px-4 py-4">
+              <AccountThresholdFields value={thresholds} onChange={setThresholds} />
+            </div>
+          </Section>
+        ) : (
+          <Alert type="info" showIcon message={t('accounts.thresholdCreateFirst')} />
+        )}
 
         {error ? <Alert type="error" showIcon message={error} /> : null}
       </div>

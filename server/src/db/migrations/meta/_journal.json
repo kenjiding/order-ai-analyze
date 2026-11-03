@@ -666,6 +666,13 @@
       "when": 1785700000081,
       "tag": "0094_container_accounts_region_code",
       "breakpoints": true
+    },
+    {
+      "idx": 95,
+      "version": "7",
+      "when": 1785700000083,
+      "tag": "0095_container_balance_thresholds",
+      "breakpoints": true
     }
   ]
 }

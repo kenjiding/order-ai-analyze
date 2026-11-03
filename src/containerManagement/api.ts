@@ -4,6 +4,7 @@ import type { AccountPushNotify } from './pushNotify'
 import type {
   AssignableUser,
   BalanceAudit,
+  BalanceThreshold,
   BoundUser,
   ContainerAccount,
   ContainerBalance,
@@ -132,6 +133,20 @@ export function saveAccountUsers(id: string, userIds: string[]): Promise<ApiResu
   return apiFetch<BoundUser[]>(`/accounts/${id}/users`, {
     method: 'PUT',
     body: JSON.stringify({ userIds }),
+  })
+}
+
+export function fetchAccountThresholds(id: string): Promise<ApiResult<BalanceThreshold[]>> {
+  return apiFetch<BalanceThreshold[]>(`/accounts/${id}/thresholds`)
+}
+
+export function saveAccountThresholds(
+  id: string,
+  items: { containerType: ContainerType; minQty: number | null; maxQty: number | null }[],
+): Promise<ApiResult<BalanceThreshold[]>> {
+  return apiFetch<BalanceThreshold[]>(`/accounts/${id}/thresholds`, {
+    method: 'PUT',
+    body: JSON.stringify({ items }),
   })
 }
 
