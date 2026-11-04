@@ -35,6 +35,17 @@ export function buildImportantNoticeCard(
   }
 }
 
+/**
+ * 文本消息（`msg_type: text`）里的 @ 语法：`<at user_id="ou_xxx">名字</at>`，和卡片 markdown 组件的
+ * `<at id="...">` 语法不同，是飞书官方文本消息的 @ 格式。
+ * @see https://open.feishu.cn/document/server-docs/im-v1/message-content-description/message_content
+ */
+export function buildMentionText(mentions: SupplierMentionContact[] | null | undefined): string {
+  const list = (mentions ?? []).filter((m) => m?.openId)
+  if (!list.length) return ''
+  return list.map((m) => `<at user_id="${m.openId}">${m.name || ''}</at>`).join(' ')
+}
+
 /** 解析供应商配置存储的 mentionOpenIds jsonb，过滤非法项 */
 export function parseSupplierMentionContacts(raw: unknown): SupplierMentionContact[] {
   if (!Array.isArray(raw)) return []

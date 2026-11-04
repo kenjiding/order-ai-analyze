@@ -40,6 +40,7 @@ const RegionPackagePricePage = lazy(() => import('./pages/RegionPackagePrice/Reg
 const WarehouseSettingsPage = lazy(() => import('./pages/WarehouseSettings/WarehouseSettingsPage'))
 const PriorityClientsPage = lazy(() => import('./pages/PriorityClients/PriorityClientsPage'))
 const RegionCalendarPage = lazy(() => import('./pages/RegionCalendar/RegionCalendarPage'))
+const FeishuOpenApiKeysPage = lazy(() => import('./pages/FeishuOpenApiKeys/FeishuOpenApiKeysPage'))
 const LoginPage = lazy(() => import('./pages/Login/LoginPage'))
 const VendorSnapshotPage = lazy(() => import('./pages/VendorAnalysis/VendorSnapshotPage'))
 const VendorPortalPage = lazy(() => import('./pages/VendorPortal/VendorPortalPage'))
@@ -439,6 +440,14 @@ function AppRoutes() {
             element={
               <KeptPage cacheKey="page-region-calendar" name="region-calendar">
                 <RegionCalendarPage />
+              </KeptPage>
+            }
+          />
+          <Route
+            path="/system/feishu-open-api-keys"
+            element={
+              <KeptPage cacheKey="page-feishu-open-api-keys" name="feishu-open-api-keys">
+                <FeishuOpenApiKeysPage />
               </KeptPage>
             }
           />

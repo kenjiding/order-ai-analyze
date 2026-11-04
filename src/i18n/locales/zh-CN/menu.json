@@ -52,6 +52,7 @@
     "priority-clients": "优先客户配置",
     "region-package-prices": "区域包裹价格配置",
     "warehouse-settings": "仓库/站点地址配置",
-    "region-calendar": "假期/临时开仓日历"
+    "region-calendar": "假期/临时开仓日历",
+    "feishu-open-api-keys": "飞书推送 API Key 管理"
   }
 }

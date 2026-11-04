@@ -78,6 +78,7 @@ export const PERMISSION_KEYS = {
   menuRegionPackagePrices: 'menu:region-package-prices',
   menuWarehouseSettings: 'menu:warehouse-settings',
   menuRegionCalendar: 'menu:region-calendar',
+  menuFeishuOpenApiKeys: 'menu:feishu-open-api-keys',
   btnContainerAccountsManage: 'btn:container-accounts:manage',
   btnContainerLedgerEdit: 'btn:container-ledger:edit',
   btnContainerLedgerDelete: 'btn:container-ledger:delete',

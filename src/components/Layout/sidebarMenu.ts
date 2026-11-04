@@ -14,6 +14,7 @@ import {
   Gauge,
   Globe,
   History,
+  KeyRound,
   MapPin,
   MapPinned,
   Megaphone,
@@ -364,6 +365,14 @@ const systemGroup: SidebarMenuGroup = {
       label: '假期/临时开仓日历',
       icon: CalendarDays,
       description: '按州维护出仓/派送日历的例外日期：公共假期停摆、周末临时开仓分拣等',
+    },
+    {
+      id: 'feishu-open-api-keys',
+      path: '/system/feishu-open-api-keys',
+      permissionKey: 'menu:feishu-open-api-keys',
+      label: '飞书推送 API Key 管理',
+      icon: KeyRound,
+      description: '发放/禁用/删除外部系统调用飞书推送开放 API 用的 API Key',
     },
   ],
 }

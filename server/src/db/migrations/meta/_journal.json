@@ -673,6 +673,13 @@
       "when": 1785700000083,
       "tag": "0095_container_balance_thresholds",
       "breakpoints": true
+    },
+    {
+      "idx": 96,
+      "version": "7",
+      "when": 1785700000085,
+      "tag": "0096_feishu_open_api_keys",
+      "breakpoints": true
     }
   ]
 }

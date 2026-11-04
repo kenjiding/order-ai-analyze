@@ -163,6 +163,13 @@ export const PERMISSION_REGISTRY: PermissionDefinition[] = [
     sortOrder: 68,
   },
   {
+    key: 'menu:feishu-open-api-keys',
+    type: 'menu',
+    label: '飞书推送 API Key 管理',
+    description: '发放/禁用/删除外部系统调用飞书推送开放 API 用的 API Key',
+    sortOrder: 69,
+  },
+  {
     key: 'btn:wage-salary:export',
     type: 'button',
     label: '导出工资',

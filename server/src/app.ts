@@ -8,6 +8,7 @@ import { adminUsersRouter } from './routes/adminUsersRouter'
 import { authRouter } from './routes/authRouter'
 import { feishuWebhookTestRouter } from './routes/feishuWebhookTestRouter'
 import { feishuEventRouter } from './routes/feishuEventRouter'
+import { feishuOpenApiRouter } from './routes/feishuOpenApiRouter'
 import { newMerchantRouter } from './routes/newMerchantRouter'
 import { orderExceptionRouter } from './routes/orderExceptionRouter'
 import { problemPackageAuditRouter } from './routes/problemPackageAuditRouter'
@@ -43,6 +44,7 @@ import { regionPackagePriceRouter } from './routes/regionPackagePriceRouter'
 import { regionWarehouseRouter } from './routes/regionWarehouseRouter'
 import { stationCoordinateRouter } from './routes/stationCoordinateRouter'
 import { geocodingRouter } from './routes/geocodingRouter'
+import { feishuOpenApiKeyAdminRouter } from './routes/feishuOpenApiKeyAdminRouter'
 
 const app = express()
 
@@ -77,6 +79,8 @@ app.use('/api/auth', authRouter)
 app.use('/api/admin/users', adminUsersRouter)
 // 飞书卡片按钮点击回调：请求方是飞书服务器，不带我方登录态，靠 Verification Token 校验，不挂 requireAuth
 app.use('/api/feishu-events', feishuEventRouter)
+// 飞书推送开放 API：给外部系统调用，凭 API Key 鉴权，不走登录态
+app.use('/api/open/feishu', feishuOpenApiRouter)
 
 app.use('/api/order-exception', requireAuth, orderExceptionRouter)
 app.use('/api/scanner-efficiency', requireAuth, scannerEfficiencyRouter)
@@ -96,6 +100,7 @@ app.use('/api/supplier-config-scopes', requireAuth, supplierConfigScopeRouter)
 app.use('/api/user-preferences', requireAuth, userPreferencesRouter)
 app.use('/api/priority-clients', requireAuth, priorityClientsRouter)
 app.use('/api/region-calendar-overrides', requireAuth, regionCalendarOverrideRouter)
+app.use('/api/feishu-open-api-keys', requireAuth, feishuOpenApiKeyAdminRouter)
 app.use('/api/region-package-prices', requireAuth, regionPackagePriceRouter)
 app.use('/api/region-warehouses', requireAuth, regionWarehouseRouter)
 app.use('/api/station-coordinates', requireAuth, stationCoordinateRouter)

@@ -46,5 +46,6 @@
   "btn:container:view-all": "查看全部站点数据",
   "btn:container-transfers:proxy-confirm": "代确认收货",
   "btn:container-transfers:void": "作废已确认的流转",
-  "btn:package-loss-monitor:analyze": "查询并分析"
+  "btn:package-loss-monitor:analyze": "查询并分析",
+  "menu:feishu-open-api-keys": "飞书推送 API Key 管理"
 }

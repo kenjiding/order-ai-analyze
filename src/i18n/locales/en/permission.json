@@ -46,5 +46,6 @@
   "btn:container:view-all": "View all stations",
   "btn:container-transfers:proxy-confirm": "Confirm on behalf",
   "btn:container-transfers:void": "Void confirmed transfer",
-  "btn:package-loss-monitor:analyze": "Fetch & analyze"
+  "btn:package-loss-monitor:analyze": "Fetch & analyze",
+  "menu:feishu-open-api-keys": "Feishu Push API Keys"
 }

@@ -1327,3 +1327,21 @@ export const stationCoordinates = pgTable(
 )
 
 export type StationCoordinate = typeof stationCoordinates.$inferSelect
+
+/** 飞书推送开放 API 的外部调用凭证：外部系统拿着这个 token 调我们的开放接口，实际仍转发本项目自己的飞书应用凭证 */
+export const feishuOpenApiKeys = pgTable(
+  'feishu_open_api_keys',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    /** 标识这个 key 发给了哪个外部团队/系统，纯备注用 */
+    name: varchar('name', { length: 200 }).notNull(),
+    token: varchar('token', { length: 128 }).notNull(),
+    isDisabled: boolean('is_disabled').notNull().default(false),
+    createdBy: uuid('created_by').references(() => users.id, { onDelete: 'set null' }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    lastUsedAt: timestamp('last_used_at', { withTimezone: true }),
+  },
+  (table) => [uniqueIndex('feishu_open_api_keys_token_unique').on(table.token)],
+)
+
+export type FeishuOpenApiKey = typeof feishuOpenApiKeys.$inferSelect
