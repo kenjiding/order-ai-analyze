@@ -88,6 +88,17 @@ export async function fetchWeightStat(payload: {
   return parseWeightStatResult(parsed)
 }
 
+/** 合并多个站点各自的查询结果为一份聚合结果，用于多站点统计展示 */
+export function mergeWeightStatResults(results: WeightStatResult[]): WeightStatResult {
+  return {
+    stationCode: results.map((r) => r.stationCode).join(','),
+    startDate: results[0]?.startDate ?? '',
+    endDate: results[0]?.endDate ?? '',
+    dates: [...new Set(results.flatMap((r) => r.dates))].sort(),
+    items: results.flatMap((r) => r.items),
+  }
+}
+
 // ---- 客户端统计：区间命中数、整体均值/标准差 ----
 
 export type WeightRange = {

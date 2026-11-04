@@ -2,18 +2,29 @@
  * Janus 智能取数平台客户端：封装 sqlrest-gateway 网关调用。
  *
  * 数据源是数仓 ODS/ADS 表（约 4 小时同步一次批量刷新），不是业务库的实时查询——
- * 用于替代会被网关限流（429）的 searchWaybill 接口。接口本身不限流，文档建议
- * 单批最多 1000 个单号，批间无需退避重试，只需基本节流（见 JANUS_BATCH_DELAY_MS）。
+ * 用于替代会被网关限流（429）的 searchWaybill 接口。
+ *
+ * **JANUS_BATCH_SIZE 必须 <= 1000，这是正确性要求，不是性能可调项**：实测发现
+ * `resultObject` 单次最多只返回 1000 行，查询条数超过 1000 时命中数会被悄悄截断到 1000
+ * （用假单号测批量接受度看不出这个问题——假单号永远查不到数据，不会触发这个 1000 行的返回上限；
+ * 只有用真实命中的单号测才会发现：前 1000 个单号 100% 命中，第 1001 个开始命中数不再增长）。
+ * 一旦单批发的单号数超过 1000，只要该批里真实匹配数超过 1000，多出来的会被静默丢弃，
+ * 绝不能为了"减少请求次数"把这个值调大，哪怕接口本身对请求体大小/数量没有报错。
  *
  * 鉴权用的就是系统里配置的那个 iMile token（Bearer），不是独立的 Janus 专属密钥——
  * 调用方要传当前有效的 iMile token 进来，不要在这里存一份静态快照，否则 iMile token
  * 一轮换这里就会跟着 401。
+ *
+ * 批次之间允许并发：Janus 网关本身不限流（不会 429），批次互相独立、顺序无关，之前串行
+ * +300ms 节流纯粹是没必要的保守写法。改成 JANUS_CONCURRENCY 个批次同时在飞，iMile 的
+ * inbound/query 索引那段仍保持串行（见 inboundWaybillIndex.ts 头部注释，那边是另一套接口，
+ * 会被网关限流，不能照搬这里的并发）。
  */
-import { sleep } from './shared'
+import { mapWithConcurrency } from '../orderAnalyze/runtime'
 
 const DEFAULT_JANUS_GATEWAY_URL = 'https://de-janus.imile-inc.com/sqlrest-gateway/api'
 const JANUS_BATCH_SIZE = 1000
-const JANUS_BATCH_DELAY_MS = 300
+const JANUS_CONCURRENCY = 20
 
 export type JanusClientError = { ok: false; status: number; message: string }
 
@@ -80,7 +91,7 @@ export function resolveTrustedWeight(row: JanusAusWaybillRow): number | null {
   )
 }
 
-/** 按单号批量查 AUS 运单的商家信息，1000 单/批，批间等待 300ms。查不到的单号不在 Map 里 */
+/** 按单号批量查 AUS 运单的商家信息，1000 单/批，最多 20 批同时在飞。查不到的单号不在 Map 里 */
 export async function fetchJanusAusWaybills(
   token: string,
   waybillNos: string[],
@@ -90,14 +101,23 @@ export async function fetchJanusAusWaybills(
   const data = new Map<string, JanusAusWaybillRow>()
   if (uniqueNos.length === 0) return { ok: true, data }
 
+  const batches: string[][] = []
   for (let i = 0; i < uniqueNos.length; i += JANUS_BATCH_SIZE) {
-    const batch = uniqueNos.slice(i, i + JANUS_BATCH_SIZE)
-    const res = await callJanusService<JanusAusWaybillRow>('ausops/waybillInfo/query', token, { waybillNos: batch }, label)
-    if (!res.ok) return res
-    for (const row of res.data) {
+    batches.push(uniqueNos.slice(i, i + JANUS_BATCH_SIZE))
+  }
+
+  const results = await mapWithConcurrency(batches, JANUS_CONCURRENCY, (batch) =>
+    callJanusService<JanusAusWaybillRow>('ausops/waybillInfo/query', token, { waybillNos: batch }, label),
+  )
+
+  const failed = results.find((r): r is JanusClientError => !r.ok)
+  if (failed) return failed
+
+  for (const r of results) {
+    if (!r.ok) continue
+    for (const row of r.data) {
       if (row.waybill_no) data.set(row.waybill_no, row)
     }
-    if (i + JANUS_BATCH_SIZE < uniqueNos.length) await sleep(JANUS_BATCH_DELAY_MS)
   }
   return { ok: true, data }
 }

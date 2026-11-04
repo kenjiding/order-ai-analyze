@@ -1,5 +1,5 @@
 import { Button, Empty, InputNumber } from 'antd'
-import { ArrowRight, Plus, X } from 'lucide-react'
+import { ArrowRight, Download, Plus, X } from 'lucide-react'
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import type { WeightRangeStat } from '../weightStatApi'
@@ -8,9 +8,12 @@ type Props = {
   stats: WeightRangeStat[]
   onAdd: (min: number, max: number) => void
   onRemove: (id: string) => void
+  onExport: () => void
+  canExport: boolean
+  exporting: boolean
 }
 
-export function WeightRangeEditor({ stats, onAdd, onRemove }: Props) {
+export function WeightRangeEditor({ stats, onAdd, onRemove, onExport, canExport, exporting }: Props) {
   const { t } = useTranslation('weightStat')
   const [min, setMin] = useState<number | null>(null)
   const [max, setMax] = useState<number | null>(null)
@@ -80,7 +83,17 @@ export function WeightRangeEditor({ stats, onAdd, onRemove }: Props) {
         <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={t('rangeEditor.empty')} />
       ) : (
         <div>
-          <p className="mb-2 text-xs text-slate-400">{t('rangeEditor.added', { count: stats.length })}</p>
+          <div className="mb-2 flex items-center justify-between gap-2">
+            <p className="text-xs text-slate-400">{t('rangeEditor.added', { count: stats.length })}</p>
+            <Button
+              icon={<Download className="h-4 w-4" aria-hidden />}
+              disabled={!canExport}
+              loading={exporting}
+              onClick={onExport}
+            >
+              {t('export.button')}
+            </Button>
+          </div>
           <div className="flex flex-wrap gap-2">
             {stats.map((r) => (
               <div

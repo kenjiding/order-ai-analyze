@@ -4,16 +4,20 @@
     "title": "Package weight stats"
   },
   "filter": {
+    "station": "Stations",
+    "stationPlaceholder": "Select one or more stations",
     "inboundRange": "Arrival dates",
     "rangeHint": "Up to 7 days; each day is aligned to its own arrival date",
     "query": "Query",
     "querying": "Fetching inbound and weight data — large stations may take a few minutes"
   },
   "toast": {
-    "selectStation": "Select a station in the top bar first",
+    "selectStation": "Select at least one station first",
     "selectDate": "Select an arrival date range",
     "maxRange": "Arrival date range cannot exceed 7 days",
     "done": "Done, {{count}} waybills",
+    "partialFailure": "Query failed for: {{stations}} — showing results from the remaining stations",
+    "allFailed": "Query failed for all stations",
     "rangeInvalid": "Enter a valid min and max, with min less than max",
     "rangeDuplicate": "This range already exists"
   },
@@ -52,5 +56,19 @@
     "unassigned": "Unassigned",
     "needRanges": "Add a weight range above first to see counts and shares by supplier / route code",
     "empty": "No data"
+  },
+  "export": {
+    "button": "Export details",
+    "failed": "Export failed",
+    "creator": "Package weight stats",
+    "summarySheetName": "Route code summary",
+    "colIndex": "No.",
+    "colWaybill": "Waybill No.",
+    "colWeight": "Weight (kg)",
+    "colRoute": "Route code",
+    "colSupplier": "Supplier",
+    "colRangeLabel": "Weight range",
+    "colCount": "Count",
+    "filename": "weight_stat_{{station}}_{{dates}}.xlsx"
   }
 }

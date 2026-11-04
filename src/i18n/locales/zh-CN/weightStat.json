@@ -4,16 +4,20 @@
     "title": "包裹重量统计"
   },
   "filter": {
+    "station": "站点",
+    "stationPlaceholder": "选择一个或多个站点",
     "inboundRange": "到件日期",
     "rangeHint": "最多 7 天，按每天各自的到件日对齐",
     "query": "查询",
     "querying": "正在拉取到件与重量数据，大站点可能需要几分钟"
   },
   "toast": {
-    "selectStation": "请先在顶部选择站点",
+    "selectStation": "请先选择至少一个站点",
     "selectDate": "请选择到件日期区间",
     "maxRange": "到件日期最多 7 天",
     "done": "查询完成，共 {{count}} 单",
+    "partialFailure": "以下站点查询失败，已展示其余站点结果：{{stations}}",
+    "allFailed": "所有站点查询均失败",
     "rangeInvalid": "请输入有效的最小值与最大值，且最小值需小于最大值",
     "rangeDuplicate": "该区间已存在"
   },
@@ -52,5 +56,19 @@
     "unassigned": "未分配",
     "needRanges": "请先在上方添加重量区间，再查看各供应商 / 路由码在区间内的件数与占比",
     "empty": "暂无数据"
+  },
+  "export": {
+    "button": "导出明细",
+    "failed": "导出失败",
+    "creator": "包裹重量统计",
+    "summarySheetName": "路由码汇总",
+    "colIndex": "序号",
+    "colWaybill": "运单号",
+    "colWeight": "重量(kg)",
+    "colRoute": "路由码",
+    "colSupplier": "供应商",
+    "colRangeLabel": "重量区间",
+    "colCount": "数量",
+    "filename": "包裹重量统计_{{station}}_{{dates}}.xlsx"
   }
 }

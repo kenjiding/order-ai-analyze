@@ -1,4 +1,4 @@
-import { Alert, Button, DatePicker, Empty, Table, Tabs } from 'antd'
+import { Alert, Button, DatePicker, Empty, Select, Table, Tabs } from 'antd'
 import type { ColumnsType } from 'antd/es/table'
 import type { Dayjs } from 'dayjs'
 import {
@@ -132,6 +132,21 @@ export default function WeightStatPage() {
           <div className="flex flex-wrap items-end gap-3">
             <div>
               <label className="mb-1.5 block text-sm font-medium text-slate-700">
+                {t('filter.station')}
+              </label>
+              <Select
+                mode="multiple"
+                value={v.stationCodes}
+                onChange={v.setStationCodes}
+                options={v.stationOptions}
+                placeholder={t('filter.stationPlaceholder')}
+                allowClear
+                maxTagCount="responsive"
+                className="w-[320px]"
+              />
+            </div>
+            <div>
+              <label className="mb-1.5 block text-sm font-medium text-slate-700">
                 {t('filter.inboundRange')}
               </label>
               <DatePicker.RangePicker
@@ -185,7 +200,14 @@ export default function WeightStatPage() {
             <KpiCard label={t('kpi.stdDev')} value={v.summary.stdDev.toFixed(3)} icon={Activity} tone="accent" />
           </div>
 
-          <WeightRangeEditor stats={v.rangeStats} onAdd={v.addRange} onRemove={v.removeRange} />
+          <WeightRangeEditor
+            stats={v.rangeStats}
+            onAdd={v.addRange}
+            onRemove={v.removeRange}
+            onExport={() => void v.handleExport()}
+            canExport={v.canExport}
+            exporting={v.exporting}
+          />
 
           <section className="admin-panel overflow-hidden">
             <Tabs

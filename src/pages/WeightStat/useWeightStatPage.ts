@@ -5,11 +5,13 @@ import { useAppSettings } from '../../context/AppSettingsContext'
 import { useGlobalFilterStore } from '../../stores/globalFilterStore'
 import { showToast } from '../../utils/toast'
 import { i18n } from '../../i18n'
+import { exportWeightStatExcel } from './exportWeightStatExcel'
 import {
   buildDimensionRangeStats,
   buildRangeStats,
   computeWeightSummary,
   fetchWeightStat,
+  mergeWeightStatResults,
   type WeightDimension,
   type WeightRange,
   type WeightStatResult,
@@ -24,8 +26,11 @@ function makeRangeId(min: number, max: number): string {
 export function useWeightStatPage() {
   const { t } = useTranslation('weightStat')
   const { imileToken } = useAppSettings()
-  const stationCode = useGlobalFilterStore((state) => state.selectedStations[0] ?? '')
+  const stations = useGlobalFilterStore((state) => state.stations)
+  const initialStations = useGlobalFilterStore((state) => state.selectedStations)
+  const stationOptions = useMemo(() => stations.map((s) => ({ label: s.label, value: s.value })), [stations])
 
+  const [stationCodes, setStationCodes] = useState<string[]>(initialStations)
   const [dateRange, setDateRange] = useState<[Dayjs, Dayjs] | null>([
     dayjs().subtract(1, 'day'),
     dayjs().subtract(1, 'day'),
@@ -51,10 +56,10 @@ export function useWeightStatPage() {
     [result, dimension, ranges],
   )
 
-  const canSubmit = Boolean(stationCode && dateRange && !loading)
+  const canSubmit = Boolean(stationCodes.length > 0 && dateRange && !loading)
 
   const handleQuery = useCallback(async () => {
-    if (!stationCode) {
+    if (stationCodes.length === 0) {
       showToast(t('toast.selectStation'), 'warning')
       return
     }
@@ -74,23 +79,37 @@ export function useWeightStatPage() {
 
     setLoading(true)
     setError(null)
-    try {
-      const data = await fetchWeightStat({
-        imileToken: token,
-        stationCode,
-        startDate: dateRange[0].format('YYYY-MM-DD'),
-        endDate: dateRange[1].format('YYYY-MM-DD'),
-      })
-      setResult(data)
-      showToast(t('toast.done', { count: data.items.length }), 'success')
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : t('toast.selectDate')
+    const startDate = dateRange[0].format('YYYY-MM-DD')
+    const endDate = dateRange[1].format('YYYY-MM-DD')
+    const succeeded: WeightStatResult[] = []
+    const failed: string[] = []
+    let lastErrorMessage = ''
+    // 逐站点顺序拉取，避免并发打满 iMile 接口（与派签/滞留告警的站点遍历方式一致）
+    for (const stationCode of stationCodes) {
+      try {
+        const data = await fetchWeightStat({ imileToken: token, stationCode, startDate, endDate })
+        succeeded.push(data)
+      } catch (err) {
+        failed.push(stationCode)
+        lastErrorMessage = err instanceof Error ? err.message : String(err)
+      }
+    }
+    if (succeeded.length === 0) {
+      const msg = lastErrorMessage ? `${t('toast.allFailed')}：${lastErrorMessage}` : t('toast.allFailed')
       setError(msg)
       showToast(msg, 'error')
-    } finally {
       setLoading(false)
+      return
     }
-  }, [dateRange, imileToken, stationCode, t])
+    const merged = mergeWeightStatResults(succeeded)
+    setResult(merged)
+    if (failed.length > 0) {
+      showToast(t('toast.partialFailure', { stations: failed.join(', ') }), 'warning')
+    } else {
+      showToast(t('toast.done', { count: merged.items.length }), 'success')
+    }
+    setLoading(false)
+  }, [dateRange, imileToken, stationCodes, t])
 
   const addRange = useCallback(
     (min: number, max: number) => {
@@ -112,6 +131,22 @@ export function useWeightStatPage() {
     setRanges((prev) => prev.filter((r) => r.id !== id))
   }, [])
 
+  const [exporting, setExporting] = useState(false)
+
+  const canExport = Boolean(result && ranges.length > 0 && !exporting)
+
+  const handleExport = useCallback(async () => {
+    if (!result || ranges.length === 0) return
+    setExporting(true)
+    try {
+      await exportWeightStatExcel(result, ranges)
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : t('export.failed'), 'error')
+    } finally {
+      setExporting(false)
+    }
+  }, [result, ranges, t])
+
   return {
     dateRange,
     setDateRange,
@@ -128,6 +163,11 @@ export function useWeightStatPage() {
     dimensionRangeStats,
     handleQuery,
     canSubmit,
-    stationCode,
+    stationCodes,
+    setStationCodes,
+    stationOptions,
+    exporting,
+    canExport,
+    handleExport,
   }
 }
