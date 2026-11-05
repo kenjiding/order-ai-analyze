@@ -215,6 +215,21 @@ export const IMILE_DELIVERED_QUERY_PORTAL: ImilePortalDefaults = {
   referer: 'https://ds.imile.com/',
 }
 
+/**
+ * oc.imile.com 仓内库存（pending/delivery/query，页面是「仓内监控/待派件任务」）门户默认配置。
+ * 抓包实测确认（见 server/src/imile/regionClearancePush.ts 顶部注释）：hubcode 过滤要生效，
+ * resource-code/sys-portal/path 必须是这个页面真正的值，不能沿用别的 saastms 接口的占位配置；
+ * front-sec 也要带 userCode（见 injectUserCode），否则返回的是未按账号权限过滤的全量数据。
+ */
+export const IMILE_OC_PENDING_DELIVERY_PORTAL: ImilePortalDefaults = {
+  resourceCode: 'TaskToBeDelivery',
+  sysName: 'DS',
+  sysPortal: 'OC',
+  origin: 'https://oc.imile.com',
+  referer: 'https://oc.imile.com/',
+  path: '/CenterMonitor/CenterOperationMonitor/TaskToBeDelivery',
+}
+
 /** ds.imile.com saastms 报表 / 运单查询门户默认配置 */
 export const IMILE_DS_SAAS_TMS_PORTAL: ImilePortalDefaults = {
   resourceCode: 'cancelScanQuery',
@@ -279,6 +294,31 @@ export const IMILE_OC_INTERCEPT_PORTAL: ImilePortalDefaults = {
  */
 export const IMILE_OC_SORTING_PORTAL: ImilePortalDefaults = {
   resourceCode: 'sortingPageList',
+  sysName: 'OC',
+  sysPortal: 'OC',
+  origin: 'https://oc.imile.com',
+  referer: 'https://oc.imile.com/',
+}
+
+/**
+ * oc.imile.com 大区/站点列表（permission/station，ocType=AC,RG）门户默认配置（placeholder）。
+ * resourceCode 为占位值，若实际请求鉴权失败需通过 IMILE_OC_REGION_LIST_RESOURCE_CODE 勘误。
+ */
+export const IMILE_OC_REGION_LIST_PORTAL: ImilePortalDefaults = {
+  resourceCode: 'permissionStation',
+  sysName: 'OC',
+  sysPortal: 'OC',
+  origin: 'https://oc.imile.com',
+  referer: 'https://oc.imile.com/',
+}
+
+/**
+ * oc.imile.com 派件统计（ofd/report/list）/ 签收统计（delivered/list）共用门户默认配置（placeholder）。
+ * 两个接口同属 oc 报表体系，resourceCode 为占位值，若鉴权失败需通过
+ * IMILE_OC_OFD_DELIVERED_RESOURCE_CODE 勘误。
+ */
+export const IMILE_OC_OFD_DELIVERED_PORTAL: ImilePortalDefaults = {
+  resourceCode: 'ofdDeliveredReport',
   sysName: 'OC',
   sysPortal: 'OC',
   origin: 'https://oc.imile.com',

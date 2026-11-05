@@ -2,6 +2,7 @@ import { computeFeishuWebhookSign, parseSafeWebhookUrl } from '../feishuWebhookH
 import { getFeishuTenantAccessToken } from '../feishuServerEnv'
 import { sendFeishuAppMessage } from './feishuAppMessage'
 import { buildMentionLarkMd, buildMentionText, type SupplierMentionContact } from './feishuMentionHelpers'
+import { uploadFeishuImageFromBase64 } from './feishuImageUpload'
 
 export type FeishuOpenApiTarget =
   | { type: 'open_id'; openId: string }
@@ -140,4 +141,59 @@ export async function sendFeishuOpenApiMessage(params: FeishuOpenApiMessageParam
     return res.ok ? { ...res, chatId } : res
   }
   return { ok: false, status: 400, error: '未提供 target.webhookUrl 或 target.chatId' }
+}
+
+/**
+ * 发一张截图卡片到群：上传图片拿 image_key，嵌进一张只有 img 组件的 interactive 卡片发出
+ * （不用 msg_type: image 单独发）。飞书群里 image 消息固定按小缩略图展示，必须点开才能看清；
+ * 卡片里的 img 用 scale_type: crop_center + size: stretch（飞书官方文档「通栏图」写法）才会
+ * 按卡片宽度整幅展示、直接在消息流里滑动查看，不用点开。
+ * @ 人不能嵌进图片触发提醒，命中 mentions 时作为卡片里紧跟图片的一个 markdown 元素一起发出
+ * （同 buildExitAlarmCard 没有「重要提醒」时的默认写法，不再单独发一条消息）。
+ * 只支持群（chat_id），暂不支持 webhook（webhook 自定义机器人没有图片上传接口）。
+ */
+export async function sendFeishuChatImageMessage(params: {
+  chatId: string
+  imageBase64: string
+  /** 图片上方的一段文字，如「墨尔本 大盘数据如下图所示」；不传则卡片里只有图 */
+  leadingText?: string
+  mentions?: SupplierMentionContact[] | null
+}): Promise<FeishuOpenApiMessageResult> {
+  const chatId = params.chatId.trim()
+  if (!chatId) return { ok: false, status: 400, error: '缺少 target.chatId' }
+
+  const tenantRes = await getFeishuTenantAccessToken()
+  if (!tenantRes.ok) {
+    return {
+      ok: false,
+      status: 502,
+      error:
+        tenantRes.reason === 'not_configured'
+          ? '服务器未配置飞书开放接口凭证（FEISHU_APP_ID / FEISHU_APP_SECRET）'
+          : `获取应用机器人凭证失败(${tenantRes.error})`,
+    }
+  }
+
+  const upload = await uploadFeishuImageFromBase64(tenantRes.token, params.imageBase64)
+  if (!upload.ok) return { ok: false, status: 502, error: upload.error }
+
+  const elements: Record<string, unknown>[] = []
+  const leadingText = params.leadingText?.trim()
+  if (leadingText) elements.push({ tag: 'markdown', content: leadingText })
+  elements.push({
+    tag: 'img',
+    img_key: upload.imageKey,
+    alt: { tag: 'plain_text', content: '区域清货数据' },
+    scale_type: 'crop_center',
+    size: 'stretch',
+    preview: true,
+  })
+  const mentionLarkMd = buildMentionLarkMd(params.mentions)
+  if (mentionLarkMd) elements.push({ tag: 'markdown', content: mentionLarkMd })
+
+  const card = { schema: '2.0', body: { direction: 'vertical', elements } }
+  const sendRes = await sendFeishuAppMessage(tenantRes.token, chatId, 'interactive', card, 'chat_id')
+  if (!sendRes.ok) return { ok: false, status: 502, error: sendRes.error }
+
+  return { ok: true, messageId: sendRes.messageId, chatId }
 }

@@ -34,6 +34,7 @@
     "vendor-analysis": "Vendor analytics",
     "vendor-region-map": "Vendor region map",
     "exit-alarm": "Dwell alert",
+    "region-clearance-push": "Region clearance push",
     "dispatch-alarm": "24h dispatch alert",
     "dispatch-performance": "Exit & dispatch performance",
     "exit-rate-query": "Hub exit rate query",

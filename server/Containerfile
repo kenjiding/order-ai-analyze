@@ -6,6 +6,10 @@ WORKDIR /workspace/server
 # 与 lockfile v6 兼容的 pnpm 版本
 RUN corepack enable && corepack prepare pnpm@8.15.9 --activate
 
+# 区域清货数据推送截图用：Alpine 自带的 chromium（musl 编译，与 puppeteer 自带下载的 glibc
+# 二进制不兼容，必须用这个）+ font-noto-cjk（否则卡片里的中文会渲染成方框）。
+RUN apk add --no-cache chromium nss freetype harfbuzz ca-certificates font-noto-cjk
+
 COPY server/package.json server/pnpm-lock.yaml server/drizzle.config.ts ./
 RUN pnpm install --frozen-lockfile --prod
 
@@ -16,6 +20,9 @@ COPY shared /workspace/shared
 ENV NODE_ENV=production
 ENV PORT=8787
 ENV HOST=0.0.0.0
+# 若实际安装后二进制路径不是这个（不同 Alpine 版本可能是 /usr/bin/chromium），
+# 启动时截图会报 "Failed to launch the browser process"，照报错路径改这个 env 即可。
+ENV PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium-browser
 
 RUN addgroup -S app && adduser -S app -G app
 USER app

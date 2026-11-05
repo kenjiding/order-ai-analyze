@@ -13,6 +13,7 @@ import {
   Eye,
   Gauge,
   Globe,
+  Globe2,
   History,
   KeyRound,
   MapPin,
@@ -177,6 +178,14 @@ const groups: SidebarMenuGroup[] = [
         label: '滞留数据告警',
         icon: AlarmClock,
         description: '监控供应商滞留未出仓数据并定时推送告警',
+      },
+      {
+        id: 'region-clearance-push',
+        path: '/region-clearance-push',
+        permissionKey: 'menu:region-clearance-push',
+        label: '区域清货数据推送',
+        icon: Globe2,
+        description: '按大区统计派件/签收/司机/库存数据并定时推送',
       },
       {
         id: 'dispatch-alarm',

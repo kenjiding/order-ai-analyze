@@ -13,6 +13,7 @@
   "menu:vendor-analysis": "Vendor analytics",
   "menu:vendor-region-map": "Vendor region map",
   "menu:exit-alarm": "Dwell alert",
+  "menu:region-clearance-push": "Region clearance push",
   "menu:dispatch-alarm": "24h dispatch alert",
   "menu:dispatch-performance": "Exit & dispatch performance",
   "menu:weight-stat": "Package weight stats",

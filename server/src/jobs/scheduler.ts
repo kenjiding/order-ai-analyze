@@ -14,6 +14,10 @@ import {
   runDispatchAlarmScheduledPush,
 } from '../feishu/dispatchAlarmScheduledPush'
 import {
+  logRegionClearancePushSchedulerReadiness,
+  runRegionClearancePushScheduledPush,
+} from '../feishu/regionClearancePushScheduledPush'
+import {
   logInboundIndexSchedulerReadiness,
   runDailyInboundWaybillIndexPrefetch,
 } from '../imile/inboundWaybillIndexScheduler'
@@ -129,6 +133,22 @@ export function startJobScheduler(): { stop: () => void } {
   tasks.push(dispatchAlarmTask)
   console.log('[scheduler] 已启动24H派签告警检查任务 cron="* * * * *" timezone="Australia/Adelaide"')
   void logDispatchAlarmSchedulerReadiness()
+
+  // 区域大盘清货数据推送：worker 内始终注册，是否执行由 DB 配置 isEnabled 控制
+  const regionClearancePushTask = cron.schedule(
+    '* * * * *',
+    async () => {
+      try {
+        await runRegionClearancePushScheduledPush()
+      } catch (err) {
+        console.error('[scheduler/region-clearance-push] 推送异常:', err)
+      }
+    },
+    { timezone: 'Australia/Adelaide' },
+  )
+  tasks.push(regionClearancePushTask)
+  console.log('[scheduler] 已启动区域大盘清货数据推送检查任务 cron="* * * * *" timezone="Australia/Adelaide"')
+  void logRegionClearancePushSchedulerReadiness()
 
   // 到件 waybillNo 索引：每日 06:00 阿德莱德预取昨天 inbound/query（与出仓告警解耦）
   const inboundIndexCron = process.env.INBOUND_INDEX_CRON?.trim() || '0 6 * * *'

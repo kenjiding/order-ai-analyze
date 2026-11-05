@@ -13,6 +13,7 @@
   "menu:vendor-analysis": "供应商数据分析",
   "menu:vendor-region-map": "供应商区域地图",
   "menu:exit-alarm": "滞留数据告警",
+  "menu:region-clearance-push": "区域清货数据推送",
   "menu:dispatch-alarm": "24小时派签告警",
   "menu:dispatch-performance": "出仓派签达成分析",
   "menu:weight-stat": "包裹重量统计",

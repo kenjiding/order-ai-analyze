@@ -22,6 +22,7 @@ import { vendorRegionMapRouter } from './routes/vendorRegionMapRouter'
 import { chaseDispatchPortalRouter } from './routes/chaseDispatchPortalRouter'
 import { fleetSupplierPushRouter } from './routes/fleetSupplierPushRouter'
 import { exitAlarmRouter } from './routes/exitAlarmRouter'
+import { regionClearancePushRouter } from './routes/regionClearancePushRouter'
 import { chaseDispatchRouter } from './routes/chaseDispatchRouter'
 import { workOrderPushRouter } from './routes/workOrderPushRouter'
 import { dispatchAlarmRouter } from './routes/dispatchAlarmRouter'
@@ -107,6 +108,7 @@ app.use('/api/station-coordinates', requireAuth, stationCoordinateRouter)
 app.use('/api/geocoding', requireAuth, geocodingRouter)
 app.use('/api/feishu-webhook', requireAuth, feishuWebhookTestRouter)
 app.use('/api/exit-alarm', requireAuth, exitAlarmRouter)
+app.use('/api/region-clearance-push', requireAuth, regionClearancePushRouter)
 app.use('/api/chase-dispatch', requireAuth, chaseDispatchRouter)
 app.use('/api/work-order-push', requireAuth, workOrderPushRouter)
 app.use('/api/dispatch-alarm', requireAuth, dispatchAlarmRouter)

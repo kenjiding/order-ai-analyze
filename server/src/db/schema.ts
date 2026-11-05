@@ -363,6 +363,40 @@ export const exitAlarmSchedules = pgTable('exit_alarm_schedules', {
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 })
 
+/** 区域大盘清货数据推送：按大区的定时推送配置（一个账号可有多条，按大区区分） */
+export const regionClearancePushSchedules = pgTable('region_clearance_push_schedules', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  /** 拥有该配置的账号；时区按该账号的 regionId 判断，未设置兜底阿德莱德 */
+  userId: uuid('user_id').references(() => users.id, { onDelete: 'cascade' }),
+  /** 大区编码（permission/station ocType=AC,RG 返回的 value） */
+  regionCode: varchar('region_code', { length: 64 }).notNull().default(''),
+  /** 大区名称快照（同接口返回的 label），推送卡片标题直接用，避免每次推送反查大区列表 */
+  regionName: varchar('region_name', { length: 128 }).notNull().default(''),
+  /** 大区下选中的站点 [{code,name}]（手动勾选，不做大区归属校验）；连名称一起存，推送卡片直接按站点名展示，不必推送时再反查站点列表 */
+  stationCodes: jsonb('station_codes').notNull().default([]),
+  /** 推送星期，1=周一…7=周日，存为 JSONB 数组 */
+  weekdays: jsonb('weekdays').notNull().default([]),
+  /** 推送时间点列表 [{id, time}]，time 格式 HH:mm（按拥有者账号所属州本地时间） */
+  pushTimes: jsonb('push_times').notNull().default([]),
+  isEnabled: boolean('is_enabled').notNull().default(true),
+  /** 推送目标飞书群 chatId */
+  chatId: varchar('chat_id', { length: 128 }).notNull().default(''),
+  /** 推送时 @ 的联系人列表 [{openId, name}] */
+  mentionOpenIds: jsonb('mention_open_ids').notNull().default([]),
+  /** 定时拉数使用的 iMile token（保存配置时从全局设置同步，不对外返回） */
+  imileToken: varchar('imile_token', { length: 2048 }),
+  /**
+   * 上一次「定时任务」推送时的今日数据/今日库存快照，推送卡片据此展示跟上次推送的变化趋势。
+   * 只被真正的定时任务刷新；「立即推送」只读它做对比展示，不会覆盖，避免手动测试把趋势基准带偏。
+   * 首次推送时为空，卡片不展示对比。
+   */
+  lastSnapshot: jsonb('last_snapshot'),
+  lastSnapshotAt: timestamp('last_snapshot_at', { withTimezone: true }),
+  updatedBy: uuid('updated_by').references(() => users.id, { onDelete: 'set null' }),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+})
+
 /**
  * 定时任务幂等抢占记录：所有轮询式定时推送（出仓告警/催派推送/飞书日报等）共用。
  * 调用方确认"命中触发条件"之后、执行推送等副作用之前，用 (jobKey, slotKey) 抢占一次；
@@ -648,6 +682,8 @@ export type FeishuCardClickEvent = typeof feishuCardClickEvents.$inferSelect
 export type NewFeishuCardClickEvent = typeof feishuCardClickEvents.$inferInsert
 export type ExitAlarmSchedule = typeof exitAlarmSchedules.$inferSelect
 export type NewExitAlarmSchedule = typeof exitAlarmSchedules.$inferInsert
+export type RegionClearancePushSchedule = typeof regionClearancePushSchedules.$inferSelect
+export type NewRegionClearancePushSchedule = typeof regionClearancePushSchedules.$inferInsert
 export type ScheduledJobClaim = typeof scheduledJobClaims.$inferSelect
 export type NewScheduledJobClaim = typeof scheduledJobClaims.$inferInsert
 export type ChaseDispatchSchedule = typeof chaseDispatchSchedules.$inferSelect

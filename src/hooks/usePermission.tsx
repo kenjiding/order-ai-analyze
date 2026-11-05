@@ -100,6 +100,7 @@ export const PERMISSION_KEYS = {
   btnVendorAnalysisPush: 'btn:vendor-analysis:push',
   btnVendorAnalysisShare: 'btn:vendor-analysis:share',
   menuExitAlarm: 'menu:exit-alarm',
+  menuRegionClearancePush: 'menu:region-clearance-push',
   menuDispatchAlarm: 'menu:dispatch-alarm',
   menuDispatchPerformance: 'menu:dispatch-performance',
   btnDispatchPerformancePush: 'btn:dispatch-performance:push',

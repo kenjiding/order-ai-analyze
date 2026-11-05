@@ -46,6 +46,7 @@
     "node-cron": "^4.2.1",
     "openai": "^6.37.0",
     "postgres": "^3.4.9",
+    "puppeteer-core": "^25.16.0",
     "tsx": "^4.19.2"
   },
   "devDependencies": {

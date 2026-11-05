@@ -34,6 +34,7 @@
     "vendor-analysis": "供应商数据分析",
     "vendor-region-map": "供应商区域地图",
     "exit-alarm": "滞留数据告警",
+    "region-clearance-push": "区域清货数据推送",
     "dispatch-alarm": "24小时派签告警",
     "dispatch-performance": "出仓派签达成分析",
     "exit-rate-query": "出仓率查询",

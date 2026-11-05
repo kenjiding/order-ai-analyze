@@ -170,6 +170,13 @@ export const PERMISSION_REGISTRY: PermissionDefinition[] = [
     sortOrder: 69,
   },
   {
+    key: 'menu:region-clearance-push',
+    type: 'menu',
+    label: '区域清货数据推送',
+    description: '按大区统计派件/签收/司机/库存数据并定时推送',
+    sortOrder: 70,
+  },
+  {
     key: 'btn:wage-salary:export',
     type: 'button',
     label: '导出工资',
