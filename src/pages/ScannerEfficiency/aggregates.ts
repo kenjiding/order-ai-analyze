@@ -1,5 +1,6 @@
 import type { ScanSettings } from './constants'
-import { isCainiaoWaybill, isShopClientCode, SHEIN_CLIENT_CODE, TEMU_CLIENT_CODE } from './cainiaoWaybill'
+import { isCainiaoWaybill } from './cainiaoWaybill'
+import { isSheinClientCode, isTemuClientCode } from '../../../shared/clientCode/platformClientCodes'
 import { dayjs } from './dayjsSetup'
 import { formatDateKey } from './formatAndParse'
 import { COARSE_STAGE_SPAN_SPLIT_THRESHOLD_MINUTES } from './coarseStageHours'
@@ -215,10 +216,10 @@ export const buildScanAggregate = (rows: ParsedScanRow[]) => {
     if (isCainiaoWaybill(volumeKey)) {
       bucket.cainiaoSet.add(volumeKey)
     }
-    if (isShopClientCode(row.clientCode, SHEIN_CLIENT_CODE)) {
+    if (isSheinClientCode(row.clientCode)) {
       bucket.sheinSet.add(volumeKey)
     }
-    if (isShopClientCode(row.clientCode, TEMU_CLIENT_CODE)) {
+    if (isTemuClientCode(row.clientCode)) {
       bucket.temuSet.add(volumeKey)
     }
     if (row.scanner) {

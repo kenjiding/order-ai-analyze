@@ -12,7 +12,7 @@ import { envFirst } from '../imile/shared'
 import { getGlobalImileToken } from './globalImileToken'
 import { parseSupplierMentionContacts } from './feishuMentionHelpers'
 import { sendFeishuChatImageMessage } from './sendFeishuOpenApiMessage'
-import { aggregateDispatchDelivered, aggregateInventory } from '../regionClearancePush/aggregate'
+import { aggregateDispatchDelivered, aggregateInventory, buildTrendSummary } from '../regionClearancePush/aggregate'
 import { buildRegionClearancePushHtml } from '../regionClearancePush/buildRegionClearancePushHtml'
 import { renderHtmlToPngDataUrl } from '../regionClearancePush/renderHtmlToImage'
 import { parseRegionClearanceSnapshot, parseStationEntries } from '../regionClearancePush/types'
@@ -153,10 +153,13 @@ export async function executeRegionClearancePush(params: {
     return { ok: false, error: `截图渲染失败: ${rendered.error}` }
   }
 
+  const trendSummary = buildTrendSummary(todayStat, inventoryStat, previousSnapshot?.todayStat, previousSnapshot?.inventoryStat)
+  const leadingText = [`${schedule.regionName} 大盘数据如下图所示`, trendSummary].filter(Boolean).join('\n')
+
   const sendRes = await sendFeishuChatImageMessage({
     chatId: schedule.chatId,
     imageBase64: rendered.dataUrl,
-    leadingText: `${schedule.regionName} 大盘数据如下图所示`,
+    leadingText,
     mentions,
   })
   if (!sendRes.ok) {

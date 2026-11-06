@@ -28,7 +28,7 @@ export async function renderHtmlToPngDataUrl(
     })
     const page = await browser.newPage()
     await page.setViewport({
-      width: options?.width ?? 900,
+      width: options?.width ?? 1200,
       height: 600,
       deviceScaleFactor: options?.deviceScaleFactor ?? 2,
     })
