@@ -11,11 +11,18 @@ function esc(s: string): string {
   return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
 }
 
-const EMPTY_BRAND: BrandCount = { temu: 0, shein: 0, other: 0 }
+const EMPTY_BRAND: BrandCount = { temu: 0, shein: 0, local: 0, other: 0 }
 
-/** Temu/Shein/其他 的小计行，展示在对应指标 mrow 下面 */
-function brandLine(brand: BrandCount): string {
-  return `<div class="mbrand">Temu <b class="num">${brand.temu}</b> · Shein <b class="num">${brand.shein}</b> · 其他 <b class="num">${brand.other}</b></div>`
+/** Temu/Shein/本地件各占一行，标签左对齐、数字+涨跌右对齐，展示在对应指标 mrow 下面（other 只参与聚合统计，不在卡片上展示） */
+function brandRow(label: string, value: number, prev: number | undefined): string {
+  return `<div class="mbrand-row"><span class="mbrand-label">${label}</span><span class="mbrand-value"><b class="num">${value}</b>${deltaSpan(value, prev)}</span></div>`
+}
+function brandLine(brand: BrandCount, prev?: BrandCount): string {
+  return `<div class="mbrand">
+    ${brandRow('Temu', brand.temu, prev?.temu)}
+    ${brandRow('Shein', brand.shein, prev?.shein)}
+    ${brandRow('本地件', brand.local, prev?.local)}
+  </div>`
 }
 
 /** 跟上次推送的差值；没有上次快照（首次推送）时不展示。上升红色、下降绿色（中文业务报表惯例） */
@@ -29,33 +36,34 @@ function deltaSpan(current: number, previous: number | undefined): string {
 
 function dispatchDeliveredCell(
   stat: { dispatch: number; delivered: number; drivers: number; dispatchBrand: BrandCount; deliveredBrand: BrandCount },
-  prev?: { dispatch: number; delivered: number; drivers: number },
+  prev?: { dispatch: number; delivered: number; drivers: number; dispatchBrand?: BrandCount; deliveredBrand?: BrandCount },
 ): string {
   return `<div class="mcell">
     <div class="mrow"><span class="mdot" style="background:var(--dispatch)"></span><span class="mlabel">派件</span><span class="mval num">${stat.dispatch}</span>${deltaSpan(stat.dispatch, prev?.dispatch)}</div>
-    ${brandLine(stat.dispatchBrand)}
+    ${brandLine(stat.dispatchBrand, prev?.dispatchBrand)}
     <div class="mrow"><span class="mdot" style="background:var(--delivered)"></span><span class="mlabel">签收</span><span class="mval num">${stat.delivered}</span>${deltaSpan(stat.delivered, prev?.delivered)}</div>
-    ${brandLine(stat.deliveredBrand)}
+    ${brandLine(stat.deliveredBrand, prev?.deliveredBrand)}
     <div class="mrow"><span class="mdot" style="background:var(--drivers)"></span><span class="mlabel">司机</span><span class="mval num">${stat.drivers}</span>${deltaSpan(stat.drivers, prev?.drivers)}</div>
   </div>`
 }
 
+function sumBrand(a: BrandCount, b: BrandCount): BrandCount {
+  return { temu: a.temu + b.temu, shein: a.shein + b.shein, local: a.local + b.local, other: a.other + b.other }
+}
+
 function inventoryCell(
   stat: { inWarehouse: number; outWarehouse: number; total: number; inWarehouseBrand: BrandCount; outWarehouseBrand: BrandCount },
-  prev?: { inWarehouse: number; outWarehouse: number; total: number },
+  prev?: { inWarehouse: number; outWarehouse: number; total: number; inWarehouseBrand?: BrandCount; outWarehouseBrand?: BrandCount },
 ): string {
-  const totalBrand: BrandCount = {
-    temu: stat.inWarehouseBrand.temu + stat.outWarehouseBrand.temu,
-    shein: stat.inWarehouseBrand.shein + stat.outWarehouseBrand.shein,
-    other: stat.inWarehouseBrand.other + stat.outWarehouseBrand.other,
-  }
+  const totalBrand = sumBrand(stat.inWarehouseBrand, stat.outWarehouseBrand)
+  const prevTotalBrand = prev?.inWarehouseBrand && prev?.outWarehouseBrand ? sumBrand(prev.inWarehouseBrand, prev.outWarehouseBrand) : undefined
   return `<div class="mcell">
     <div class="mrow"><span class="mdot" style="background:var(--stock-in)"></span><span class="mlabel">仓内</span><span class="mval num">${stat.inWarehouse}</span>${deltaSpan(stat.inWarehouse, prev?.inWarehouse)}</div>
-    ${brandLine(stat.inWarehouseBrand)}
+    ${brandLine(stat.inWarehouseBrand, prev?.inWarehouseBrand)}
     <div class="mrow"><span class="mdot" style="background:var(--stock-out)"></span><span class="mlabel">仓外</span><span class="mval num">${stat.outWarehouse}</span>${deltaSpan(stat.outWarehouse, prev?.outWarehouse)}</div>
-    ${brandLine(stat.outWarehouseBrand)}
+    ${brandLine(stat.outWarehouseBrand, prev?.outWarehouseBrand)}
     <div class="mrow mrow-total"><span class="mlabel">合计</span><span class="mval num">${stat.total}</span>${deltaSpan(stat.total, prev?.total)}</div>
-    ${brandLine(totalBrand)}
+    ${brandLine(totalBrand, prevTotalBrand)}
   </div>`
 }
 
@@ -112,47 +120,50 @@ export function buildRegionClearancePushHtml(params: {
 *{box-sizing:border-box;margin:0;}
 body{background:var(--paper);color:var(--ink);font-family:'Public Sans',-apple-system,'Segoe UI',sans-serif;display:inline-block;}
 /* 截图时按 .wrap 的实际内容边界裁切（见 renderHtmlToImage.ts），不截整页，page 背景不会带进截图 */
-.wrap{width:1180px;padding:18px;display:flex;flex-direction:column;gap:16px;}
+.wrap{width:1160px;padding:18px;display:flex;flex-direction:column;gap:16px;}
 .num{font-family:'IBM Plex Mono',ui-monospace,monospace;font-variant-numeric:tabular-nums;}
 
 .head{background:linear-gradient(120deg, var(--accent2), var(--accent));color:#fff;border-radius:16px;padding:24px 28px;}
-.head .eyebrow{font:800 13px/1 'Public Sans',sans-serif;letter-spacing:.14em;text-transform:uppercase;color:rgba(255,255,255,.88);margin-bottom:10px;}
-.head h1{font:800 38px/1.1 'Archivo',sans-serif;letter-spacing:-.01em;color:#fff;}
-.head .meta{margin-top:14px;font-size:17px;font-weight:600;color:rgba(255,255,255,.92);}
+.head .eyebrow{font:800 18px/1 'Public Sans',sans-serif;letter-spacing:.14em;text-transform:uppercase;color:rgba(255,255,255,.88);margin-bottom:10px;}
+.head h1{font:800 52px/1.1 'Archivo',sans-serif;letter-spacing:-.01em;color:#fff;}
+.head .meta{margin-top:14px;font-size:23px;font-weight:600;color:rgba(255,255,255,.92);}
 .head .meta b{color:#fff;font-weight:800;}
 .head .meta .sep{opacity:.5;margin:0 3px;}
 
 .panel{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:4px;}
 table.matrix{width:100%;border-collapse:collapse;}
-.matrix thead th{text-align:left;padding:18px 20px 14px;border-bottom:2px solid var(--line);font:800 15px/1 'Public Sans',sans-serif;letter-spacing:.04em;text-transform:uppercase;color:var(--ink-soft);}
-.matrix thead th.col-station{width:14%;}
-.matrix thead th .sub{display:block;margin-top:6px;font:600 13px/1.3 'IBM Plex Mono',monospace;letter-spacing:0;text-transform:none;color:var(--ink-soft);}
+.matrix thead th{text-align:left;padding:18px 20px 14px;border-bottom:2px solid var(--line);font:800 20px/1 'Public Sans',sans-serif;letter-spacing:.04em;text-transform:uppercase;color:var(--ink-soft);}
+.matrix thead th.col-station{width:16%;}
+.matrix thead th .sub{display:block;margin-top:6px;font:600 17px/1.3 'IBM Plex Mono',monospace;letter-spacing:0;text-transform:none;color:var(--ink-soft);}
 .matrix td{padding:16px 20px;border-bottom:1px solid var(--line);vertical-align:top;}
 .matrix tbody tr:last-child td{border-bottom:none;}
 
 .row-region td{background:linear-gradient(90deg, color-mix(in srgb, var(--accent2) 12%, var(--panel)), color-mix(in srgb, var(--accent) 12%, var(--panel)));}
 .station-cell{display:flex;align-items:center;gap:8px;flex-wrap:wrap;}
-.region-name{font:800 26px/1 'Archivo',sans-serif;}
-.region-tag{font:800 13px/1 'Public Sans',sans-serif;letter-spacing:.05em;text-transform:uppercase;color:var(--accent);background:color-mix(in srgb, var(--accent) 16%, transparent);padding:5px 10px;border-radius:999px;}
-.row-station .station-cell{font:800 19px/1.3 'Public Sans',sans-serif;}
+.region-name{font:800 36px/1 'Archivo',sans-serif;}
+.region-tag{font:800 17px/1 'Public Sans',sans-serif;letter-spacing:.05em;text-transform:uppercase;color:var(--accent);background:color-mix(in srgb, var(--accent) 16%, transparent);padding:5px 10px;border-radius:999px;}
+.row-station .station-cell{font:800 26px/1.3 'Public Sans',sans-serif;}
 
-.mcell{display:flex;flex-direction:column;gap:8px;min-width:190px;}
-.mrow{display:flex;align-items:center;gap:9px;font-size:17px;}
-.mdot{width:9px;height:9px;border-radius:50%;flex:0 0 auto;}
+.mcell{display:flex;flex-direction:column;gap:10px;min-width:230px;}
+.mrow{display:flex;align-items:center;gap:10px;font-size:24px;}
+.mdot{width:11px;height:11px;border-radius:50%;flex:0 0 auto;}
 .mlabel{color:var(--ink-soft);flex:1;font-weight:700;}
-.mval{font-weight:800;font-size:21px;}
-.mbrand{margin:-2px 0 0 18px;font:600 14px/1.3 'IBM Plex Mono',monospace;color:var(--ink-soft);}
+.mval{font-weight:800;font-size:30px;}
+.mbrand{display:flex;flex-direction:column;gap:3px;margin:-2px 0 0 21px;}
+.mbrand-row{display:flex;align-items:center;font:600 19px/1.3 'IBM Plex Mono',monospace;color:var(--ink-soft);}
+.mbrand-label{min-width:80px;text-align:left;}
+.mbrand-value{flex:1;display:flex;align-items:center;justify-content:flex-end;gap:14px;}
 .mbrand b{color:var(--ink);font-weight:700;}
 .mrow-total{margin-top:5px;padding-top:8px;border-top:1px dashed var(--line);}
 .mrow-total .mlabel{color:var(--ink);font-weight:800;}
-.mrow-total .mval{font-size:23px;}
-.row-region .mval{font-size:23px;}
-.delta{font:800 14px/1 'IBM Plex Mono',monospace;}
+.mrow-total .mval{font-size:32px;}
+.row-region .mval{font-size:32px;}
+.delta{font:800 19px/1 'IBM Plex Mono',monospace;}
 .delta-up{color:var(--up);}
 .delta-down{color:var(--down);}
 .delta-flat{color:var(--ink-soft);}
 
-.foot{padding:6px 6px 0;font-size:15px;font-weight:600;color:var(--ink-soft);}
+.foot{padding:6px 6px 0;font-size:19px;font-weight:600;color:var(--ink-soft);}
 </style></head>
 <body>
 <div class="wrap">
@@ -190,7 +201,13 @@ table.matrix{width:100%;border-collapse:collapse;}
               dispatchBrand: todayStat.dispatchBrand,
               deliveredBrand: todayStat.deliveredBrand,
             },
-            prevToday && { dispatch: prevToday.dispatchTotal, delivered: prevToday.deliveredTotal, drivers: prevToday.driverTotal },
+            prevToday && {
+              dispatch: prevToday.dispatchTotal,
+              delivered: prevToday.deliveredTotal,
+              drivers: prevToday.driverTotal,
+              dispatchBrand: prevToday.dispatchBrand,
+              deliveredBrand: prevToday.deliveredBrand,
+            },
           )}</td>
           <td>${inventoryCell(
             {
@@ -200,7 +217,13 @@ table.matrix{width:100%;border-collapse:collapse;}
               inWarehouseBrand: inventoryStat.inWarehouseBrand,
               outWarehouseBrand: inventoryStat.outWarehouseBrand,
             },
-            prevInventory && { inWarehouse: prevInventory.inWarehouseTotal, outWarehouse: prevInventory.outWarehouseTotal, total: prevInventory.total },
+            prevInventory && {
+              inWarehouse: prevInventory.inWarehouseTotal,
+              outWarehouse: prevInventory.outWarehouseTotal,
+              total: prevInventory.total,
+              inWarehouseBrand: prevInventory.inWarehouseBrand,
+              outWarehouseBrand: prevInventory.outWarehouseBrand,
+            },
           )}</td>
         </tr>
         ${stationRows}

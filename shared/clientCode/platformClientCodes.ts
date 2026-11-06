@@ -17,10 +17,10 @@ const TEMU_CLIENT_CODE_SET = new Set<string>(TEMU_CLIENT_CODES)
 
 export function isTemuClientCode(clientCode: string | null | undefined): boolean {
   if (!clientCode) return false
-  return TEMU_CLIENT_CODE_SET.has(clientCode.trim())
+  return TEMU_CLIENT_CODE_SET.has(clientCode.trim().toUpperCase())
 }
 
 export function isSheinClientCode(clientCode: string | null | undefined): boolean {
   if (!clientCode) return false
-  return clientCode.trim() === SHEIN_CLIENT_CODE
+  return clientCode.trim().toUpperCase() === SHEIN_CLIENT_CODE
 }

@@ -9,6 +9,7 @@ import {
 } from '../imile/regionClearancePush'
 import { resolveRegionTz } from '../imile/ausTimezone'
 import { envFirst } from '../imile/shared'
+import { loadPriorityClientCodes } from '../priorityClients'
 import { getGlobalImileToken } from './globalImileToken'
 import { parseSupplierMentionContacts } from './feishuMentionHelpers'
 import { sendFeishuChatImageMessage } from './sendFeishuOpenApiMessage'
@@ -87,7 +88,7 @@ export async function executeRegionClearancePush(params: {
   const stations = parseStationEntries(schedule.stationCodes)
   const stationCodes = stations.map((s) => s.code)
 
-  const [todayOfd, todayDelivered, yesterdayOfd, yesterdayDelivered, pending, outbound] = await Promise.all([
+  const [todayOfd, todayDelivered, yesterdayOfd, yesterdayDelivered, pending, outbound, priorityClientCodes] = await Promise.all([
     fetchOfdReportByRegion({ token, regionCode, startTime: `${todayDateStr} 00:00:00`, endTime: `${todayDateStr} 23:59:59` }),
     fetchDeliveredByRegion({ token, regionCode, startTime: `${todayDateStr} 00:00:00`, endTime: `${todayDateStr} 23:59:59` }),
     fetchOfdReportByRegion({
@@ -104,6 +105,11 @@ export async function executeRegionClearancePush(params: {
     }),
     fetchPendingDeliveryInventory({ token, regionCode }),
     fetchOutboundStockInventory({ token, regionCode }),
+    // 本地件判定是核心数据之外的附加维度；查询失败不该拖垮整次推送，降级为空集合（本地件全记 0）
+    loadPriorityClientCodes().catch((err) => {
+      console.error(`${label} 优先客户配置查询失败，本地件拆分本次降级为空: ${err instanceof Error ? err.message : String(err)}`)
+      return new Set<string>()
+    }),
   ])
 
   for (const [name, res] of [
@@ -120,17 +126,24 @@ export async function executeRegionClearancePush(params: {
     return { ok: false, error: '数据查询失败' }
   }
 
-  const todayStat = aggregateDispatchDelivered({ ofdRows: todayOfd.data, deliveredRows: todayDelivered.data, stationCodes })
+  const todayStat = aggregateDispatchDelivered({
+    ofdRows: todayOfd.data,
+    deliveredRows: todayDelivered.data,
+    stationCodes,
+    priorityClientCodes,
+  })
   const yesterdayStat = aggregateDispatchDelivered({
     ofdRows: yesterdayOfd.data,
     deliveredRows: yesterdayDelivered.data,
     stationCodes,
+    priorityClientCodes,
   })
   const inventoryStat = aggregateInventory({
     pendingRows: pending.data,
     outboundRows: outbound.data,
     stationCodes,
     todayDateStr,
+    priorityClientCodes,
   })
 
   const mentions = parseSupplierMentionContacts(schedule.mentionOpenIds)

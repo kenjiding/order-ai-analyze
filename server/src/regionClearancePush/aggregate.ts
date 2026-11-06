@@ -7,12 +7,13 @@ import { isSheinClientCode, isTemuClientCode } from '../../../shared/clientCode/
 
 const str = (v: unknown): string => (typeof v === 'string' ? v.trim() : '')
 
-/** 按商家 clientCode 分出的 Temu/Shein/其他件数 */
-export type BrandCount = { temu: number; shein: number; other: number }
-const emptyBrandCount = (): BrandCount => ({ temu: 0, shein: 0, other: 0 })
-function brandOf(clientCode: string): keyof BrandCount {
+/** 按商家 clientCode 分出的 Temu/Shein/本地件/其他件数。本地件 = 命中「优先客户配置」clientCode 集合，与 chaseDispatchAggregate.ts 的 isPriorityClient 同一口径 */
+export type BrandCount = { temu: number; shein: number; local: number; other: number }
+const emptyBrandCount = (): BrandCount => ({ temu: 0, shein: 0, local: 0, other: 0 })
+function brandOf(clientCode: string, priorityClientCodes: Set<string>): keyof BrandCount {
   if (isTemuClientCode(clientCode)) return 'temu'
   if (isSheinClientCode(clientCode)) return 'shein'
+  if (clientCode && priorityClientCodes.has(clientCode.trim().toUpperCase())) return 'local'
   return 'other'
 }
 
@@ -33,6 +34,7 @@ export function aggregateDispatchDelivered(input: {
   ofdRows: unknown[]
   deliveredRows: unknown[]
   stationCodes: string[]
+  priorityClientCodes: Set<string>
 }): DispatchDeliveredStat {
   const stationSet = new Set(input.stationCodes)
   const byStation: DispatchDeliveredStat['byStation'] = {}
@@ -46,7 +48,7 @@ export function aggregateDispatchDelivered(input: {
     const waybillNo = str(row.waybillNo)
     if (!waybillNo || dispatchNos.has(waybillNo)) continue
     dispatchNos.add(waybillNo)
-    const brand = brandOf(str(row.clientCode))
+    const brand = brandOf(str(row.clientCode), input.priorityClientCodes)
     dispatchBrand[brand] += 1
     const hubCode = str(row.hubCode)
     if (stationSet.has(hubCode)) {
@@ -67,7 +69,7 @@ export function aggregateDispatchDelivered(input: {
 
     if (waybillNo && !deliveredNos.has(waybillNo)) {
       deliveredNos.add(waybillNo)
-      const brand = brandOf(str(row.clientCode))
+      const brand = brandOf(str(row.clientCode), input.priorityClientCodes)
       deliveredBrand[brand] += 1
       if (stationSet.has(hubCode)) {
         byStation[hubCode].delivered += 1
@@ -118,6 +120,7 @@ export function aggregateInventory(input: {
   outboundRows: unknown[]
   stationCodes: string[]
   todayDateStr: string
+  priorityClientCodes: Set<string>
 }): InventoryStat {
   const stationSet = new Set(input.stationCodes)
   const byStation: InventoryStat['byStation'] = {}
@@ -131,7 +134,7 @@ export function aggregateInventory(input: {
     const inboundDate = str(row.inboundDate).slice(0, 10)
     if (inboundDate === input.todayDateStr) continue // 今天才入库的不算
     inWarehouseTotal += 1
-    const brand = brandOf(str(row.clientCode))
+    const brand = brandOf(str(row.clientCode), input.priorityClientCodes)
     inWarehouseBrand[brand] += 1
     const ocCode = str(row.ocCode)
     if (stationSet.has(ocCode)) {
@@ -146,7 +149,7 @@ export function aggregateInventory(input: {
   for (const row of input.outboundRows) {
     if (!isRecord(row)) continue
     outWarehouseTotal += 1
-    const brand = brandOf(str(row.clientCode))
+    const brand = brandOf(str(row.clientCode), input.priorityClientCodes)
     outWarehouseBrand[brand] += 1
     const deliveryStationCode = str(row.deliveryStationCode)
     if (stationSet.has(deliveryStationCode)) {
