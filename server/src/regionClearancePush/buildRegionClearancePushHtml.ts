@@ -39,9 +39,9 @@ function dispatchDeliveredCell(
   prev?: { dispatch: number; delivered: number; drivers: number; dispatchBrand?: BrandCount; deliveredBrand?: BrandCount },
 ): string {
   return `<div class="mcell">
-    <div class="mrow"><span class="mdot" style="background:var(--dispatch)"></span><span class="mlabel">派件</span><span class="mval num">${stat.dispatch}</span>${deltaSpan(stat.dispatch, prev?.dispatch)}</div>
+    <div class="mrow"><span class="mdot" style="background:var(--dispatch)"></span><span class="mlabel" style="color:var(--dispatch)">派件</span><span class="mval num">${stat.dispatch}</span>${deltaSpan(stat.dispatch, prev?.dispatch)}</div>
     ${brandLine(stat.dispatchBrand, prev?.dispatchBrand)}
-    <div class="mrow"><span class="mdot" style="background:var(--delivered)"></span><span class="mlabel">签收</span><span class="mval num">${stat.delivered}</span>${deltaSpan(stat.delivered, prev?.delivered)}</div>
+    <div class="mrow"><span class="mdot" style="background:var(--delivered)"></span><span class="mlabel" style="color:var(--delivered)">签收</span><span class="mval num">${stat.delivered}</span>${deltaSpan(stat.delivered, prev?.delivered)}</div>
     ${brandLine(stat.deliveredBrand, prev?.deliveredBrand)}
     <div class="mrow"><span class="mdot" style="background:var(--drivers)"></span><span class="mlabel">司机</span><span class="mval num">${stat.drivers}</span>${deltaSpan(stat.drivers, prev?.drivers)}</div>
   </div>`
@@ -58,9 +58,9 @@ function inventoryCell(
   const totalBrand = sumBrand(stat.inWarehouseBrand, stat.outWarehouseBrand)
   const prevTotalBrand = prev?.inWarehouseBrand && prev?.outWarehouseBrand ? sumBrand(prev.inWarehouseBrand, prev.outWarehouseBrand) : undefined
   return `<div class="mcell">
-    <div class="mrow"><span class="mdot" style="background:var(--stock-in)"></span><span class="mlabel">仓内</span><span class="mval num">${stat.inWarehouse}</span>${deltaSpan(stat.inWarehouse, prev?.inWarehouse)}</div>
+    <div class="mrow"><span class="mdot" style="background:var(--stock-in)"></span><span class="mlabel" style="color:var(--stock-in)">仓内</span><span class="mval num">${stat.inWarehouse}</span>${deltaSpan(stat.inWarehouse, prev?.inWarehouse)}</div>
     ${brandLine(stat.inWarehouseBrand, prev?.inWarehouseBrand)}
-    <div class="mrow"><span class="mdot" style="background:var(--stock-out)"></span><span class="mlabel">仓外</span><span class="mval num">${stat.outWarehouse}</span>${deltaSpan(stat.outWarehouse, prev?.outWarehouse)}</div>
+    <div class="mrow"><span class="mdot" style="background:var(--stock-out)"></span><span class="mlabel" style="color:var(--stock-out)">仓外</span><span class="mval num">${stat.outWarehouse}</span>${deltaSpan(stat.outWarehouse, prev?.outWarehouse)}</div>
     ${brandLine(stat.outWarehouseBrand, prev?.outWarehouseBrand)}
     <div class="mrow mrow-total"><span class="mlabel">合计</span><span class="mval num">${stat.total}</span>${deltaSpan(stat.total, prev?.total)}</div>
     ${brandLine(totalBrand, prevTotalBrand)}
@@ -116,6 +116,7 @@ export function buildRegionClearancePushHtml(params: {
   --dispatch:#2f7cf6; --delivered:#16c172; --drivers:#9b5cf6;
   --stock-in:#06b6d4; --stock-out:#f5a623;
   --up:#e23b3b; --down:#16a34a;
+  --brand-label:#8a93ab; --brand-value:#3d5a80;
 }
 *{box-sizing:border-box;margin:0;}
 body{background:var(--paper);color:var(--ink);font-family:'Public Sans',-apple-system,'Segoe UI',sans-serif;display:inline-block;}
@@ -150,10 +151,10 @@ table.matrix{width:100%;border-collapse:collapse;}
 .mlabel{color:var(--ink-soft);flex:1;font-weight:700;}
 .mval{font-weight:800;font-size:30px;}
 .mbrand{display:flex;flex-direction:column;gap:3px;margin:-2px 0 0 21px;}
-.mbrand-row{display:flex;align-items:center;font:600 19px/1.3 'IBM Plex Mono',monospace;color:var(--ink-soft);}
+.mbrand-row{display:flex;align-items:center;font:600 19px/1.3 'IBM Plex Mono',monospace;color:var(--brand-label);}
 .mbrand-label{min-width:80px;text-align:left;}
 .mbrand-value{flex:1;display:flex;align-items:center;justify-content:flex-end;gap:14px;}
-.mbrand b{color:var(--ink);font-weight:700;}
+.mbrand b{color:var(--brand-value);font-weight:700;}
 .mrow-total{margin-top:5px;padding-top:8px;border-top:1px dashed var(--line);}
 .mrow-total .mlabel{color:var(--ink);font-weight:800;}
 .mrow-total .mval{font-size:32px;}

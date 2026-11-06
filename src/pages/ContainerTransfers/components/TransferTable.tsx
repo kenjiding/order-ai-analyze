@@ -19,6 +19,8 @@ type Props = {
   canActAs: (accountId: string) => boolean
   canProxyConfirm: boolean
   canVoid: boolean
+  selectedIds: number[]
+  onSelectionChange: (ids: number[]) => void
   onConfirm: (transfer: Transfer) => void
   onProxyConfirm: (transfer: Transfer) => void
   onDispute: (transfer: Transfer) => void
@@ -39,6 +41,8 @@ export function TransferTable({
   canActAs,
   canProxyConfirm,
   canVoid,
+  selectedIds,
+  onSelectionChange,
   onConfirm,
   onProxyConfirm,
   onDispute,
@@ -205,6 +209,13 @@ export function TransferTable({
       columns={columns}
       dataSource={transfers}
       loading={loading}
+      rowSelection={{
+        selectedRowKeys: selectedIds,
+        onChange: (keys) => onSelectionChange(keys as number[]),
+        getCheckboxProps: (record) => ({
+          disabled: record.status !== 'PENDING_RECEIVER' || !canActAs(record.toAccountId),
+        }),
+      }}
       pagination={{
         current: page,
         pageSize,

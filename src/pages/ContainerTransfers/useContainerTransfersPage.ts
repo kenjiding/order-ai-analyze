@@ -133,6 +133,7 @@ export function useContainerTransfersPage() {
   const [deleteTarget, setDeleteTarget] = useState<Transfer | null>(null)
   /** 作废与删除共用弹窗组件但走不同接口、不同状态前提，分开存目标 */
   const [voidTarget, setVoidTarget] = useState<Transfer | null>(null)
+  const [selectedIds, setSelectedIds] = useState<number[]>([])
   const [detail, setDetail] = useState<TransferDetail | null>(null)
   const [detailLoading, setDetailLoading] = useState(false)
   /** 与原系统一致：「查看记录」只看时间线，「协商」才有操作表单，两个抽屉分开 */
@@ -183,6 +184,7 @@ export function useContainerTransfersPage() {
       }
       setTransfers(res.data.items)
       setTotal(res.data.total)
+      setSelectedIds([])
     },
     [page, filters, pageSize],
   )
@@ -413,6 +415,27 @@ export function useContainerTransfersPage() {
     [confirmTarget, refresh, t],
   )
 
+  /** 批量确认沿用单条接口逐个调用；部分失败时分开提示成功/失败数，不影响其余已成功的 */
+  const submitBatchConfirm = useCallback(async (): Promise<boolean> => {
+    const ids = selectedIds
+    if (ids.length === 0) return false
+    setSubmitting(true)
+    const results = await Promise.all(ids.map((id) => confirmTransfer(id, '')))
+    setSubmitting(false)
+    const failed = results.filter((r) => !r.ok).length
+    const success = ids.length - failed
+    if (success > 0 && failed === 0) {
+      showToast(t('toast.batchConfirmSuccess', { count: success }), 'success')
+    } else if (success > 0) {
+      showToast(t('toast.batchConfirmPartial', { success, fail: failed }), 'warning')
+    } else {
+      showToast(t('toast.batchConfirmFailed'), 'error')
+    }
+    setSelectedIds([])
+    await refresh()
+    return failed === 0
+  }, [selectedIds, refresh, t])
+
   const submitProxyConfirm = useCallback(
     async (note: string, evidenceUrl: string | null): Promise<boolean> => {
       if (!proxyConfirmTarget) return false
@@ -572,6 +595,9 @@ export function useContainerTransfersPage() {
       openConfirm: setConfirmTarget,
       closeConfirm: () => setConfirmTarget(null),
       submitConfirm,
+      selectedIds,
+      setSelectedIds,
+      submitBatchConfirm,
       canProxyConfirm,
       proxyConfirmTarget,
       openProxyConfirm: setProxyConfirmTarget,
@@ -631,6 +657,8 @@ export function useContainerTransfersPage() {
       submitImport,
       confirmTarget,
       submitConfirm,
+      selectedIds,
+      submitBatchConfirm,
       canProxyConfirm,
       proxyConfirmTarget,
       submitProxyConfirm,

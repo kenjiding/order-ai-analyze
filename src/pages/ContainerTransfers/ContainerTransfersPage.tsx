@@ -1,6 +1,6 @@
 import { useCallback, useState } from 'react'
-import { ArrowLeftRight, Download, History, Plus, Repeat, Upload } from 'lucide-react'
-import { Button, Space, Tooltip } from 'antd'
+import { ArrowLeftRight, CheckSquare, Download, History, Plus, Repeat, Upload } from 'lucide-react'
+import { Button, Modal, Space, Tooltip } from 'antd'
 import { useTranslation } from 'react-i18next'
 import { PageSectionTabs } from '../../components/PageSectionTabs'
 import { ConfirmReceiptModal } from './components/ConfirmReceiptModal'
@@ -31,6 +31,14 @@ export default function ContainerTransfersPage() {
     }
   }, [page.filters, t])
 
+  const handleBatchConfirm = useCallback(() => {
+    Modal.confirm({
+      title: t('transfers.batchConfirmTitle'),
+      content: t('transfers.batchConfirmContent', { count: page.selectedIds.length }),
+      onOk: () => page.submitBatchConfirm(),
+    })
+  }, [page.selectedIds.length, page.submitBatchConfirm, t])
+
   return (
     <div className="admin-page space-y-5">
       <header className="admin-panel p-5">
@@ -46,6 +54,14 @@ export default function ContainerTransfersPage() {
           </div>
           {page.tab === 'transfers' ? (
             <Space>
+              <Button
+                icon={<CheckSquare className="h-4 w-4" aria-hidden />}
+                disabled={page.selectedIds.length === 0}
+                onClick={handleBatchConfirm}
+              >
+                {t('transfers.batchConfirm')}
+                {page.selectedIds.length > 0 ? `(${page.selectedIds.length})` : ''}
+              </Button>
               <Button
                 color="cyan"
                 variant="solid"
@@ -110,6 +126,8 @@ export default function ContainerTransfersPage() {
                 canActAs={page.canActAs}
                 canProxyConfirm={page.canProxyConfirm}
                 canVoid={page.canVoid}
+                selectedIds={page.selectedIds}
+                onSelectionChange={page.setSelectedIds}
                 onConfirm={page.openConfirm}
                 onProxyConfirm={page.openProxyConfirm}
                 onDispute={page.openDispute}
