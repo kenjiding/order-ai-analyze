@@ -307,6 +307,7 @@ regionClearancePushRouter.post('/schedules/:id/push-now', async (req: Authentica
       todayDateStr,
       yesterdayDateStr,
       pushTime: timeHHmm,
+      tz,
       label: `[region-clearance-push/push-now schedule=${schedule.id}]`,
       // 立即推送只读快照做对比展示，不覆盖，避免手动测试把「推送间趋势」基准带偏
       updateSnapshot: false,

@@ -7,7 +7,8 @@ import {
   fetchOutboundStockInventory,
   fetchPendingDeliveryInventory,
 } from '../imile/regionClearancePush'
-import { resolveRegionTz } from '../imile/ausTimezone'
+import { resolveRegionTz, type AusTz } from '../imile/ausTimezone'
+import { getRegionNow } from '../imile/inboundWaybillIndex'
 import { envFirst } from '../imile/shared'
 import { loadPriorityClientCodes } from '../priorityClients'
 import { getGlobalImileToken } from './globalImileToken'
@@ -74,16 +75,18 @@ export async function executeRegionClearancePush(params: {
   token: string
   schedule: Pick<
     RegionClearancePushSchedule,
-    'id' | 'regionCode' | 'regionName' | 'stationCodes' | 'chatId' | 'mentionOpenIds' | 'lastSnapshot'
+    'id' | 'regionCode' | 'regionName' | 'stationCodes' | 'chatId' | 'mentionOpenIds' | 'lastSnapshot' | 'lastSnapshotAt'
   >
   todayDateStr: string
   yesterdayDateStr: string
   pushTime: string
+  /** 用于判断 lastSnapshot 是否来自另一个自然日（跨天的话派件/签收涨跌没有业务意义，见下方 isCrossDaySnapshot） */
+  tz: AusTz
   label: string
   /** 只有真正的定时任务传 true；「立即推送」传 false，只读快照做对比展示，不覆盖趋势基准 */
   updateSnapshot: boolean
 }): Promise<{ ok: true } | { ok: false; error: string }> {
-  const { token, schedule, todayDateStr, yesterdayDateStr, pushTime, label, updateSnapshot } = params
+  const { token, schedule, todayDateStr, yesterdayDateStr, pushTime, tz, label, updateSnapshot } = params
   const regionCode = schedule.regionCode
   const stations = parseStationEntries(schedule.stationCodes)
   const stationCodes = stations.map((s) => s.code)
@@ -148,6 +151,8 @@ export async function executeRegionClearancePush(params: {
 
   const mentions = parseSupplierMentionContacts(schedule.mentionOpenIds)
   const previousSnapshot = parseRegionClearanceSnapshot(schedule.lastSnapshot)
+  const previousSnapshotRegionNow = schedule.lastSnapshotAt ? getRegionNow(tz, schedule.lastSnapshotAt) : null
+  const isCrossDaySnapshot = previousSnapshotRegionNow !== null && previousSnapshotRegionNow.dateStr !== todayDateStr
   const html = buildRegionClearancePushHtml({
     regionName: schedule.regionName,
     stations,
@@ -158,6 +163,8 @@ export async function executeRegionClearancePush(params: {
     todayStat,
     inventoryStat,
     previousSnapshot,
+    isCrossDaySnapshot,
+    previousPushTimeLabel: previousSnapshotRegionNow?.timeHHmm ?? null,
   })
 
   const rendered = await renderHtmlToPngDataUrl(html)
@@ -231,6 +238,7 @@ async function runOneScheduledPush(schedule: RegionClearancePushSchedule, region
       todayDateStr,
       yesterdayDateStr,
       pushTime: timeHHmm,
+      tz,
       label,
       updateSnapshot: true,
     })

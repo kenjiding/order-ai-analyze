@@ -275,6 +275,11 @@ export default function AddressVerifyPage() {
         key: 'auPost',
         width: 140,
         fixed: 'right',
+        filters: [
+          { text: t('auPostBlocked'), value: 'blocked' },
+          { text: t('auPostNotBlocked'), value: 'notBlocked' },
+        ],
+        onFilter: (value, row) => (value === 'blocked' ? row.auPostBlocked : !row.auPostBlocked),
         render: (_, row) =>
           row.auPostBlocked ? (
             <Tag
@@ -297,6 +302,13 @@ export default function AddressVerifyPage() {
         key: 'status',
         width: 110,
         fixed: 'right',
+        filters: [
+          { text: t('statusMatch'), value: 'match' },
+          { text: t('statusMismatch'), value: 'mismatch' },
+          { text: t('statusUnresolved'), value: 'unresolved' },
+          { text: t('statusNoCoordinate'), value: 'no_coordinate' },
+        ],
+        onFilter: (value, row) => row.status === value,
         render: (_, row) => (
           <div className="flex flex-col gap-0.5">
             {statusTag(row.status)}

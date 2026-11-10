@@ -108,8 +108,9 @@ export type DispatchPerformanceConfigView = {
   latestDispatch: DispatchPerformanceLatestSnapshot | null
 }
 
-/** 站点归属本账号可见范围：历史 global 数据对所有人可见，其余按州隔离，与供应商配置一致 */
-function regionVisible(regionCode: string | null | undefined) {
+/** 站点归属本账号可见范围：超管不受州限制，历史 global 数据对所有人可见，其余按州隔离，与供应商配置一致 */
+function regionVisible(regionCode: string | null | undefined, isSuperAdmin: boolean) {
+  if (isSuperAdmin) return undefined
   const t = schema.dispatchPerformanceConfigs
   if (!regionCode) return or(eq(t.regionCode, LEGACY_GLOBAL_SUPPLIER_REGION_CODE), eq(t.regionCode, ''))
   return or(
@@ -121,10 +122,11 @@ function regionVisible(regionCode: string | null | undefined) {
 
 export async function listDispatchPerformanceConfigs(
   regionCode: string | null | undefined,
+  isSuperAdmin = false,
 ): Promise<DispatchPerformanceConfig[]> {
   const db = getDb()
   const t = schema.dispatchPerformanceConfigs
-  return db.select().from(t).where(regionVisible(regionCode)).orderBy(asc(t.createdAt))
+  return db.select().from(t).where(regionVisible(regionCode, isSuperAdmin)).orderBy(asc(t.createdAt))
 }
 
 /** 结算任务用：所有已启用的配置，不做州过滤（系统级任务没有账号上下文） */
@@ -377,8 +379,9 @@ async function loadLatestSnapshots(
 /** 列表页数据：配置 + 供应商数 + 最近一批结算概览 */
 export async function listDispatchPerformanceConfigViews(
   regionCode: string | null | undefined,
+  isSuperAdmin = false,
 ): Promise<DispatchPerformanceConfigView[]> {
-  const configs = await listDispatchPerformanceConfigs(regionCode)
+  const configs = await listDispatchPerformanceConfigs(regionCode, isSuperAdmin)
   const stationCodes = [...new Set(configs.map((c) => c.stationCode))]
   const [supplierConfigs, snapshots, dispatchSnapshots] = await Promise.all([
     listSupplierPushConfigs(),

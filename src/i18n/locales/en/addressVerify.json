@@ -20,6 +20,7 @@
   "colCoordinate": "Sorting Coordinate",
   "colAuPost": "AU Post Check",
   "auPostBlocked": "Undeliverable",
+  "auPostNotBlocked": "Normal",
   "colStatus": "Result",
   "statusMatch": "Match",
   "statusMismatch": "Mismatch",

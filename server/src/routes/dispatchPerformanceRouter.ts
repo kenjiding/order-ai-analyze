@@ -30,6 +30,7 @@ import {
 } from '../jobs/handlers'
 import { enqueueJob, listJobs } from '../jobs/queue'
 import { toPublicJob } from '../jobs/types'
+import { SUPER_ADMIN_ROLE } from '../permissions/registry'
 import { LEGACY_GLOBAL_SUPPLIER_REGION_CODE, parsePushConfigIds } from '../supplierPushConfigs'
 
 export const dispatchPerformanceRouter = Router()
@@ -118,12 +119,22 @@ function requestUserName(req: Request): string {
   return user?.displayName?.trim() || user?.username?.trim() || ''
 }
 
+function requestIsSuperAdmin(req: Request): boolean {
+  return (req as AuthenticatedRequest).authUser?.role === SUPER_ADMIN_ROLE
+}
+
 /**
- * 同州账号共享同一份配置（读写都算），global/空是老数据的历史兜底、谁都能碰。
- * 与 fleetSupplierPushRouter 的 canManageSupplierConfig 同一套规则、也要跟
- * regionVisible() 的三选一保持一致——否则会出现「列表里看得到，点进去却 403」。
+ * 同州账号共享同一份配置（读写都算），global/空是老数据的历史兜底、谁都能碰；
+ * 超管不受州限制，能看到并管理任意州的配置。与 fleetSupplierPushRouter 的
+ * canManageSupplierConfig 同一套规则、也要跟 regionVisible() 的判断保持一致
+ * ——否则会出现「列表里看得到，点进去却 403」。
  */
-function canAccessDispatchPerformanceConfig(configRegionCode: string, userRegionCode: string): boolean {
+function canAccessDispatchPerformanceConfig(
+  configRegionCode: string,
+  userRegionCode: string,
+  isSuperAdmin: boolean,
+): boolean {
+  if (isSuperAdmin) return true
   const region = configRegionCode.trim()
   return region === '' || region === LEGACY_GLOBAL_SUPPLIER_REGION_CODE || region === userRegionCode
 }
@@ -137,7 +148,9 @@ function sendCrossRegionDenied(res: Response, action: '查看' | '编辑' | '删
 dispatchPerformanceRouter.get('/configs', async (req: Request, res: Response) => {
   try {
     const regionCode = (req as AuthenticatedRequest).authUser?.regionCode ?? null
-    return res.json({ configs: await listDispatchPerformanceConfigViews(regionCode) })
+    return res.json({
+      configs: await listDispatchPerformanceConfigViews(regionCode, requestIsSuperAdmin(req)),
+    })
   } catch (err) {
     console.error('[dispatch-performance] 配置列表查询失败:', err)
     return res.status(500).json({ error: '查询失败' })
@@ -198,7 +211,7 @@ dispatchPerformanceRouter.put('/configs/:id', async (req: Request, res: Response
   try {
     const existing = await findDispatchPerformanceConfig(id)
     if (!existing) return res.status(404).json({ error: '配置不存在' })
-    if (!canAccessDispatchPerformanceConfig(existing.regionCode, requestRegionCode(req))) {
+    if (!canAccessDispatchPerformanceConfig(existing.regionCode, requestRegionCode(req), requestIsSuperAdmin(req))) {
       return sendCrossRegionDenied(res, '编辑')
     }
     if (stationCode && (await isStationTaken(stationCode, id))) {
@@ -227,7 +240,7 @@ dispatchPerformanceRouter.delete('/configs/:id', async (req: Request, res: Respo
   try {
     const existing = await findDispatchPerformanceConfig(id)
     if (!existing) return res.status(404).json({ error: '配置不存在' })
-    if (!canAccessDispatchPerformanceConfig(existing.regionCode, requestRegionCode(req))) {
+    if (!canAccessDispatchPerformanceConfig(existing.regionCode, requestRegionCode(req), requestIsSuperAdmin(req))) {
       return sendCrossRegionDenied(res, '删除')
     }
     const ok = await deleteDispatchPerformanceConfig(id)
@@ -256,7 +269,7 @@ dispatchPerformanceRouter.get('/configs/:id/data', async (req: Request, res: Res
   try {
     const config = await findDispatchPerformanceConfig(String(req.params.id ?? '').trim())
     if (!config) return res.status(404).json({ error: '配置不存在' })
-    if (!canAccessDispatchPerformanceConfig(config.regionCode, requestRegionCode(req))) {
+    if (!canAccessDispatchPerformanceConfig(config.regionCode, requestRegionCode(req), requestIsSuperAdmin(req))) {
       return sendCrossRegionDenied(res, '查看')
     }
 
@@ -309,7 +322,7 @@ dispatchPerformanceRouter.get('/configs/:id/profit-trend', async (req: Request, 
   try {
     const config = await findDispatchPerformanceConfig(String(req.params.id ?? '').trim())
     if (!config) return res.status(404).json({ error: '配置不存在' })
-    if (!canAccessDispatchPerformanceConfig(config.regionCode, requestRegionCode(req))) {
+    if (!canAccessDispatchPerformanceConfig(config.regionCode, requestRegionCode(req), requestIsSuperAdmin(req))) {
       return sendCrossRegionDenied(res, '查看')
     }
 
@@ -338,7 +351,7 @@ dispatchPerformanceRouter.post('/configs/:id/settle-now', async (req: Request, r
   try {
     const config = await findDispatchPerformanceConfig(String(req.params.id ?? '').trim())
     if (!config) return res.status(404).json({ error: '配置不存在' })
-    if (!canAccessDispatchPerformanceConfig(config.regionCode, requestRegionCode(req))) {
+    if (!canAccessDispatchPerformanceConfig(config.regionCode, requestRegionCode(req), requestIsSuperAdmin(req))) {
       return sendCrossRegionDenied(res, '触发')
     }
     if (!config.isEnabled) return res.status(400).json({ error: '该站点统计已停用，请先启用' })
@@ -414,7 +427,7 @@ dispatchPerformanceRouter.post('/configs/:id/upload-settle', async (req: Request
   try {
     const config = await findDispatchPerformanceConfig(String(req.params.id ?? '').trim())
     if (!config) return res.status(404).json({ error: '配置不存在' })
-    if (!canAccessDispatchPerformanceConfig(config.regionCode, requestRegionCode(req))) {
+    if (!canAccessDispatchPerformanceConfig(config.regionCode, requestRegionCode(req), requestIsSuperAdmin(req))) {
       return sendCrossRegionDenied(res, '触发')
     }
     if (!config.isEnabled) return res.status(400).json({ error: '该站点统计已停用，请先启用' })
@@ -545,7 +558,7 @@ dispatchPerformanceRouter.post('/configs/:id/exceptions', async (req: Request, r
   try {
     const config = await findDispatchPerformanceConfig(String(req.params.id ?? '').trim())
     if (!config) return res.status(404).json({ error: '配置不存在' })
-    if (!canAccessDispatchPerformanceConfig(config.regionCode, requestRegionCode(req))) {
+    if (!canAccessDispatchPerformanceConfig(config.regionCode, requestRegionCode(req), requestIsSuperAdmin(req))) {
       return sendCrossRegionDenied(res, '编辑')
     }
     const row = await createDispatchPerformanceException({
@@ -574,7 +587,7 @@ dispatchPerformanceRouter.get('/configs/:id/exceptions', async (req: Request, re
   try {
     const config = await findDispatchPerformanceConfig(String(req.params.id ?? '').trim())
     if (!config) return res.status(404).json({ error: '配置不存在' })
-    if (!canAccessDispatchPerformanceConfig(config.regionCode, requestRegionCode(req))) {
+    if (!canAccessDispatchPerformanceConfig(config.regionCode, requestRegionCode(req), requestIsSuperAdmin(req))) {
       return sendCrossRegionDenied(res, '查看')
     }
     const supplierKey = typeof req.query.supplierKey === 'string' ? req.query.supplierKey.trim() : undefined
@@ -598,7 +611,7 @@ dispatchPerformanceRouter.delete('/configs/:id/exceptions/:exceptionId', async (
   try {
     const config = await findDispatchPerformanceConfig(String(req.params.id ?? '').trim())
     if (!config) return res.status(404).json({ error: '配置不存在' })
-    if (!canAccessDispatchPerformanceConfig(config.regionCode, requestRegionCode(req))) {
+    if (!canAccessDispatchPerformanceConfig(config.regionCode, requestRegionCode(req), requestIsSuperAdmin(req))) {
       return sendCrossRegionDenied(res, '删除')
     }
     const ok = await deleteDispatchPerformanceException(

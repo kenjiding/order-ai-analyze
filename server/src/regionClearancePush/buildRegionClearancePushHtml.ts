@@ -47,23 +47,16 @@ function dispatchDeliveredCell(
   </div>`
 }
 
-function sumBrand(a: BrandCount, b: BrandCount): BrandCount {
-  return { temu: a.temu + b.temu, shein: a.shein + b.shein, local: a.local + b.local, other: a.other + b.other }
-}
-
 function inventoryCell(
   stat: { inWarehouse: number; outWarehouse: number; total: number; inWarehouseBrand: BrandCount; outWarehouseBrand: BrandCount },
   prev?: { inWarehouse: number; outWarehouse: number; total: number; inWarehouseBrand?: BrandCount; outWarehouseBrand?: BrandCount },
 ): string {
-  const totalBrand = sumBrand(stat.inWarehouseBrand, stat.outWarehouseBrand)
-  const prevTotalBrand = prev?.inWarehouseBrand && prev?.outWarehouseBrand ? sumBrand(prev.inWarehouseBrand, prev.outWarehouseBrand) : undefined
   return `<div class="mcell">
     <div class="mrow"><span class="mdot" style="background:var(--stock-in)"></span><span class="mlabel" style="color:var(--stock-in)">仓内</span><span class="mval num">${stat.inWarehouse}</span>${deltaSpan(stat.inWarehouse, prev?.inWarehouse)}</div>
     ${brandLine(stat.inWarehouseBrand, prev?.inWarehouseBrand)}
     <div class="mrow"><span class="mdot" style="background:var(--stock-out)"></span><span class="mlabel" style="color:var(--stock-out)">仓外</span><span class="mval num">${stat.outWarehouse}</span>${deltaSpan(stat.outWarehouse, prev?.outWarehouse)}</div>
     ${brandLine(stat.outWarehouseBrand, prev?.outWarehouseBrand)}
     <div class="mrow mrow-total"><span class="mlabel">合计</span><span class="mval num">${stat.total}</span>${deltaSpan(stat.total, prev?.total)}</div>
-    ${brandLine(totalBrand, prevTotalBrand)}
   </div>`
 }
 
@@ -78,6 +71,13 @@ export function buildRegionClearancePushHtml(params: {
   inventoryStat: InventoryStat
   /** 上一次定时推送的快照；只对「今日数据」「今日库存」两列生效，「昨日数据」是定型数据不展示对比 */
   previousSnapshot?: RegionClearanceSnapshot | null
+  /**
+   * 快照来自另一个自然日：派件/签收是按自然日清零累计的口径，跨天比较（今天半天 vs 昨天近一天）
+   * 涨跌没有业务意义，会误导成"暴跌"，所以此时派件/签收不展示涨跌；库存是状态值，跨天比较仍然有效，不受影响。
+   */
+  isCrossDaySnapshot?: boolean
+  /** 上一次推送的时刻（HH:mm），用于表头「较上次」改成具体的「较13:00」；没有上次快照时不展示 */
+  previousPushTimeLabel?: string | null
 }): string {
   const {
     regionName,
@@ -89,9 +89,14 @@ export function buildRegionClearancePushHtml(params: {
     todayStat,
     inventoryStat,
     previousSnapshot,
+    isCrossDaySnapshot,
+    previousPushTimeLabel,
   } = params
-  const prevToday = previousSnapshot?.todayStat
+  const prevToday = isCrossDaySnapshot ? undefined : previousSnapshot?.todayStat
   const prevInventory = previousSnapshot?.inventoryStat
+  // 派件/签收跨天不展示涨跌（见 isCrossDaySnapshot 注释），表头的「较 HH:mm」也跟着隐藏，避免文案和数字对不上
+  const todayVsLabel = previousSnapshot && !isCrossDaySnapshot && previousPushTimeLabel ? ` · 较${esc(previousPushTimeLabel)}` : ''
+  const inventoryVsLabel = previousSnapshot && previousPushTimeLabel ? ` · 较${esc(previousPushTimeLabel)}` : ''
   const EMPTY_DD = { dispatch: 0, delivered: 0, drivers: 0, dispatchBrand: EMPTY_BRAND, deliveredBrand: EMPTY_BRAND }
   const EMPTY_INV = { inWarehouse: 0, outWarehouse: 0, total: 0, inWarehouseBrand: EMPTY_BRAND, outWarehouseBrand: EMPTY_BRAND }
 
@@ -180,8 +185,8 @@ table.matrix{width:100%;border-collapse:collapse;}
         <tr>
           <th class="col-station">网点</th>
           <th>昨日数据<span class="sub">${esc(yesterdayDateStr)}</span></th>
-          <th>今日数据<span class="sub">${esc(todayDateStr)} 截至推送时刻${previousSnapshot ? ' · 较上次' : ''}</span></th>
-          <th>今日库存<span class="sub">已剔除今日入库${previousSnapshot ? ' · 较上次' : ''}</span></th>
+          <th>今日数据<span class="sub">${esc(todayDateStr)} 截至推送时刻${todayVsLabel}</span></th>
+          <th>今日库存<span class="sub">已剔除今日入库${inventoryVsLabel}</span></th>
         </tr>
       </thead>
       <tbody>
