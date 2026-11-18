@@ -7,6 +7,7 @@ import { AUS_TZ, localDateInTz } from '../imile/ausTimezone'
 import { reverseLookupPostcodeByPoint, reverseLookupSuburbByPoint } from '../vendorRegionMap/absPostcodePolygons'
 import { mapWithConcurrency } from '../orderAnalyze/runtime'
 import { registerDeliveryProblem, searchReportedAuPostProblems, uploadProblemProofImage } from '../imile/problemRegister'
+import { AU_POST_METRO_POSTCODES, AU_POST_OFFICIAL_LOCATIONS } from './auPostLocations'
 
 export const addressVerifyRouter = Router()
 
@@ -40,31 +41,19 @@ function normalizeZip(zip: string): string {
 }
 
 // 以下 AU Post 不可派送判定移植自「地址分布智能看板」工具，口径保持一致：
-// 只对反查邮编确认为 5000（Adelaide City）的地址做判断，避免对 Adelaide 以外的 PO Box/LPO 误报。
+// 只对反查邮编落在 AU_POST_METRO_POSTCODES（大阿德莱德都会区已知网点覆盖的邮编）的地址做判断，
+// 避免对大阿德莱德都会区以外的 PO Box/LPO 误报。已知网点清单见 auPostLocations.ts。
 const AU_POST_KEYWORD_PATTERN =
   /\b(?:AUSTRALIA\s*POST|AUS\s*POST|AUSPOST|POST\s*OFFICE|POST\s*SHOP|PARCEL\s*(?:LOCKER|COLLECT)|ADELAIDE\s*GPO|GPO|LPO|PO\s*BOX|LOCKED\s*BAG)\b/
 
-const AU_POST_OFFICIAL_LOCATIONS: Array<[RegExp, string]> = [
-  [/\b141\s+KING\s+WILLIAM\s+(?:STREET|ST)\b/, 'Adelaide GPO · 141 King William Street'],
-  [/\b2\s*[-/]\s*10\s+FRANKLIN\s+(?:STREET|ST)\b/, 'Adelaide GPO · 2–10 Franklin Street'],
-  [/\b26\s+FRANKLIN\s+(?:STREET|ST)\b/, 'Australia Post Adelaide office · 26 Franklin Street'],
-  [/\b59\s+CITY\s+CROSS\s+(?:ARCADE|ARC)\b/, 'Adelaide Rundle Mall Post Shop · 59 City Cross Arcade'],
-  [/\b252\s+GOUGER\s+(?:STREET|ST)\b/, 'Adelaide Business Hub · 252 Gouger Street'],
-  [/\b216\s+GOUGER\s+(?:STREET|ST)\b/, 'Australia Post Gouger St · 216 Gouger Street'],
-  [/\b5\s*[-/]\s*7\s+HALIFAX\s+(?:STREET|ST)\b/, 'Adelaide Halifax St Post Shop · 5–7 Halifax Street'],
-  [/\b252\s*[-/]\s*254\s+HALIFAX\s+(?:STREET|ST)\b/, 'Adelaide Halifax St Post Shop · 252–254 Halifax Street'],
-  [/\b14\s*[-/]\s*18\s+FENN\s+(?:PLACE|PL)\b/, 'City West Campus LPO · 14–18 Fenn Place'],
-  [/\bTENANCY\s*5\b.*\bLEARNING\s+HUB\b.*\bNORTH\s+TERRACE\b/, 'Adelaide University LPO · Learning Hub North Terrace'],
-]
-
 function assessAuPostUndeliverable(address: string, resolvedPostcode: string): { blocked: boolean; reason: string } {
-  if (resolvedPostcode !== '5000') return { blocked: false, reason: '' }
+  if (!AU_POST_METRO_POSTCODES.has(resolvedPostcode)) return { blocked: false, reason: '' }
   const text = address.toUpperCase().replace(/[.,#()]/g, ' ').replace(/\s+/g, ' ').trim()
   if (AU_POST_KEYWORD_PATTERN.test(text)) {
     return { blocked: true, reason: '地址包含 Australia Post/Post Office/GPO/LPO/Parcel Locker 或邮政信箱标识' }
   }
-  const hit = AU_POST_OFFICIAL_LOCATIONS.find(([pattern]) => pattern.test(text))
-  return hit ? { blocked: true, reason: hit[1] } : { blocked: false, reason: '' }
+  const hit = AU_POST_OFFICIAL_LOCATIONS.find(([postcode, pattern]) => postcode === resolvedPostcode && pattern.test(text))
+  return hit ? { blocked: true, reason: hit[2] } : { blocked: false, reason: '' }
 }
 
 addressVerifyRouter.post('/check', async (req: AuthenticatedRequest, res: Response) => {

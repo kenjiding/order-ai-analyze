@@ -58,49 +58,42 @@ function normalizePositionTitle(raw: string): string {
   return raw.replace(/\s+/g, ' ').trim().toLowerCase()
 }
 
+/** LEVEL 1-28 / LEVEL 2-28 / LEVEL 3-28 等任意前缀数字，只看最后一段 26/28/30 */
+function levelNumberToRole(digits: string): string | null {
+  if (digits === '26') return 'level26'
+  if (digits === '28') return 'level28'
+  if (digits === '30') return 'level30'
+  return null
+}
+
 function resolveRoleByPositionTitle(positionTitle: string): string | null {
   const posNorm = normalizePositionTitle(positionTitle)
   if (!posNorm) return null
 
-  if (posNorm.includes('level 2-28')) {
-    return 'seniorWorker'
-  }
+  const match = posNorm.match(/(\d+)\s*$/)
+  if (!match) return null
 
-  if (posNorm.includes('level 2-26')) {
-    return 'worker'
-  }
-
-  if (posNorm.includes('level 2-30') || posNorm.includes('level 3-30')) {
-    if (posNorm.includes('前台') || posNorm.includes('reception')) {
-      return 'receptionist'
-    }
-    return 'forklift'
-  }
-
-  return null
+  return levelNumberToRole(match[1])
 }
 
 function resolveRoleByPositionCode(positionCodeRaw: string): string | null {
   if (!positionCodeRaw) return null
   const digits = positionCodeRaw.match(/\d+/)?.[0] ?? ''
-  if (digits === '28') return 'seniorWorker'
-  if (digits === '26') return 'worker'
-  if (digits === '30') return 'forklift'
-  return null
+  return levelNumberToRole(digits)
 }
 
 /**
  * 考勤行 → 用于 `calculateHourlyRate` 的角色键。
- * - 「职位名称」有值时：按职位名称判定（LEVEL 2-28=seniorWorker，LEVEL 2-26=worker，LEVEL 2-30=forklift/receptionist）
- * - 「职位名称」为空时：按「职位编号」判定（28=seniorWorker，26=worker，30=forklift）
- * - 其余回退到员工表默认角色，无则 worker
+ * - 「职位名称」有值时：取其末尾数字（如 LEVEL 1-28/LEVEL 2-28/LEVEL 3-28 均取 28）对应 level26/level28/level30
+ * - 「职位名称」为空时：按「职位编号」末尾数字判定
+ * - 其余回退到员工表默认角色，无则 level26
  */
 export function resolveRoleFromAttendanceRow(
   row: Record<string, unknown>,
   employeeRoleMap: Record<string, string>,
 ): string {
   const employeeId = String(row['人员编号'] ?? row['Employee ID'] ?? row['employeeId'] ?? '')
-  const baseRole = employeeRoleMap[employeeId] || 'worker'
+  const baseRole = employeeRoleMap[employeeId] || 'level26'
 
   const positionTitle = cellString(row, POSITION_TITLE_KEYS)
   if (positionTitle) {

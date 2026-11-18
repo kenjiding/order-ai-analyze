@@ -44,7 +44,7 @@ export function payrollWageForMappedRecord(
   const isPh = record.weekendOption === 'publicHoliday'
   const isSort = record.weekendOption === 'sorting'
   const rate = calculateHourlyRate(
-    String(record.role || 'worker'),
+    String(record.role || 'level26'),
     String(record.workday ?? ''),
     isSort,
     isPh,

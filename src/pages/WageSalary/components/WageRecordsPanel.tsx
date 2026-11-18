@@ -189,7 +189,6 @@ export function WageRecordsPanel({
           setPageSize={setPageSize}
           rowEditingData={rowEditingData}
           setRowEditingData={setRowEditingData}
-          roles={roles}
           formatDate={formatDate}
           formatWorkday={formatWorkday}
           startRowEditing={startRowEditing}

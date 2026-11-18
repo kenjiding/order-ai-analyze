@@ -441,7 +441,7 @@ export function useWageSalaryPage() {
             surname: rec.surname || '',
             nickname: rec.nickname || '',
             department: rec.department || '',
-            role: rec.role || 'worker',
+            role: rec.role || 'level26',
           }
           if (idx === -1) {
             next.push({
@@ -576,10 +576,6 @@ export function useWageSalaryPage() {
       ),
     )
     showToast(wt('toast.employeeDeleted'), 'success')
-  }
-
-  const handleUpdateUploadedRole = (index, newRole) => {
-    setUploadedData((prev) => prev.map((item, i) => (i === index ? { ...item, role: newRole } : item)))
   }
 
   const handleDayOptionChange = (index, option) => {
@@ -932,7 +928,6 @@ export function useWageSalaryPage() {
     handleDeleteRecord,
     handleUpdateEmployeeRole,
     handleDeleteEmployee,
-    handleUpdateUploadedRole,
     handleDayOptionChange,
     handleDeleteUploadedRow,
     filteredWageRecords,

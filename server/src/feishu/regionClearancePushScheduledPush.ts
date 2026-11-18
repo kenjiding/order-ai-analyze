@@ -153,6 +153,8 @@ export async function executeRegionClearancePush(params: {
   const previousSnapshot = parseRegionClearanceSnapshot(schedule.lastSnapshot)
   const previousSnapshotRegionNow = schedule.lastSnapshotAt ? getRegionNow(tz, schedule.lastSnapshotAt) : null
   const isCrossDaySnapshot = previousSnapshotRegionNow !== null && previousSnapshotRegionNow.dateStr !== todayDateStr
+  const pushAt = new Date()
+  const elapsedHours = schedule.lastSnapshotAt ? (pushAt.getTime() - schedule.lastSnapshotAt.getTime()) / 3_600_000 : null
   const html = buildRegionClearancePushHtml({
     regionName: schedule.regionName,
     stations,
@@ -165,6 +167,7 @@ export async function executeRegionClearancePush(params: {
     previousSnapshot,
     isCrossDaySnapshot,
     previousPushTimeLabel: previousSnapshotRegionNow?.timeHHmm ?? null,
+    elapsedHours,
   })
 
   const rendered = await renderHtmlToPngDataUrl(html)
@@ -191,7 +194,7 @@ export async function executeRegionClearancePush(params: {
   if (updateSnapshot) {
     await getDb()
       .update(schema.regionClearancePushSchedules)
-      .set({ lastSnapshot: { todayStat, inventoryStat }, lastSnapshotAt: new Date() })
+      .set({ lastSnapshot: { todayStat, inventoryStat }, lastSnapshotAt: pushAt })
       .where(eq(schema.regionClearancePushSchedules.id, schedule.id))
   }
 

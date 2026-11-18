@@ -7,8 +7,6 @@ import { WageAntdTable } from './WageAntdTable'
 
 export function UploadPreviewTable({
   uploadedData,
-  roles,
-  handleUpdateUploadedRole,
   handleDayOptionChange,
   handleDeleteUploadedRow,
   formatDate,
@@ -96,23 +94,13 @@ export function UploadPreviewTable({
         render: (v) => v || '-',
       },
       {
-        title: t('col.role'),
-        key: 'role',
+        title: t('col.positionTitle'),
+        dataIndex: 'positionTitle',
+        key: 'positionTitle',
         fixed: 'right',
         width: 120,
-        render: (_, record) => (
-          <select
-            value={record.role}
-            onChange={(e) => handleUpdateUploadedRole(record.rowIndex, e.target.value)}
-            className="rounded border border-slate-300 px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-[#2f8f87]"
-          >
-            {roles.map((role) => (
-              <option key={role} value={role}>
-                {t(`role.${role}`)}
-              </option>
-            ))}
-          </select>
-        ),
+        ellipsis: true,
+        render: (v) => v || '-',
       },
       {
         title: t('col.dayConfig'),
@@ -149,7 +137,7 @@ export function UploadPreviewTable({
         ),
       },
     ],
-    [t, roles, handleUpdateUploadedRole, handleDayOptionChange, handleDeleteUploadedRow, formatDate, formatWorkday],
+    [t, handleDayOptionChange, handleDeleteUploadedRow, formatDate, formatWorkday],
   )
 
   return (

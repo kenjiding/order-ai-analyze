@@ -120,6 +120,12 @@ export type ZipStat = {
   center: [number, number] | null
   polygons: Polygon[]
   rows: ZipStatRow[]
+  /** 商业 POI 密度（个/km²），OSM Overpass 查不到时为 null，供路由难易度打分用 */
+  commercialDensity: number | null
+  /** 公寓建筑占全部建筑的比例 0-1，OSM Overpass 查不到时为 null，供路由难易度打分用 */
+  apartmentRatio: number | null
+  /** 写字楼/商铺/工业用途建筑占全部建筑的比例 0-1，OSM Overpass 查不到时为 null，供路由难易度打分用 */
+  commercialBuildingRatio: number | null
 }
 
 /** MultiPolygon 拆成多个 Polygon，fill / fill-extrusion 对各部分更稳 */
@@ -141,7 +147,18 @@ export function aggregateZipStats(input: {
   metric: MapMetric
 }): ZipStat[] {
   const geometryByArea = new Map<string, VendorRegionZipRegion['geometry']>()
-  for (const region of input.zipRegions) geometryByArea.set(`${region.zipCode}\0${region.suburb}`, region.geometry)
+  const signalByArea = new Map<
+    string,
+    Pick<VendorRegionZipRegion, 'commercialDensity' | 'apartmentRatio' | 'commercialBuildingRatio'>
+  >()
+  for (const region of input.zipRegions) {
+    geometryByArea.set(`${region.zipCode}\0${region.suburb}`, region.geometry)
+    signalByArea.set(`${region.zipCode}\0${region.suburb}`, {
+      commercialDensity: region.commercialDensity,
+      apartmentRatio: region.apartmentRatio,
+      commercialBuildingRatio: region.commercialBuildingRatio,
+    })
+  }
 
   const cellsByArea = new Map<string, VendorRegionCell[]>()
   for (const cell of input.cells) {
@@ -171,6 +188,7 @@ export function aggregateZipStats(input: {
           ? polygonCentroid(geometry)
           : null
 
+    const signal = signalByArea.get(areaKey)
     stats.push({
       zipCode,
       suburb,
@@ -182,6 +200,9 @@ export function aggregateZipStats(input: {
       center,
       polygons,
       rows,
+      commercialDensity: signal?.commercialDensity ?? null,
+      apartmentRatio: signal?.apartmentRatio ?? null,
+      commercialBuildingRatio: signal?.commercialBuildingRatio ?? null,
     })
   }
   return stats

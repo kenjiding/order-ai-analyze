@@ -9,6 +9,7 @@ import { LEGACY_GLOBAL_SUPPLIER_REGION_CODE, listSupplierPushConfigs } from '../
 import { fetchAbsPostcodePolygons } from '../vendorRegionMap/absPostcodePolygons'
 import { fetchSuburbAreas, suburbKey } from '../vendorRegionMap/absSuburbPolygons'
 import { aggregateVendorZipCells } from '../vendorRegionMap/aggregate'
+import { backfillAreaSignalsInBackground, getCachedAreaSignals } from '../vendorRegionMap/osmAreaSignals'
 import { aggregateVendorDailyVolume, type TrendDayInput } from '../vendorRegionMap/trendAggregate'
 import { readImileTokenFromRequest } from './imileAuth'
 
@@ -134,7 +135,7 @@ vendorRegionMapRouter.post('/aggregate', async (req: Request, res: Response) => 
       if (existing) existing.totalCount += cell.count
       else areaTotals.set(areaKey, { zipCode: cell.zipCode, suburb: cell.suburb, totalCount: cell.count })
     }
-    const zipRegions = [...areaTotals.values()]
+    const zipRegionsBase = [...areaTotals.values()]
       .flatMap(({ zipCode, suburb, totalCount }) => {
         // 优先用郊区真实边界；查不到郊区边界（或本来就没有郊区文本）时退回整个邮编的边界
         const geometry = suburbAreaOf(zipCode, suburb)?.geometry ?? polygonByZip.get(zipCode)
@@ -142,6 +143,20 @@ vendorRegionMapRouter.post('/aggregate', async (req: Request, res: Response) => 
         return [{ zipCode, suburb, totalCount, geometry }]
       })
       .sort((a, b) => b.totalCount - a.totalCount || a.zipCode.localeCompare(b.zipCode))
+
+    // 商业街/公寓信号：这次响应只读缓存（快），缺缓存的区域丢给后台异步回填，不卡这次请求——
+    // 详见 osmAreaSignals.ts。缺信号的区域这次显示「—」，下次再查同一批邮区就有缓存了。
+    const areaSignals = await getCachedAreaSignals(zipRegionsBase)
+    backfillAreaSignalsInBackground(zipRegionsBase)
+    const zipRegions = zipRegionsBase.map((region) => {
+      const signal = areaSignals.get(`${region.zipCode}\0${region.suburb}`)
+      return {
+        ...region,
+        commercialDensity: signal?.commercialDensity ?? null,
+        apartmentRatio: signal?.apartmentRatio ?? null,
+        commercialBuildingRatio: signal?.commercialBuildingRatio ?? null,
+      }
+    })
 
     const unmatchedNoGeo = cellsWithGeo.filter((cell) => cell.lat == null || cell.lng == null).length
     const renderedZipCodes = new Set(zipRegions.map((region) => region.zipCode))

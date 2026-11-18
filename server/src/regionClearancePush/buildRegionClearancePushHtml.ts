@@ -34,6 +34,13 @@ function deltaSpan(current: number, previous: number | undefined): string {
   return `<span class="delta ${cls}">${d > 0 ? '↑' : '↓'}${Math.abs(d)}</span>`
 }
 
+/** 签收流速 = (本次签收量 - 上次推送签收量) / 两次推送间隔小时数；没有上次快照或间隔异常时不展示 */
+function flowRateLine(current: number, previous: number | undefined, elapsedHours: number | null | undefined): string {
+  if (previous === undefined || !elapsedHours || elapsedHours <= 0) return ''
+  const rate = Math.round((current - previous) / elapsedHours)
+  return `<div class="flow-rate">签收流速 <b class="num">${rate}</b>件/h</div>`
+}
+
 function dispatchDeliveredCell(
   stat: { dispatch: number; delivered: number; drivers: number; dispatchBrand: BrandCount; deliveredBrand: BrandCount },
   prev?: { dispatch: number; delivered: number; drivers: number; dispatchBrand?: BrandCount; deliveredBrand?: BrandCount },
@@ -78,6 +85,8 @@ export function buildRegionClearancePushHtml(params: {
   isCrossDaySnapshot?: boolean
   /** 上一次推送的时刻（HH:mm），用于表头「较上次」改成具体的「较13:00」；没有上次快照时不展示 */
   previousPushTimeLabel?: string | null
+  /** 本次推送与上一次推送之间的间隔小时数，用于算「签收流速」；没有上次快照时传 null */
+  elapsedHours?: number | null
 }): string {
   const {
     regionName,
@@ -91,6 +100,7 @@ export function buildRegionClearancePushHtml(params: {
     previousSnapshot,
     isCrossDaySnapshot,
     previousPushTimeLabel,
+    elapsedHours,
   } = params
   const prevToday = isCrossDaySnapshot ? undefined : previousSnapshot?.todayStat
   const prevInventory = previousSnapshot?.inventoryStat
@@ -101,14 +111,18 @@ export function buildRegionClearancePushHtml(params: {
   const EMPTY_INV = { inWarehouse: 0, outWarehouse: 0, total: 0, inWarehouseBrand: EMPTY_BRAND, outWarehouseBrand: EMPTY_BRAND }
 
   const stationRows = stations
-    .map(
-      (s) => `<tr class="row-station">
-        <td><div class="station-cell">${esc(s.name || s.code)}</div></td>
+    .map((s) => {
+      const todayDD = todayStat.byStation[s.code] ?? EMPTY_DD
+      return `<tr class="row-station">
+        <td>
+          <div class="station-cell">${esc(s.name || s.code)}</div>
+          ${flowRateLine(todayDD.delivered, prevToday?.byStation[s.code]?.delivered, elapsedHours)}
+        </td>
         <td>${dispatchDeliveredCell(yesterdayStat.byStation[s.code] ?? EMPTY_DD)}</td>
-        <td>${dispatchDeliveredCell(todayStat.byStation[s.code] ?? EMPTY_DD, prevToday?.byStation[s.code])}</td>
+        <td>${dispatchDeliveredCell(todayDD, prevToday?.byStation[s.code])}</td>
         <td>${inventoryCell(inventoryStat.byStation[s.code] ?? EMPTY_INV, prevInventory?.byStation[s.code])}</td>
-      </tr>`,
-    )
+      </tr>`
+    })
     .join('')
 
   return `<!doctype html>
@@ -149,6 +163,8 @@ table.matrix{width:100%;border-collapse:collapse;}
 .region-name{font:800 36px/1 'Archivo',sans-serif;}
 .region-tag{font:800 17px/1 'Public Sans',sans-serif;letter-spacing:.05em;text-transform:uppercase;color:var(--accent);background:color-mix(in srgb, var(--accent) 16%, transparent);padding:5px 10px;border-radius:999px;}
 .row-station .station-cell{font:800 26px/1.3 'Public Sans',sans-serif;}
+.flow-rate{margin-top:4px;font:600 17px/1.3 'IBM Plex Mono',monospace;color:var(--up);}
+.flow-rate b{color:var(--up);font-weight:700;}
 
 .mcell{display:flex;flex-direction:column;gap:10px;min-width:230px;}
 .mrow{display:flex;align-items:center;gap:10px;font-size:24px;}
@@ -191,7 +207,10 @@ table.matrix{width:100%;border-collapse:collapse;}
       </thead>
       <tbody>
         <tr class="row-region">
-          <td><div class="station-cell"><span class="region-name">${esc(regionName)}</span><span class="region-tag">大区合计</span></div></td>
+          <td>
+            <div class="station-cell"><span class="region-name">${esc(regionName)}</span><span class="region-tag">大区合计</span></div>
+            ${flowRateLine(todayStat.deliveredTotal, prevToday?.deliveredTotal, elapsedHours)}
+          </td>
           <td>${dispatchDeliveredCell({
             dispatch: yesterdayStat.dispatchTotal,
             delivered: yesterdayStat.deliveredTotal,

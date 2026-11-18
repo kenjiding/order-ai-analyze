@@ -7,7 +7,7 @@
     "recordCount": "Records",
     "rateSettings": "Rate settings",
     "actualRates": "Actual rates",
-    "actualRatesTitle": "Set supplier payout rates for workers, forklift, and reception — used for billing vs actual margin"
+    "actualRatesTitle": "Set supplier payout rates for the Level 26/28/30 tiers — used for billing vs actual margin"
   },
   "tabs": {
     "upload": "Payroll",
@@ -15,10 +15,9 @@
     "employees": "Employees"
   },
   "role": {
-    "worker": "Worker",
-    "seniorWorker": "Senior worker",
-    "forklift": "Forklift",
-    "receptionist": "Reception"
+    "level26": "Level 26",
+    "level28": "Level 28",
+    "level30": "Level 30"
   },
   "dayType": {
     "regular": "Non-sorting",
@@ -40,6 +39,7 @@
     "deduction": "Deduction",
     "reward": "Reward",
     "role": "Role",
+    "positionTitle": "Position",
     "dayConfig": "Day config",
     "type": "Type",
     "hourlyRate": "Hourly rate",
@@ -146,7 +146,7 @@
   },
   "actualRates": {
     "title": "Worker actual rates (supplier payout)",
-    "intro": "Standard rate settings drive payroll records and Excel export (billing basis). Enter supplier actual payout rates for workers, forklift, and reception; mismatches appear in the summary below.",
+    "intro": "Standard rate settings drive payroll records and Excel export (billing basis). Enter supplier actual payout rates for the Level 26/28/30 tiers; mismatches appear in the summary below.",
     "workdayRate": "Workday actual rate",
     "sortingWeekendRate": "Sorting weekend actual rate",
     "publicHolidayRate": "Public holiday actual rate",

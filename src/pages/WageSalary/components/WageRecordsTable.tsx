@@ -4,7 +4,6 @@ import { Edit2, Save, Trash2, X } from 'lucide-react'
 import { useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 import { formatEmployeeDisplayName } from '../employeeDisplayName'
-import { roleBadgeClassName } from '../constants'
 import { WageAntdTable } from './WageAntdTable'
 
 export function WageRecordsTable({
@@ -15,7 +14,6 @@ export function WageRecordsTable({
   setPageSize,
   rowEditingData,
   setRowEditingData,
-  roles,
   formatDate,
   formatWorkday,
   startRowEditing,
@@ -159,38 +157,12 @@ export function WageRecordsTable({
         render: (v) => v || '-',
       },
       {
-        title: t('col.role'),
-        key: 'role',
-        width: 110,
-        render: (_, record) => {
-          const isRowEditing = rowEditingData[record._id] !== undefined
-          const editData = rowEditingData[record._id]
-          if (isRowEditing) {
-            return (
-              <select
-                value={editData.role || 'worker'}
-                onChange={(e) => {
-                  setRowEditingData((prev) => ({
-                    ...prev,
-                    [record._id]: { ...prev[record._id], role: e.target.value },
-                  }))
-                }}
-                className="rounded border border-gray-300 px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-              >
-                {roles.map((role) => (
-                  <option key={role} value={role}>
-                    {t(`role.${role}`)}
-                  </option>
-                ))}
-              </select>
-            )
-          }
-          return (
-            <span className={`rounded px-2 py-1 text-xs font-medium ${roleBadgeClassName(record.role)}`}>
-              {t(`role.${record.role}`)}
-            </span>
-          )
-        },
+        title: t('col.positionTitle'),
+        dataIndex: 'positionTitle',
+        key: 'positionTitle',
+        width: 120,
+        ellipsis: true,
+        render: (v) => v || '-',
       },
       {
         title: t('col.type'),
@@ -319,7 +291,6 @@ export function WageRecordsTable({
     ],
     [
       t,
-      roles,
       rowEditingData,
       setRowEditingData,
       formatDate,

@@ -4,7 +4,16 @@ import { computeRouteDifficulty, computeSupplierDifficulty, type WarehouseConfig
 import type { ZipStat } from './columnGeometry'
 import { UNMATCHED_SUPPLIER_KEY, WAREHOUSE, type VendorRegionRouteCode } from './vendorRegionMapTypes'
 
-function zipStat(zipCode: string, offsetDeg: number, areaKm2: number | null): ZipStat {
+function zipStat(
+  zipCode: string,
+  offsetDeg: number,
+  areaKm2: number | null,
+  signal?: {
+    commercialDensity?: number | null
+    apartmentRatio?: number | null
+    commercialBuildingRatio?: number | null
+  },
+): ZipStat {
   return {
     zipCode,
     suburb: zipCode,
@@ -16,6 +25,9 @@ function zipStat(zipCode: string, offsetDeg: number, areaKm2: number | null): Zi
     center: [WAREHOUSE.lng + offsetDeg, WAREHOUSE.lat + offsetDeg],
     polygons: [],
     rows: [],
+    commercialDensity: signal?.commercialDensity ?? null,
+    apartmentRatio: signal?.apartmentRatio ?? null,
+    commercialBuildingRatio: signal?.commercialBuildingRatio ?? null,
   }
 }
 
@@ -29,6 +41,9 @@ function route(
 ): VendorRegionRouteCode {
   return {
     zipCode,
+    // zipStat() 的 suburb 约定跟 zipCode 同值；computeRouteDifficulty 按 zipCode+suburb 查 ZipStat，
+    // 测试里的邮编/郊区就是一一对应的虚拟数据，保持一致才能查到
+    suburb: zipCode,
     supplierKey,
     routeCode,
     count,
@@ -90,8 +105,9 @@ test('距离按固定 150km 封顶归一化，不用「本次查询最远那条�
   const rows = computeRouteDifficulty(routes, stats, warehouseConfig())
   const near = rows.find((r) => r.routeCode === 'R1')!
   assert.ok(near.distanceKm! > 60 && near.distanceKm! < 150)
-  // 71km / 150km 封顶 ≈ 0.47，distanceRatio 贡献 0.4*0.47 ≈ 0.19——远不止 3%
-  assert.ok(near.difficulty! > 0.15, `near 的距离项不该被离群值压到几乎为 0，实际 difficulty=${near.difficulty}`)
+  // 71km / 150km 封顶 ≈ 0.47，核心三项里距离占 0.5（商业/公寓信号缺失时权重重新分给核心三项），
+  // 贡献 0.5*0.47*100 ≈ 23.5 分——远不止被离群值压到的 3%
+  assert.ok(near.difficulty! > 15, `near 的距离项不该被离群值压到几乎为 0，实际 difficulty=${near.difficulty}`)
 })
 
 test('超过 150km 封顶后，再远也不会继续拉高距离项（500km 和 5000km 的距离贡献应相等）', () => {
@@ -115,7 +131,7 @@ test('未匹配供应商（发错的货）整体不参与统计和打分，也�
   assert.equal(rows[0]!.supplierKey, 'SUP')
   // 若未匹配供应商的 99999 票参与了 maxVolume，SUP 的 volumeRatio 会被压到接近 0，
   // 难度分会被错误地拉到很高；剔除之后 SUP 是唯一路由，volumeRatio 应为 1（因为它自己就是 max）
-  assert.ok(rows[0]!.difficulty! < 0.5, `未匹配供应商的天量不该污染 SUP 的归一化，实际 difficulty=${rows[0]!.difficulty}`)
+  assert.ok(rows[0]!.difficulty! < 50, `未匹配供应商的天量不该污染 SUP 的归一化，实际 difficulty=${rows[0]!.difficulty}`)
 })
 
 test('单量越低，难度分越高（距离、面积相同）', () => {
@@ -205,7 +221,7 @@ test('供应商难度按路由数简单平均，不按票量加权：票量悬�
   // 若按票量加权，EASY（5000 票）会把 HARD（3 票）的难度压到几乎为 0；简单平均应落在两者正中间
   const expectedSimpleAvg = (easy.difficulty! + hard.difficulty!) / 2
   assert.ok(Math.abs(sup.difficulty! - expectedSimpleAvg) < 1e-9)
-  assert.ok(sup.difficulty! > easy.difficulty! + 0.15, '简单平均不能被大票量路由的低难度分严重拉低')
+  assert.ok(sup.difficulty! > easy.difficulty! + 15, '简单平均不能被大票量路由的低难度分严重拉低')
 })
 
 test('供应商聚合：路由数、总票量、困难路由计数都对得上', () => {
@@ -225,4 +241,82 @@ test('供应商聚合：路由数、总票量、困难路由计数都对得上',
   assert.equal(sup.routes.length, 2)
   assert.equal(other.routeCount, 1)
   assert.ok(sup.hardRouteCount >= 0 && sup.hardRouteCount <= sup.routeCount)
+})
+
+test('打分制：难度分落在 0-100 之间，且是整数', () => {
+  const stats = [zipStat('z1', 0.3, 50)]
+  const routes = [route('z1', 'R1', 100)]
+  const rows = computeRouteDifficulty(routes, stats, warehouseConfig())
+  const score = rows[0]!.difficulty!
+  assert.ok(score >= 0 && score <= 100, `应落在 0-100 之间，实际 ${score}`)
+  assert.equal(score, Math.round(score))
+})
+
+test('商业街密度越高，难度分越高（距离/单量/密度/公寓占比都相同）', () => {
+  const low = zipStat('low', 0.3, 50, { commercialDensity: 1, apartmentRatio: 0 })
+  const high = zipStat('high', 0.3, 50, { commercialDensity: 100, apartmentRatio: 0 })
+  const routes = [route('low', 'LOW', 100), route('high', 'HIGH', 100)]
+  const rows = computeRouteDifficulty(routes, [low, high], warehouseConfig())
+  const lowRow = rows.find((r) => r.routeCode === 'LOW')!
+  const highRow = rows.find((r) => r.routeCode === 'HIGH')!
+  assert.ok(highRow.difficulty! > lowRow.difficulty!, '商业街越密应该越难派，不是越容易')
+})
+
+test('公寓占比越高，难度分越高（距离/单量/密度/商业密度都相同）', () => {
+  const low = zipStat('low', 0.3, 50, { commercialDensity: 0, apartmentRatio: 0.05 })
+  const high = zipStat('high', 0.3, 50, { commercialDensity: 0, apartmentRatio: 0.95 })
+  const routes = [route('low', 'LOW', 100), route('high', 'HIGH', 100)]
+  const rows = computeRouteDifficulty(routes, [low, high], warehouseConfig())
+  const lowRow = rows.find((r) => r.routeCode === 'LOW')!
+  const highRow = rows.find((r) => r.routeCode === 'HIGH')!
+  assert.ok(highRow.difficulty! > lowRow.difficulty!, '公寓占比越高应该越难派，不是越容易')
+})
+
+test('写字楼/商铺建筑占比越高，难度分越高（距离/单量/密度/商业密度/公寓占比都相同）', () => {
+  const low = zipStat('low', 0.3, 50, { commercialDensity: 0, apartmentRatio: 0, commercialBuildingRatio: 0.05 })
+  const high = zipStat('high', 0.3, 50, { commercialDensity: 0, apartmentRatio: 0, commercialBuildingRatio: 0.6 })
+  const routes = [route('low', 'LOW', 100), route('high', 'HIGH', 100)]
+  const rows = computeRouteDifficulty(routes, [low, high], warehouseConfig())
+  const lowRow = rows.find((r) => r.routeCode === 'LOW')!
+  const highRow = rows.find((r) => r.routeCode === 'HIGH')!
+  assert.ok(highRow.difficulty! > lowRow.difficulty!, '写字楼/商铺建筑占比越高应该越难派，不是越容易')
+})
+
+test('回归：CBD 式路由（本批单量/密度最大、距离很近）——物理账权重调回更高（商业化程度0.5+公寓0.25=0.75）之后，分数能回升，但公寓占比偏低时仍够不到「较难」门槛', () => {
+  // near 是本批单量/密度的最大值、离仓库很近（经济账三项权重只剩 0.25，贡献趋近 0 也不太伤）；
+  // commercialDensity 设成本批最大值、commercialBuildingRatio 给到阿德莱德 CBD 实测区间上限
+  // （~19%），两者合并取平均后喂给 COMMERCIAL_WEIGHT(0.5)；apartmentRatio=0.1（CBD 实测区间）
+  // 喂给 APARTMENT_WEIGHT(0.25)——物理账权重合计 0.75，但 apartmentRatio 本身偏低，分数
+  // 仍停在「一般」区间，没有冲到「较难」(60)。
+  const near = zipStat('near', 0.02, 1, { commercialDensity: 500, apartmentRatio: 0.1, commercialBuildingRatio: 0.19 })
+  const far = zipStat('far', 1.2, 50, { commercialDensity: 1, apartmentRatio: 0, commercialBuildingRatio: 0 })
+  const routes = [route('near', 'CBD', 10000), route('far', 'RURAL', 10)]
+  const rows = computeRouteDifficulty(routes, [near, far], warehouseConfig())
+  const cbd = rows.find((r) => r.routeCode === 'CBD')!
+  assert.ok(
+    cbd.difficulty! > 25 && cbd.difficulty! < 45,
+    `物理账权重调回更高后分数应该回升，但公寓占比偏低时仍到不了「较难」，实际 difficulty=${cbd.difficulty}`,
+  )
+})
+
+test('每个邮编也有自己的难度分，跟同批所有邮编比，不是跟路由汇总值比', () => {
+  // 同一路由码横跨两个邮编：z1 商业化程度拉满、z2 完全没有信号——两个邮编的难度分应该不同，
+  // 且都不是 null（核心三项都给了有效值）
+  const z1 = zipStat('z1', 0.3, 10, { commercialDensity: 500, apartmentRatio: 0.5, commercialBuildingRatio: 0.5 })
+  const z2 = zipStat('z2', 0.3, 10, { commercialDensity: 1, apartmentRatio: 0, commercialBuildingRatio: 0 })
+  const routes = [route('z1', 'MIX', 50), route('z2', 'MIX', 50)]
+  const rows = computeRouteDifficulty(routes, [z1, z2], warehouseConfig())
+  const mix = rows.find((r) => r.routeCode === 'MIX')!
+  const zip1 = mix.zips.find((z) => z.zipCode === 'z1')!
+  const zip2 = mix.zips.find((z) => z.zipCode === 'z2')!
+  assert.ok(zip1.difficulty != null && zip2.difficulty != null, '核心三项都给了值，两个邮编都该有难度分')
+  assert.ok(zip1.difficulty! > zip2.difficulty!, '商业化程度/公寓占比更高的邮编难度分应该更高')
+})
+
+test('商业街/公寓信号缺失（OSM 查不到）时不当 0 分顶替、也不让整条路由变「数据不足」：只用核心三项按比例重新打分', () => {
+  const stats = [zipStat('z1', 0.3, 50)] // 不传 signal，commercialDensity/apartmentRatio 都是 null
+  const routes = [route('z1', 'R1', 100)]
+  const rows = computeRouteDifficulty(routes, stats, warehouseConfig())
+  assert.notEqual(rows[0]!.level, 'unknown')
+  assert.ok(rows[0]!.difficulty != null)
 })

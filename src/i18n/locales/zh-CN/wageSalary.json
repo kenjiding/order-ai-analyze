@@ -7,7 +7,7 @@
     "recordCount": "记录数",
     "rateSettings": "时薪设置",
     "actualRates": "实际时薪",
-    "actualRatesTitle": "设置供应商发给小工/叉车/前台的真实时薪，用于与对账差额对照"
+    "actualRatesTitle": "设置供应商发给 Level 26/28/30 各档位的真实时薪，用于与对账差额对照"
   },
   "tabs": {
     "upload": "工资结算",
@@ -15,10 +15,9 @@
     "employees": "员工管理"
   },
   "role": {
-    "worker": "普通小工",
-    "seniorWorker": "高级小工",
-    "forklift": "叉车",
-    "receptionist": "前台"
+    "level26": "Level 26",
+    "level28": "Level 28",
+    "level30": "Level 30"
   },
   "dayType": {
     "regular": "不分拣",
@@ -40,6 +39,7 @@
     "deduction": "扣减",
     "reward": "奖励",
     "role": "角色",
+    "positionTitle": "职位名称",
     "dayConfig": "日配置",
     "type": "类型",
     "hourlyRate": "时薪",
@@ -146,7 +146,7 @@
   },
   "actualRates": {
     "title": "小工实际时薪（供应商发放标准）",
-    "intro": "「时薪标准设置」用于工资记录与导出 Excel（对账口径）。此处填写供应商实际发给小工/叉车/前台的时薪；与对账口径不一致时，下方汇总会显示差额。",
+    "intro": "「时薪标准设置」用于工资记录与导出 Excel（对账口径）。此处填写供应商实际发给 Level 26/28/30 各档位的时薪；与对账口径不一致时，下方汇总会显示差额。",
     "workdayRate": "工作日实际时薪",
     "sortingWeekendRate": "分拣周末实际时薪",
     "publicHolidayRate": "公共节假日实际时薪",

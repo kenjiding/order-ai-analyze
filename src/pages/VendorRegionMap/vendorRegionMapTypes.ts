@@ -33,6 +33,12 @@ export type VendorRegionZipRegion = {
   suburb: string
   totalCount: number
   geometry: GeoJSON.Polygon | GeoJSON.MultiPolygon
+  /** 商业 POI 密度（个/km²），OSM Overpass 查不到时为 null，供路由难易度打分用 */
+  commercialDensity: number | null
+  /** 公寓建筑占全部建筑的比例 0-1，OSM Overpass 查不到时为 null，供路由难易度打分用 */
+  apartmentRatio: number | null
+  /** 写字楼/商铺/工业用途建筑占全部建筑的比例 0-1，OSM Overpass 查不到时为 null，供路由难易度打分用 */
+  commercialBuildingRatio: number | null
 }
 
 /** 邮区内的路由码票量，供地图渲染路由码标签；空路由码不产出这条数据 */

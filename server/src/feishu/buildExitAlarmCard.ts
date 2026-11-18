@@ -110,7 +110,7 @@ function filterNonCompliantZones(
 
 /**
  * 路由码白名单出仓数据——折叠面板（collapsible_panel，JSON 2.0 结构），
- * 追加在主卡片末尾，默认折叠（expanded: false），点击后展开；不再作为独立第二条消息推送。
+ * 追加在主卡片末尾，默认展开（expanded: true），点击后折叠；不再作为独立第二条消息推送。
  * 统计对象是主卡片里被剔除的那部分白名单路由数据，展示口径与主卡片一致。
  * 面板与标题背景取柔和的浅色阶（grey-50 / blue-50），与卡片其余磁贴的色调保持一致。
  */
@@ -144,7 +144,7 @@ function buildWhitelistPanel(whitelistStat: WhitelistStat, pushTime: string): Ca
 
   return {
     tag: 'collapsible_panel',
-    expanded: false,
+    expanded: true,
     background_color: 'blue-50',
     header: {
       title: {

@@ -51,8 +51,6 @@ export default function WageSalaryPage() {
             handleSubmitUpload={v.handleSubmitUpload}
             isUploading={v.isUploading}
             handleClearUploadedData={v.handleClearUploadedData}
-            roles={v.roles}
-            handleUpdateUploadedRole={v.handleUpdateUploadedRole}
             handleDayOptionChange={v.handleDayOptionChange}
             handleDeleteUploadedRow={v.handleDeleteUploadedRow}
             formatDate={v.formatDate}

@@ -19,8 +19,6 @@ export function UploadTabContent({
   handleSubmitUpload,
   isUploading,
   handleClearUploadedData,
-  roles,
-  handleUpdateUploadedRole,
   handleDayOptionChange,
   handleDeleteUploadedRow,
   formatDate,
@@ -180,8 +178,6 @@ export function UploadTabContent({
 
           <UploadPreviewTable
             uploadedData={uploadedData}
-            roles={roles}
-            handleUpdateUploadedRole={handleUpdateUploadedRole}
             handleDayOptionChange={handleDayOptionChange}
             handleDeleteUploadedRow={handleDeleteUploadedRow}
             formatDate={formatDate}

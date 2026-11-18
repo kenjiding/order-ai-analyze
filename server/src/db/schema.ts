@@ -609,6 +609,33 @@ export const driverMapWaybillPoints = pgTable(
 )
 
 /**
+ * 供应商区域地图「路由难易度」用到的商业街/公寓/写字楼商铺建筑占比信号，来自 OSM Overpass
+ * （免费，见 server/src/vendorRegionMap/osmAreaSignals.ts）。按 (邮编,郊区) 的边界框查一次
+ * 永久缓存——这些信号变化很慢，没有 TTL，要刷新由运营手动删表重查。
+ */
+export const vendorRegionAreaSignals = pgTable(
+  'vendor_region_area_signals',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    zipCode: varchar('zip_code', { length: 16 }).notNull(),
+    suburb: varchar('suburb', { length: 128 }).notNull(),
+    /** 边界框内 shop/office/landuse=commercial 的元素个数 */
+    commercialCount: integer('commercial_count').notNull().default(0),
+    /** 边界框内有 building 标签的元素个数，公寓/写字楼商铺占比的共同分母 */
+    buildingCount: integer('building_count').notNull().default(0),
+    /** 边界框内 building=apartments 的元素个数 */
+    apartmentCount: integer('apartment_count').notNull().default(0),
+    /** 边界框内 building=office/commercial/retail/industrial 的元素个数 */
+    commercialBuildingCount: integer('commercial_building_count').notNull().default(0),
+    /** 查询用的边界框面积，供前端换算密度（POI个/km²），不用真实多边形面积——查询本身就是按框查的 */
+    bboxAreaKm2: doublePrecision('bbox_area_km2').notNull().default(0),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [uniqueIndex('vendor_region_area_signals_zip_suburb_unique').on(table.zipCode, table.suburb)],
+)
+
+/**
  * 催派推送外部分享快照：推送时落库，群内链接凭高熵 token 无登录查看运单明细。
  * 保留 3 天（按 createdAt 判定过期并清理）；payload 为白名单结构，不含 webhook/token。
  */

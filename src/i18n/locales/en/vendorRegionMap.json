@@ -123,7 +123,7 @@
     "partialFailed": "{{count}} day(s) failed — excluded from stats"
   },
   "difficulty": {
-    "hint": "A 0-1 delivery-difficulty score combining distance from warehouse, volume (raw parcel count in the queried range), and volume density (parcels/km²) — higher is harder. Shown as a Vendor → Route code → Postcode hierarchy — expand each row to drill down. Vendor difficulty is the simple (unweighted) average of its route codes' scores, not volume-weighted — one route code is roughly one driver line, and a low-volume, far, sparse route is exactly the kind that's hardest to keep a driver on, so weighting by volume would marginalize it. Postcodes missing coordinates or boundary area are excluded from scoring.",
+    "hint": "A 0-100 delivery-difficulty score combining distance from warehouse, volume (raw parcel count in the queried range), volume density (parcels/km²), how commercial the area is (commercial POI density averaged with office/retail building ratio — parking/loading/business-hour/reception constraints, more commercial is harder), and apartment building ratio (intercoms/lifts/hard-to-reach recipients — higher is harder) — higher is harder. Shown as a Vendor → Route code → Postcode hierarchy — expand each row to drill down. Vendor difficulty is the simple (unweighted) average of its route codes' scores, not volume-weighted — one route code is roughly one driver line, and a low-volume, far, sparse route is exactly the kind that's hardest to keep a driver on, so weighting by volume would marginalize it. Postcodes missing coordinates or boundary area are excluded from scoring; commercial density/apartment/office-retail signals come from free OSM data and when temporarily unavailable for an area, the other factors still score normally.",
     "colRouteCode": "Route code",
     "colZip": "Postcode",
     "colZipCount": "Postcodes",
@@ -134,6 +134,9 @@
     "colAvgVolume": "Avg volume",
     "colDistance": "From warehouse",
     "colDensity": "Density",
+    "colCommercial": "Commercial density",
+    "colApartment": "Apartment ratio",
+    "colCommercialBuilding": "Office/retail building ratio",
     "colScore": "Difficulty score",
     "colLevel": "Difficulty level",
     "perKm2": "parcels/km²",

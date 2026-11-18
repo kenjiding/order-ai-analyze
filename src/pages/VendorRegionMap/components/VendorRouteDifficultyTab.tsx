@@ -70,8 +70,47 @@ function ZipBreakdownTable({ zips }: { zips: RouteDifficultyZipDetail[] }) {
       width: 130,
       render: (v: number | null) => (v == null ? '—' : `${formatDensity(v)} ${t('difficulty.perKm2')}`),
     },
+    {
+      title: t('difficulty.colCommercial'),
+      dataIndex: 'commercialDensity',
+      width: 120,
+      render: (v: number | null) => (v == null ? '—' : `${formatDensity(v)} ${t('difficulty.perKm2')}`),
+    },
+    {
+      title: t('difficulty.colApartment'),
+      dataIndex: 'apartmentRatio',
+      width: 100,
+      render: (v: number | null) => (v == null ? '—' : `${(v * 100).toFixed(0)}%`),
+    },
+    {
+      title: t('difficulty.colCommercialBuilding'),
+      dataIndex: 'commercialBuildingRatio',
+      width: 100,
+      render: (v: number | null) => (v == null ? '—' : `${(v * 100).toFixed(0)}%`),
+    },
+    {
+      title: t('difficulty.colScore'),
+      dataIndex: 'difficulty',
+      width: 90,
+      sorter: (a, b) => (a.difficulty ?? -1) - (b.difficulty ?? -1),
+      render: (v: number | null) => (v == null ? '—' : Math.round(v)),
+    },
+    {
+      title: t('difficulty.colLevel'),
+      dataIndex: 'level',
+      width: 100,
+      render: (level: DifficultyLevel | 'unknown') => <DifficultyTag level={level} />,
+    },
   ]
-  return <Table<RouteDifficultyZipDetail> rowKey="zipCode" columns={columns} dataSource={zips} pagination={false} />
+  return (
+    <Table<RouteDifficultyZipDetail>
+      rowKey="zipCode"
+      columns={columns}
+      dataSource={zips}
+      pagination={false}
+      scroll={{ x: 1000 }}
+    />
+  )
 }
 
 function RouteBreakdownTable({ routes, routeAvg }: { routes: RouteDifficultyRow[]; routeAvg: Map<string, number> }) {
@@ -124,12 +163,33 @@ function RouteBreakdownTable({ routes, routeAvg }: { routes: RouteDifficultyRow[
       render: (v: number | null) => (v == null ? '—' : `${formatDensity(v)} ${t('difficulty.perKm2')}`),
     },
     {
+      title: t('difficulty.colCommercial'),
+      dataIndex: 'commercialDensity',
+      width: 120,
+      sorter: (a, b) => (a.commercialDensity ?? -1) - (b.commercialDensity ?? -1),
+      render: (v: number | null) => (v == null ? '—' : `${formatDensity(v)} ${t('difficulty.perKm2')}`),
+    },
+    {
+      title: t('difficulty.colApartment'),
+      dataIndex: 'apartmentRatio',
+      width: 100,
+      sorter: (a, b) => (a.apartmentRatio ?? -1) - (b.apartmentRatio ?? -1),
+      render: (v: number | null) => (v == null ? '—' : `${(v * 100).toFixed(0)}%`),
+    },
+    {
+      title: t('difficulty.colCommercialBuilding'),
+      dataIndex: 'commercialBuildingRatio',
+      width: 100,
+      sorter: (a, b) => (a.commercialBuildingRatio ?? -1) - (b.commercialBuildingRatio ?? -1),
+      render: (v: number | null) => (v == null ? '—' : `${(v * 100).toFixed(0)}%`),
+    },
+    {
       title: t('difficulty.colScore'),
       dataIndex: 'difficulty',
       width: 90,
       defaultSortOrder: 'descend',
       sorter: (a, b) => (a.difficulty ?? -1) - (b.difficulty ?? -1),
-      render: (v: number | null) => (v == null ? '—' : v.toFixed(2)),
+      render: (v: number | null) => (v == null ? '—' : Math.round(v)),
     },
     {
       title: t('difficulty.colLevel'),
@@ -239,12 +299,33 @@ export function VendorRouteDifficultyTab({ page, avgVolume }: Props) {
         render: (value: number | null) => (value == null ? '—' : `${formatDensity(value)} ${t('difficulty.perKm2')}`),
       },
       {
+        title: t('difficulty.colCommercial'),
+        dataIndex: 'commercialDensity',
+        width: 120,
+        sorter: (a, b) => (a.commercialDensity ?? -1) - (b.commercialDensity ?? -1),
+        render: (value: number | null) => (value == null ? '—' : `${formatDensity(value)} ${t('difficulty.perKm2')}`),
+      },
+      {
+        title: t('difficulty.colApartment'),
+        dataIndex: 'apartmentRatio',
+        width: 100,
+        sorter: (a, b) => (a.apartmentRatio ?? -1) - (b.apartmentRatio ?? -1),
+        render: (value: number | null) => (value == null ? '—' : `${(value * 100).toFixed(0)}%`),
+      },
+      {
+        title: t('difficulty.colCommercialBuilding'),
+        dataIndex: 'commercialBuildingRatio',
+        width: 100,
+        sorter: (a, b) => (a.commercialBuildingRatio ?? -1) - (b.commercialBuildingRatio ?? -1),
+        render: (value: number | null) => (value == null ? '—' : `${(value * 100).toFixed(0)}%`),
+      },
+      {
         title: t('difficulty.colScore'),
         dataIndex: 'difficulty',
         width: 100,
         defaultSortOrder: 'descend',
         sorter: (a, b) => (a.difficulty ?? -1) - (b.difficulty ?? -1),
-        render: (value: number | null) => (value == null ? '—' : value.toFixed(2)),
+        render: (value: number | null) => (value == null ? '—' : Math.round(value)),
       },
       {
         title: t('difficulty.colLevel'),
@@ -289,7 +370,7 @@ export function VendorRouteDifficultyTab({ page, avgVolume }: Props) {
             expandedRowRender: (row) => <RouteBreakdownTable routes={row.routes} routeAvg={routeAvg} />,
           }}
           pagination={{ pageSize: 50, showTotal: (total) => t('difficulty.rowsTotal', { total }) }}
-          scroll={{ x: 1100 }}
+          scroll={{ x: 1400 }}
         />
       </section>
     </div>
