@@ -13,11 +13,12 @@ async function readHttpError(res: Response, text: string): Promise<string> {
   return text || `HTTP ${res.status}`
 }
 
-export type FetchInboundScansResult = {
-  /** iMile resultObject.results 原始项，字段未裁剪 */
+export type FetchInboundScansPageResult = {
+  /** iMile resultObject.results 原始项，字段未裁剪（仅本页） */
   records: unknown[]
-  /** 分页完整 HTTP JSON 响应（单页为对象，多页为 { batch, responses }） */
   raw: unknown
+  currentPage: number
+  totalPages: number
   meta: {
     startDate: string
     endDate: string
@@ -26,11 +27,13 @@ export type FetchInboundScansResult = {
   }
 }
 
-export async function fetchInboundScans(payload: {
+/** 只拉一页，用于需要展示真实拉取进度的场景（逐页调用、逐页更新进度） */
+export async function fetchInboundScansPage(payload: {
   imileToken: string
   startDate: string
   endDate: string
-}): Promise<FetchInboundScansResult> {
+  page: number
+}): Promise<FetchInboundScansPageResult> {
   const res = await backendFetch('/api/scanner-efficiency/inbound-scans', {
     method: 'POST',
     headers: JSON_HEADERS,
@@ -38,11 +41,12 @@ export async function fetchInboundScans(payload: {
       imileToken: payload.imileToken,
       startDate: payload.startDate,
       endDate: payload.endDate,
+      page: payload.page,
     }),
   })
   const text = await res.text()
   if (!res.ok) throw new Error(await readHttpError(res, text))
-  return JSON.parse(text) as FetchInboundScansResult
+  return JSON.parse(text) as FetchInboundScansPageResult
 }
 
 export type FetchBoxAssignedListResult = {

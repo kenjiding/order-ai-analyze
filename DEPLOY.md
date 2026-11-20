@@ -209,6 +209,10 @@ server {
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;
         client_max_body_size 12m;
+        # 默认 60s，部分报表/扫描拉取接口数据量大时单次请求会超过这个时间，
+        # 导致浏览器收到 nginx 自己返回的 504（而不是后端的报错），调大即可
+        proxy_read_timeout 300s;
+        proxy_send_timeout 300s;
     }
 
     location = /health {

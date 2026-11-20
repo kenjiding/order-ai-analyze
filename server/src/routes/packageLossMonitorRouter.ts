@@ -81,10 +81,9 @@ packageLossMonitorRouter.post('/in-hub-waybills', async (req: Request, res: Resp
       return
     }
 
-    const [inventoryResult, closedResult] = await Promise.all([
-      fetchInHubPackageLossWaybills(token, stationCode),
-      queryClosedPacketLossWaybills({ imileToken: token, start, end }),
-    ])
+    // 串行请求，避免与库内取号并发打到 iMile 网关触发限流（429 system is busy）
+    const inventoryResult = await fetchInHubPackageLossWaybills(token, stationCode)
+    const closedResult = await queryClosedPacketLossWaybills({ imileToken: token, start, end })
 
     if (!inventoryResult.ok) {
       res.status(502).json({

@@ -23,16 +23,17 @@ test('按供应商分组，组内路由码按件数降序，供应商按总件�
     supplierName: 'ADL-Lu',
     total: 3,
     routes: [
-      { routeCode: 'AA013', count: 2 },
-      { routeCode: 'AA002', count: 1 },
+      { routeCode: 'AA013', count: 2, waybillNos: ['W2', 'W3'] },
+      { routeCode: 'AA002', count: 1, waybillNos: ['W1'] },
     ],
   })
   assert.equal(stats.suppliers[1].supplierName, 'ADL-city')
   assert.equal(stats.suppliers[1].total, 1)
 
-  assert.deepEqual(stats.unmatchedRoutes, [{ routeCode: 'ZZ999', count: 1 }])
+  assert.deepEqual(stats.unmatchedRoutes, [{ routeCode: 'ZZ999', count: 1, waybillNos: ['W5'] }])
   // W6 没查到路由码
   assert.equal(stats.noRouteCodeCount, 1)
+  assert.deepEqual(stats.noRouteCodeWaybillNos, ['W6'])
 })
 
 test('同一路由码配给两家供应商时，两家各自计数（不排他）', () => {

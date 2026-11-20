@@ -32,7 +32,7 @@ function buildRouteUnits(
   return [...units.values()]
 }
 
-export type ScanStatRouteCount = { routeCode: string; count: number }
+export type ScanStatRouteCount = { routeCode: string; count: number; waybillNos: string[] }
 
 export type ScanStatSupplierRouteGroup = {
   supplierKey: string
@@ -48,6 +48,8 @@ export type ScanStatRouteStats = {
   unmatchedRoutes: ScanStatRouteCount[]
   /** 没查到路由码的单号数 */
   noRouteCodeCount: number
+  /** 没查到路由码的单号 */
+  noRouteCodeWaybillNos: string[]
 }
 
 export function buildScanStatSupplierRouteStats(
@@ -56,14 +58,14 @@ export function buildScanStatSupplierRouteStats(
   configs: Pick<FleetSupplierPushConfig, 'vendorCode' | 'vendorName' | 'supplierNickname' | 'routeCode'>[],
 ): ScanStatRouteStats {
   const units = buildRouteUnits(configs)
-  const bySupplier = new Map<string, { supplierName: string; routes: Map<string, number> }>()
-  const unmatched = new Map<string, number>()
-  let noRouteCodeCount = 0
+  const bySupplier = new Map<string, { supplierName: string; routes: Map<string, string[]> }>()
+  const unmatched = new Map<string, string[]>()
+  const noRouteCodeWaybillNos: string[] = []
 
   for (const waybillNo of waybillNos) {
     const routeCode = routeCodeByWaybill.get(waybillNo) ?? ''
     if (!routeCode) {
-      noRouteCodeCount++
+      noRouteCodeWaybillNos.push(waybillNo)
       continue
     }
     const matchedUnits = units.filter((unit) =>
@@ -74,19 +76,23 @@ export function buildScanStatSupplierRouteStats(
       ),
     )
     if (matchedUnits.length === 0) {
-      unmatched.set(routeCode, (unmatched.get(routeCode) ?? 0) + 1)
+      const list = unmatched.get(routeCode) ?? []
+      list.push(waybillNo)
+      unmatched.set(routeCode, list)
       continue
     }
     for (const unit of matchedUnits) {
       const group = bySupplier.get(unit.supplierKey) ?? { supplierName: unit.supplierName, routes: new Map() }
-      group.routes.set(routeCode, (group.routes.get(routeCode) ?? 0) + 1)
+      const list = group.routes.get(routeCode) ?? []
+      list.push(waybillNo)
+      group.routes.set(routeCode, list)
       bySupplier.set(unit.supplierKey, group)
     }
   }
 
-  const sortRoutes = (routes: Map<string, number>): ScanStatRouteCount[] =>
+  const sortRoutes = (routes: Map<string, string[]>): ScanStatRouteCount[] =>
     Array.from(routes.entries())
-      .map(([routeCode, count]) => ({ routeCode, count }))
+      .map(([routeCode, waybillNos]) => ({ routeCode, count: waybillNos.length, waybillNos }))
       .sort((a, b) => b.count - a.count || a.routeCode.localeCompare(b.routeCode))
 
   const suppliers: ScanStatSupplierRouteGroup[] = Array.from(bySupplier.entries())
@@ -96,7 +102,12 @@ export function buildScanStatSupplierRouteStats(
     })
     .sort((a, b) => b.total - a.total || a.supplierName.localeCompare(b.supplierName))
 
-  return { suppliers, unmatchedRoutes: sortRoutes(unmatched), noRouteCodeCount }
+  return {
+    suppliers,
+    unmatchedRoutes: sortRoutes(unmatched),
+    noRouteCodeCount: noRouteCodeWaybillNos.length,
+    noRouteCodeWaybillNos,
+  }
 }
 
 /** 发飞书私聊的路由码统计文本：供应商按件数降序，组内路由码也按件数降序，一个空行隔开各供应商。 */
@@ -110,16 +121,16 @@ export function buildScanStatRouteText(stationName: string, total: number, stats
   }
   for (const supplier of stats.suppliers) {
     lines.push(`${supplier.supplierName}`)
-    for (const r of supplier.routes) lines.push(`${r.routeCode}: ${r.count}`)
+    for (const r of supplier.routes) lines.push(`${r.routeCode}: ${r.count} - ${r.waybillNos.join('、')}`)
     lines.push('')
   }
   if (stats.unmatchedRoutes.length > 0) {
     lines.push('未匹配供应商的路由码')
-    for (const r of stats.unmatchedRoutes) lines.push(`${r.routeCode}: ${r.count}`)
+    for (const r of stats.unmatchedRoutes) lines.push(`${r.routeCode}: ${r.count} - ${r.waybillNos.join('、')}`)
     lines.push('')
   }
   if (stats.noRouteCodeCount > 0) {
-    lines.push(`未查到路由码：${stats.noRouteCodeCount} 单`)
+    lines.push(`未查到路由码：${stats.noRouteCodeCount} 单 - ${stats.noRouteCodeWaybillNos.join('、')}`)
   }
   while (lines[lines.length - 1] === '') lines.pop()
   return lines.join('\n')

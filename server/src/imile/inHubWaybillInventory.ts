@@ -189,12 +189,12 @@ export async function fetchInHubPackageLossWaybills(
   token: string,
   stationCode: string,
 ): Promise<({ ok: true } & MergedWaybillNos) | ApiError> {
-  const results = await Promise.all(
-    IN_HUB_PACKAGE_LOSS_QUERIES.map(async (query) => {
-      const result = await fetchInHubPackageLossByQuery(token, { stationCode, ...query })
-      return { ...query, result }
-    }),
-  )
+  // 串行请求，避免同批次多个 scanType 并发打到 iMile 网关触发限流（429 system is busy）
+  const results: { scanType: string; stockReportType: string; result: Awaited<ReturnType<typeof fetchInHubPackageLossByQuery>> }[] = []
+  for (const query of IN_HUB_PACKAGE_LOSS_QUERIES) {
+    const result = await fetchInHubPackageLossByQuery(token, { stationCode, ...query })
+    results.push({ ...query, result })
+  }
 
   for (const { scanType, stockReportType, result } of results) {
     if (!result.ok) {

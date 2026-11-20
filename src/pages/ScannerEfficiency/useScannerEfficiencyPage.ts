@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
+import { dayjs } from './dayjsSetup'
 import { useAppSettings } from '../../context/AppSettingsContext'
 import { PERMISSION_KEYS, usePermission } from '../../hooks/usePermission'
 import {
@@ -44,7 +45,15 @@ import {
   dedupeParsedAllocationRows,
   mapAssignedListRecordsToParsedAllocationRows,
 } from './assignedListMapper'
-import { fetchBoxAssignedList, fetchCancelScanAnalysis, fetchInboundScans, fetchZktAttendance, saveDailyEfficiencyRecords } from './scannerEfficiencyApi'
+import {
+  fetchBoxAssignedList,
+  fetchCancelScanAnalysis,
+  fetchDailyEfficiencyRecords,
+  fetchInboundScansPage,
+  fetchZktAttendance,
+  saveDailyEfficiencyRecords,
+  type DailyEfficiencyRecordResponse,
+} from './scannerEfficiencyApi'
 import { mapInboundRecordsToParsedScanRows } from './inboundScanMapper'
 import { mapZktTimeCardRecordsToParsedAttendanceRows } from './mapZktAttendanceRecords'
 import type { CancelScanAnalysisState } from './cancelScanAnalysisTypes'
@@ -115,6 +124,16 @@ function mergeOrderedUniqueFiles(prev: File[], next: File[]): File[] {
   return out
 }
 
+/** 区间内每天的 YYYY-MM-DD 列表（含首尾两天） */
+function enumerateDateKeys(startDate: string, endDate: string): string[] {
+  const days: string[] = []
+  const end = dayjs(endDate, 'YYYY-MM-DD', true)
+  for (let d = dayjs(startDate, 'YYYY-MM-DD', true); !d.isAfter(end); d = d.add(1, 'day')) {
+    days.push(d.format('YYYY-MM-DD'))
+  }
+  return days
+}
+
 /** 与工资页上传表默认一致：未勾选「分拣班次 / 公众假期」时的映射口径 */
 
 export function useScannerEfficiencyPage() {
@@ -124,6 +143,14 @@ export function useScannerEfficiencyPage() {
   const [settings, setSettings] = useState<ScanSettings>(() => ({ ...DEFAULT_SETTINGS }))
   const [snapshotRestore, setSnapshotRestore] = useState<EfficiencyAttendancePageRestore | null>(null)
   const [savingDailyRecords, setSavingDailyRecords] = useState(false)
+  const [overlapDialog, setOverlapDialog] = useState<{
+    startDate: string
+    endDate: string
+    existingDates: string[]
+    missingDates: string[]
+    existingItems: DailyEfficiencyRecordResponse[]
+  } | null>(null)
+  const autoSavePendingRef = useRef(false)
 
   const [wageEmployees, setWageEmployees] = useState<{ employeeId: string; role: string }[]>([])
   const [rateSettingsForLabor, setRateSettingsForLabor] = useState<RateSettings>(() =>
@@ -212,6 +239,14 @@ export function useScannerEfficiencyPage() {
   }, [allocationSourceInfo])
 
   const [loadingScan, setLoadingScan] = useState(false)
+  /** 按天、按页拉取到件时的进度，仅 API 获取用；null 表示当前没有在拉取 */
+  const [scanFetchProgress, setScanFetchProgress] = useState<{
+    dayNumber: number
+    totalDays: number
+    date: string
+    completedPages: number
+    totalPages: number
+  } | null>(null)
   const [loadingAttendance, setLoadingAttendance] = useState(false)
   const [loadingAllocation, setLoadingAllocation] = useState(false)
   const [loadingAllocationApi, setLoadingAllocationApi] = useState(false)
@@ -459,10 +494,15 @@ export function useScannerEfficiencyPage() {
 
   const clearSnapshotRestore = useCallback(() => {
     setSnapshotRestore(null)
+    // 任何重新载入/清空操作都应作废上一次 API 拉取遗留的「等考勤就位就自动保存」标记，
+    // 否则考勤那次没成功时标记会一直挂着，之后随便一个不相关的操作把 canSaveDailyRecords
+    // 变成 true 就会被误触发保存。
+    autoSavePendingRef.current = false
   }, [])
 
   const dismissSnapshotRestore = useCallback(() => {
     setSnapshotRestore(null)
+    autoSavePendingRef.current = false
     setScanRows([])
     setScanSourceInfo(EMPTY_SOURCE)
     setLastInboundApiStats(null)
@@ -567,6 +607,15 @@ export function useScannerEfficiencyPage() {
     scannerResult,
     settings,
   ])
+
+  // 通过 API 获取数据后自动存档：到件（scanAggregate）和考勤（attendanceResult）两边都
+  // 异步就位，具体谁先到不确定，所以不在 handleScanApiFetch 里直接同步保存，而是用这个 effect
+  // 等 canSaveDailyRecords 变 true 后统一触发一次，和手动点「保存」走的是同一套逻辑。
+  useEffect(() => {
+    if (!autoSavePendingRef.current || !canSaveDailyRecords) return
+    autoSavePendingRef.current = false
+    void handleSaveDailyRecords()
+  }, [canSaveDailyRecords, handleSaveDailyRecords])
 
   const handleSettingChange = (key: keyof ScanSettings, value: string) => {
     if (snapshotRestore) return
@@ -926,16 +975,60 @@ export function useScannerEfficiencyPage() {
     const attendancePromise = performAttendanceApiFetch(startDate, endDate, { replaceExisting: true })
 
     try {
-      const result = await fetchInboundScans({
-        imileToken: token,
-        startDate,
-        endDate,
-      })
+      // 按天拆分请求：单次请求覆盖的天数越多，iMile 分页数越多、HTTP 请求挂起越久，
+      // 大范围时容易被 nginx 判超时（504）。按天拉取能把每次请求都控制在小而稳定的耗时内，
+      // 某一天失败时也能看出具体是哪天，而不是整段区间一起失败。
+      //
+      // 进度必须按「页」更新，不能只按「天」：到件量大时，瓶颈往往是单独某一天里几十页的
+      // 分页拉取（而不是选了几天），按天更新进度在这种情况下会卡在一个数字不动。所以这里改成
+      // 逐页调用 fetchInboundScansPage（分页循环交给前端控制），每拉完一页就更新一次进度。
+      const days = enumerateDateKeys(startDate, endDate)
 
-      console.group(`[ScannerEfficiency] iMile 到件 API 原始数据 ${startDate} ~ ${endDate}`)
-      console.log('records（resultObject.results，未裁剪）', result.records)
-      console.log('raw（完整分页 HTTP JSON）', result.raw)
-      console.groupEnd()
+      const allRecords: unknown[] = []
+      let totalResult = 0
+      let fetched = 0
+
+      for (const [dayIndex, day] of days.entries()) {
+        console.group(`[ScannerEfficiency] iMile 到件 API 原始数据 ${day}`)
+
+        let page = 1
+        let totalPages = 1
+        do {
+          // completedPages 是「这页开始前已经拉完的页数」，不能用 page 本身，
+          // 否则正在拉这天最后一页（含只有 1 页）时，百分比会在还没拉完就先报 100%
+          setScanFetchProgress({
+            dayNumber: dayIndex + 1,
+            totalDays: days.length,
+            date: day,
+            completedPages: page - 1,
+            totalPages,
+          })
+
+          const pageResult = await fetchInboundScansPage({
+            imileToken: token,
+            startDate: day,
+            endDate: day,
+            page,
+          })
+          totalPages = pageResult.totalPages
+
+          console.log(`第 ${page}/${totalPages} 页，records（resultObject.results，未裁剪）`, pageResult.records)
+          console.log(`第 ${page}/${totalPages} 页，raw（HTTP JSON）`, pageResult.raw)
+
+          allRecords.push(...pageResult.records)
+          // meta.totalResult 是「这一天」的总数，每页响应都会重复报同一个值，
+          // 只能在第一页累加一次，否则按页数被重复叠加，总数会被放大好几倍
+          if (page === 1) totalResult += pageResult.meta.totalResult
+          fetched += pageResult.records.length
+
+          if (page < totalPages) await new Promise((resolve) => setTimeout(resolve, 400))
+          page += 1
+        } while (page <= totalPages)
+
+        console.groupEnd()
+      }
+
+      const result = { records: allRecords, meta: { startDate, endDate, totalResult, fetched } }
 
       const sourceLabel = `iMile 到件 API（${startDate} ~ ${endDate}）`
       const mapped = mapInboundRecordsToParsedScanRows(result.records, sourceLabel)
@@ -980,13 +1073,95 @@ export function useScannerEfficiencyPage() {
         duplicateWaybillRows: duplicateDropped,
         fileNames: [sourceLabel],
       })
+      // 到件数据已就位；一旦考勤也就位（attendancePromise 完成后 canSaveDailyRecords 变 true），
+      // 下面的 effect 会自动触发保存，不需要用户再点「保存」
+      autoSavePendingRef.current = true
     } catch (currentError: unknown) {
       setError(currentError instanceof Error ? currentError.message : String(i18n.t('toast.inboundApiFailed', { ns: 'scannerEfficiency' })))
     } finally {
       setLoadingScan(false)
+      setScanFetchProgress(null)
       await attendancePromise
     }
   }
+
+  /** 查询区间内哪些日期已经存过效率考勤记录（用于「获取数据」前的重叠检测） */
+  const checkExistingDailyRecordsInRange = useCallback(
+    async (startDate: string, endDate: string) => {
+      const { items } = await fetchDailyEfficiencyRecords()
+      const existingItems = items.filter((item) => item.date >= startDate && item.date <= endDate)
+      const existingDates = existingItems.map((item) => item.date).sort((a, b) => a.localeCompare(b))
+      const existingDateSet = new Set(existingDates)
+      const missingDates = enumerateDateKeys(startDate, endDate).filter((date) => !existingDateSet.has(date))
+      return { existingDates, missingDates, existingItems }
+    },
+    [],
+  )
+
+  /** 「获取数据」入口：先查区间是否已有历史记录，有则弹窗让用户选择，没有则照常拉取 */
+  const handleFetchDataRequest = useCallback(
+    async (startDate: string, endDate: string) => {
+      const token = imileToken.trim()
+      if (!token) {
+        setError(String(i18n.t('toast.missingImileToken', { ns: 'scannerEfficiency' })))
+        return
+      }
+      if (!startDate || !endDate) {
+        setError(String(i18n.t('toast.invalidDateRange', { ns: 'scannerEfficiency' })))
+        return
+      }
+
+      // 查重叠这一步本身是个网络请求，不是瞬间完成的；期间按钮如果不显示 loading，
+      // 用户很容易在这个间隙再点一次「获取数据」，导致查重叠或后续拉取被并发触发两份。
+      setLoadingScan(true)
+      try {
+        const { existingDates, missingDates, existingItems } = await checkExistingDailyRecordsInRange(
+          startDate,
+          endDate,
+        )
+        if (existingDates.length > 0) {
+          setLoadingScan(false)
+          setOverlapDialog({ startDate, endDate, existingDates, missingDates, existingItems })
+          return
+        }
+      } catch (currentError: unknown) {
+        // 查重叠失败不应阻断正常获取数据；按原流程继续，但留痕方便排查
+        console.warn('[ScannerEfficiency] 查询历史记录重叠失败，按无历史记录继续', currentError)
+      }
+
+      await handleScanApiFetch(startDate, endDate)
+    },
+    [imileToken, checkExistingDailyRecordsInRange, handleScanApiFetch],
+  )
+
+  const handleOverlapUseHistory = useCallback(() => {
+    if (!overlapDialog) return
+    const { existingItems, missingDates } = overlapDialog
+    setOverlapDialog(null)
+    applyDailyRecordRestore(existingItems.map((item) => item.payload))
+    if (missingDates.length) {
+      showToast(
+        String(
+          i18n.t('toast.historyPartialMissing', {
+            ns: 'scannerEfficiency',
+            dates: missingDates.join(String(i18n.t('common.listSeparator', { ns: 'scannerEfficiency' })).trim() || '、'),
+          }),
+        ),
+        'warning',
+      )
+    }
+  }, [overlapDialog, applyDailyRecordRestore])
+
+  const handleOverlapRefetch = useCallback(() => {
+    if (!overlapDialog) return
+    const { startDate, endDate } = overlapDialog
+    setOverlapDialog(null)
+    void handleScanApiFetch(startDate, endDate)
+  }, [overlapDialog, handleScanApiFetch])
+
+  const handleOverlapDialogCancel = useCallback(() => {
+    setOverlapDialog(null)
+  }, [])
 
   const handleAttendanceFileChange = async (fileList: FileList | null) => {
     const files = Array.from(fileList || [])
@@ -1333,6 +1508,12 @@ export function useScannerEfficiencyPage() {
     handleSettingChange,
     handleScanFileChange,
     handleScanApiFetch,
+    handleFetchDataRequest,
+    scanFetchProgress,
+    overlapDialog,
+    handleOverlapUseHistory,
+    handleOverlapRefetch,
+    handleOverlapDialogCancel,
     handleCancelScanApiFetch,
     handleAllocationApiFetch,
     apiDateRange,

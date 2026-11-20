@@ -1,4 +1,4 @@
-import { Button, DatePicker, Radio, Tooltip } from 'antd'
+import { Button, DatePicker, Modal, Progress, Radio, Tooltip } from 'antd'
 import { CloudDownload, FileSpreadsheet, Save, Upload, Users } from 'lucide-react'
 import { useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
@@ -18,7 +18,12 @@ export function ScanDataIntakePanel({ vm }: Props) {
   const {
     loading,
     handleScanFileChange,
-    handleScanApiFetch,
+    handleFetchDataRequest,
+    scanFetchProgress,
+    overlapDialog,
+    handleOverlapUseHistory,
+    handleOverlapRefetch,
+    handleOverlapDialogCancel,
     handleAttendanceFileChange,
     handleSaveDailyRecords,
     canSaveDailyRecords,
@@ -55,7 +60,7 @@ export function ScanDataIntakePanel({ vm }: Props) {
 
   const handleFetch = () => {
     if (!apiDateRange || readOnly) return
-    void handleScanApiFetch(apiDateRange[0], apiDateRange[1])
+    void handleFetchDataRequest(apiDateRange[0], apiDateRange[1])
   }
 
   const statusLine = useMemo(() => {
@@ -197,9 +202,52 @@ export function ScanDataIntakePanel({ vm }: Props) {
         </div>
       </div>
 
-      <p className="min-w-0 border-t border-[var(--admin-line)] pt-3 text-xs leading-relaxed text-[var(--admin-muted)] tabular-nums">
-        {statusLine}
-      </p>
+      {scanFetchProgress ? (
+        <div className="flex items-center gap-3 border-t border-[var(--admin-line)] pt-3">
+          <Progress
+            className="max-w-xs flex-1"
+            percent={Math.round((scanFetchProgress.completedPages / scanFetchProgress.totalPages) * 100)}
+            status="active"
+          />
+          <span className="whitespace-nowrap text-xs text-[var(--admin-muted)] tabular-nums">
+            {t('intake.fetchProgress', {
+              day: scanFetchProgress.dayNumber,
+              totalDays: scanFetchProgress.totalDays,
+              date: scanFetchProgress.date,
+              page: Math.min(scanFetchProgress.completedPages + 1, scanFetchProgress.totalPages),
+              totalPages: scanFetchProgress.totalPages,
+            })}
+          </span>
+        </div>
+      ) : (
+        <p className="min-w-0 border-t border-[var(--admin-line)] pt-3 text-xs leading-relaxed text-[var(--admin-muted)] tabular-nums">
+          {statusLine}
+        </p>
+      )}
+
+      <Modal
+        open={Boolean(overlapDialog)}
+        title={t('intake.overlapDialog.title')}
+        onCancel={handleOverlapDialogCancel}
+        footer={[
+          <Button key="refetch" onClick={handleOverlapRefetch}>
+            {t('intake.overlapDialog.refetch')}
+          </Button>,
+          <Button key="useHistory" type="primary" autoFocus onClick={handleOverlapUseHistory}>
+            {t('intake.overlapDialog.useHistory')}
+          </Button>,
+        ]}
+      >
+        {overlapDialog ? (
+          <p>
+            {t('intake.overlapDialog.content', {
+              start: overlapDialog.startDate,
+              end: overlapDialog.endDate,
+              existingCount: overlapDialog.existingDates.length,
+            })}
+          </p>
+        ) : null}
+      </Modal>
     </div>
   )
 }

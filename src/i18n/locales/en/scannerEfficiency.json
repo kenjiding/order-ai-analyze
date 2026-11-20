@@ -19,6 +19,7 @@
     "modeApi": "API",
     "uploadInbound": "Upload inbound scans",
     "fetchData": "Fetch data",
+    "fetchProgress": "Day {{day}} of {{totalDays}} ({{date}}) · Page {{page}} of {{totalPages}}",
     "uploadAttendance": "Upload attendance",
     "save": "Save",
     "clearAll": "Clear all",
@@ -28,7 +29,13 @@
     "statusEmpty": "No data loaded yet",
     "statusSavable": "{{parts}} — ready to save",
     "saveTooltipReady": "Writes daily scan efficiency & attendance records; same-day entries are overwritten. Every day in the stats window is archived (including attendance-only days) to keep backfill consistent.",
-    "saveTooltipNeedBoth": "Load both inbound scans and attendance"
+    "saveTooltipNeedBoth": "Load both inbound scans and attendance",
+    "overlapDialog": {
+      "title": "History records already exist for this range",
+      "content": "{{existingCount}} day(s) between {{start}} ~ {{end}} already have saved scan efficiency & attendance records.",
+      "useHistory": "Use history data",
+      "refetch": "Re-fetch data"
+    }
   },
   "tabs": {
     "warehouse": "Open-day / overall efficiency",
@@ -233,6 +240,8 @@
     "noDailyRecords": "No daily efficiency records to save",
     "savedDailyRecords": "Saved {{count}} day(s) to scan efficiency & attendance records",
     "saveDailyFailed": "Failed to save scan efficiency & attendance records",
+    "historyPartialMissing": "No history for: {{dates}} — not loaded. Click \"Fetch data\" again and choose \"Re-fetch data\" in the dialog to fill in the full range.",
+    "historyLoadFailed": "Failed to load history records",
     "inboundNoDatesAppend": "Appended inbound file has no valid dates. Confirm a scan time/date column; existing data unchanged.",
     "inboundNoDates": "Inbound file has no valid dates. Confirm a scan time/date column.",
     "inboundNoRecordsAfterDedupe": "No countable inbound records after waybill dedupe.",

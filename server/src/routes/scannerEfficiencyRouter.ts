@@ -1,11 +1,11 @@
-import { and, desc, eq, inArray } from 'drizzle-orm'
+import { and, desc, eq, inArray, lt, notInArray } from 'drizzle-orm'
 import { Router, type Request, type Response } from 'express'
 import type { AuthenticatedRequest } from '../auth/middleware'
 import { getDb } from '../db'
 import { efficiencyAttendanceDailyRecords } from '../db/schema'
 import { queryImileBoxAssignedList } from '../imile/boxAssignedList'
 import { analyzeCancelScan } from '../imile/cancelScanAnalysis'
-import { queryImileInboundScans } from '../imile/inbound'
+import { queryImileInboundScansPage } from '../imile/inbound'
 import { queryZktDepartmentTree } from '../zkt/departmentTree'
 import { queryZktTimeCardReport } from '../zkt/timeCardReport'
 import { readImileTokenFromRequest } from './imileAuth'
@@ -14,9 +14,23 @@ export const scannerEfficiencyRouter = Router()
 
 const DATE_KEY_RE = /^\d{4}-\d{2}-\d{2}$/
 const MAX_RANGE_DAYS = 31
+/** 效率考勤按日记录只保留最近 3 个月，每次保存时顺带清理更早的 */
+const DAILY_RECORD_RETENTION_MONTHS = 3
 
 function readJson<T>(req: Request): T {
   return req.body as T
+}
+
+function retentionCutoffDateKey(): string {
+  const now = new Date()
+  // 不能直接用 new Date(y, m - 3, d)：当 d 超过目标月天数时（如 5/31 往前 3 个月是 2 月），
+  // Date 会把多出的天数顺延到下个月，cutoff 会悄悄往后漂移，所以这里按目标月天数夹一下。
+  const totalMonths = now.getFullYear() * 12 + now.getMonth() - DAILY_RECORD_RETENTION_MONTHS
+  const y = Math.floor(totalMonths / 12)
+  const m = ((totalMonths % 12) + 12) % 12
+  const daysInTargetMonth = new Date(y, m + 1, 0).getDate()
+  const d = Math.min(now.getDate(), daysInTargetMonth)
+  return `${y}-${String(m + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`
 }
 
 function parseDateKey(raw: unknown): string | null {
@@ -157,6 +171,21 @@ scannerEfficiencyRouter.post('/daily-records', async (req: AuthenticatedRequest,
             },
           })
       }
+
+      // 排除本次刚保存的日期：否则用户手动查了 3 个月以前的数据并保存，
+      // 会在同一个事务里被这里的清理逻辑立刻删掉，保存等于白做
+      await tx
+        .delete(efficiencyAttendanceDailyRecords)
+        .where(
+          and(
+            eq(efficiencyAttendanceDailyRecords.regionCode, regionCode),
+            lt(efficiencyAttendanceDailyRecords.recordDate, retentionCutoffDateKey()),
+            notInArray(
+              efficiencyAttendanceDailyRecords.recordDate,
+              validRecords.map((r) => r.date),
+            ),
+          ),
+        )
     })
 
     res.json({ savedCount: validRecords.length })
@@ -240,10 +269,12 @@ scannerEfficiencyRouter.post('/inbound-scans', async (req: Request, res: Respons
       imileToken?: string
       startDate?: string
       endDate?: string
+      page?: number
     }>(req)
     const token = readImileTokenFromRequest(req, body.imileToken)
     const startDate = parseDateKey(body.startDate)
     const endDate = parseDateKey(body.endDate)
+    const page = Number(body.page)
 
     if (!token) {
       res.status(400).json({ error: '缺少 imileToken，请在全局设置中配置' })
@@ -257,6 +288,10 @@ scannerEfficiencyRouter.post('/inbound-scans', async (req: Request, res: Respons
       res.status(400).json({ error: '开始日期不能晚于结束日期' })
       return
     }
+    if (!Number.isInteger(page) || page < 1) {
+      res.status(400).json({ error: '请提供有效的 page（从 1 开始）' })
+      return
+    }
 
     const rangeDays = diffDaysInclusive(startDate, endDate)
     if (rangeDays > MAX_RANGE_DAYS) {
@@ -264,29 +299,34 @@ scannerEfficiencyRouter.post('/inbound-scans', async (req: Request, res: Respons
       return
     }
 
-    const result = await queryImileInboundScans({
+    // 只拉一页，分页循环交给前端控制：前端每拉完一页就知道真实进度（第几页/共几页），
+    // 不用等一次性拉完整个区间才有响应。
+    const pageResult = await queryImileInboundScansPage({
       imileToken: token,
       startTime: `${startDate} 00:00:00`,
       endTime: `${endDate} 23:59:59`,
+      currentPage: page,
     })
 
-    if (!result.ok) {
+    if (!pageResult.ok) {
       res.status(502).json({
-        error: result.message,
-        status: result.status,
-        rawText: result.rawText,
+        error: pageResult.message,
+        status: pageResult.status,
+        rawText: pageResult.rawText,
       })
       return
     }
 
     res.json({
-      records: result.records,
-      raw: result.raw,
+      records: pageResult.records,
+      raw: pageResult.raw,
+      currentPage: pageResult.currentPage,
+      totalPages: pageResult.totalPages,
       meta: {
         startDate,
         endDate,
-        totalResult: result.totalResult,
-        fetched: result.records.length,
+        totalResult: pageResult.totalResult,
+        fetched: pageResult.records.length,
       },
     })
   } catch (e) {
