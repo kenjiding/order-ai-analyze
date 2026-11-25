@@ -19,6 +19,9 @@ export type OrderAnalyzeAiProvider = 'openai' | 'deepseek'
 /** 单次「开始分析」请求中，去重后的订单号上限（须与 `server` 的 `/analyze` 一致）。 */
 export const ORDER_EXCEPTION_ANALYZE_MAX_BATCH = 1000
 
+/** 异步批量分析（`/analyze-async`，后端按批自动拆分处理）的订单号上限，须与 server 一致。 */
+export const ORDER_EXCEPTION_ANALYZE_ASYNC_MAX_BATCH = 5000
+
 /** 单次「开始分析」累计的大模型 token 消耗（含主分析、精排、交叉验证/重试）。 */
 export type OrderAnalyzeTokenUsage = {
   promptTokens: number

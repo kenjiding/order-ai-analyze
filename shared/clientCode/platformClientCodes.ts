@@ -24,3 +24,17 @@ export function isSheinClientCode(clientCode: string | null | undefined): boolea
   if (!clientCode) return false
   return clientCode.trim().toUpperCase() === SHEIN_CLIENT_CODE
 }
+
+export type ClientCodeBrand = 'temu' | 'shein' | 'local' | 'other'
+
+/** 按 clientCode 分 Temu/Shein/本地件(优先客户)/其他；本地件需传入「优先客户配置」clientCode 集合，不传则本地件归到 other */
+export function classifyClientCodeBrand(
+  clientCode: string | null | undefined,
+  priorityClientCodes?: Set<string>,
+): ClientCodeBrand {
+  if (isTemuClientCode(clientCode)) return 'temu'
+  if (isSheinClientCode(clientCode)) return 'shein'
+  const normalized = clientCode?.trim().toUpperCase()
+  if (normalized && priorityClientCodes?.has(normalized)) return 'local'
+  return 'other'
+}

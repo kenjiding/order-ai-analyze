@@ -7,6 +7,8 @@ import { normalizeImileToken } from '../imile/shared'
 import { fetchStagnantWaybillRouteCodes } from '../imile/stagnantWaybills'
 import { buildScanStatRouteText, buildScanStatSupplierRouteStats } from '../imile/scanStatSupplierRouteStats'
 import { listSupplierPushConfigs } from '../supplierPushConfigs'
+import { loadPriorityClientCodes } from '../priorityClients'
+import { classifyClientCodeBrand, type ClientCodeBrand } from '../../../shared/clientCode/platformClientCodes'
 import {
   buildScanStatSummaryText,
   fetchScanStatWaybills,
@@ -98,6 +100,37 @@ scanStatRouter.post('/lookup', async (req: AuthenticatedRequest, res: Response) 
     ok: true,
     data: { total: waybillNos.length, groups, recipientName: target.recipientName },
   })
+})
+
+/** 按平台匹配：扫到的单号查一次 clientCode，归类 Temu/Shein/本地件(优先客户)/其他，前端自行比对是否命中勾选的平台 */
+scanStatRouter.post('/match-platform', async (req: AuthenticatedRequest, res: Response) => {
+  const userId = req.authUser?.id
+  if (!userId) {
+    res.status(401).json({ ok: false, error: '未登录' })
+    return
+  }
+  const waybillNo = typeof (req.body as { waybillNo?: unknown }).waybillNo === 'string'
+    ? (req.body as { waybillNo: string }).waybillNo.trim().toUpperCase()
+    : ''
+  if (!waybillNo) {
+    res.status(400).json({ ok: false, error: '缺少必填字段: waybillNo' })
+    return
+  }
+  const token = normalizeImileToken(await getGlobalImileToken(userId))
+  if (!token) {
+    res.status(400).json({ ok: false, error: '请先在电脑端「系统设置」中配置 iMile Token' })
+    return
+  }
+
+  const fetched = await fetchScanStatWaybills({ token, waybillNos: [waybillNo] })
+  if (!fetched.ok) {
+    res.status(fetched.status >= 400 ? fetched.status : 502).json({ ok: false, error: `运单查询失败: ${fetched.message}` })
+    return
+  }
+  const hit = fetched.hits.find((h) => h.waybillNo.trim().toUpperCase() === waybillNo)
+  const priorityClientCodes = await loadPriorityClientCodes()
+  const brand: ClientCodeBrand = classifyClientCodeBrand(hit?.clientCode, priorityClientCodes)
+  res.json({ ok: true, data: { waybillNo, clientCode: hit?.clientCode ?? '', brand, found: !!hit } })
 })
 
 /**

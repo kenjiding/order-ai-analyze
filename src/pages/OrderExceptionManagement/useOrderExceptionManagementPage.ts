@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import {
   ORDER_EXCEPTION_ANALYZE_MAX_BATCH,
+  ORDER_EXCEPTION_ANALYZE_ASYNC_MAX_BATCH,
   captureRegressionCase,
   cancelJobApi,
   deleteJobApi,
@@ -499,8 +500,9 @@ export function useOrderExceptionManagementPage() {
       showToast(t('toast.enterOrderNosOrImport'), 'error')
       return
     }
-    if (orderNos.length > ORDER_EXCEPTION_ANALYZE_MAX_BATCH) {
-      showToast(t('toast.batchLimitExceeded', { max: ORDER_EXCEPTION_ANALYZE_MAX_BATCH }), 'error')
+    const analyzeMaxBatch = batchAnalyze ? ORDER_EXCEPTION_ANALYZE_ASYNC_MAX_BATCH : ORDER_EXCEPTION_ANALYZE_MAX_BATCH
+    if (orderNos.length > analyzeMaxBatch) {
+      showToast(t('toast.batchLimitExceeded', { max: analyzeMaxBatch }), 'error')
       return
     }
 
@@ -740,12 +742,13 @@ export function useOrderExceptionManagementPage() {
 
       setImportedAnalyzeOrders({ fileName: file.name, orderNos: result.orderNos })
 
-      if (result.orderNos.length > ORDER_EXCEPTION_ANALYZE_MAX_BATCH) {
+      const importMaxBatch = batchAnalyze ? ORDER_EXCEPTION_ANALYZE_ASYNC_MAX_BATCH : ORDER_EXCEPTION_ANALYZE_MAX_BATCH
+      if (result.orderNos.length > importMaxBatch) {
         showToast(
           t('toast.importExceedsLimit', {
             fileName: file.name,
             count: result.orderNos.length,
-            max: ORDER_EXCEPTION_ANALYZE_MAX_BATCH,
+            max: importMaxBatch,
           }),
           'error',
         )
@@ -757,7 +760,7 @@ export function useOrderExceptionManagementPage() {
         'success',
       )
     },
-    [isAnalyzing, t],
+    [batchAnalyze, isAnalyzing, t],
   )
 
   const onClearImportedAnalyzeOrders = useCallback(() => {

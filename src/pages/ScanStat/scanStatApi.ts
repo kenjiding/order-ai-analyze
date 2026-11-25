@@ -18,6 +18,15 @@ export type ScanStatSendData = {
   recipientName?: string
 }
 
+export type ClientCodeBrand = 'temu' | 'shein' | 'local' | 'other'
+
+export type ScanStatMatchPlatformData = {
+  waybillNo: string
+  clientCode: string
+  brand: ClientCodeBrand
+  found: boolean
+}
+
 type Fail = { ok: false; error: string; unauthorized?: boolean }
 
 async function postScanStat<T>(path: string, body: Record<string, unknown>): Promise<{ ok: true; data: T } | Fail> {
@@ -49,6 +58,11 @@ export function lookupScanStat(params: {
     openId: params.openId,
     recipientName: params.recipientName,
   })
+}
+
+/** 按平台匹配：查一次该单号的 clientCode 归类（Temu/Shein/本地件/其他），前端自行比对是否命中勾选的平台。 */
+export function matchScanStatPlatform(waybillNo: string) {
+  return postScanStat<ScanStatMatchPlatformData>('/api/scan-stat/match-platform', { waybillNo })
 }
 
 /** 发送订单号：按路由码匹配供应商配置分组统计，发飞书卡片给接收人。 */

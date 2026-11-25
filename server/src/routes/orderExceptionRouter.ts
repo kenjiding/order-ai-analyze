@@ -579,8 +579,8 @@ orderExceptionRouter.post('/analyze-async', async (req: Request, res: Response) 
       res.status(400).json({ error: '请提供 orderNos' })
       return
     }
-    if (orderNos.length > 1000) {
-      res.status(400).json({ error: '单次最多分析 1000 个订单，请拆分后分批提交' })
+    if (orderNos.length > 5000) {
+      res.status(400).json({ error: '单次最多分析 5000 个订单，请拆分后分批提交' })
       return
     }
 

@@ -7,6 +7,7 @@ import type { FleetScanRow } from './fleetSupplierPushTypes'
  */
 const ROUTE_CODE_COLUMNS = [
   '路由编码',
+  '路由码',
   '线路编码',
   '线路',
   'RouteCode',
