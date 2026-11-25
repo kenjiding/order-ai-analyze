@@ -1,4 +1,4 @@
-import { Button, DatePicker, Image, Input, Popover, Select, Switch, Tooltip } from 'antd'
+import { Button, DatePicker, Image, Input, Modal, Select, Switch, Tooltip } from 'antd'
 import dayjs, { type Dayjs } from 'dayjs'
 import {
   AlertTriangle,
@@ -22,6 +22,8 @@ import { fetchFleetPendingSplitBox } from '../fleetPendingSplitBoxApi'
 import { fetchPriorityClientCodes } from '../priorityClientCodesApi'
 import { parseFleetRouteCodes } from '../fleetRouteCodeParse'
 import { parseFleetScanFiles } from '../fleetScanParse'
+import { readPendingBoxStations, writePendingBoxStations } from '../pendingBoxStationsSettings'
+import { useGlobalFilterStore } from '../../../stores/globalFilterStore'
 import { fetchDeliveryWeatherLarkMd, fetchFeishuAppBotChats, summarizeFeishuTestFailure } from '../feishuWebhookTestApi'
 import { WEATHER_LOCATION_PRESETS } from '../weatherLocations'
 import { readWeatherPushSettings, writeWeatherPushSettings } from '../weatherPushSettings'
@@ -77,12 +79,22 @@ export function FleetSupplierPushTab() {
   const [scanRows, setScanRows] = useState<Awaited<ReturnType<typeof parseFleetScanFiles>>['rows']>([])
   const [priorityClientCodes, setPriorityClientCodes] = useState<Set<string>>(new Set())
 
+  const stations = useGlobalFilterStore((s) => s.stations)
+  const stationsLoading = useGlobalFilterStore((s) => s.stationsLoading)
   const [pendingBoxOpen, setPendingBoxOpen] = useState(false)
   const [pendingBoxLoading, setPendingBoxLoading] = useState(false)
   const [pendingBoxRange, setPendingBoxRange] = useState<[Dayjs, Dayjs]>(() => [
     dayjs().subtract(6, 'day').startOf('day'),
     dayjs().endOf('day'),
   ])
+  // 弹窗里多选的站点：按上次选择回填，分批拉取后合并
+  const [pendingBoxStations, setPendingBoxStations] = useState<string[]>(() => readPendingBoxStations())
+  // 与 effectiveSelectedKeys 同一思路：localStorage 回填值可能来自切换国家前的旧站点列表，过滤成当前仍有效的
+  const stationCodeSet = useMemo(() => new Set(stations.map((s) => s.value)), [stations])
+  const effectivePendingBoxStations = useMemo(
+    () => pendingBoxStations.filter((code) => stationCodeSet.has(code)),
+    [pendingBoxStations, stationCodeSet],
+  )
 
   const [pushing, setPushing] = useState(false)
   const [scanParsing, setScanParsing] = useState(false)
@@ -246,16 +258,31 @@ export function FleetSupplierPushTab() {
   }
 
   const handleFetchPendingSplitBox = async () => {
+    if (!effectivePendingBoxStations.length) {
+      showToast(t('fleetTab.pendingBoxStationsRequired'), 'error')
+      return
+    }
     const [start, end] = pendingBoxRange
     setPendingBoxLoading(true)
     try {
       const res = await fetchFleetPendingSplitBox({
         startTime: start.format('YYYY-MM-DD HH:mm:ss'),
         endTime: end.format('YYYY-MM-DD HH:mm:ss'),
+        hubCodes: effectivePendingBoxStations,
       })
       if (!res.ok) {
         showToast(t('fleetTab.pendingBoxFetchFailed', { error: res.error }), 'error')
         return
+      }
+      writePendingBoxStations(effectivePendingBoxStations)
+      if (res.data.hubErrors.length) {
+        showToast(
+          t('fleetTab.pendingBoxPartialFailure', {
+            count: res.data.hubErrors.length,
+            detail: res.data.hubErrors.map((e) => `${e.hubCode}: ${e.error}`).join(errorSep),
+          }),
+          'error',
+        )
       }
       if (!res.data.rows.length) {
         showToast(t('fleetTab.pendingBoxNoValidRows'), 'error')
@@ -564,14 +591,25 @@ export function FleetSupplierPushTab() {
             <Button color="blue" variant="solid" icon={<UploadCloud className="h-4 w-4" />} loading={scanParsing} onClick={openScanFilePicker}>
               {scanParsing ? t('fleetTab.parsingScan') : t('fleetTab.selectScanFiles')}
             </Button>
-            <Popover
-              trigger="click"
+            <Button
+              color="geekblue"
+              variant="solid"
+              icon={<CloudDownload className="h-4 w-4" />}
+              loading={pendingBoxLoading}
+              onClick={() => setPendingBoxOpen(true)}
+            >
+              {pendingBoxLoading ? t('fleetTab.fetchingPendingData') : t('fleetTab.fetchPendingData')}
+            </Button>
+            <Modal
+              title={t('fleetTab.fetchPendingData')}
               open={pendingBoxOpen}
-              onOpenChange={setPendingBoxOpen}
-              placement="bottomLeft"
-              content={
-                <div className="w-80 space-y-3">
-                  <div className="text-xs font-semibold text-[var(--admin-muted)]">
+              onCancel={() => setPendingBoxOpen(false)}
+              footer={null}
+              destroyOnClose
+            >
+              <div className="space-y-3">
+                <div>
+                  <div className="mb-1.5 text-xs font-semibold text-[var(--admin-muted)]">
                     {t('fleetTab.inboundTimeRangeLabel')}
                   </div>
                   <DatePicker.RangePicker
@@ -585,21 +623,32 @@ export function FleetSupplierPushTab() {
                     className="!w-full"
                     allowClear={false}
                   />
-                  <Button
-                    type="primary"
-                    block
-                    loading={pendingBoxLoading}
-                    onClick={() => void handleFetchPendingSplitBox()}
-                  >
-                    {pendingBoxLoading ? t('fleetTab.fetchingPendingData') : t('fleetTab.pendingBoxFetchButton')}
-                  </Button>
                 </div>
-              }
-            >
-              <Button color="geekblue" variant="solid" icon={<CloudDownload className="h-4 w-4" />} loading={pendingBoxLoading}>
-                {pendingBoxLoading ? t('fleetTab.fetchingPendingData') : t('fleetTab.fetchPendingData')}
-              </Button>
-            </Popover>
+                <div>
+                  <div className="mb-1.5 text-xs font-semibold text-[var(--admin-muted)]">
+                    {t('fleetTab.pendingBoxStationsLabel')}
+                  </div>
+                  <Select
+                    mode="multiple"
+                    value={effectivePendingBoxStations}
+                    onChange={setPendingBoxStations}
+                    loading={stationsLoading}
+                    placeholder={t('fleetTab.pendingBoxStationsPlaceholder')}
+                    className="!w-full"
+                    options={stations.map((s) => ({ label: s.label, value: s.value }))}
+                    allowClear
+                  />
+                </div>
+                <Button
+                  type="primary"
+                  block
+                  loading={pendingBoxLoading}
+                  onClick={() => void handleFetchPendingSplitBox()}
+                >
+                  {pendingBoxLoading ? t('fleetTab.fetchingPendingData') : t('fleetTab.pendingBoxFetchButton')}
+                </Button>
+              </div>
+            </Modal>
             <Button
               color="cyan"
               variant="solid"

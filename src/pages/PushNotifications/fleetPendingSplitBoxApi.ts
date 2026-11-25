@@ -5,11 +5,13 @@ export type FleetPendingSplitBoxResult = {
   rows: FleetScanRow[]
   droppedRows: number
   totalResult: number
+  /** 部分站点查询失败时的明细；非空也可能同时带有其余站点成功的 rows */
+  hubErrors: { hubCode: string; error: string }[]
 }
 
-/** 拉取「入站数据」（iMile pendingSplitBox），跟随顶部国家/站点选择器，无需手传 country/hubcode */
+/** 拉取「入站数据」（iMile pendingSplitBox）：按弹窗里多选的站点逐个查询并合并，不再跟随顶部站点选择器 */
 export async function fetchFleetPendingSplitBox(
-  input: { startTime: string; endTime: string },
+  input: { startTime: string; endTime: string; hubCodes: string[] },
 ): Promise<{ ok: true; data: FleetPendingSplitBoxResult } | { ok: false; error: string }> {
   try {
     const res = await backendFetch('/api/fleet-supplier-push/pending-split-box', {

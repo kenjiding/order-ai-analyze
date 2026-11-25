@@ -4,6 +4,7 @@ import type { AuthenticatedRequest } from '../auth/middleware'
 import { getDb, schema } from '../db'
 import { getGlobalImileToken } from '../feishu/globalImileToken'
 import { queryImilePendingSplitBox } from '../imile/pendingSplitBox'
+import { runWithImileHubcode } from '../imile/shared'
 import {
   extractSupplierPushConfigFields,
   LEGACY_GLOBAL_SUPPLIER_REGION_CODE,
@@ -199,8 +200,13 @@ function readStringField(row: Record<string, unknown>, key: string): string {
   return value == null ? '' : String(value).trim()
 }
 
-/** pendingSplitBox 原始记录 → FleetScanRow 兼容字段；缺 routeCode 的行按「选择扫描文件」同一口径丢弃 */
-function mapPendingSplitBoxRecord(raw: unknown, index: number): PendingSplitBoxScanRow | null {
+/** pendingSplitBox 原始记录 → FleetScanRow 兼容字段；缺 routeCode 的行按「选择扫描文件」同一口径丢弃
+ *  fallbackKeyPrefix：多站点合并查询时按站点区分兜底 key，避免同 index 跨站点撞号 */
+function mapPendingSplitBoxRecord(
+  raw: unknown,
+  index: number,
+  fallbackKeyPrefix: string,
+): PendingSplitBoxScanRow | null {
   if (!raw || typeof raw !== 'object') return null
   const row = raw as Record<string, unknown>
   const routeCode = readStringField(row, 'routeCode')
@@ -210,18 +216,25 @@ function mapPendingSplitBoxRecord(raw: unknown, index: number): PendingSplitBoxS
     routeCode,
     postcode: readStringField(row, 'consigneeZipCode') || '—',
     city: readStringField(row, 'city') || '—',
-    orderKey: readStringField(row, 'waybillNo') || `pendingSplitBox#${index}`,
+    orderKey: readStringField(row, 'waybillNo') || `pendingSplitBox#${fallbackKeyPrefix}#${index}`,
     ...(clientCode ? { clientCode } : {}),
   }
 }
 
 // POST /api/fleet-supplier-push/pending-split-box
 fleetSupplierPushRouter.post('/pending-split-box', async (req: AuthenticatedRequest, res: Response) => {
-  const body = req.body as { startTime?: unknown; endTime?: unknown }
+  const body = req.body as { startTime?: unknown; endTime?: unknown; hubCodes?: unknown }
   const startTime = String(body.startTime ?? '').trim()
   const endTime = String(body.endTime ?? '').trim()
+  const hubCodes = Array.isArray(body.hubCodes)
+    ? Array.from(new Set(body.hubCodes.map((c) => String(c ?? '').trim()).filter(Boolean)))
+    : []
   if (!startTime || !endTime) {
     res.status(400).json({ ok: false, error: '缺少 startTime / endTime' })
+    return
+  }
+  if (!hubCodes.length) {
+    res.status(400).json({ ok: false, error: '请至少选择一个站点' })
     return
   }
 
@@ -232,19 +245,37 @@ fleetSupplierPushRouter.post('/pending-split-box', async (req: AuthenticatedRequ
     return
   }
 
-  const result = await queryImilePendingSplitBox({ imileToken, startTime, endTime })
-  if (!result.ok) {
-    res.status(502).json({ ok: false, error: result.message })
+  const rows: PendingSplitBoxScanRow[] = []
+  let droppedRows = 0
+  let totalResult = 0
+  const hubErrors: { hubCode: string; error: string }[] = []
+
+  // 按站点逐个覆盖请求上下文的 hubcode（优先级高于显式参数，不能直传），顺序查询避免对 iMile 并发打爆限流
+  for (const hubCode of hubCodes) {
+    try {
+      const result = await runWithImileHubcode(hubCode, () =>
+        queryImilePendingSplitBox({ imileToken, startTime, endTime }),
+      )
+      if (!result.ok) {
+        hubErrors.push({ hubCode, error: result.message })
+        continue
+      }
+      totalResult += result.totalResult
+      result.records.forEach((record, index) => {
+        const row = mapPendingSplitBoxRecord(record, index, hubCode)
+        if (row) rows.push(row)
+        else droppedRows += 1
+      })
+    } catch (e) {
+      // 单站异常不拖垮整批：降级为该站的 hubErrors 记录，其余站点继续
+      hubErrors.push({ hubCode, error: e instanceof Error ? e.message : String(e) })
+    }
+  }
+
+  if (hubErrors.length === hubCodes.length) {
+    res.status(502).json({ ok: false, error: hubErrors.map((e) => `${e.hubCode}: ${e.error}`).join('；') })
     return
   }
 
-  const rows: PendingSplitBoxScanRow[] = []
-  let droppedRows = 0
-  result.records.forEach((record, index) => {
-    const row = mapPendingSplitBoxRecord(record, index)
-    if (row) rows.push(row)
-    else droppedRows += 1
-  })
-
-  res.json({ ok: true, data: { rows, droppedRows, totalResult: result.totalResult } })
+  res.json({ ok: true, data: { rows, droppedRows, totalResult, hubErrors } })
 })
