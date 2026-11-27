@@ -9,9 +9,12 @@ export type FleetPendingSplitBoxResult = {
   hubErrors: { hubCode: string; error: string }[]
 }
 
-/** 拉取「入站数据」（iMile pendingSplitBox）：按弹窗里多选的站点逐个查询并合并，不再跟随顶部站点选择器 */
+/**
+ * 拉取「入站数据」（iMile pendingSplitBox）。
+ * 传 hubCodes 时按多选站点逐个查询并合并；不传则沿用旧行为，跟随顶部站点选择器。
+ */
 export async function fetchFleetPendingSplitBox(
-  input: { startTime: string; endTime: string; hubCodes: string[] },
+  input: { startTime: string; endTime: string; hubCodes?: string[] },
 ): Promise<{ ok: true; data: FleetPendingSplitBoxResult } | { ok: false; error: string }> {
   try {
     const res = await backendFetch('/api/fleet-supplier-push/pending-split-box', {

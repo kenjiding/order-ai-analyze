@@ -1,6 +1,7 @@
 import { Router, type Request, type Response, type NextFunction } from 'express'
 import { eq } from 'drizzle-orm'
 import { getDb, schema } from '../db'
+import { clientIp } from '../clientIp'
 import {
   dispatchRateFromTotals,
   rankVendors,
@@ -29,7 +30,7 @@ const rateBuckets = new Map<string, { count: number; resetAt: number }>()
 
 function rateLimit(req: Request, res: Response, next: NextFunction): void {
   const now = Date.now()
-  const ip = req.ip ?? 'unknown'
+  const ip = clientIp(req) ?? 'unknown'
   const bucket = rateBuckets.get(ip)
   if (!bucket || bucket.resetAt <= now) {
     // 顺带清理过期桶，避免 Map 无限增长

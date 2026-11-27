@@ -1,6 +1,7 @@
 /** 容器管理：站点账户 / 容器台账 / 流转记录 的接口 */
 import { Router, type Response } from 'express'
 import type { AuthenticatedRequest } from '../auth/middleware'
+import { clientIp } from '../clientIp'
 import {
   canActAsAccount,
   canViewTransfer,
@@ -516,7 +517,7 @@ containerManagementRouter.post('/balances', async (req: AuthenticatedRequest, re
       containerType: body.containerType as ContainerType,
       quantity,
       actorUserId: req.authUser?.id ?? null,
-      actorIp: req.ip ?? null,
+      actorIp: clientIp(req),
     })
     res.status(201).json({ ok: true, data })
   } catch (error) {
@@ -543,7 +544,7 @@ containerManagementRouter.patch('/balances/:id', async (req: AuthenticatedReques
       reasonType: body.reasonType as BalanceReasonType,
       reason,
       actorUserId: req.authUser?.id ?? null,
-      actorIp: req.ip ?? null,
+      actorIp: clientIp(req),
     })
     res.json({ ok: true, data })
   } catch (error) {
@@ -566,7 +567,7 @@ containerManagementRouter.delete('/balances/:id', async (req: AuthenticatedReque
       reasonType: body.reasonType as BalanceReasonType,
       reason,
       actorUserId: req.authUser?.id ?? null,
-      actorIp: req.ip ?? null,
+      actorIp: clientIp(req),
     })
     res.json({ ok: true, data: null })
   } catch (error) {

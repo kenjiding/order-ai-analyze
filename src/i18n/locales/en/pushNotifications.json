@@ -124,6 +124,8 @@
     "pendingBoxStationsPlaceholder": "Select stations",
     "pendingBoxStationsRequired": "Select at least one station",
     "pendingBoxPartialFailure": "{{count}} station(s) failed: {{detail}}",
+    "pendingBoxTabPendingSplitBox": "Pending split box",
+    "pendingBoxTabInbound": "Inbound scans",
     "selectPushImages": "Select push images",
     "readingImages": "Reading…",
     "pushSelected": "Push selected suppliers",

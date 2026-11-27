@@ -124,6 +124,8 @@
     "pendingBoxStationsPlaceholder": "请选择站点",
     "pendingBoxStationsRequired": "请至少选择一个站点",
     "pendingBoxPartialFailure": "{{count}} 个站点拉取失败：{{detail}}",
+    "pendingBoxTabPendingSplitBox": "待分箱数据",
+    "pendingBoxTabInbound": "入站数据",
     "selectPushImages": "选择推送图片",
     "readingImages": "正在读取…",
     "pushSelected": "推送所选供应商",

@@ -18,6 +18,7 @@ import { useEffect, useMemo, useRef, useState, type ChangeEvent, type Key } from
 import { useTranslation } from 'react-i18next'
 import { aggregateFleetRowsForRoute } from '../fleetSupplierAggregate'
 import { captureFleetRouteReportPng } from '../fleetReportCapture'
+import { fetchFleetInboundScans } from '../fleetInboundScansApi'
 import { fetchFleetPendingSplitBox } from '../fleetPendingSplitBoxApi'
 import { fetchPriorityClientCodes } from '../priorityClientCodesApi'
 import { parseFleetRouteCodes } from '../fleetRouteCodeParse'
@@ -83,6 +84,8 @@ export function FleetSupplierPushTab() {
   const stationsLoading = useGlobalFilterStore((s) => s.stationsLoading)
   const [pendingBoxOpen, setPendingBoxOpen] = useState(false)
   const [pendingBoxLoading, setPendingBoxLoading] = useState(false)
+  // 默认「待分箱数据」，与改版前的行为一致
+  const [pendingBoxSourceTab, setPendingBoxSourceTab] = useState<'pendingSplitBox' | 'inbound'>('pendingSplitBox')
   const [pendingBoxRange, setPendingBoxRange] = useState<[Dayjs, Dayjs]>(() => [
     dayjs().subtract(6, 'day').startOf('day'),
     dayjs().endOf('day'),
@@ -265,11 +268,15 @@ export function FleetSupplierPushTab() {
     const [start, end] = pendingBoxRange
     setPendingBoxLoading(true)
     try {
-      const res = await fetchFleetPendingSplitBox({
+      const fetchInput = {
         startTime: start.format('YYYY-MM-DD HH:mm:ss'),
         endTime: end.format('YYYY-MM-DD HH:mm:ss'),
         hubCodes: effectivePendingBoxStations,
-      })
+      }
+      const res =
+        pendingBoxSourceTab === 'inbound'
+          ? await fetchFleetInboundScans(fetchInput)
+          : await fetchFleetPendingSplitBox(fetchInput)
       if (!res.ok) {
         showToast(t('fleetTab.pendingBoxFetchFailed', { error: res.error }), 'error')
         return
@@ -608,6 +615,22 @@ export function FleetSupplierPushTab() {
               destroyOnClose
             >
               <div className="space-y-3">
+                <div className="flex gap-2">
+                  <Button
+                    block
+                    type={pendingBoxSourceTab === 'pendingSplitBox' ? 'primary' : 'default'}
+                    onClick={() => setPendingBoxSourceTab('pendingSplitBox')}
+                  >
+                    {t('fleetTab.pendingBoxTabPendingSplitBox')}
+                  </Button>
+                  <Button
+                    block
+                    type={pendingBoxSourceTab === 'inbound' ? 'primary' : 'default'}
+                    onClick={() => setPendingBoxSourceTab('inbound')}
+                  >
+                    {t('fleetTab.pendingBoxTabInbound')}
+                  </Button>
+                </div>
                 <div>
                   <div className="mb-1.5 text-xs font-semibold text-[var(--admin-muted)]">
                     {t('fleetTab.inboundTimeRangeLabel')}
@@ -642,6 +665,7 @@ export function FleetSupplierPushTab() {
                 <Button
                   type="primary"
                   block
+                  className="!mt-[30px]"
                   loading={pendingBoxLoading}
                   onClick={() => void handleFetchPendingSplitBox()}
                 >

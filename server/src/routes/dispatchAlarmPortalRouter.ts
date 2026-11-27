@@ -1,4 +1,5 @@
 import { Router, type Request, type Response, type NextFunction } from 'express'
+import { clientIp } from '../clientIp'
 import { loadDispatchAlarmShareSnapshot } from '../feishu/dispatchAlarmShareSnapshot'
 import {
   ensureProblemReasons,
@@ -24,7 +25,7 @@ const rateBuckets = new Map<string, { count: number; resetAt: number }>()
 
 function rateLimit(req: Request, res: Response, next: NextFunction): void {
   const now = Date.now()
-  const ip = req.ip ?? 'unknown'
+  const ip = clientIp(req) ?? 'unknown'
   const bucket = rateBuckets.get(ip)
   if (!bucket || bucket.resetAt <= now) {
     if (rateBuckets.size > 10_000) {
