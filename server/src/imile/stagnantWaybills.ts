@@ -5,7 +5,7 @@ import { envFirstOr, isRecord, normalizeImileToken, resolveImileCountry } from '
 
 const DEFAULT_STAGNANT_URL =
   'https://ds.imile.com/saastms/v1/report/stock/daWaybillInventory'
-const DEFAULT_INBOUND_URL = 'https://dc.imile.com/lm/express/ops/v1/biz/inbound/query'
+const DEFAULT_INBOUND_URL = 'https://ds.imile.com/lm/express/report/v1/biz/inbound/query'
 
 const STAGNANT_PAGE_SHOW_COUNT = 1000
 
