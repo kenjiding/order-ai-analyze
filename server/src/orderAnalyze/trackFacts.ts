@@ -303,6 +303,14 @@ function extractShortEvidence(content: string): string {
   return content.length > 60 ? `${content.slice(0, 60)}...` : content
 }
 
+const PROBLEM_ITEM_EVIDENCE_RE = /登记问题件(.*?)(?:,\s*操作员|。|$)/
+
+/** 从「登记问题件[分类]自由文本, 操作员【…】。」中抠出「[分类]自由文本」部分 */
+function extractProblemItemEvidence(content: string): string {
+  const text = PROBLEM_ITEM_EVIDENCE_RE.exec(content)?.[1]?.trim()
+  return text || extractShortEvidence(content)
+}
+
 function isMerchantDestroyTerminalEvent(content: string): boolean {
   if (!content.includes('销毁')) return false
   if (
@@ -1089,6 +1097,8 @@ function makeEmptyFacts(input: {
     deliveryAssignmentCount: 0,
     deliveryCancelCount: 0,
     problemCount: 0,
+    latestProblemItemEvidence: null,
+    latestProblemItemTime: null,
     lastInventoryTime: null,
     lastInventoryDaysDiff: -1,
     assignCancelLoopWithoutDispatch: false,
@@ -1180,6 +1190,9 @@ export function deriveTrackFacts(
   const lastEvent = sorted[sorted.length - 1]
   const latestOrderExceptionClosed = isOrderExceptionClosedEvent(lastEvent)
   const latestOrderExceptionClosedEvidence = latestOrderExceptionClosed ? extractShortEvidence(lastEvent.content) : null
+  const lastProblemEvent = findLastEvent(sorted, isProblemEvent)
+  const latestProblemItemEvidence = lastProblemEvent ? extractProblemItemEvidence(lastProblemEvent.content) : null
+  const latestProblemItemTime = lastProblemEvent?.time ?? null
   const segments = reconcileSegmentsWithInterceptArrivals(buildResponsibilitySegments(sorted), interceptLogs)
   const activeSegment = segments.at(-1) ?? null
   const activeEvents = activeSegment?.events ?? []
@@ -1510,6 +1523,8 @@ export function deriveTrackFacts(
     deliveryAssignmentCount,
     deliveryCancelCount,
     problemCount,
+    latestProblemItemEvidence,
+    latestProblemItemTime,
     lastInventoryTime: lastInventory?.time ?? null,
     lastInventoryDaysDiff: lastInventory ? daysDiff(lastInventory.time) : -1,
     assignCancelLoopWithoutDispatch,

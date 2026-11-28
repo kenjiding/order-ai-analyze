@@ -13,40 +13,61 @@ async function readHttpError(res: Response, text: string): Promise<string> {
   return text || `HTTP ${res.status}`
 }
 
-export type FetchInboundScansPageResult = {
-  /** iMile resultObject.results 原始项，字段未裁剪（仅本页） */
-  records: unknown[]
-  raw: unknown
-  currentPage: number
-  totalPages: number
-  meta: {
-    startDate: string
-    endDate: string
-    totalResult: number
-    fetched: number
-  }
-}
-
-/** 只拉一页，用于需要展示真实拉取进度的场景（逐页调用、逐页更新进度） */
-export async function fetchInboundScansPage(payload: {
+/** 到件扫描导出任务：整段时间范围一次建任务（第一步），返回 jobId/userCode 供轮询用 */
+export async function startInboundScanExport(payload: {
   imileToken: string
   startDate: string
   endDate: string
-  page: number
-}): Promise<FetchInboundScansPageResult> {
-  const res = await backendFetch('/api/scanner-efficiency/inbound-scans', {
+}): Promise<{ jobId: string; userCode: string }> {
+  const res = await backendFetch('/api/scanner-efficiency/inbound-scan-export/start', {
     method: 'POST',
     headers: JSON_HEADERS,
-    body: JSON.stringify({
-      imileToken: payload.imileToken,
-      startDate: payload.startDate,
-      endDate: payload.endDate,
-      page: payload.page,
-    }),
+    body: JSON.stringify(payload),
   })
   const text = await res.text()
   if (!res.ok) throw new Error(await readHttpError(res, text))
-  return JSON.parse(text) as FetchInboundScansPageResult
+  return JSON.parse(text) as { jobId: string; userCode: string }
+}
+
+export type InboundScanExportStatus =
+  | { done: true; outFilePath: string }
+  | { done: false; outCount: number; totalCount: number }
+
+/** 单次查询导出任务状态（第二步），由调用方自己控制轮询节奏、按 outCount/totalCount 展示进度 */
+export async function checkInboundScanExportStatus(payload: {
+  imileToken: string
+  jobId: string
+  userCode: string
+}): Promise<InboundScanExportStatus> {
+  const res = await backendFetch('/api/scanner-efficiency/inbound-scan-export/status', {
+    method: 'POST',
+    headers: JSON_HEADERS,
+    body: JSON.stringify(payload),
+  })
+  const text = await res.text()
+  if (!res.ok) throw new Error(await readHttpError(res, text))
+  return JSON.parse(text) as InboundScanExportStatus
+}
+
+export type FinishInboundScanExportResult = {
+  /** 导出 xlsx 逐行记录，字段未裁剪 */
+  records: Record<string, string>[]
+  meta: { fetched: number }
+}
+
+/** 任务完成后换下载链接并解析 xlsx（第三步） */
+export async function finishInboundScanExport(payload: {
+  imileToken: string
+  outFilePath: string
+}): Promise<FinishInboundScanExportResult> {
+  const res = await backendFetch('/api/scanner-efficiency/inbound-scan-export/finish', {
+    method: 'POST',
+    headers: JSON_HEADERS,
+    body: JSON.stringify(payload),
+  })
+  const text = await res.text()
+  if (!res.ok) throw new Error(await readHttpError(res, text))
+  return JSON.parse(text) as FinishInboundScanExportResult
 }
 
 export type FetchBoxAssignedListResult = {

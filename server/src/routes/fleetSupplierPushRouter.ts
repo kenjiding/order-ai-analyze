@@ -3,7 +3,7 @@ import { and, eq } from 'drizzle-orm'
 import type { AuthenticatedRequest } from '../auth/middleware'
 import { getDb, schema } from '../db'
 import { getGlobalImileToken } from '../feishu/globalImileToken'
-import { queryImileInboundScans } from '../imile/inbound'
+import { queryImileInboundScansExport } from '../imile/inbound'
 import { queryImilePendingSplitBox } from '../imile/pendingSplitBox'
 import { runWithImileHubcode } from '../imile/shared'
 import { dedupeScansByWaybill, parseInboundScanRecord } from '../vendorRegionMap/parseInbound'
@@ -296,7 +296,7 @@ fleetSupplierPushRouter.post('/pending-split-box', async (req: AuthenticatedRequ
 })
 
 /**
- * 到件扫描记录（queryImileInboundScans）→ FleetScanRow 兼容字段；routeCode/zip/city/waybillNo 复用
+ * 到件扫描记录（queryImileInboundScansExport）→ FleetScanRow 兼容字段；routeCode/zip/city/waybillNo 复用
  * vendorRegionMap 既有的字段别名解析。注意 ParsedInboundScan.courierVendorCode 是「承运商/车队编码」
  * （给供应商 vendorCode 匹配用的，见 supplierMatcher.ts），不是「优先客户」统计要比对的商家编码 clientCode，
  * 两者是不同字段，这里按 waybillNo 从原始记录另取一份真正的 clientCode。
@@ -362,13 +362,13 @@ fleetSupplierPushRouter.post('/inbound-scans', async (req: AuthenticatedRequest,
   for (const hubCode of hubCodes) {
     try {
       const result = await runWithImileHubcode(hubCode, () =>
-        queryImileInboundScans({ imileToken, startTime, endTime }),
+        queryImileInboundScansExport({ imileToken, startTime, endTime }),
       )
       if (!result.ok) {
         hubErrors.push({ hubCode, error: result.message })
         continue
       }
-      totalResult += result.totalResult
+      totalResult += result.records.length
       const mapped = mapInboundScanRecords(result.records)
       rows.push(...mapped.rows)
       droppedRows += mapped.droppedRows

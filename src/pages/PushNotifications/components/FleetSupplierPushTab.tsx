@@ -268,9 +268,10 @@ export function FleetSupplierPushTab() {
     const [start, end] = pendingBoxRange
     setPendingBoxLoading(true)
     try {
+      // 选择器只选日期，不选时分秒；参数里补全成「当天 00:00:00 ~ 23:59:59」
       const fetchInput = {
-        startTime: start.format('YYYY-MM-DD HH:mm:ss'),
-        endTime: end.format('YYYY-MM-DD HH:mm:ss'),
+        startTime: start.startOf('day').format('YYYY-MM-DD HH:mm:ss'),
+        endTime: end.endOf('day').format('YYYY-MM-DD HH:mm:ss'),
         hubCodes: effectivePendingBoxStations,
       }
       const res =
@@ -641,8 +642,7 @@ export function FleetSupplierPushTab() {
                       if (vals && vals[0] && vals[1]) setPendingBoxRange([vals[0], vals[1]])
                     }}
                     presets={pendingBoxPresets}
-                    showTime={{ format: 'HH:mm' }}
-                    format="YYYY-MM-DD HH:mm"
+                    format="YYYY-MM-DD"
                     className="!w-full"
                     allowClear={false}
                   />

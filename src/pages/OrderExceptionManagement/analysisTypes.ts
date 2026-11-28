@@ -21,6 +21,8 @@ export type AnalysisRow = {
   interceptLogs: OrderAnalyzeInterceptLog[]
   /** 最新责任点：责任人/操作/时间/无操作天数，服务端解析好的统一字段 */
   latestResponsibility?: LatestResponsibility | null
+  /** 最新问题件：轨迹中最后一条「登记问题件」事件的证据文本，服务端解析好的统一字段 */
+  latestProblemItem?: string | null
   detectedDriverId?: string
   needsReview?: boolean
   crossCheckedBy?: string | null

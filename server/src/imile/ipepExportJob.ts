@@ -48,7 +48,7 @@ function readResultObject(json: unknown): unknown {
 export async function createImileExportJob(
   token: string,
   page: ImileExportJobPage,
-  params: { jobType: number; bizType: number; jobName: string; queryContent: string },
+  params: { jobType: number; bizType: number; jobName: string; queryContent: string; titles?: string },
 ): Promise<{ ok: true; jobId: string; userCode: string } | ImileExportJobError> {
   const headers = makeHeaders(token, page)
   const result = await requestImileApi({
@@ -62,6 +62,8 @@ export async function createImileExportJob(
       jobName: params.jobName,
       totalCount: '0',
       queryContent: params.queryContent,
+      // 少数导出任务（如中心运单查询）要求显式传列定义 XML，否则 iMile 侧报参数缺失
+      ...(params.titles ? { titles: params.titles } : {}),
     },
     label: '异步导出任务创建',
     retryBusy: false,
@@ -78,6 +80,57 @@ export async function createImileExportJob(
   return { ok: true, jobId, userCode }
 }
 
+export type ImileExportJobStatus =
+  | { ok: true; done: true; outFilePath: string }
+  | { ok: true; done: false; outCount: number; totalCount: number }
+  | ImileExportJobError
+
+/**
+ * 单次查询任务状态（不轮询）：get_list 里匹配 jobId 的那一行，outFilePath 非空代表完成，
+ * errorMsg 非空代表失败，否则用 outCount/totalCount 当进度（已导出数量/总数量，每次查询都会更新）。
+ * 供需要向前端汇报实时进度的调用方自己控制轮询节奏；不需要进度的用 pollImileExportJob 即可。
+ */
+export async function checkImileExportJobStatus(
+  token: string,
+  page: ImileExportJobPage,
+  params: { moduleId: number; userCode: string; jobType: number; bizType: number; jobId: string },
+): Promise<ImileExportJobStatus> {
+  const headers = makeHeaders(token, page)
+  const result = await requestImileApi({
+    url: GET_LIST_URL,
+    method: 'POST',
+    headers,
+    bodyEncoding: 'form',
+    body: {
+      moduleId: String(params.moduleId),
+      userCode: params.userCode,
+      jobType: String(params.jobType),
+      bizType: String(params.bizType),
+    },
+    label: '导出任务列表查询',
+    retryBusy: false,
+  })
+  if (!result.ok) {
+    return { ok: false, status: result.status, message: result.message, rawText: result.rawText }
+  }
+  const ro = readResultObject(result.json)
+  const rows = Array.isArray(ro) ? ro : []
+  const match = rows.find((row) => isRecord(row) && String(row.jobId ?? '') === params.jobId)
+  if (!isRecord(match)) return { ok: true, done: false, outCount: 0, totalCount: 0 }
+
+  const outFilePath = String(match.outFilePath ?? '').trim()
+  if (outFilePath) return { ok: true, done: true, outFilePath }
+  const errorMsg = String(match.errorMsg ?? '').trim()
+  if (errorMsg) return { ok: false, status: 502, message: `导出任务失败：${errorMsg}` }
+
+  return {
+    ok: true,
+    done: false,
+    outCount: Number(match.outCount ?? 0) || 0,
+    totalCount: Number(match.totalCount ?? 0) || 0,
+  }
+}
+
 /** 步骤2：轮询任务列表，直到匹配 jobId 的任务行出现 outFilePath（完成）或 errorMsg（失败）。 */
 export async function pollImileExportJob(
   token: string,
@@ -87,35 +140,11 @@ export async function pollImileExportJob(
 ): Promise<{ ok: true; outFilePath: string } | ImileExportJobError> {
   const intervalMs = options?.intervalMs ?? 2000
   const maxAttempts = options?.maxAttempts ?? 40 // 封顶约 80s，避免无限轮询
-  const headers = makeHeaders(token, page)
 
   for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
-    const result = await requestImileApi({
-      url: GET_LIST_URL,
-      method: 'POST',
-      headers,
-      bodyEncoding: 'form',
-      body: {
-        moduleId: String(params.moduleId),
-        userCode: params.userCode,
-        jobType: String(params.jobType),
-        bizType: String(params.bizType),
-      },
-      label: '导出任务列表查询',
-      retryBusy: false,
-    })
-    if (!result.ok) {
-      return { ok: false, status: result.status, message: result.message, rawText: result.rawText }
-    }
-    const ro = readResultObject(result.json)
-    const rows = Array.isArray(ro) ? ro : []
-    const match = rows.find((row) => isRecord(row) && String(row.jobId ?? '') === params.jobId)
-    if (isRecord(match)) {
-      const outFilePath = String(match.outFilePath ?? '').trim()
-      if (outFilePath) return { ok: true, outFilePath }
-      const errorMsg = String(match.errorMsg ?? '').trim()
-      if (errorMsg) return { ok: false, status: 502, message: `导出任务失败：${errorMsg}` }
-    }
+    const status = await checkImileExportJobStatus(token, page, params)
+    if (!status.ok) return status
+    if (status.done) return { ok: true, outFilePath: status.outFilePath }
     if (attempt < maxAttempts - 1) await sleep(intervalMs)
   }
   return { ok: false, status: 504, message: '导出任务轮询超时，任务可能仍在处理中' }
@@ -164,6 +193,70 @@ export async function downloadImileExportColumn(downloadUrl: string, columnHeade
     if (value) values.push(value)
   })
   return values
+}
+
+/** 下载导出的 xlsx，按表头文本取多列，返回逐行记录（columnHeaderMap：表头文本 → 输出字段名）。 */
+export async function downloadImileExportRows(
+  downloadUrl: string,
+  columnHeaderMap: Record<string, string>,
+): Promise<Record<string, string>[]> {
+  const res = await fetch(downloadUrl)
+  if (!res.ok) throw new Error(`导出文件下载失败：HTTP ${res.status}`)
+  const buffer = Buffer.from(await res.arrayBuffer())
+
+  const workbook = new ExcelJS.Workbook()
+  await workbook.xlsx.load(buffer as unknown as Parameters<typeof workbook.xlsx.load>[0])
+  const sheet = workbook.worksheets[0]
+  if (!sheet) return []
+
+  const colIndexByField: Record<string, number> = {}
+  sheet.getRow(1).eachCell((cell, colNumber) => {
+    const field = columnHeaderMap[String(cell.value ?? '').trim()]
+    if (field) colIndexByField[field] = colNumber
+  })
+
+  const rows: Record<string, string>[] = []
+  sheet.eachRow((row, rowNumber) => {
+    if (rowNumber === 1) return
+    const record: Record<string, string> = {}
+    for (const [field, colIndex] of Object.entries(colIndexByField)) {
+      const raw = row.getCell(colIndex).value
+      record[field] = raw == null ? '' : String(raw).trim()
+    }
+    rows.push(record)
+  })
+  return rows
+}
+
+/** 整体编排：建任务 → 轮询 → 换链接 → 下载解析为多列记录（与 fetchImileExportColumnValues 共用建任务/轮询/换链接三步）。 */
+export async function fetchImileExportRows(
+  token: string,
+  page: ImileExportJobPage,
+  job: { jobType: number; bizType: number; jobName: string; queryContent: string; moduleId: number; titles?: string },
+  columnHeaderMap: Record<string, string>,
+  pollOptions?: { intervalMs?: number; maxAttempts?: number },
+): Promise<{ ok: true; rows: Record<string, string>[] } | ImileExportJobError> {
+  const token2 = normalizeImileToken(token)
+  const created = await createImileExportJob(token2, page, job)
+  if (!created.ok) return created
+
+  const polled = await pollImileExportJob(
+    token2,
+    page,
+    { moduleId: job.moduleId, userCode: created.userCode, jobType: job.jobType, bizType: job.bizType, jobId: created.jobId },
+    pollOptions,
+  )
+  if (!polled.ok) return polled
+
+  const fileUrl = await fetchImileExportFileUrl(token2, page, polled.outFilePath)
+  if (!fileUrl.ok) return fileUrl
+
+  try {
+    const rows = await downloadImileExportRows(fileUrl.url, columnHeaderMap)
+    return { ok: true, rows }
+  } catch (e) {
+    return { ok: false, status: 502, message: (e as Error).message || '导出文件解析失败' }
+  }
 }
 
 /** 整体编排：建任务 → 轮询 → 换链接 → 下载解析，返回指定列的值。 */

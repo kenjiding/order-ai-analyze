@@ -206,16 +206,17 @@ export function ScanDataIntakePanel({ vm }: Props) {
         <div className="flex items-center gap-3 border-t border-[var(--admin-line)] pt-3">
           <Progress
             className="max-w-xs flex-1"
-            percent={Math.round((scanFetchProgress.completedPages / scanFetchProgress.totalPages) * 100)}
+            percent={
+              scanFetchProgress.totalCount > 0
+                ? Math.round((scanFetchProgress.outCount / scanFetchProgress.totalCount) * 100)
+                : 0
+            }
             status="active"
           />
           <span className="whitespace-nowrap text-xs text-[var(--admin-muted)] tabular-nums">
             {t('intake.fetchProgress', {
-              day: scanFetchProgress.dayNumber,
-              totalDays: scanFetchProgress.totalDays,
-              date: scanFetchProgress.date,
-              page: Math.min(scanFetchProgress.completedPages + 1, scanFetchProgress.totalPages),
-              totalPages: scanFetchProgress.totalPages,
+              outCount: scanFetchProgress.outCount,
+              totalCount: scanFetchProgress.totalCount,
             })}
           </span>
         </div>

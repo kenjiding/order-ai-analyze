@@ -92,6 +92,8 @@ export type OrderAnalyzeResult = {
   activeResponsibilityOwner?: ResponsibilityOwner
   /** 最新责任点：责任人/操作/时间/无操作天数，null 表示当前责任段内无可确定的责任点 */
   latestResponsibility?: LatestResponsibility | null
+  /** 最新问题件：轨迹中最后一条「登记问题件」事件的证据文本，由服务端从轨迹确定性解析，不经过模型；null 表示轨迹中无问题件记录 */
+  latestProblemItem?: string | null
   reason: string
   confidence: number
   /** 事实硬校验后需要人工复核 */
@@ -194,6 +196,10 @@ export type TrackFacts = {
   deliveryAssignmentCount: number
   deliveryCancelCount: number
   problemCount: number
+  /** 轨迹中最后一条「登记问题件」事件的证据文本，例如 [AUS| 地址错误]can't confirm unit；null 表示轨迹中无问题件记录 */
+  latestProblemItemEvidence: string | null
+  /** 最后一条问题件事件的时间，null 表示无问题件记录 */
+  latestProblemItemTime: string | null
   lastInventoryTime: string | null
   lastInventoryDaysDiff: number
   /**

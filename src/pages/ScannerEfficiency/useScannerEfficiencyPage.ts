@@ -46,12 +46,14 @@ import {
   mapAssignedListRecordsToParsedAllocationRows,
 } from './assignedListMapper'
 import {
+  checkInboundScanExportStatus,
   fetchBoxAssignedList,
   fetchCancelScanAnalysis,
   fetchDailyEfficiencyRecords,
-  fetchInboundScansPage,
   fetchZktAttendance,
+  finishInboundScanExport,
   saveDailyEfficiencyRecords,
+  startInboundScanExport,
   type DailyEfficiencyRecordResponse,
 } from './scannerEfficiencyApi'
 import { mapInboundRecordsToParsedScanRows } from './inboundScanMapper'
@@ -239,13 +241,10 @@ export function useScannerEfficiencyPage() {
   }, [allocationSourceInfo])
 
   const [loadingScan, setLoadingScan] = useState(false)
-  /** 按天、按页拉取到件时的进度，仅 API 获取用；null 表示当前没有在拉取 */
+  /** 到件扫描异步导出任务的进度（已导出/总数），仅 API 获取用；null 表示当前没有在拉取 */
   const [scanFetchProgress, setScanFetchProgress] = useState<{
-    dayNumber: number
-    totalDays: number
-    date: string
-    completedPages: number
-    totalPages: number
+    outCount: number
+    totalCount: number
   } | null>(null)
   const [loadingAttendance, setLoadingAttendance] = useState(false)
   const [loadingAllocation, setLoadingAllocation] = useState(false)
@@ -975,65 +974,42 @@ export function useScannerEfficiencyPage() {
     const attendancePromise = performAttendanceApiFetch(startDate, endDate, { replaceExisting: true })
 
     try {
-      // 按天拆分请求：单次请求覆盖的天数越多，iMile 分页数越多、HTTP 请求挂起越久，
-      // 大范围时容易被 nginx 判超时（504）。按天拉取能把每次请求都控制在小而稳定的耗时内，
-      // 某一天失败时也能看出具体是哪天，而不是整段区间一起失败。
-      //
-      // 进度必须按「页」更新，不能只按「天」：到件量大时，瓶颈往往是单独某一天里几十页的
-      // 分页拉取（而不是选了几天），按天更新进度在这种情况下会卡在一个数字不动。所以这里改成
-      // 逐页调用 fetchInboundScansPage（分页循环交给前端控制），每拉完一页就更新一次进度。
-      const days = enumerateDateKeys(startDate, endDate)
+      // 到件扫描改走异步导出任务：整段时间范围一次建任务，不再按天按页拆请求；
+      // 建任务后由前端按固定节奏轮询状态，用 outCount/totalCount（已导出/总数）展示真实进度。
+      const created = await startInboundScanExport({ imileToken: token, startDate, endDate })
 
-      const allRecords: unknown[] = []
-      let totalResult = 0
-      let fetched = 0
-
-      for (const [dayIndex, day] of days.entries()) {
-        console.group(`[ScannerEfficiency] iMile 到件 API 原始数据 ${day}`)
-
-        let page = 1
-        let totalPages = 1
-        do {
-          // completedPages 是「这页开始前已经拉完的页数」，不能用 page 本身，
-          // 否则正在拉这天最后一页（含只有 1 页）时，百分比会在还没拉完就先报 100%
-          setScanFetchProgress({
-            dayNumber: dayIndex + 1,
-            totalDays: days.length,
-            date: day,
-            completedPages: page - 1,
-            totalPages,
-          })
-
-          const pageResult = await fetchInboundScansPage({
-            imileToken: token,
-            startDate: day,
-            endDate: day,
-            page,
-          })
-          totalPages = pageResult.totalPages
-
-          console.log(`第 ${page}/${totalPages} 页，records（resultObject.results，未裁剪）`, pageResult.records)
-          console.log(`第 ${page}/${totalPages} 页，raw（HTTP JSON）`, pageResult.raw)
-
-          allRecords.push(...pageResult.records)
-          // meta.totalResult 是「这一天」的总数，每页响应都会重复报同一个值，
-          // 只能在第一页累加一次，否则按页数被重复叠加，总数会被放大好几倍
-          if (page === 1) totalResult += pageResult.meta.totalResult
-          fetched += pageResult.records.length
-
-          if (page < totalPages) await new Promise((resolve) => setTimeout(resolve, 400))
-          page += 1
-        } while (page <= totalPages)
-
-        console.groupEnd()
+      const POLL_INTERVAL_MS = 2000
+      const POLL_MAX_ATTEMPTS = 150 // 封顶 5 分钟，避免无限轮询
+      let outFilePath = ''
+      for (let attempt = 0; attempt < POLL_MAX_ATTEMPTS; attempt += 1) {
+        const status = await checkInboundScanExportStatus({
+          imileToken: token,
+          jobId: created.jobId,
+          userCode: created.userCode,
+        })
+        if (status.done) {
+          outFilePath = status.outFilePath
+          break
+        }
+        setScanFetchProgress({ outCount: status.outCount, totalCount: status.totalCount })
+        if (attempt < POLL_MAX_ATTEMPTS - 1) await new Promise((resolve) => setTimeout(resolve, POLL_INTERVAL_MS))
+      }
+      if (!outFilePath) {
+        throw new Error(String(i18n.t('toast.inboundExportTimeout', { ns: 'scannerEfficiency' })))
       }
 
-      const result = { records: allRecords, meta: { startDate, endDate, totalResult, fetched } }
+      const finished = await finishInboundScanExport({ imileToken: token, outFilePath })
+      console.log('[ScannerEfficiency] iMile 到件导出结果（records，未裁剪）', finished.records)
 
-      const sourceLabel = `iMile 到件 API（${startDate} ~ ${endDate}）`
+      const result = {
+        records: finished.records as unknown[],
+        meta: { startDate, endDate, totalResult: finished.meta.fetched, fetched: finished.meta.fetched },
+      }
+
+      const sourceLabel = `iMile 到件导出（${startDate} ~ ${endDate}）`
       const mapped = mapInboundRecordsToParsedScanRows(result.records, sourceLabel)
 
-      console.info('[ScannerEfficiency] iMile 到件 API 拉取完成', {
+      console.info('[ScannerEfficiency] iMile 到件导出完成', {
         dateRange: `${startDate} ~ ${endDate}`,
         apiTotalResult: result.meta.totalResult,
         apiFetched: result.records.length,

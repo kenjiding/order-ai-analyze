@@ -17,6 +17,7 @@ export const ANALYSIS_EXPORT_FIELDS = [
   'consigneeRouteCode',
   'confidence',
   'extraData',
+  'latestProblemItem',
   'reason',
   'needsReview',
   'crossCheckedModel',
@@ -56,6 +57,7 @@ export const ZH_ANALYSIS_EXPORT_LABELS: AnalysisExportLabels = {
   consigneeRouteCode: '路由码',
   confidence: '置信度',
   extraData: '额外数据',
+  latestProblemItem: '最新问题件',
   reason: '判定依据',
   needsReview: '是否需复核',
   crossCheckedModel: '交叉验证模型',
@@ -79,6 +81,7 @@ const EXPORT_HEADER_ALIASES: Record<AnalysisExportField, readonly string[]> = {
   consigneeRouteCode: ['路由码', 'Route code'],
   confidence: ['置信度', 'Confidence'],
   extraData: ['额外数据', 'Extra data'],
+  latestProblemItem: ['最新问题件', 'Latest problem item'],
   reason: ['判定依据', 'Determination basis'],
   needsReview: ['是否需复核', 'Needs review'],
   crossCheckedModel: ['交叉验证模型', 'Cross-check model'],
@@ -117,6 +120,7 @@ export function getAnalysisExportLabels(t: TFunction): AnalysisExportLabels {
     consigneeRouteCode: t('export.routeCode'),
     confidence: t('export.confidence'),
     extraData: t('export.extraData'),
+    latestProblemItem: t('export.latestProblemItem'),
     reason: t('export.reason'),
     needsReview: t('export.needsReview'),
     crossCheckedModel: t('export.crossCheckModel'),
@@ -137,7 +141,7 @@ export type AnalysisExportRow = Record<string, string | number>
  * Column order matches ANALYSIS_EXPORT_FIELDS.
  */
 export const ANALYSIS_EXPORT_COLUMN_WIDTHS = [
-  24, 18, 14, 10, 10, 14, 14, 16, 14, 28, 16, 10, 44, 80, 12, 16, 20, 20, 24, 14,
+  24, 18, 14, 10, 10, 14, 14, 16, 14, 28, 16, 10, 44, 36, 80, 12, 16, 20, 20, 24, 14,
 ] as const
 
 const REQUIRED_IMPORT_FIELDS: AnalysisExportField[] = ['orderNo', 'lossScope']
@@ -205,6 +209,7 @@ export function toAnalysisExportRow(
     [labels.consigneeRouteCode]: row.orderInfo?.consigneeRouteCode || '—',
     [labels.confidence]: row.confidence,
     [labels.extraData]: row.extraData?.summary ?? '—',
+    [labels.latestProblemItem]: row.latestProblemItem ?? '—',
     [labels.reason]: row.reason,
     [labels.needsReview]: row.needsReview ? yes : no,
     [labels.crossCheckedModel]: row.crossCheckedBy
@@ -236,6 +241,7 @@ export function analysisRowFromExportRecord(raw: Record<string, unknown>): Analy
     !isBlankDisplay(totalWeight) ||
     !isBlankDisplay(customerDeclaredValueAud)
   const extraSummary = cellToText(record.extraData)
+  const latestProblemItemText = cellToText(record.latestProblemItem)
   const person = cellToText(record.latestResponsibilityPerson)
   const displayTime = cellToText(record.latestResponsibilityTime)
   const action = cellToText(record.latestResponsibilityAction)
@@ -271,6 +277,7 @@ export function analysisRowFromExportRecord(raw: Record<string, unknown>): Analy
             summary: extraSummary,
             entries: [],
           },
+    latestProblemItem: isBlankDisplay(latestProblemItemText) ? null : latestProblemItemText,
     needsReview: needsReviewText === '是' || needsReviewText === 'Yes',
     crossCheckedBy,
     latestResponsibility: hasResponsibility

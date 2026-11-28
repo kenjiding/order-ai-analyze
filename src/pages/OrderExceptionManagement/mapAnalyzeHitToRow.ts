@@ -101,6 +101,7 @@ export function mapAnalyzeHitToRow(
     interceptLogs,
     orderInfo,
     latestResponsibility: hit.latestResponsibility ?? null,
+    latestProblemItem: hit.latestProblemItem ?? null,
     detectedDriverId: deriveDetectedDriverId(hit.latestResponsibility, trackEvents, interceptLogs),
     needsReview: hit.needsReview ?? false,
     crossCheckedBy: hit.crossCheckedBy ?? null,

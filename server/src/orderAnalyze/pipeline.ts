@@ -191,6 +191,7 @@ function finalizeResultWithFacts(
     currentResponsibilityParty: formatCurrentResponsibilityParty(facts),
     activeResponsibilityOwner: facts?.activeResponsibilityOwner,
     latestResponsibility: buildLatestResponsibility(facts, target),
+    latestProblemItem: facts?.latestProblemItemEvidence ?? null,
   }
 }
 

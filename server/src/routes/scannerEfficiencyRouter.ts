@@ -5,7 +5,11 @@ import { getDb } from '../db'
 import { efficiencyAttendanceDailyRecords } from '../db/schema'
 import { queryImileBoxAssignedList } from '../imile/boxAssignedList'
 import { analyzeCancelScan } from '../imile/cancelScanAnalysis'
-import { queryImileInboundScansPage } from '../imile/inbound'
+import {
+  checkInboundScanExportJobStatus,
+  createInboundScanExportJob,
+  finishInboundScanExportJob,
+} from '../imile/inbound'
 import { queryZktDepartmentTree } from '../zkt/departmentTree'
 import { queryZktTimeCardReport } from '../zkt/timeCardReport'
 import { readImileTokenFromRequest } from './imileAuth'
@@ -263,18 +267,16 @@ scannerEfficiencyRouter.delete('/daily-records/:date', async (req: Authenticated
   }
 })
 
-scannerEfficiencyRouter.post('/inbound-scans', async (req: Request, res: Response) => {
+/**
+ * 到件扫描走异步导出任务，整段时间范围一次建任务，前端按 outCount/totalCount 自己轮询进度，
+ * 不用按天按页拆请求。三步拆成三个接口：start → status（轮询）→ finish。
+ */
+scannerEfficiencyRouter.post('/inbound-scan-export/start', async (req: Request, res: Response) => {
   try {
-    const body = readJson<{
-      imileToken?: string
-      startDate?: string
-      endDate?: string
-      page?: number
-    }>(req)
+    const body = readJson<{ imileToken?: string; startDate?: string; endDate?: string }>(req)
     const token = readImileTokenFromRequest(req, body.imileToken)
     const startDate = parseDateKey(body.startDate)
     const endDate = parseDateKey(body.endDate)
-    const page = Number(body.page)
 
     if (!token) {
       res.status(400).json({ error: '缺少 imileToken，请在全局设置中配置' })
@@ -288,49 +290,81 @@ scannerEfficiencyRouter.post('/inbound-scans', async (req: Request, res: Respons
       res.status(400).json({ error: '开始日期不能晚于结束日期' })
       return
     }
-    if (!Number.isInteger(page) || page < 1) {
-      res.status(400).json({ error: '请提供有效的 page（从 1 开始）' })
-      return
-    }
-
     const rangeDays = diffDaysInclusive(startDate, endDate)
     if (rangeDays > MAX_RANGE_DAYS) {
       res.status(400).json({ error: `日期区间不能超过 ${MAX_RANGE_DAYS} 天` })
       return
     }
 
-    // 只拉一页，分页循环交给前端控制：前端每拉完一页就知道真实进度（第几页/共几页），
-    // 不用等一次性拉完整个区间才有响应。
-    const pageResult = await queryImileInboundScansPage({
+    const created = await createInboundScanExportJob({
       imileToken: token,
       startTime: `${startDate} 00:00:00`,
       endTime: `${endDate} 23:59:59`,
-      currentPage: page,
     })
+    if (!created.ok) {
+      res.status(502).json({ error: created.message, status: created.status, rawText: created.rawText })
+      return
+    }
+    res.json({ jobId: created.jobId, userCode: created.userCode })
+  } catch (e) {
+    res.status(500).json({ error: (e as Error).message || '到件扫描导出任务创建失败' })
+  }
+})
 
-    if (!pageResult.ok) {
-      res.status(502).json({
-        error: pageResult.message,
-        status: pageResult.status,
-        rawText: pageResult.rawText,
-      })
+scannerEfficiencyRouter.post('/inbound-scan-export/status', async (req: Request, res: Response) => {
+  try {
+    const body = readJson<{ imileToken?: string; jobId?: string; userCode?: string }>(req)
+    const token = readImileTokenFromRequest(req, body.imileToken)
+    const jobId = String(body.jobId ?? '').trim()
+    const userCode = String(body.userCode ?? '').trim()
+
+    if (!token) {
+      res.status(400).json({ error: '缺少 imileToken，请在全局设置中配置' })
+      return
+    }
+    if (!jobId || !userCode) {
+      res.status(400).json({ error: '缺少 jobId / userCode' })
       return
     }
 
-    res.json({
-      records: pageResult.records,
-      raw: pageResult.raw,
-      currentPage: pageResult.currentPage,
-      totalPages: pageResult.totalPages,
-      meta: {
-        startDate,
-        endDate,
-        totalResult: pageResult.totalResult,
-        fetched: pageResult.records.length,
-      },
-    })
+    const status = await checkInboundScanExportJobStatus({ imileToken: token, jobId, userCode })
+    if (!status.ok) {
+      res.status(502).json({ error: status.message, status: status.status, rawText: status.rawText })
+      return
+    }
+    res.json(
+      status.done
+        ? { done: true, outFilePath: status.outFilePath }
+        : { done: false, outCount: status.outCount, totalCount: status.totalCount },
+    )
   } catch (e) {
-    res.status(500).json({ error: (e as Error).message || '到件扫描拉取失败' })
+    res.status(500).json({ error: (e as Error).message || '到件扫描导出进度查询失败' })
+  }
+})
+
+scannerEfficiencyRouter.post('/inbound-scan-export/finish', async (req: Request, res: Response) => {
+  try {
+    const body = readJson<{ imileToken?: string; outFilePath?: string }>(req)
+    const token = readImileTokenFromRequest(req, body.imileToken)
+    const outFilePath = String(body.outFilePath ?? '').trim()
+
+    if (!token) {
+      res.status(400).json({ error: '缺少 imileToken，请在全局设置中配置' })
+      return
+    }
+    if (!outFilePath) {
+      res.status(400).json({ error: '缺少 outFilePath' })
+      return
+    }
+
+    const finished = await finishInboundScanExportJob({ imileToken: token, outFilePath })
+    if (!finished.ok) {
+      res.status(502).json({ error: finished.message, status: finished.status, rawText: finished.rawText })
+      return
+    }
+    res.json({ records: finished.records, meta: { fetched: finished.records.length } })
+  } catch (e) {
+    res.status(500).json({ error: (e as Error).message || '到件扫描导出文件下载失败' })
   }
 })
 

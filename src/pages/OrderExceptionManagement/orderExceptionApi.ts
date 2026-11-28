@@ -94,6 +94,8 @@ export type OrderAnalyzeResultItem = {
   activeResponsibilityOwner?: OrderAnalyzeResponsibilityOwner
   /** 最新责任点：责任人/操作/时间/无操作天数，null 表示当前责任段内无可确定的责任点 */
   latestResponsibility?: LatestResponsibility | null
+  /** 最新问题件：轨迹中最后一条「登记问题件」事件的证据文本，服务端从轨迹确定性解析；null 表示轨迹中无问题件记录 */
+  latestProblemItem?: string | null
   reason: string
   confidence: number
   /** 事实硬校验后需要人工复核 */

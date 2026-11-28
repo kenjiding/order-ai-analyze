@@ -513,6 +513,22 @@ function buildColumns(
       },
     },
     {
+      key: 'latestProblemItem',
+      title: t('results.colLatestProblemItem'),
+      render: (row) => {
+        const r = row as unknown as Row
+        if (r.status === 'pending' || r.status === 'analyzing') {
+          return <span className="text-slate-400">—</span>
+        }
+        if (!r.latestProblemItem) return <span className="text-slate-400">—</span>
+        return (
+          <Tooltip title={r.latestProblemItem} placement="topLeft">
+            <div className="w-[320px] truncate">{r.latestProblemItem}</div>
+          </Tooltip>
+        )
+      },
+    },
+    {
       key: 'reason',
       title: t('results.colReason'),
       render: (row) => renderReasonCell(row as unknown as Row, t),
