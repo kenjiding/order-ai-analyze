@@ -5,9 +5,9 @@ import {
   readDefaultImileHubcode,
 } from './shared'
 import { requestImileApi } from './client'
-import { buildImilePortalHeaders, IMILE_DS_CLOSURE_PORTAL } from './portal'
+import { buildImilePortalHeaders, IMILE_DS_ABNORMAL_EXPORT_PORTAL, IMILE_DS_CLOSURE_PORTAL } from './portal'
 import { readResultListRows, readResultObject } from './resultObject'
-import { fetchPaginatedResultRows } from './paginatedQuery'
+import { fetchImileExportColumnValues } from './ipepExportJob'
 
 export type ClosureVendorOption = {
   key: string
@@ -36,9 +36,12 @@ type ClosureApiError = {
   rawText?: string
 }
 
-const DEFAULT_CLOSE_SEARCH_URL = 'https://ds.imile.com/saastms/v1/biz/exception/close/search'
 const DEFAULT_CLOSE_SEARCH_REASON = 'aus_Packet_loss_in_the_station'
-const CLOSE_SEARCH_PAGE_SHOW_COUNT = 1000
+/** 异常完结清单异步导出对应的 bizType/moduleId（抓包自「Abnormal List」导出按钮） */
+const CLOSE_EXPORT_BIZ_TYPE = 18183
+const CLOSE_EXPORT_MODULE_ID = 10022
+const CLOSE_EXPORT_JOB_NAME = 'Abnormal List'
+const CLOSE_EXPORT_WAYBILL_COLUMN = '运单号'
 
 function makeClosureHeaders(token: string): Record<string, string> {
   return buildImilePortalHeaders({
@@ -49,50 +52,28 @@ function makeClosureHeaders(token: string): Record<string, string> {
   })
 }
 
-type CloseSearchPayload = {
-  auditStatus: 'finish'
-  currentPage: number
-  dateSearchType: 'end'
-  end: string
-  exceptionCloseReason: string
-  orderCode: string
-  selectAll: false
-  showCount: number
-  start: string
-  waybillNos: string[]
-}
-
-export function buildCloseSearchPayload(input: {
+export function buildCloseExportQueryContent(input: {
   start: string
   end: string
-  currentPage: number
-  showCount: number
   exceptionCloseReason: string
-}): CloseSearchPayload {
-  return {
-    auditStatus: 'finish',
-    currentPage: input.currentPage,
-    dateSearchType: 'end',
-    end: input.end,
-    exceptionCloseReason: input.exceptionCloseReason,
-    orderCode: '',
+}): string {
+  return JSON.stringify({
     selectAll: false,
-    showCount: input.showCount,
-    start: input.start,
     waybillNos: [],
-  }
+    start: input.start,
+    end: input.end,
+    dateSearchType: 'end',
+    exceptionCloseReason: input.exceptionCloseReason,
+    auditStatus: 'finish',
+    orderCode: '',
+  })
 }
 
-export function extractClosedPacketLossWaybillNos(records: unknown[]): string[] {
-  const waybillNos = new Set<string>()
-  for (const row of records) {
-    if (!isRecord(row)) continue
-    const waybillNo = String(row.waybillNo ?? '').trim()
-    if (waybillNo) waybillNos.add(waybillNo)
-  }
-  return [...waybillNos]
-}
-
+/**
+ * 查「异常完结」里原因为 exceptionCloseReason（默认库内丢包）且时间范围内的运单号。
+ * 直连 saastms/v1/biz/exception/close/search 会被 iMile 风控限流（见 2026-11 排查记录），
+ * 改走 ipep 异步导出任务（建任务 → 轮询 → 换链接下载 xlsx）绕开限流。
+ */
 export async function queryClosedPacketLossWaybills(input: {
   imileToken: string
   start: string
@@ -112,38 +93,23 @@ export async function queryClosedPacketLossWaybills(input: {
     return { ok: false, status: 400, message: '异常闭环查询缺少 exceptionCloseReason' }
   }
 
-  const url = envFirstOr(['IMILE_CLOSURE_SEARCH_URL'], DEFAULT_CLOSE_SEARCH_URL)
-  const headers = makeClosureHeaders(token)
-  const pageResult = await fetchPaginatedResultRows({
-    label: '异常闭环搜索',
-    pageShowCount: CLOSE_SEARCH_PAGE_SHOW_COUNT,
-    buildPageBody: ({ currentPage, showCount }) =>
-      buildCloseSearchPayload({
-        start,
-        end,
-        currentPage,
-        showCount,
-        exceptionCloseReason,
-      }),
-    requestPage: (body) =>
-      requestImileApi({
-        url,
-        method: 'POST',
-        headers,
-        body,
-        label: '异常闭环搜索',
-      }),
-  })
-  if (!pageResult.ok) {
-    return {
-      ok: false,
-      status: pageResult.status,
-      message: pageResult.message,
-      rawText: pageResult.rawText,
-    }
+  const result = await fetchImileExportColumnValues(
+    token,
+    { envPrefix: 'IMILE_CLOSURE_EXPORT', defaults: IMILE_DS_ABNORMAL_EXPORT_PORTAL },
+    {
+      jobType: 1,
+      bizType: CLOSE_EXPORT_BIZ_TYPE,
+      jobName: CLOSE_EXPORT_JOB_NAME,
+      queryContent: buildCloseExportQueryContent({ start, end, exceptionCloseReason }),
+      moduleId: CLOSE_EXPORT_MODULE_ID,
+    },
+    CLOSE_EXPORT_WAYBILL_COLUMN,
+  )
+  if (!result.ok) {
+    return { ok: false, status: result.status, message: `异常闭环搜索${result.message}`, rawText: result.rawText }
   }
 
-  return { ok: true, waybillNos: extractClosedPacketLossWaybillNos(pageResult.records) }
+  return { ok: true, waybillNos: [...new Set(result.values)] }
 }
 
 function readVendorRows(payload: unknown): unknown[] {

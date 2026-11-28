@@ -34,6 +34,8 @@ export async function requestImileApi(options: {
   method: 'GET' | 'POST'
   headers: Record<string, string>
   body?: unknown
+  /** 少数接口（如 ipep 异步导出任务）要求 application/x-www-form-urlencoded，而非默认的 JSON body */
+  bodyEncoding?: 'json' | 'form'
   /** 错误信息前缀，如「到件查询」 */
   label: string
   retryBusy?: boolean
@@ -47,7 +49,11 @@ export async function requestImileApi(options: {
   const busyRetryMax = options.busyRetryMax ?? DEFAULT_BUSY_RETRY_MAX
   const busyRetryMaxDelayMs = options.busyRetryMaxDelayMs ?? DEFAULT_BUSY_RETRY_MAX_DELAY_MS
   const body =
-    options.body == null || options.method === 'GET' ? undefined : JSON.stringify(options.body)
+    options.body == null || options.method === 'GET'
+      ? undefined
+      : options.bodyEncoding === 'form'
+        ? new URLSearchParams(options.body as Record<string, string>).toString()
+        : JSON.stringify(options.body)
 
   for (let attempt = 0; attempt <= (retryBusy ? busyRetryMax : 0); attempt += 1) {
     const res = await imileRequestJson({

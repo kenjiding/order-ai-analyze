@@ -13,11 +13,9 @@
 import {
   buildImileAuthHeaders,
   envFirstOr,
-  isRetryableBusyFailure,
   isRetryableUnauthorizedFailure,
   mergeBatchRaw,
   normalizeImileToken,
-  sleep,
 } from './shared'
 import { requestImileApi } from './client'
 import { mapWithConcurrency } from '../orderAnalyze/runtime'
@@ -223,48 +221,34 @@ export async function queryImileTracks(
 
   /**
    * 查询单个运单轨迹；失败抛 SingleTrackError 供并发层收集。
-   * "系统繁忙"最多重试 2 次（间隔 1.5 s / 3 s），其余错误立即抛出。
+   * "系统繁忙"的重试已经在 postTrack → requestImileApi 内层做过（见 client.ts 的 busyRetryMax），
+   * 这里不再重复整轮重试，只保留 candidate 切换（鉴权失败时换参数重试）。
    */
   async function fetchOneOrderTrack(
     searchValue: string
   ): Promise<{ trackInfo: Record<string, TrackEvent[]>; orderInfo: Record<string, OrderQueryInfo | null>; raw: unknown }> {
     const candidates = buildSearchCandidates(searchValue)
-    const MAX_BUSY_RETRIES = 2
     let lastFailure: { message: string; rawText?: string; status: number } | null = null
 
-    for (let attempt = 0; attempt <= MAX_BUSY_RETRIES; attempt++) {
-      if (attempt > 0) await sleep(1500 * attempt) // 1.5 s → 3 s
-
-      let hitBusy = false
-
-      for (const candidate of candidates) {
-        const res = await postTrack(
-          url,
-          token,
-          candidate.body,
-          `轨迹查询（运单 ${searchValue}，${candidate.label}）`,
-        )
-        if (res.ok) {
-          const trackInfo = extractTrackInfo(res.json)
-          const orderInfo = mapOrderInfoForTrackKeys(trackInfo, extractOrderInfo(res.json), searchValue)
-          return { trackInfo, orderInfo, raw: { candidate: candidate.label, body: candidate.body, response: res.json } }
-        }
-
-        if (res.businessFailure && isRetryableUnauthorizedFailure(res.businessFailure)) {
-          lastFailure = { status: res.status, message: res.message, rawText: res.rawText }
-          continue // 尝试下一个候选参数
-        }
-
-        if (res.businessFailure && isRetryableBusyFailure(res.businessFailure)) {
-          hitBusy = true
-          lastFailure = { status: res.status, message: res.message, rawText: res.rawText }
-          break // 跳出候选循环，等待后重试本次 attempt
-        }
-
-        throw new SingleTrackError({ ok: false, status: res.status, message: res.message, rawText: res.rawText })
+    for (const candidate of candidates) {
+      const res = await postTrack(
+        url,
+        token,
+        candidate.body,
+        `轨迹查询（运单 ${searchValue}，${candidate.label}）`,
+      )
+      if (res.ok) {
+        const trackInfo = extractTrackInfo(res.json)
+        const orderInfo = mapOrderInfoForTrackKeys(trackInfo, extractOrderInfo(res.json), searchValue)
+        return { trackInfo, orderInfo, raw: { candidate: candidate.label, body: candidate.body, response: res.json } }
       }
 
-      if (!hitBusy) break // 非 busy（auth 失败耗尽候选），不做 busy 重试
+      if (res.businessFailure && isRetryableUnauthorizedFailure(res.businessFailure)) {
+        lastFailure = { status: res.status, message: res.message, rawText: res.rawText }
+        continue // 尝试下一个候选参数
+      }
+
+      throw new SingleTrackError({ ok: false, status: res.status, message: res.message, rawText: res.rawText })
     }
 
     throw new SingleTrackError(

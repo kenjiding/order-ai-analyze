@@ -1,5 +1,5 @@
 /**
- * iMile 到件扫描查询（dc.imile.com/lm/express/ops/v1/biz/inbound/query）。
+ * iMile 到件扫描查询（ds.imile.com/lm/express/report/v1/biz/inbound/query）。
  * 请求头与控制台「扫描查询 / ScanQuery」对齐，见 portal.IMILE_DC_SCAN_QUERY_PORTAL。
  */
 
@@ -9,7 +9,7 @@ import { buildImilePortalHeaders, IMILE_DC_SCAN_QUERY_PORTAL } from './portal'
 import { readResultPagination, readResultRows } from './resultObject'
 import { envFirstOr, normalizeImileToken } from './shared'
 
-const DEFAULT_INBOUND_URL = 'https://ds.imile.com/lm/express/ops/v1/biz/inbound/query'
+const DEFAULT_INBOUND_URL = 'https://ds.imile.com/lm/express/report/v1/biz/inbound/query'
 
 const INBOUND_QUERY_DEFAULTS = {
   isLatest: 1,

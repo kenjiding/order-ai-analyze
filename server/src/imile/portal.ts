@@ -191,6 +191,20 @@ export const IMILE_DS_CLOSURE_PORTAL: ImilePortalDefaults = {
 }
 
 /**
+ * 异常完结清单（Abnormal List）异步导出门户默认配置，供 ipep/job/* 系列接口使用。
+ * 抓包实测确认：这组接口要求 application/x-www-form-urlencoded body，且 front-sec 必须带非空
+ * userCode（值本身不校验，只校验非空），否则报「参数entId||bizType||jobName||userId为空或不合法」。
+ */
+export const IMILE_DS_ABNORMAL_EXPORT_PORTAL: ImilePortalDefaults = {
+  resourceCode: 'AbnormalManagement',
+  sysName: 'DS',
+  sysPortal: 'DS',
+  origin: 'https://ds.imile.com',
+  referer: 'https://ds.imile.com/',
+  path: '/DSOperation/DSExceptionHandle/AbnormalManagement',
+}
+
+/**
  * 责任站点列表（permission/station）：正式站从 DAInventory 页发起时的门户头。
  * 切国家时还需同步 timezone / Cookie TIMEZONE_COUNTRY（由 buildImilePortalHeaders 统一注入）。
  */
